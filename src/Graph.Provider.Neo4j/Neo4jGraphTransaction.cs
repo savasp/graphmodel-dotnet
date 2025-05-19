@@ -15,7 +15,7 @@
 using Cvoya.Graph.Provider.Model;
 using Neo4j.Driver;
 
-namespace Cvoya.Graph.Client.Neo4j;
+namespace Cvoya.Graph.Provider.Neo4j;
 
 internal class Neo4jGraphTransaction : IGraphTransaction
 {
