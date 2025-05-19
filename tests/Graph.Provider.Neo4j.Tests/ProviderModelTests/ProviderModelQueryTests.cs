@@ -12,36 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Provider.Model;
-
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
 public class ProviderModelQueryTests : Model.Tests.GraphProviderQueryTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
 {
     private readonly TestInfrastructureFixture fixture;
-    private IGraphProvider? provider;
-    public ProviderModelQueryTests(TestInfrastructureFixture fixture)
+
+    public ProviderModelQueryTests(TestInfrastructureFixture fixture) : base(fixture.TestInfrastructure.GraphProvider)
     {
         this.fixture = fixture;
     }
 
-    protected override IGraphProvider Provider => this.provider ?? throw new InvalidOperationException("Provider not initialized");
-
-    protected override Task ResetDatabase()
-    {
-        return fixture.TestInfrastructure.ResetDatabase();
-    }
-
-    public override async Task InitializeAsync()
+    public async Task InitializeAsync()
     {
         await fixture.TestInfrastructure.EnsureReady();
-        this.provider = await fixture.TestInfrastructure.CreateProvider();
-        await base.InitializeAsync();
+        await fixture.TestInfrastructure.ResetDatabase();
     }
 
-    public override async Task DisposeAsync()
+    public Task DisposeAsync()
     {
-        fixture.Dispose();
-        await base.DisposeAsync();
+        return Task.CompletedTask;
     }
 }

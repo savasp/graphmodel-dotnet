@@ -36,10 +36,9 @@ namespace Cvoya.Graph.Provider.Neo4j.Tests;
 public interface ITestInfrastructure : IAsyncDisposable
 {
     /// <summary>
-    /// Creates a new instance of the Neo4j graph provider.
+    /// Gets the Neo4j graph provider.
     /// </summary>
-    /// <returns>The <see cref="IGraphProvider"/> instance.</returns>
-    Task<IGraphProvider> CreateProvider();
+    IGraphProvider GraphProvider { get; }
 
     /// <summary>
     /// Resets the Neo4j database by deleting all nodes and relationships.

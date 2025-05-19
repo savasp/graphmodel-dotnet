@@ -12,23 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Cvoya.Graph.Provider.Model;
+
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
-public class TestInfrastructureFixture : IDisposable
+public class ProviderNeo4jTests : IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
 {
-    private ITestInfrastructure testInfrastructure;
+    private readonly TestInfrastructureFixture fixture;
+    private IGraphProvider? provider;
 
-    public TestInfrastructureFixture()
+    public ProviderNeo4jTests(TestInfrastructureFixture fixture)
     {
-        // TODO: Configure these based an environment variable, appsettings.json, etc.
-        //this.testInfrastructure = new Neo4jTestInfrastructureWithContainer();
-        this.testInfrastructure = new Neo4jTestInfrastructureWithDbInstance();
+        this.fixture = fixture;
+        provider = fixture.TestInfrastructure.GraphProvider;
     }
 
-    public ITestInfrastructure TestInfrastructure => this.testInfrastructure;
-
-    public void Dispose()
+    public async Task InitializeAsync()
     {
-        this.TestInfrastructure.DisposeAsync().GetAwaiter().GetResult();
+        await fixture.TestInfrastructure.EnsureReady();
+        await fixture.TestInfrastructure.ResetDatabase();
+    }
+
+    public Task DisposeAsync()
+    {
+        return Task.CompletedTask;
     }
 }

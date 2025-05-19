@@ -24,19 +24,19 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
     private static int numberOfInstances = 0;
     private static readonly Lock @lock = new();
     private static Neo4jContainer? container;
+    private Neo4jGraphProvider provider;
 
-    public async Task<IGraphProvider> CreateProvider()
+    public Neo4jTestInfrastructureWithContainer()
     {
-        var connectionString = await EnsureReady();
+        var connectionString = EnsureReady().GetAwaiter().GetResult();
         var logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<Neo4jGraphProvider>();
-        return new Neo4jGraphProvider(connectionString, username: "neo4j", password: "password", logger: logger);
+        this.provider = new Neo4jGraphProvider(connectionString, username: "neo4j", password: "password", logger: logger);
     }
+
+    public IGraphProvider GraphProvider => this.provider;
 
     public async Task ResetDatabase()
     {
-        await EnsureReady();
-        var logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<Neo4jGraphProvider>();
-        var provider = new Neo4jGraphProvider(container!.GetConnectionString(), username: "neo4j", password: "password", logger: logger);
         await provider.ExecuteCypher("CREATE OR REPLACE DATABASE tests");
     }
 

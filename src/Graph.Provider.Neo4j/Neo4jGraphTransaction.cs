@@ -17,18 +17,12 @@ using Neo4j.Driver;
 
 namespace Cvoya.Graph.Provider.Neo4j;
 
-internal class Neo4jGraphTransaction : IGraphTransaction
+internal class Neo4jGraphTransaction(IAsyncSession session, IAsyncTransaction transaction) : IGraphTransaction
 {
-    private readonly IAsyncSession _session;
-    private IAsyncTransaction? _transaction;
+    private readonly IAsyncSession _session = session;
+    private IAsyncTransaction? _transaction = transaction;
     private bool _committed;
     private bool _rolledBack;
-
-    public Neo4jGraphTransaction(IAsyncSession session, IAsyncTransaction transaction)
-    {
-        _session = session;
-        _transaction = transaction;
-    }
 
     public bool IsActive => _transaction != null && !_committed && !_rolledBack;
 

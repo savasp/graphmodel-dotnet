@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Reflection;
 using Cvoya.Graph.Provider.Model;
 using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
-using Neo4j.Driver.Mapping;
 
 namespace Cvoya.Graph.Provider.Neo4j;
 
@@ -31,26 +31,31 @@ public class Neo4jGraphProvider : IGraphProvider
     private readonly IDriver driver;
 
     // Tracks labels/types for which constraints have been created
-    private readonly HashSet<string> _constrainedLabels = [];
+    private readonly HashSet<string> constrainedLabels = [];
     private readonly Lock constraintLock = new();
-    private bool _constraintsLoaded = false;
+    private bool constraintsLoaded = false;
 
+    private readonly string databaseName;
 
     public Neo4jGraphProvider(
         string? uri = null,
         string? username = null,
         string? password = null,
+        string? databaseName = null,
         Microsoft.Extensions.Logging.ILogger? logger = null)
     {
         this.logger = logger;
         uri ??= Environment.GetEnvironmentVariable("NEO4J_URI") ?? "bolt://localhost:7687";
         username ??= Environment.GetEnvironmentVariable("NEO4J_USER") ?? "neo4j";
         password ??= Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "password";
-        this.driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
+        databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
 
-        Task.Run(() => LoadExistingConstraintsAsync()).Wait();
+        this.databaseName = databaseName;
+
+        this.driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
     }
 
+    /// <inheritdoc />
     public IQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
         where N : Model.INode, new()
     {
@@ -58,48 +63,44 @@ public class Neo4jGraphProvider : IGraphProvider
         throw new NotImplementedException();
     }
 
-    public IQueryable<R> Relationships<R, S, T>(IGraphTransaction? transaction = null)
-        where R : IRelationship<S, T>, new()
-        where S : Model.INode
-        where T : Model.INode
+    /// <inheritdoc />
+    public IQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
+        where R : Graph.Provider.Model.IRelationship, new()
     {
         // Stub: LINQ provider for querying relationships will be implemented later
         throw new NotImplementedException();
     }
 
+    /// <inheritdoc />
     public async Task<T> GetNode<T>(string id, IGraphTransaction? transaction = null)
         where T : Model.INode, new()
     {
-        if (string.IsNullOrEmpty(id)) throw new ArgumentNullException(nameof(id));
-
-        var nodes = await this.GetNodes<T>([id], transaction);
-
-        return nodes.FirstOrDefault() ?? throw new KeyNotFoundException($"Node with ID {id} not found.");
+        var result = await GetNodes<T>([id], transaction);
+        return result.FirstOrDefault() ?? throw new GraphProviderException($"Node with ID '{id}' not found.");
     }
 
+    /// <inheritdoc />
     public async Task<IEnumerable<T>> GetNodes<T>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
         where T : Model.INode, new()
     {
-        var label = Neo4jGraphProvider.TypeNameToLabel<T>();
-
         if (ids.Any(string.IsNullOrEmpty))
         {
             throw new ArgumentNullException(nameof(ids), "One or more IDs are null or empty.");
         }
 
         var whereInClause = string.Join(", ", ids.Select(id => $"'{id}'"));
-        var cypher = $"MATCH (n:{label}) WHERE n.Id IN [{whereInClause}] RETURN n";
+        var cypher = $"MATCH (n) WHERE n.Id IN [{whereInClause}] RETURN n";
         var results = new List<T>();
 
-        var (session, tx) = await GetOrCreateTransactionAsync(transaction);
+        var (session, tx) = await GetOrCreateTransaction(transaction);
         try
         {
-            var cursor = await tx.RunAsync(cypher);
-            while (await cursor.FetchAsync())
-            {
-                var created = cursor.Current["n"].As<global::Neo4j.Driver.INode>().Properties.FromDictionary<T>();
-                results.Add(created);
-            }
+            var result = await tx.RunAsync(cypher);
+            // TODO: Use the label of the retrieved node to deserialize to the correct type
+            var record = await result.Select(r => r["n"].As<global::Neo4j.Driver.INode>()).ToListAsync();
+
+            // TODO: Deserialize complex properties
+            results.AddRange(record.Select(r => r.ConvertToGraphEntity<T>()));
 
             return results;
         }
@@ -116,52 +117,84 @@ public class Neo4jGraphProvider : IGraphProvider
         }
     }
 
-    public Task<T> GetRelationship<T, S, U>(string id, IGraphTransaction? transaction = null)
-        where T : IRelationship<S, U>, new()
-        where S : Model.INode
-        where U : Model.INode
+    /// <inheritdoc />
+    public async Task<R> GetRelationship<R>(string id, IGraphTransaction? transaction = null)
+        where R : Graph.Provider.Model.IRelationship, new()
     {
-        throw new NotImplementedException();
+        var result = await this.GetRelationships<R>([id], transaction);
+
+        return result.FirstOrDefault() ?? throw new GraphProviderException($"Relationship with ID '{id}' not found.");
     }
 
-    public Task<IEnumerable<T>> GetRelationships<T, S, U>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
-        where T : IRelationship<S, U>, new()
-        where S : Model.INode
-        where U : Model.INode
+    /// <inheritdoc />
+    public async Task<IEnumerable<R>> GetRelationships<R>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
+        where R : Graph.Provider.Model.IRelationship, new()
     {
-        throw new NotImplementedException();
-    }
-
-    public async Task<T> CreateNode<T>(T node, IGraphTransaction? transaction = null)
-        where T : Model.INode, new()
-    {
-        if (node == null) throw new ArgumentNullException(nameof(node));
-
-        // Cycle detection
-        var visited = new HashSet<object>();
-        if (HasReferenceCycle(node, visited))
+        if (ids is null || !ids.Any())
         {
-            throw new GraphProviderException($"Reference cycle detected in relationship of type {typeof(T).FullName}");
+            throw new ArgumentNullException(nameof(ids), "IDs cannot be null or empty.");
         }
 
-        var label = Neo4jGraphProvider.TypeNameToLabel<T>();
-        var propertyNames = typeof(T).GetProperties().Select(p => p.Name).ToList();
-        await EnsureConstraintsForLabelAsync(label, propertyNames, typeof(T));
+        var relationships = new List<R>();
+        foreach (var id in ids)
+        {
+            var cypher = $"""
+                MATCH ()-[r]->()
+                WHERE r.{nameof(Model.IRelationship.Id)} = '{id}'
+                RETURN r, type(r) as type
+                """;
 
-        var cypher = $"CREATE (n:{label} $props) RETURN n";
-        var (session, tx) = await GetOrCreateTransactionAsync(transaction);
+            var (session, tx) = await GetOrCreateTransaction(transaction);
+            try
+            {
+                var result = await tx.RunAsync(cypher);
+                var records = await result.ToListAsync();
+                foreach (var record in records)
+                {
+                    // TODO: Use the type of the retrieved node to deserialize to the correct type
+                    var type = record["type"].As<string>();
+                    var rel = record["r"].As<global::Neo4j.Driver.IRelationship>().ConvertToGraphEntity<R>();
+                    relationships.Add(rel);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new GraphProviderException($"Error retrieving relationship with ID '{id}'", ex);
+            }
+            finally
+            {
+                if (transaction == null)
+                {
+                    await session.CloseAsync();
+                }
+            }
+        }
+
+        return relationships;
+    }
+
+    /// <inheritdoc />
+    public async Task CreateNode<T>(T node, IGraphTransaction? transaction = null)
+        where T : Model.INode, new()
+    {
+        if (node is null) throw new ArgumentNullException(nameof(node));
+
+        if (HasReferenceCycle(node))
+        {
+            throw new GraphProviderException($"Reference cycle detected in the node with ID '{node.Id}'");
+        }
+
+        var (session, tx) = await GetOrCreateTransaction(transaction);
 
         try
         {
-            var result = await tx.RunAsync(cypher, new { props = node.ToDictionary() });
-            var record = await result.SingleAsync();
-            var createdNode = record["n"].As<global::Neo4j.Driver.INode>().Properties.FromDictionary<T>();
-            if (transaction == null)
+            await this.CreateNode(null, node, tx);
+
+            if (transaction is null)
             {
-                // Commit the transaction if we are not in an explicit transaction
+                // We created the transaction, so we need to commit it
                 await tx.CommitAsync();
             }
-            return createdNode;
         }
         catch (Exception ex)
         {
@@ -169,71 +202,107 @@ public class Neo4jGraphProvider : IGraphProvider
         }
         finally
         {
-            if (transaction == null)
+            if (transaction is null)
             {
                 await session.CloseAsync();
             }
         }
     }
 
-    public async Task<R> CreateRelationship<R, S, T>(R relationship, IGraphTransaction? transaction = null)
-        where R : IRelationship<S, T>, new()
-        where S : Model.INode
-        where T : Model.INode
+    /// <inheritdoc />
+    public async Task CreateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
+        where R : Graph.Provider.Model.IRelationship, new()
     {
-        if (relationship == null) throw new ArgumentNullException(nameof(relationship));
+        if (relationship is null) throw new ArgumentNullException(nameof(relationship));
 
-        // Check for complex properties
-        var relType = typeof(R);
-        foreach (var prop in relType.GetProperties())
+        if (HasReferenceCycle(relationship))
         {
-            if (!prop.PropertyType.IsPrimitive && prop.PropertyType != typeof(string) && !prop.PropertyType.IsEnum && !prop.PropertyType.IsValueType)
-            {
-                throw new GraphProviderException($"IRelationship implementation '{relType.FullName}' contains non-primitive property '{prop.Name}' of type '{prop.PropertyType.Name}'. Relationships cannot have complex properties.");
-            }
+            throw new GraphProviderException($"Reference cycle detected in the relationship with ID '{relationship.Id}'");
         }
 
-        // Cycle detection
-        var visited = new HashSet<object>();
-        if (HasReferenceCycle(relationship, visited))
+        var type = relationship.GetType();
+        var label = GetLabel(type);
+        var (simpleProps, complexProps) = SerializationExtensions.GetSimpleAndComplexProperties(relationship);
+
+        if (complexProps.Count > 0)
         {
-            throw new GraphProviderException($"Reference cycle detected in relationship of type {typeof(R).FullName}");
+            throw new GraphProviderException($"Complex properties are not supported for relationships.");
         }
 
-        var label = Neo4jGraphProvider.TypeNameToLabel<T>();
-        var propertyNames = typeof(T).GetProperties().Select(p => p.Name).ToList();
-        await EnsureConstraintsForLabelAsync(label, propertyNames, typeof(T));
+        var (session, tx) = await GetOrCreateTransaction(transaction);
 
-        var props = relationship.ToDictionary();
-
-        var cypher = $@"
-                MATCH (a), (b)
-                WHERE a.Id = $sourceId AND b.Id = $targetId
-                MERGE (a)-[r:`{label}`]->(b)
-                SET r += $props
-                RETURN r
-            ";
-
-        var (session, tx) = await GetOrCreateTransactionAsync(transaction);
         try
         {
-            var cursor = await tx.RunAsync(cypher, new { sourceId = relationship.Source.Id, targetId = relationship.Target.Id, props });
-            if (!await cursor.FetchAsync())
+            var cypher = $"""
+                MATCH (a), (b) 
+                WHERE a.{nameof(Model.INode.Id)} = '{relationship.SourceId}' 
+                    AND b.{nameof(Model.INode.Id)} = '{relationship.TargetId}'
+                CREATE (a)-[r:{label} $props]->(b)
+                RETURN elementId(r) AS relId
+                """;
+            var result = await tx.RunAsync(cypher, new
             {
-                throw new GraphProviderException($"Failed to create relationship: source or target node not found (sourceId={relationship.Source.Id}, targetId={relationship.Target.Id})");
+                props = simpleProps.ToDictionary(kv => kv.Key.Name, kv => kv.Value.ConvertToNeo4jValue()),
+            });
+
+            var record = await result.SingleAsync();
+
+            if (result is null || string.IsNullOrEmpty(record["relId"].As<string>()))
+            {
+                throw new GraphProviderException($"Failed to create relationship of type '{label}'");
             }
 
-            var createdRelationship = cursor.Current["r"].As<global::Neo4j.Driver.IRelationship>().Properties.FromDictionary<R>();
-            if (transaction == null)
+            if (transaction is null)
             {
-                // Commit the transaction if we are not in an explicit transaction
+                // We created the transaction, so we need to commit it
                 await tx.CommitAsync();
             }
-            return createdRelationship;
         }
         catch (Exception ex)
         {
-            throw new GraphProviderException($"Error creating relationship of type '{typeof(R).Name}'", ex);
+            throw new GraphProviderException($"Error creating relationship of type '{label}'", ex);
+        }
+        finally
+        {
+            if (transaction is null)
+            {
+                await session.CloseAsync();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateNode<T>(T node, IGraphTransaction? transaction = null)
+        where T : Model.INode, new()
+    {
+        if (node == null) throw new ArgumentNullException(nameof(node));
+
+        if (HasReferenceCycle(node))
+        {
+            throw new GraphProviderException($"Reference cycle detected in the node with ID '{node.Id}'");
+        }
+
+        var (simpleProps, complexProps) = SerializationExtensions.GetSimpleAndComplexProperties(node);
+        var cypher = $"MATCH (n) WHERE n.{nameof(Model.INode.Id)} = '{node.Id}' SET n += $props";
+
+        var (session, tx) = await GetOrCreateTransaction(transaction);
+
+        try
+        {
+            await tx.RunAsync(cypher, new
+            {
+                props = simpleProps.ToDictionary(kv => kv.Key.Name, kv => kv.Value.ConvertToNeo4jValue()),
+            });
+
+            if (transaction == null)
+            {
+                // We created the transaction, so we need to commit it
+                await tx.CommitAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new GraphProviderException($"Error updating node of type '{typeof(T).Name}'", ex);
         }
         finally
         {
@@ -244,40 +313,128 @@ public class Neo4jGraphProvider : IGraphProvider
         }
     }
 
-    public Task<T> UpdateNode<T>(T node, IGraphTransaction? transaction = null)
-        where T : Model.INode, new()
+    /// <inheritdoc />
+    public async Task UpdateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
+        where R : Graph.Provider.Model.IRelationship, new()
     {
-        throw new NotImplementedException();
+        if (relationship is null) throw new ArgumentNullException(nameof(relationship));
+
+        if (HasReferenceCycle(relationship))
+        {
+            throw new GraphProviderException($"Reference cycle detected in the relationship with ID '{relationship.Id}'");
+        }
+
+        var (simpleProps, complexProps) = SerializationExtensions.GetSimpleAndComplexProperties(relationship);
+
+        if (complexProps.Count > 0)
+        {
+            throw new GraphProviderException($"Complex properties are not supported for relationships.");
+        }
+
+        var (session, tx) = await GetOrCreateTransaction(transaction);
+        var cypher = $"MATCH ()-[r]->() WHERE r.{nameof(Model.IRelationship.Id)} = '{relationship.Id}' SET r += $props";
+
+        try
+        {
+            await tx.RunAsync(cypher, new
+            {
+                props = simpleProps.ToDictionary(kv => kv.Key.Name, kv => kv.Value.ConvertToNeo4jValue()),
+            });
+
+            if (transaction == null)
+            {
+                // We created the transaction, so we need to commit it
+                await tx.CommitAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new GraphProviderException($"Error updating relationship of type '{typeof(R).Name}'", ex);
+        }
+        finally
+        {
+            if (transaction == null)
+            {
+                await session.CloseAsync();
+            }
+        }
     }
 
-    public Task<R> UpdateRelationship<R, S, T>(R relationship, IGraphTransaction? transaction = null)
-        where R : IRelationship<S, T>, new()
-        where S : Model.INode
-        where T : Model.INode
-    {
-        throw new NotImplementedException();
-    }
-
+    /// <inheritdoc />
     public async Task<IGraphTransaction> BeginTransaction()
     {
-        var session = driver.AsyncSession();
+        var session = driver.AsyncSession(builder => builder.WithDatabase(this.databaseName));
         var tx = await session.BeginTransactionAsync();
+
         return new Neo4jGraphTransaction(session, tx);
     }
 
-    public Task DeleteNode(string id, IGraphTransaction? transaction = null)
+    /// <inheritdoc />
+    public async Task DeleteNode(string id, IGraphTransaction? transaction = null)
     {
-        throw new NotImplementedException();
+        if (string.IsNullOrEmpty(id)) throw new ArgumentNullException(nameof(id));
+
+        var (session, tx) = await GetOrCreateTransaction(transaction);
+        try
+        {
+            // TODO: Delete all nodes that represent complex properties of the node
+            var cypher = "MATCH (n) WHERE n.Id = $id DETACH DELETE n";
+            await tx.RunAsync(cypher, new { id });
+
+            if (transaction == null)
+            {
+                // We created the transaction, so we need to commit it
+                await tx.CommitAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new GraphProviderException("Failed to delete node.", ex);
+        }
+        finally
+        {
+            if (transaction == null)
+            {
+                await session.CloseAsync();
+            }
+        }
     }
 
-    public Task DeleteRelationship(string id, IGraphTransaction? transaction = null)
+    /// <inheritdoc />
+    public async Task DeleteRelationship(string id, IGraphTransaction? transaction = null)
     {
-        throw new NotImplementedException();
+        if (string.IsNullOrEmpty(id)) throw new ArgumentNullException(nameof(id));
+
+        var (session, tx) = await GetOrCreateTransaction(transaction);
+        try
+        {
+            var cypher = "MATCH ()-[r]->() WHERE r.Id = $id DELETE r";
+            await tx.RunAsync(cypher, new { id });
+
+            if (transaction == null)
+            {
+                // We created the transaction, so we need to commit it
+                await tx.CommitAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new GraphProviderException("Failed to delete relationship.", ex);
+        }
+        finally
+        {
+            if (transaction == null)
+            {
+                await session.CloseAsync();
+            }
+        }
     }
 
+    /// <inheritdoc />
     public async Task<IEnumerable<dynamic>> ExecuteCypher(string cypher, object? parameters = null, IGraphTransaction? transaction = null)
     {
-        var (session, tx) = await GetOrCreateTransactionAsync(transaction);
+        var (session, tx) = await GetOrCreateTransaction(transaction);
+
         var results = new List<dynamic>();
         try
         {
@@ -309,17 +466,7 @@ public class Neo4jGraphProvider : IGraphProvider
         return results;
     }
 
-    public void Dispose()
-    {
-        lock (disposeLock)
-        {
-            if (disposed) return;
-            driver?.Dispose();
-            disposed = true;
-        }
-    }
-
-    private async Task<(IAsyncSession, IAsyncTransaction)> GetOrCreateTransactionAsync(IGraphTransaction? transaction)
+    private async Task<(IAsyncSession, IAsyncTransaction)> GetOrCreateTransaction(IGraphTransaction? transaction)
     {
         if (transaction is Neo4jGraphTransaction neo4jTx && neo4jTx.IsActive)
         {
@@ -328,7 +475,7 @@ public class Neo4jGraphProvider : IGraphProvider
         }
         else if (transaction == null)
         {
-            var session = driver.AsyncSession();
+            var session = driver.AsyncSession(builder => builder.WithDatabase(this.databaseName));
             var tx = await session.BeginTransactionAsync();
             return (session, tx);
         }
@@ -338,17 +485,17 @@ public class Neo4jGraphProvider : IGraphProvider
         }
     }
 
-    private async Task LoadExistingConstraintsAsync()
+    private async Task LoadExistingConstraints()
     {
-        if (_constraintsLoaded) return;
+        if (constraintsLoaded) return;
         lock (constraintLock)
         {
-            if (_constraintsLoaded) return;
-            _constraintsLoaded = true;
+            if (constraintsLoaded) return;
+            constraintsLoaded = true;
         }
 
         var cypher = "SHOW CONSTRAINTS";
-        var (session, tx) = await GetOrCreateTransactionAsync(null);
+        var (session, tx) = await GetOrCreateTransaction(null);
 
         try
         {
@@ -362,7 +509,7 @@ public class Neo4jGraphProvider : IGraphProvider
                     {
                         if (label is string s)
                         {
-                            _constrainedLabels.Add(s);
+                            constrainedLabels.Add(s);
                         }
                     }
                 }
@@ -378,50 +525,66 @@ public class Neo4jGraphProvider : IGraphProvider
         }
     }
 
-    private async Task EnsureConstraintsForLabelAsync(string label, IEnumerable<string> propertyNames, Type? nodeType = null)
+    // TODO: Ensure that this runs within the context of a transaction
+    private async Task EnsureConstraintsForLabel(string label, IEnumerable<PropertyInfo> properties)
     {
-        await LoadExistingConstraintsAsync();
+        await LoadExistingConstraints();
+
         lock (constraintLock)
         {
-            if (_constrainedLabels.Contains(label))
+            if (constrainedLabels.Contains(label))
                 return;
-            _constrainedLabels.Add(label);
+            constrainedLabels.Add(label);
         }
-        await using var session = driver.AsyncSession();
-        // Always add unique constraint for Id
-        var cypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.Id IS UNIQUE";
-        await session.RunAsync(cypher);
-        // Add property existence constraints only for primitive properties
-        if (nodeType != null)
+
+        var (session, tx) = await GetOrCreateTransaction(null);
+        await using var _ = session;
+        await using var __ = tx;
+
+        // Always add unique constraint for the identifier property
+        var cypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{nameof(Provider.Model.INode.Id)} IS UNIQUE";
+        await tx.RunAsync(cypher);
+
+        foreach (var prop in properties)
         {
-            foreach (var prop in nodeType.GetProperties())
-            {
-                if (prop.Name == nameof(Provider.Model.INode.Id)) continue;
-                if (prop.PropertyType.IsValueType || prop.PropertyType == typeof(string))
-                {
-                    var propCypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{prop.Name} IS NOT NULL";
-                    await session.RunAsync(propCypher);
-                }
-            }
+            if (prop.Name == nameof(Provider.Model.INode.Id)) continue;
+            var name = prop.GetCustomAttribute<PropertyAttribute>()?.Label ?? prop.Name;
+            var propCypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{name} IS NOT NULL";
+            await tx.RunAsync(propCypher);
         }
-        else
-        {
-            foreach (var prop in propertyNames)
-            {
-                if (prop == nameof(Provider.Model.INode.Id)) continue;
-                var propCypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{prop} IS NOT NULL";
-                await session.RunAsync(propCypher);
-            }
-        }
+
+        await tx.CommitAsync();
+        await session.CloseAsync();
     }
 
-    private static string TypeNameToLabel<T>() => TypeNameToLabel(typeof(T));
-
-    private static string TypeNameToLabel(Type type)
+    // Get the label for a type (NodeAttribute/RelationshipAttribute or namespace-qualified name with dots replaced by underscores)
+    private static string GetLabel(Type type)
     {
-        var typeName = type.FullName ?? type.Name;
-        var label = typeName.Replace('.', '_').Replace('+', '_');
-        return label;
+        var nodeAttr = type.GetCustomAttribute<NodeAttribute>();
+        if (nodeAttr?.Label is { Length: > 0 }) return nodeAttr.Label;
+
+        var relAttr = type.GetCustomAttribute<RelationshipAttribute>();
+        if (relAttr?.Label is { Length: > 0 }) return relAttr.Label;
+
+        var propertyAttr = type.GetCustomAttribute<PropertyAttribute>();
+        if (propertyAttr?.Label is { Length: > 0 }) return propertyAttr.Label;
+
+        var label = type.FullName?.Replace('.', '_')?.Replace("+", "_");
+        return label ?? throw new GraphProviderException($"Type '{type}' does not have a valid FullName.");
+    }
+
+    // Find the .NET type for a given label that is assignable to baseType
+    private static Type GetTypeForLabel(string label, Type baseType)
+    {
+        var match = AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(a => a.GetTypes())
+            .Where(baseType.IsAssignableFrom)
+            .FirstOrDefault(t => GetLabel(t) == label);
+
+        if (match is null)
+            throw new GraphProviderException($"No .NET type found for label '{label}' assignable to {baseType.FullName}");
+
+        return match;
     }
 
     private void Log(Action<Microsoft.Extensions.Logging.ILogger> logAction)
@@ -432,42 +595,94 @@ public class Neo4jGraphProvider : IGraphProvider
         }
     }
 
-    private bool HasReferenceCycle(object obj, HashSet<object> visited)
+    private async Task<string> CreateNode(
+        string? parentId,
+        object node,
+        IAsyncTransaction transaction,
+        string? propertyName = null)
     {
-        if (obj == null || obj is string || obj.GetType().IsValueType)
+        var type = node.GetType();
+        var label = GetLabel(type);
+        var (simpleProps, complexProps) = SerializationExtensions.GetSimpleAndComplexProperties(node);
+
+        await EnsureConstraintsForLabel(label, simpleProps.Select(p => p.Key));
+
+        var cypher = parentId == null ?
+            $"CREATE (b:{label} $props) RETURN elementId(b) as nodeId" :
+            $"MATCH (a) WHERE elementId(a) = '{parentId}' CREATE (a)-[:{propertyName}]->(b:{label} $props) RETURN elementId(b) as nodeId";
+
+        var record = await transaction.RunAsync(cypher, new
         {
-            return false;
+            props = simpleProps.ToDictionary(kv => kv.Key.Name, kv => kv.Value.ConvertToNeo4jValue()),
+        });
+        var createdNode = await record.SingleAsync();
+        var nodeId = createdNode["nodeId"].ToString() ?? throw new GraphProviderException($"Failed to create node of type '{label}'");
+
+        // Handle complex properties
+        foreach (var prop in complexProps)
+        {
+            if (prop.Value == null) continue;
+
+            await this.CreateNode(nodeId, prop.Value, transaction, prop.Key.Name);
         }
+
+        return nodeId;
+    }
+
+    private static readonly IEqualityComparer<object> ReferenceComparer = ReferenceEqualityComparer.Instance;
+
+    private bool HasReferenceCycle(object obj, HashSet<object>? visited = null)
+    {
+        visited ??= new HashSet<object>(ReferenceComparer);
+
+        if (obj == null || obj is string || obj.GetType().IsValueType)
+            return false;
 
         if (!visited.Add(obj))
-        {
             return true;
-        }
 
-        foreach (var prop in obj.GetType().GetProperties())
+        var type = obj.GetType();
+        foreach (var prop in type.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
         {
+            if (prop.GetIndexParameters().Length > 0) continue; // Skip indexers
+
             var value = prop.GetValue(obj);
             if (value == null) continue;
-            if (typeof(System.Collections.IEnumerable).IsAssignableFrom(prop.PropertyType) && prop.PropertyType != typeof(string))
+
+            if (value is System.Collections.IEnumerable enumerable && !(value is string))
             {
-                var enumerable = value as System.Collections.IEnumerable;
-                if (enumerable != null)
+                foreach (var item in enumerable)
                 {
-                    foreach (var item in enumerable)
-                    {
-                        if (item != null && HasReferenceCycle(item, visited))
-                            return true;
-                    }
+                    if (item != null && HasReferenceCycle(item, visited))
+                        return true;
                 }
             }
             else if (!prop.PropertyType.IsValueType && prop.PropertyType != typeof(string))
             {
-                if (value != null && HasReferenceCycle(value, visited))
+                if (HasReferenceCycle(value, visited))
                     return true;
             }
         }
         visited.Remove(obj);
-
         return false;
+    }
+
+    // Reference equality comparer for HashSet
+    private sealed class ReferenceEqualityComparer : IEqualityComparer<object>
+    {
+        public static ReferenceEqualityComparer Instance { get; } = new ReferenceEqualityComparer();
+        bool IEqualityComparer<object>.Equals(object? x, object? y) => ReferenceEquals(x, y);
+        public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+    }
+
+    public void Dispose()
+    {
+        lock (disposeLock)
+        {
+            if (disposed) return;
+            disposed = true;
+        }
+
+        driver.Dispose();
     }
 }

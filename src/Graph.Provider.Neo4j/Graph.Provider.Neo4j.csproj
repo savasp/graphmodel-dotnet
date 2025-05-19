@@ -6,6 +6,9 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <WarningsAsErrors>Nullable</WarningsAsErrors>
+        <LangVersion>14</LangVersion>
+        <LangVersion>preview</LangVersion>
+
         <RootNamespace>Cvoya.Graph.Client.Neo4j</RootNamespace>
     </PropertyGroup>
 
