@@ -491,6 +491,11 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                         _ => throw new NotSupportedException($"Operator {bin.NodeType} not supported in projection")
                     };
                     return $"({left} {op} {right})";
+                case ConditionalExpression cond:
+                    var test = BuildCypherExpression(cond.Test, varName);
+                    var ifTrue = BuildCypherExpression(cond.IfTrue, varName);
+                    var ifFalse = BuildCypherExpression(cond.IfFalse, varName);
+                    return $"CASE WHEN {test} THEN {ifTrue} ELSE {ifFalse} END";
                 case MethodCallExpression mcex:
                     var mapped = TryMapMethodCallToCypherFull(mcex, varName);
                     if (mapped != null) return mapped;
