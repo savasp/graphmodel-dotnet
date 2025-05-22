@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Provider.Model;
+using Cvoya.Graph.Provider.Neo4j.Linq;
 using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
 
@@ -59,16 +61,22 @@ public class Neo4jGraphProvider : IGraphProvider
     public IQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
         where N : Model.INode, new()
     {
-        // Stub: LINQ provider for querying nodes will be implemented later
-        throw new NotImplementedException();
+        // Provide a LINQ IQueryable for nodes
+        return new Neo4jQueryable<N>(
+            new Neo4jQueryProvider(this, typeof(N), transaction),
+            Expression.Constant(null, typeof(IQueryable<N>))
+        );
     }
 
     /// <inheritdoc />
     public IQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
         where R : Graph.Provider.Model.IRelationship, new()
     {
-        // Stub: LINQ provider for querying relationships will be implemented later
-        throw new NotImplementedException();
+        // Provide a LINQ IQueryable for relationships
+        return new Neo4jQueryable<R>(
+            new Neo4jQueryProvider(this, typeof(R), transaction),
+            Expression.Constant(null, typeof(IQueryable<R>))
+        );
     }
 
     /// <inheritdoc />
