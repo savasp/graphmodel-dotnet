@@ -49,6 +49,18 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             var visitor = new Neo4jExpressionVisitor(_provider, _rootType, elementType, _transaction);
             var cypher = visitor.Translate(expression);
             var result = visitor.ExecuteQuery(cypher, elementType);
+            // If TResult is not IEnumerable, return the first (scalar) result
+            if (!typeof(System.Collections.IEnumerable).IsAssignableFrom(typeof(TResult)) || typeof(TResult) == typeof(string))
+            {
+                if (result is System.Collections.IEnumerable enumerable && !(result is string))
+                {
+                    var enumerator = enumerable.GetEnumerator();
+                    if (enumerator.MoveNext())
+                        return (TResult)enumerator.Current!;
+                    return default!;
+                }
+                return (TResult)result!;
+            }
             return (TResult)result!;
         }
 

@@ -7,7 +7,7 @@ using Cvoya.Graph.Provider.Model;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq
 {
-    public class Neo4jQueryable<T> : IQueryable<T>
+    public class Neo4jQueryable<T> : IQueryable<T>, IOrderedQueryable<T>, IOrderedQueryable
     {
         public Neo4jQueryable(Neo4jQueryProvider provider, Expression expression)
         {
