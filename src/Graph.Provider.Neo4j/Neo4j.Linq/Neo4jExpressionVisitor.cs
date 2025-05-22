@@ -38,6 +38,7 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             Expression current = expression;
             LambdaExpression? selectLambda = null;
             int? takeCount = null;
+            bool reverseOrderForLast = false;
 
             // Walk the expression tree for supported LINQ methods
             while (current is MethodCallExpression mce)
@@ -77,16 +78,16 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                                         ExpressionType.LessThanOrEqual => "<=",
                                         _ => throw new NotSupportedException($"Operator {cond.NodeType} not supported")
                                     };
-                                    if (cond.Left is MemberExpression me && cond.Right is ConstantExpression ce)
+                                    if (cond.Left is MemberExpression me && IsParameterOrPropertyOfLambda(me, lambda.Parameters[0]))
                                     {
                                         var propName = me.Member.Name;
-                                        var value = ce.Value;
+                                        var value = EvaluateExpression(cond.Right);
                                         return $"{varName}.{propName} {op} '{value}'";
                                     }
-                                    else if (cond.Right is MemberExpression me2 && cond.Left is ConstantExpression ce2)
+                                    else if (cond.Right is MemberExpression me2 && IsParameterOrPropertyOfLambda(me2, lambda.Parameters[0]))
                                     {
                                         var propName = me2.Member.Name;
-                                        var value = ce2.Value;
+                                        var value = EvaluateExpression(cond.Left);
                                         return $"{varName}.{propName} {op} '{value}'";
                                     }
                                     // Support for method calls (e.g. StartsWith)
@@ -133,6 +134,186 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                     current = mce.Arguments[0];
                     continue;
                 }
+                if (method == "Any")
+                {
+                    // Any: return true if count(n) > 0
+                    if (mce.Arguments.Count == 2 && mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
+                    {
+                        if (lambda.Body is BinaryExpression be)
+                        {
+                            string BuildWhere(BinaryExpression expr)
+                            {
+                                if (expr.NodeType == ExpressionType.AndAlso || expr.NodeType == ExpressionType.OrElse)
+                                {
+                                    var left = expr.Left is BinaryExpression leftBin ? BuildWhere(leftBin) : BuildSimpleCondition(expr.Left);
+                                    var right = expr.Right is BinaryExpression rightBin ? BuildWhere(rightBin) : BuildSimpleCondition(expr.Right);
+                                    var op = expr.NodeType == ExpressionType.AndAlso ? "AND" : "OR";
+                                    return $"({left} {op} {right})";
+                                }
+                                return BuildSimpleCondition(expr);
+                            }
+                            string BuildSimpleCondition(Expression expr)
+                            {
+                                if (expr is BinaryExpression cond)
+                                {
+                                    string op = cond.NodeType switch
+                                    {
+                                        ExpressionType.Equal => "=",
+                                        ExpressionType.NotEqual => "!=",
+                                        ExpressionType.GreaterThan => ">",
+                                        ExpressionType.LessThan => "<",
+                                        ExpressionType.GreaterThanOrEqual => ">=",
+                                        ExpressionType.LessThanOrEqual => "<=",
+                                        _ => throw new NotSupportedException($"Operator {cond.NodeType} not supported")
+                                    };
+                                    if (cond.Left is MemberExpression me && IsParameterOrPropertyOfLambda(me, lambda.Parameters[0]))
+                                    {
+                                        var propName = me.Member.Name;
+                                        var value = EvaluateExpression(cond.Right);
+                                        return $"{varName}.{propName} {op} '{value}'";
+                                    }
+                                    else if (cond.Right is MemberExpression me2 && IsParameterOrPropertyOfLambda(me2, lambda.Parameters[0]))
+                                    {
+                                        var propName = me2.Member.Name;
+                                        var value = EvaluateExpression(cond.Left);
+                                        return $"{varName}.{propName} {op} '{value}'";
+                                    }
+                                    // Support for method calls (e.g. StartsWith)
+                                    else if (cond.Left is MethodCallExpression mcex && cond.Right is ConstantExpression ce3)
+                                    {
+                                        if (mcex.Method.Name == "StartsWith" && mcex.Object is MemberExpression me3)
+                                        {
+                                            var propName = me3.Member.Name;
+                                            var value = ce3.Value;
+                                            return $"{varName}.{propName} STARTS WITH '{value}'";
+                                        }
+                                        if (mcex.Method.Name == "EndsWith" && mcex.Object is MemberExpression me4)
+                                        {
+                                            var propName = me4.Member.Name;
+                                            var value = ce3.Value;
+                                            return $"{varName}.{propName} ENDS WITH '{value}'";
+                                        }
+                                        if (mcex.Method.Name == "Contains" && mcex.Object is MemberExpression me5)
+                                        {
+                                            var propName = me5.Member.Name;
+                                            var value = ce3.Value;
+                                            return $"{varName}.{propName} CONTAINS '{value}'";
+                                        }
+                                    }
+                                }
+                                // Direct method call as condition (e.g. p.FirstName.StartsWith('A'))
+                                if (expr is MethodCallExpression mcex2 && mcex2.Object is MemberExpression me6 && mcex2.Arguments.Count == 1 && mcex2.Arguments[0] is ConstantExpression ce4)
+                                {
+                                    var propName = me6.Member.Name;
+                                    var value = ce4.Value;
+                                    if (mcex2.Method.Name == "StartsWith")
+                                        return $"{varName}.{propName} STARTS WITH '{value}'";
+                                    if (mcex2.Method.Name == "EndsWith")
+                                        return $"{varName}.{propName} ENDS WITH '{value}'";
+                                    if (mcex2.Method.Name == "Contains")
+                                        return $"{varName}.{propName} CONTAINS '{value}'";
+                                }
+                                throw new NotSupportedException($"Unsupported condition expression: {expr}");
+                            }
+                            whereClause = $"WHERE {BuildWhere(be)}";
+                        }
+                    }
+                    returnClause = "RETURN count(n) > 0 AS result";
+                    current = mce.Arguments[0];
+                    continue;
+                }
+                if (method == "All")
+                {
+                    // All: return true if count(n) > 0 and count(n where not predicate) == 0
+                    if (mce.Arguments.Count == 2 && mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
+                    {
+                        if (lambda.Body is BinaryExpression be)
+                        {
+                            string BuildWhere(BinaryExpression expr)
+                            {
+                                if (expr.NodeType == ExpressionType.AndAlso || expr.NodeType == ExpressionType.OrElse)
+                                {
+                                    var left = expr.Left is BinaryExpression leftBin ? BuildWhere(leftBin) : BuildSimpleCondition(expr.Left);
+                                    var right = expr.Right is BinaryExpression rightBin ? BuildWhere(rightBin) : BuildSimpleCondition(expr.Right);
+                                    var op = expr.NodeType == ExpressionType.AndAlso ? "AND" : "OR";
+                                    return $"({left} {op} {right})";
+                                }
+                                return BuildSimpleCondition(expr);
+                            }
+                            string BuildSimpleCondition(Expression expr)
+                            {
+                                if (expr is BinaryExpression cond)
+                                {
+                                    string op = cond.NodeType switch
+                                    {
+                                        ExpressionType.Equal => "=",
+                                        ExpressionType.NotEqual => "!=",
+                                        ExpressionType.GreaterThan => ">",
+                                        ExpressionType.LessThan => "<",
+                                        ExpressionType.GreaterThanOrEqual => ">=",
+                                        ExpressionType.LessThanOrEqual => "<=",
+                                        _ => throw new NotSupportedException($"Operator {cond.NodeType} not supported")
+                                    };
+                                    if (cond.Left is MemberExpression me && IsParameterOrPropertyOfLambda(me, lambda.Parameters[0]))
+                                    {
+                                        var propName = me.Member.Name;
+                                        var value = EvaluateExpression(cond.Right);
+                                        return $"{varName}.{propName} {op} '{value}'";
+                                    }
+                                    else if (cond.Right is MemberExpression me2 && IsParameterOrPropertyOfLambda(me2, lambda.Parameters[0]))
+                                    {
+                                        var propName = me2.Member.Name;
+                                        var value = EvaluateExpression(cond.Left);
+                                        return $"{varName}.{propName} {op} '{value}'";
+                                    }
+                                    // Support for method calls (e.g. StartsWith)
+                                    else if (cond.Left is MethodCallExpression mcex && cond.Right is ConstantExpression ce3)
+                                    {
+                                        if (mcex.Method.Name == "StartsWith" && mcex.Object is MemberExpression me3)
+                                        {
+                                            var propName = me3.Member.Name;
+                                            var value = ce3.Value;
+                                            return $"{varName}.{propName} STARTS WITH '{value}'";
+                                        }
+                                        if (mcex.Method.Name == "EndsWith" && mcex.Object is MemberExpression me4)
+                                        {
+                                            var propName = me4.Member.Name;
+                                            var value = ce3.Value;
+                                            return $"{varName}.{propName} ENDS WITH '{value}'";
+                                        }
+                                        if (mcex.Method.Name == "Contains" && mcex.Object is MemberExpression me5)
+                                        {
+                                            var propName = me5.Member.Name;
+                                            var value = ce3.Value;
+                                            return $"{varName}.{propName} CONTAINS '{value}'";
+                                        }
+                                    }
+                                }
+                                // Direct method call as condition (e.g. p.FirstName.StartsWith('A'))
+                                if (expr is MethodCallExpression mcex2 && mcex2.Object is MemberExpression me6 && mcex2.Arguments.Count == 1 && mcex2.Arguments[0] is ConstantExpression ce4)
+                                {
+                                    var propName = me6.Member.Name;
+                                    var value = ce4.Value;
+                                    if (mcex2.Method.Name == "StartsWith")
+                                        return $"{varName}.{propName} STARTS WITH '{value}'";
+                                    if (mcex2.Method.Name == "EndsWith")
+                                        return $"{varName}.{propName} ENDS WITH '{value}'";
+                                    if (mcex2.Method.Name == "Contains")
+                                        return $"{varName}.{propName} CONTAINS '{value}'";
+                                }
+                                throw new NotSupportedException($"Unsupported condition expression: {expr}");
+                            }
+                            whereClause = $"WHERE {BuildWhere(be)}";
+                        }
+                    }
+                    // All: count(n) > 0 AND count(n WHERE NOT predicate) = 0
+                    returnClause = "WITH count(n) AS total MATCH (n:"
+                        + label + ") "
+                        + (whereClause != null ? whereClause + " " : "")
+                        + "WITH total, count(n) AS matching RETURN total > 0 AND total = matching AS result";
+                    // Prevent double MATCH, so break
+                    break;
+                }
                 if (method == "Where")
                 {
                     if (mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
@@ -165,16 +346,16 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                                         ExpressionType.LessThanOrEqual => "<=",
                                         _ => throw new NotSupportedException($"Operator {cond.NodeType} not supported")
                                     };
-                                    if (cond.Left is MemberExpression me && cond.Right is ConstantExpression ce)
+                                    if (cond.Left is MemberExpression me && IsParameterOrPropertyOfLambda(me, lambda.Parameters[0]))
                                     {
                                         var propName = me.Member.Name;
-                                        var value = ce.Value;
+                                        var value = EvaluateExpression(cond.Right);
                                         return $"{varName}.{propName} {op} '{value}'";
                                     }
-                                    else if (cond.Right is MemberExpression me2 && cond.Left is ConstantExpression ce2)
+                                    else if (cond.Right is MemberExpression me2 && IsParameterOrPropertyOfLambda(me2, lambda.Parameters[0]))
                                     {
                                         var propName = me2.Member.Name;
-                                        var value = ce2.Value;
+                                        var value = EvaluateExpression(cond.Left);
                                         return $"{varName}.{propName} {op} '{value}'";
                                     }
                                     // Support for method calls (e.g. StartsWith)
@@ -225,6 +406,11 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                     {
                         var propName = me.Member.Name;
                         var dir = method == "OrderBy" ? "ASC" : "DESC";
+                        if (reverseOrderForLast)
+                        {
+                            dir = dir == "ASC" ? "DESC" : "ASC";
+                            reverseOrderForLast = false;
+                        }
                         orderByClause = $"ORDER BY {varName}.{propName} {dir}";
                     }
                     current = mce.Arguments[0];
@@ -282,6 +468,13 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                     // For now, break
                     break;
                 }
+                else if (method == "Last")
+                {
+                    reverseOrderForLast = true;
+                    limitClause = "LIMIT 1";
+                    current = mce.Arguments[0];
+                    continue;
+                }
                 else
                 {
                     // Not supported, break
@@ -289,7 +482,20 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                 }
             }
 
-            var cypher = $"MATCH ({varName}:{label}) ";
+            // At the end, build the Cypher query
+            // Detect if this is a relationship type
+            bool isRelationship = _rootType.IsRelationshipType();
+            string cypher;
+            if (isRelationship)
+            {
+                // Relationship scan: MATCH ()-[n:Label]->()
+                cypher = $"MATCH ()-[{varName}:{label}]->() ";
+            }
+            else
+            {
+                // Node scan: MATCH (n:Label)
+                cypher = $"MATCH ({varName}:{label}) ";
+            }
             if (matchClause != null) cypher += matchClause + " ";
             if (whereClause != null) cypher += whereClause + " ";
             if (orderByClause != null) cypher += orderByClause + " ";
@@ -309,33 +515,34 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
         {
             var results = await _provider.ExecuteCypher(cypher, null, _transaction);
 
-            // Helper: is primitive or string
-            static bool IsSimpleType(Type t) => t.IsPrimitive || t == typeof(string) || t == typeof(decimal) || t == typeof(DateTime) || t == typeof(Guid);
+            static bool IsSimpleType(Type t) =>
+                (t.IsPrimitive || t == typeof(string) || t == typeof(decimal) || t == typeof(DateTime) || t == typeof(DateTimeOffset) || t == typeof(Guid) || t == typeof(bool))
+                && !typeof(Neo4jDriver.INode).IsAssignableFrom(t)
+                && !typeof(Neo4jDriver.IRelationship).IsAssignableFrom(t);
 
             // If elementType is a simple type, just extract the value from the record
             if (IsSimpleType(elementType))
             {
-                // Special case: if the result is a single record with a single value (e.g., count), return the value directly
+                // Special case: if the result is a single record with a single value (e.g., count, bool), return the value directly
                 if (results is IList resultList && resultList.Count == 1 && resultList[0] is Neo4jDriver.IRecord rec && rec.Values.Count == 1)
                 {
                     var val = rec.Values.Values.First();
-                    if (val is long l && elementType == typeof(int))
-                        return (int)l;
-                    if (val is long l2 && elementType == typeof(long))
-                        return l2;
-                    return Convert.ChangeType(val, elementType);
+                    // If expecting a bool, handle Neo4j boolean result
+                    if (elementType == typeof(bool))
+                    {
+                        if (val is bool b) return b;
+                        if (val is long l) return l != 0;
+                        if (val is int i) return i != 0;
+                        if (val is string s && bool.TryParse(s, out var parsed)) return parsed;
+                    }
+                    return SerializationExtensions.ConvertFromNeo4jValue(val, elementType) ?? default!;
                 }
                 var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType))!;
                 foreach (var record in results.Select(r => r as Neo4jDriver.IRecord).Where(r => r != null))
                 {
                     foreach (var val in record!.Values.Values)
                     {
-                        if (val is string s)
-                            list.Add(s);
-                        else if (val != null && val.GetType() == elementType)
-                            list.Add(val);
-                        else if (val is IList valueList && valueList.Count > 0 && valueList[0]?.GetType() == elementType)
-                            list.Add(valueList[0]);
+                        list.Add(SerializationExtensions.ConvertFromNeo4jValue(val, elementType) ?? default!);
                     }
                 }
                 return list;
@@ -395,10 +602,18 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             var entityList = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType))!;
             foreach (var record in results.Select(r => r as IRecord).Where(r => r != null))
             {
-                if (record!.TryGetValue("n", out var nodeValue) && nodeValue is Neo4jDriver.INode node)
+                if (record!.TryGetValue("n", out var nodeValue))
                 {
-                    var entity = convertToGraphEntity.Invoke(null, new object[] { node });
-                    entityList.Add(entity);
+                    if (nodeValue is Neo4jDriver.INode node)
+                    {
+                        var entity = convertToGraphEntity.Invoke(null, new object[] { node });
+                        entityList.Add(entity);
+                    }
+                    else if (nodeValue is Neo4jDriver.IRelationship rel)
+                    {
+                        var entity = convertToGraphEntity.Invoke(null, new object[] { rel });
+                        entityList.Add(entity);
+                    }
                 }
                 else if (record.TryGetValue("r", out var relValue) && relValue is Neo4jDriver.IRelationship rel)
                 {
@@ -566,6 +781,24 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             // ...
             // Fallback: null
             return null;
+        }
+
+        // Helper: check if a MemberExpression is a property of the lambda parameter
+        static bool IsParameterOrPropertyOfLambda(MemberExpression me, ParameterExpression lambdaParam)
+        {
+            if (me.Expression is ParameterExpression pe && pe == lambdaParam)
+                return true;
+            // Support for nested property (e.g., r.Foo.Bar)
+            if (me.Expression is MemberExpression innerMe)
+                return IsParameterOrPropertyOfLambda(innerMe, lambdaParam);
+            return false;
+        }
+
+        // Helper: evaluate an expression to a value (for captured variables/constants)
+        static object? EvaluateExpression(Expression expr)
+        {
+            if (expr is ConstantExpression ce) return ce.Value;
+            try { return Expression.Lambda(expr).Compile().DynamicInvoke(); } catch { return null; }
         }
     }
 }

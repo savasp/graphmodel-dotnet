@@ -44,13 +44,17 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
         {
             var elementType = typeof(TResult);
             // If TResult is IEnumerable<T>, get T
+            bool isEnumerableResult = false;
             if (elementType.IsGenericType && elementType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
                 elementType = elementType.GetGenericArguments()[0];
+                isEnumerableResult = true;
+            }
             var visitor = new Neo4jExpressionVisitor(_provider, _rootType, elementType, _transaction);
             var cypher = visitor.Translate(expression);
             var result = visitor.ExecuteQuery(cypher, elementType);
-            // If TResult is not IEnumerable, return the first (scalar) result
-            if (!typeof(System.Collections.IEnumerable).IsAssignableFrom(typeof(TResult)) || typeof(TResult) == typeof(string))
+
+            if (!isEnumerableResult || typeof(TResult) == typeof(string))
             {
                 if (result is System.Collections.IEnumerable enumerable && !(result is string))
                 {
@@ -61,7 +65,25 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                 }
                 return (TResult)result!;
             }
-            return (TResult)result!;
+            // Always return the sequence for IEnumerable
+            if (result is System.Collections.IEnumerable enumerableResult && !(result is string))
+            {
+                return (TResult)result!;
+            }
+            else if (result != null)
+            {
+                // Wrap single value in a list
+                var listType = typeof(List<>).MakeGenericType(elementType);
+                var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
+                list.Add(result);
+                return (TResult)list;
+            }
+            else
+            {
+                // Return empty list
+                var listType = typeof(List<>).MakeGenericType(elementType);
+                return (TResult)Activator.CreateInstance(listType)!;
+            }
         }
 
         private static Type? GetElementTypeFromExpression(Expression expression)

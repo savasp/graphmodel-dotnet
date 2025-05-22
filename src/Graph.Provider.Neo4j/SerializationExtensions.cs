@@ -136,6 +136,53 @@ internal static class SerializationExtensions
         if (targetType.IsInstanceOfType(value))
             return value;
 
+        // Always hydrate node/relationship types as entities
+        if (typeof(Cvoya.Graph.Provider.Model.IRelationship).IsAssignableFrom(targetType))
+        {
+            if (value is global::Neo4j.Driver.IRelationship rel)
+            {
+                var method = typeof(SerializationExtensions).GetMethod(nameof(ConvertToGraphEntity), BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic);
+                var generic = method!.MakeGenericMethod(targetType);
+                return generic.Invoke(null, new object[] { rel });
+            }
+            throw new InvalidOperationException($"Cannot convert value of type {value?.GetType().Name} to relationship type {targetType.Name}. Use ConvertToGraphEntity.");
+        }
+        if (typeof(Cvoya.Graph.Provider.Model.INode).IsAssignableFrom(targetType))
+        {
+            if (value is global::Neo4j.Driver.INode node)
+            {
+                var method = typeof(SerializationExtensions).GetMethod(nameof(ConvertToGraphEntity), BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic);
+                var generic = method!.MakeGenericMethod(targetType);
+                return generic.Invoke(null, new object[] { node });
+            }
+            throw new InvalidOperationException($"Cannot convert value of type {value?.GetType().Name} to node type {targetType.Name}. Use ConvertToGraphEntity.");
+        }
+
+        // Handle Neo4j INode to POCO mapping
+        if (value is global::Neo4j.Driver.INode neo4jNode && targetType.IsClass && targetType != typeof(string))
+        {
+            var nodeDict = neo4jNode.Properties.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            return ConvertFromNeo4jValue(nodeDict, targetType);
+        }
+
+        // Handle dictionary-to-object mapping for POCOs
+        if (value is IDictionary<string, object> dict && targetType.IsClass && targetType != typeof(string))
+        {
+            var obj = Activator.CreateInstance(targetType);
+            var properties = targetType.GetProperties();
+            foreach (var prop in properties)
+            {
+                if (dict.TryGetValue(prop.Name, out var propValue) && propValue != null)
+                {
+                    if (prop.PropertyType.IsPrimitiveOrSimple())
+                        prop.SetValue(obj, ConvertFromNeo4jValue(propValue, prop.PropertyType));
+                    // Optionally: handle nested objects/collections here if needed
+                }
+            }
+            return obj;
+        }
+
+        // For all other types, proceed as before
         return targetType switch
         {
             Type t when t == typeof(DateTime) => value switch
@@ -150,14 +197,14 @@ internal static class SerializationExtensions
             Type t when t == typeof(DateOnly) && value is LocalDate ld2 => DateOnly.FromDateTime(ld2.ToDateTime()),
             Type t when t.IsEnum && value is string enumString => Enum.Parse(targetType, enumString),
             Type t when t == typeof(Provider.Model.Point) && value is global::Neo4j.Driver.Point point => new Model.Point(point.X, point.Y, point.Z),
-            _ => Convert.ChangeType(value, targetType)
+            _ =>
+                // Add a more descriptive error for unhandled complex types
+                throw new InvalidCastException($"Cannot convert value of type {value.GetType().FullName} to {targetType.FullName}. Value: {value}")
         };
     }
 
     public static bool IsRelationshipType(this Type type) =>
-        type.GetInterfaces().Any(i =>
-            i.IsGenericType &&
-            i.GetGenericTypeDefinition() == typeof(Cvoya.Graph.Provider.Model.IRelationship));
+        typeof(Cvoya.Graph.Provider.Model.IRelationship).IsAssignableFrom(type);
 
     public static bool IsCollectionOfRelationshipType(this Type type) =>
         type != typeof(string)
