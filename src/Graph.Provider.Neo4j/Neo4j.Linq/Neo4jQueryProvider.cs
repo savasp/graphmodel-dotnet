@@ -8,13 +8,15 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
     public class Neo4jQueryProvider : IQueryProvider
     {
         private readonly Neo4jGraphProvider _provider;
+        private readonly Type _rootType;
         private readonly Type _elementType;
         private readonly IGraphTransaction? _transaction;
 
-        public Neo4jQueryProvider(Neo4jGraphProvider provider, Type elementType, IGraphTransaction? transaction)
+        public Neo4jQueryProvider(Neo4jGraphProvider provider, Type rootType, IGraphTransaction? transaction)
         {
             _provider = provider;
-            _elementType = elementType;
+            _rootType = rootType;
+            _elementType = rootType;
             _transaction = transaction;
         }
 
@@ -32,18 +34,33 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
 
         public object? Execute(Expression expression)
         {
-            var elementType = expression.Type.IsGenericType && expression.Type.GetGenericTypeDefinition() == typeof(IEnumerable<>)
-                ? expression.Type.GetGenericArguments()[0]
-                : _elementType;
-            var visitor = new Neo4jExpressionVisitor(_provider, elementType, _transaction);
+            var elementType = GetElementTypeFromExpression(expression) ?? _elementType;
+            var visitor = new Neo4jExpressionVisitor(_provider, _rootType, elementType, _transaction);
             var cypher = visitor.Translate(expression);
             return visitor.ExecuteQuery(cypher, elementType);
         }
 
         public TResult Execute<TResult>(Expression expression)
         {
-            var result = Execute(expression);
+            var elementType = typeof(TResult);
+            // If TResult is IEnumerable<T>, get T
+            if (elementType.IsGenericType && elementType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                elementType = elementType.GetGenericArguments()[0];
+            var visitor = new Neo4jExpressionVisitor(_provider, _rootType, elementType, _transaction);
+            var cypher = visitor.Translate(expression);
+            var result = visitor.ExecuteQuery(cypher, elementType);
             return (TResult)result!;
+        }
+
+        private static Type? GetElementTypeFromExpression(Expression expression)
+        {
+            // Try to extract the element type from the expression tree
+            var type = expression.Type;
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IQueryable<>))
+                return type.GetGenericArguments()[0];
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                return type.GetGenericArguments()[0];
+            return null;
         }
     }
 }
