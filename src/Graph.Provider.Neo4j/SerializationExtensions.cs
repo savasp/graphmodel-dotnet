@@ -197,8 +197,9 @@ internal static class SerializationExtensions
             Type t when t == typeof(DateOnly) && value is LocalDate ld2 => DateOnly.FromDateTime(ld2.ToDateTime()),
             Type t when t.IsEnum && value is string enumString => Enum.Parse(targetType, enumString),
             Type t when t == typeof(Provider.Model.Point) && value is global::Neo4j.Driver.Point point => new Model.Point(point.X, point.Y, point.Z),
+            Type t when t == typeof(int) && value is long l => (int)l,
+            Type t when t == typeof(long) && value is int i => (long)i,
             _ =>
-                // Add a more descriptive error for unhandled complex types
                 throw new InvalidCastException($"Cannot convert value of type {value.GetType().FullName} to {targetType.FullName}. Value: {value}")
         };
     }

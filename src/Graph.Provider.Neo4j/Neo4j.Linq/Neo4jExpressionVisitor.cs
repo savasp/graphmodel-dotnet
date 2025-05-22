@@ -34,6 +34,8 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             string? returnClause = $"RETURN {varName}";
             string? limitClause = null;
             string? matchClause = null;
+            string? skipClause = null;
+            bool useDistinct = false;
 
             Expression current = expression;
             LambdaExpression? selectLambda = null;
@@ -424,6 +426,19 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                     }
                     current = mce.Arguments[0];
                 }
+                else if (method == "Skip")
+                {
+                    if (mce.Arguments[1] is ConstantExpression ce && ce.Value is int count)
+                    {
+                        skipClause = $"SKIP {count}";
+                    }
+                    current = mce.Arguments[0];
+                }
+                else if (method == "Distinct")
+                {
+                    useDistinct = true;
+                    current = mce.Arguments[0];
+                }
                 else if (method == "Select")
                 {
                     if (mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
@@ -434,7 +449,7 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                         {
                             // Simple property projection: n.Prop AS Prop
                             var propName = me.Member.Name;
-                            returnClause = $"RETURN {varName}.{propName} AS {propName}";
+                            returnClause = $"RETURN {(useDistinct ? "DISTINCT " : "")}{varName}.{propName} AS {propName}";
                         }
                         else if (lambda.Body is NewExpression ne)
                         {
@@ -448,14 +463,14 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                                 string cypherExpr = BuildCypherExpression(arg, varName);
                                 props.Add($"{cypherExpr} AS {member.Name}");
                             }
-                            returnClause = $"RETURN {string.Join(", ", props)}";
+                            returnClause = $"RETURN {(useDistinct ? "DISTINCT " : "")}{string.Join(", ", props)}";
                         }
                         else if (lambda.Body is MemberInitExpression mie)
                         {
                             // Support for new { ... } with initializers
                             var bindings = mie.Bindings.OfType<MemberAssignment>();
                             var props = string.Join(", ", bindings.Select(b => $"{varName}.{b.Member.Name} AS {b.Member.Name}"));
-                            returnClause = $"RETURN {props}";
+                            returnClause = $"RETURN {(useDistinct ? "DISTINCT " : "")}{props}";
                         }
                         // TODO: Navigation/deep traversal: detect navigation property and generate MATCH/OPTIONAL MATCH for relationships
                     }
@@ -499,8 +514,9 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             if (matchClause != null) cypher += matchClause + " ";
             if (whereClause != null) cypher += whereClause + " ";
             if (orderByClause != null) cypher += orderByClause + " ";
-            if (limitClause != null) cypher += limitClause + " ";
             cypher += returnClause;
+            if (skipClause != null) cypher += " " + skipClause;
+            if (limitClause != null) cypher += " " + limitClause;
             return cypher;
         }
 
