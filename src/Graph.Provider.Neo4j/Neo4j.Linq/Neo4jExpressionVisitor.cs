@@ -30,12 +30,12 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             var label = GetLabel(_rootType);
             var varName = "n";
             string? whereClause = null;
-            string? orderByClause = null;
             string? returnClause = $"RETURN {varName}";
             string? limitClause = null;
             string? matchClause = null;
             string? skipClause = null;
             bool useDistinct = false;
+            var orderings = new List<string>();
 
             Expression current = expression;
             LambdaExpression? selectLambda = null;
@@ -402,18 +402,18 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                     }
                     current = mce.Arguments[0];
                 }
-                else if (method == "OrderBy" || method == "OrderByDescending")
+                else if (method == "OrderBy" || method == "OrderByDescending" || method == "ThenBy" || method == "ThenByDescending")
                 {
                     if (mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda && lambda.Body is MemberExpression me)
                     {
                         var propName = me.Member.Name;
-                        var dir = method == "OrderBy" ? "ASC" : "DESC";
+                        var dir = (method == "OrderBy" || method == "ThenBy") ? "ASC" : "DESC";
                         if (reverseOrderForLast)
                         {
                             dir = dir == "ASC" ? "DESC" : "ASC";
                             reverseOrderForLast = false;
                         }
-                        orderByClause = $"ORDER BY {varName}.{propName} {dir}";
+                        orderings.Insert(0, $"{varName}.{propName} {dir}"); // Insert at front to preserve LINQ order
                     }
                     current = mce.Arguments[0];
                 }
@@ -513,7 +513,8 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             }
             if (matchClause != null) cypher += matchClause + " ";
             if (whereClause != null) cypher += whereClause + " ";
-            if (orderByClause != null) cypher += orderByClause + " ";
+            if (orderings.Count > 0)
+                cypher += $"ORDER BY {string.Join(", ", orderings)} ";
             cypher += returnClause;
             if (skipClause != null) cypher += " " + skipClause;
             if (limitClause != null) cypher += " " + limitClause;
