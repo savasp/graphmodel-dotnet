@@ -51,6 +51,12 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             switch (expr)
             {
                 case MemberExpression me:
+                    // Special case: string.Length => size(n.Prop)
+                    if (me.Member.Name == "Length" && me.Expression != null && me.Expression.Type == typeof(string))
+                    {
+                        var inner = BuildCypherExpression(me.Expression, varName);
+                        return $"size({inner})";
+                    }
                     return $"{varName}.{me.Member.Name}";
                 case ConstantExpression ce:
                     return ce.Type == typeof(string) ? $"'{ce.Value}'" : ce.Value?.ToString() ?? "null";
@@ -138,6 +144,17 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             {
                 var val = BuildCypherExpression(mcex.Arguments[0], varName);
                 return $"{varName}.{me8.Member.Name} ENDS WITH {val}";
+            }
+            if (mcex.Method.Name == "PadLeft" && mcex.Object is MemberExpression mePad && mcex.Arguments.Count == 2)
+            {
+                var totalWidth = BuildCypherExpression(mcex.Arguments[0], varName);
+                var padCharExpr = mcex.Arguments[1];
+                string padChar;
+                if (padCharExpr is ConstantExpression ce && ce.Type == typeof(char))
+                    padChar = $"'{ce.Value}'";
+                else
+                    padChar = BuildCypherExpression(padCharExpr, varName); // fallback, may need improvement
+                return $"lpad({varName}.{mePad.Member.Name}, {totalWidth}, {padChar})";
             }
             // Math functions
             if (mcex.Method.DeclaringType == typeof(Math))
