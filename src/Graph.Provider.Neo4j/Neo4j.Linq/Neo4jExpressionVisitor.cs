@@ -1,7 +1,10 @@
 using System;
+using System.Collections;
 using System.Linq.Expressions;
+using System.Reflection;
 using Cvoya.Graph.Provider.Model;
 using Cvoya.Graph.Provider.Neo4j;
+using Neo4j.Driver;
 using Neo4jDriver = Neo4j.Driver;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq
@@ -127,25 +130,32 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
 
         public object ExecuteQuery(string cypher, Type elementType)
         {
-            var resultTask = _provider.ExecuteCypher(cypher, null, _transaction);
-            resultTask.Wait();
-            var results = resultTask.Result;
-            var list = (System.Collections.IList)Activator.CreateInstance(typeof(System.Collections.Generic.List<>).MakeGenericType(elementType))!;
-            foreach (var record in results)
+            // Block execution!
+            return this.ExecuteQueryAsync(cypher, elementType).Result;
+        }
+
+        private async Task<object> ExecuteQueryAsync(string cypher, Type elementType)
+        {
+            var results = await _provider.ExecuteCypher(cypher, null, _transaction);
+
+            var convertToGraphEntityMethodName = nameof(SerializationExtensions.ConvertToGraphEntity);
+            var method = typeof(SerializationExtensions).GetMethod(
+                    convertToGraphEntityMethodName,
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic)
+                ?? throw new GraphProviderException($"{convertToGraphEntityMethodName} method not found");
+            var convertToGraphEntity = method.MakeGenericMethod(elementType);
+
+            var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType))!;
+            foreach (var record in results.Select(r => r as IRecord).Where(r => r != null))
             {
-                var dict = record as System.Collections.Generic.IDictionary<string, object>;
-                var method = typeof(SerializationExtensions).GetMethod("ConvertToGraphEntity", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-                if (method == null) throw new InvalidOperationException("ConvertToGraphEntity method not found");
-                if (dict != null && dict.TryGetValue("n", out var nodeObj) && nodeObj is Neo4jDriver.INode node)
+                if (record!["n"] is Neo4jDriver.INode node)
                 {
-                    var generic = method.MakeGenericMethod(elementType);
-                    var entity = generic.Invoke(null, new object[] { node });
+                    var entity = convertToGraphEntity.Invoke(null, [node]);
                     list.Add(entity);
                 }
-                else if (dict != null && dict.TryGetValue("r", out var relObj) && relObj is Neo4jDriver.IRelationship rel)
+                else if (record["r"] is Neo4jDriver.IRelationship rel)
                 {
-                    var generic = method.MakeGenericMethod(elementType);
-                    var entity = generic.Invoke(null, new object[] { rel });
+                    var entity = convertToGraphEntity.Invoke(null, [rel]);
                     list.Add(entity);
                 }
             }
@@ -154,9 +164,12 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
 
         private static string GetLabel(Type type)
         {
-            var method = typeof(Neo4jGraphProvider).GetMethod("GetLabel", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-            if (method == null) throw new InvalidOperationException("GetLabel method not found");
-            return (string)method.Invoke(null, new object[] { type })!;
+            var getLabelMethodName = nameof(Neo4jGraphProvider.GetLabel);
+            var method = typeof(Neo4jGraphProvider).GetMethod(
+                    getLabelMethodName,
+                    BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)
+                ?? throw new InvalidOperationException($"{getLabelMethodName} method not found");
+            return (string)method.Invoke(null, [type])!;
         }
     }
 }

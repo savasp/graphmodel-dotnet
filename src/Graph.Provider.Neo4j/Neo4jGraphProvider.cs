@@ -566,7 +566,7 @@ public class Neo4jGraphProvider : IGraphProvider
     }
 
     // Get the label for a type (NodeAttribute/RelationshipAttribute or namespace-qualified name with dots replaced by underscores)
-    private static string GetLabel(Type type)
+    internal static string GetLabel(Type type)
     {
         var nodeAttr = type.GetCustomAttribute<NodeAttribute>();
         if (nodeAttr?.Label is { Length: > 0 }) return nodeAttr.Label;
