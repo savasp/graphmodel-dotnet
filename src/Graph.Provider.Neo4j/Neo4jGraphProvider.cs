@@ -684,7 +684,7 @@ public class Neo4jGraphProvider : IGraphProvider
                     return true;
             }
         }
-        visited.Remove(obj);
+        // Do not remove from visited here!
         return false;
     }
 
