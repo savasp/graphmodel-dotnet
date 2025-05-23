@@ -26,10 +26,10 @@ public interface IRelationship<S, T> : IRelationship
     /// <summary>
     /// Gets the source node of the relationship.
     /// </summary>
-    S Source { get; set; }
+    S? Source { get; set; }
 
     /// <summary>
     /// Gets the target node of the relationship.
     /// </summary>
-    T Target { get; set; }
+    T? Target { get; set; }
 }

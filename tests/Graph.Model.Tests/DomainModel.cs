@@ -38,10 +38,6 @@ public class Knows<T, S> : Relationship<T, S>
     public Knows() { }
     public Knows(T source, S target) : base(source, target)
     {
-        this.Source = source;
-        this.Target = target;
-        this.SourceId = source.Id;
-        this.TargetId = target.Id;
     }
     public DateTime Since { get; set; }
 }

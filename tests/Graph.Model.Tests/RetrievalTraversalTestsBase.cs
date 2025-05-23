@@ -67,8 +67,8 @@ public abstract class RetrievalTraversalTestsBase
         // Assert
         Assert.Equal("Alice", retrieved.FirstName);
         Assert.Equal(2, retrieved.Knows.Count);
-        Assert.Contains(retrieved.Knows, k => k.Target.FirstName == "Bob");
-        Assert.Contains(retrieved.Knows, k => k.Target.FirstName == "Charlie");
+        Assert.Contains(retrieved.Knows, k => k.Target!.FirstName == "Bob");
+        Assert.Contains(retrieved.Knows, k => k.Target!.FirstName == "Charlie");
     }
 
     [Fact]
@@ -96,11 +96,11 @@ public abstract class RetrievalTraversalTestsBase
         Assert.Single(retrieved.Knows);
 
         var retrievedBob = retrieved.Knows[0].Target;
-        Assert.Equal("Bob", retrievedBob.FirstName);
+        Assert.Equal("Bob", retrievedBob!.FirstName);
         Assert.Single(retrievedBob.Knows);
 
         var retrievedCharlie = retrievedBob.Knows[0].Target;
-        Assert.Equal("Charlie", retrievedCharlie.FirstName);
+        Assert.Equal("Charlie", retrievedCharlie!.FirstName);
     }
 
     [Fact]
@@ -200,7 +200,7 @@ public abstract class RetrievalTraversalTestsBase
         // Assert
         Assert.Equal("Alice", retrieved.FirstName);
         Assert.Single(retrieved.Knows);
-        Assert.Equal("Bob", retrieved.Knows[0].Target.FirstName);
+        Assert.Equal("Bob", retrieved.Knows[0].Target!.FirstName);
     }
 
     [Fact]
@@ -233,10 +233,10 @@ public abstract class RetrievalTraversalTestsBase
 
         var retrievedAlice = nodeList.First(n => n.FirstName == "Alice");
         Assert.Single(retrievedAlice.Knows);
-        Assert.Equal("Bob", retrievedAlice.Knows[0].Target.FirstName);
+        Assert.Equal("Bob", retrievedAlice.Knows[0].Target!.FirstName);
 
         var retrievedCharlie = nodeList.First(n => n.FirstName == "Charlie");
         Assert.Single(retrievedCharlie.Knows);
-        Assert.Equal("David", retrievedCharlie.Knows[0].Target.FirstName);
+        Assert.Equal("David", retrievedCharlie.Knows[0].Target!.FirstName);
     }
 }

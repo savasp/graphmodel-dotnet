@@ -139,7 +139,7 @@ public abstract class QueryTestsBase
         Assert.NotNull(aliceFromDb);
         Assert.NotNull(aliceFromDb.Knows);
         // Check navigation property
-        Assert.Contains(aliceFromDb.Knows, k => k.Target.FirstName == "Bob");
+        Assert.Contains(aliceFromDb.Knows, k => k.Target!.FirstName == "Bob");
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public abstract class QueryTestsBase
             new GraphOperationOptions().WithRelationships());
 
         // Now we can access the relationships
-        var friendsNames = aliceWithRelationships.Knows.Select(k => k.Target.FirstName).ToList();
+        var friendsNames = aliceWithRelationships.Knows.Select(k => k.Target!.FirstName).ToList();
         Assert.Contains("Bob", friendsNames);
     }
 }

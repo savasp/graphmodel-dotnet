@@ -54,9 +54,6 @@ public abstract class BasicTestsBase
         var address = new Address { Street = "123 Main St", City = "Somewhere" };
         var knows = new KnowsWithComplexProperty(p1, p2) { MetAt = address };
 
-        // TODO: This should not be necessary but it is because of how IRelationship and IRelationship<S, T> are defined
-        knows.SourceId = p1.Id;
-        knows.TargetId = p2.Id;
         await Assert.ThrowsAsync<GraphException>(() => this.provider.CreateRelationship(knows));
     }
 
@@ -293,7 +290,7 @@ public abstract class BasicTestsBase
         Assert.Equal(alice.Id, aliceFromProvider.Id);
         Assert.NotNull(aliceFromProvider.Knows);
         // Check navigation property
-        Assert.Contains(aliceFromProvider.Knows, k => k.Target.FirstName == "Bob");
+        Assert.Contains(aliceFromProvider.Knows, k => k.Target!.FirstName == "Bob");
 
         // Get Bob
         var bobFromProvider = await this.provider.GetNode<PersonWithNavigationProperty>(bob.Id, new GraphOperationOptions { TraversalDepth = -1 });
@@ -301,7 +298,7 @@ public abstract class BasicTestsBase
         Assert.Equal("Bob", bobFromProvider.FirstName);
         Assert.Equal(bob.Id, bobFromProvider.Id);
         // Check navigation property
-        Assert.Contains(bobFromProvider.Knows, k => k.Target.FirstName == "Alice");
+        Assert.Contains(bobFromProvider.Knows, k => k.Target!.FirstName == "Alice");
     }
 
     public class PersonWithINodeProperty : Node

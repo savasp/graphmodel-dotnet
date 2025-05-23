@@ -186,15 +186,9 @@ public class PersonWithMultipleRelationshipTypes : PersonWithNavigationProperty
 }
 
 [Relationship("WORKS_WITH")]
-public class WorksWith : IRelationship<PersonWithMultipleRelationshipTypes, PersonWithNavigationProperty>
+public class WorksWith : Relationship<PersonWithMultipleRelationshipTypes, PersonWithNavigationProperty>
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string SourceId { get; set; } = string.Empty;
-    public string TargetId { get; set; } = string.Empty;
     public DateTime Since { get; set; }
-    public PersonWithMultipleRelationshipTypes Source { get; set; } = new();
-    public PersonWithNavigationProperty Target { get; set; } = new();
-    public bool IsBidirectional { get; set; }
 
     public WorksWith() { }
 

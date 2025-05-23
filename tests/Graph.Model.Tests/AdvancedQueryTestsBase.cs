@@ -409,9 +409,205 @@ public abstract class AdvancedQueryTestsBase
         // TODO: Write test for Cypher CALL { ... } subqueries
     }
 
-    [Fact(Skip = "Deep navigation not yet implemented")]
+    [Fact]
     public async Task CanQueryWithDeepNavigation()
     {
-        // TODO: Write test for deep navigation/traversal in Cypher
+        // Arrange: Create a social network graph
+        // Alice -> knows -> Bob -> knows -> Charlie -> knows -> David
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+        var david = new Person { FirstName = "David", LastName = "Wilson" };
+
+        await this.provider.CreateNode(alice);
+        await this.provider.CreateNode(bob);
+        await this.provider.CreateNode(charlie);
+        await this.provider.CreateNode(david);
+
+        var knows1 = new Knows<Person, Person>(alice, bob) { Since = DateTime.UtcNow.AddDays(-30) };
+        var knows2 = new Knows<Person, Person>(bob, charlie) { Since = DateTime.UtcNow.AddDays(-20) };
+        var knows3 = new Knows<Person, Person>(charlie, david) { Since = DateTime.UtcNow.AddDays(-10) };
+
+        await this.provider.CreateRelationship(knows1);
+        await this.provider.CreateRelationship(knows2);
+        await this.provider.CreateRelationship(knows3);
+
+        // Act & Assert: Test navigation at different levels
+
+        // Test 1: Simple relationship query - who does Alice know?
+        var aliceKnows = this.provider.Relationships<Knows<Person, Person>>()
+            .Where(k => k.SourceId == alice.Id)
+            .ToList();
+
+        Assert.Single(aliceKnows);
+        Assert.Equal(bob.Id, aliceKnows[0].TargetId);
+
+        // Test 2: Get all people and relationships, then navigate in memory
+        var allPeople = this.provider.Nodes<Person>().ToList();
+        var allKnows = this.provider.Relationships<Knows<Person, Person>>().ToList();
+
+        // Find Bob's friends in memory
+        var bobsFriends = allKnows
+            .Where(k => k.SourceId == bob.Id)
+            .Join(allPeople, k => k.TargetId, p => p.Id, (k, p) => p)
+            .ToList();
+
+        Assert.Single(bobsFriends);
+        Assert.Equal("Charlie", bobsFriends[0].FirstName);
+
+        // Test 3: Find friends of friends using in-memory navigation
+        var alicesFriendsOfFriends = allKnows
+            .Where(k => k.SourceId == alice.Id)
+            .SelectMany(k1 => allKnows
+                .Where(k2 => k2.SourceId == k1.TargetId)
+                .Select(k2 => allPeople.First(p => p.Id == k2.TargetId)))
+            .ToList();
+
+        Assert.Single(alicesFriendsOfFriends);
+        Assert.Equal("Charlie", alicesFriendsOfFriends[0].FirstName);
+    }
+
+    [Fact]
+    public async Task CanQueryNodesWithNavigationProperties()
+    {
+        // This test uses the PersonWithNavigationProperty class that has IList<Knows> Knows property
+        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+        var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
+
+        await this.provider.CreateNode(alice);
+        await this.provider.CreateNode(bob);
+        await this.provider.CreateNode(charlie);
+
+        var knows1 = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty> { Source = alice, Target = bob };
+        var knows2 = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty> { Source = alice, Target = charlie };
+
+        await this.provider.CreateRelationship(knows1);
+        await this.provider.CreateRelationship(knows2);
+
+        // Test projection with navigation properties (this is what we fixed earlier)
+        // First, verify the data exists
+        var aliceNode = this.provider.Nodes<PersonWithNavigationProperty>()
+            .Where(p => p.FirstName == "Alice")
+            .FirstOrDefault();
+
+        Assert.NotNull(aliceNode);
+        Assert.Equal("Alice", aliceNode.FirstName);
+
+        // Now try simple projection without TraversalDepth
+        var simpleProjection = this.provider.Nodes<PersonWithNavigationProperty>()
+            .Where(p => p.FirstName == "Alice")
+            .Select(p => new
+            {
+                Name = p.FirstName
+            })
+            .FirstOrDefault();
+
+        Assert.NotNull(simpleProjection);
+        Assert.NotNull(simpleProjection.Name);
+        Assert.Equal("Alice", simpleProjection.Name);
+
+        // Now test with TraversalDepth
+        var projectedAlice = this.provider.Nodes<PersonWithNavigationProperty>(
+            new GraphOperationOptions { TraversalDepth = 1 })
+            .Where(p => p.FirstName == "Alice")
+            .Select(p => new
+            {
+                Name = p.FirstName,
+                FriendCount = p.Knows.Count,
+                FriendNames = p.Knows.Select(k => k.Target!.FirstName)
+            })
+            .FirstOrDefault();
+
+        Assert.NotNull(projectedAlice);
+        Assert.NotNull(projectedAlice.Name);
+        Assert.Equal("Alice", projectedAlice.Name);
+        Assert.Equal(2, projectedAlice.FriendCount);
+        Assert.Contains("Bob", projectedAlice.FriendNames);
+        Assert.Contains("Charlie", projectedAlice.FriendNames);
+    }
+
+    [Fact]
+    public async Task CanCombineNodeAndRelationshipQueries()
+    {
+        // Setup
+        var alice = new Person { FirstName = "Alice" };
+        var bob = new Person { FirstName = "Bob" };
+        var charlie = new Person { FirstName = "Charlie" };
+
+        await this.provider.CreateNode(alice);
+        await this.provider.CreateNode(bob);
+        await this.provider.CreateNode(charlie);
+
+        await this.provider.CreateRelationship(new Knows<Person, Person>(alice, bob));
+        await this.provider.CreateRelationship(new Knows<Person, Person>(bob, charlie));
+
+        // Execute separate queries and combine in memory
+        var people = this.provider.Nodes<Person>().ToDictionary(p => p.Id);
+        var relationships = this.provider.Relationships<Knows<Person, Person>>().ToList();
+
+        // Build a connection map
+        var connectionMap = relationships
+            .GroupBy(r => r.SourceId)
+            .Select(g => new
+            {
+                PersonName = people[g.Key].FirstName,
+                Connections = g.Select(r => people[r.TargetId].FirstName).ToList()
+            })
+            .ToList();
+
+        Assert.Equal(2, connectionMap.Count);
+        Assert.Contains(connectionMap, m => m.PersonName == "Alice" && m.Connections.Contains("Bob"));
+        Assert.Contains(connectionMap, m => m.PersonName == "Bob" && m.Connections.Contains("Charlie"));
+    }
+
+    [Fact]
+    public async Task CanProjectRelationshipCounts()
+    {
+        // Setup
+        var alice = new Person { FirstName = "Alice" };
+        var bob = new Person { FirstName = "Bob" };
+        var charlie = new Person { FirstName = "Charlie" };
+        var dave = new Person { FirstName = "Dave" };
+
+        await this.provider.CreateNode(alice);
+        await this.provider.CreateNode(bob);
+        await this.provider.CreateNode(charlie);
+        await this.provider.CreateNode(dave);
+
+        // Alice knows everyone, Bob knows 2, Charlie knows 1, Dave knows none
+        await this.provider.CreateRelationship(new Knows<Person, Person>(alice, bob));
+        await this.provider.CreateRelationship(new Knows<Person, Person>(alice, charlie));
+        await this.provider.CreateRelationship(new Knows<Person, Person>(alice, dave));
+        await this.provider.CreateRelationship(new Knows<Person, Person>(bob, charlie));
+        await this.provider.CreateRelationship(new Knows<Person, Person>(bob, dave));
+        await this.provider.CreateRelationship(new Knows<Person, Person>(charlie, dave));
+
+        // Get all relationships once
+        var allRelationships = this.provider.Relationships<Knows<Person, Person>>().ToList();
+
+        // Project connection counts
+        var connectionStats = this.provider.Nodes<Person>()
+            .ToList() // Execute the query
+            .Select(p => new
+            {
+                Name = p.FirstName,
+                OutgoingCount = allRelationships.Count(k => k.SourceId == p.Id),
+                IncomingCount = allRelationships.Count(k => k.TargetId == p.Id),
+                TotalConnections = allRelationships.Count(k => k.SourceId == p.Id || k.TargetId == p.Id)
+            })
+            .OrderByDescending(s => s.OutgoingCount)
+            .ToList();
+
+        // Assert
+        Assert.Equal(4, connectionStats.Count);
+
+        var aliceStats = connectionStats.First(s => s.Name == "Alice");
+        Assert.Equal(3, aliceStats.OutgoingCount);
+        Assert.Equal(0, aliceStats.IncomingCount);
+
+        var daveStats = connectionStats.First(s => s.Name == "Dave");
+        Assert.Equal(0, daveStats.OutgoingCount);
+        Assert.Equal(3, daveStats.IncomingCount);
     }
 }

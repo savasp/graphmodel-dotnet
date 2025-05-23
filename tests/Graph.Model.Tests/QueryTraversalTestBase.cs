@@ -74,8 +74,8 @@ public abstract class QueryTraversalTestsBase
         var retrieved = people[0];
         Assert.Equal("Alice", retrieved.FirstName);
         Assert.Equal(2, retrieved.Knows.Count);
-        Assert.Contains(retrieved.Knows, k => k.Target.FirstName == "Bob");
-        Assert.Contains(retrieved.Knows, k => k.Target.FirstName == "Charlie");
+        Assert.Contains(retrieved.Knows, k => k.Target!.FirstName == "Bob");
+        Assert.Contains(retrieved.Knows, k => k.Target!.FirstName == "Charlie");
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public abstract class QueryTraversalTestsBase
         Assert.Equal(2, people.Count);
         var aliceResult = people.First(p => p.FirstName == "Alice");
         Assert.Single(aliceResult.Knows);
-        Assert.Equal("Bob", aliceResult.Knows[0].Target.FirstName);
+        Assert.Equal("Bob", aliceResult.Knows[0].Target!.FirstName);
     }
 
     [Fact]
@@ -200,7 +200,7 @@ public abstract class QueryTraversalTestsBase
 
         // Check traversal depth
         Assert.Single(results[0].Knows); // Person2 knows Person3
-        Assert.Single(results[0].Knows[0].Target.Knows); // Person3 knows Person4
+        Assert.Single(results[0].Knows[0].Target!.Knows); // Person3 knows Person4
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public abstract class QueryTraversalTestsBase
             {
                 Name = p.FirstName,
                 FriendCount = p.Knows.Count,
-                Friends = p.Knows.Select(k => k.Target.FirstName)
+                Friends = p.Knows.Select(k => k.Target!.FirstName)
             })
             .ToList();
 

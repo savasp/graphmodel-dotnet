@@ -103,6 +103,7 @@ public class Neo4jExpressionVisitor : ExpressionVisitor
         while (current is MethodCallExpression mce)
         {
             var method = mce.Method.Name;
+
             if (method == "Count")
             {
                 if (mce.Arguments.Count == 2 && mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
@@ -524,6 +525,7 @@ public class Neo4jExpressionVisitor : ExpressionVisitor
                 if (mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
                 {
                     selectLambda = lambda;
+
                     // Support simple and anonymous projections, and navigation
                     if (lambda.Body is MemberExpression me)
                     {
@@ -564,8 +566,9 @@ public class Neo4jExpressionVisitor : ExpressionVisitor
                         // Support for new { ... } with initializers
                         var bindings = mie.Bindings.OfType<MemberAssignment>();
                         var props = string.Join(", ", bindings.Select(b => $"{varName}.{b.Member.Name} AS {b.Member.Name}"));
-                        returnClause = $"RETURN {(useDistinct ? "DISTINCT " : "")}{props}";
+                        returnClause = $"RETURN {(useDistinct ? "DISTINCT " : "")}{string.Join(", ", props)}";
                     }
+
                     // Navigation/deep traversal: detect navigation property and generate MATCH/OPTIONAL MATCH for relationships
                     if (lambda.Body is MemberExpression navMe)
                     {
@@ -592,6 +595,12 @@ public class Neo4jExpressionVisitor : ExpressionVisitor
                 limitClause = "LIMIT 1";
                 current = mce.Arguments[0];
                 continue;
+            }
+            else if (method == "FirstOrDefault" || method == "First")
+            {
+                // FirstOrDefault/First: just add LIMIT 1 and continue processing
+                limitClause = "LIMIT 1";
+                current = mce.Arguments[0];
             }
             else
             {
@@ -624,6 +633,7 @@ public class Neo4jExpressionVisitor : ExpressionVisitor
             cypher += string.Join(" ", navigationMatches) + " ";
         }
         cypher += returnClause;
+
         // In the RETURN clause, add navigation returns if present
         if (navigationReturns.Count > 0)
         {
@@ -687,12 +697,16 @@ public class Neo4jExpressionVisitor : ExpressionVisitor
             foreach (var record in results.Select(r => r as IRecord).Where(r => r != null))
             {
                 var args = new object?[ctorParams!.Length];
-                for (int i = 0; i < ctorParams.Length; i++)
+                for (int i = 0; i < ctorParams!.Length; i++)
                 {
                     var param = ctorParams[i];
-                    // Try to match by name (case-insensitive)
+
                     var kvp = record!.Values.FirstOrDefault(kv => string.Equals(kv.Key, param.Name, StringComparison.OrdinalIgnoreCase));
-                    object? value = kvp.Value;
+
+                    // FirstOrDefault returns a default KeyValuePair when no match is found
+                    // For KeyValuePair<string, object>, default means Key = null, Value = null
+                    object? value = kvp.Key != null ? kvp.Value : null;
+
                     if (value == null)
                     {
                         args[i] = param.ParameterType.IsValueType && Nullable.GetUnderlyingType(param.ParameterType) == null
@@ -759,8 +773,8 @@ public class Neo4jExpressionVisitor : ExpressionVisitor
                     }
                     else if (value != null && (param.ParameterType.IsPrimitive || param.ParameterType == typeof(string) || param.ParameterType == typeof(decimal)))
                     {
-                        // Handle simple types
-                        args[i] = Convert.ChangeType(value, param.ParameterType);
+                        // Handle simple types - use SerializationExtensions.ConvertFromNeo4jValue
+                        args[i] = SerializationExtensions.ConvertFromNeo4jValue(value, param.ParameterType);
                     }
                     else if (value is Neo4jDriver.ZonedDateTime zdt && param.ParameterType == typeof(DateTime))
                     {
@@ -784,8 +798,8 @@ public class Neo4jExpressionVisitor : ExpressionVisitor
                     }
                     else
                     {
-                        // For other types, try direct assignment
-                        args[i] = value;
+                        // For other types, try using SerializationExtensions.ConvertFromNeo4jValue
+                        args[i] = SerializationExtensions.ConvertFromNeo4jValue(value, param.ParameterType);
                     }
                 }
                 var anon = ctor!.Invoke(args);

@@ -15,18 +15,23 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Base class for graph relationships that provides default implementation for IRelationship
+/// Base class for graph relationships that provides default implementation for IRelationship.
+/// Notice that when setting the source and target properties, the Source and Target properties are reset to null.
 /// </summary>
 public class Relationship<S, T> : IRelationship<S, T>
-    where S : INode
-    where T : INode
+    where S : class, INode
+    where T : class, INode
 {
-    public Relationship(bool isBidirectional = false)
+    private string sourceId = string.Empty;
+    private string targetId = string.Empty;
+    private S? source = null;
+    private T? target = null;
+
+    public Relationship(bool isBidirectional = false) : this(null, null, isBidirectional)
     {
-        this.IsBidirectional = isBidirectional;
     }
 
-    public Relationship(S source, T target, bool isBidirectional = false)
+    public Relationship(S? source, T? target, bool isBidirectional = false)
     {
         this.Source = source;
         this.Target = target;
@@ -36,22 +41,58 @@ public class Relationship<S, T> : IRelationship<S, T>
     /// <inheritdoc/>
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
-    // TODO: This is ugly. The sets are necessary for deserialization. However, it means that the IDs may
-    // be different from those of the objects.
-    // In general, the IEntity and IRelationship interfaces should not have setters.
+    /// <inheritdoc/>
+    public string SourceId
+    {
+        get => this.sourceId;
+        set
+        {
+            this.sourceId = value;
+            // Only reset Source if the ID actually changed
+            if (this.source != null && this.source.Id != value)
+            {
+                this.source = null;
+            }
+        }
+    }
 
     /// <inheritdoc/>
-    public string SourceId { get; set; } = default!;
-
-    /// <inheritdoc/>
-    public string TargetId { get; set; } = default!;
+    public string TargetId
+    {
+        get => this.targetId;
+        set
+        {
+            this.targetId = value;
+            // Only reset Target if the ID actually changed
+            if (this.target != null && this.target.Id != value)
+            {
+                this.target = null;
+            }
+        }
+    }
 
     /// <inheritdoc/>
     public bool IsBidirectional { get; set; }
 
     /// <inheritdoc/>
-    public S Source { get; set; } = default!;
+    public S? Source
+    {
+        get => this.source;
+        set
+        {
+            this.source = value;
+            this.sourceId = value?.Id ?? this.sourceId; // Keep existing ID if value is null
+        }
+    }
 
     /// <inheritdoc/>
-    public T Target { get; set; } = default!;
+    public T? Target
+    {
+        get => this.target;
+        set
+        {
+            this.target = value;
+            this.targetId = value?.Id ?? this.targetId; // Keep existing ID if value is null
+        }
+    }
 }
