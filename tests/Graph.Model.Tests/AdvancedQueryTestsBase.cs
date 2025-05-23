@@ -14,11 +14,11 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class GraphProviderAdvancedQueryTestsBase
+public abstract class AdvancedQueryTestsBase
 {
     private IGraph provider;
 
-    protected GraphProviderAdvancedQueryTestsBase(IGraph provider)
+    protected AdvancedQueryTestsBase(IGraph provider)
     {
         this.provider = provider;
     }
@@ -107,14 +107,14 @@ public abstract class GraphProviderAdvancedQueryTestsBase
         await this.provider.CreateNode(bob);
         var charlie = new Person { FirstName = "Charlie", LastName = "Jones" };
         await this.provider.CreateNode(charlie);
-        var knows1 = new Knows(alice, bob) { Since = DateTime.UtcNow };
-        var knows2 = new Knows(bob, charlie) { Since = DateTime.UtcNow };
+        var knows1 = new Knows<Person, Person>(alice, bob) { Since = DateTime.UtcNow };
+        var knows2 = new Knows<Person, Person>(bob, charlie) { Since = DateTime.UtcNow };
         await this.provider.CreateRelationship(knows1);
         await this.provider.CreateRelationship(knows2);
 
         // Fetch all people and relationships
         var people = this.provider.Nodes<Person>().ToList();
-        var rels = await this.provider.GetRelationships<Knows>([knows1.Id, knows2.Id]);
+        var rels = await this.provider.GetRelationships<Knows<Person, Person>>([knows1.Id, knows2.Id]);
 
         // Find all people Bob knows (outgoing)
         var bobsFriends = rels.Where(r => r.SourceId == bob.Id)
@@ -141,11 +141,11 @@ public abstract class GraphProviderAdvancedQueryTestsBase
         var bob = new Person { FirstName = "Bob", LastName = "Smith" };
         await this.provider.CreateNode(bob);
 
-        var knows = new Knows(alice, bob) { Since = DateTime.UtcNow };
+        var knows = new Knows<Person, Person>(alice, bob) { Since = DateTime.UtcNow };
         await this.provider.CreateRelationship(knows);
 
         var people = this.provider.Nodes<Person>().ToList();
-        var rels = await this.provider.GetRelationships<Knows>([knows.Id]);
+        var rels = await this.provider.GetRelationships<Knows<Person, Person>>([knows.Id]);
 
         // Join: Find all (person, friend) pairs
         var pairs = (from p in people
@@ -226,15 +226,15 @@ public abstract class GraphProviderAdvancedQueryTestsBase
         var bob = new Person { FirstName = "Bob", LastName = "Smith" };
         await this.provider.CreateNode(alice);
         await this.provider.CreateNode(bob);
-        var knows = new Knows(alice, bob) { Since = DateTime.UtcNow };
+        var knows = new Knows<Person, Person>(alice, bob) { Since = DateTime.UtcNow };
         await this.provider.CreateRelationship(knows);
 
-        var rels = this.provider.Relationships<Knows>().Where(r => r.SourceId == alice.Id).Select(r => r.Since).ToList();
+        var rels = this.provider.Relationships<Knows<Person, Person>>().Where(r => r.SourceId == alice.Id).Select(r => r.Since).ToList();
         Assert.Single(rels);
         Assert.True(rels[0] > DateTime.MinValue);
 
         // The project is on the right hand side of the expression
-        rels = this.provider.Relationships<Knows>().Where(r => alice.Id == r.SourceId).Select(r => r.Since).ToList();
+        rels = this.provider.Relationships<Knows<Person, Person>>().Where(r => alice.Id == r.SourceId).Select(r => r.Since).ToList();
         Assert.Single(rels);
         Assert.True(rels[0] > DateTime.MinValue);
     }
@@ -248,12 +248,12 @@ public abstract class GraphProviderAdvancedQueryTestsBase
         await this.provider.CreateNode(alice);
         await this.provider.CreateNode(bob);
         await this.provider.CreateNode(charlie);
-        var r1 = new Knows(alice, bob) { Since = DateTime.UtcNow.AddDays(-2) };
-        var r2 = new Knows(alice, charlie) { Since = DateTime.UtcNow.AddDays(-1) };
+        var r1 = new Knows<Person, Person>(alice, bob) { Since = DateTime.UtcNow.AddDays(-2) };
+        var r2 = new Knows<Person, Person>(alice, charlie) { Since = DateTime.UtcNow.AddDays(-1) };
         await this.provider.CreateRelationship(r1);
         await this.provider.CreateRelationship(r2);
 
-        var ordered = this.provider.Relationships<Knows>().OrderBy(r => r.Since).ToList();
+        var ordered = this.provider.Relationships<Knows<Person, Person>>().OrderBy(r => r.Since).ToList();
         Assert.Equal(2, ordered.Count);
         Assert.True(ordered[0].Since < ordered[1].Since);
     }

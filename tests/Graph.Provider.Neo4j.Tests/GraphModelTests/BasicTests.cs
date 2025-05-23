@@ -14,11 +14,11 @@
 
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
-public class ProviderModelBasicTests : Model.Tests.GraphProviderBasicTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
+public class BasicTests : Model.Tests.BasicTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
 {
     private readonly TestInfrastructureFixture fixture;
 
-    public ProviderModelBasicTests(TestInfrastructureFixture fixture) : base(fixture.TestInfrastructure.GraphProvider)
+    public BasicTests(TestInfrastructureFixture fixture) : base(fixture.TestInfrastructure.GraphProvider)
     {
         this.fixture = fixture;
     }

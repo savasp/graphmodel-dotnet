@@ -14,11 +14,11 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class GraphProviderQueryTestsBase
+public abstract class QueryTestsBase
 {
-    private IGraph provider { get; }
+    private IGraph provider;
 
-    protected GraphProviderQueryTestsBase(IGraph provider)
+    protected QueryTestsBase(IGraph provider)
     {
         this.provider = provider;
     }
@@ -127,7 +127,7 @@ public abstract class GraphProviderQueryTestsBase
     {
         var alice = new PersonWithNavigationProperty { FirstName = "Alice", LastName = "Smith" };
         var bob = new PersonWithNavigationProperty { FirstName = "Bob", LastName = "Jones" };
-        var knows = new Knows(alice, bob) { Since = DateTime.UtcNow };
+        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         alice.Knows.Add(knows);
 
         await this.provider.CreateNode(alice);
@@ -148,7 +148,7 @@ public abstract class GraphProviderQueryTestsBase
     {
         var alice = new PersonWithNavigationProperty { FirstName = "Alice", LastName = "Smith" };
         var bob = new PersonWithNavigationProperty { FirstName = "Bob", LastName = "Jones" };
-        var knows = new Knows(alice, bob) { Since = DateTime.UtcNow };
+        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         alice.Knows.Add(knows);
         await this.provider.CreateNode(alice);
         await this.provider.CreateNode(bob);

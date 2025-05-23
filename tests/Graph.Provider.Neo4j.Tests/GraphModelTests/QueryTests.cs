@@ -12,24 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model;
-
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
-public class ProviderNeo4jTests : IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
+public class QueryTests : Model.Tests.QueryTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
 {
     private readonly TestInfrastructureFixture fixture;
-    private IGraph? provider;
 
-    public ProviderNeo4jTests(TestInfrastructureFixture fixture)
+    public QueryTests(TestInfrastructureFixture fixture) : base(fixture.TestInfrastructure.GraphProvider)
     {
         this.fixture = fixture;
-        provider = fixture.TestInfrastructure.GraphProvider;
     }
 
     public async Task InitializeAsync()
     {
-        await fixture.TestInfrastructure.EnsureReady();
         await fixture.TestInfrastructure.ResetDatabase();
     }
 

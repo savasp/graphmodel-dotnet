@@ -21,32 +21,35 @@ namespace Cvoya.Graph.Model;
 public interface IGraph : IDisposable
 {
     /// <summary>
-    /// Gets a queryable interface to nodes in the graph
+    /// Gets a queryable interface to nodes in the graph with options for relationship loading
     /// </summary>
+    /// <param name="options">Options controlling relationship traversal when query is executed</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <typeparam name="N">The type of the nodes to query</typeparam>
     /// <returns>A queryable interface to the nodes</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
     /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
-    IQueryable<N> Nodes<N>(IGraphTransaction? transaction = null) where N : INode, new();
+    IQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null) where N : INode, new();
 
     /// <summary>
-    /// Gets a queryable interface to nodes in the graph
+    /// Gets a queryable interface to relationships in the graph with options for node loading
     /// </summary>
+    /// <param name="options">Options controlling node traversal when query is executed</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
-    /// <typeparam name="R">The type of the nodes to query</typeparam>
-    /// <returns>A queryable interface to the nodes</returns>
+    /// <typeparam name="R">The type of the relationships to query</typeparam>
+    /// <returns>A queryable interface to the relationships</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
     /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
-    IQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
+    IQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : IRelationship, new();
 
     /// <summary>
-    /// Gets a node by ID
+    /// Gets a node by ID with options for relationship loading
     /// </summary>
     /// <param name="id">The ID of the node</param>
+    /// <param name="options">Options controlling relationship traversal</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <typeparam name="T">The type of the node</typeparam>
@@ -54,25 +57,29 @@ public interface IGraph : IDisposable
     /// <exception cref="KeyNotFoundException">Thrown when the node is not found</exception>
     /// <exception cref="GraphException">Thrown when the node cannot be retrieved or there is another issue</exception>
     /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
-    Task<T> GetNode<T>(string id, IGraphTransaction? transaction = null) where T : INode, new();
+    Task<T> GetNode<T>(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+        where T : INode, new();
 
     /// <summary>
-    /// Gets multiple nodes by their IDs
+    /// Gets multiple nodes by their IDs with options for relationship loading
     /// </summary>
     /// <typeparam name="T">The type of the nodes</typeparam>
     /// <param name="ids">The IDs of the nodes</param>
+    /// <param name="options">Options controlling relationship traversal</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A list of nodes with the specified IDs</returns>
     /// <exception cref="KeyNotFoundException">Thrown when any of the nodes are not found</exception>
     /// <exception cref="GraphException">Thrown when the node cannot be retrieved or there is another issue</exception>
     /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
-    Task<IEnumerable<T>> GetNodes<T>(IEnumerable<string> ids, IGraphTransaction? transaction = null) where T : INode, new();
+    Task<IEnumerable<T>> GetNodes<T>(IEnumerable<string> ids, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+        where T : INode, new();
 
     /// <summary>
-    /// Gets a relationship by ID
+    /// Gets a relationship by ID with options for node loading
     /// </summary>
     /// <param name="id">The ID of the relationship</param>
+    /// <param name="options">Options controlling node traversal</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <typeparam name="R">The type of the relationship</typeparam>
@@ -80,67 +87,75 @@ public interface IGraph : IDisposable
     /// <exception cref="KeyNotFoundException">Thrown when any of the relationship is not found</exception>
     /// <exception cref="GraphException">Thrown when the relationship cannot be retrieved or there is another issue</exception>
     /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
-    Task<R> GetRelationship<R>(string id, IGraphTransaction? transaction = null)
+    Task<R> GetRelationship<R>(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : IRelationship, new();
 
     /// <summary>
-    /// Gets multiple relationships by their IDs
+    /// Gets multiple relationships by their IDs with options for node loading
     /// </summary>
     /// <typeparam name="T">The type of the relationships</typeparam>
     /// <param name="ids">The IDs of the relationships</param>
+    /// <param name="options">Options controlling node traversal</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A list of relationships with the specified IDs</returns>
     /// <exception cref="KeyNotFoundException">Thrown when any of the relationships are not found</exception>
     /// <exception cref="GraphException">Thrown when any of the relationships cannot be retrieved or there is another issue</exception>
     /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
-    Task<IEnumerable<T>> GetRelationships<T>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
+    Task<IEnumerable<T>> GetRelationships<T>(IEnumerable<string> ids, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where T : IRelationship, new();
 
     /// <summary>
-    /// Creates a node in the graph
+    /// Creates a new node in the graph with options for relationship handling
     /// </summary>
+    /// <param name="node"> The node to create</param>
+    /// <param name="options">Options for the operation</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <typeparam name="T">The type of the node</typeparam>
     /// <param name="node">The node to create</param>
     /// <exception cref="GraphException">Thrown when the node cannot be created or there is another issue</exception>
     /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
-    Task CreateNode<T>(T node, IGraphTransaction? transaction = null) where T : INode, new();
+    Task CreateNode<T>(T node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+        where T : INode, new();
 
     /// <summary>
-    /// Creates a relationship between two nodes in the graph
+    /// Creates a new relationship in the graph with options for node handling
     /// </summary>
     /// <typeparam name="R">The type of the relationship</typeparam>
     /// <param name="relationship">The relationship to create</param>
+    /// <param name="options">Options for the operation</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <exception cref="GraphException">Thrown when the relationship cannot be created or there is another issue</exception>
     /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
-    Task CreateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
+    Task CreateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : IRelationship, new();
 
     /// <summary>
-    /// Updates a node in the graph
+    /// Updates an existing node in the graph with options for relationship handling
     /// </summary>
     /// <typeparam name="T">The type of the node</typeparam>
     /// <param name="node">The node to update</param>
+    /// <param name="options">Options for the operation</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <exception cref="GraphException">Thrown when the update cannot be performed or there is another issue</exception>
     /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
-    Task UpdateNode<T>(T node, IGraphTransaction? transaction = null) where T : INode, new();
+    Task UpdateNode<T>(T node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+        where T : INode, new();
 
     /// <summary>
-    /// Updates a relationship in the graph
+    /// Updates an existing relationship in the graph with options for node handling
     /// </summary>
     /// <typeparam name="R">The type of the relationship</typeparam>
     /// <param name="relationship">The relationship to update</param>
+    /// <param name="options">Options for the operation</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <exception cref="GraphException">Thrown when the relationship cannot be updated or there is another issue</exception>
     /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
-    Task UpdateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
+    Task UpdateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : IRelationship, new();
 
     /// <summary>

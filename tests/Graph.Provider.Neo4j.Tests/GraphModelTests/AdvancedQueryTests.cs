@@ -14,18 +14,17 @@
 
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
-public class ProviderModelAdvancedQueryTests : Model.Tests.GraphProviderAdvancedQueryTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
+public class AdvancedQueryTests : Model.Tests.AdvancedQueryTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
 {
     private readonly TestInfrastructureFixture fixture;
 
-    public ProviderModelAdvancedQueryTests(TestInfrastructureFixture fixture) : base(fixture.TestInfrastructure.GraphProvider)
+    public AdvancedQueryTests(TestInfrastructureFixture fixture) : base(fixture.TestInfrastructure.GraphProvider)
     {
         this.fixture = fixture;
     }
 
     public async Task InitializeAsync()
     {
-        await fixture.TestInfrastructure.EnsureReady();
         await fixture.TestInfrastructure.ResetDatabase();
     }
 

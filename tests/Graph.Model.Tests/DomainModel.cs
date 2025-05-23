@@ -30,10 +30,12 @@ public class Address
     public string City { get; set; } = string.Empty;
 }
 
-public class Knows : Relationship<Person, Person>
+public class Knows<T, S> : Relationship<T, S>
+    where T : Person
+    where S : Person
 {
     public Knows() { }
-    public Knows(Person source, Person target) : base(source, target)
+    public Knows(T source, S target) : base(source, target)
     {
         this.Source = source;
         this.Target = target;
@@ -45,7 +47,7 @@ public class Knows : Relationship<Person, Person>
 
 public class PersonWithNavigationProperty : Person
 {
-    public List<Knows> Knows { get; set; } = [];
+    public List<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>> Knows { get; set; } = new();
 }
 
 public class PersonWithComplexProperty : Person

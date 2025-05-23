@@ -12,15 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Provider.Neo4j.Linq
+namespace Cvoya.Graph.Provider.Neo4j.Tests;
+
+public class RetrievalTraversalTestsBase : Model.Tests.NodeTraversalTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
 {
-    public static class Neo4jLinqExtensions
+    private readonly TestInfrastructureFixture fixture;
+
+    public RetrievalTraversalTestsBase(TestInfrastructureFixture fixture) : base(fixture.TestInfrastructure.GraphProvider)
     {
-        // Example: ToListAsync with traversalDepth
-        public static Task<List<T>> ToListAsync<T>(this IQueryable<T> source, int traversalDepth = 1)
-        {
-            // TODO: Implement async query execution with traversal depth
-            return Task.FromResult(source.ToList());
-        }
+        this.fixture = fixture;
+    }
+
+    public async Task InitializeAsync()
+    {
+        await fixture.TestInfrastructure.ResetDatabase();
+    }
+
+    public Task DisposeAsync()
+    {
+        return Task.CompletedTask;
     }
 }
