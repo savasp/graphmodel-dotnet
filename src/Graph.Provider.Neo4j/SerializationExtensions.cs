@@ -14,7 +14,7 @@
 
 using System.Collections;
 using System.Reflection;
-using Cvoya.Graph.Provider.Model;
+using Cvoya.Graph.Model;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Provider.Neo4j;
@@ -90,7 +90,7 @@ internal static class SerializationExtensions
         TimeSpan ts => ts,
         TimeOnly to => to.ToTimeSpan(),
         DateOnly d => d.ToDateTime(TimeOnly.MinValue),
-        Provider.Model.Point point => new global::Neo4j.Driver.Point(WGS84, point.X, point.Y, point.Z),
+        Model.Point point => new global::Neo4j.Driver.Point(WGS84, point.X, point.Y, point.Z),
         IDictionary dict => dict.Cast<DictionaryEntry>()
                                 .ToDictionary(
                                     entry => entry.Key.ToString() ?? "",
@@ -137,7 +137,7 @@ internal static class SerializationExtensions
             return value;
 
         // Always hydrate node/relationship types as entities
-        if (typeof(Cvoya.Graph.Provider.Model.IRelationship).IsAssignableFrom(targetType))
+        if (typeof(Cvoya.Graph.Model.IRelationship).IsAssignableFrom(targetType))
         {
             if (value is global::Neo4j.Driver.IRelationship rel)
             {
@@ -147,7 +147,7 @@ internal static class SerializationExtensions
             }
             throw new InvalidOperationException($"Cannot convert value of type {value?.GetType().Name} to relationship type {targetType.Name}. Use ConvertToGraphEntity.");
         }
-        if (typeof(Cvoya.Graph.Provider.Model.INode).IsAssignableFrom(targetType))
+        if (typeof(Cvoya.Graph.Model.INode).IsAssignableFrom(targetType))
         {
             if (value is global::Neo4j.Driver.INode node)
             {
@@ -196,7 +196,7 @@ internal static class SerializationExtensions
             Type t when t == typeof(TimeOnly) && value is LocalTime lt2 => TimeOnly.FromTimeSpan(lt2.ToTimeSpan()),
             Type t when t == typeof(DateOnly) && value is LocalDate ld2 => DateOnly.FromDateTime(ld2.ToDateTime()),
             Type t when t.IsEnum && value is string enumString => Enum.Parse(targetType, enumString),
-            Type t when t == typeof(Provider.Model.Point) && value is global::Neo4j.Driver.Point point => new Model.Point(point.X, point.Y, point.Z),
+            Type t when t == typeof(Model.Point) && value is global::Neo4j.Driver.Point point => new Model.Point(point.X, point.Y, point.Z),
             Type t when t == typeof(int) && value is long l => (int)l,
             Type t when t == typeof(long) && value is int i => (long)i,
             _ =>
@@ -205,7 +205,7 @@ internal static class SerializationExtensions
     }
 
     public static bool IsRelationshipType(this Type type) =>
-        typeof(Cvoya.Graph.Provider.Model.IRelationship).IsAssignableFrom(type);
+        typeof(Model.IRelationship).IsAssignableFrom(type);
 
     public static bool IsCollectionOfRelationshipType(this Type type) =>
         type != typeof(string)
@@ -223,7 +223,7 @@ internal static class SerializationExtensions
         _ when type.IsEnum => true,
         _ when type == typeof(string) => true,
         _ when type.IsValueType => true,
-        _ when type == typeof(Provider.Model.Point) => true,
+        _ when type == typeof(Model.Point) => true,
         _ => false
     };
 

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Provider.Model;
+using Cvoya.Graph.Model;
 using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
 
@@ -32,7 +32,7 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
         this.provider = new Neo4jGraphProvider(Endpoint, "neo4j", "password", this.databaseName, logger);
     }
 
-    public IGraphProvider GraphProvider => this.provider;
+    public IGraph GraphProvider => this.provider;
 
     public async Task ResetDatabase()
     {

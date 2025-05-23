@@ -23,7 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Graph.Provider.Neo4j/Graph.Provider.Neo4j.csproj" />
-    <ProjectReference Include="../Graph.Provider.Model.Tests/Graph.Provider.Model.Tests.csproj" />
+    <ProjectReference Include="../Graph.Model.Tests/Graph.Model.Tests.csproj" />
   </ItemGroup>
 
 </Project>

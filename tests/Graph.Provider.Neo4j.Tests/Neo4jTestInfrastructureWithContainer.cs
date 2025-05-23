@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Provider.Model;
+using Cvoya.Graph.Model;
 using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.Logging;
 using Testcontainers.Neo4j;
@@ -33,7 +33,7 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
         this.provider = new Neo4jGraphProvider(connectionString, username: "neo4j", password: "password", logger: logger);
     }
 
-    public IGraphProvider GraphProvider => this.provider;
+    public IGraph GraphProvider => this.provider;
 
     public async Task ResetDatabase()
     {

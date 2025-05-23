@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 using System.Linq.Expressions;
-using Cvoya.Graph.Provider.Model;
+using Cvoya.Graph.Model;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq
 {

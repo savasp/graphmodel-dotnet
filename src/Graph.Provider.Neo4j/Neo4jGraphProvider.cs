@@ -14,7 +14,7 @@
 
 using System.Linq.Expressions;
 using System.Reflection;
-using Cvoya.Graph.Provider.Model;
+using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j.Linq;
 using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
@@ -24,7 +24,7 @@ namespace Cvoya.Graph.Provider.Neo4j;
 /// <summary>
 /// Neo4j implementation of the IGraphProvider interface.
 /// </summary>
-public class Neo4jGraphProvider : IGraphProvider
+public class Neo4jGraphProvider : IGraph
 {
     private readonly Lock disposeLock = new();
     private bool disposed = false;
@@ -70,7 +70,7 @@ public class Neo4jGraphProvider : IGraphProvider
 
     /// <inheritdoc />
     public IQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
-        where R : Graph.Provider.Model.IRelationship, new()
+        where R : Model.IRelationship, new()
     {
         // Provide a LINQ IQueryable for relationships
         return new Neo4jQueryable<R>(
@@ -84,7 +84,7 @@ public class Neo4jGraphProvider : IGraphProvider
         where T : Model.INode, new()
     {
         var result = await GetNodes<T>([id], transaction);
-        return result.FirstOrDefault() ?? throw new GraphProviderException($"Node with ID '{id}' not found.");
+        return result.FirstOrDefault() ?? throw new GraphException($"Node with ID '{id}' not found.");
     }
 
     /// <inheritdoc />
@@ -114,7 +114,7 @@ public class Neo4jGraphProvider : IGraphProvider
         }
         catch (Exception ex)
         {
-            throw new GraphProviderException($"Error retrieving node one or more of the nodes with IDs '{whereInClause}'", ex);
+            throw new GraphException($"Error retrieving node one or more of the nodes with IDs '{whereInClause}'", ex);
         }
         finally
         {
@@ -127,16 +127,16 @@ public class Neo4jGraphProvider : IGraphProvider
 
     /// <inheritdoc />
     public async Task<R> GetRelationship<R>(string id, IGraphTransaction? transaction = null)
-        where R : Graph.Provider.Model.IRelationship, new()
+        where R : Model.IRelationship, new()
     {
         var result = await this.GetRelationships<R>([id], transaction);
 
-        return result.FirstOrDefault() ?? throw new GraphProviderException($"Relationship with ID '{id}' not found.");
+        return result.FirstOrDefault() ?? throw new GraphException($"Relationship with ID '{id}' not found.");
     }
 
     /// <inheritdoc />
     public async Task<IEnumerable<R>> GetRelationships<R>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
-        where R : Graph.Provider.Model.IRelationship, new()
+        where R : Model.IRelationship, new()
     {
         if (ids is null || !ids.Any())
         {
@@ -167,7 +167,7 @@ public class Neo4jGraphProvider : IGraphProvider
             }
             catch (Exception ex)
             {
-                throw new GraphProviderException($"Error retrieving relationship with ID '{id}'", ex);
+                throw new GraphException($"Error retrieving relationship with ID '{id}'", ex);
             }
             finally
             {
@@ -189,7 +189,7 @@ public class Neo4jGraphProvider : IGraphProvider
 
         if (HasReferenceCycle(node))
         {
-            throw new GraphProviderException($"Reference cycle detected in the node with ID '{node.Id}'");
+            throw new GraphException($"Reference cycle detected in the node with ID '{node.Id}'");
         }
 
         var (session, tx) = await GetOrCreateTransaction(transaction);
@@ -206,7 +206,7 @@ public class Neo4jGraphProvider : IGraphProvider
         }
         catch (Exception ex)
         {
-            throw new GraphProviderException($"Error creating node of type '{typeof(T).Name}'", ex);
+            throw new GraphException($"Error creating node of type '{typeof(T).Name}'", ex);
         }
         finally
         {
@@ -219,13 +219,13 @@ public class Neo4jGraphProvider : IGraphProvider
 
     /// <inheritdoc />
     public async Task CreateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
-        where R : Graph.Provider.Model.IRelationship, new()
+        where R : Model.IRelationship, new()
     {
         if (relationship is null) throw new ArgumentNullException(nameof(relationship));
 
         if (HasReferenceCycle(relationship))
         {
-            throw new GraphProviderException($"Reference cycle detected in the relationship with ID '{relationship.Id}'");
+            throw new GraphException($"Reference cycle detected in the relationship with ID '{relationship.Id}'");
         }
 
         var type = relationship.GetType();
@@ -234,7 +234,7 @@ public class Neo4jGraphProvider : IGraphProvider
 
         if (complexProps.Count > 0)
         {
-            throw new GraphProviderException($"Complex properties are not supported for relationships.");
+            throw new GraphException($"Complex properties are not supported for relationships.");
         }
 
         var (session, tx) = await GetOrCreateTransaction(transaction);
@@ -257,7 +257,7 @@ public class Neo4jGraphProvider : IGraphProvider
 
             if (result is null || string.IsNullOrEmpty(record["relId"].As<string>()))
             {
-                throw new GraphProviderException($"Failed to create relationship of type '{label}'");
+                throw new GraphException($"Failed to create relationship of type '{label}'");
             }
 
             if (transaction is null)
@@ -268,7 +268,7 @@ public class Neo4jGraphProvider : IGraphProvider
         }
         catch (Exception ex)
         {
-            throw new GraphProviderException($"Error creating relationship of type '{label}'", ex);
+            throw new GraphException($"Error creating relationship of type '{label}'", ex);
         }
         finally
         {
@@ -287,7 +287,7 @@ public class Neo4jGraphProvider : IGraphProvider
 
         if (HasReferenceCycle(node))
         {
-            throw new GraphProviderException($"Reference cycle detected in the node with ID '{node.Id}'");
+            throw new GraphException($"Reference cycle detected in the node with ID '{node.Id}'");
         }
 
         var (simpleProps, complexProps) = SerializationExtensions.GetSimpleAndComplexProperties(node);
@@ -310,7 +310,7 @@ public class Neo4jGraphProvider : IGraphProvider
         }
         catch (Exception ex)
         {
-            throw new GraphProviderException($"Error updating node of type '{typeof(T).Name}'", ex);
+            throw new GraphException($"Error updating node of type '{typeof(T).Name}'", ex);
         }
         finally
         {
@@ -323,20 +323,20 @@ public class Neo4jGraphProvider : IGraphProvider
 
     /// <inheritdoc />
     public async Task UpdateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
-        where R : Graph.Provider.Model.IRelationship, new()
+        where R : Model.IRelationship, new()
     {
         if (relationship is null) throw new ArgumentNullException(nameof(relationship));
 
         if (HasReferenceCycle(relationship))
         {
-            throw new GraphProviderException($"Reference cycle detected in the relationship with ID '{relationship.Id}'");
+            throw new GraphException($"Reference cycle detected in the relationship with ID '{relationship.Id}'");
         }
 
         var (simpleProps, complexProps) = SerializationExtensions.GetSimpleAndComplexProperties(relationship);
 
         if (complexProps.Count > 0)
         {
-            throw new GraphProviderException($"Complex properties are not supported for relationships.");
+            throw new GraphException($"Complex properties are not supported for relationships.");
         }
 
         var (session, tx) = await GetOrCreateTransaction(transaction);
@@ -357,7 +357,7 @@ public class Neo4jGraphProvider : IGraphProvider
         }
         catch (Exception ex)
         {
-            throw new GraphProviderException($"Error updating relationship of type '{typeof(R).Name}'", ex);
+            throw new GraphException($"Error updating relationship of type '{typeof(R).Name}'", ex);
         }
         finally
         {
@@ -397,7 +397,7 @@ public class Neo4jGraphProvider : IGraphProvider
         }
         catch (Exception ex)
         {
-            throw new GraphProviderException("Failed to delete node.", ex);
+            throw new GraphException("Failed to delete node.", ex);
         }
         finally
         {
@@ -427,7 +427,7 @@ public class Neo4jGraphProvider : IGraphProvider
         }
         catch (Exception ex)
         {
-            throw new GraphProviderException("Failed to delete relationship.", ex);
+            throw new GraphException("Failed to delete relationship.", ex);
         }
         finally
         {
@@ -462,7 +462,7 @@ public class Neo4jGraphProvider : IGraphProvider
         catch (Exception ex)
         {
             logger?.LogError(ex, "Failed to execute Cypher query.");
-            throw new GraphProviderException("Failed to execute Cypher query.", ex);
+            throw new GraphException("Failed to execute Cypher query.", ex);
         }
         finally
         {
@@ -550,12 +550,12 @@ public class Neo4jGraphProvider : IGraphProvider
         await using var __ = tx;
 
         // Always add unique constraint for the identifier property
-        var cypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{nameof(Provider.Model.INode.Id)} IS UNIQUE";
+        var cypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{nameof(Model.INode.Id)} IS UNIQUE";
         await tx.RunAsync(cypher);
 
         foreach (var prop in properties)
         {
-            if (prop.Name == nameof(Provider.Model.INode.Id)) continue;
+            if (prop.Name == nameof(Model.INode.Id)) continue;
             var name = prop.GetCustomAttribute<PropertyAttribute>()?.Label ?? prop.Name;
             var propCypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{name} IS NOT NULL";
             await tx.RunAsync(propCypher);
@@ -578,7 +578,7 @@ public class Neo4jGraphProvider : IGraphProvider
         if (propertyAttr?.Label is { Length: > 0 }) return propertyAttr.Label;
 
         var label = type.FullName?.Replace('.', '_')?.Replace("+", "_");
-        return label ?? throw new GraphProviderException($"Type '{type}' does not have a valid FullName.");
+        return label ?? throw new GraphException($"Type '{type}' does not have a valid FullName.");
     }
 
     // Find the .NET type for a given label that is assignable to baseType
@@ -590,7 +590,7 @@ public class Neo4jGraphProvider : IGraphProvider
             .FirstOrDefault(t => GetLabel(t) == label);
 
         if (match is null)
-            throw new GraphProviderException($"No .NET type found for label '{label}' assignable to {baseType.FullName}");
+            throw new GraphException($"No .NET type found for label '{label}' assignable to {baseType.FullName}");
 
         return match;
     }
@@ -624,7 +624,7 @@ public class Neo4jGraphProvider : IGraphProvider
             props = simpleProps.ToDictionary(kv => kv.Key.Name, kv => kv.Value.ConvertToNeo4jValue()),
         });
         var createdNode = await record.SingleAsync();
-        var nodeId = createdNode["nodeId"].ToString() ?? throw new GraphProviderException($"Failed to create node of type '{label}'");
+        var nodeId = createdNode["nodeId"].ToString() ?? throw new GraphException($"Failed to create node of type '{label}'");
 
         // Handle complex properties
         foreach (var prop in complexProps)

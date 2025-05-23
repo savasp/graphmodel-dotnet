@@ -3,7 +3,7 @@ using System.Collections;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
-using Cvoya.Graph.Provider.Model;
+using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j;
 using Cvoya.Graph.Provider.Neo4j.Linq;
 using Neo4j.Driver;
@@ -62,7 +62,7 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                     navigationMatches.Add($"OPTIONAL MATCH ({parentVar})-[{relVar}:{relLabel}]->({targetVar}:{targetLabel})");
                     navigationReturns.Add($"collect({targetVar}) AS {prop.Name}");
                 }
-                else if (typeof(Cvoya.Graph.Provider.Model.IRelationship).IsAssignableFrom(propType))
+                else if (typeof(Cvoya.Graph.Model.IRelationship).IsAssignableFrom(propType))
                 {
                     // Relationship navigation (e.g., Knows)
                     var relLabel = GetLabel(propType);
@@ -73,7 +73,7 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                     navigationMatches.Add($"OPTIONAL MATCH ({parentVar})-[{relVar}:{relLabel}]->({targetVar}:{targetLabel})");
                     navigationReturns.Add($"{relVar} AS {prop.Name}");
                 }
-                else if (typeof(Cvoya.Graph.Provider.Model.INode).IsAssignableFrom(propType))
+                else if (typeof(Cvoya.Graph.Model.INode).IsAssignableFrom(propType))
                 {
                     // Node navigation (e.g., Target)
                     var nodeLabel = GetLabel(propType);
@@ -658,7 +658,7 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                             var navMethod = typeof(SerializationExtensions).GetMethod(
                                     navConvertToGraphEntityMethodName,
                                     BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic)
-                                ?? throw new GraphProviderException($"{navConvertToGraphEntityMethodName} method not found");
+                                ?? throw new GraphException($"{navConvertToGraphEntityMethodName} method not found");
                             var navConvertToGraphEntity = navMethod.MakeGenericMethod(param.ParameterType);
                             args[i] = navConvertToGraphEntity.Invoke(null, new object[] { nodeVal });
                         }
@@ -678,7 +678,7 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             var method = typeof(SerializationExtensions).GetMethod(
                     convertToGraphEntityMethodName,
                     BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic)
-                ?? throw new GraphProviderException($"{convertToGraphEntityMethodName} method not found");
+                ?? throw new GraphException($"{convertToGraphEntityMethodName} method not found");
             var convertToGraphEntity = method.MakeGenericMethod(elementType);
 
             var entityList = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType))!;

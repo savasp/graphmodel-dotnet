@@ -13,8 +13,8 @@
 // limitations under the License.
 
 /*
-using Cvoya.Graph.Provider.Model;
-using Cvoya.Graph.Provider.Model.Tests;
+using Cvoya.Graph.Model;
+using Cvoya.Graph.Model.Tests;
 
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
@@ -33,7 +33,7 @@ public class Neo4jConstraintAndCypherTests : IClassFixture<Neo4jGraphProviderTes
         var person = new GraphProviderTestsBase.Person { FirstName = "Unique", LastName = "Test" };
         var created = await provider.CreateNode(person);
         var duplicate = new GraphProviderTestsBase.Person { Id = created.Id, FirstName = "Other", LastName = "Test" };
-        await Assert.ThrowsAsync<GraphProviderException>(() => provider.CreateNode(duplicate));
+        await Assert.ThrowsAsync<GraphException>(() => provider.CreateNode(duplicate));
     }
 
     [Fact]

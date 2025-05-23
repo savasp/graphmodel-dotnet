@@ -26,7 +26,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Provider.Model;
+using Cvoya.Graph.Model;
 
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
@@ -38,7 +38,7 @@ public interface ITestInfrastructure : IAsyncDisposable
     /// <summary>
     /// Gets the Neo4j graph provider.
     /// </summary>
-    IGraphProvider GraphProvider { get; }
+    IGraph GraphProvider { get; }
 
     /// <summary>
     /// Resets the Neo4j database by deleting all nodes and relationships.

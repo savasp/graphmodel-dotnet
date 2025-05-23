@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Provider.Model;
+using Cvoya.Graph.Model;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Provider.Neo4j;

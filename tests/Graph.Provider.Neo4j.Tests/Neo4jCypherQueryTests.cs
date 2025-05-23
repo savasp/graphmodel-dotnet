@@ -13,8 +13,8 @@
 // limitations under the License.
 
 /*
-using Cvoya.Graph.Provider.Model;
-using Cvoya.Graph.Provider.Model.Tests;
+using Cvoya.Graph.Model;
+using Cvoya.Graph.Model.Tests;
 
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 

@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Provider.Model;
+using Cvoya.Graph.Model;
 
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
 public class ProviderNeo4jTests : IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
 {
     private readonly TestInfrastructureFixture fixture;
-    private IGraphProvider? provider;
+    private IGraph? provider;
 
     public ProviderNeo4jTests(TestInfrastructureFixture fixture)
     {
