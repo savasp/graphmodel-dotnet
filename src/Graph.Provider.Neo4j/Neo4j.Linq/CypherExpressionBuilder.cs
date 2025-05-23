@@ -66,7 +66,44 @@ internal static class CypherExpressionBuilder
         switch (expr)
         {
             case MemberExpression me:
-                if (me.Expression != null && me.Expression.Type == typeof(string) && me.Member.Name == "Length")
+                // Handle DateTime static properties
+                if (me.Type == typeof(DateTime) && me.Member is PropertyInfo propertyInfo && propertyInfo.DeclaringType == typeof(DateTime))
+                {
+                    switch (propertyInfo.Name)
+                    {
+                        case "Now":
+                            return "datetime()";
+                        case "UtcNow":
+                            return "datetime()";
+                        case "Today":
+                            return "date()";
+                    }
+                }
+                // Handle DateTime instance properties
+                else if (me.Expression != null && me.Expression.Type == typeof(DateTime))
+                {
+                    var dateTimeExpr = BuildCypherExpression(me.Expression, varName);
+                    switch (me.Member.Name)
+                    {
+                        case "Year":
+                            return $"{dateTimeExpr}.year";
+                        case "Month":
+                            return $"{dateTimeExpr}.month";
+                        case "Day":
+                            return $"{dateTimeExpr}.day";
+                        case "Hour":
+                            return $"{dateTimeExpr}.hour";
+                        case "Minute":
+                            return $"{dateTimeExpr}.minute";
+                        case "Second":
+                            return $"{dateTimeExpr}.second";
+                        case "DayOfWeek":
+                            return $"{dateTimeExpr}.dayOfWeek";
+                        case "DayOfYear":
+                            return $"{dateTimeExpr}.ordinalDay";
+                    }
+                }
+                else if (me.Expression != null && me.Expression.Type == typeof(string) && me.Member.Name == "Length")
                 {
                     // String.Length -> size(n.Property)
                     var innerExpr = BuildCypherExpression(me.Expression, varName);

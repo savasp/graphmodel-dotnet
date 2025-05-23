@@ -762,6 +762,26 @@ public class Neo4jExpressionVisitor : ExpressionVisitor
                         // Handle simple types
                         args[i] = Convert.ChangeType(value, param.ParameterType);
                     }
+                    else if (value is Neo4jDriver.ZonedDateTime zdt && param.ParameterType == typeof(DateTime))
+                    {
+                        // Convert Neo4j ZonedDateTime to .NET DateTime
+                        args[i] = zdt.ToDateTimeOffset().DateTime;
+                    }
+                    else if (value is Neo4jDriver.LocalDate ld && param.ParameterType == typeof(DateTime))
+                    {
+                        // Convert Neo4j LocalDate to .NET DateTime
+                        args[i] = ld.ToDateTime();
+                    }
+                    else if (value is Neo4jDriver.LocalDateTime ldt && param.ParameterType == typeof(DateTime))
+                    {
+                        // Convert Neo4j LocalDateTime to .NET DateTime
+                        args[i] = ldt.ToDateTime();
+                    }
+                    else if (value is Neo4jDriver.ZonedDateTime zdt2 && param.ParameterType == typeof(DateTimeOffset))
+                    {
+                        // Convert Neo4j ZonedDateTime to .NET DateTimeOffset
+                        args[i] = zdt2.ToDateTimeOffset();
+                    }
                     else
                     {
                         // For other types, try direct assignment

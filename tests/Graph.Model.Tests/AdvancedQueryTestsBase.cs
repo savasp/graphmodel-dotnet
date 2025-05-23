@@ -332,18 +332,49 @@ public abstract class AdvancedQueryTestsBase
         Assert.Contains(grouped, g => g.Name == "Bob" && g.Count == 1);
     }
 
-    [Fact(Skip = "Date/time Cypher functions not yet implemented")]
+    [Fact]
     public async Task CanProjectWithDateTimeFunctions()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Eve", LastName = "Smith", Age = 25 });
+        // Arrange
+        var eve = new Person { FirstName = "Eve", LastName = "Smith", Age = 25 };
+        await this.provider.CreateNode(eve);
+
+        // Act
         var projected = this.provider.Nodes<Person>()
+            .Where(p => p.FirstName == "Eve")
             .Select(p => new
             {
-                Now = DateTime.Now, // Should map to Cypher datetime()
-                Date = DateTime.Today, // Should map to Cypher date()
+                PersonName = p.FirstName,
+                CurrentDateTime = DateTime.Now,
+                CurrentDate = DateTime.Today,
+                CurrentUtc = DateTime.UtcNow,
+                Year = DateTime.Now.Year,
+                Month = DateTime.Now.Month,
+                Day = DateTime.Now.Day
             })
             .ToList();
-        // TODO: Enable asserts when implemented
+
+        // Assert
+        Assert.Single(projected);
+        var result = projected[0];
+
+        // Verify person name to ensure we got the right record
+        Assert.Equal("Eve", result.PersonName);
+
+        // DateTime.Now in Neo4j returns UTC, so compare with UtcNow
+        Assert.True(Math.Abs((DateTime.UtcNow - result.CurrentDateTime).TotalSeconds) < 5);
+
+        // DateTime.Today should be today's date at midnight UTC
+        Assert.Equal(DateTime.UtcNow.Date, result.CurrentDate.Date);
+        Assert.Equal(TimeSpan.Zero, result.CurrentDate.TimeOfDay);
+
+        // DateTime.UtcNow should be close to current UTC time
+        Assert.True(Math.Abs((DateTime.UtcNow - result.CurrentUtc).TotalSeconds) < 5);
+
+        // Year, Month, Day should match current UTC date
+        Assert.Equal(DateTime.UtcNow.Year, result.Year);
+        Assert.Equal(DateTime.UtcNow.Month, result.Month);
+        Assert.Equal(DateTime.UtcNow.Day, result.Day);
     }
 
     [Fact(Skip = "Collection Cypher functions not yet implemented")]
