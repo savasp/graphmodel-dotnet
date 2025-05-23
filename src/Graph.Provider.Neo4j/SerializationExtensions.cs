@@ -32,18 +32,18 @@ internal static class SerializationExtensions
 
         foreach (var property in properties)
         {
-            var labelName = property.GetCustomAttribute<PropertyAttribute>()?.Label ?? property.Name;
-
             switch (property)
             {
                 // This must come first!
-                case { PropertyType: var type } when type.IsRelationshipType() || type.IsCollectionOfRelationshipType():
+                case { PropertyType: var t } when t.IsRelationshipType() || t.IsCollectionOfRelationshipType():
                     continue;
-
-                case { PropertyType: var type } when type.IsPrimitiveOrSimple() || type.IsCollectionOfSimple():
+                // This must come second!
+                // TODO: Do we automatically convert INode properties to Neo4j nodes and create a relationship?
+                case { PropertyType: var t } when t.IsAssignableTo(typeof(Model.INode)):
+                    continue;
+                case { PropertyType: var t } when t.IsPrimitiveOrSimple() || t.IsCollectionOfSimple():
                     simpleProperties[property] = property.GetValue(obj);
                     break;
-
                 default:
                     complexProperties[property] = property.GetValue(obj);
                     break;

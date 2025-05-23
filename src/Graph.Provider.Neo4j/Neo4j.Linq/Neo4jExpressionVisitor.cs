@@ -39,6 +39,50 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             bool useDistinct = false;
             var orderings = new List<string>();
 
+            // Add navigation property support
+            var navigationMatches = new List<string>();
+            var navigationReturns = new List<string>();
+
+            // Helper to recursively process navigation property chains
+            void ProcessNavigation(MemberExpression memberExpr, string parentVar, string parentLabel, int depth = 1)
+            {
+                var prop = memberExpr.Member;
+                var propType = (prop as PropertyInfo)?.PropertyType;
+                if (propType == null) return;
+                if (typeof(System.Collections.IEnumerable).IsAssignableFrom(propType) && propType != typeof(string))
+                {
+                    // Collection navigation (e.g., List<Knows>)
+                    var relType = propType.IsArray ? propType.GetElementType() : propType.GetGenericArguments().FirstOrDefault();
+                    if (relType == null) return;
+                    var relLabel = GetLabel(relType);
+                    var relVar = $"r{depth}";
+                    var targetType = relType.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition().Name.StartsWith("IRelationship"))?.GetGenericArguments().ElementAtOrDefault(1);
+                    var targetLabel = targetType != null ? GetLabel(targetType) : "Target";
+                    var targetVar = $"t{depth}";
+                    navigationMatches.Add($"OPTIONAL MATCH ({parentVar})-[{relVar}:{relLabel}]->({targetVar}:{targetLabel})");
+                    navigationReturns.Add($"collect({targetVar}) AS {prop.Name}");
+                }
+                else if (typeof(Cvoya.Graph.Provider.Model.IRelationship).IsAssignableFrom(propType))
+                {
+                    // Relationship navigation (e.g., Knows)
+                    var relLabel = GetLabel(propType);
+                    var relVar = $"r{depth}";
+                    var targetType = propType.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition().Name.StartsWith("IRelationship"))?.GetGenericArguments().ElementAtOrDefault(1);
+                    var targetLabel = targetType != null ? GetLabel(targetType) : "Target";
+                    var targetVar = $"t{depth}";
+                    navigationMatches.Add($"OPTIONAL MATCH ({parentVar})-[{relVar}:{relLabel}]->({targetVar}:{targetLabel})");
+                    navigationReturns.Add($"{relVar} AS {prop.Name}");
+                }
+                else if (typeof(Cvoya.Graph.Provider.Model.INode).IsAssignableFrom(propType))
+                {
+                    // Node navigation (e.g., Target)
+                    var nodeLabel = GetLabel(propType);
+                    var nodeVar = $"n{depth}";
+                    navigationMatches.Add($"OPTIONAL MATCH ({parentVar})-->{nodeVar}:{nodeLabel}");
+                    navigationReturns.Add($"{nodeVar} AS {prop.Name}");
+                }
+            }
+
             Expression current = expression;
             LambdaExpression? selectLambda = null;
             int? takeCount = null;
@@ -474,16 +518,25 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
                             var props = string.Join(", ", bindings.Select(b => $"{varName}.{b.Member.Name} AS {b.Member.Name}"));
                             returnClause = $"RETURN {(useDistinct ? "DISTINCT " : "")}{props}";
                         }
-                        // TODO: Navigation/deep traversal: detect navigation property and generate MATCH/OPTIONAL MATCH for relationships
+                        // Navigation/deep traversal: detect navigation property and generate MATCH/OPTIONAL MATCH for relationships
+                        if (lambda.Body is MemberExpression navMe)
+                        {
+                            ProcessNavigation(navMe, varName, label, 1);
+                        }
                     }
                     current = mce.Arguments[0];
                 }
                 else if (method == "SelectMany")
                 {
-                    // TODO: Support for navigation collections (deep traversal)
-                    // This will require generating additional MATCH clauses and handling collections in hydration
-                    // For now, break
-                    break;
+                    // Support for navigation collections (deep traversal)
+                    if (mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
+                    {
+                        if (lambda.Body is MemberExpression navMe)
+                        {
+                            ProcessNavigation(navMe, varName, label, 1);
+                        }
+                    }
+                    current = mce.Arguments[0];
                 }
                 else if (method == "Last")
                 {
@@ -517,7 +570,17 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq
             if (whereClause != null) cypher += whereClause + " ";
             if (orderings.Count > 0)
                 cypher += $"ORDER BY {string.Join(", ", orderings)} ";
+            // After building the main MATCH, add navigation matches
+            if (navigationMatches.Count > 0)
+            {
+                cypher += string.Join(" ", navigationMatches) + " ";
+            }
             cypher += returnClause;
+            // In the RETURN clause, add navigation returns if present
+            if (navigationReturns.Count > 0)
+            {
+                cypher = cypher.Replace(returnClause, $"RETURN {string.Join(", ", navigationReturns)}");
+            }
             if (skipClause != null) cypher += " " + skipClause;
             if (limitClause != null) cypher += " " + limitClause;
             return cypher;

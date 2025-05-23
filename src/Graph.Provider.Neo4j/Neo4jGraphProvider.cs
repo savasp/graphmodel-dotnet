@@ -654,6 +654,19 @@ public class Neo4jGraphProvider : IGraphProvider
         {
             if (prop.GetIndexParameters().Length > 0) continue; // Skip indexers
 
+            var propType = prop.PropertyType;
+            if (propType.IsRelationshipType() || propType.IsCollectionOfRelationshipType())
+            {
+                // Ignore navigation properties of type IRelationship or collections of IRelationship
+                continue;
+            }
+
+            if (propType.IsAssignableTo(typeof(Model.INode)))
+            {
+                // Ignore properties of type INode
+                continue;
+            }
+
             var value = prop.GetValue(obj);
             if (value == null) continue;
 
