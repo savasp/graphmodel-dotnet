@@ -14,7 +14,6 @@
 
 using System.Collections;
 using System.Reflection;
-using System.Text;
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j.Linq;
 using Microsoft.Extensions.Logging;
@@ -62,7 +61,7 @@ public class Neo4jGraphProvider : IGraph
     public IQueryable<N> Nodes<N>(GraphOperationOptions options, IGraphTransaction? transaction = null)
            where N : Model.INode, new()
     {
-        var provider = new Neo4jQueryProvider(this, options, this.logger, this.databaseName, transaction);
+        var provider = new Neo4jQueryProvider(this, options, this.logger, this.databaseName, transaction, typeof(N));
 
         return new Neo4jQueryable<N>(provider, options, transaction);
     }
@@ -71,7 +70,7 @@ public class Neo4jGraphProvider : IGraph
     public IQueryable<R> Relationships<R>(GraphOperationOptions options, IGraphTransaction? transaction = null)
          where R : Model.IRelationship, new()
     {
-        var provider = new Neo4jQueryProvider(this, options, this.logger, this.databaseName, transaction);
+        var provider = new Neo4jQueryProvider(this, options, this.logger, this.databaseName, transaction, typeof(R));
 
         return new Neo4jQueryable<R>(provider, options, transaction);
     }
@@ -218,6 +217,8 @@ public class Neo4jGraphProvider : IGraph
     {
         if (relationship is null) throw new ArgumentNullException(nameof(relationship));
         if (string.IsNullOrEmpty(relationship.Id)) throw new ArgumentNullException(nameof(relationship.Id));
+        if (string.IsNullOrEmpty(relationship.SourceId)) throw new ArgumentNullException(nameof(relationship.SourceId));
+        if (string.IsNullOrEmpty(relationship.TargetId)) throw new ArgumentNullException(nameof(relationship.TargetId));
 
         relationship.EnsureNoReferenceCycle();
 
@@ -226,10 +227,8 @@ public class Neo4jGraphProvider : IGraph
         try
         {
             // Handle source and target nodes based on options
-            if (options.TraversalDepth > 0 || options.CreateMissingNodes)
-            {
-                await ProcessRelationshipNodes(relationship, options, tx, isCreate: true);
-            }
+            // Process nodes first if needed
+            await ProcessRelationshipNodes(relationship, options, tx, isCreate: true);
 
             // Create the relationship
             await CreateRelationshipInternal(relationship, tx);
@@ -240,7 +239,7 @@ public class Neo4jGraphProvider : IGraph
                 await tx.CommitAsync();
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not GraphException)
         {
             throw new GraphException($"Error creating relationship of type '{typeof(R).Name}' with ID '{relationship.Id}'", ex);
         }
@@ -825,17 +824,37 @@ public class Neo4jGraphProvider : IGraph
     }
 
     private async Task ProcessRelationshipNodes(
-        Model.IRelationship relationship,
-        GraphOperationOptions options,
-        IAsyncTransaction tx,
-        bool isCreate)
+                Model.IRelationship relationship,
+                GraphOperationOptions options,
+                IAsyncTransaction tx,
+                bool isCreate)
     {
+        // First check if nodes should exist when not creating
+        if (!options.CreateMissingNodes && isCreate)
+        {
+            // Verify nodes exist
+            var sourceExists = await NodeExists(relationship.SourceId, tx);
+            var targetExists = await NodeExists(relationship.TargetId, tx);
+
+            if (!sourceExists || !targetExists)
+            {
+                throw new GraphException($"Cannot create relationship: source node '{relationship.SourceId}' or target node '{relationship.TargetId}' does not exist and CreateMissingNodes is false");
+            }
+            return; // No further processing needed
+        }
+
+        // Only process nodes if we have the generic interface with Source/Target properties
         var relType = relationship.GetType();
         var genericInterface = relType.GetInterfaces()
             .FirstOrDefault(i => i.IsGenericType &&
                                i.GetGenericTypeDefinition() == typeof(Model.IRelationship<,>));
 
-        if (genericInterface == null) return;
+        if (genericInterface == null)
+        {
+            // This relationship doesn't implement IRelationship<S,T>, so we can't access Source/Target
+            // Just verify the nodes exist if CreateMissingNodes = false
+            return;
+        }
 
         var sourceProp = relType.GetProperty("Source");
         var targetProp = relType.GetProperty("Target");
@@ -845,9 +864,10 @@ public class Neo4jGraphProvider : IGraph
         var source = sourceProp.GetValue(relationship) as Model.INode;
         var target = targetProp.GetValue(relationship) as Model.INode;
 
+        // Keep track of processed nodes to avoid cycles
         var processedNodes = new HashSet<string>();
 
-        // Process source node
+        // Process source node and its relationships if needed
         if (source != null && !string.IsNullOrEmpty(source.Id))
         {
             var sourceExists = await NodeExists(source.Id, tx);
@@ -855,24 +875,28 @@ public class Neo4jGraphProvider : IGraph
             if (isCreate && !sourceExists && options.CreateMissingNodes)
             {
                 await CreateNode(null, source, tx);
-                if (options.TraversalDepth > 1)
+                // Process source node's relationships if depth allows
+                if (options.TraversalDepth > 0 || options.TraversalDepth == -1)
                 {
-                    await ProcessNodeRelationships(source, options with { TraversalDepth = options.TraversalDepth - 1 },
-                        tx, currentDepth: 1, processedNodes);
+                    await ProcessNodeRelationships(source, options, tx, currentDepth: 0, processedNodes);
                 }
             }
             else if (!isCreate && sourceExists && options.UpdateExistingNodes)
             {
                 await UpdateNodeInternal(source, tx);
-                if (options.TraversalDepth > 1)
+                if (options.TraversalDepth > 0 || options.TraversalDepth == -1)
                 {
-                    await ProcessNodeRelationships(source, options with { TraversalDepth = options.TraversalDepth - 1 },
-                        tx, currentDepth: 1, processedNodes);
+                    await ProcessNodeRelationships(source, options, tx, currentDepth: 0, processedNodes);
                 }
+            }
+            else if (isCreate && sourceExists && (options.TraversalDepth > 0 || options.TraversalDepth == -1))
+            {
+                // Source exists but we still need to process its relationships
+                await ProcessNodeRelationships(source, options, tx, currentDepth: 0, processedNodes);
             }
         }
 
-        // Process target node
+        // Process target node and its relationships if needed
         if (target != null && !string.IsNullOrEmpty(target.Id))
         {
             var targetExists = await NodeExists(target.Id, tx);
@@ -880,27 +904,27 @@ public class Neo4jGraphProvider : IGraph
             if (isCreate && !targetExists && options.CreateMissingNodes)
             {
                 await CreateNode(null, target, tx);
-                if (options.TraversalDepth > 1)
+                // Process target node's relationships if depth allows
+                if (options.TraversalDepth > 0 || options.TraversalDepth == -1)
                 {
-                    await ProcessNodeRelationships(target, options with { TraversalDepth = options.TraversalDepth - 1 },
-                        tx, currentDepth: 1, processedNodes);
+                    await ProcessNodeRelationships(target, options, tx, currentDepth: 0, processedNodes);
                 }
             }
             else if (!isCreate && targetExists && options.UpdateExistingNodes)
             {
                 await UpdateNodeInternal(target, tx);
-                if (options.TraversalDepth > 1)
+                if (options.TraversalDepth > 0 || options.TraversalDepth == -1)
                 {
-                    await ProcessNodeRelationships(target, options with { TraversalDepth = options.TraversalDepth - 1 },
-                        tx, currentDepth: 1, processedNodes);
+                    await ProcessNodeRelationships(target, options, tx, currentDepth: 0, processedNodes);
                 }
+            }
+            else if (isCreate && targetExists && (options.TraversalDepth > 0 || options.TraversalDepth == -1))
+            {
+                // Target exists but we still need to process its relationships
+                await ProcessNodeRelationships(target, options, tx, currentDepth: 0, processedNodes);
             }
         }
     }
-
-
-
-
 
     internal async Task LoadNodeRelationships(
         Model.INode node,

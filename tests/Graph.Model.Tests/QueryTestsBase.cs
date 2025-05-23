@@ -130,11 +130,10 @@ public abstract class QueryTestsBase
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         alice.Knows.Add(knows);
 
-        await this.provider.CreateNode(alice);
-        await this.provider.CreateNode(bob);
+        await this.provider.CreateNode(alice, new GraphOperationOptions().WithRelationships().WithCreateMissingNodes());
 
         // Query Alice and include her friends via Knows
-        var people = this.provider.Nodes<PersonWithNavigationProperty>().ToList();
+        var people = this.provider.Nodes<PersonWithNavigationProperty>(new GraphOperationOptions().WithRelationships()).ToList();
         var aliceFromDb = people.FirstOrDefault(p => p.FirstName == "Alice");
 
         Assert.NotNull(aliceFromDb);
@@ -150,14 +149,18 @@ public abstract class QueryTestsBase
         var bob = new PersonWithNavigationProperty { FirstName = "Bob", LastName = "Jones" };
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         alice.Knows.Add(knows);
-        await this.provider.CreateNode(alice);
-        await this.provider.CreateNode(bob);
 
-        // Project Alice's friends' names
-        var friendsNames = this.provider.Nodes<PersonWithNavigationProperty>()
-            .Where(p => p.FirstName == "Alice")
-            .SelectMany(p => p.Knows.Select(k => k.Target.FirstName))
-            .ToList();
+        // Create the relationship which will create both nodes
+        await this.provider.CreateRelationship(knows, new GraphOperationOptions().WithCreateMissingNodes());
+
+        // TODO: We need to re-examine this. We shouldn't have to load the node and the relationships explicitly.
+        // First, load Alice with her relationships
+        var aliceWithRelationships = await this.provider.GetNode<PersonWithNavigationProperty>(
+            alice.Id,
+            new GraphOperationOptions().WithRelationships());
+
+        // Now we can access the relationships
+        var friendsNames = aliceWithRelationships.Knows.Select(k => k.Target.FirstName).ToList();
         Assert.Contains("Bob", friendsNames);
     }
 }

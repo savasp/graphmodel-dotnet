@@ -172,11 +172,11 @@ public abstract class RelationshipTraversalTestsBase
 
         await provider.CreateRelationship(aliceKnowsBob,
             new GraphOperationOptions()
-                .WithRelationships()
+                .WithDepth(0)  // Only create immediate nodes, no traversal
                 .WithCreateMissingNodes());
 
         // Alice, Bob, and relationship should exist
-        // Charlie should NOT exist (depth = 1 only)
+        // Charlie should NOT exist (depth = 0, no traversal)
         Assert.NotNull(await provider.GetNode<PersonWithNavigationProperty>(alice.Id));
         Assert.NotNull(await provider.GetNode<PersonWithNavigationProperty>(bob.Id));
         Assert.NotNull(await provider.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(aliceKnowsBob.Id));

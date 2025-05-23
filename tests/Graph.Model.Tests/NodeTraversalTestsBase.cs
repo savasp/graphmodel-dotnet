@@ -194,7 +194,7 @@ public class WorksWith : IRelationship<PersonWithMultipleRelationshipTypes, Pers
     public DateTime Since { get; set; }
     public PersonWithMultipleRelationshipTypes Source { get; set; } = new();
     public PersonWithNavigationProperty Target { get; set; } = new();
-    public bool IsBidirectional { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
+    public bool IsBidirectional { get; set; }
 
     public WorksWith() { }
 
