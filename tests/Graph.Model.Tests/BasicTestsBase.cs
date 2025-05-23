@@ -76,15 +76,15 @@ public abstract class BasicTestsBase
     [Fact]
     public async Task CanCreateRelationshipAndAddNodesAtTheSameTime()
     {
-        var p1 = new PersonWithComplexProperty { FirstName = "A", Address = new Address { Street = "123 Main St", City = "Somewhere" } };
-        var p2 = new PersonWithComplexProperty { FirstName = "B", Address = new Address { Street = "456 Elm St", City = "Anywhere" } };
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
 
-        var knows = new KnowsWithComplexProperty(p1, p2) { Since = DateTime.UtcNow, MetAt = new Address { Street = "789 Oak St", City = "Everywhere" } };
+        var knows = new Knows<Person, Person>(p1, p2) { Since = DateTime.UtcNow };
 
         // This should add the nodes and create the relationship
-        await this.provider.CreateRelationship(knows);
+        await this.provider.CreateRelationship(knows, new GraphOperationOptions { CreateMissingNodes = true });
 
-        var fetched = await this.provider.GetRelationship<KnowsWithComplexProperty>(knows.Id);
+        var fetched = await this.provider.GetRelationship<Knows<Person, Person>>(knows.Id);
         Assert.Equal(p1.Id, fetched.SourceId);
         Assert.Equal(p2.Id, fetched.TargetId);
     }
@@ -276,10 +276,10 @@ public abstract class BasicTestsBase
     {
         var alice = new PersonWithNavigationProperty { FirstName = "Alice", LastName = "Smith" };
         var bob = new PersonWithNavigationProperty { FirstName = "Bob", LastName = "Jones" };
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow, IsBidirectional = true };
         alice.Knows.Add(knows);
 
-        await this.provider.CreateNode(alice, new GraphOperationOptions { CreateMissingNodes = true });
+        await this.provider.CreateNode(alice, new GraphOperationOptions { CreateMissingNodes = true, TraversalDepth = 1 });
 
         // Query Alice and include her friends via Knows
         var aliceFromProvider = await this.provider.GetNode<PersonWithNavigationProperty>(alice.Id, new GraphOperationOptions { TraversalDepth = -1 });

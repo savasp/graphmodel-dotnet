@@ -105,7 +105,8 @@ public class Neo4jGraphProvider : IGraph
                 nodes.Add(node);
 
                 // Load relationships based on options
-                if (options.TraversalDepth > 0)
+                // Check for both positive depth and -1 (full graph)
+                if (options.TraversalDepth > 0 || options.TraversalDepth == -1)
                 {
                     await LoadNodeRelationships(node, options, tx, currentDepth: 0, processedNodes);
                 }
@@ -151,7 +152,8 @@ public class Neo4jGraphProvider : IGraph
                 relationships.Add(relationship);
 
                 // Load connected nodes based on options
-                if (options.TraversalDepth > 0)
+                // Check for both positive depth and -1 (full graph)
+                if (options.TraversalDepth > 0 || options.TraversalDepth == -1)
                 {
                     await LoadRelationshipNodes(relationship, options, tx);
                 }
@@ -185,7 +187,8 @@ public class Neo4jGraphProvider : IGraph
             await this.CreateNode(null, node, tx);
 
             // Handle relationships based on options
-            if (options.TraversalDepth > 0)
+            // Check for both positive depth and -1 (full graph)
+            if (options.TraversalDepth > 0 || options.TraversalDepth == -1)
             {
                 await ProcessNodeRelationships(node, options, tx, currentDepth: 0, processedNodes: new HashSet<string>());
             }
@@ -273,7 +276,8 @@ public class Neo4jGraphProvider : IGraph
             });
 
             // Handle relationships based on options
-            if (options.TraversalDepth > 0)
+            // Check for both positive depth and -1 (full graph)
+            if (options.TraversalDepth > 0 || options.TraversalDepth == -1)
             {
                 await ProcessNodeRelationships(node, options, tx, currentDepth: 0, processedNodes: new HashSet<string>());
             }
@@ -633,7 +637,7 @@ public class Neo4jGraphProvider : IGraph
         List<string> relationshipPropertyNames = [nameof(IRelationship<,>.Source), nameof(IRelationship<,>.Target)];
         var check = complexProps
             .Select(p => p.Key)
-            .Where(p => (!relationshipPropertyNames.Contains(p.Name)) && p.PropertyType.IsAssignableTo(typeof(Model.INode)));
+            .Where(p => !(relationshipPropertyNames.Contains(p.Name) && p.PropertyType.IsAssignableTo(typeof(Model.INode))));
 
         if (check.Any())
         {
@@ -894,12 +898,16 @@ public class Neo4jGraphProvider : IGraph
         }
     }
 
+
+
+
+
     internal async Task LoadNodeRelationships(
-            Model.INode node,
-            GraphOperationOptions options,
-            IAsyncTransaction tx,  // Changed from IGraphTransaction? to IAsyncTransaction
-            int currentDepth,
-            HashSet<string> processedNodes)
+        Model.INode node,
+        GraphOperationOptions options,
+        IAsyncTransaction tx,
+        int currentDepth,
+        HashSet<string> processedNodes)
     {
         if (currentDepth >= options.TraversalDepth && options.TraversalDepth != -1)
             return;
@@ -941,7 +949,11 @@ public class Neo4jGraphProvider : IGraph
             var result = await tx.RunAsync(cypher, new { nodeId = node.Id });
             var relationships = new List<Model.IRelationship>();
 
-            await result.ForEachAsync(async record =>
+            // First, collect all the data from the cursor
+            var records = await result.ToListAsync();
+
+            // Then process each record
+            foreach (var record in records)
             {
                 var relNode = record["r"].As<global::Neo4j.Driver.IRelationship>();
                 var targetNode = record["m"].As<global::Neo4j.Driver.INode>();
@@ -951,6 +963,13 @@ public class Neo4jGraphProvider : IGraph
                 if (relationship != null)
                 {
                     PopulateEntity(relationship, relNode);
+
+                    // Set the Source property to the current node
+                    var sourceProp = elementType.GetProperty("Source");
+                    if (sourceProp != null)
+                    {
+                        sourceProp.SetValue(relationship, node);
+                    }
 
                     // Handle target node if it's a generic relationship
                     var genericInterface = elementType.GetInterfaces()
@@ -980,7 +999,7 @@ public class Neo4jGraphProvider : IGraph
 
                     relationships.Add(relationship);
                 }
-            });
+            }
 
             // Set the collection property
             if (prop.PropertyType.GetGenericTypeDefinition() == typeof(List<>))
@@ -991,6 +1010,87 @@ public class Neo4jGraphProvider : IGraph
                     list?.Add(rel);
                 }
                 prop.SetValue(node, list);
+            }
+        }
+
+        // Also check for incoming relationships if the relationship is bidirectional
+        foreach (var prop in relationshipProperties)
+        {
+            var elementType = prop.PropertyType.GetGenericArguments()[0];
+            var relLabel = GetLabel(elementType);
+
+            // Check if we should process this relationship type
+            if (options.RelationshipTypes?.Any() == true && !options.RelationshipTypes.Contains(relLabel))
+                continue;
+
+            // Query for incoming relationships of this type
+            var cypher = $@"
+                MATCH (n)<-[r:{relLabel}]-(m)
+                WHERE n.{nameof(Model.INode.Id)} = $nodeId
+                RETURN r, m";
+
+            var result = await tx.RunAsync(cypher, new { nodeId = node.Id });
+
+            // First, collect all the data from the cursor
+            var records = await result.ToListAsync();
+
+            // Then process each record
+            foreach (var record in records)
+            {
+                var relNode = record["r"].As<global::Neo4j.Driver.IRelationship>();
+                var sourceNode = record["m"].As<global::Neo4j.Driver.INode>();
+
+                // Check if this relationship has IsBidirectional property set to true
+                if (relNode.Properties.ContainsKey("IsBidirectional") &&
+                    relNode.Properties["IsBidirectional"] is bool isBidirectional &&
+                    isBidirectional)
+                {
+                    // Create a new relationship instance for the reverse direction
+                    var relationship = Activator.CreateInstance(elementType) as Model.IRelationship;
+                    if (relationship != null)
+                    {
+                        PopulateEntity(relationship, relNode);
+
+                        // For bidirectional, swap source and target
+                        var sourceProp = elementType.GetProperty("Source");
+                        var targetProp = elementType.GetProperty("Target");
+
+                        if (sourceProp != null && targetProp != null)
+                        {
+                            // Source is the current node
+                            sourceProp.SetValue(relationship, node);
+
+                            // Target is the other node
+                            var genericInterface = elementType.GetInterfaces()
+                                .FirstOrDefault(i => i.IsGenericType &&
+                                                   i.GetGenericTypeDefinition() == typeof(Model.IRelationship<,>));
+
+                            if (genericInterface != null)
+                            {
+                                var sourceType = genericInterface.GetGenericArguments()[0];
+                                var source = Activator.CreateInstance(sourceType) as Model.INode;
+                                if (source != null)
+                                {
+                                    PopulateEntity(source, sourceNode);
+                                    targetProp.SetValue(relationship, source);
+
+                                    // Continue traversal for the source node
+                                    if (currentDepth + 1 < options.TraversalDepth || options.TraversalDepth == -1)
+                                    {
+                                        await LoadNodeRelationships(source, options, tx, currentDepth + 1, processedNodes);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Add to the existing collection if not already present
+                        var existingList = prop.GetValue(node) as IList;
+                        if (existingList != null && !existingList.Cast<Model.IRelationship>().Any(r => r.Id == relationship.Id))
+                        {
+                            existingList.Add(relationship);
+                        }
+                    }
+                }
             }
         }
     }

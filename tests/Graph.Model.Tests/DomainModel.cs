@@ -30,6 +30,7 @@ public class Address
     public string City { get; set; } = string.Empty;
 }
 
+[Relationship("KNOWS")]
 public class Knows<T, S> : Relationship<T, S>
     where T : Person
     where S : Person
