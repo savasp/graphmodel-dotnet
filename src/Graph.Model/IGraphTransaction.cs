@@ -23,11 +23,11 @@ public interface IGraphTransaction : IAsyncDisposable
     /// Commits the transaction.
     /// </summary>
     /// <returns>A task that represents the asynchronous commit operation.</returns>
-    Task CommitAsync();
+    Task Commit();
 
     /// <summary>
     /// Rolls back the transaction.
     /// </summary>
     /// <returns>A task that represents the asynchronous rollback operation.</returns>
-    Task RollbackAsync();
+    Task Rollback();
 }

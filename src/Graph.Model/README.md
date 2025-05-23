@@ -65,9 +65,9 @@ The `IGraphTransaction` interface represents a transaction in the graph database
 ```csharp
 public interface IGraphTransaction : IAsyncDisposable
 {
-    Task CommitAsync();
+    Task Commit();
 
-    Task RollbackAsync();
+    Task Rollback();
 }
 ```
 
@@ -382,7 +382,7 @@ var person = new Person
 };
 
 // Begin a transaction
-using var transaction = await client.BeginTransactionAsync();
+using var transaction = await client.BeginTransaction();
 try
 {
     // Create the node
@@ -424,12 +424,12 @@ try
     await client.DeleteNode(createdRelationship.Target.Id, transaction);
 
     // Commit the transaction
-    await transaction.CommitAsync();
+    await transaction.Commit();
 }
 catch (Exception)
 {
     // Rollback the transaction
-    await transaction.RollbackAsync();
+    await transaction.Rollback();
     throw;
 }
 ```

@@ -28,7 +28,7 @@ internal class Neo4jGraphTransaction(IAsyncSession session, IAsyncTransaction tr
 
     internal IAsyncSession Session => _session;
 
-    public async Task CommitAsync()
+    public async Task Commit()
     {
         if (_transaction == null || _committed || _rolledBack)
             throw new InvalidOperationException("Transaction is not active.");
@@ -38,7 +38,7 @@ internal class Neo4jGraphTransaction(IAsyncSession session, IAsyncTransaction tr
         _transaction = null;
     }
 
-    public async Task RollbackAsync()
+    public async Task Rollback()
     {
         if (_transaction == null || _committed || _rolledBack)
             throw new InvalidOperationException("Transaction is not active.");
