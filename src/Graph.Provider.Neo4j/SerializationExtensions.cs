@@ -38,9 +38,6 @@ internal static class SerializationExtensions
                 case { PropertyType: var t } when t.IsRelationshipType() || t.IsCollectionOfRelationshipType():
                     continue;
                 // This must come second!
-                // TODO: Do we automatically convert INode properties to Neo4j nodes and create a relationship?
-                case { PropertyType: var t } when t.IsAssignableTo(typeof(Model.INode)):
-                    continue;
                 case { PropertyType: var t } when t.IsPrimitiveOrSimple() || t.IsCollectionOfSimple():
                     simpleProperties[property] = property.GetValue(obj);
                     break;

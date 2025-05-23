@@ -187,10 +187,7 @@ public class Neo4jGraphProvider : IGraph
     {
         if (node is null) throw new ArgumentNullException(nameof(node));
 
-        if (HasReferenceCycle(node))
-        {
-            throw new GraphException($"Reference cycle detected in the node with ID '{node.Id}'");
-        }
+        node.EnsureNoReferenceCycle();
 
         var (session, tx) = await GetOrCreateTransaction(transaction);
 
@@ -223,19 +220,13 @@ public class Neo4jGraphProvider : IGraph
     {
         if (relationship is null) throw new ArgumentNullException(nameof(relationship));
 
-        if (HasReferenceCycle(relationship))
-        {
-            throw new GraphException($"Reference cycle detected in the relationship with ID '{relationship.Id}'");
-        }
+        relationship.EnsureNoReferenceCycle();
 
         var type = relationship.GetType();
         var label = GetLabel(type);
         var (simpleProps, complexProps) = SerializationExtensions.GetSimpleAndComplexProperties(relationship);
 
-        if (complexProps.Count > 0)
-        {
-            throw new GraphException($"Complex properties are not supported for relationships.");
-        }
+        CheckRelationshipProperties(complexProps);
 
         var (session, tx) = await GetOrCreateTransaction(transaction);
 
@@ -285,16 +276,14 @@ public class Neo4jGraphProvider : IGraph
     {
         if (node == null) throw new ArgumentNullException(nameof(node));
 
-        if (HasReferenceCycle(node))
-        {
-            throw new GraphException($"Reference cycle detected in the node with ID '{node.Id}'");
-        }
+        node.EnsureNoReferenceCycle();
 
         var (simpleProps, complexProps) = SerializationExtensions.GetSimpleAndComplexProperties(node);
+
+        CheckNodeProperties(complexProps);
+
         var cypher = $"MATCH (n) WHERE n.{nameof(Model.INode.Id)} = '{node.Id}' SET n += $props";
-
         var (session, tx) = await GetOrCreateTransaction(transaction);
-
         try
         {
             await tx.RunAsync(cypher, new
@@ -327,17 +316,11 @@ public class Neo4jGraphProvider : IGraph
     {
         if (relationship is null) throw new ArgumentNullException(nameof(relationship));
 
-        if (HasReferenceCycle(relationship))
-        {
-            throw new GraphException($"Reference cycle detected in the relationship with ID '{relationship.Id}'");
-        }
+        relationship.EnsureNoReferenceCycle();
 
         var (simpleProps, complexProps) = SerializationExtensions.GetSimpleAndComplexProperties(relationship);
 
-        if (complexProps.Count > 0)
-        {
-            throw new GraphException($"Complex properties are not supported for relationships.");
-        }
+        CheckRelationshipProperties(complexProps);
 
         var (session, tx) = await GetOrCreateTransaction(transaction);
         var cypher = $"MATCH ()-[r]->() WHERE r.{nameof(Model.IRelationship.Id)} = '{relationship.Id}' SET r += $props";
@@ -613,6 +596,8 @@ public class Neo4jGraphProvider : IGraph
         var label = GetLabel(type);
         var (simpleProps, complexProps) = SerializationExtensions.GetSimpleAndComplexProperties(node);
 
+        CheckNodeProperties(complexProps);
+
         await EnsureConstraintsForLabel(label, simpleProps.Select(p => p.Key));
 
         var cypher = parentId == null ?
@@ -637,63 +622,29 @@ public class Neo4jGraphProvider : IGraph
         return nodeId;
     }
 
-    private static readonly IEqualityComparer<object> ReferenceComparer = ReferenceEqualityComparer.Instance;
-
-    private bool HasReferenceCycle(object obj, HashSet<object>? visited = null)
+    private void CheckRelationshipProperties(Dictionary<PropertyInfo, object?> complexProps)
     {
-        visited ??= new HashSet<object>(ReferenceComparer);
+        List<string> relationshipPropertyNames = [nameof(IRelationship<,>.Source), nameof(IRelationship<,>.Target)];
+        var check = complexProps
+            .Select(p => p.Key)
+            .Where(p => (!relationshipPropertyNames.Contains(p.Name)) && p.PropertyType.IsAssignableTo(typeof(Model.INode)));
 
-        if (obj == null || obj is string || obj.GetType().IsValueType)
-            return false;
-
-        if (!visited.Add(obj))
-            return true;
-
-        var type = obj.GetType();
-        foreach (var prop in type.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        if (check.Any())
         {
-            if (prop.GetIndexParameters().Length > 0) continue; // Skip indexers
-
-            var propType = prop.PropertyType;
-            if (propType.IsRelationshipType() || propType.IsCollectionOfRelationshipType())
-            {
-                // Ignore navigation properties of type IRelationship or collections of IRelationship
-                continue;
-            }
-
-            if (propType.IsAssignableTo(typeof(Model.INode)))
-            {
-                // Ignore properties of type INode
-                continue;
-            }
-
-            var value = prop.GetValue(obj);
-            if (value == null) continue;
-
-            if (value is System.Collections.IEnumerable enumerable && !(value is string))
-            {
-                foreach (var item in enumerable)
-                {
-                    if (item != null && HasReferenceCycle(item, visited))
-                        return true;
-                }
-            }
-            else if (!prop.PropertyType.IsValueType && prop.PropertyType != typeof(string))
-            {
-                if (HasReferenceCycle(value, visited))
-                    return true;
-            }
+            throw new GraphException($"Complex properties are not supported for relationships.");
         }
-        // Do not remove from visited here!
-        return false;
     }
 
-    // Reference equality comparer for HashSet
-    private sealed class ReferenceEqualityComparer : IEqualityComparer<object>
+    private void CheckNodeProperties(Dictionary<PropertyInfo, object?> complexProps)
     {
-        public static ReferenceEqualityComparer Instance { get; } = new ReferenceEqualityComparer();
-        bool IEqualityComparer<object>.Equals(object? x, object? y) => ReferenceEquals(x, y);
-        public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+        var check = complexProps
+            .Select(p => p.Key)
+            .Where(p => p.PropertyType.IsAssignableTo(typeof(Model.INode)));
+
+        if (check.Any())
+        {
+            throw new GraphException($"Properties of type '{typeof(Model.INode).Name}' are not supported for nodes.");
+        }
     }
 
     public void Dispose()

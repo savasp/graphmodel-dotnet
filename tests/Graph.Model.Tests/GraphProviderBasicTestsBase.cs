@@ -300,4 +300,17 @@ public abstract class GraphProviderBasicTestsBase
         Assert.Contains(bobFromProvider.Knows, k => k.Target.FirstName == "Alice");
     }
 
+    public class PersonWithINodeProperty : Node
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public Person? Friend { get; set; } = null;
+    }
+
+    [Fact]
+    public async Task CannotAddNodeWithINodeProperty()
+    {
+        var person = new PersonWithINodeProperty { FirstName = "A", LastName = "B", Friend = new Person { FirstName = "C", LastName = "D" } };
+        await Assert.ThrowsAsync<GraphException>(() => this.provider.CreateNode(person));
+    }
 }
