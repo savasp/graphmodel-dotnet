@@ -22,6 +22,7 @@ public class Person : INode
     public string LastName { get; set; } = string.Empty;
     public int Age { get; set; } = 30;
     public DateTime DateOfBirth { get; set; } = DateTime.UtcNow;
+    public string Bio { get; set; } = string.Empty;
 }
 
 public class Address

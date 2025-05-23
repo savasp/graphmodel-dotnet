@@ -397,7 +397,7 @@ public class Neo4jExpressionVisitor : ExpressionVisitor
                 {
                     if (lambda.Body is BinaryExpression be)
                     {
-                        // Recursively build Cypher for multiple conditions
+                        // Handle binary expressions (==, !=, &&, ||, etc.)
                         string BuildWhere(BinaryExpression expr)
                         {
                             if (expr.NodeType == ExpressionType.AndAlso || expr.NodeType == ExpressionType.OrElse)
@@ -476,9 +476,175 @@ public class Neo4jExpressionVisitor : ExpressionVisitor
                                 if (mcex2.Method.Name == "Contains")
                                     return $"{varName}.{propName} CONTAINS {formattedValue}";
                             }
+
+                            // Handle chained method calls like ToLower().Contains()
+                            if (expr is MethodCallExpression chainedMethod &&
+                                chainedMethod.Object is MethodCallExpression chainCall &&
+                                chainCall.Object is MemberExpression chainMember &&
+                                chainedMethod.Arguments.Count == 1 &&
+                                chainedMethod.Arguments[0] is ConstantExpression chainConst)
+                            {
+                                var propName = chainMember.Member.Name;
+                                var value = chainConst.Value?.ToString() ?? "";
+
+                                if (chainCall.Method.Name == "ToLower" && chainedMethod.Method.Name == "Contains")
+                                    return $"toLower({varName}.{propName}) CONTAINS '{value.ToLower()}'";
+                                if (chainCall.Method.Name == "ToUpper" && chainedMethod.Method.Name == "Contains")
+                                    return $"toUpper({varName}.{propName}) CONTAINS '{value.ToUpper()}'";
+                                if (chainCall.Method.Name == "ToLower" && chainedMethod.Method.Name == "StartsWith")
+                                    return $"toLower({varName}.{propName}) STARTS WITH '{value.ToLower()}'";
+                                if (chainCall.Method.Name == "ToLower" && chainedMethod.Method.Name == "EndsWith")
+                                    return $"toLower({varName}.{propName}) ENDS WITH '{value.ToLower()}'";
+                            }
                             throw new NotSupportedException($"Unsupported condition expression: {expr}");
                         }
                         whereClause = $"WHERE {BuildWhere(be)}";
+                    }
+                    else if (lambda.Body is MethodCallExpression methodCall)
+                    {
+                        // Handle direct method calls like Contains, StartsWith, EndsWith
+                        if (methodCall.Method.Name == "Contains" &&
+                            methodCall.Object is MemberExpression memberExpr &&
+                            methodCall.Arguments.Count == 1 &&
+                            methodCall.Arguments[0] is ConstantExpression constExpr)
+                        {
+                            var propertyName = memberExpr.Member.Name;
+                            var searchValue = constExpr.Value?.ToString() ?? "";
+                            whereClause = $"WHERE {varName}.{propertyName} CONTAINS '{searchValue}'";
+                        }
+                        // Handle chained method calls like ToLower().Contains()
+                        else if (methodCall.Method.Name == "Contains" &&
+                                methodCall.Object is MethodCallExpression chainedCall &&
+                                chainedCall.Method.Name == "ToLower" &&
+                                chainedCall.Object is MemberExpression chainedMemberExpr &&
+                                methodCall.Arguments.Count == 1 &&
+                                methodCall.Arguments[0] is ConstantExpression chainedConstExpr)
+                        {
+                            var propertyName = chainedMemberExpr.Member.Name;
+                            var searchValue = chainedConstExpr.Value?.ToString() ?? "";
+                            // Use toLower() in Cypher for case-insensitive search
+                            whereClause = $"WHERE toLower({varName}.{propertyName}) CONTAINS '{searchValue.ToLower()}'";
+                        }
+                        // Handle chained method calls like ToUpper().Contains()
+                        else if (methodCall.Method.Name == "Contains" &&
+                                methodCall.Object is MethodCallExpression upperChainedCall &&
+                                upperChainedCall.Method.Name == "ToUpper" &&
+                                upperChainedCall.Object is MemberExpression upperChainedMemberExpr &&
+                                methodCall.Arguments.Count == 1 &&
+                                methodCall.Arguments[0] is ConstantExpression upperChainedConstExpr)
+                        {
+                            var propertyName = upperChainedMemberExpr.Member.Name;
+                            var searchValue = upperChainedConstExpr.Value?.ToString() ?? "";
+                            // Use toUpper() in Cypher for case-insensitive search
+                            whereClause = $"WHERE toUpper({varName}.{propertyName}) CONTAINS '{searchValue.ToUpper()}'";
+                        }
+                        // Handle direct StartsWith
+                        else if (methodCall.Method.Name == "StartsWith" &&
+                                methodCall.Object is MemberExpression startsMemberExpr &&
+                                methodCall.Arguments.Count == 1 &&
+                                methodCall.Arguments[0] is ConstantExpression startsConstExpr)
+                        {
+                            var propertyName = startsMemberExpr.Member.Name;
+                            var searchValue = startsConstExpr.Value?.ToString() ?? "";
+                            whereClause = $"WHERE {varName}.{propertyName} STARTS WITH '{searchValue}'";
+                        }
+                        // Handle chained ToLower().StartsWith()
+                        else if (methodCall.Method.Name == "StartsWith" &&
+                                methodCall.Object is MethodCallExpression startsLowerChainedCall &&
+                                startsLowerChainedCall.Method.Name == "ToLower" &&
+                                startsLowerChainedCall.Object is MemberExpression startsLowerChainedMemberExpr &&
+                                methodCall.Arguments.Count == 1 &&
+                                methodCall.Arguments[0] is ConstantExpression startsLowerChainedConstExpr)
+                        {
+                            var propertyName = startsLowerChainedMemberExpr.Member.Name;
+                            var searchValue = startsLowerChainedConstExpr.Value?.ToString() ?? "";
+                            whereClause = $"WHERE toLower({varName}.{propertyName}) STARTS WITH '{searchValue.ToLower()}'";
+                        }
+                        // Handle chained ToUpper().StartsWith()
+                        else if (methodCall.Method.Name == "StartsWith" &&
+                                methodCall.Object is MethodCallExpression startsUpperChainedCall &&
+                                startsUpperChainedCall.Method.Name == "ToUpper" &&
+                                startsUpperChainedCall.Object is MemberExpression startsUpperChainedMemberExpr &&
+                                methodCall.Arguments.Count == 1 &&
+                                methodCall.Arguments[0] is ConstantExpression startsUpperChainedConstExpr)
+                        {
+                            var propertyName = startsUpperChainedMemberExpr.Member.Name;
+                            var searchValue = startsUpperChainedConstExpr.Value?.ToString() ?? "";
+                            whereClause = $"WHERE toUpper({varName}.{propertyName}) STARTS WITH '{searchValue.ToUpper()}'";
+                        }
+                        // Handle direct EndsWith
+                        else if (methodCall.Method.Name == "EndsWith" &&
+                                methodCall.Object is MemberExpression endsMemberExpr &&
+                                methodCall.Arguments.Count == 1 &&
+                                methodCall.Arguments[0] is ConstantExpression endsConstExpr)
+                        {
+                            var propertyName = endsMemberExpr.Member.Name;
+                            var searchValue = endsConstExpr.Value?.ToString() ?? "";
+                            whereClause = $"WHERE {varName}.{propertyName} ENDS WITH '{searchValue}'";
+                        }
+                        // Handle chained ToLower().EndsWith()
+                        else if (methodCall.Method.Name == "EndsWith" &&
+                                methodCall.Object is MethodCallExpression endsLowerChainedCall &&
+                                endsLowerChainedCall.Method.Name == "ToLower" &&
+                                endsLowerChainedCall.Object is MemberExpression endsLowerChainedMemberExpr &&
+                                methodCall.Arguments.Count == 1 &&
+                                methodCall.Arguments[0] is ConstantExpression endsLowerChainedConstExpr)
+                        {
+                            var propertyName = endsLowerChainedMemberExpr.Member.Name;
+                            var searchValue = endsLowerChainedConstExpr.Value?.ToString() ?? "";
+                            whereClause = $"WHERE toLower({varName}.{propertyName}) ENDS WITH '{searchValue.ToLower()}'";
+                        }
+                        // Handle chained ToUpper().EndsWith()
+                        else if (methodCall.Method.Name == "EndsWith" &&
+                                methodCall.Object is MethodCallExpression endsUpperChainedCall &&
+                                endsUpperChainedCall.Method.Name == "ToUpper" &&
+                                endsUpperChainedCall.Object is MemberExpression endsUpperChainedMemberExpr &&
+                                methodCall.Arguments.Count == 1 &&
+                                methodCall.Arguments[0] is ConstantExpression endsUpperChainedConstExpr)
+                        {
+                            var propertyName = endsUpperChainedMemberExpr.Member.Name;
+                            var searchValue = endsUpperChainedConstExpr.Value?.ToString() ?? "";
+                            whereClause = $"WHERE toUpper({varName}.{propertyName}) ENDS WITH '{searchValue.ToUpper()}'";
+                        }
+                        // Handle Trim().Contains() for whitespace handling
+                        else if (methodCall.Method.Name == "Contains" &&
+                                methodCall.Object is MethodCallExpression trimChainedCall &&
+                                trimChainedCall.Method.Name == "Trim" &&
+                                trimChainedCall.Object is MemberExpression trimChainedMemberExpr &&
+                                methodCall.Arguments.Count == 1 &&
+                                methodCall.Arguments[0] is ConstantExpression trimChainedConstExpr)
+                        {
+                            var propertyName = trimChainedMemberExpr.Member.Name;
+                            var searchValue = trimChainedConstExpr.Value?.ToString() ?? "";
+                            whereClause = $"WHERE trim({varName}.{propertyName}) CONTAINS '{searchValue.Trim()}'";
+                        }
+                        // Handle string.IsNullOrEmpty() checks
+                        else if (methodCall.Method.Name == "IsNullOrEmpty" &&
+                                methodCall.Method.DeclaringType == typeof(string) &&
+                                methodCall.Arguments.Count == 1 &&
+                                methodCall.Arguments[0] is MemberExpression nullCheckMemberExpr)
+                        {
+                            var propertyName = nullCheckMemberExpr.Member.Name;
+                            whereClause = $"WHERE ({varName}.{propertyName} IS NULL OR {varName}.{propertyName} = '')";
+                        }
+                        // Handle string.IsNullOrWhiteSpace() checks
+                        else if (methodCall.Method.Name == "IsNullOrWhiteSpace" &&
+                                methodCall.Method.DeclaringType == typeof(string) &&
+                                methodCall.Arguments.Count == 1 &&
+                                methodCall.Arguments[0] is MemberExpression whitespaceCheckMemberExpr)
+                        {
+                            var propertyName = whitespaceCheckMemberExpr.Member.Name;
+                            whereClause = $"WHERE ({varName}.{propertyName} IS NULL OR trim({varName}.{propertyName}) = '')";
+                        }
+                        // Handle property.Length comparisons (though this would typically be in BinaryExpression)
+                        else if (methodCall.Method.Name == "get_Length" &&
+                                methodCall.Object is MemberExpression lengthMemberExpr)
+                        {
+                            // This is handled in BinaryExpression typically, but we can add support here
+                            var propertyName = lengthMemberExpr.Member.Name;
+                            // This would need additional context for the comparison, so we might need to restructure
+                            throw new NotSupportedException("Length property should be used in comparison expressions (e.g., p.Name.Length > 5)");
+                        }
                     }
                 }
                 current = mce.Arguments[0];
