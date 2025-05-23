@@ -15,8 +15,6 @@
 using System.Collections;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model;
-using Microsoft.Extensions.Logging;
-using Neo4j.Driver;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq;
 
