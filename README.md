@@ -1,5 +1,7 @@
 # GraphModel
 
+Additional context for the project from [Savas Parastatidis](https://savas.me)' blog: [Playing with graphs and neo4j](https://savas.me/2025/05/23/playing-with-graphs-and-neo4j/).
+
 GraphModel is a modular .NET project for working with graph data structures and graph databases. It consists of two main libraries:
 
 - **Graph.Model**: A powerful and flexible abstraction for graph data, supporting type-safe nodes and relationships, LINQ queries, transactions, and provider-agnostic architecture.
