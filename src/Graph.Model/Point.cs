@@ -17,9 +17,9 @@ namespace Cvoya.Graph.Model;
 /// <summary>
 /// Represents a point in 3D space with X, Y, and Z coordinates.
 /// </summary>
-/// <param name="x">The X coordinate of the point.</param>
-/// <param name="y">The Y coordinate of the point.</param>
-/// <param name="z">The Z coordinate of the point.</param>
+/// <param name="X">The X coordinate of the point.</param>
+/// <param name="Y">The Y coordinate of the point.</param>
+/// <param name="Z">The Z coordinate of the point.</param>
 public readonly record struct Point(double X, double Y, double Z)
 {
     /// <summary>

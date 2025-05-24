@@ -46,15 +46,4 @@ public class GraphException : Exception
     public GraphException(string message, Exception innerException) : base(message, innerException)
     {
     }
-    
-    /// <summary>
-    /// Initializes a new instance of the <see cref="GraphException"/> class with serialized data.
-    /// </summary>
-    /// <param name="info">The object that holds the serialized object data.</param>
-    /// <param name="context">The contextual information about the source or destination.</param>
-    protected GraphException(System.Runtime.Serialization.SerializationInfo info, 
-                           System.Runtime.Serialization.StreamingContext context) 
-        : base(info, context)
-    {
-    }
 }
