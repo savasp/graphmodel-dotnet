@@ -19,8 +19,8 @@
         <Company>Cvoya</Company>
         <Description>A graph abstraction library with support for LINQ expressions.</Description>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/savasp</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/savasp</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/savasp/graphmodel</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/savasp/graphmodel</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageTags>graph;database;neo4j;linq</PackageTags>
         <PackageReadmeFile>README.md</PackageReadmeFile>
