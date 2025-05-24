@@ -19,6 +19,9 @@ namespace Cvoya.Graph.Model;
 /// </summary>
 public struct GraphOperationOptions
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="GraphOperationOptions"/> struct with default values.
+    /// </summary>
     public GraphOperationOptions()
     {
     }

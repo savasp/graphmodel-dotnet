@@ -19,6 +19,10 @@ namespace Cvoya.Graph.Model;
 /// </summary>
 public abstract class Relationship : IRelationship
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Relationship"/> class with default values.
+    /// </summary>
+    /// <param name="isBidirectional">Indicates whether the relationship is bidirectional.</param>
     public Relationship(bool isBidirectional)
     {
         this.IsBidirectional = isBidirectional;

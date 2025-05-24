@@ -27,10 +27,26 @@ public class Relationship<S, T> : IRelationship<S, T>
     private S? source = null;
     private T? target = null;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Relationship{S, T}"/> class with default values.
+    /// </summary>
+    /// <param name="isBidirectional">Indicates whether the relationship is bidirectional.</param>
+    /// <remarks>
+    /// The default value for <see cref="IsBidirectional"/> is false.
+    /// </remarks>
     public Relationship(bool isBidirectional = false) : this(null, null, isBidirectional)
     {
     }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Relationship{S, T}"/> class with specified source and target nodes.
+    /// </summary>
+    /// <param name="source">The source node of the relationship.</param>
+    /// <param name="target">The target node of the relationship.</param>
+    /// <param name="isBidirectional">Indicates whether the relationship is bidirectional.</param>
+    /// <remarks>
+    /// The default value for <see cref="IsBidirectional"/> is false.
+    /// </remarks>
     public Relationship(S? source, T? target, bool isBidirectional = false)
     {
         this.Source = source;

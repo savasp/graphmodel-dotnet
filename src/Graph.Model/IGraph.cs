@@ -29,7 +29,7 @@ public interface IGraph : IDisposable
     /// <typeparam name="N">The type of the nodes to query</typeparam>
     /// <returns>A queryable interface to the nodes</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     IQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null) where N : INode, new();
 
     /// <summary>
@@ -41,7 +41,7 @@ public interface IGraph : IDisposable
     /// <typeparam name="R">The type of the relationships to query</typeparam>
     /// <returns>A queryable interface to the relationships</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     IQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : IRelationship, new();
 
@@ -56,7 +56,7 @@ public interface IGraph : IDisposable
     /// <returns>The node with the specified ID</returns>
     /// <exception cref="KeyNotFoundException">Thrown when the node is not found</exception>
     /// <exception cref="GraphException">Thrown when the node cannot be retrieved or there is another issue</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task<T> GetNode<T>(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where T : INode, new();
 
@@ -71,7 +71,7 @@ public interface IGraph : IDisposable
     /// <returns>A list of nodes with the specified IDs</returns>
     /// <exception cref="KeyNotFoundException">Thrown when any of the nodes are not found</exception>
     /// <exception cref="GraphException">Thrown when the node cannot be retrieved or there is another issue</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task<IEnumerable<T>> GetNodes<T>(IEnumerable<string> ids, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where T : INode, new();
 
@@ -86,7 +86,7 @@ public interface IGraph : IDisposable
     /// <returns>The relationship with the specified ID</returns>
     /// <exception cref="KeyNotFoundException">Thrown when any of the relationship is not found</exception>
     /// <exception cref="GraphException">Thrown when the relationship cannot be retrieved or there is another issue</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task<R> GetRelationship<R>(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : IRelationship, new();
 
@@ -101,7 +101,7 @@ public interface IGraph : IDisposable
     /// <returns>A list of relationships with the specified IDs</returns>
     /// <exception cref="KeyNotFoundException">Thrown when any of the relationships are not found</exception>
     /// <exception cref="GraphException">Thrown when any of the relationships cannot be retrieved or there is another issue</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task<IEnumerable<T>> GetRelationships<T>(IEnumerable<string> ids, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where T : IRelationship, new();
 
@@ -113,9 +113,8 @@ public interface IGraph : IDisposable
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <typeparam name="T">The type of the node</typeparam>
-    /// <param name="node">The node to create</param>
     /// <exception cref="GraphException">Thrown when the node cannot be created or there is another issue</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task CreateNode<T>(T node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where T : INode, new();
 
@@ -128,7 +127,7 @@ public interface IGraph : IDisposable
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <exception cref="GraphException">Thrown when the relationship cannot be created or there is another issue</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task CreateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : IRelationship, new();
 
@@ -141,7 +140,7 @@ public interface IGraph : IDisposable
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <exception cref="GraphException">Thrown when the update cannot be performed or there is another issue</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task UpdateNode<T>(T node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where T : INode, new();
 
@@ -154,7 +153,7 @@ public interface IGraph : IDisposable
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <exception cref="GraphException">Thrown when the relationship cannot be updated or there is another issue</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task UpdateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : IRelationship, new();
 
@@ -162,7 +161,7 @@ public interface IGraph : IDisposable
     /// Begins a new transaction
     /// </summary>
     /// <returns>A transaction object</returns>
-    /// <exception cref="GraphTransaction">Thrown when the transaction cannot be created</exception>
+    /// <exception cref="GraphTransactionException">Thrown when the transaction cannot be created</exception>
     Task<IGraphTransaction> BeginTransaction();
 
     /// <summary>
@@ -173,7 +172,7 @@ public interface IGraph : IDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A task representing the asynchronous operation</returns>
     /// <exception cref="GraphException">Thrown when the node cannot be deleted or there is another issue</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task DeleteNode(string id, IGraphTransaction? transaction = null);
 
     /// <summary>
@@ -184,6 +183,6 @@ public interface IGraph : IDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A task representing the asynchronous operation</returns>
     /// <exception cref="GraphException">Thrown when the relationship cannot be deleted or there is another issue</exception>
-    /// <exception cref="GraphTransaction">Thrown when there is an issue with the given or automatically created transaction</exception>
+    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task DeleteRelationship(string id, IGraphTransaction? transaction = null);
 }

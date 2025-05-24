@@ -19,7 +19,18 @@ namespace Cvoya.Graph.Model;
 /// </summary>
 public struct Point(double x, double y, double z)
 {
+    /// <summary>
+    /// The X coordinate of the point.
+    /// </summary>
     public double X { get; set; } = x;
+
+    /// <summary>
+    /// The Y coordinate of the point.
+    /// </summary>
     public double Y { get; set; } = y;
+
+    /// <summary>
+    /// The Z coordinate of the point.
+    /// </summary>
     public double Z { get; set; } = z;
 }

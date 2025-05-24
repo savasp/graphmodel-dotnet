@@ -6,5 +6,38 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <RootNamespace>Cvoya.Graph.Model</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Model</AssemblyName>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    </PropertyGroup>
+
+
+        <!-- Package Information -->
+    <PropertyGroup>
+        <PackageId>Cvoya.Graph.Model</PackageId>
+        <Version>1.0.0</Version>
+        <Authors>Savas Parastatidis</Authors>
+        <Company>Cvoya</Company>
+        <Description>A graph abstraction library with support for LINQ expressions.</Description>
+        <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/savasp</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/savasp</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageTags>graph;database;neo4j;linq</PackageTags>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    </PropertyGroup>
+
+    <!-- Include README in package -->
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
+
+
+    <PropertyGroup>
+        <!-- Generate XML documentation -->
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <!-- Include symbols for debugging -->
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     </PropertyGroup>
 </Project>
