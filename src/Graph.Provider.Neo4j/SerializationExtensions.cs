@@ -87,6 +87,8 @@ internal static class SerializationExtensions
         TimeSpan ts => ts,
         TimeOnly to => to.ToTimeSpan(),
         DateOnly d => d.ToDateTime(TimeOnly.MinValue),
+        decimal d => (double)d, // Convert decimal to double for Neo4j storage
+        float f => (double)f,   // Convert float to double for Neo4j storage
         Model.Point point => new global::Neo4j.Driver.Point(WGS84, point.X, point.Y, point.Z),
         IDictionary dict => dict.Cast<DictionaryEntry>()
                                 .ToDictionary(
@@ -234,6 +236,19 @@ internal static class SerializationExtensions
             Type t when t == typeof(Model.Point) && value is global::Neo4j.Driver.Point point => new Model.Point(point.X, point.Y, point.Z),
             Type t when t == typeof(int) && value is long l => (int)l,
             Type t when t == typeof(long) && value is int i => (long)i,
+            Type t when t == typeof(float) && value is double d => (float)d,
+            Type t when t == typeof(float) && value is int i3 => (float)i3,
+            Type t when t == typeof(float) && value is long l3 => (float)l3,
+            Type t when t == typeof(float) && value is decimal dec => (float)dec,
+            Type t when t == typeof(double) && value is float f => (double)f,
+            Type t when t == typeof(double) && value is int i4 => (double)i4,
+            Type t when t == typeof(double) && value is long l4 => (double)l4,
+            Type t when t == typeof(double) && value is decimal dec2 => (double)dec2,
+            Type t when t == typeof(decimal) && value is double d2 => (decimal)d2,
+            Type t when t == typeof(decimal) && value is float f2 => (decimal)f2,
+            Type t when t == typeof(decimal) && value is int i2 => (decimal)i2,
+            Type t when t == typeof(decimal) && value is long l2 => (decimal)l2,
+            Type t when t == typeof(string) && value is byte[] bytes => System.Text.Encoding.UTF8.GetString(bytes),
             _ =>
                 throw new InvalidCastException($"Cannot convert value of type {value.GetType().FullName} to {targetType.FullName}. Value: {value}")
         };
@@ -258,6 +273,7 @@ internal static class SerializationExtensions
         _ when type.IsEnum => true,
         _ when type == typeof(string) => true,
         _ when type.IsValueType => true,
+        _ when type == typeof(decimal) => true,
         _ when type == typeof(Model.Point) => true,
         _ => false
     };

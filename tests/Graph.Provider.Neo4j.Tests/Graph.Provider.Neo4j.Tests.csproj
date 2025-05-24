@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <AssemblyName>Cvoya.Graph.Provider.Neo4j.Tests</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
