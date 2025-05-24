@@ -104,15 +104,11 @@ internal class Neo4jQueryProvider(
             }
         }
 
-        // Debug: Check if we have a Select expression
         var lastSelect = GetLastSelect(expression);
-        Console.WriteLine($"DEBUG: TraversalDepth = {_options.TraversalDepth}, LastSelect = {lastSelect?.Method.Name}");
 
         // Check if we have TraversalDepth > 0 and a Select projection
         if (_options.TraversalDepth > 0 && lastSelect != null)
         {
-            Console.WriteLine("DEBUG: Using two-step approach (load entities first, then project)");
-
             // Execute without projection first to load relationships
             var expressionWithoutProjection = RemoveLastSelect(expression);
 
@@ -124,18 +120,14 @@ internal class Neo4jQueryProvider(
                 originalElementType = _rootType;
             }
 
-            Console.WriteLine($"DEBUG: Original element type: {originalElementType.Name}");
-
             var visitor = new Neo4jExpressionVisitor(_provider, _rootType, originalElementType, _transaction);
             var cypher = visitor.Translate(expressionWithoutProjection);
 
-            Console.WriteLine($"DEBUG: Step 1 - Loading entities: {cypher}");
             var result = visitor.ExecuteQuery(cypher, originalElementType);
 
             // Apply traversal depth to load relationships
             if (_options.TraversalDepth > 0)
             {
-                Console.WriteLine("DEBUG: Step 2 - Applying traversal depth");
                 if (result is IEnumerable enumerable && result is not string)
                 {
                     ApplyTraversalDepthSync(enumerable, _options, originalElementType);
@@ -149,7 +141,6 @@ internal class Neo4jQueryProvider(
             }
 
             // Now apply the projection in memory
-            Console.WriteLine("DEBUG: Step 3 - Applying projection in memory");
             if (lastSelect != null)
             {
                 result = ApplyProjection(result!, lastSelect, originalElementType);
@@ -160,7 +151,6 @@ internal class Neo4jQueryProvider(
         }
         else
         {
-            Console.WriteLine("DEBUG: Using normal execution path");
             // Normal execution path (unchanged)
             var visitor = new Neo4jExpressionVisitor(_provider, _rootType, elementType, _transaction);
             var cypher = visitor.Translate(expression);
@@ -267,12 +257,9 @@ internal class Neo4jQueryProvider(
         var current = expression;
         while (current is MethodCallExpression method)
         {
-            Console.WriteLine($"DEBUG: Checking method: {method.Method.Name}");
-
             if (method.Method.Name == "Select")
             {
                 lastSelect = method;
-                Console.WriteLine($"DEBUG: Found Select method!");
             }
 
             if (method.Arguments.Count > 0)
@@ -285,18 +272,14 @@ internal class Neo4jQueryProvider(
             }
         }
 
-        Console.WriteLine($"DEBUG: Final lastSelect: {lastSelect?.Method.Name ?? "null"}");
         return lastSelect;
     }
 
     private Expression RemoveLastSelect(Expression expression)
     {
-        Console.WriteLine($"DEBUG: RemoveLastSelect - Input: {expression}");
-
         // We need to rebuild the expression tree without the Select
         var result = RemoveSelectFromTree(expression);
 
-        Console.WriteLine($"DEBUG: RemoveLastSelect - Output: {result}");
         return result;
     }
 

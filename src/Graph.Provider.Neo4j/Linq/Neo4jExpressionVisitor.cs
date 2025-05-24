@@ -953,7 +953,6 @@ internal class Neo4jExpressionVisitor(
     public async Task<object?> ExecuteQueryAsync(string cypher, Type elementType)
     {
         var (_, tx) = await _provider.GetOrCreateTransaction(_transaction);
-        Console.WriteLine($"DEBUG: ExecuteQueryAsync cypher: {cypher}");
         var cursor = await tx.RunAsync(cypher, _parameters);
 
         if (_isCountQuery)

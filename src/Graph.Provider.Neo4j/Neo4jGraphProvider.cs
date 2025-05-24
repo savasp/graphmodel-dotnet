@@ -69,7 +69,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public IQueryable<N> Nodes<N>(GraphOperationOptions options, IGraphTransaction? transaction = null)
+    public IQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
            where N : Model.INode, new()
     {
         var provider = new Neo4jQueryProvider(this, options, this.logger, transaction, typeof(N));
@@ -78,7 +78,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public IQueryable<R> Relationships<R>(GraphOperationOptions options, IGraphTransaction? transaction = null)
+    public IQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
          where R : Model.IRelationship, new()
     {
         var provider = new Neo4jQueryProvider(this, options, this.logger, transaction, typeof(R));
@@ -87,7 +87,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<T> GetNode<T>(string id, GraphOperationOptions options, IGraphTransaction? transaction = null)
+    public async Task<T> GetNode<T>(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where T : Model.INode, new()
     {
         if (string.IsNullOrEmpty(id)) throw new ArgumentNullException(nameof(id));
@@ -97,7 +97,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<IEnumerable<T>> GetNodes<T>(IEnumerable<string> ids, GraphOperationOptions options, IGraphTransaction? transaction = null)
+    public async Task<IEnumerable<T>> GetNodes<T>(IEnumerable<string> ids, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where T : Model.INode, new()
     {
         if (ids is null || !ids.Any()) throw new ArgumentException("IDs cannot be null or empty", nameof(ids));
@@ -138,7 +138,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<R> GetRelationship<R>(string id, GraphOperationOptions options, IGraphTransaction? transaction = null)
+    public async Task<R> GetRelationship<R>(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : Model.IRelationship, new()
     {
         if (string.IsNullOrEmpty(id)) throw new ArgumentNullException(nameof(id));
@@ -149,7 +149,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<IEnumerable<R>> GetRelationships<R>(IEnumerable<string> ids, GraphOperationOptions options, IGraphTransaction? transaction = null)
+    public async Task<IEnumerable<R>> GetRelationships<R>(IEnumerable<string> ids, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : Model.IRelationship, new()
     {
         if (ids is null || !ids.Any()) throw new ArgumentException("IDs cannot be null or empty", nameof(ids));
@@ -189,7 +189,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task CreateNode<T>(T node, GraphOperationOptions options, IGraphTransaction? transaction = null)
+    public async Task CreateNode<T>(T node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where T : Model.INode, new()
     {
         if (node is null) throw new ArgumentNullException(nameof(node));
@@ -231,7 +231,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task CreateRelationship<R>(R relationship, GraphOperationOptions options, IGraphTransaction? transaction = null)
+    public async Task CreateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : Model.IRelationship, new()
     {
         if (relationship is null) throw new ArgumentNullException(nameof(relationship));
@@ -272,7 +272,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task UpdateNode<T>(T node, GraphOperationOptions options, IGraphTransaction? transaction = null)
+    public async Task UpdateNode<T>(T node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where T : Model.INode, new()
     {
         if (node == null) throw new ArgumentNullException(nameof(node));
@@ -320,7 +320,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task UpdateRelationship<R>(R relationship, GraphOperationOptions options, IGraphTransaction? transaction = null)
+    public async Task UpdateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : Model.IRelationship, new()
     {
         if (relationship is null) throw new ArgumentNullException(nameof(relationship));
@@ -981,8 +981,6 @@ public class Neo4jGraphProvider : IGraph
             var elementType = prop.PropertyType.GetGenericArguments()[0];
             var relLabel = GetLabel(elementType);
 
-            Console.WriteLine($"DEBUG: Loading relationships for node {node.Id}, property {prop.Name}, relationship type {elementType.Name}, label {relLabel}");
-
             // Check if we should process this relationship type
             if (options.RelationshipTypes?.Any() == true && !options.RelationshipTypes.Contains(relLabel))
                 continue;
@@ -993,15 +991,11 @@ public class Neo4jGraphProvider : IGraph
                 WHERE n.{nameof(Model.INode.Id)} = $nodeId
                 RETURN r, m";
 
-            Console.WriteLine($"DEBUG: Executing cypher: {cypher} with nodeId: {node.Id}");
-
             var result = await tx.RunAsync(cypher, new { nodeId = node.Id });
             var relationships = new List<Model.IRelationship>();
 
             // First, collect all the data from the cursor
             var records = await result.ToListAsync();
-
-            Console.WriteLine($"DEBUG: Found {records.Count} relationships of type {relLabel} for node {node.Id}");
 
             // Then process each record
             foreach (var record in records)
