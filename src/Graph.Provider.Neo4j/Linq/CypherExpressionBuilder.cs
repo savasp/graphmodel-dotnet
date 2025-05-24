@@ -176,7 +176,7 @@ internal static class CypherExpressionBuilder
                 return $"({left} {op} {right})";
 
             case ConstantExpression ce:
-                return Neo4jExpressionVisitor.FormatValueForCypher(ce.Value);
+                return FormatValueForCypher(ce.Value);
 
             case MethodCallExpression mce:
                 // Handle collection methods
@@ -441,6 +441,22 @@ internal static class CypherExpressionBuilder
         // ...
         // Fallback: null
         return null;
+    }
+
+    internal static string FormatValueForCypher(object? value)
+    {
+        return value switch
+        {
+            null => "null",
+            string s => $"'{s.Replace("'", "\\'")}'",
+            bool b => b ? "true" : "false",
+            int or long or double or float or decimal => value.ToString()!,
+            DateTime dt => $"datetime('{dt:O}')",
+            DateTimeOffset dto => $"datetime('{dto:O}')",
+            TimeSpan ts => $"duration('PT{ts.TotalSeconds}S')",
+            Enum e => $"'{e}'",
+            _ => $"'{value}'"
+        };
     }
 
     private static string BuildCypherExpressionForRelationshipProjection(Expression expr, string relVar, string targetVar)

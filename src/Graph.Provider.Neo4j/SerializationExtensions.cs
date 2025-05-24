@@ -122,6 +122,44 @@ internal static class SerializationExtensions
             }
         }
 
+        // Handle ID property for nodes and relationships
+        if (entity is global::Neo4j.Driver.INode node)
+        {
+            var idProperty = properties.FirstOrDefault(p => p.Name == "Id");
+            if (idProperty != null && idProperty.PropertyType == typeof(string))
+            {
+                // First try to get the Id from the node properties
+                if (node.Properties.ContainsKey("Id"))
+                {
+                    idProperty.SetValue(obj, node.Properties["Id"].As<string>());
+                }
+                else
+                {
+                    // Fall back to ElementId if no Id property exists
+                    idProperty.SetValue(obj, node.ElementId);
+                }
+            }
+        }
+        else if (entity is global::Neo4j.Driver.IRelationship relationship)
+        {
+            var idProperty = properties.FirstOrDefault(p => p.Name == "Id");
+            if (idProperty != null && idProperty.PropertyType == typeof(string))
+            {
+                // First try to get the Id from the relationship properties
+                if (relationship.Properties.ContainsKey("Id"))
+                {
+                    idProperty.SetValue(obj, relationship.Properties["Id"].As<string>());
+                }
+                else
+                {
+                    // Fall back to ElementId if no Id property exists
+                    idProperty.SetValue(obj, relationship.ElementId);
+                }
+            }
+
+            // Don't set SourceId and TargetId here - they will be set by the query
+            // that includes the source and target nodes
+        }
         return obj;
     }
 

@@ -73,7 +73,6 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
             var status = record?["currentStatus"].As<string>();
             if (status == "online")
             {
-                Console.WriteLine($"Database '{this.databaseName}' is online (SHOW DATABASES).");
                 break;
             }
             await Task.Delay(delayMs);
@@ -87,7 +86,6 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
                 await using var session = driver.AsyncSession(builder => builder.WithDatabase(this.databaseName));
                 var result = await session.RunAsync("RETURN 1");
                 await result.ConsumeAsync();
-                Console.WriteLine($"Database '{this.databaseName}' is available for driver connections.");
                 return;
             }
             catch (Neo4jException ex) when (ex.Message.Contains("not found") || ex.Message.Contains("does not exist"))

@@ -243,7 +243,7 @@ public abstract class BasicTestsBase
         await this.provider.CreateNode(person);
     }
 
-    public class PersonWithNonListGenericProperty : Node
+    public class PersonWithGenericDictionaryProperty : Node
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
@@ -251,9 +251,9 @@ public abstract class BasicTestsBase
     }
 
     [Fact]
-    public async Task CannotAddNodeWithNonListGenericProperty()
+    public async Task CannotAddNodeWithGenericDictionaryProperty()
     {
-        var person = new PersonWithNonListGenericProperty { FirstName = "A", GenericProperty = new Dictionary<string, Person>() };
+        var person = new PersonWithGenericDictionaryProperty { FirstName = "A", GenericProperty = new Dictionary<string, Person>() };
 
         await Assert.ThrowsAsync<GraphException>(() => this.provider.CreateNode(person));
     }

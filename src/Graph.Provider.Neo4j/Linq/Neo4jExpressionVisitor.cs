@@ -12,1077 +12,1216 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Collections;
 using System.Linq.Expressions;
-using System.Reflection;
+using System.Text;
 using Cvoya.Graph.Model;
-using Cvoya.Graph.Provider.Neo4j;
 using Neo4j.Driver;
-using Neo4jDriver = Neo4j.Driver;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq;
 
-public class Neo4jExpressionVisitor : ExpressionVisitor
+public class Neo4jExpressionVisitor(
+    Neo4jGraphProvider provider,
+    Type rootType,
+    Type elementType,
+    IGraphTransaction? transaction = null)
 {
-    private readonly Neo4jGraphProvider _provider;
-    private readonly Type _rootType;
-    private readonly Type _elementType;
-    private readonly IGraphTransaction? _transaction;
+    private readonly Neo4jGraphProvider _provider = provider;
+    private readonly Type _rootType = rootType;
+    private readonly Type _elementType = elementType;
+    private readonly IGraphTransaction? _transaction = transaction;
+    private readonly StringBuilder _matchClause = new();
+    private readonly StringBuilder _whereClause = new();
+    private readonly StringBuilder _returnClause = new();
+    private readonly StringBuilder _orderByClause = new();
+    private readonly Dictionary<string, object> _parameters = new();
+    private int _parameterIndex = 0;
+    private string _alias = "n";
+    private int? _skip;
+    private int? _take;
+    private bool _isCountQuery = false;
+    private bool _isAnyQuery = false;
+    private bool _isAllQuery = false;
+    private bool _isFirstQuery = false;
+    private bool _isLastQuery = false;
+    private bool _isSingleQuery = false;
+    private bool _isSingleOrDefaultQuery = false;
+    private bool _isDistinct = false;
+    private bool _isGrouping = false;
+    private string _groupingKeyAlias = "";
+    private string _groupingItemsAlias = "";
+    private Expression? _projectionExpression;
+    private LambdaExpression? _anyPredicate;
+    private LambdaExpression? _allPredicate;
+    private string _groupingKeyProperty = "";
 
-    public Neo4jExpressionVisitor(Neo4jGraphProvider provider, Type rootType, Type elementType, IGraphTransaction? transaction)
-    {
-        _provider = provider;
-        _rootType = rootType;
-        _elementType = elementType;
-        _transaction = transaction;
-    }
+    public bool IsGroupingQuery => _isGrouping;
 
     public string Translate(Expression expression)
     {
-        // Cypher query builder with support for Where, Select, OrderBy, Take, navigation, and Neo4j functions
-        var label = GetLabel(_rootType);
-        var varName = "n";
-        string? whereClause = null;
-        string? returnClause = $"RETURN {varName}";
-        string? limitClause = null;
-        string? matchClause = null;
-        string? skipClause = null;
-        bool useDistinct = false;
-        var orderings = new List<string>();
-
-        // Add navigation property support
-        var navigationMatches = new List<string>();
-        var navigationReturns = new List<string>();
-
-        // Helper to recursively process navigation property chains
-        void ProcessNavigation(MemberExpression memberExpr, string parentVar, string parentLabel, int depth = 1)
-        {
-            var prop = memberExpr.Member;
-            var propType = (prop as PropertyInfo)?.PropertyType;
-            if (propType == null) return;
-            if (typeof(System.Collections.IEnumerable).IsAssignableFrom(propType) && propType != typeof(string))
-            {
-                // Collection navigation (e.g., List<Knows>)
-                var relType = propType.IsArray ? propType.GetElementType() : propType.GetGenericArguments().FirstOrDefault();
-                if (relType == null) return;
-                var relLabel = GetLabel(relType);
-                var relVar = $"r{depth}";
-                var targetType = relType.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition().Name.StartsWith("IRelationship"))?.GetGenericArguments().ElementAtOrDefault(1);
-                var targetLabel = targetType != null ? GetLabel(targetType) : "Target";
-                var targetVar = $"t{depth}";
-                navigationMatches.Add($"OPTIONAL MATCH ({parentVar})-[{relVar}:{relLabel}]->({targetVar}:{targetLabel})");
-                navigationReturns.Add($"collect({targetVar}) AS {prop.Name}");
-            }
-            else if (typeof(Cvoya.Graph.Model.IRelationship).IsAssignableFrom(propType))
-            {
-                // Relationship navigation (e.g., Knows)
-                var relLabel = GetLabel(propType);
-                var relVar = $"r{depth}";
-                var targetType = propType.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition().Name.StartsWith("IRelationship"))?.GetGenericArguments().ElementAtOrDefault(1);
-                var targetLabel = targetType != null ? GetLabel(targetType) : "Target";
-                var targetVar = $"t{depth}";
-                navigationMatches.Add($"OPTIONAL MATCH ({parentVar})-[{relVar}:{relLabel}]->({targetVar}:{targetLabel})");
-                navigationReturns.Add($"{relVar} AS {prop.Name}");
-            }
-            else if (typeof(Cvoya.Graph.Model.INode).IsAssignableFrom(propType))
-            {
-                // Node navigation (e.g., Target)
-                var nodeLabel = GetLabel(propType);
-                var nodeVar = $"n{depth}";
-                navigationMatches.Add($"OPTIONAL MATCH ({parentVar})-->{nodeVar}:{nodeLabel}");
-                navigationReturns.Add($"{nodeVar} AS {prop.Name}");
-            }
-        }
-
-        Expression current = expression;
-        LambdaExpression? selectLambda = null;
-        int? takeCount = null;
-        bool reverseOrderForLast = false;
-
-        // Walk the expression tree for supported LINQ methods
-        while (current is MethodCallExpression mce)
-        {
-            var method = mce.Method.Name;
-
-            if (method == "Count")
-            {
-                if (mce.Arguments.Count == 2 && mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
-                {
-                    if (lambda.Body is BinaryExpression be)
-                    {
-                        string BuildWhere(BinaryExpression expr)
-                        {
-                            if (expr.NodeType == ExpressionType.AndAlso || expr.NodeType == ExpressionType.OrElse)
-                            {
-                                var left = expr.Left is BinaryExpression leftBin ? BuildWhere(leftBin) : BuildSimpleCondition(expr.Left);
-                                var right = expr.Right is BinaryExpression rightBin ? BuildWhere(rightBin) : BuildSimpleCondition(expr.Right);
-                                var op = expr.NodeType == ExpressionType.AndAlso ? "AND" : "OR";
-                                return $"({left} {op} {right})";
-                            }
-                            return BuildSimpleCondition(expr);
-                        }
-
-                        string BuildSimpleCondition(Expression expr)
-                        {
-                            if (expr is BinaryExpression cond)
-                            {
-                                string op = cond.NodeType switch
-                                {
-                                    ExpressionType.Equal => "=",
-                                    ExpressionType.NotEqual => "!=",
-                                    ExpressionType.GreaterThan => ">",
-                                    ExpressionType.LessThan => "<",
-                                    ExpressionType.GreaterThanOrEqual => ">=",
-                                    ExpressionType.LessThanOrEqual => "<=",
-                                    _ => throw new NotSupportedException($"Operator {cond.NodeType} not supported")
-                                };
-                                if (cond.Left is MemberExpression me && ExpressionUtils.IsParameterOrPropertyOfLambda(me, lambda.Parameters[0]))
-                                {
-                                    var propName = me.Member.Name;
-                                    var value = ExpressionUtils.EvaluateExpression(cond.Right);
-                                    var formattedValue = FormatValueForCypher(value);
-                                    return $"{varName}.{propName} {op} {formattedValue}";
-                                }
-                                else if (cond.Right is MemberExpression me2 && ExpressionUtils.IsParameterOrPropertyOfLambda(me2, lambda.Parameters[0]))
-                                {
-                                    var propName = me2.Member.Name;
-                                    var value = ExpressionUtils.EvaluateExpression(cond.Left);
-                                    var formattedValue = FormatValueForCypher(value);
-                                    return $"{varName}.{propName} {op} {formattedValue}";
-                                }
-                                // Support for method calls (e.g. StartsWith)
-                                else if (cond.Left is MethodCallExpression mcex && cond.Right is ConstantExpression ce3)
-                                {
-                                    if (mcex.Method.Name == "StartsWith" && mcex.Object is MemberExpression me3)
-                                    {
-                                        var propName = me3.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} STARTS WITH {formattedValue}";
-                                    }
-                                    if (mcex.Method.Name == "EndsWith" && mcex.Object is MemberExpression me4)
-                                    {
-                                        var propName = me4.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} ENDS WITH {formattedValue}";
-                                    }
-                                    if (mcex.Method.Name == "Contains" && mcex.Object is MemberExpression me5)
-                                    {
-                                        var propName = me5.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} CONTAINS {formattedValue}";
-                                    }
-                                }
-                            }
-                            // Direct method call as condition (e.g. p.FirstName.StartsWith('A'))
-                            if (expr is MethodCallExpression mcex2 && mcex2.Object is MemberExpression me6 && mcex2.Arguments.Count == 1 && mcex2.Arguments[0] is ConstantExpression ce4)
-                            {
-                                var propName = me6.Member.Name;
-                                var value = ce4.Value;
-                                var formattedValue = FormatValueForCypher(value);
-                                if (mcex2.Method.Name == "StartsWith")
-                                    return $"{varName}.{propName} STARTS WITH {formattedValue}";
-                                if (mcex2.Method.Name == "EndsWith")
-                                    return $"{varName}.{propName} ENDS WITH {formattedValue}";
-                                if (mcex2.Method.Name == "Contains")
-                                    return $"{varName}.{propName} CONTAINS {formattedValue}";
-                            }
-                            throw new NotSupportedException($"Unsupported condition expression: {expr}");
-                        }
-
-                        whereClause = $"WHERE {BuildWhere(be)}";
-                    }
-                }
-                returnClause = "RETURN count(n) AS count";
-                current = mce.Arguments[0];
-                continue;
-            }
-            if (method == "Any")
-            {
-                // Any: return true if count(n) > 0
-                if (mce.Arguments.Count == 2 && mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
-                {
-                    if (lambda.Body is BinaryExpression be)
-                    {
-                        string BuildWhere(BinaryExpression expr)
-                        {
-                            if (expr.NodeType == ExpressionType.AndAlso || expr.NodeType == ExpressionType.OrElse)
-                            {
-                                var left = expr.Left is BinaryExpression leftBin ? BuildWhere(leftBin) : BuildSimpleCondition(expr.Left);
-                                var right = expr.Right is BinaryExpression rightBin ? BuildWhere(rightBin) : BuildSimpleCondition(expr.Right);
-                                var op = expr.NodeType == ExpressionType.AndAlso ? "AND" : "OR";
-                                return $"({left} {op} {right})";
-                            }
-                            return BuildSimpleCondition(expr);
-                        }
-                        string BuildSimpleCondition(Expression expr)
-                        {
-                            if (expr is BinaryExpression cond)
-                            {
-                                string op = cond.NodeType switch
-                                {
-                                    ExpressionType.Equal => "=",
-                                    ExpressionType.NotEqual => "!=",
-                                    ExpressionType.GreaterThan => ">",
-                                    ExpressionType.LessThan => "<",
-                                    ExpressionType.GreaterThanOrEqual => ">=",
-                                    ExpressionType.LessThanOrEqual => "<=",
-                                    _ => throw new NotSupportedException($"Operator {cond.NodeType} not supported")
-                                };
-                                if (cond.Left is MemberExpression me && ExpressionUtils.IsParameterOrPropertyOfLambda(me, lambda.Parameters[0]))
-                                {
-                                    var propName = me.Member.Name;
-                                    var value = ExpressionUtils.EvaluateExpression(cond.Right);
-                                    var formattedValue = FormatValueForCypher(value);
-                                    return $"{varName}.{propName} {op} {formattedValue}";
-                                }
-                                else if (cond.Right is MemberExpression me2 && ExpressionUtils.IsParameterOrPropertyOfLambda(me2, lambda.Parameters[0]))
-                                {
-                                    var propName = me2.Member.Name;
-                                    var value = ExpressionUtils.EvaluateExpression(cond.Left);
-                                    var formattedValue = FormatValueForCypher(value);
-                                    return $"{varName}.{propName} {op} {formattedValue}";
-                                }
-                                // Support for method calls (e.g. StartsWith)
-                                else if (cond.Left is MethodCallExpression mcex && cond.Right is ConstantExpression ce3)
-                                {
-                                    if (mcex.Method.Name == "StartsWith" && mcex.Object is MemberExpression me3)
-                                    {
-                                        var propName = me3.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} STARTS WITH {formattedValue}";
-                                    }
-                                    if (mcex.Method.Name == "EndsWith" && mcex.Object is MemberExpression me4)
-                                    {
-                                        var propName = me4.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} ENDS WITH {formattedValue}";
-                                    }
-                                    if (mcex.Method.Name == "Contains" && mcex.Object is MemberExpression me5)
-                                    {
-                                        var propName = me5.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} CONTAINS {formattedValue}";
-                                    }
-                                }
-                            }
-                            // Direct method call as condition (e.g. p.FirstName.StartsWith('A'))
-                            if (expr is MethodCallExpression mcex2 && mcex2.Object is MemberExpression me6 && mcex2.Arguments.Count == 1 && mcex2.Arguments[0] is ConstantExpression ce4)
-                            {
-                                var propName = me6.Member.Name;
-                                var value = ce4.Value;
-                                var formattedValue = FormatValueForCypher(value);
-                                if (mcex2.Method.Name == "StartsWith")
-                                    return $"{varName}.{propName} STARTS WITH {formattedValue}";
-                                if (mcex2.Method.Name == "EndsWith")
-                                    return $"{varName}.{propName} ENDS WITH {formattedValue}";
-                                if (mcex2.Method.Name == "Contains")
-                                    return $"{varName}.{propName} CONTAINS {formattedValue}";
-                            }
-                            throw new NotSupportedException($"Unsupported condition expression: {expr}");
-                        }
-                        whereClause = $"WHERE {BuildWhere(be)}";
-                    }
-                }
-                returnClause = "RETURN count(n) > 0 AS result";
-                current = mce.Arguments[0];
-                continue;
-            }
-            if (method == "All")
-            {
-                // All: return true if count(n) > 0 and count(n where not predicate) == 0
-                if (mce.Arguments.Count == 2 && mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
-                {
-                    if (lambda.Body is BinaryExpression be)
-                    {
-                        string BuildWhere(BinaryExpression expr)
-                        {
-                            if (expr.NodeType == ExpressionType.AndAlso || expr.NodeType == ExpressionType.OrElse)
-                            {
-                                var left = expr.Left is BinaryExpression leftBin ? BuildWhere(leftBin) : BuildSimpleCondition(expr.Left);
-                                var right = expr.Right is BinaryExpression rightBin ? BuildWhere(rightBin) : BuildSimpleCondition(expr.Right);
-                                var op = expr.NodeType == ExpressionType.AndAlso ? "AND" : "OR";
-                                return $"({left} {op} {right})";
-                            }
-                            return BuildSimpleCondition(expr);
-                        }
-                        string BuildSimpleCondition(Expression expr)
-                        {
-                            if (expr is BinaryExpression cond)
-                            {
-                                string op = cond.NodeType switch
-                                {
-                                    ExpressionType.Equal => "=",
-                                    ExpressionType.NotEqual => "!=",
-                                    ExpressionType.GreaterThan => ">",
-                                    ExpressionType.LessThan => "<",
-                                    ExpressionType.GreaterThanOrEqual => ">=",
-                                    ExpressionType.LessThanOrEqual => "<=",
-                                    _ => throw new NotSupportedException($"Operator {cond.NodeType} not supported")
-                                };
-                                if (cond.Left is MemberExpression me && ExpressionUtils.IsParameterOrPropertyOfLambda(me, lambda.Parameters[0]))
-                                {
-                                    var propName = me.Member.Name;
-                                    var value = ExpressionUtils.EvaluateExpression(cond.Right);
-                                    var formattedValue = FormatValueForCypher(value);
-                                    return $"{varName}.{propName} {op} {formattedValue}";
-                                }
-                                else if (cond.Right is MemberExpression me2 && ExpressionUtils.IsParameterOrPropertyOfLambda(me2, lambda.Parameters[0]))
-                                {
-                                    var propName = me2.Member.Name;
-                                    var value = ExpressionUtils.EvaluateExpression(cond.Left);
-                                    var formattedValue = FormatValueForCypher(value);
-                                    return $"{varName}.{propName} {op} {formattedValue}";
-                                }
-                                // Support for method calls (e.g. StartsWith)
-                                else if (cond.Left is MethodCallExpression mcex && cond.Right is ConstantExpression ce3)
-                                {
-                                    if (mcex.Method.Name == "StartsWith" && mcex.Object is MemberExpression me3)
-                                    {
-                                        var propName = me3.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} STARTS WITH {formattedValue}";
-                                    }
-                                    if (mcex.Method.Name == "EndsWith" && mcex.Object is MemberExpression me4)
-                                    {
-                                        var propName = me4.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} ENDS WITH {formattedValue}";
-                                    }
-                                    if (mcex.Method.Name == "Contains" && mcex.Object is MemberExpression me5)
-                                    {
-                                        var propName = me5.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} CONTAINS {formattedValue}";
-                                    }
-                                }
-                            }
-                            // Direct method call as condition (e.g. p.FirstName.StartsWith('A'))
-                            if (expr is MethodCallExpression mcex2 && mcex2.Object is MemberExpression me6 && mcex2.Arguments.Count == 1 && mcex2.Arguments[0] is ConstantExpression ce4)
-                            {
-                                var propName = me6.Member.Name;
-                                var value = ce4.Value;
-                                var formattedValue = FormatValueForCypher(value);
-                                if (mcex2.Method.Name == "StartsWith")
-                                    return $"{varName}.{propName} STARTS WITH {formattedValue}";
-                                if (mcex2.Method.Name == "EndsWith")
-                                    return $"{varName}.{propName} ENDS WITH {formattedValue}";
-                                if (mcex2.Method.Name == "Contains")
-                                    return $"{varName}.{propName} CONTAINS {formattedValue}";
-                            }
-                            throw new NotSupportedException($"Unsupported condition expression: {expr}");
-                        }
-                        whereClause = $"WHERE {BuildWhere(be)}";
-                    }
-                }
-                // All: count(n) > 0 AND count(n WHERE NOT predicate) = 0
-                returnClause = "WITH count(n) AS total MATCH (n:"
-                    + label + ") "
-                    + (whereClause != null ? whereClause + " " : "")
-                    + "WITH total, count(n) AS matching RETURN total > 0 AND total = matching AS result";
-                // Prevent double MATCH, so break
-                break;
-            }
-            if (method == "Where")
-            {
-                if (mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
-                {
-                    if (lambda.Body is BinaryExpression be)
-                    {
-                        // Handle binary expressions (==, !=, &&, ||, etc.)
-                        string BuildWhere(BinaryExpression expr)
-                        {
-                            if (expr.NodeType == ExpressionType.AndAlso || expr.NodeType == ExpressionType.OrElse)
-                            {
-                                var left = expr.Left is BinaryExpression leftBin ? BuildWhere(leftBin) : BuildSimpleCondition(expr.Left);
-                                var right = expr.Right is BinaryExpression rightBin ? BuildWhere(rightBin) : BuildSimpleCondition(expr.Right);
-                                var op = expr.NodeType == ExpressionType.AndAlso ? "AND" : "OR";
-                                return $"({left} {op} {right})";
-                            }
-                            return BuildSimpleCondition(expr);
-                        }
-                        string BuildSimpleCondition(Expression expr)
-                        {
-                            if (expr is BinaryExpression cond)
-                            {
-                                string op = cond.NodeType switch
-                                {
-                                    ExpressionType.Equal => "=",
-                                    ExpressionType.NotEqual => "!=",
-                                    ExpressionType.GreaterThan => ">",
-                                    ExpressionType.LessThan => "<",
-                                    ExpressionType.GreaterThanOrEqual => ">=",
-                                    ExpressionType.LessThanOrEqual => "<=",
-                                    _ => throw new NotSupportedException($"Operator {cond.NodeType} not supported")
-                                };
-                                if (cond.Left is MemberExpression me && ExpressionUtils.IsParameterOrPropertyOfLambda(me, lambda.Parameters[0]))
-                                {
-                                    var propName = me.Member.Name;
-                                    var value = ExpressionUtils.EvaluateExpression(cond.Right);
-                                    var formattedValue = FormatValueForCypher(value);
-                                    return $"{varName}.{propName} {op} {formattedValue}";
-                                }
-                                else if (cond.Right is MemberExpression me2 && ExpressionUtils.IsParameterOrPropertyOfLambda(me2, lambda.Parameters[0]))
-                                {
-                                    var propName = me2.Member.Name;
-                                    var value = ExpressionUtils.EvaluateExpression(cond.Left);
-                                    var formattedValue = FormatValueForCypher(value);
-                                    return $"{varName}.{propName} {op} {formattedValue}";
-                                }
-                                // Support for method calls (e.g. StartsWith)
-                                else if (cond.Left is MethodCallExpression mcex && cond.Right is ConstantExpression ce3)
-                                {
-                                    if (mcex.Method.Name == "StartsWith" && mcex.Object is MemberExpression me3)
-                                    {
-                                        var propName = me3.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} STARTS WITH {formattedValue}";
-                                    }
-                                    if (mcex.Method.Name == "EndsWith" && mcex.Object is MemberExpression me4)
-                                    {
-                                        var propName = me4.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} ENDS WITH {formattedValue}";
-                                    }
-                                    if (mcex.Method.Name == "Contains" && mcex.Object is MemberExpression me5)
-                                    {
-                                        var propName = me5.Member.Name;
-                                        var value = ce3.Value;
-                                        var formattedValue = FormatValueForCypher(value);
-                                        return $"{varName}.{propName} CONTAINS {formattedValue}";
-                                    }
-                                }
-                            }
-                            // Direct method call as condition (e.g. p.FirstName.StartsWith('A'))
-                            if (expr is MethodCallExpression mcex2 && mcex2.Object is MemberExpression me6 && mcex2.Arguments.Count == 1 && mcex2.Arguments[0] is ConstantExpression ce4)
-                            {
-                                var propName = me6.Member.Name;
-                                var value = ce4.Value;
-                                var formattedValue = FormatValueForCypher(value);
-                                if (mcex2.Method.Name == "StartsWith")
-                                    return $"{varName}.{propName} STARTS WITH {formattedValue}";
-                                if (mcex2.Method.Name == "EndsWith")
-                                    return $"{varName}.{propName} ENDS WITH {formattedValue}";
-                                if (mcex2.Method.Name == "Contains")
-                                    return $"{varName}.{propName} CONTAINS {formattedValue}";
-                            }
-
-                            // Handle chained method calls like ToLower().Contains()
-                            if (expr is MethodCallExpression chainedMethod &&
-                                chainedMethod.Object is MethodCallExpression chainCall &&
-                                chainCall.Object is MemberExpression chainMember &&
-                                chainedMethod.Arguments.Count == 1 &&
-                                chainedMethod.Arguments[0] is ConstantExpression chainConst)
-                            {
-                                var propName = chainMember.Member.Name;
-                                var value = chainConst.Value?.ToString() ?? "";
-
-                                if (chainCall.Method.Name == "ToLower" && chainedMethod.Method.Name == "Contains")
-                                    return $"toLower({varName}.{propName}) CONTAINS '{value.ToLower()}'";
-                                if (chainCall.Method.Name == "ToUpper" && chainedMethod.Method.Name == "Contains")
-                                    return $"toUpper({varName}.{propName}) CONTAINS '{value.ToUpper()}'";
-                                if (chainCall.Method.Name == "ToLower" && chainedMethod.Method.Name == "StartsWith")
-                                    return $"toLower({varName}.{propName}) STARTS WITH '{value.ToLower()}'";
-                                if (chainCall.Method.Name == "ToLower" && chainedMethod.Method.Name == "EndsWith")
-                                    return $"toLower({varName}.{propName}) ENDS WITH '{value.ToLower()}'";
-                            }
-                            throw new NotSupportedException($"Unsupported condition expression: {expr}");
-                        }
-                        whereClause = $"WHERE {BuildWhere(be)}";
-                    }
-                    else if (lambda.Body is MethodCallExpression methodCall)
-                    {
-                        // Handle direct method calls like Contains, StartsWith, EndsWith
-                        if (methodCall.Method.Name == "Contains" &&
-                            methodCall.Object is MemberExpression memberExpr &&
-                            methodCall.Arguments.Count == 1 &&
-                            methodCall.Arguments[0] is ConstantExpression constExpr)
-                        {
-                            var propertyName = memberExpr.Member.Name;
-                            var searchValue = constExpr.Value?.ToString() ?? "";
-                            whereClause = $"WHERE {varName}.{propertyName} CONTAINS '{searchValue}'";
-                        }
-                        // Handle chained method calls like ToLower().Contains()
-                        else if (methodCall.Method.Name == "Contains" &&
-                                methodCall.Object is MethodCallExpression chainedCall &&
-                                chainedCall.Method.Name == "ToLower" &&
-                                chainedCall.Object is MemberExpression chainedMemberExpr &&
-                                methodCall.Arguments.Count == 1 &&
-                                methodCall.Arguments[0] is ConstantExpression chainedConstExpr)
-                        {
-                            var propertyName = chainedMemberExpr.Member.Name;
-                            var searchValue = chainedConstExpr.Value?.ToString() ?? "";
-                            // Use toLower() in Cypher for case-insensitive search
-                            whereClause = $"WHERE toLower({varName}.{propertyName}) CONTAINS '{searchValue.ToLower()}'";
-                        }
-                        // Handle chained method calls like ToUpper().Contains()
-                        else if (methodCall.Method.Name == "Contains" &&
-                                methodCall.Object is MethodCallExpression upperChainedCall &&
-                                upperChainedCall.Method.Name == "ToUpper" &&
-                                upperChainedCall.Object is MemberExpression upperChainedMemberExpr &&
-                                methodCall.Arguments.Count == 1 &&
-                                methodCall.Arguments[0] is ConstantExpression upperChainedConstExpr)
-                        {
-                            var propertyName = upperChainedMemberExpr.Member.Name;
-                            var searchValue = upperChainedConstExpr.Value?.ToString() ?? "";
-                            // Use toUpper() in Cypher for case-insensitive search
-                            whereClause = $"WHERE toUpper({varName}.{propertyName}) CONTAINS '{searchValue.ToUpper()}'";
-                        }
-                        // Handle direct StartsWith
-                        else if (methodCall.Method.Name == "StartsWith" &&
-                                methodCall.Object is MemberExpression startsMemberExpr &&
-                                methodCall.Arguments.Count == 1 &&
-                                methodCall.Arguments[0] is ConstantExpression startsConstExpr)
-                        {
-                            var propertyName = startsMemberExpr.Member.Name;
-                            var searchValue = startsConstExpr.Value?.ToString() ?? "";
-                            whereClause = $"WHERE {varName}.{propertyName} STARTS WITH '{searchValue}'";
-                        }
-                        // Handle chained ToLower().StartsWith()
-                        else if (methodCall.Method.Name == "StartsWith" &&
-                                methodCall.Object is MethodCallExpression startsLowerChainedCall &&
-                                startsLowerChainedCall.Method.Name == "ToLower" &&
-                                startsLowerChainedCall.Object is MemberExpression startsLowerChainedMemberExpr &&
-                                methodCall.Arguments.Count == 1 &&
-                                methodCall.Arguments[0] is ConstantExpression startsLowerChainedConstExpr)
-                        {
-                            var propertyName = startsLowerChainedMemberExpr.Member.Name;
-                            var searchValue = startsLowerChainedConstExpr.Value?.ToString() ?? "";
-                            whereClause = $"WHERE toLower({varName}.{propertyName}) STARTS WITH '{searchValue.ToLower()}'";
-                        }
-                        // Handle chained ToUpper().StartsWith()
-                        else if (methodCall.Method.Name == "StartsWith" &&
-                                methodCall.Object is MethodCallExpression startsUpperChainedCall &&
-                                startsUpperChainedCall.Method.Name == "ToUpper" &&
-                                startsUpperChainedCall.Object is MemberExpression startsUpperChainedMemberExpr &&
-                                methodCall.Arguments.Count == 1 &&
-                                methodCall.Arguments[0] is ConstantExpression startsUpperChainedConstExpr)
-                        {
-                            var propertyName = startsUpperChainedMemberExpr.Member.Name;
-                            var searchValue = startsUpperChainedConstExpr.Value?.ToString() ?? "";
-                            whereClause = $"WHERE toUpper({varName}.{propertyName}) STARTS WITH '{searchValue.ToUpper()}'";
-                        }
-                        // Handle direct EndsWith
-                        else if (methodCall.Method.Name == "EndsWith" &&
-                                methodCall.Object is MemberExpression endsMemberExpr &&
-                                methodCall.Arguments.Count == 1 &&
-                                methodCall.Arguments[0] is ConstantExpression endsConstExpr)
-                        {
-                            var propertyName = endsMemberExpr.Member.Name;
-                            var searchValue = endsConstExpr.Value?.ToString() ?? "";
-                            whereClause = $"WHERE {varName}.{propertyName} ENDS WITH '{searchValue}'";
-                        }
-                        // Handle chained ToLower().EndsWith()
-                        else if (methodCall.Method.Name == "EndsWith" &&
-                                methodCall.Object is MethodCallExpression endsLowerChainedCall &&
-                                endsLowerChainedCall.Method.Name == "ToLower" &&
-                                endsLowerChainedCall.Object is MemberExpression endsLowerChainedMemberExpr &&
-                                methodCall.Arguments.Count == 1 &&
-                                methodCall.Arguments[0] is ConstantExpression endsLowerChainedConstExpr)
-                        {
-                            var propertyName = endsLowerChainedMemberExpr.Member.Name;
-                            var searchValue = endsLowerChainedConstExpr.Value?.ToString() ?? "";
-                            whereClause = $"WHERE toLower({varName}.{propertyName}) ENDS WITH '{searchValue.ToLower()}'";
-                        }
-                        // Handle chained ToUpper().EndsWith()
-                        else if (methodCall.Method.Name == "EndsWith" &&
-                                methodCall.Object is MethodCallExpression endsUpperChainedCall &&
-                                endsUpperChainedCall.Method.Name == "ToUpper" &&
-                                endsUpperChainedCall.Object is MemberExpression endsUpperChainedMemberExpr &&
-                                methodCall.Arguments.Count == 1 &&
-                                methodCall.Arguments[0] is ConstantExpression endsUpperChainedConstExpr)
-                        {
-                            var propertyName = endsUpperChainedMemberExpr.Member.Name;
-                            var searchValue = endsUpperChainedConstExpr.Value?.ToString() ?? "";
-                            whereClause = $"WHERE toUpper({varName}.{propertyName}) ENDS WITH '{searchValue.ToUpper()}'";
-                        }
-                        // Handle Trim().Contains() for whitespace handling
-                        else if (methodCall.Method.Name == "Contains" &&
-                                methodCall.Object is MethodCallExpression trimChainedCall &&
-                                trimChainedCall.Method.Name == "Trim" &&
-                                trimChainedCall.Object is MemberExpression trimChainedMemberExpr &&
-                                methodCall.Arguments.Count == 1 &&
-                                methodCall.Arguments[0] is ConstantExpression trimChainedConstExpr)
-                        {
-                            var propertyName = trimChainedMemberExpr.Member.Name;
-                            var searchValue = trimChainedConstExpr.Value?.ToString() ?? "";
-                            whereClause = $"WHERE trim({varName}.{propertyName}) CONTAINS '{searchValue.Trim()}'";
-                        }
-                        // Handle string.IsNullOrEmpty() checks
-                        else if (methodCall.Method.Name == "IsNullOrEmpty" &&
-                                methodCall.Method.DeclaringType == typeof(string) &&
-                                methodCall.Arguments.Count == 1 &&
-                                methodCall.Arguments[0] is MemberExpression nullCheckMemberExpr)
-                        {
-                            var propertyName = nullCheckMemberExpr.Member.Name;
-                            whereClause = $"WHERE ({varName}.{propertyName} IS NULL OR {varName}.{propertyName} = '')";
-                        }
-                        // Handle string.IsNullOrWhiteSpace() checks
-                        else if (methodCall.Method.Name == "IsNullOrWhiteSpace" &&
-                                methodCall.Method.DeclaringType == typeof(string) &&
-                                methodCall.Arguments.Count == 1 &&
-                                methodCall.Arguments[0] is MemberExpression whitespaceCheckMemberExpr)
-                        {
-                            var propertyName = whitespaceCheckMemberExpr.Member.Name;
-                            whereClause = $"WHERE ({varName}.{propertyName} IS NULL OR trim({varName}.{propertyName}) = '')";
-                        }
-                        // Handle property.Length comparisons (though this would typically be in BinaryExpression)
-                        else if (methodCall.Method.Name == "get_Length" &&
-                                methodCall.Object is MemberExpression lengthMemberExpr)
-                        {
-                            // This is handled in BinaryExpression typically, but we can add support here
-                            var propertyName = lengthMemberExpr.Member.Name;
-                            // This would need additional context for the comparison, so we might need to restructure
-                            throw new NotSupportedException("Length property should be used in comparison expressions (e.g., p.Name.Length > 5)");
-                        }
-                    }
-                }
-                current = mce.Arguments[0];
-            }
-            else if (method == "OrderBy" || method == "OrderByDescending" || method == "ThenBy" || method == "ThenByDescending")
-            {
-                if (mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda && lambda.Body is MemberExpression me)
-                {
-                    var propName = me.Member.Name;
-                    var dir = (method == "OrderBy" || method == "ThenBy") ? "ASC" : "DESC";
-                    if (reverseOrderForLast)
-                    {
-                        dir = dir == "ASC" ? "DESC" : "ASC";
-                        reverseOrderForLast = false;
-                    }
-                    orderings.Insert(0, $"{varName}.{propName} {dir}"); // Insert at front to preserve LINQ order
-                }
-                current = mce.Arguments[0];
-            }
-            else if (method == "Take")
-            {
-                if (mce.Arguments[1] is ConstantExpression ce && ce.Value is int count)
-                {
-                    takeCount = count;
-                    limitClause = $"LIMIT {count}";
-                }
-                current = mce.Arguments[0];
-            }
-            else if (method == "Skip")
-            {
-                if (mce.Arguments[1] is ConstantExpression ce && ce.Value is int count)
-                {
-                    skipClause = $"SKIP {count}";
-                }
-                current = mce.Arguments[0];
-            }
-            else if (method == "Distinct")
-            {
-                useDistinct = true;
-                current = mce.Arguments[0];
-            }
-            else if (method == "Select")
-            {
-                if (mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
-                {
-                    selectLambda = lambda;
-
-                    // Support simple and anonymous projections, and navigation
-                    if (lambda.Body is MemberExpression me)
-                    {
-                        // Simple property projection: n.Prop AS Prop
-                        var propName = me.Member.Name;
-                        returnClause = $"RETURN {(useDistinct ? "DISTINCT " : "")}{varName}.{propName} AS {propName}";
-                    }
-                    else if (lambda.Body is NewExpression ne)
-                    {
-                        // Anonymous type projection: new { ... }
-                        var members = ne.Members ?? new System.Collections.ObjectModel.ReadOnlyCollection<System.Reflection.MemberInfo>(new System.Reflection.MemberInfo[0]);
-                        var props = new List<string>();
-
-                        // Check if any arguments access navigation properties
-                        for (int i = 0; i < ne.Arguments.Count; i++)
-                        {
-                            var arg = ne.Arguments[i];
-                            var member = members[i];
-
-                            // Check if this argument accesses navigation properties
-                            if (HasNavigationPropertyAccess(arg))
-                            {
-                                // We need to load relationships for this projection
-                                // Add OPTIONAL MATCH for the Knows relationship
-                                if (!navigationMatches.Any(m => m.Contains("[:KNOWS]")))
-                                {
-                                    navigationMatches.Add($"OPTIONAL MATCH ({varName})-[r1:KNOWS]->(t1)");
-                                }
-                            }
-
-                            string cypherExpr = CypherExpressionBuilder.BuildCypherExpression(arg, varName);
-                            props.Add($"{cypherExpr} AS {member.Name}");
-                        }
-                        returnClause = $"RETURN {(useDistinct ? "DISTINCT " : "")}{string.Join(", ", props)}";
-                    }
-                    else if (lambda.Body is MemberInitExpression mie)
-                    {
-                        // Support for new { ... } with initializers
-                        var bindings = mie.Bindings.OfType<MemberAssignment>();
-                        var props = string.Join(", ", bindings.Select(b => $"{varName}.{b.Member.Name} AS {b.Member.Name}"));
-                        returnClause = $"RETURN {(useDistinct ? "DISTINCT " : "")}{string.Join(", ", props)}";
-                    }
-
-                    // Navigation/deep traversal: detect navigation property and generate MATCH/OPTIONAL MATCH for relationships
-                    if (lambda.Body is MemberExpression navMe)
-                    {
-                        ProcessNavigation(navMe, varName, label, 1);
-                    }
-                }
-                current = mce.Arguments[0];
-            }
-            else if (method == "SelectMany")
-            {
-                // Support for navigation collections (deep traversal)
-                if (mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
-                {
-                    if (lambda.Body is MemberExpression navMe)
-                    {
-                        ProcessNavigation(navMe, varName, label, 1);
-                    }
-                }
-                current = mce.Arguments[0];
-            }
-            else if (method == "Last")
-            {
-                reverseOrderForLast = true;
-                limitClause = "LIMIT 1";
-                current = mce.Arguments[0];
-                continue;
-            }
-            else if (method == "FirstOrDefault" || method == "First")
-            {
-                // FirstOrDefault/First: just add LIMIT 1 and continue processing
-                limitClause = "LIMIT 1";
-                current = mce.Arguments[0];
-            }
-            else
-            {
-                // Not supported, break
-                break;
-            }
-        }
-
-        // At the end, build the Cypher query
-        // Detect if this is a relationship type
-        bool isRelationship = _rootType.IsRelationshipType();
-        string cypher;
-        if (isRelationship)
-        {
-            // Relationship scan: MATCH ()-[n:Label]->()
-            cypher = $"MATCH ()-[{varName}:{label}]->() ";
-        }
-        else
-        {
-            // Node scan: MATCH (n:Label)
-            cypher = $"MATCH ({varName}:{label}) ";
-        }
-        if (matchClause != null) cypher += matchClause + " ";
-        if (whereClause != null) cypher += whereClause + " ";
-        if (orderings.Count > 0)
-            cypher += $"ORDER BY {string.Join(", ", orderings)} ";
-        // After building the main MATCH, add navigation matches
-        if (navigationMatches.Count > 0)
-        {
-            cypher += string.Join(" ", navigationMatches) + " ";
-        }
-        cypher += returnClause;
-
-        // In the RETURN clause, add navigation returns if present
-        if (navigationReturns.Count > 0)
-        {
-            cypher = cypher.Replace(returnClause, $"RETURN {string.Join(", ", navigationReturns)}");
-        }
-        if (skipClause != null) cypher += " " + skipClause;
-        if (limitClause != null) cypher += " " + limitClause;
-        return cypher;
+        Visit(expression);
+        return BuildQuery();
     }
 
-    public object ExecuteQuery(string cypher, Type elementType)
+    private void Visit(Expression? expression)
     {
-        Console.WriteLine($"Executing Cypher: {cypher}");
-        // Block execution!
-        return this.ExecuteQueryAsync(cypher, elementType).Result;
+        if (expression == null) return;
+
+        switch (expression)
+        {
+            case MethodCallExpression methodCall:
+                VisitMethodCall(methodCall);
+                break;
+            case ConstantExpression constant:
+                VisitConstant(constant);
+                break;
+            default:
+                break;
+        }
     }
 
-    internal async Task<object> ExecuteQueryAsync(string cypher, Type elementType)
+    private void VisitMethodCall(MethodCallExpression node)
     {
-        var results = await _provider.ExecuteCypher(cypher, null, _transaction);
-
-        static bool IsSimpleType(Type t) =>
-            (t.IsPrimitive || t == typeof(string) || t == typeof(decimal) || t == typeof(DateTime) || t == typeof(DateTimeOffset) || t == typeof(Guid) || t == typeof(bool))
-            && !typeof(Neo4jDriver.INode).IsAssignableFrom(t)
-            && !typeof(Neo4jDriver.IRelationship).IsAssignableFrom(t);
-
-        // If elementType is a simple type, just extract the value from the record
-        if (IsSimpleType(elementType))
+        // Visit the source first
+        if (node.Arguments.Count > 0)
         {
-            // Special case: if the result is a single record with a single value (e.g., count, bool), return the value directly
-            if (results is IList resultList && resultList.Count == 1 && resultList[0] is Neo4jDriver.IRecord rec && rec.Values.Count == 1)
-            {
-                var val = rec.Values.Values.First();
-                // If expecting a bool, handle Neo4j boolean result
-                if (elementType == typeof(bool))
-                {
-                    if (val is bool b) return b;
-                    if (val is long l) return l != 0;
-                    if (val is int i) return i != 0;
-                    if (val is string s && bool.TryParse(s, out var parsed)) return parsed;
-                }
-                return SerializationExtensions.ConvertFromNeo4jValue(val, elementType) ?? default!;
-            }
-            var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType))!;
-            foreach (var record in results.Select(r => r as Neo4jDriver.IRecord).Where(r => r != null))
-            {
-                foreach (var val in record!.Values.Values)
-                {
-                    list.Add(SerializationExtensions.ConvertFromNeo4jValue(val, elementType) ?? default!);
-                }
-            }
-            return list;
+            Visit(node.Arguments[0]);
         }
 
-        // If elementType is an anonymous type (has CompilerGeneratedAttribute and is not a node/relationship)
-        if (elementType.IsClass && elementType.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), false) && !typeof(Neo4jDriver.INode).IsAssignableFrom(elementType) && !typeof(Neo4jDriver.IRelationship).IsAssignableFrom(elementType))
+        switch (node.Method.Name)
         {
-            var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType))!;
-            var ctor = elementType.GetConstructors().FirstOrDefault();
-            var ctorParams = ctor?.GetParameters();
-            foreach (var record in results.Select(r => r as IRecord).Where(r => r != null))
+            case "Where":
+                VisitWhere(node);
+                break;
+            case "Select":
+                if (_isGrouping)
+                    VisitSelectAfterGroupBy(node);
+                else
+                    VisitSelect(node);
+                break;
+            case "OrderBy":
+            case "OrderByDescending":
+                VisitOrderBy(node, ascending: node.Method.Name == "OrderBy");
+                break;
+            case "ThenBy":
+            case "ThenByDescending":
+                VisitThenBy(node, ascending: node.Method.Name == "ThenBy");
+                break;
+            case "Skip":
+                VisitSkip(node);
+                break;
+            case "Take":
+                VisitTake(node);
+                break;
+            case "Count":
+                VisitCount(node);
+                break;
+            case "GroupBy":
+                VisitGroupBy(node);
+                break;
+            case "First":
+            case "FirstOrDefault":
+                VisitFirst(node);
+                break;
+            case "Last":
+            case "LastOrDefault":
+                VisitLast(node);
+                break;
+            case "Single":
+            case "SingleOrDefault":
+                VisitSingle(node);
+                break;
+            case "Any":
+                VisitAny(node);
+                break;
+            case "All":
+                VisitAll(node);
+                break;
+            case "Distinct":
+                VisitDistinct(node);
+                break;
+            case "ToList":
+            case "ToArray":
+                // Terminal operations - no special handling needed
+                break;
+        }
+    }
+
+    private void VisitConstant(ConstantExpression node)
+    {
+        if (node.Value is IQueryable)
+        {
+            // Determine if we're querying nodes or relationships
+            var queryableType = node.Value.GetType();
+            if (queryableType.IsGenericType)
             {
-                var args = new object?[ctorParams!.Length];
-                for (int i = 0; i < ctorParams!.Length; i++)
+                var genericDef = queryableType.GetGenericTypeDefinition();
+                if (genericDef == typeof(Neo4jQueryable<>))
                 {
-                    var param = ctorParams[i];
-
-                    var kvp = record!.Values.FirstOrDefault(kv => string.Equals(kv.Key, param.Name, StringComparison.OrdinalIgnoreCase));
-
-                    // FirstOrDefault returns a default KeyValuePair when no match is found
-                    // For KeyValuePair<string, object>, default means Key = null, Value = null
-                    object? value = kvp.Key != null ? kvp.Value : null;
-
-                    if (value == null)
+                    var elementType = queryableType.GetGenericArguments()[0];
+                    var label = Neo4jGraphProvider.GetLabel(elementType);
+                    if (typeof(Model.IRelationship).IsAssignableFrom(elementType))
                     {
-                        args[i] = param.ParameterType.IsValueType && Nullable.GetUnderlyingType(param.ParameterType) == null
-                            ? Activator.CreateInstance(param.ParameterType)
-                            : null;
-                    }
-                    else if (param.ParameterType.IsClass && value is Neo4jDriver.INode nodeVal)
-                    {
-                        // Navigation: hydrate related node as the parameter type
-                        var navConvertToGraphEntityMethodName = nameof(SerializationExtensions.ConvertToGraphEntity);
-                        var navMethod = typeof(SerializationExtensions).GetMethod(
-                                navConvertToGraphEntityMethodName,
-                                BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic)
-                            ?? throw new GraphException($"{navConvertToGraphEntityMethodName} method not found");
-                        var navConvertToGraphEntity = navMethod.MakeGenericMethod(param.ParameterType);
-                        args[i] = navConvertToGraphEntity.Invoke(null, new object[] { nodeVal });
-                    }
-                    else if (value is IList neo4jList && typeof(IEnumerable).IsAssignableFrom(param.ParameterType))
-                    {
-                        // Handle collections (e.g., Friends list)
-                        var collectionElementType = param.ParameterType.IsArray
-                            ? param.ParameterType.GetElementType()
-                            : param.ParameterType.GetGenericArguments().FirstOrDefault();
-
-                        // Default to object if we can't determine the element type
-                        if (collectionElementType == null)
-                        {
-                            collectionElementType = typeof(object);
-                        }
-
-                        var typedList = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(collectionElementType))!;
-
-                        foreach (var item in neo4jList)
-                        {
-                            if (item != null)
-                            {
-                                // Convert each item to the expected type
-                                if (collectionElementType == typeof(string))
-                                {
-                                    typedList.Add(item.ToString());
-                                }
-                                else if (collectionElementType.IsPrimitive || collectionElementType == typeof(decimal))
-                                {
-                                    typedList.Add(Convert.ChangeType(item, collectionElementType));
-                                }
-                                else
-                                {
-                                    typedList.Add(item);
-                                }
-                            }
-                        }
-
-                        // Convert to array if needed
-                        if (param.ParameterType.IsArray)
-                        {
-                            var array = Array.CreateInstance(collectionElementType, typedList.Count);
-                            typedList.CopyTo(array, 0);
-                            args[i] = array;
-                        }
-                        else
-                        {
-                            args[i] = typedList;
-                        }
-                    }
-                    else if (value != null && (param.ParameterType.IsPrimitive || param.ParameterType == typeof(string) || param.ParameterType == typeof(decimal)))
-                    {
-                        // Handle simple types - use SerializationExtensions.ConvertFromNeo4jValue
-                        args[i] = SerializationExtensions.ConvertFromNeo4jValue(value, param.ParameterType);
-                    }
-                    else if (value is Neo4jDriver.ZonedDateTime zdt && param.ParameterType == typeof(DateTime))
-                    {
-                        // Convert Neo4j ZonedDateTime to .NET DateTime
-                        args[i] = zdt.ToDateTimeOffset().DateTime;
-                    }
-                    else if (value is Neo4jDriver.LocalDate ld && param.ParameterType == typeof(DateTime))
-                    {
-                        // Convert Neo4j LocalDate to .NET DateTime
-                        args[i] = ld.ToDateTime();
-                    }
-                    else if (value is Neo4jDriver.LocalDateTime ldt && param.ParameterType == typeof(DateTime))
-                    {
-                        // Convert Neo4j LocalDateTime to .NET DateTime
-                        args[i] = ldt.ToDateTime();
-                    }
-                    else if (value is Neo4jDriver.ZonedDateTime zdt2 && param.ParameterType == typeof(DateTimeOffset))
-                    {
-                        // Convert Neo4j ZonedDateTime to .NET DateTimeOffset
-                        args[i] = zdt2.ToDateTimeOffset();
+                        // For relationships, include source and target nodes to get their IDs
+                        _matchClause.Append($"MATCH (s)-[{_alias}:{label}]->(t)");
+                        // Update the default return clause for relationships
+                        _alias = "n"; // Keep using 'n' as the alias for the relationship
                     }
                     else
                     {
-                        // For other types, try using SerializationExtensions.ConvertFromNeo4jValue
-                        args[i] = SerializationExtensions.ConvertFromNeo4jValue(value, param.ParameterType);
+                        _matchClause.Append($"MATCH ({_alias}:{label})");
                     }
                 }
-                var anon = ctor!.Invoke(args);
-                list.Add(anon);
-            }
-            return list;
-        }
-
-        // Default: hydrate as node/relationship
-        var convertToGraphEntityMethodName = nameof(SerializationExtensions.ConvertToGraphEntity);
-        var method = typeof(SerializationExtensions).GetMethod(
-                convertToGraphEntityMethodName,
-                BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic)
-            ?? throw new GraphException($"{convertToGraphEntityMethodName} method not found");
-        var convertToGraphEntity = method.MakeGenericMethod(elementType);
-
-        var entityList = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType))!;
-        foreach (var record in results.Select(r => r as IRecord).Where(r => r != null))
-        {
-            if (record!.TryGetValue("n", out var nodeValue))
-            {
-                if (nodeValue is Neo4jDriver.INode node)
-                {
-                    var entity = convertToGraphEntity.Invoke(null, new object[] { node });
-                    entityList.Add(entity);
-                }
-                else if (nodeValue is Neo4jDriver.IRelationship rel)
-                {
-                    var entity = convertToGraphEntity.Invoke(null, new object[] { rel });
-                    entityList.Add(entity);
-                }
-            }
-            else if (record.TryGetValue("r", out var relValue) && relValue is Neo4jDriver.IRelationship rel)
-            {
-                var entity = convertToGraphEntity.Invoke(null, new object[] { rel });
-                entityList.Add(entity);
             }
         }
-        return entityList;
     }
 
-    internal static string FormatValueForCypher(object? value)
+    private void VisitWhere(MethodCallExpression node)
     {
-        return value switch
+        if (node.Arguments.Count < 2) return;
+
+        var lambda = ExtractLambda(node.Arguments[1]);
+        if (lambda == null) return;
+
+        var condition = TranslateExpression(lambda.Body, lambda.Parameters[0]);
+        if (!string.IsNullOrEmpty(condition))
         {
-            null => "null",
-            string s => $"'{s.Replace("'", "\\'")}'",
-            bool b => b ? "true" : "false",
-            int or long or short or byte or sbyte or uint or ulong or ushort => value.ToString()!,
-            float or double or decimal => value.ToString()!,
-            DateTime dt => $"datetime('{dt:yyyy-MM-ddTHH:mm:ss.fffZ}')",
-            DateTimeOffset dto => $"datetime('{dto:yyyy-MM-ddTHH:mm:ss.fffzzz}')",
-            Guid g => $"'{g}'",
-            _ => $"'{value}'"
+            if (_whereClause.Length > 0)
+                _whereClause.Append(" AND ");
+            _whereClause.Append($"({condition})");
+        }
+    }
+
+    private void VisitSelect(MethodCallExpression node)
+    {
+        if (node.Arguments.Count < 2) return;
+
+        var lambda = ExtractLambda(node.Arguments[1]);
+        if (lambda == null) return;
+
+        _projectionExpression = lambda.Body;
+        _returnClause.Clear();
+        _returnClause.Append("RETURN ");
+
+        // Add DISTINCT if needed
+        if (_isDistinct)
+        {
+            _returnClause.Append("DISTINCT ");
+        }
+
+        if (lambda.Body is NewExpression newExpr && newExpr.Members != null)
+        {
+            // Anonymous type projection
+            var projectionParts = new List<string>();
+            for (int i = 0; i < newExpr.Members.Count; i++)
+            {
+                var member = newExpr.Members[i];
+                var arg = newExpr.Arguments[i];
+                var translatedArg = TranslateExpression(arg, lambda.Parameters[0]);
+                projectionParts.Add($"{translatedArg} AS {member.Name}");
+            }
+            _returnClause.Append(string.Join(", ", projectionParts));
+        }
+        else if (lambda.Body is MemberExpression memberExpr)
+        {
+            // Single property projection
+            var translated = TranslateExpression(memberExpr, lambda.Parameters[0]);
+            _returnClause.Append(translated);
+        }
+        else
+        {
+            // Default to returning the full node
+            _returnClause.Append(_alias);
+        }
+    }
+
+    private void VisitGroupBy(MethodCallExpression node)
+    {
+        if (node.Arguments.Count < 2)
+            throw new NotSupportedException("GroupBy requires at least 2 arguments");
+
+        var keySelectorLambda = ExtractLambda(node.Arguments[1]);
+        if (keySelectorLambda == null)
+            throw new NotSupportedException("GroupBy key selector must be a lambda expression");
+
+        var keyExpression = keySelectorLambda.Body;
+
+        // Generate the grouping key
+        var keyProperty = ExtractPropertyName(keyExpression);
+        if (keyProperty != null)
+        {
+            _groupingKeyAlias = "groupKey";
+            _groupingItemsAlias = "groupedItems";
+            _groupingKeyProperty = keyProperty; // Store the property name
+            _isGrouping = true;
+
+            // Build WITH clause for grouping
+            _returnClause.Clear();
+            _returnClause.Append($"WITH {_alias}.{keyProperty} AS {_groupingKeyAlias}, collect({_alias}) AS {_groupingItemsAlias}");
+        }
+        else
+        {
+            throw new NotSupportedException("Complex grouping keys are not yet supported");
+        }
+    }
+
+    private void VisitSelectAfterGroupBy(MethodCallExpression node)
+    {
+        if (!_isGrouping || node.Arguments.Count < 2) return;
+
+        var selectorLambda = ExtractLambda(node.Arguments[1]);
+        if (selectorLambda == null) return;
+
+        _projectionExpression = selectorLambda.Body;
+
+        // Clear any existing return clause from GroupBy
+        _returnClause.Clear();
+        _returnClause.Append("RETURN ");
+
+        if (selectorLambda.Body is NewExpression newExpr && newExpr.Members != null)
+        {
+            var projectionParts = new List<string>();
+
+            for (int i = 0; i < newExpr.Members.Count; i++)
+            {
+                var member = newExpr.Members[i];
+                var arg = newExpr.Arguments[i];
+                var translatedValue = "";
+
+                // Handle different types of expressions in the projection
+                if (arg is MemberExpression memberExpr && memberExpr.Member.Name == "Key")
+                {
+                    // Projecting the grouping key
+                    translatedValue = _groupingKeyAlias;
+                }
+                else if (arg is MethodCallExpression methodCall)
+                {
+                    // Handle aggregate functions
+                    translatedValue = TranslateAggregateFunction(methodCall);
+                }
+                else
+                {
+                    // Handle other expressions
+                    translatedValue = TranslateExpression(arg, selectorLambda.Parameters[0]);
+                }
+
+                projectionParts.Add($"{translatedValue} AS {member.Name}");
+            }
+
+            _returnClause.Append(string.Join(", ", projectionParts));
+        }
+    }
+
+    private string TranslateAggregateFunction(MethodCallExpression methodCall)
+    {
+        return methodCall.Method.Name switch
+        {
+            "Count" => $"size({_groupingItemsAlias})",
+            "Sum" => TranslateAggregateWithProperty(methodCall, "sum"),
+            "Average" => TranslateAggregateWithProperty(methodCall, "avg"),
+            "Min" => TranslateAggregateWithProperty(methodCall, "min"),
+            "Max" => TranslateAggregateWithProperty(methodCall, "max"),
+            _ => throw new NotSupportedException($"Aggregate function {methodCall.Method.Name} is not supported")
         };
     }
 
-    private static string GetLabel(Type type)
+    private string TranslateAggregateWithProperty(MethodCallExpression methodCall, string cypherFunction)
     {
-        var getLabelMethodName = nameof(Neo4jGraphProvider.GetLabel);
-        var method = typeof(Neo4jGraphProvider).GetMethod(
-                getLabelMethodName,
-                BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)
-            ?? throw new InvalidOperationException($"{getLabelMethodName} method not found");
-        return (string)method.Invoke(null, [type])!;
+        // If there's a property selector, extract it
+        if (methodCall.Arguments.Count > 1)
+        {
+            var propSelectorLambda = ExtractLambda(methodCall.Arguments[1]);
+            if (propSelectorLambda?.Body is MemberExpression memberExpr)
+            {
+                var propName = memberExpr.Member.Name;
+                return $"{cypherFunction}([item IN {_groupingItemsAlias} | item.{propName}])";
+            }
+        }
+
+        // Simple aggregate without property
+        return $"{cypherFunction}({_groupingItemsAlias})";
     }
 
-    private bool HasNavigationPropertyAccess(Expression expr)
+    private void VisitOrderBy(MethodCallExpression node, bool ascending)
     {
-        switch (expr)
+        if (node.Arguments.Count < 2) return;
+
+        var lambda = ExtractLambda(node.Arguments[1]);
+        if (lambda == null) return;
+
+        var orderExpression = TranslateExpression(lambda.Body, lambda.Parameters[0]);
+        _orderByClause.Clear();
+        _orderByClause.Append(orderExpression);
+        if (!ascending) _orderByClause.Append(" DESC");
+    }
+
+    private void VisitThenBy(MethodCallExpression node, bool ascending)
+    {
+        if (node.Arguments.Count < 2) return;
+
+        var lambda = ExtractLambda(node.Arguments[1]);
+        if (lambda == null) return;
+
+        var orderExpression = TranslateExpression(lambda.Body, lambda.Parameters[0]);
+        _orderByClause.Append(", ");
+        _orderByClause.Append(orderExpression);
+        if (!ascending) _orderByClause.Append(" DESC");
+    }
+
+    private void VisitSkip(MethodCallExpression node)
+    {
+        if (node.Arguments.Count < 2) return;
+
+        if (node.Arguments[1] is ConstantExpression constant && constant.Value is int skip)
         {
-            case MemberExpression me:
-                if (me.Member is PropertyInfo prop)
-                {
-                    var propType = prop.PropertyType;
-                    if (typeof(IEnumerable).IsAssignableFrom(propType) && propType != typeof(string))
-                    {
-                        // This is a collection navigation property
-                        return true;
-                    }
-                    if (typeof(Model.IRelationship).IsAssignableFrom(propType) || typeof(Model.INode).IsAssignableFrom(propType))
-                    {
-                        // This is a relationship or node navigation property
-                        return true;
-                    }
-                }
-                // Check the parent expression
-                if (me.Expression != null)
-                {
-                    return HasNavigationPropertyAccess(me.Expression);
-                }
-                break;
-            case MethodCallExpression mce:
-                // Check if any argument accesses navigation properties
-                if (mce.Object != null && HasNavigationPropertyAccess(mce.Object))
-                {
-                    return true;
-                }
-                foreach (var arg in mce.Arguments)
-                {
-                    if (HasNavigationPropertyAccess(arg))
-                    {
-                        return true;
-                    }
-                }
-                break;
-            case NewExpression ne:
-                // Check all arguments
-                foreach (var arg in ne.Arguments)
-                {
-                    if (HasNavigationPropertyAccess(arg))
-                    {
-                        return true;
-                    }
-                }
-                break;
+            _skip = skip;
         }
+    }
+
+    private void VisitTake(MethodCallExpression node)
+    {
+        if (node.Arguments.Count < 2) return;
+
+        if (node.Arguments[1] is ConstantExpression constant && constant.Value is int take)
+        {
+            _take = take;
+        }
+    }
+
+    private void VisitCount(MethodCallExpression node)
+    {
+        _isCountQuery = true;
+        _returnClause.Clear();
+        _returnClause.Append($"RETURN count({_alias})");
+    }
+    private void VisitAny(MethodCallExpression node)
+    {
+        _isAnyQuery = true;
+        if (node.Arguments.Count >= 2)
+        {
+            _anyPredicate = ExtractLambda(node.Arguments[1]);
+        }
+    }
+
+    private void VisitAll(MethodCallExpression node)
+    {
+        _isAllQuery = true;
+
+        if (node.Arguments.Count >= 2)
+        {
+            var lambda = ExtractLambda(node.Arguments[1]);
+            if (lambda != null)
+            {
+                _allPredicate = lambda;
+            }
+        }
+    }
+
+    private void VisitFirst(MethodCallExpression node)
+    {
+        _isFirstQuery = true;
+        _take = 1;
+    }
+
+    private void VisitLast(MethodCallExpression node)
+    {
+        _isLastQuery = true;
+    }
+
+    private void VisitSingle(MethodCallExpression node)
+    {
+        if (node.Method.Name == "SingleOrDefault")
+        {
+            _isSingleOrDefaultQuery = true;
+        }
+        else
+        {
+            _isSingleQuery = true;
+        }
+
+        // Check if Single/SingleOrDefault has a predicate
+        if (node.Arguments.Count >= 2)
+        {
+            // Single/SingleOrDefault with predicate - treat it like Where + Single
+            var lambda = ExtractLambda(node.Arguments[1]);
+            if (lambda != null)
+            {
+                var condition = TranslateExpression(lambda.Body, lambda.Parameters[0]);
+                if (!string.IsNullOrEmpty(condition))
+                {
+                    if (_whereClause.Length > 0)
+                        _whereClause.Append(" AND ");
+                    _whereClause.Append($"({condition})");
+                }
+            }
+        }
+
+        _take = 2; // Take 2 to verify there's only one
+    }
+
+    private void VisitDistinct(MethodCallExpression node)
+    {
+        _isDistinct = true;
+    }
+
+    private string TranslateExpression(Expression expression, ParameterExpression parameter)
+    {
+        return expression switch
+        {
+            MemberExpression member => TranslateMemberExpression(member, parameter),
+            BinaryExpression binary => TranslateBinaryExpression(binary, parameter),
+            ConstantExpression constant => AddParameter(constant.Value),
+            MethodCallExpression methodCall => TranslateMethodCallExpression(methodCall, parameter),
+            UnaryExpression unary => TranslateUnaryExpression(unary, parameter),
+            NewExpression newExpr => TranslateNewExpression(newExpr, parameter),
+            ConditionalExpression conditional => TranslateConditionalExpression(conditional, parameter),
+            _ => throw new NotSupportedException($"Expression type {expression.NodeType} is not supported")
+        };
+    }
+
+    private string TranslateMemberExpression(MemberExpression member, ParameterExpression parameter)
+    {
+        if (member.Expression == parameter)
+        {
+            return $"{_alias}.{member.Member.Name}";
+        }
+        else if (member.Expression is ConstantExpression)
+        {
+            // Evaluate the member access
+            var value = Expression.Lambda(member).Compile().DynamicInvoke();
+            return AddParameter(value);
+        }
+        else if (member.Expression is MemberExpression parentMember)
+        {
+            // Handle nested member access - check if it contains the parameter
+            if (ContainsParameter(member, parameter))
+            {
+                // Check if this is a DateTime property access
+                if (member.Member.DeclaringType == typeof(DateTime))
+                {
+                    var parentTranslated = TranslateMemberExpression(parentMember, parameter);
+                    return member.Member.Name switch
+                    {
+                        "Year" => $"{parentTranslated}.year",
+                        "Month" => $"{parentTranslated}.month",
+                        "Day" => $"{parentTranslated}.day",
+                        "Hour" => $"{parentTranslated}.hour",
+                        "Minute" => $"{parentTranslated}.minute",
+                        "Second" => $"{parentTranslated}.second",
+                        "Date" => $"date({parentTranslated})",
+                        _ => throw new NotSupportedException($"DateTime property {member.Member.Name} is not supported")
+                    };
+                }
+                else if (member.Member.Name == "Length" && parentMember.Type == typeof(string))
+                {
+                    // Handle string Length property
+                    var parentTranslated = TranslateMemberExpression(parentMember, parameter);
+                    return $"size({parentTranslated})";
+                }
+                else
+                {
+                    // This is a chained property access on the parameter (like p.Bio.Length)
+                    var parentTranslated = TranslateMemberExpression(parentMember, parameter);
+                    return $"{parentTranslated}.{member.Member.Name}";
+                }
+            }
+            else
+            {
+                // This is a nested member access on a captured variable - evaluate it
+                var value = Expression.Lambda(member).Compile().DynamicInvoke();
+                return AddParameter(value);
+            }
+        }
+        else if (member.Expression == null)
+        {
+            // Handle static member access (like DateTime.Now)
+            if (member.Member.DeclaringType == typeof(DateTime))
+            {
+                return member.Member.Name switch
+                {
+                    "Now" => "datetime()",
+                    "UtcNow" => "datetime()",
+                    "Today" => "date()",
+                    _ => throw new NotSupportedException($"DateTime static member {member.Member.Name} is not supported")
+                };
+            }
+
+            // For other static members, evaluate them
+            var value = Expression.Lambda(member).Compile().DynamicInvoke();
+            return AddParameter(value);
+        }
+        else
+        {
+            // Check if this member expression contains the parameter
+            if (ContainsParameter(member, parameter))
+            {
+                // This contains a parameter reference, we need to translate it properly
+                var baseTranslated = TranslateExpression(member.Expression, parameter);
+                return $"{baseTranslated}.{member.Member.Name}";
+            }
+            else
+            {
+                // For other member access (like accessing a property of a captured variable),
+                // evaluate the entire member expression
+                var value = Expression.Lambda(member).Compile().DynamicInvoke();
+                return AddParameter(value);
+            }
+        }
+    }
+
+    private bool ContainsParameter(Expression? expression, ParameterExpression parameter)
+    {
+        if (expression == null)
+            return false;
+
+        if (expression == parameter)
+            return true;
+
+        if (expression is MemberExpression member)
+            return ContainsParameter(member.Expression, parameter);
+
+        if (expression is MethodCallExpression method)
+        {
+            if (method.Object != null && ContainsParameter(method.Object, parameter))
+                return true;
+            return method.Arguments.Any(arg => ContainsParameter(arg, parameter));
+        }
+
+        if (expression is BinaryExpression binary)
+            return ContainsParameter(binary.Left, parameter) || ContainsParameter(binary.Right, parameter);
+
         return false;
+    }
+
+    private string TranslateBinaryExpression(BinaryExpression binary, ParameterExpression parameter)
+    {
+        var left = TranslateExpression(binary.Left, parameter);
+        var right = TranslateExpression(binary.Right, parameter);
+
+        return binary.NodeType switch
+        {
+            ExpressionType.Equal => $"{left} = {right}",
+            ExpressionType.NotEqual => $"{left} <> {right}",
+            ExpressionType.GreaterThan => $"{left} > {right}",
+            ExpressionType.GreaterThanOrEqual => $"{left} >= {right}",
+            ExpressionType.LessThan => $"{left} < {right}",
+            ExpressionType.LessThanOrEqual => $"{left} <= {right}",
+            ExpressionType.AndAlso => $"({left} AND {right})",
+            ExpressionType.OrElse => $"({left} OR {right})",
+            ExpressionType.Add => $"({left} + {right})",
+            ExpressionType.Subtract => $"({left} - {right})",
+            ExpressionType.Multiply => $"({left} * {right})",
+            ExpressionType.Divide => $"({left} / {right})",
+            ExpressionType.Modulo => $"({left} % {right})",
+            _ => throw new NotSupportedException($"Binary operator {binary.NodeType} is not supported")
+        };
+    }
+
+    private string TranslateMethodCallExpression(MethodCallExpression methodCall, ParameterExpression parameter)
+    {
+        // Handle LINQ collection methods
+        if (methodCall.Method.DeclaringType == typeof(Enumerable) ||
+            methodCall.Method.DeclaringType == typeof(Queryable))
+        {
+            return methodCall.Method.Name switch
+            {
+                "Select" => TranslateSelectInExpression(methodCall, parameter),
+                "Where" => TranslateWhereInExpression(methodCall, parameter),
+                "Count" => $"size({TranslateExpression(methodCall.Arguments[0], parameter)})",
+                "Any" => $"size({TranslateExpression(methodCall.Arguments[0], parameter)}) > 0",
+                _ => throw new NotSupportedException($"LINQ method {methodCall.Method.Name} in expression is not supported")
+            };
+        }
+
+        // Handle string methods
+        if (methodCall.Method.DeclaringType == typeof(string))
+        {
+            var obj = methodCall.Object != null ? TranslateExpression(methodCall.Object, parameter) : "";
+
+            return methodCall.Method.Name switch
+            {
+                "Contains" => $"{obj} CONTAINS {TranslateExpression(methodCall.Arguments[0], parameter)}",
+                "StartsWith" => $"{obj} STARTS WITH {TranslateExpression(methodCall.Arguments[0], parameter)}",
+                "EndsWith" => $"{obj} ENDS WITH {TranslateExpression(methodCall.Arguments[0], parameter)}",
+                "ToUpper" => $"toUpper({obj})",
+                "ToLower" => $"toLower({obj})",
+                "Trim" => $"trim({obj})",
+                "Substring" when methodCall.Arguments.Count == 1 => $"substring({obj}, {TranslateExpression(methodCall.Arguments[0], parameter)})",
+                "Substring" when methodCall.Arguments.Count == 2 => $"substring({obj}, {TranslateExpression(methodCall.Arguments[0], parameter)}, {TranslateExpression(methodCall.Arguments[1], parameter)})",
+                "Replace" => $"replace({obj}, {TranslateExpression(methodCall.Arguments[0], parameter)}, {TranslateExpression(methodCall.Arguments[1], parameter)})",
+                "get_Length" => $"length({obj})",  // Changed from size() to length()
+                _ => throw new NotSupportedException($"String method {methodCall.Method.Name} is not supported")
+            };
+        }
+
+        // Handle Math methods
+        if (methodCall.Method.DeclaringType == typeof(Math))
+        {
+            return methodCall.Method.Name switch
+            {
+                "Abs" => $"abs({TranslateExpression(methodCall.Arguments[0], parameter)})",
+                "Sqrt" => $"sqrt({TranslateExpression(methodCall.Arguments[0], parameter)})",
+                "Floor" => $"floor({TranslateExpression(methodCall.Arguments[0], parameter)})",
+                "Ceiling" => $"ceil({TranslateExpression(methodCall.Arguments[0], parameter)})",
+                "Round" => $"round({TranslateExpression(methodCall.Arguments[0], parameter)})",
+                _ => throw new NotSupportedException($"Math method {methodCall.Method.Name} is not supported")
+            };
+        }
+
+        // Handle DateTime properties and methods
+        if (methodCall.Method.DeclaringType == typeof(DateTime))
+        {
+            var obj = methodCall.Object != null ? TranslateExpression(methodCall.Object, parameter) : "";
+
+            return methodCall.Method.Name switch
+            {
+                "get_Now" => "datetime()",
+                "get_UtcNow" => "datetime()",
+                "get_Today" => "date()",
+                "get_Year" => $"{obj}.year",
+                "get_Month" => $"{obj}.month",
+                "get_Day" => $"{obj}.day",
+                "get_Hour" => $"{obj}.hour",
+                "get_Minute" => $"{obj}.minute",
+                "get_Second" => $"{obj}.second",
+                "AddDays" => $"{obj} + duration({{days: {TranslateExpression(methodCall.Arguments[0], parameter)})",
+                "AddHours" => $"{obj} + duration({{hours: {TranslateExpression(methodCall.Arguments[0], parameter)})",
+                "AddMinutes" => $"{obj} + duration({{minutes: {TranslateExpression(methodCall.Arguments[0], parameter)})",
+                "AddSeconds" => $"{obj} + duration({{seconds: {TranslateExpression(methodCall.Arguments[0], parameter)})",
+                _ => throw new NotSupportedException($"DateTime method {methodCall.Method.Name} is not supported")
+            };
+        }
+
+        throw new NotSupportedException($"Method {methodCall.Method.Name} is not supported");
+    }
+
+    private string TranslateSelectInExpression(MethodCallExpression methodCall, ParameterExpression parameter)
+    {
+        // For Select within an expression (like in a projection), we need to handle it as a list comprehension
+        if (methodCall.Arguments.Count >= 2)
+        {
+            var source = TranslateExpression(methodCall.Arguments[0], parameter);
+            var lambda = ExtractLambda(methodCall.Arguments[1]);
+            if (lambda != null)
+            {
+                // In Cypher, this would be a list comprehension
+                var itemParam = lambda.Parameters[0];
+                var body = TranslateExpression(lambda.Body, itemParam);
+                return $"[item IN {source} | {body}]";
+            }
+        }
+        throw new NotSupportedException("Select in expression requires a lambda");
+    }
+
+    private string TranslateWhereInExpression(MethodCallExpression methodCall, ParameterExpression parameter)
+    {
+        // For Where within an expression
+        if (methodCall.Arguments.Count >= 2)
+        {
+            var source = TranslateExpression(methodCall.Arguments[0], parameter);
+            var lambda = ExtractLambda(methodCall.Arguments[1]);
+            if (lambda != null)
+            {
+                // In Cypher, this would be a list comprehension with a filter
+                var itemParam = lambda.Parameters[0];
+                var condition = TranslateExpression(lambda.Body, itemParam);
+                return $"[item IN {source} WHERE {condition}]";
+            }
+        }
+        throw new NotSupportedException("Where in expression requires a lambda");
+    }
+
+    private string TranslateUnaryExpression(UnaryExpression unary, ParameterExpression parameter)
+    {
+        return unary.NodeType switch
+        {
+            ExpressionType.Not => $"NOT ({TranslateExpression(unary.Operand, parameter)})",
+            ExpressionType.Convert => TranslateExpression(unary.Operand, parameter),
+            ExpressionType.ConvertChecked => TranslateExpression(unary.Operand, parameter),
+            _ => throw new NotSupportedException($"Unary operator {unary.NodeType} is not supported")
+        };
+    }
+
+    private string TranslateNewExpression(NewExpression newExpr, ParameterExpression parameter)
+    {
+        // Handle string concatenation
+        if (newExpr.Type == typeof(string) && newExpr.Arguments.Count > 0)
+        {
+            var parts = newExpr.Arguments.Select(arg => TranslateExpression(arg, parameter));
+            return string.Join(" + ", parts);
+        }
+
+        throw new NotSupportedException($"New expression {newExpr} is not supported");
+    }
+
+    private string TranslateConditionalExpression(ConditionalExpression conditional, ParameterExpression parameter)
+    {
+        var test = TranslateExpression(conditional.Test, parameter);
+        var ifTrue = TranslateExpression(conditional.IfTrue, parameter);
+        var ifFalse = TranslateExpression(conditional.IfFalse, parameter);
+        return $"CASE WHEN {test} THEN {ifTrue} ELSE {ifFalse} END";
+    }
+
+    private string BuildQuery()
+    {
+        var query = new StringBuilder();
+
+        // For grouping queries, handle differently
+        if (_isGrouping)
+        {
+            query.Append(_matchClause);
+            if (_whereClause.Length > 0)
+            {
+                query.AppendLine();
+                query.Append($"WHERE {_whereClause}");
+            }
+            query.AppendLine();
+
+            // Check if we have a WITH clause from GroupBy
+            if (_returnClause.ToString().StartsWith("WITH"))
+            {
+                query.Append(_returnClause);
+                query.AppendLine();
+
+                // The actual RETURN clause should be set by VisitSelectAfterGroupBy
+                // which replaces the _returnClause with a RETURN statement
+            }
+
+            // If VisitSelectAfterGroupBy has been called, _returnClause will start with RETURN
+            if (_returnClause.ToString().StartsWith("RETURN"))
+            {
+                // Get the WITH clause that was stored during GroupBy
+                var matchAndWhere = query.ToString();
+                query.Clear();
+                query.Append(matchAndWhere);
+
+                // Use the stored grouping key property
+                if (!string.IsNullOrEmpty(_groupingKeyProperty))
+                {
+                    query.Append($"WITH {_alias}.{_groupingKeyProperty} AS {_groupingKeyAlias}, collect({_alias}) AS {_groupingItemsAlias}");
+                }
+                else
+                {
+                    // Fallback if somehow the property wasn't stored
+                    query.Append($"WITH {_alias} AS {_groupingKeyAlias}, collect({_alias}) AS {_groupingItemsAlias}");
+                }
+
+                query.AppendLine();
+                query.Append(_returnClause);
+            }
+        }
+        else
+        {
+            // Normal query
+            query.Append(_matchClause);
+
+            if (_whereClause.Length > 0)
+            {
+                query.AppendLine();
+                query.Append($"WHERE {_whereClause}");
+            }
+
+            if (_anyPredicate != null)
+            {
+                var condition = TranslateExpression(_anyPredicate.Body, _anyPredicate.Parameters[0]);
+                if (_whereClause.Length > 0)
+                {
+                    query.Append($" AND {condition}");
+                }
+                else
+                {
+                    query.AppendLine();
+                    query.Append($"WHERE {condition}");
+                }
+            }
+
+            if (_allPredicate != null)
+            {
+                var label = _elementType.Name;
+                var condition = TranslateExpression(_allPredicate.Body, _allPredicate.Parameters[0]);
+
+                // Replace the alias used in the condition with 'temp' for the subquery
+                var subqueryCondition = condition.Replace($"{_alias}.", "temp.");
+
+                // Clear the query and build a simple EXISTS check
+                query.Clear();
+                query.Append($"RETURN NOT EXISTS {{ MATCH (temp:{label}) WHERE NOT ({subqueryCondition}) }}");
+                return query.ToString();
+            }
+
+            // Return clause
+            if (_returnClause.Length > 0)
+            {
+                query.AppendLine();
+                // Check if we need to add DISTINCT to an existing return clause
+                var returnStr = _returnClause.ToString();
+                if (_isDistinct && !returnStr.Contains("DISTINCT"))
+                {
+                    // Insert DISTINCT after RETURN
+                    if (returnStr.StartsWith("RETURN "))
+                    {
+                        query.Append("RETURN DISTINCT ");
+                        query.Append(returnStr.Substring(7)); // Skip "RETURN "
+                    }
+                    else
+                    {
+                        query.Append(returnStr);
+                    }
+                }
+                else
+                {
+                    query.Append(returnStr);
+                }
+            }
+            else if (_isAnyQuery)
+            {
+                query.AppendLine();
+                query.Append($"RETURN count({_alias}) > 0");
+            }
+            else if (_isAllQuery)
+            {
+                query.AppendLine();
+                query.Append("RETURN allMatch");
+            }
+            else
+            {
+                query.AppendLine();
+                query.Append($"RETURN ");
+                if (_isDistinct) query.Append("DISTINCT ");
+
+                // Check if we're querying relationships
+                if (_matchClause.ToString().Contains($"(s)-[{_alias}:"))
+                {
+                    // For relationships, also return source and target IDs
+                    query.Append($"{_alias}, s.Id as sourceId, t.Id as targetId");
+                }
+                else
+                {
+                    query.Append(_alias);
+                }
+            }
+
+            // Order by
+            if (_orderByClause.Length > 0)
+            {
+                query.AppendLine();
+                query.Append($"ORDER BY {_orderByClause}");
+            }
+
+            // Skip/Take
+            if (_skip.HasValue)
+            {
+                query.AppendLine();
+                query.Append($"SKIP {_skip.Value}");
+            }
+
+            if (_take.HasValue)
+            {
+                query.AppendLine();
+                query.Append($"LIMIT {_take.Value}");
+            }
+        }
+
+        return query.ToString();
+    }
+
+    private string AddParameter(object? value)
+    {
+        var paramName = $"p{_parameterIndex++}";
+        _parameters[paramName] = value ?? "";
+        return $"${paramName}";
+    }
+
+    private LambdaExpression? ExtractLambda(Expression expression)
+    {
+        return expression switch
+        {
+            UnaryExpression { Operand: LambdaExpression lambda } => lambda,
+            LambdaExpression lambda => lambda,
+            _ => null
+        };
+    }
+
+    private string? ExtractPropertyName(Expression expression)
+    {
+        return expression switch
+        {
+            MemberExpression memberExpr => memberExpr.Member.Name,
+            _ => null
+        };
+    }
+
+    public async Task<object?> ExecuteQueryAsync(string cypher, Type elementType)
+    {
+        var (_, tx) = await _provider.GetOrCreateTransaction(_transaction);
+        Console.WriteLine($"DEBUG: ExecuteQueryAsync cypher: {cypher}");
+        var cursor = await tx.RunAsync(cypher, _parameters);
+
+        if (_isCountQuery)
+        {
+            var record = await cursor.SingleAsync();
+            return record[0].As<long>();
+        }
+
+        if (_isAnyQuery)
+        {
+            var record = await cursor.SingleAsync();
+            return record[0].As<bool>();
+        }
+
+        if (_isAllQuery)
+        {
+            var record = await cursor.SingleAsync();
+            return record[0].As<bool>();
+        }
+
+        if (_isGrouping)
+        {
+            return await ParseGroupingResultsAsync(cursor);
+        }
+
+        if (_isSingleQuery || _isSingleOrDefaultQuery)
+        {
+            var results = new List<IRecord>();
+            await foreach (var record in cursor)
+            {
+                results.Add(record);
+                // For Single(), we set _take = 2, so we only need to check the first 2 records
+                if (results.Count > 1)
+                {
+                    throw new InvalidOperationException("Sequence contains more than one element");
+                }
+            }
+
+            if (results.Count == 0)
+            {
+                if (_isSingleQuery)
+                {
+                    throw new InvalidOperationException("Sequence contains no elements");
+                }
+                else // SingleOrDefault
+                {
+                    return null;
+                }
+            }
+
+            return ParseRecord(results[0], elementType);
+        }
+
+        if (_isFirstQuery)
+        {
+            var record = await cursor.SingleAsync();
+            return ParseRecord(record, elementType);
+        }
+
+        if (_isLastQuery)
+        {
+            var results = await cursor.ToListAsync();
+            if (results.Count == 0) return null;
+            return ParseRecord(results[results.Count - 1], elementType);
+        }
+
+        // Regular query - check if this is a projection query
+        if (_projectionExpression != null)
+        {
+            // This is a projection query - handle it differently
+            var listType = typeof(List<>).MakeGenericType(elementType);
+            var items = (System.Collections.IList)Activator.CreateInstance(listType)!;
+
+            await foreach (var record in cursor)
+            {
+                var item = ParseProjectionRecord(record, elementType);
+                if (item != null) items.Add(item);
+            }
+
+            return items;
+        }
+        else
+        {
+            // Regular entity query
+            var listType = typeof(List<>).MakeGenericType(elementType);
+            var items = (System.Collections.IList)Activator.CreateInstance(listType)!;
+
+            await foreach (var record in cursor)
+            {
+                var item = ParseEntityRecord(record, elementType);
+                if (item != null) items.Add(item);
+            }
+
+            return items;
+        }
+    }
+
+    public object? ExecuteQuery(string cypher, Type elementType)
+    {
+        return ExecuteQueryAsync(cypher, elementType).GetAwaiter().GetResult();
+    }
+
+    private async Task<object> ParseGroupingResultsAsync(IResultCursor cursor)
+    {
+        if (_projectionExpression is NewExpression newExpr && newExpr.Members != null)
+        {
+            // Get the type of the anonymous type from the NewExpression
+            var anonymousType = newExpr.Type;
+            var listType = typeof(List<>).MakeGenericType(anonymousType);
+            var results = (System.Collections.IList)Activator.CreateInstance(listType)!;
+
+            await foreach (var record in cursor)
+            {
+                // Create anonymous type instance
+                var constructor = newExpr.Constructor;
+                var args = new object?[newExpr.Arguments.Count];
+
+                for (int i = 0; i < newExpr.Members.Count; i++)
+                {
+                    var memberName = newExpr.Members[i].Name;
+                    if (record.TryGetValue(memberName, out var value))
+                    {
+                        args[i] = ConvertValue(value, constructor!.GetParameters()[i].ParameterType);
+                    }
+                }
+
+                var instance = constructor!.Invoke(args);
+                results.Add(instance);
+            }
+
+            return results;
+        }
+
+        // Fallback to List<object> if no projection expression
+        var objectResults = new List<object>();
+        await foreach (var record in cursor)
+        {
+            objectResults.Add(record);
+        }
+        return objectResults;
+    }
+
+    private object? ParseProjectionRecord(IRecord record, Type elementType)
+    {
+        if (_projectionExpression is NewExpression newExpr && newExpr.Members != null)
+        {
+            // Anonymous type projection
+            var constructor = newExpr.Constructor;
+            var args = new object?[newExpr.Arguments.Count];
+
+            for (int i = 0; i < newExpr.Members.Count; i++)
+            {
+                var memberName = newExpr.Members[i].Name;
+                if (record.TryGetValue(memberName, out var value))
+                {
+                    args[i] = ConvertValue(value, constructor!.GetParameters()[i].ParameterType);
+                }
+            }
+
+            return constructor!.Invoke(args);
+        }
+        else if (_projectionExpression is MemberExpression)
+        {
+            // Simple member projection
+            if (record.Values.Count > 0)
+            {
+                return ConvertValue(record.Values.First().Value, elementType);
+            }
+        }
+
+        return null;
+    }
+
+    private object? ParseEntityRecord(IRecord record, Type elementType)
+    {
+        // Regular entity handling
+        if (record.TryGetValue(_alias, out var nodeValue) && nodeValue is global::Neo4j.Driver.INode node)
+        {
+            // Use reflection to call the generic method
+            var convertMethod = typeof(SerializationExtensions).GetMethod(nameof(SerializationExtensions.ConvertToGraphEntity))!;
+            var genericMethod = convertMethod.MakeGenericMethod(elementType);
+            return genericMethod.Invoke(null, new object[] { node });
+        }
+
+        if (record.TryGetValue(_alias, out var relValue) && relValue is global::Neo4j.Driver.IRelationship rel)
+        {
+            // Use reflection to call the generic method
+            var convertMethod = typeof(SerializationExtensions).GetMethod(nameof(SerializationExtensions.ConvertToGraphEntity))!;
+            var genericMethod = convertMethod.MakeGenericMethod(elementType);
+            var entity = genericMethod.Invoke(null, new object[] { rel });
+
+            // For relationships, we need to handle source and target IDs properly
+            if (entity is Model.IRelationship relationship)
+            {
+                // Check if the query included source and target node IDs
+                if (record.TryGetValue("sourceId", out var sourceId) && sourceId != null)
+                {
+                    relationship.SourceId = sourceId.As<string>();
+                }
+                if (record.TryGetValue("targetId", out var targetId) && targetId != null)
+                {
+                    relationship.TargetId = targetId.As<string>();
+                }
+            }
+
+            return entity;
+        }
+
+        // Scalar values
+        if (record.Values.Count > 0)
+        {
+            return ConvertValue(record.Values.First().Value, elementType);
+        }
+
+        return null;
+    }
+
+    private object? ParseRecord(IRecord record, Type elementType)
+    {
+        if (_projectionExpression != null)
+        {
+            return ParseProjectionRecord(record, elementType);
+        }
+        else
+        {
+            return ParseEntityRecord(record, elementType);
+        }
+    }
+
+    private object? ConvertValue(object? value, Type targetType)
+    {
+        if (value == null) return null;
+        if (targetType == value.GetType()) return value;
+
+        // Handle nullable types
+        var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+        if (underlyingType == typeof(int))
+            return Convert.ToInt32(value);
+        if (underlyingType == typeof(long))
+            return Convert.ToInt64(value);
+        if (underlyingType == typeof(double))
+            return Convert.ToDouble(value);
+        if (underlyingType == typeof(float))
+            return Convert.ToSingle(value);
+        if (underlyingType == typeof(decimal))
+            return Convert.ToDecimal(value);
+        if (underlyingType == typeof(bool))
+            return Convert.ToBoolean(value);
+        if (underlyingType == typeof(string))
+            return value.ToString();
+        if (underlyingType == typeof(DateTime))
+        {
+            if (value is ZonedDateTime zdt)
+                return zdt.ToDateTimeOffset().DateTime;
+            if (value is LocalDateTime ldt)
+                return ldt.ToDateTime();
+            return Convert.ToDateTime(value);
+        }
+        if (underlyingType == typeof(DateTimeOffset))
+        {
+            if (value is ZonedDateTime zdt)
+                return zdt.ToDateTimeOffset();
+            if (value is LocalDateTime ldt)
+                return new DateTimeOffset(ldt.ToDateTime());
+            return new DateTimeOffset(Convert.ToDateTime(value));
+        }
+
+        return value;
     }
 }

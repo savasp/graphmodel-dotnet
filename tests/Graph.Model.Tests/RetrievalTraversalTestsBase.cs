@@ -224,7 +224,7 @@ public abstract class RetrievalTraversalTestsBase
 
         // Act: Get multiple nodes with relationships
         var nodes = await provider.GetNodes<PersonWithNavigationProperty>(
-            new[] { alice.Id, charlie.Id },
+            [alice.Id, charlie.Id],
             new GraphOperationOptions { TraversalDepth = 1 });
 
         // Assert

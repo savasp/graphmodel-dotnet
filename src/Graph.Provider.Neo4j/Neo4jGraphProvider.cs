@@ -61,7 +61,7 @@ public class Neo4jGraphProvider : IGraph
     public IQueryable<N> Nodes<N>(GraphOperationOptions options, IGraphTransaction? transaction = null)
            where N : Model.INode, new()
     {
-        var provider = new Neo4jQueryProvider(this, options, this.logger, this.databaseName, transaction, typeof(N));
+        var provider = new Neo4jQueryProvider(this, options, this.logger, transaction, typeof(N));
 
         return new Neo4jQueryable<N>(provider, options, transaction);
     }
@@ -70,7 +70,7 @@ public class Neo4jGraphProvider : IGraph
     public IQueryable<R> Relationships<R>(GraphOperationOptions options, IGraphTransaction? transaction = null)
          where R : Model.IRelationship, new()
     {
-        var provider = new Neo4jQueryProvider(this, options, this.logger, this.databaseName, transaction, typeof(R));
+        var provider = new Neo4jQueryProvider(this, options, this.logger, transaction, typeof(R));
 
         return new Neo4jQueryable<R>(provider, options, transaction);
     }
@@ -112,6 +112,10 @@ public class Neo4jGraphProvider : IGraph
             }
 
             return nodes;
+        }
+        catch (Exception ex)
+        {
+            throw new GraphException($"Error retrieving nodes of type '{typeof(T).Name}'", ex);
         }
         finally
         {
@@ -159,6 +163,10 @@ public class Neo4jGraphProvider : IGraph
             }
 
             return relationships;
+        }
+        catch (Exception ex)
+        {
+            throw new GraphException($"Error retrieving relationships of type '{typeof(R).Name}'", ex);
         }
         finally
         {
@@ -518,6 +526,7 @@ public class Neo4jGraphProvider : IGraph
         catch (Exception ex)
         {
             Log(l => l.LogError(ex, "Failed to load existing constraints from Neo4j."));
+            throw new GraphException("Failed to load existing constraints from Neo4j.", ex);
         }
         finally
         {
@@ -960,6 +969,8 @@ public class Neo4jGraphProvider : IGraph
             var elementType = prop.PropertyType.GetGenericArguments()[0];
             var relLabel = GetLabel(elementType);
 
+            Console.WriteLine($"DEBUG: Loading relationships for node {node.Id}, property {prop.Name}, relationship type {elementType.Name}, label {relLabel}");
+
             // Check if we should process this relationship type
             if (options.RelationshipTypes?.Any() == true && !options.RelationshipTypes.Contains(relLabel))
                 continue;
@@ -970,11 +981,15 @@ public class Neo4jGraphProvider : IGraph
                 WHERE n.{nameof(Model.INode.Id)} = $nodeId
                 RETURN r, m";
 
+            Console.WriteLine($"DEBUG: Executing cypher: {cypher} with nodeId: {node.Id}");
+
             var result = await tx.RunAsync(cypher, new { nodeId = node.Id });
             var relationships = new List<Model.IRelationship>();
 
             // First, collect all the data from the cursor
             var records = await result.ToListAsync();
+
+            Console.WriteLine($"DEBUG: Found {records.Count} relationships of type {relLabel} for node {node.Id}");
 
             // Then process each record
             foreach (var record in records)
@@ -1193,6 +1208,12 @@ public class Neo4jGraphProvider : IGraph
     {
         var entityType = entity.GetType();
         var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+        // Special handling for INode.Id - always use the Id property from neo4j node
+        if (entity is Model.INode node && neo4jNode.Properties.ContainsKey("Id"))
+        {
+            node.Id = neo4jNode.Properties["Id"].As<string>();
+        }
 
         foreach (var prop in properties)
         {
