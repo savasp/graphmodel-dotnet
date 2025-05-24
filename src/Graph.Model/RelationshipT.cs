@@ -15,17 +15,23 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Base class for graph relationships that provides default implementation for IRelationship.
-/// Notice that when setting the source and target properties, the Source and Target properties are reset to null.
+/// Base class for strongly-typed graph relationships between specific node types.
+/// Provides a default implementation of the IRelationship&lt;S, T&gt; interface.
 /// </summary>
+/// <typeparam name="S">The type of the source node in the relationship.</typeparam>
+/// <typeparam name="T">The type of the target node in the relationship.</typeparam>
+/// <remarks>
+/// This class handles the synchronization between the node objects (Source/Target) and 
+/// their respective IDs (SourceId/TargetId), ensuring consistency when either is updated.
+/// </remarks>
 public class Relationship<S, T> : IRelationship<S, T>
     where S : class, INode
     where T : class, INode
 {
     private string sourceId = string.Empty;
     private string targetId = string.Empty;
-    private S? source = null;
-    private T? target = null;
+    private S? source;
+    private T? target;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Relationship{S, T}"/> class with default values.
@@ -34,24 +40,27 @@ public class Relationship<S, T> : IRelationship<S, T>
     /// <remarks>
     /// The default value for <see cref="IsBidirectional"/> is false.
     /// </remarks>
-    public Relationship(bool isBidirectional = false) : this(null, null, isBidirectional)
+    public Relationship(bool isBidirectional = false) 
+        : this(null, null, isBidirectional)
     {
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="Relationship{S, T}"/> class with specified source and target nodes.
+    /// Initializes a new instance of the <see cref="Relationship{S, T}"/> class 
+    /// with specified source and target nodes.
     /// </summary>
     /// <param name="source">The source node of the relationship.</param>
     /// <param name="target">The target node of the relationship.</param>
     /// <param name="isBidirectional">Indicates whether the relationship is bidirectional.</param>
     /// <remarks>
     /// The default value for <see cref="IsBidirectional"/> is false.
+    /// When source or target is provided, their IDs are automatically used to set SourceId and TargetId.
     /// </remarks>
     public Relationship(S? source, T? target, bool isBidirectional = false)
     {
-        this.Source = source;
-        this.Target = target;
-        this.IsBidirectional = isBidirectional;
+        Source = source;
+        Target = target;
+        IsBidirectional = isBidirectional;
     }
 
     /// <inheritdoc/>
@@ -60,14 +69,14 @@ public class Relationship<S, T> : IRelationship<S, T>
     /// <inheritdoc/>
     public string SourceId
     {
-        get => this.sourceId;
+        get => sourceId;
         set
         {
-            this.sourceId = value;
+            sourceId = value;
             // Only reset Source if the ID actually changed
-            if (this.source != null && this.source.Id != value)
+            if (source is not null && source.Id != value)
             {
-                this.source = null;
+                source = null;
             }
         }
     }
@@ -75,14 +84,14 @@ public class Relationship<S, T> : IRelationship<S, T>
     /// <inheritdoc/>
     public string TargetId
     {
-        get => this.targetId;
+        get => targetId;
         set
         {
-            this.targetId = value;
+            targetId = value;
             // Only reset Target if the ID actually changed
-            if (this.target != null && this.target.Id != value)
+            if (target is not null && target.Id != value)
             {
-                this.target = null;
+                target = null;
             }
         }
     }
@@ -93,22 +102,22 @@ public class Relationship<S, T> : IRelationship<S, T>
     /// <inheritdoc/>
     public S? Source
     {
-        get => this.source;
+        get => source;
         set
         {
-            this.source = value;
-            this.sourceId = value?.Id ?? this.sourceId; // Keep existing ID if value is null
+            source = value;
+            sourceId = value?.Id ?? sourceId; // Keep existing ID if value is null
         }
     }
 
     /// <inheritdoc/>
     public T? Target
     {
-        get => this.target;
+        get => target;
         set
         {
-            this.target = value;
-            this.targetId = value?.Id ?? this.targetId; // Keep existing ID if value is null
+            target = value;
+            targetId = value?.Id ?? targetId; // Keep existing ID if value is null
         }
     }
 }

@@ -15,27 +15,35 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Base class for graph relationships that provides default implementation for IRelationship
+/// Base class for graph relationships that provides a default implementation of the IRelationship interface.
+/// This serves as a foundation for creating domain-specific relationship entities.
 /// </summary>
+/// <remarks>
+/// Use this class as a base class for your domain-specific relationship models to get automatic ID generation
+/// and basic relationship functionality.
+/// </remarks>
 public abstract class Relationship : IRelationship
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="Relationship"/> class with default values.
+    /// Initializes a new instance of the <see cref="Relationship"/> class with specified directionality.
     /// </summary>
     /// <param name="isBidirectional">Indicates whether the relationship is bidirectional.</param>
-    public Relationship(bool isBidirectional)
+    /// <remarks>
+    /// Set isBidirectional to true if the relationship can be traversed in both directions.
+    /// </remarks>
+    public Relationship(bool isBidirectional = false)
     {
-        this.IsBidirectional = isBidirectional;
+        IsBidirectional = isBidirectional;
     }
 
     /// <inheritdoc/>
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
     /// <inheritdoc/>
-    public string SourceId { get; set; } = default!;
+    public string SourceId { get; set; } = string.Empty;
 
     /// <inheritdoc/>
-    public string TargetId { get; set; } = default!;
+    public string TargetId { get; set; } = string.Empty;
 
     /// <inheritdoc/>
     public bool IsBidirectional { get; set; }

@@ -15,12 +15,17 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents an entity in the graph: a node or a relationship with a unique identifier.
+/// Represents the foundation for all entities in the graph model.
+/// This is the base interface for both nodes and relationships, providing the core identity functionality.
 /// </summary>
 public interface IEntity
 {
     /// <summary>
-    /// The unique identifier of the entity.
+    /// Gets or sets the unique identifier of the entity.
+    /// This property is used to uniquely identify and reference the entity within the graph system.
     /// </summary>
+    /// <remarks>
+    /// Identifiers should be immutable once the entity has been persisted to ensure referential integrity.
+    /// </remarks>
     string Id { get; set; }
 }

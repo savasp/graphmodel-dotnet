@@ -15,27 +15,48 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents errors that occur during graph operations.
+/// Represents errors that occur specifically during graph transaction operations.
 /// </summary>
+/// <remarks>
+/// This exception is thrown when transaction-specific errors occur, such as
+/// during transaction creation, commitment, or rollback operations, or when
+/// there are issues with transaction isolation or concurrency.
+/// </remarks>
+[Serializable]
 public class GraphTransactionException : Exception
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="GraphTransactionException"/> class with a specified error message.
+    /// Initializes a new instance of the <see cref="GraphTransactionException"/> class 
+    /// with a specified error message.
     /// </summary>
-    /// <param name="message"> The error message that explains the reason for the exception.</param>
+    /// <param name="message">The error message that explains the reason for the exception.</param>
     public GraphTransactionException(string message) : base(message)
     {
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="GraphTransactionException"/> class with a specified error message and a reference to the inner exception that is the cause of this exception.
+    /// Initializes a new instance of the <see cref="GraphTransactionException"/> class 
+    /// with a specified error message and a reference to the inner exception that is the cause of this exception.
     /// </summary>
     /// <param name="message">The error message that explains the reason for the exception.</param>
-    /// <param name="innerException">The exception that is the cause of the current exception, or a null reference if no inner exception is specified.</param>
+    /// <param name="innerException">The exception that is the cause of the current exception, 
+    /// or a null reference if no inner exception is specified.</param>
     /// <remarks>
-    /// The <see cref="System.Exception.InnerException"/> property can be used to retrieve the original exception that caused this exception.
+    /// The <see cref="Exception.InnerException"/> property can be used to retrieve 
+    /// the original exception that caused this exception.
     /// </remarks>
     public GraphTransactionException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
+    
+    /// <summary>
+    /// Initializes a new instance of the <see cref="GraphTransactionException"/> class with serialized data.
+    /// </summary>
+    /// <param name="info">The object that holds the serialized object data.</param>
+    /// <param name="context">The contextual information about the source or destination.</param>
+    protected GraphTransactionException(System.Runtime.Serialization.SerializationInfo info, 
+                                       System.Runtime.Serialization.StreamingContext context) 
+        : base(info, context)
     {
     }
 }

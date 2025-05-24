@@ -15,22 +15,28 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents a point in 3D space.
+/// Represents a point in 3D space with X, Y, and Z coordinates.
 /// </summary>
-public struct Point(double x, double y, double z)
+/// <param name="x">The X coordinate of the point.</param>
+/// <param name="y">The Y coordinate of the point.</param>
+/// <param name="z">The Z coordinate of the point.</param>
+public readonly record struct Point(double X, double Y, double Z)
 {
     /// <summary>
-    /// The X coordinate of the point.
+    /// Creates a new point at the origin (0,0,0).
     /// </summary>
-    public double X { get; set; } = x;
+    public static Point Origin => new(0, 0, 0);
 
     /// <summary>
-    /// The Y coordinate of the point.
+    /// Calculates the Euclidean distance between this point and another point.
     /// </summary>
-    public double Y { get; set; } = y;
-
-    /// <summary>
-    /// The Z coordinate of the point.
-    /// </summary>
-    public double Z { get; set; } = z;
+    /// <param name="other">The other point to calculate distance to.</param>
+    /// <returns>The Euclidean distance between the points.</returns>
+    public double DistanceTo(Point other)
+    {
+        double dx = X - other.X;
+        double dy = Y - other.Y;
+        double dz = Z - other.Z;
+        return Math.Sqrt(dx * dx + dy * dy + dz * dz);
+    }
 }
