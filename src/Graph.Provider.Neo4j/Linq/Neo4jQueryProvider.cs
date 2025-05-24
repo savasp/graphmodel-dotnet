@@ -13,14 +13,12 @@
 // limitations under the License.
 
 using System.Collections;
-using System.Collections.ObjectModel;
 using System.Linq.Expressions;
-using System.Reflection;
 using Cvoya.Graph.Model;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq;
 
-public class Neo4jQueryProvider(
+internal class Neo4jQueryProvider(
     Neo4jGraphProvider provider,
     GraphOperationOptions options,
     Microsoft.Extensions.Logging.ILogger? logger,

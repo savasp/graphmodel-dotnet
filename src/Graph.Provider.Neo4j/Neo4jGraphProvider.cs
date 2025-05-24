@@ -39,6 +39,17 @@ public class Neo4jGraphProvider : IGraph
 
     private readonly string databaseName;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Neo4jGraphProvider"/> class.
+    /// </summary>
+    /// <param name="uri">The URI of the Neo4j database.</param>
+    /// <param name="username">The username for authentication.</param>
+    /// <param name="password">The password for authentication.</param>
+    /// <param name="databaseName">The name of the database.</param>
+    /// <param name="logger">The logger instance.</param>
+    /// <remarks>
+    /// The default value for <see cref="databaseName"/> is "neo4j".
+    /// </remarks>
     public Neo4jGraphProvider(
         string? uri = null,
         string? username = null,
@@ -457,6 +468,7 @@ public class Neo4jGraphProvider : IGraph
         return results;
     }
 
+    /// <inheritdoc />
     public void Dispose()
     {
         lock (disposeLock)

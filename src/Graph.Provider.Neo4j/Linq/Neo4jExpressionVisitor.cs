@@ -19,7 +19,7 @@ using Neo4j.Driver;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq;
 
-public class Neo4jExpressionVisitor(
+internal class Neo4jExpressionVisitor(
     Neo4jGraphProvider provider,
     Type rootType,
     Type elementType,

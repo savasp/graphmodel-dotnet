@@ -15,11 +15,10 @@
 using System.Collections;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model;
-using Neo4j.Driver;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq;
 
-public class Neo4jQueryable<T> : IOrderedQueryable<T>
+internal class Neo4jQueryable<T> : IOrderedQueryable<T>
 {
     private readonly GraphOperationOptions options;
 
