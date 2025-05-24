@@ -14,7 +14,7 @@
     <!-- Package Information -->
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Model</PackageId>
-        <Version>1.0.0</Version>
+        <Version>0.1.0</Version>
         <Authors>Savas Parastatidis</Authors>
         <Company>Cvoya</Company>
         <Description>A graph abstraction library with support for LINQ expressions.</Description>
