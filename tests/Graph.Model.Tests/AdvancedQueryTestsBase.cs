@@ -317,7 +317,7 @@ public abstract class AdvancedQueryTestsBase
         Assert.Equal(5, projected[0].Abs);
     }
 
-    [Fact(Skip = "GroupBy/Aggregate not yet implemented")]
+    [Fact]
     public async Task CanQueryWithGroupByAndAggregate()
     {
         await this.provider.CreateNode(new Person { FirstName = "Ann", LastName = "Smith" });
@@ -418,10 +418,201 @@ public abstract class AdvancedQueryTestsBase
         Assert.Equal("Alice Johnson", alice.FullName);
     }
 
-    [Fact(Skip = "Pattern comprehensions not yet implemented")]
+    [Fact]
     public async Task CanQueryWithPatternComprehension()
     {
-        // TODO: Write test for pattern comprehensions when navigation/deep traversal is supported
+        // Arrange: Create a social network with multiple levels of relationships
+        var alice = new PersonWithNavigationProperty { FirstName = "Alice", Age = 30 };
+        var bob = new PersonWithNavigationProperty { FirstName = "Bob", Age = 25 };
+        var charlie = new PersonWithNavigationProperty { FirstName = "Charlie", Age = 35 };
+        var diana = new PersonWithNavigationProperty { FirstName = "Diana", Age = 28 };
+        var eve = new PersonWithNavigationProperty { FirstName = "Eve", Age = 32 };
+
+        await this.provider.CreateNode(alice);
+        await this.provider.CreateNode(bob);
+        await this.provider.CreateNode(charlie);
+        await this.provider.CreateNode(diana);
+        await this.provider.CreateNode(eve);
+
+        // Create a network: Alice knows Bob and Charlie, Bob knows Diana, Charlie knows Eve
+        var knows1 = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>
+        {
+            Source = alice,
+            Target = bob,
+            Since = DateTime.UtcNow.AddDays(-10)
+        };
+        var knows2 = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>
+        {
+            Source = alice,
+            Target = charlie,
+            Since = DateTime.UtcNow.AddDays(-15)
+        };
+        var knows3 = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>
+        {
+            Source = bob,
+            Target = diana,
+            Since = DateTime.UtcNow.AddDays(-5)
+        };
+        var knows4 = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>
+        {
+            Source = charlie,
+            Target = eve,
+            Since = DateTime.UtcNow.AddDays(-8)
+        };
+
+        await this.provider.CreateRelationship(knows1);
+        await this.provider.CreateRelationship(knows2);
+        await this.provider.CreateRelationship(knows3);
+        await this.provider.CreateRelationship(knows4);
+
+        // Test 1: Pattern comprehension - get all friends with their details
+        var friendsPattern = this.provider.Nodes<PersonWithNavigationProperty>(
+            new GraphOperationOptions { TraversalDepth = 1 })
+            .Where(p => p.FirstName == "Alice")
+            .Select(p => new
+            {
+                PersonName = p.FirstName,
+                FriendDetails = p.Knows.Select(k => new
+                {
+                    FriendName = k.Target!.FirstName,
+                    FriendAge = k.Target.Age,
+                    KnownSince = k.Since,
+                    DaysKnown = (DateTime.UtcNow - k.Since).Days
+                }).ToList()
+            })
+            .FirstOrDefault();
+
+        Assert.NotNull(friendsPattern);
+        Assert.Equal("Alice", friendsPattern.PersonName);
+        Assert.Equal(2, friendsPattern.FriendDetails.Count);
+        Assert.Contains(friendsPattern.FriendDetails, f => f.FriendName == "Bob" && f.FriendAge == 25);
+        Assert.Contains(friendsPattern.FriendDetails, f => f.FriendName == "Charlie" && f.FriendAge == 35);
+
+        // Test 2: Pattern comprehension with filtering - get only young friends
+        var youngFriendsPattern = this.provider.Nodes<PersonWithNavigationProperty>(
+            new GraphOperationOptions { TraversalDepth = 1 })
+            .Where(p => p.FirstName == "Alice")
+            .Select(p => new
+            {
+                PersonName = p.FirstName,
+                YoungFriends = p.Knows
+                    .Where(k => k.Target!.Age < 30)
+                    .Select(k => k.Target!.FirstName)
+                    .ToList(),
+                YoungFriendCount = p.Knows.Count(k => k.Target!.Age < 30)
+            })
+            .FirstOrDefault();
+
+        Assert.NotNull(youngFriendsPattern);
+        Assert.Equal("Alice", youngFriendsPattern.PersonName);
+        Assert.Single(youngFriendsPattern.YoungFriends);
+        Assert.Contains("Bob", youngFriendsPattern.YoungFriends);
+        Assert.Equal(1, youngFriendsPattern.YoungFriendCount);
+
+        // Test 3: Complex pattern comprehension - aggregate friend data
+        var friendAggregation = this.provider.Nodes<PersonWithNavigationProperty>(
+            new GraphOperationOptions { TraversalDepth = 1 })
+            .Where(p => p.FirstName == "Alice")
+            .Select(p => new
+            {
+                PersonName = p.FirstName,
+                FriendCount = p.Knows.Count,
+                AverageFriendAge = p.Knows.Average(k => k.Target!.Age),
+                OldestFriend = p.Knows.Max(k => k.Target!.Age),
+                YoungestFriend = p.Knows.Min(k => k.Target!.Age),
+                RecentFriendships = p.Knows
+                    .Where(k => k.Since > DateTime.UtcNow.AddDays(-12))
+                    .Select(k => k.Target!.FirstName)
+                    .ToList()
+            })
+            .FirstOrDefault();
+
+        Assert.NotNull(friendAggregation);
+        Assert.Equal("Alice", friendAggregation.PersonName);
+        Assert.Equal(2, friendAggregation.FriendCount);
+        Assert.Equal(30.0, friendAggregation.AverageFriendAge); // (25 + 35) / 2
+        Assert.Equal(35, friendAggregation.OldestFriend);
+        Assert.Equal(25, friendAggregation.YoungestFriend);
+        Assert.Single(friendAggregation.RecentFriendships);
+        Assert.Contains("Bob", friendAggregation.RecentFriendships);
+
+        // Test 4: Multi-level pattern comprehension - friends of friends
+        var multiLevelPattern = this.provider.Nodes<PersonWithNavigationProperty>(
+            new GraphOperationOptions { TraversalDepth = 2 })
+            .Where(p => p.FirstName == "Alice")
+            .Select(p => new
+            {
+                PersonName = p.FirstName,
+                DirectFriends = p.Knows.Select(k => k.Target!.FirstName).ToList(),
+                FriendsOfFriends = p.Knows
+                    .SelectMany(k => k.Target!.Knows.Select(fof => fof.Target!.FirstName))
+                    .Distinct()
+                    .ToList(),
+                SocialNetworkSize = p.Knows
+                    .SelectMany(k => k.Target!.Knows.Select(fof => fof.Target!.FirstName))
+                    .Distinct()
+                    .Count()
+            })
+            .FirstOrDefault();
+
+        Assert.NotNull(multiLevelPattern);
+        Assert.Equal("Alice", multiLevelPattern.PersonName);
+        Assert.Equal(2, multiLevelPattern.DirectFriends.Count);
+        Assert.Contains("Bob", multiLevelPattern.DirectFriends);
+        Assert.Contains("Charlie", multiLevelPattern.DirectFriends);
+
+        // Friends of friends should include Diana (Bob's friend) and Eve (Charlie's friend)
+        Assert.Equal(2, multiLevelPattern.FriendsOfFriends.Count);
+        Assert.Contains("Diana", multiLevelPattern.FriendsOfFriends);
+        Assert.Contains("Eve", multiLevelPattern.FriendsOfFriends);
+        Assert.Equal(2, multiLevelPattern.SocialNetworkSize);
+
+        // Test 5: Pattern comprehension with ordering and grouping
+        var orderedFriendsPattern = this.provider.Nodes<PersonWithNavigationProperty>(
+            new GraphOperationOptions { TraversalDepth = 1 })
+            .Where(p => p.FirstName == "Alice")
+            .Select(p => new
+            {
+                PersonName = p.FirstName,
+                FriendsByAge = p.Knows
+                    .OrderBy(k => k.Target!.Age)
+                    .Select(k => new
+                    {
+                        Name = k.Target!.FirstName,
+                        Age = k.Target.Age
+                    })
+                    .ToList(),
+                AgeGroups = p.Knows
+                    .GroupBy(k => k.Target!.Age >= 30 ? "Senior" : "Junior")
+                    .Select(g => new
+                    {
+                        Group = g.Key,
+                        Count = g.Count(),
+                        Names = g.Select(k => k.Target!.FirstName).ToList()
+                    })
+                    .ToList()
+            })
+            .FirstOrDefault();
+
+        Assert.NotNull(orderedFriendsPattern);
+        Assert.Equal("Alice", orderedFriendsPattern.PersonName);
+
+        // Friends should be ordered by age: Bob (25), Charlie (35)
+        Assert.Equal(2, orderedFriendsPattern.FriendsByAge.Count);
+        Assert.Equal("Bob", orderedFriendsPattern.FriendsByAge[0].Name);
+        Assert.Equal(25, orderedFriendsPattern.FriendsByAge[0].Age);
+        Assert.Equal("Charlie", orderedFriendsPattern.FriendsByAge[1].Name);
+        Assert.Equal(35, orderedFriendsPattern.FriendsByAge[1].Age);
+
+        // Age groups: Junior (Bob), Senior (Charlie)
+        Assert.Equal(2, orderedFriendsPattern.AgeGroups.Count);
+        var juniorGroup = orderedFriendsPattern.AgeGroups.First(g => g.Group == "Junior");
+        var seniorGroup = orderedFriendsPattern.AgeGroups.First(g => g.Group == "Senior");
+
+        Assert.Equal(1, juniorGroup.Count);
+        Assert.Contains("Bob", juniorGroup.Names);
+        Assert.Equal(1, seniorGroup.Count);
+        Assert.Contains("Charlie", seniorGroup.Names);
     }
 
     [Fact]
@@ -523,10 +714,20 @@ public abstract class AdvancedQueryTestsBase
         Assert.True(charlieResult.HasUserKeyword);
     }
 
-    [Fact(Skip = "Subqueries not yet implemented")]
-    public async Task CanQueryWithSubqueries()
+    [Fact(Skip = "Subqueries not yet implemented - requires Cypher CALL { } syntax support")]
+    public Task CanQueryWithSubqueries()
     {
-        // TODO: Write test for Cypher CALL { ... } subqueries
+        // TODO: Implement when Neo4jExpressionVisitor supports generating CALL { } blocks
+        // for complex nested queries that would benefit from subquery execution.
+        //
+        // Examples of queries that should generate subqueries:
+        // 1. Cross-collection queries (nodes referencing relationships)
+        // 2. Complex aggregations with multiple levels
+        // 3. Conditional query execution based on node properties
+        // 4. Performance optimizations for large graph traversals
+
+        Assert.True(true); // Placeholder until implementation
+        return Task.CompletedTask;
     }
 
     [Fact]
