@@ -1,0 +1,52 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Graph.Provider.Neo4j.Tests", "tests\Graph.Provider.Neo4j.Tests\Graph.Provider.Neo4j.Tests.csproj", "{2F8244CF-1BA5-C2B4-F0E3-7A7734D83543}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Graph.Model.Tests", "tests\Graph.Model.Tests\Graph.Model.Tests.csproj", "{B67EEDBF-B844-BD9F-3B8A-37AFF3ACE6B5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Graph.Provider.Neo4j", "src\Graph.Provider.Neo4j\Graph.Provider.Neo4j.csproj", "{2FC29D5C-2066-56EB-B687-33C7B261771A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Graph.Model", "src\Graph.Model\Graph.Model.csproj", "{1A487B08-E7FD-E749-D888-A1BCEB83F41C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2F8244CF-1BA5-C2B4-F0E3-7A7734D83543}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2F8244CF-1BA5-C2B4-F0E3-7A7734D83543}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2F8244CF-1BA5-C2B4-F0E3-7A7734D83543}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2F8244CF-1BA5-C2B4-F0E3-7A7734D83543}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B67EEDBF-B844-BD9F-3B8A-37AFF3ACE6B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B67EEDBF-B844-BD9F-3B8A-37AFF3ACE6B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B67EEDBF-B844-BD9F-3B8A-37AFF3ACE6B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B67EEDBF-B844-BD9F-3B8A-37AFF3ACE6B5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2FC29D5C-2066-56EB-B687-33C7B261771A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2FC29D5C-2066-56EB-B687-33C7B261771A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2FC29D5C-2066-56EB-B687-33C7B261771A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2FC29D5C-2066-56EB-B687-33C7B261771A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1A487B08-E7FD-E749-D888-A1BCEB83F41C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1A487B08-E7FD-E749-D888-A1BCEB83F41C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1A487B08-E7FD-E749-D888-A1BCEB83F41C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1A487B08-E7FD-E749-D888-A1BCEB83F41C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2F8244CF-1BA5-C2B4-F0E3-7A7734D83543} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{B67EEDBF-B844-BD9F-3B8A-37AFF3ACE6B5} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{2FC29D5C-2066-56EB-B687-33C7B261771A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{1A487B08-E7FD-E749-D888-A1BCEB83F41C} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {04412277-A3F7-407B-980A-42A04BF5E6C7}
+	EndGlobalSection
+EndGlobal
