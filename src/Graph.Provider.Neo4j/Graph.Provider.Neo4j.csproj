@@ -16,7 +16,7 @@
     <!-- Package Information -->
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Provider.Neo4j</PackageId>
-        <Version>0.1.0</Version>
+        <Version>0.1.1</Version>
         <Authors>Savas Parastatidis</Authors>
         <Company>Cvoya</Company>
         <Description>A graph provider for the Neo4j database with support for LINQ.</Description>
