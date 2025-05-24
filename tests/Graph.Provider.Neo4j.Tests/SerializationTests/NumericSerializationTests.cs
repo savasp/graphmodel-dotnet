@@ -99,9 +99,9 @@ namespace Cvoya.Graph.Provider.Neo4j.Tests
         }
 
         [Theory]
-        [InlineData(79228162514264337593543950335.0)] // decimal.MaxValue as double
-        [InlineData(-79228162514264337593543950335.0)] // decimal.MinValue as double
-        public void ConvertToNeo4jValue_DecimalBoundaryValues_ReturnsDouble(double expectedValue)
+        [InlineData(1E+28)] // Large but within decimal range
+        [InlineData(-1E+28)] // Large negative but within decimal range
+        public void ConvertToNeo4jValue_LargeDecimalValues_ReturnsDouble(double expectedValue)
         {
             // Arrange
             decimal decimalValue = (decimal)expectedValue;

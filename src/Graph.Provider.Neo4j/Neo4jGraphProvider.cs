@@ -987,10 +987,10 @@ public class Neo4jGraphProvider : IGraph
 
             // Query for relationships of this type
             var cypher = $@"
-                MATCH (n)-[r:{relLabel}]->(m)
+                MATCH (n)-[r:{relLabel}]-(m)
                 WHERE n.{nameof(Model.INode.Id)} = $nodeId
-                RETURN r, m";
-
+                    AND (startNode(r) = n OR r.IsBidirectional = true)
+                RETURN r, m, startNode(r) = n AS isOutgoing";
             var result = await tx.RunAsync(cypher, new { nodeId = node.Id });
             var relationships = new List<Model.IRelationship>();
 
@@ -1001,42 +1001,82 @@ public class Neo4jGraphProvider : IGraph
             foreach (var record in records)
             {
                 var relNode = record["r"].As<global::Neo4j.Driver.IRelationship>();
-                var targetNode = record["m"].As<global::Neo4j.Driver.INode>();
+                var otherNode = record["m"].As<global::Neo4j.Driver.INode>();
+                var isOutgoing = record["isOutgoing"].As<bool>();
 
-                // Create and populate the relationship instance
                 var relationship = Activator.CreateInstance(elementType) as Model.IRelationship;
                 if (relationship != null)
                 {
-                    PopulateEntity(relationship, relNode);
-
-                    // Set the Source property to the current node
-                    var sourceProp = elementType.GetProperty("Source");
-                    if (sourceProp != null)
+                    // For bidirectional relationships viewed from the target node,
+                    // we need to create a "flipped" view of the relationship
+                    if (!isOutgoing && relNode.Properties.ContainsKey("IsBidirectional") &&
+                        relNode.Properties["IsBidirectional"].As<bool>())
                     {
-                        sourceProp.SetValue(relationship, node);
-                    }
+                        // This is a bidirectional relationship where current node is the target
+                        // We need to populate it as if the current node is the source
+                        PopulateEntity(relationship, relNode);
 
-                    // Handle target node if it's a generic relationship
-                    var genericInterface = elementType.GetInterfaces()
-                        .FirstOrDefault(i => i.IsGenericType &&
-                                           i.GetGenericTypeDefinition() == typeof(Model.IRelationship<,>));
-
-                    if (genericInterface != null)
-                    {
-                        var targetProp = elementType.GetProperty("Target");
-                        if (targetProp != null)
+                        var sourceProp = elementType.GetProperty("Source");
+                        if (sourceProp != null)
                         {
-                            var targetType = genericInterface.GetGenericArguments()[1];
-                            var target = Activator.CreateInstance(targetType) as Model.INode;
-                            if (target != null)
-                            {
-                                PopulateEntity(target, targetNode);
-                                targetProp.SetValue(relationship, target);
+                            sourceProp.SetValue(relationship, node); // Current node (Bob) is source
+                        }
 
-                                // Continue traversal for the target node
-                                if (currentDepth + 1 < options.TraversalDepth || options.TraversalDepth == -1)
+                        var genericInterface = elementType.GetInterfaces()
+                            .FirstOrDefault(i => i.IsGenericType &&
+                                              i.GetGenericTypeDefinition() == typeof(Model.IRelationship<,>));
+
+                        if (genericInterface != null)
+                        {
+                            var targetProp = elementType.GetProperty("Target");
+                            if (targetProp != null)
+                            {
+                                var targetType = genericInterface.GetGenericArguments()[1];
+                                var target = Activator.CreateInstance(targetType) as Model.INode;
+                                if (target != null)
                                 {
-                                    await LoadNodeRelationships(target, options, tx, currentDepth + 1, processedNodes);
+                                    PopulateEntity(target, otherNode); // Other node (Alice) is target
+                                    targetProp.SetValue(relationship, target);
+
+                                    if (currentDepth + 1 < options.TraversalDepth || options.TraversalDepth == -1)
+                                    {
+                                        await LoadNodeRelationships(target, options, tx, currentDepth + 1, processedNodes);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Normal outgoing relationship or non-bidirectional incoming
+                        PopulateEntity(relationship, relNode);
+
+                        var sourceProp = elementType.GetProperty("Source");
+                        if (sourceProp != null)
+                        {
+                            sourceProp.SetValue(relationship, isOutgoing ? node : null);
+                        }
+
+                        var genericInterface = elementType.GetInterfaces()
+                            .FirstOrDefault(i => i.IsGenericType &&
+                                              i.GetGenericTypeDefinition() == typeof(Model.IRelationship<,>));
+
+                        if (genericInterface != null)
+                        {
+                            var targetProp = elementType.GetProperty("Target");
+                            if (targetProp != null)
+                            {
+                                var targetType = genericInterface.GetGenericArguments()[isOutgoing ? 1 : 0];
+                                var target = Activator.CreateInstance(targetType) as Model.INode;
+                                if (target != null)
+                                {
+                                    PopulateEntity(target, otherNode);
+                                    targetProp.SetValue(relationship, isOutgoing ? target : null);
+
+                                    if (currentDepth + 1 < options.TraversalDepth || options.TraversalDepth == -1)
+                                    {
+                                        await LoadNodeRelationships(target, options, tx, currentDepth + 1, processedNodes);
+                                    }
                                 }
                             }
                         }
