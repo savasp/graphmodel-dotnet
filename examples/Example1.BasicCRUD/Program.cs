@@ -1,0 +1,222 @@
+// Copyright 2025 Savas Parastatidis
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+using Cvoya.Graph.Model;
+using Cvoya.Graph.Provider.Neo4j;
+using Microsoft.Extensions.Logging;
+
+// Example 1: Basic CRUD Operations
+// Demonstrates fundamental create, read, update, delete operations with nodes and relationships
+
+Console.WriteLine("=== Example 1: Basic CRUD Operations ===\n");
+
+// Configure logging
+using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+var logger = loggerFactory.CreateLogger("Example1");
+
+// Create graph instance with Neo4j provider
+var graph = new Neo4jGraphProvider("neo4j://localhost:7687", "neo4j", "password", null, logger);
+
+try
+{
+    // ==== CREATE OPERATIONS ====
+    Console.WriteLine("1. Creating nodes...");
+
+    // Create company
+    var techCorp = new Company
+    {
+        Name = "TechCorp",
+        Industry = "Technology",
+        Founded = new DateTime(2010, 1, 1)
+    };
+
+    // Create employees
+    var alice = new Person
+    {
+        Name = "Alice Johnson",
+        Email = "alice@techcorp.com",
+        Age = 30,
+        Department = "Engineering"
+    };
+
+    var bob = new Person
+    {
+        Name = "Bob Smith",
+        Email = "bob@techcorp.com",
+        Age = 28,
+        Department = "Marketing"
+    };
+
+    // Save nodes to graph
+    await graph.CreateNode(techCorp);
+    await graph.CreateNode(alice);
+    await graph.CreateNode(bob);
+
+    Console.WriteLine($"✓ Created company: {techCorp.Name}");
+    Console.WriteLine($"✓ Created employee: {alice.Name}");
+    Console.WriteLine($"✓ Created employee: {bob.Name}\n");
+
+    // Create relationships
+    Console.WriteLine("2. Creating relationships...");
+
+    var aliceWorksFor = new WorksFor
+    {
+        Source = alice,
+        Target = techCorp,
+        Position = "Senior Software Engineer",
+        StartDate = new DateTime(2022, 3, 15),
+        Salary = 95000
+    };
+
+    var bobWorksFor = new WorksFor
+    {
+        Source = bob,
+        Target = techCorp,
+        Position = "Marketing Manager",
+        StartDate = new DateTime(2021, 8, 1),
+        Salary = 75000
+    };
+
+    await graph.CreateRelationship(aliceWorksFor);
+    await graph.CreateRelationship(bobWorksFor);
+
+    Console.WriteLine($"✓ Created relationship: {alice.Name} works for {techCorp.Name}");
+    Console.WriteLine($"✓ Created relationship: {bob.Name} works for {techCorp.Name}\n");
+
+    // ==== READ OPERATIONS ====
+    Console.WriteLine("3. Reading data...");
+
+    // Find all people
+    var allPeople = graph.Nodes<Person>().ToList();
+    Console.WriteLine($"Found {allPeople.Count} people:");
+    foreach (var person in allPeople)
+    {
+        Console.WriteLine($"  - {person.Name} ({person.Email})");
+    }
+
+    // Find specific person by name
+    var foundAlice = graph.Nodes<Person>()
+        .Where(p => p.Name == "Alice Johnson")
+        .FirstOrDefault();
+
+    if (foundAlice != null)
+    {
+        Console.WriteLine($"\nFound Alice: {foundAlice.Name}, Age: {foundAlice.Age}");
+    }
+
+    // Find company
+    var foundCompany = graph.Nodes<Company>()
+        .Where(c => c.Name == "TechCorp")
+        .FirstOrDefault();
+
+    if (foundCompany != null)
+    {
+        Console.WriteLine($"Found company: {foundCompany.Name}, Industry: {foundCompany.Industry}");
+    }
+
+    // Find relationships
+    var workRelationships = graph.Relationships<WorksFor>(new GraphOperationOptions().WithDepth(1)).ToList();
+    Console.WriteLine($"\nFound {workRelationships.Count} work relationships:");
+    foreach (var rel in workRelationships)
+    {
+        Console.WriteLine($"  - {rel.Source!.Name} works as {rel.Position} (Salary: ${rel.Salary:N0})");
+    }
+
+    // ==== UPDATE OPERATIONS ====
+    Console.WriteLine("\n4. Updating data...");
+
+    // Update Alice's age and department
+    if (foundAlice != null)
+    {
+        var newAlice = new Person { Id = foundAlice.Id, Name = foundAlice.Name, Age = 31, Department = "Engineering" };
+        await graph.UpdateNode(newAlice);
+        Console.WriteLine($"✓ Updated Alice's age to {newAlice.Age} and department to {newAlice.Department}");
+    }
+
+    // Update Bob's salary
+    var bobRelationship = workRelationships.FirstOrDefault(r => r.Source!.Name == "Bob Smith");
+    if (bobRelationship != null)
+    {
+        bobRelationship.Salary = 80000; // Update salary
+        await graph.UpdateRelationship(bobRelationship);
+        Console.WriteLine($"✓ Updated Bob's salary to ${bobRelationship.Salary:N0}");
+    }
+
+    // ==== VERIFY UPDATES ====
+    Console.WriteLine("\n5. Verifying updates...");
+
+    var updatedAlice = graph.Nodes<Person>()
+        .Where(p => p.Name == "Alice Johnson")
+        .FirstOrDefault();
+
+    if (updatedAlice != null)
+    {
+        Console.WriteLine($"Alice's updated info: Age {updatedAlice.Age}, Department: {updatedAlice.Department}");
+    }
+
+    // We need to set depth to 1 so that .Source is populated
+    var updatedBobRel = graph.Relationships<WorksFor>(new GraphOperationOptions().WithDepth(1))
+        .Where(r => r.Source!.Name == "Bob Smith")
+        .FirstOrDefault();
+
+    if (updatedBobRel != null)
+    {
+        Console.WriteLine($"Bob's updated salary: ${updatedBobRel.Salary:N0}");
+    }
+
+    // ==== DELETE OPERATIONS ====
+    Console.WriteLine("\n6. Demonstrating delete operations...");
+
+    // Create a temporary person to delete
+    var tempPerson = new Person
+    {
+        Name = "Temporary Employee",
+        Email = "temp@techcorp.com",
+        Age = 25,
+        Department = "Temp"
+    };
+
+    await graph.CreateNode(tempPerson);
+    Console.WriteLine($"✓ Created temporary employee: {tempPerson.Name}");
+
+    // Delete the temporary person
+    await graph.DeleteNode(tempPerson.Id);
+    Console.WriteLine($"✓ Deleted temporary employee: {tempPerson.Name}");
+
+    // Verify deletion
+    var deletedPerson = graph.Nodes<Person>()
+        .Where(p => p.Name == "Temporary Employee")
+        .FirstOrDefault();
+
+    Console.WriteLine(deletedPerson == null
+        ? "✓ Confirmed: Temporary employee was successfully deleted"
+        : "✗ Error: Temporary employee still exists");
+
+    Console.WriteLine("\n=== Example 1 Complete ===");
+    Console.WriteLine("This example demonstrated:");
+    Console.WriteLine("• Creating nodes and relationships");
+    Console.WriteLine("• Reading data with LINQ queries");
+    Console.WriteLine("• Updating existing nodes and relationships");
+    Console.WriteLine("• Deleting nodes");
+    Console.WriteLine("• Using C# 13 record types with the GraphModel");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Error: {ex.Message}");
+    Console.WriteLine("Make sure Neo4j is running on localhost:7687 with username 'neo4j' and password 'password'");
+}
+finally
+{
+    graph.Dispose();
+}

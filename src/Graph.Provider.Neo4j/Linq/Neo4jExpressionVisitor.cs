@@ -47,6 +47,8 @@ internal class Neo4jExpressionVisitor(
     private bool _isSingleOrDefaultQuery = false;
     private bool _isDistinct = false;
     private bool _isGrouping = false;
+    private bool _isFirstOrDefaultQuery = false;
+    private bool _isLastOrDefaultQuery = false;
     private string _groupingKeyAlias = "";
     private string _groupingItemsAlias = "";
     private Expression? _projectionExpression;
@@ -418,13 +420,15 @@ internal class Neo4jExpressionVisitor(
 
     private void VisitFirst(MethodCallExpression node)
     {
-        _isFirstQuery = true;
+        _isFirstQuery = node.Method.Name == "First";
+        _isFirstOrDefaultQuery = node.Method.Name == "FirstOrDefault";
         _take = 1;
     }
 
     private void VisitLast(MethodCallExpression node)
     {
-        _isLastQuery = true;
+        _isLastQuery = node.Method.Name == "Last";
+        _isLastOrDefaultQuery = node.Method.Name == "LastOrDefault";
     }
 
     private void VisitSingle(MethodCallExpression node)
@@ -1006,16 +1010,37 @@ internal class Neo4jExpressionVisitor(
             return ParseRecord(results[0], elementType);
         }
 
-        if (_isFirstQuery)
+        if (_isFirstQuery || _isFirstOrDefaultQuery)
         {
-            var record = await cursor.SingleAsync();
-            return ParseRecord(record, elementType);
+            var hasResult = await cursor.FetchAsync();
+            if (!hasResult)
+            {
+                if (_isFirstOrDefaultQuery)
+                {
+                    return null;
+                }
+                else
+                {
+                    throw new InvalidOperationException("Sequence contains no elements");
+                }
+            }
+            return ParseRecord(cursor.Current, elementType);
         }
 
-        if (_isLastQuery)
+        if (_isLastQuery || _isLastOrDefaultQuery)
         {
             var results = await cursor.ToListAsync();
-            if (results.Count == 0) return null;
+            if (results.Count == 0)
+            {
+                if (_isLastOrDefaultQuery)
+                {
+                    return null;
+                }
+                else
+                {
+                    throw new InvalidOperationException("Sequence contains no elements");
+                }
+            }
             return ParseRecord(results[results.Count - 1], elementType);
         }
 
