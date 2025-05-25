@@ -14,14 +14,9 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class AdvancedQueryTestsBase
+public abstract class AdvancedQueryTestsBase : ITestBase
 {
-    private IGraph provider;
-
-    protected AdvancedQueryTestsBase(IGraph provider)
-    {
-        this.provider = provider;
-    }
+    public abstract IGraph Graph { get; }
 
     [Fact]
     public async Task CanQueryWithMultipleConditions()
@@ -29,11 +24,11 @@ public abstract class AdvancedQueryTestsBase
         var p1 = new Person { FirstName = "Alice", LastName = "Smith" };
         var p2 = new Person { FirstName = "Bob", LastName = "Smith" };
         var p3 = new Person { FirstName = "Charlie", LastName = "Jones" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
-        await this.provider.CreateNode(p3);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
+        await this.Graph.CreateNode(p3);
 
-        var smiths = this.provider.Nodes<Person>().Where(p => p.LastName == "Smith" && p.FirstName.StartsWith('A')).ToList();
+        var smiths = this.Graph.Nodes<Person>().Where(p => p.LastName == "Smith" && p.FirstName.StartsWith('A')).ToList();
         Assert.Single(smiths);
         Assert.Equal("Alice", smiths[0].FirstName);
     }
@@ -41,11 +36,11 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanQueryWithOrderByAndTake()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Zed", LastName = "Alpha" });
-        await this.provider.CreateNode(new Person { FirstName = "Ann", LastName = "Beta" });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Gamma" });
+        await this.Graph.CreateNode(new Person { FirstName = "Zed", LastName = "Alpha" });
+        await this.Graph.CreateNode(new Person { FirstName = "Ann", LastName = "Beta" });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Gamma" });
 
-        var ordered = this.provider.Nodes<Person>().OrderBy(p => p.FirstName).Take(2).ToList();
+        var ordered = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Take(2).ToList();
         Assert.Equal(2, ordered.Count);
         Assert.Equal("Ann", ordered[0].FirstName);
         Assert.Equal("Bob", ordered[1].FirstName);
@@ -54,9 +49,9 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanQueryWithProjection()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Alice", LastName = "Smith" });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
-        var names = this.provider.Nodes<Person>().Where(p => p.LastName == "Smith").Select(p => p.FirstName).ToList();
+        await this.Graph.CreateNode(new Person { FirstName = "Alice", LastName = "Smith" });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
+        var names = this.Graph.Nodes<Person>().Where(p => p.LastName == "Smith").Select(p => p.FirstName).ToList();
         Assert.Contains("Alice", names);
         Assert.Contains("Bob", names);
     }
@@ -64,18 +59,18 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanQueryWithCount()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Alice", LastName = "Smith" });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
-        var count = this.provider.Nodes<Person>().Count(p => p.LastName == "Smith");
+        await this.Graph.CreateNode(new Person { FirstName = "Alice", LastName = "Smith" });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
+        var count = this.Graph.Nodes<Person>().Count(p => p.LastName == "Smith");
         Assert.True(count >= 2);
     }
 
     [Fact]
     public async Task CanProjectToAnAnonymousType()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Alice", LastName = "Smith" });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
-        var projected = this.provider.Nodes<Person>()
+        await this.Graph.CreateNode(new Person { FirstName = "Alice", LastName = "Smith" });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
+        var projected = this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .Select(p => new { Name = p.FirstName })
             .ToList();
@@ -87,9 +82,9 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanProjectToAnAnonymousTypeWithFunction()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Alice", LastName = "Smith" });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
-        var projected = this.provider.Nodes<Person>()
+        await this.Graph.CreateNode(new Person { FirstName = "Alice", LastName = "Smith" });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
+        var projected = this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .Select(p => new { Name = p.FirstName + " " + p.LastName })
             .ToList();
@@ -102,19 +97,19 @@ public abstract class AdvancedQueryTestsBase
     public async Task CanNavigateRelationshipsInMemory()
     {
         var alice = new Person { FirstName = "Alice", LastName = "Smith" };
-        await this.provider.CreateNode(alice);
+        await this.Graph.CreateNode(alice);
         var bob = new Person { FirstName = "Bob", LastName = "Smith" };
-        await this.provider.CreateNode(bob);
+        await this.Graph.CreateNode(bob);
         var charlie = new Person { FirstName = "Charlie", LastName = "Jones" };
-        await this.provider.CreateNode(charlie);
+        await this.Graph.CreateNode(charlie);
         var knows1 = new Knows<Person, Person>(alice, bob) { Since = DateTime.UtcNow };
         var knows2 = new Knows<Person, Person>(bob, charlie) { Since = DateTime.UtcNow };
-        await this.provider.CreateRelationship(knows1);
-        await this.provider.CreateRelationship(knows2);
+        await this.Graph.CreateRelationship(knows1);
+        await this.Graph.CreateRelationship(knows2);
 
         // Fetch all people and relationships
-        var people = this.provider.Nodes<Person>().ToList();
-        var rels = await this.provider.GetRelationships<Knows<Person, Person>>([knows1.Id, knows2.Id]);
+        var people = this.Graph.Nodes<Person>().ToList();
+        var rels = await this.Graph.GetRelationships<Knows<Person, Person>>([knows1.Id, knows2.Id]);
 
         // Find all people Bob knows (outgoing)
         var bobsFriends = rels.Where(r => r.SourceId == bob.Id)
@@ -137,15 +132,15 @@ public abstract class AdvancedQueryTestsBase
     public async Task CanJoinNodesAndRelationshipsInMemory()
     {
         var alice = new Person { FirstName = "Alice", LastName = "Smith" };
-        await this.provider.CreateNode(alice);
+        await this.Graph.CreateNode(alice);
         var bob = new Person { FirstName = "Bob", LastName = "Smith" };
-        await this.provider.CreateNode(bob);
+        await this.Graph.CreateNode(bob);
 
         var knows = new Knows<Person, Person>(alice, bob) { Since = DateTime.UtcNow };
-        await this.provider.CreateRelationship(knows);
+        await this.Graph.CreateRelationship(knows);
 
-        var people = this.provider.Nodes<Person>().ToList();
-        var rels = await this.provider.GetRelationships<Knows<Person, Person>>([knows.Id]);
+        var people = this.Graph.Nodes<Person>().ToList();
+        var rels = await this.Graph.GetRelationships<Knows<Person, Person>>([knows.Id]);
 
         // Join: Find all (person, friend) pairs
         var pairs = (from p in people
@@ -160,9 +155,9 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanProjectWithStringFunctions()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Alice", LastName = "Smith" });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
-        var projected = this.provider.Nodes<Person>()
+        await this.Graph.CreateNode(new Person { FirstName = "Alice", LastName = "Smith" });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
+        var projected = this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .Select(p => new
             {
@@ -181,9 +176,9 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanProjectWithMathFunctions()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Alice", LastName = "Smith", Age = 30 });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Smith", Age = 40 });
-        var projected = this.provider.Nodes<Person>()
+        await this.Graph.CreateNode(new Person { FirstName = "Alice", LastName = "Smith", Age = 30 });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Smith", Age = 40 });
+        var projected = this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .Select(p => new
             {
@@ -202,9 +197,9 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanProjectWithNestedComputedProperties()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Alice", LastName = "Smith", Age = 30 });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Smith", Age = 40 });
-        var projected = this.provider.Nodes<Person>()
+        await this.Graph.CreateNode(new Person { FirstName = "Alice", LastName = "Smith", Age = 30 });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Smith", Age = 40 });
+        var projected = this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .Select(p => new
             {
@@ -224,17 +219,17 @@ public abstract class AdvancedQueryTestsBase
     {
         var alice = new Person { FirstName = "Alice", LastName = "Smith" };
         var bob = new Person { FirstName = "Bob", LastName = "Smith" };
-        await this.provider.CreateNode(alice);
-        await this.provider.CreateNode(bob);
+        await this.Graph.CreateNode(alice);
+        await this.Graph.CreateNode(bob);
         var knows = new Knows<Person, Person>(alice, bob) { Since = DateTime.UtcNow };
-        await this.provider.CreateRelationship(knows);
+        await this.Graph.CreateRelationship(knows);
 
-        var rels = this.provider.Relationships<Knows<Person, Person>>().Where(r => r.SourceId == alice.Id).Select(r => r.Since).ToList();
+        var rels = this.Graph.Relationships<Knows<Person, Person>>().Where(r => r.SourceId == alice.Id).Select(r => r.Since).ToList();
         Assert.Single(rels);
         Assert.True(rels[0] > DateTime.MinValue);
 
         // The project is on the right hand side of the expression
-        rels = this.provider.Relationships<Knows<Person, Person>>().Where(r => alice.Id == r.SourceId).Select(r => r.Since).ToList();
+        rels = this.Graph.Relationships<Knows<Person, Person>>().Where(r => alice.Id == r.SourceId).Select(r => r.Since).ToList();
         Assert.Single(rels);
         Assert.True(rels[0] > DateTime.MinValue);
     }
@@ -245,15 +240,15 @@ public abstract class AdvancedQueryTestsBase
         var alice = new Person { FirstName = "Alice" };
         var bob = new Person { FirstName = "Bob" };
         var charlie = new Person { FirstName = "Charlie" };
-        await this.provider.CreateNode(alice);
-        await this.provider.CreateNode(bob);
-        await this.provider.CreateNode(charlie);
+        await this.Graph.CreateNode(alice);
+        await this.Graph.CreateNode(bob);
+        await this.Graph.CreateNode(charlie);
         var r1 = new Knows<Person, Person>(alice, bob) { Since = DateTime.UtcNow.AddDays(-2) };
         var r2 = new Knows<Person, Person>(alice, charlie) { Since = DateTime.UtcNow.AddDays(-1) };
-        await this.provider.CreateRelationship(r1);
-        await this.provider.CreateRelationship(r2);
+        await this.Graph.CreateRelationship(r1);
+        await this.Graph.CreateRelationship(r2);
 
-        var ordered = this.provider.Relationships<Knows<Person, Person>>().OrderBy(r => r.Since).ToList();
+        var ordered = this.Graph.Relationships<Knows<Person, Person>>().OrderBy(r => r.Since).ToList();
         Assert.Equal(2, ordered.Count);
         Assert.True(ordered[0].Since < ordered[1].Since);
     }
@@ -261,10 +256,10 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanQueryWithMultipleOrderByAndThenBy()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Ann", LastName = "Smith" });
-        await this.provider.CreateNode(new Person { FirstName = "Ann", LastName = "Brown" });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
-        var ordered = this.provider.Nodes<Person>().OrderBy(p => p.FirstName).ThenBy(p => p.LastName).ToList();
+        await this.Graph.CreateNode(new Person { FirstName = "Ann", LastName = "Smith" });
+        await this.Graph.CreateNode(new Person { FirstName = "Ann", LastName = "Brown" });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
+        var ordered = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).ThenBy(p => p.LastName).ToList();
         Assert.Equal(3, ordered.Count);
         Assert.Equal("Ann", ordered[0].FirstName);
         Assert.Equal("Brown", ordered[0].LastName);
@@ -273,10 +268,10 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanQueryWithDistinctAndSkip()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Ann", LastName = "Smith" });
-        await this.provider.CreateNode(new Person { FirstName = "Ann", LastName = "Brown" });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
-        var names = this.provider.Nodes<Person>().Select(p => p.FirstName).Distinct().Skip(1).ToList();
+        await this.Graph.CreateNode(new Person { FirstName = "Ann", LastName = "Smith" });
+        await this.Graph.CreateNode(new Person { FirstName = "Ann", LastName = "Brown" });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
+        var names = this.Graph.Nodes<Person>().Select(p => p.FirstName).Distinct().Skip(1).ToList();
         Assert.Single(names);
         Assert.Equal("Bob", names[0]);
     }
@@ -284,13 +279,13 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanQueryWithAnyAllFirstSingleLast()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Ann", LastName = "Smith" });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
-        var anyAnn = this.provider.Nodes<Person>().Any(p => p.FirstName == "Ann");
-        var allSmith = this.provider.Nodes<Person>().All(p => p.LastName == "Smith");
-        var first = this.provider.Nodes<Person>().OrderBy(p => p.FirstName).First();
-        var single = this.provider.Nodes<Person>().Single(p => p.FirstName == "Ann");
-        var last = this.provider.Nodes<Person>().OrderBy(p => p.FirstName).Last();
+        await this.Graph.CreateNode(new Person { FirstName = "Ann", LastName = "Smith" });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
+        var anyAnn = this.Graph.Nodes<Person>().Any(p => p.FirstName == "Ann");
+        var allSmith = this.Graph.Nodes<Person>().All(p => p.LastName == "Smith");
+        var first = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).First();
+        var single = this.Graph.Nodes<Person>().Single(p => p.FirstName == "Ann");
+        var last = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Last();
         Assert.True(anyAnn);
         Assert.True(allSmith);
         Assert.Equal("Ann", first.FirstName);
@@ -301,8 +296,8 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanQueryWithStringAndMathFunctionsAdvanced()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Eve", LastName = "Smith", Age = 25 });
-        var projected = this.provider.Nodes<Person>()
+        await this.Graph.CreateNode(new Person { FirstName = "Eve", LastName = "Smith", Age = 25 });
+        var projected = this.Graph.Nodes<Person>()
             .Select(p => new
             {
                 Len = p.FirstName.Length,
@@ -320,10 +315,10 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanQueryWithGroupByAndAggregate()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Ann", LastName = "Smith" });
-        await this.provider.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
-        await this.provider.CreateNode(new Person { FirstName = "Ann", LastName = "Brown" });
-        var grouped = this.provider.Nodes<Person>()
+        await this.Graph.CreateNode(new Person { FirstName = "Ann", LastName = "Smith" });
+        await this.Graph.CreateNode(new Person { FirstName = "Bob", LastName = "Smith" });
+        await this.Graph.CreateNode(new Person { FirstName = "Ann", LastName = "Brown" });
+        var grouped = this.Graph.Nodes<Person>()
             .GroupBy(p => p.FirstName)
             .Select(g => new { Name = g.Key, Count = g.Count() })
             .ToList();
@@ -337,13 +332,13 @@ public abstract class AdvancedQueryTestsBase
     {
         // Arrange
         var eve = new Person { FirstName = "Eve", LastName = "Smith", Age = 25 };
-        await this.provider.CreateNode(eve);
+        await this.Graph.CreateNode(eve);
 
         // Capture the reference time at the start of the test
         var referenceTime = DateTime.UtcNow;
 
         // Act
-        var projected = this.provider.Nodes<Person>()
+        var projected = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Eve")
             .Select(p => new
             {
@@ -383,10 +378,10 @@ public abstract class AdvancedQueryTestsBase
     [Fact]
     public async Task CanProjectWithCollectionFunctions()
     {
-        await this.provider.CreateNode(new Person { FirstName = "Eve", LastName = "Smith", Age = 25 });
-        await this.provider.CreateNode(new Person { FirstName = "Alice", LastName = "Johnson", Age = 30 });
+        await this.Graph.CreateNode(new Person { FirstName = "Eve", LastName = "Smith", Age = 25 });
+        await this.Graph.CreateNode(new Person { FirstName = "Alice", LastName = "Johnson", Age = 30 });
 
-        var projected = this.provider.Nodes<Person>()
+        var projected = this.Graph.Nodes<Person>()
             .Select(p => new
             {
                 Name = p.FirstName,
@@ -428,11 +423,11 @@ public abstract class AdvancedQueryTestsBase
         var diana = new PersonWithNavigationProperty { FirstName = "Diana", Age = 28 };
         var eve = new PersonWithNavigationProperty { FirstName = "Eve", Age = 32 };
 
-        await this.provider.CreateNode(alice);
-        await this.provider.CreateNode(bob);
-        await this.provider.CreateNode(charlie);
-        await this.provider.CreateNode(diana);
-        await this.provider.CreateNode(eve);
+        await this.Graph.CreateNode(alice);
+        await this.Graph.CreateNode(bob);
+        await this.Graph.CreateNode(charlie);
+        await this.Graph.CreateNode(diana);
+        await this.Graph.CreateNode(eve);
 
         // Create a network: Alice knows Bob and Charlie, Bob knows Diana, Charlie knows Eve
         var knows1 = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>
@@ -460,13 +455,13 @@ public abstract class AdvancedQueryTestsBase
             Since = DateTime.UtcNow.AddDays(-8)
         };
 
-        await this.provider.CreateRelationship(knows1);
-        await this.provider.CreateRelationship(knows2);
-        await this.provider.CreateRelationship(knows3);
-        await this.provider.CreateRelationship(knows4);
+        await this.Graph.CreateRelationship(knows1);
+        await this.Graph.CreateRelationship(knows2);
+        await this.Graph.CreateRelationship(knows3);
+        await this.Graph.CreateRelationship(knows4);
 
         // Test 1: Pattern comprehension - get all friends with their details
-        var friendsPattern = this.provider.Nodes<PersonWithNavigationProperty>(
+        var friendsPattern = this.Graph.Nodes<PersonWithNavigationProperty>(
             new GraphOperationOptions { TraversalDepth = 1 })
             .Where(p => p.FirstName == "Alice")
             .Select(p => new
@@ -489,7 +484,7 @@ public abstract class AdvancedQueryTestsBase
         Assert.Contains(friendsPattern.FriendDetails, f => f.FriendName == "Charlie" && f.FriendAge == 35);
 
         // Test 2: Pattern comprehension with filtering - get only young friends
-        var youngFriendsPattern = this.provider.Nodes<PersonWithNavigationProperty>(
+        var youngFriendsPattern = this.Graph.Nodes<PersonWithNavigationProperty>(
             new GraphOperationOptions { TraversalDepth = 1 })
             .Where(p => p.FirstName == "Alice")
             .Select(p => new
@@ -510,7 +505,7 @@ public abstract class AdvancedQueryTestsBase
         Assert.Equal(1, youngFriendsPattern.YoungFriendCount);
 
         // Test 3: Complex pattern comprehension - aggregate friend data
-        var friendAggregation = this.provider.Nodes<PersonWithNavigationProperty>(
+        var friendAggregation = this.Graph.Nodes<PersonWithNavigationProperty>(
             new GraphOperationOptions { TraversalDepth = 1 })
             .Where(p => p.FirstName == "Alice")
             .Select(p => new
@@ -537,7 +532,7 @@ public abstract class AdvancedQueryTestsBase
         Assert.Contains("Bob", friendAggregation.RecentFriendships);
 
         // Test 4: Multi-level pattern comprehension - friends of friends
-        var multiLevelPattern = this.provider.Nodes<PersonWithNavigationProperty>(
+        var multiLevelPattern = this.Graph.Nodes<PersonWithNavigationProperty>(
             new GraphOperationOptions { TraversalDepth = 2 })
             .Where(p => p.FirstName == "Alice")
             .Select(p => new
@@ -568,7 +563,7 @@ public abstract class AdvancedQueryTestsBase
         Assert.Equal(2, multiLevelPattern.SocialNetworkSize);
 
         // Test 5: Pattern comprehension with ordering and grouping
-        var orderedFriendsPattern = this.provider.Nodes<PersonWithNavigationProperty>(
+        var orderedFriendsPattern = this.Graph.Nodes<PersonWithNavigationProperty>(
             new GraphOperationOptions { TraversalDepth = 1 })
             .Where(p => p.FirstName == "Alice")
             .Select(p => new
@@ -624,27 +619,27 @@ public abstract class AdvancedQueryTestsBase
         var person3 = new Person { FirstName = "Charlie", LastName = "Brown", Bio = "Product manager focused on user experience and interface design" };
         var person4 = new Person { FirstName = "Diana", LastName = "Wilson", Bio = "DevOps engineer specializing in cloud infrastructure and automation" };
 
-        await this.provider.CreateNode(person1);
-        await this.provider.CreateNode(person2);
-        await this.provider.CreateNode(person3);
-        await this.provider.CreateNode(person4);
+        await this.Graph.CreateNode(person1);
+        await this.Graph.CreateNode(person2);
+        await this.Graph.CreateNode(person3);
+        await this.Graph.CreateNode(person4);
 
         // Act & Assert: Test various full-text search scenarios
 
         // Test 1: Simple text contains search
-        var engineerResults = this.provider.Nodes<Person>()
+        var engineerResults = this.Graph.Nodes<Person>()
             .Where(p => p.Bio.Contains("engineer"))
             .ToList();
 
         // Let's also check all people in the database
-        var allPeople = this.provider.Nodes<Person>().ToList();
+        var allPeople = this.Graph.Nodes<Person>().ToList();
 
         Assert.Equal(2, engineerResults.Count);
         Assert.Contains(engineerResults, p => p.FirstName == "Alice");
         Assert.Contains(engineerResults, p => p.FirstName == "Diana");
 
         // Test 2: Case-insensitive search
-        var aiResults = this.provider.Nodes<Person>()
+        var aiResults = this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLower().Contains("artificial intelligence"))
             .ToList();
 
@@ -652,7 +647,7 @@ public abstract class AdvancedQueryTestsBase
         Assert.Equal("Alice", aiResults[0].FirstName);
 
         // Test 3: Multiple word search with AND logic
-        var techResults = this.provider.Nodes<Person>()
+        var techResults = this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLower().Contains("data") && p.Bio.ToLower().Contains("scientist"))
             .ToList();
 
@@ -660,7 +655,7 @@ public abstract class AdvancedQueryTestsBase
         Assert.Equal("Bob", techResults[0].FirstName);
 
         // Test 4: Multiple word search with OR logic
-        var designOrCloudResults = this.provider.Nodes<Person>()
+        var designOrCloudResults = this.Graph.Nodes<Person>()
             .Where(p => p.Bio.Contains("design") || p.Bio.Contains("cloud"))
             .ToList();
 
@@ -669,14 +664,14 @@ public abstract class AdvancedQueryTestsBase
         Assert.Contains(designOrCloudResults, p => p.FirstName == "Diana");
 
         // Test 5: StartsWith and EndsWith for prefix/suffix matching
-        var startsWithResults = this.provider.Nodes<Person>()
+        var startsWithResults = this.Graph.Nodes<Person>()
             .Where(p => p.Bio.StartsWith("Software"))
             .ToList();
 
         Assert.Single(startsWithResults);
         Assert.Equal("Alice", startsWithResults[0].FirstName);
 
-        var endsWithResults = this.provider.Nodes<Person>()
+        var endsWithResults = this.Graph.Nodes<Person>()
             .Where(p => p.Bio.EndsWith("automation"))
             .ToList();
 
@@ -684,7 +679,7 @@ public abstract class AdvancedQueryTestsBase
         Assert.Equal("Diana", endsWithResults[0].FirstName);
 
         // Test 6: Combine text search with other filters
-        var filteredResults = this.provider.Nodes<Person>()
+        var filteredResults = this.Graph.Nodes<Person>()
             .Where(p => p.Bio.Contains("engineer") && p.FirstName.StartsWith("A"))
             .ToList();
 
@@ -692,7 +687,7 @@ public abstract class AdvancedQueryTestsBase
         Assert.Equal("Alice", filteredResults[0].FirstName);
 
         // Test 7: Project results with text matching
-        var projectedResults = this.provider.Nodes<Person>()
+        var projectedResults = this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLower().Contains("data") || p.Bio.ToLower().Contains("user"))
             .Select(p => new
             {
@@ -740,23 +735,23 @@ public abstract class AdvancedQueryTestsBase
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
         var david = new Person { FirstName = "David", LastName = "Wilson" };
 
-        await this.provider.CreateNode(alice);
-        await this.provider.CreateNode(bob);
-        await this.provider.CreateNode(charlie);
-        await this.provider.CreateNode(david);
+        await this.Graph.CreateNode(alice);
+        await this.Graph.CreateNode(bob);
+        await this.Graph.CreateNode(charlie);
+        await this.Graph.CreateNode(david);
 
         var knows1 = new Knows<Person, Person>(alice, bob) { Since = DateTime.UtcNow.AddDays(-30) };
         var knows2 = new Knows<Person, Person>(bob, charlie) { Since = DateTime.UtcNow.AddDays(-20) };
         var knows3 = new Knows<Person, Person>(charlie, david) { Since = DateTime.UtcNow.AddDays(-10) };
 
-        await this.provider.CreateRelationship(knows1);
-        await this.provider.CreateRelationship(knows2);
-        await this.provider.CreateRelationship(knows3);
+        await this.Graph.CreateRelationship(knows1);
+        await this.Graph.CreateRelationship(knows2);
+        await this.Graph.CreateRelationship(knows3);
 
         // Act & Assert: Test navigation at different levels
 
         // Test 1: Simple relationship query - who does Alice know?
-        var aliceKnows = this.provider.Relationships<Knows<Person, Person>>()
+        var aliceKnows = this.Graph.Relationships<Knows<Person, Person>>()
             .Where(k => k.SourceId == alice.Id)
             .ToList();
 
@@ -764,8 +759,8 @@ public abstract class AdvancedQueryTestsBase
         Assert.Equal(bob.Id, aliceKnows[0].TargetId);
 
         // Test 2: Get all people and relationships, then navigate in memory
-        var allPeople = this.provider.Nodes<Person>().ToList();
-        var allKnows = this.provider.Relationships<Knows<Person, Person>>().ToList();
+        var allPeople = this.Graph.Nodes<Person>().ToList();
+        var allKnows = this.Graph.Relationships<Knows<Person, Person>>().ToList();
 
         // Find Bob's friends in memory
         var bobsFriends = allKnows
@@ -796,19 +791,19 @@ public abstract class AdvancedQueryTestsBase
         var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
         var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
 
-        await this.provider.CreateNode(alice);
-        await this.provider.CreateNode(bob);
-        await this.provider.CreateNode(charlie);
+        await this.Graph.CreateNode(alice);
+        await this.Graph.CreateNode(bob);
+        await this.Graph.CreateNode(charlie);
 
         var knows1 = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty> { Source = alice, Target = bob };
         var knows2 = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty> { Source = alice, Target = charlie };
 
-        await this.provider.CreateRelationship(knows1);
-        await this.provider.CreateRelationship(knows2);
+        await this.Graph.CreateRelationship(knows1);
+        await this.Graph.CreateRelationship(knows2);
 
         // Test projection with navigation properties (this is what we fixed earlier)
         // First, verify the data exists
-        var aliceNode = this.provider.Nodes<PersonWithNavigationProperty>()
+        var aliceNode = this.Graph.Nodes<PersonWithNavigationProperty>()
             .Where(p => p.FirstName == "Alice")
             .FirstOrDefault();
 
@@ -816,7 +811,7 @@ public abstract class AdvancedQueryTestsBase
         Assert.Equal("Alice", aliceNode.FirstName);
 
         // Now try simple projection without TraversalDepth
-        var simpleProjection = this.provider.Nodes<PersonWithNavigationProperty>()
+        var simpleProjection = this.Graph.Nodes<PersonWithNavigationProperty>()
             .Where(p => p.FirstName == "Alice")
             .Select(p => new
             {
@@ -829,7 +824,7 @@ public abstract class AdvancedQueryTestsBase
         Assert.Equal("Alice", simpleProjection.Name);
 
         // Now test with TraversalDepth
-        var projectedAlice = this.provider.Nodes<PersonWithNavigationProperty>(
+        var projectedAlice = this.Graph.Nodes<PersonWithNavigationProperty>(
             new GraphOperationOptions { TraversalDepth = 1 })
             .Where(p => p.FirstName == "Alice")
             .Select(p => new
@@ -856,16 +851,16 @@ public abstract class AdvancedQueryTestsBase
         var bob = new Person { FirstName = "Bob" };
         var charlie = new Person { FirstName = "Charlie" };
 
-        await this.provider.CreateNode(alice);
-        await this.provider.CreateNode(bob);
-        await this.provider.CreateNode(charlie);
+        await this.Graph.CreateNode(alice);
+        await this.Graph.CreateNode(bob);
+        await this.Graph.CreateNode(charlie);
 
-        await this.provider.CreateRelationship(new Knows<Person, Person>(alice, bob));
-        await this.provider.CreateRelationship(new Knows<Person, Person>(bob, charlie));
+        await this.Graph.CreateRelationship(new Knows<Person, Person>(alice, bob));
+        await this.Graph.CreateRelationship(new Knows<Person, Person>(bob, charlie));
 
         // Execute separate queries and combine in memory
-        var people = this.provider.Nodes<Person>().ToDictionary(p => p.Id);
-        var relationships = this.provider.Relationships<Knows<Person, Person>>().ToList();
+        var people = this.Graph.Nodes<Person>().ToDictionary(p => p.Id);
+        var relationships = this.Graph.Relationships<Knows<Person, Person>>().ToList();
 
         // Build a connection map
         var connectionMap = relationships
@@ -891,24 +886,24 @@ public abstract class AdvancedQueryTestsBase
         var charlie = new Person { FirstName = "Charlie" };
         var dave = new Person { FirstName = "Dave" };
 
-        await this.provider.CreateNode(alice);
-        await this.provider.CreateNode(bob);
-        await this.provider.CreateNode(charlie);
-        await this.provider.CreateNode(dave);
+        await this.Graph.CreateNode(alice);
+        await this.Graph.CreateNode(bob);
+        await this.Graph.CreateNode(charlie);
+        await this.Graph.CreateNode(dave);
 
         // Alice knows everyone, Bob knows 2, Charlie knows 1, Dave knows none
-        await this.provider.CreateRelationship(new Knows<Person, Person>(alice, bob));
-        await this.provider.CreateRelationship(new Knows<Person, Person>(alice, charlie));
-        await this.provider.CreateRelationship(new Knows<Person, Person>(alice, dave));
-        await this.provider.CreateRelationship(new Knows<Person, Person>(bob, charlie));
-        await this.provider.CreateRelationship(new Knows<Person, Person>(bob, dave));
-        await this.provider.CreateRelationship(new Knows<Person, Person>(charlie, dave));
+        await this.Graph.CreateRelationship(new Knows<Person, Person>(alice, bob));
+        await this.Graph.CreateRelationship(new Knows<Person, Person>(alice, charlie));
+        await this.Graph.CreateRelationship(new Knows<Person, Person>(alice, dave));
+        await this.Graph.CreateRelationship(new Knows<Person, Person>(bob, charlie));
+        await this.Graph.CreateRelationship(new Knows<Person, Person>(bob, dave));
+        await this.Graph.CreateRelationship(new Knows<Person, Person>(charlie, dave));
 
         // Get all relationships once
-        var allRelationships = this.provider.Relationships<Knows<Person, Person>>().ToList();
+        var allRelationships = this.Graph.Relationships<Knows<Person, Person>>().ToList();
 
         // Project connection counts
-        var connectionStats = this.provider.Nodes<Person>()
+        var connectionStats = this.Graph.Nodes<Person>()
             .ToList() // Execute the query
             .Select(p => new
             {

@@ -14,14 +14,9 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class RetrievalTraversalTestsBase
+public abstract class RetrievalTraversalTestsBase : ITestBase
 {
-    private IGraph provider;
-
-    protected RetrievalTraversalTestsBase(IGraph provider)
-    {
-        this.provider = provider;
-    }
+    public abstract IGraph Graph { get; }
 
     [Fact]
     public async Task GetNode_WithDepthZero_ReturnsOnlyNode()
@@ -31,12 +26,12 @@ public abstract class RetrievalTraversalTestsBase
         var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
 
-        await provider.CreateNode(alice);
-        await provider.CreateNode(bob);
-        await provider.CreateRelationship(knows);
+        await Graph.CreateNode(alice);
+        await Graph.CreateNode(bob);
+        await Graph.CreateRelationship(knows);
 
         // Act: Get node without relationships
-        var retrieved = await provider.GetNode<PersonWithNavigationProperty>(alice.Id,
+        var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
             new GraphOperationOptions { TraversalDepth = 0 });
 
         // Assert
@@ -54,14 +49,14 @@ public abstract class RetrievalTraversalTestsBase
         var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         var aliceKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, charlie) { Since = DateTime.UtcNow };
 
-        await provider.CreateNode(alice);
-        await provider.CreateNode(bob);
-        await provider.CreateNode(charlie);
-        await provider.CreateRelationship(aliceKnowsBob);
-        await provider.CreateRelationship(aliceKnowsCharlie);
+        await Graph.CreateNode(alice);
+        await Graph.CreateNode(bob);
+        await Graph.CreateNode(charlie);
+        await Graph.CreateRelationship(aliceKnowsBob);
+        await Graph.CreateRelationship(aliceKnowsCharlie);
 
         // Act: Get node with immediate relationships
-        var retrieved = await provider.GetNode<PersonWithNavigationProperty>(alice.Id,
+        var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
             new GraphOperationOptions { TraversalDepth = 1 });
 
         // Assert
@@ -81,14 +76,14 @@ public abstract class RetrievalTraversalTestsBase
         var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         var bobKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(bob, charlie) { Since = DateTime.UtcNow };
 
-        await provider.CreateNode(alice);
-        await provider.CreateNode(bob);
-        await provider.CreateNode(charlie);
-        await provider.CreateRelationship(aliceKnowsBob);
-        await provider.CreateRelationship(bobKnowsCharlie);
+        await Graph.CreateNode(alice);
+        await Graph.CreateNode(bob);
+        await Graph.CreateNode(charlie);
+        await Graph.CreateRelationship(aliceKnowsBob);
+        await Graph.CreateRelationship(bobKnowsCharlie);
 
         // Act: Get node with full depth
-        var retrieved = await provider.GetNode<PersonWithNavigationProperty>(alice.Id,
+        var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
             new GraphOperationOptions { TraversalDepth = -1 });
 
         // Assert
@@ -111,12 +106,12 @@ public abstract class RetrievalTraversalTestsBase
         var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
 
-        await provider.CreateNode(alice);
-        await provider.CreateNode(bob);
-        await provider.CreateRelationship(knows);
+        await Graph.CreateNode(alice);
+        await Graph.CreateNode(bob);
+        await Graph.CreateRelationship(knows);
 
         // Act: Get relationship without loading nodes
-        var retrieved = await provider.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id,
+        var retrieved = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id,
             new GraphOperationOptions { TraversalDepth = 0 });
 
         // Assert
@@ -134,12 +129,12 @@ public abstract class RetrievalTraversalTestsBase
         var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
 
-        await provider.CreateNode(alice);
-        await provider.CreateNode(bob);
-        await provider.CreateRelationship(knows);
+        await Graph.CreateNode(alice);
+        await Graph.CreateNode(bob);
+        await Graph.CreateRelationship(knows);
 
         // Act: Get relationship with nodes
-        var retrieved = await provider.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id,
+        var retrieved = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id,
             new GraphOperationOptions { TraversalDepth = 1 });
 
         // Assert
@@ -162,14 +157,14 @@ public abstract class RetrievalTraversalTestsBase
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         var works = new WorksWith(alice, charlie) { Since = DateTime.UtcNow };
 
-        await provider.CreateNode(alice);
-        await provider.CreateNode(bob);
-        await provider.CreateNode(charlie);
-        await provider.CreateRelationship(knows);
-        await provider.CreateRelationship(works);
+        await Graph.CreateNode(alice);
+        await Graph.CreateNode(bob);
+        await Graph.CreateNode(charlie);
+        await Graph.CreateRelationship(knows);
+        await Graph.CreateRelationship(works);
 
         // Act: Get node with only KNOWS relationships
-        var retrieved = await provider.GetNode<PersonWithMultipleRelationshipTypes>(alice.Id,
+        var retrieved = await Graph.GetNode<PersonWithMultipleRelationshipTypes>(alice.Id,
             new GraphOperationOptions
             {
                 TraversalDepth = 1,
@@ -189,12 +184,12 @@ public abstract class RetrievalTraversalTestsBase
         var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
 
-        await provider.CreateNode(alice);
-        await provider.CreateNode(bob);
-        await provider.CreateRelationship(knows);
+        await Graph.CreateNode(alice);
+        await Graph.CreateNode(bob);
+        await Graph.CreateRelationship(knows);
 
         // Act: Use fluent API
-        var retrieved = await provider.GetNode<PersonWithNavigationProperty>(alice.Id,
+        var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
             new GraphOperationOptions().WithRelationships());
 
         // Assert
@@ -215,15 +210,15 @@ public abstract class RetrievalTraversalTestsBase
         var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         var charlieKnowsDavid = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(charlie, david) { Since = DateTime.UtcNow };
 
-        await provider.CreateNode(alice);
-        await provider.CreateNode(bob);
-        await provider.CreateNode(charlie);
-        await provider.CreateNode(david);
-        await provider.CreateRelationship(aliceKnowsBob);
-        await provider.CreateRelationship(charlieKnowsDavid);
+        await Graph.CreateNode(alice);
+        await Graph.CreateNode(bob);
+        await Graph.CreateNode(charlie);
+        await Graph.CreateNode(david);
+        await Graph.CreateRelationship(aliceKnowsBob);
+        await Graph.CreateRelationship(charlieKnowsDavid);
 
         // Act: Get multiple nodes with relationships
-        var nodes = await provider.GetNodes<PersonWithNavigationProperty>(
+        var nodes = await Graph.GetNodes<PersonWithNavigationProperty>(
             [alice.Id, charlie.Id],
             new GraphOperationOptions { TraversalDepth = 1 });
 

@@ -14,14 +14,9 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class NodeTraversalTestsBase
+public abstract class NodeTraversalTestsBase : ITestBase
 {
-    private IGraph provider;
-
-    protected NodeTraversalTestsBase(IGraph provider)
-    {
-        this.provider = provider;
-    }
+    public abstract IGraph Graph { get; }
 
     [Fact]
     public async Task CreateNode_WithDepthZero_CreatesOnlyNode()
@@ -31,17 +26,17 @@ public abstract class NodeTraversalTestsBase
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         alice.Knows.Add(knows);
 
-        await provider.CreateNode(alice, new GraphOperationOptions { TraversalDepth = 0 });
+        await Graph.CreateNode(alice, new GraphOperationOptions { TraversalDepth = 0 });
 
         // Alice should exist
-        var fetchedAlice = await provider.GetNode<PersonWithNavigationProperty>(alice.Id);
+        var fetchedAlice = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id);
         Assert.Equal("Alice", fetchedAlice.FirstName);
 
         // Bob should not exist
-        await Assert.ThrowsAsync<GraphException>(() => provider.GetNode<PersonWithNavigationProperty>(bob.Id));
+        await Assert.ThrowsAsync<GraphException>(() => Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
 
         // Relationship should not exist
-        await Assert.ThrowsAsync<GraphException>(() => provider.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id));
+        await Assert.ThrowsAsync<GraphException>(() => Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id));
     }
 
     [Fact]
@@ -52,20 +47,20 @@ public abstract class NodeTraversalTestsBase
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         alice.Knows.Add(knows);
 
-        await provider.CreateNode(alice, new GraphOperationOptions
+        await Graph.CreateNode(alice, new GraphOperationOptions
         {
             TraversalDepth = 1,
             CreateMissingNodes = true
         });
 
         // All should exist
-        var fetchedAlice = await provider.GetNode<PersonWithNavigationProperty>(alice.Id);
+        var fetchedAlice = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id);
         Assert.Equal("Alice", fetchedAlice.FirstName);
 
-        var fetchedBob = await provider.GetNode<PersonWithNavigationProperty>(bob.Id);
+        var fetchedBob = await Graph.GetNode<PersonWithNavigationProperty>(bob.Id);
         Assert.Equal("Bob", fetchedBob.FirstName);
 
-        var fetchedKnows = await provider.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id);
+        var fetchedKnows = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id);
         Assert.Equal(alice.Id, fetchedKnows.SourceId);
         Assert.Equal(bob.Id, fetchedKnows.TargetId);
     }
@@ -83,20 +78,20 @@ public abstract class NodeTraversalTestsBase
         var bobKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(bob, charlie) { Since = DateTime.UtcNow };
         bob.Knows.Add(bobKnowsCharlie);
 
-        await provider.CreateNode(alice, new GraphOperationOptions
+        await Graph.CreateNode(alice, new GraphOperationOptions
         {
             TraversalDepth = -1,
             CreateMissingNodes = true
         });
 
         // All nodes should exist
-        Assert.NotNull(await provider.GetNode<PersonWithNavigationProperty>(alice.Id));
-        Assert.NotNull(await provider.GetNode<PersonWithNavigationProperty>(bob.Id));
-        Assert.NotNull(await provider.GetNode<PersonWithNavigationProperty>(charlie.Id));
+        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(alice.Id));
+        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
+        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(charlie.Id));
 
         // All relationships should exist
-        Assert.NotNull(await provider.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(aliceKnowsBob.Id));
-        Assert.NotNull(await provider.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(bobKnowsCharlie.Id));
+        Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(aliceKnowsBob.Id));
+        Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(bobKnowsCharlie.Id));
     }
 
     [Fact]
@@ -105,11 +100,11 @@ public abstract class NodeTraversalTestsBase
         // Setup initial graph
         var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
         var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        await provider.CreateNode(alice);
-        await provider.CreateNode(bob);
+        await Graph.CreateNode(alice);
+        await Graph.CreateNode(bob);
 
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-        await provider.CreateRelationship(knows);
+        await Graph.CreateRelationship(knows);
 
         // Update Alice and Bob through traversal
         alice.FirstName = "Alice Updated";
@@ -117,17 +112,17 @@ public abstract class NodeTraversalTestsBase
         alice.Knows.Add(knows);
         knows.Target = bob;
 
-        await provider.UpdateNode(alice, new GraphOperationOptions
+        await Graph.UpdateNode(alice, new GraphOperationOptions
         {
             TraversalDepth = 1,
             UpdateExistingNodes = true
         });
 
         // Both should be updated
-        var fetchedAlice = await provider.GetNode<PersonWithNavigationProperty>(alice.Id);
+        var fetchedAlice = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id);
         Assert.Equal("Alice Updated", fetchedAlice.FirstName);
 
-        var fetchedBob = await provider.GetNode<PersonWithNavigationProperty>(bob.Id);
+        var fetchedBob = await Graph.GetNode<PersonWithNavigationProperty>(bob.Id);
         Assert.Equal("Bob Updated", fetchedBob.FirstName);
     }
 
@@ -145,7 +140,7 @@ public abstract class NodeTraversalTestsBase
         alice.Knows.Add(knows);
         alice.WorksWith.Add(works);
 
-        await provider.CreateNode(alice, new GraphOperationOptions
+        await Graph.CreateNode(alice, new GraphOperationOptions
         {
             TraversalDepth = 1,
             CreateMissingNodes = true,
@@ -153,10 +148,10 @@ public abstract class NodeTraversalTestsBase
         });
 
         // Bob should exist (KNOWS relationship)
-        Assert.NotNull(await provider.GetNode<PersonWithNavigationProperty>(bob.Id));
+        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
 
         // Charlie should not exist (WORKS_WITH relationship filtered out)
-        await Assert.ThrowsAsync<GraphException>(() => provider.GetNode<PersonWithNavigationProperty>(charlie.Id));
+        await Assert.ThrowsAsync<GraphException>(() => Graph.GetNode<PersonWithNavigationProperty>(charlie.Id));
     }
 
     [Fact]
@@ -167,15 +162,15 @@ public abstract class NodeTraversalTestsBase
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         alice.Knows.Add(knows);
 
-        await provider.CreateNode(alice,
+        await Graph.CreateNode(alice,
             new GraphOperationOptions()
                 .WithRelationships()
                 .WithCreateMissingNodes());
 
         // Both should exist
-        Assert.NotNull(await provider.GetNode<PersonWithNavigationProperty>(alice.Id));
-        Assert.NotNull(await provider.GetNode<PersonWithNavigationProperty>(bob.Id));
-        Assert.NotNull(await provider.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id));
+        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(alice.Id));
+        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
+        Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id));
     }
 }
 

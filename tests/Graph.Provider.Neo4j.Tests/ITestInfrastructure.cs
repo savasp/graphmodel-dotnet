@@ -26,8 +26,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model;
-
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
 /// <summary>
@@ -36,12 +34,19 @@ namespace Cvoya.Graph.Provider.Neo4j.Tests;
 public interface ITestInfrastructure : IAsyncDisposable
 {
     /// <summary>
-    /// Gets the Neo4j graph provider.
+    /// Sets up the Neo4j test infrastructure.
     /// </summary>
-    IGraph GraphProvider { get; }
+    Task Setup();
 
     /// <summary>
-    /// Ensures that the test infrastructure is ready for use.
+    /// Gets the Neo4j graph provider.
     /// </summary>
-    Task GetReady();
+    /// <value>The Neo4j graph provider.</value>
+    Neo4jGraphProvider GraphProvider { get; }
+
+    /// <summary>
+    /// Resets the Neo4j database to a clean state for testing purposes.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task ResetDatabase();
 }

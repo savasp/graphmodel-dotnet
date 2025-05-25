@@ -18,7 +18,7 @@ namespace Cvoya.Graph.Model;
 /// Interface for the Graph client. Provides CRUD operations for nodes and relationships, querying, and transaction management.
 /// All methods throw <see cref="GraphException"/> for underlying graph errors.
 /// </summary>
-public interface IGraph : IDisposable
+public interface IGraph : IAsyncDisposable
 {
     /// <summary>
     /// Gets a queryable interface to nodes in the graph with options for relationship loading

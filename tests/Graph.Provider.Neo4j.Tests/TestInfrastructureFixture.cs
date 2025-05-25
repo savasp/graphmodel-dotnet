@@ -14,7 +14,7 @@
 
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
-public class TestInfrastructureFixture : IDisposable
+public class TestInfrastructureFixture : IAsyncLifetime
 {
     private ITestInfrastructure testInfrastructure;
 
@@ -36,8 +36,13 @@ public class TestInfrastructureFixture : IDisposable
 
     public ITestInfrastructure TestInfrastructure => this.testInfrastructure;
 
-    public void Dispose()
+    public async Task DisposeAsync()
     {
-        this.TestInfrastructure.DisposeAsync().GetAwaiter().GetResult();
+        await testInfrastructure.DisposeAsync();
+    }
+
+    public async Task InitializeAsync()
+    {
+        await testInfrastructure.Setup();
     }
 }

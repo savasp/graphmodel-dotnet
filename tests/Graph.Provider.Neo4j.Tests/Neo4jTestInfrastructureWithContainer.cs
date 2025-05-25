@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model;
 using DotNet.Testcontainers.Containers;
 using Testcontainers.Neo4j;
 
@@ -20,17 +19,33 @@ namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
 internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
 {
-    private static int numberOfInstances = 0;
-    private static readonly Lock @lock = new();
-    private static Neo4jContainer? container;
+    private static Neo4jContainer container;
 
-    private Neo4jGraphProvider provider;
-    private TestDatabase testDatabase;
+    private Neo4jGraphProvider? provider;
+    private TestDatabase? testDatabase;
 
-    public Neo4jTestInfrastructureWithContainer()
+    static Neo4jTestInfrastructureWithContainer()
+    {
+        // Initialize the Neo4j test container. There is one per process.
+        container = new Neo4jBuilder()
+            .WithEnterpriseEdition(true)
+            .WithAutoRemove(true)
+            .WithName("cvoya.neo4j.testing.shared")
+            .WithCleanUp(true)
+            .WithImage("neo4j:2025-enterprise")
+            .WithEnvironment("NEO4J_AUTH", "none")
+            .WithEnvironment("NEO4JLABS_PLUGINS", "[\"apoc\"]")
+            .WithEnvironment("NEO4J_dbms_security_procedures_unrestricted", "apoc.*")
+            .WithEnvironment("NEO4J_dbms_security_procedures_allowlist", "apoc.*")
+            .Build();
+    }
+
+    public Neo4jGraphProvider GraphProvider => provider ?? throw new InvalidOperationException("Graph provider is not initialized.");
+
+    public async Task Setup()
     {
         // Ensure the container is running and ready
-        EnsureReady().Wait();
+        await EnsureReady();
 
         if (container == null)
         {
@@ -40,58 +55,41 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
         // Create the test database and provider. The container is set up to not use authentication.
         var connectionString = container.GetConnectionString().Replace("neo4j", "bolt");
         this.testDatabase = new TestDatabase(connectionString);
+        await this.testDatabase.Setup();
         this.provider = new Neo4jGraphProvider(connectionString, username: null, password: null, this.testDatabase.DatabaseName);
     }
 
-    public IGraph GraphProvider => this.provider ?? throw new InvalidOperationException("Graph provider is not initialized.");
-
-    public async Task GetReady()
+    private async Task<string> EnsureReady()
     {
-        Interlocked.Increment(ref numberOfInstances);
-        // Clean the database before each test
-        await this.testDatabase.Clean();
+        if (container.State != TestcontainersStates.Running)
+        {
+            await container.StartAsync();
+        }
+
+        return container.GetConnectionString();
+    }
+
+    public async Task ResetDatabase()
+    {
+        if (testDatabase != null)
+        {
+            await testDatabase.Reset();
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
-        this.provider?.Dispose();
-        this.testDatabase?.Dispose();
-
-        var remaining = Interlocked.Decrement(ref numberOfInstances);
-        if (container != null && remaining == 0)
+        if (provider != null)
         {
-            await container.DisposeAsync();
-            container = null;
+            await provider.DisposeAsync();
+            provider = null;
+        }
+
+        if (testDatabase != null)
+        {
+            await testDatabase.DisposeAsync();
+            testDatabase = null;
         }
     }
 
-    private Task<string> EnsureReady()
-    {
-        lock (@lock)
-        {
-            if (container != null && container.State == TestcontainersStates.Running)
-            {
-                return Task.FromResult(container.GetConnectionString());
-            }
-
-            if (container == null)
-            {
-                container = new Neo4jBuilder()
-                    .WithEnterpriseEdition(true)
-                    .WithAutoRemove(true)
-                    .WithName("cvoya.neo4j.testing.shared")
-                    .WithCleanUp(true)
-                    .WithImage("neo4j:2025-enterprise")
-                    .WithEnvironment("NEO4J_AUTH", "none")
-                    .Build();
-            }
-
-            if (container.State != TestcontainersStates.Running)
-            {
-                container.StartAsync().Wait();
-            }
-
-            return Task.FromResult(container.GetConnectionString());
-        }
-    }
 }

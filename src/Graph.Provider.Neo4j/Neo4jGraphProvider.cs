@@ -26,8 +26,6 @@ namespace Cvoya.Graph.Provider.Neo4j;
 /// </summary>
 public class Neo4jGraphProvider : IGraph
 {
-    private readonly Lock disposeLock = new();
-    private bool disposed = false;
     private readonly Microsoft.Extensions.Logging.ILogger? logger;
 
     private readonly IDriver driver;
@@ -471,15 +469,9 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        lock (disposeLock)
-        {
-            if (disposed) return;
-            disposed = true;
-        }
-
-        driver.Dispose();
+        await driver.DisposeAsync();
     }
 
 

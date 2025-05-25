@@ -14,21 +14,16 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class BasicTestsBase
+public abstract class BasicTestsBase : ITestBase
 {
-    private IGraph provider;
-
-    protected BasicTestsBase(IGraph provider)
-    {
-        this.provider = provider;
-    }
+    public abstract IGraph Graph { get; }
 
     [Fact]
     public async Task CanCreateAndGetNodeWithPrimitiveProperties()
     {
         var person = new Person { FirstName = "John", LastName = "Doe" };
-        await this.provider.CreateNode(person);
-        var fetched = await this.provider.GetNode<Person>(person.Id);
+        await this.Graph.CreateNode(person);
+        var fetched = await this.Graph.GetNode<Person>(person.Id);
         Assert.Equal("John", fetched.FirstName);
         Assert.Equal("Doe", fetched.LastName);
     }
@@ -37,8 +32,8 @@ public abstract class BasicTestsBase
     public async Task CanCreateAndGetNodeWithComplexProperties()
     {
         var person = new PersonWithComplexProperty { FirstName = "John", LastName = "Doe" };
-        await this.provider.CreateNode(person);
-        var fetched = await this.provider.GetNode<PersonWithComplexProperty>(person.Id);
+        await this.Graph.CreateNode(person);
+        var fetched = await this.Graph.GetNode<PersonWithComplexProperty>(person.Id);
         Assert.Equal("John", fetched.FirstName);
         Assert.Equal("Doe", fetched.LastName);
     }
@@ -48,13 +43,13 @@ public abstract class BasicTestsBase
     {
         var p1 = new PersonWithComplexProperty { FirstName = "A", Address = new Address { Street = "123 Main St", City = "Somewhere" } };
         var p2 = new PersonWithComplexProperty { FirstName = "B" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
 
         var address = new Address { Street = "123 Main St", City = "Somewhere" };
         var knows = new KnowsWithComplexProperty(p1, p2) { MetAt = address };
 
-        await Assert.ThrowsAsync<GraphException>(() => this.provider.CreateRelationship(knows));
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateRelationship(knows));
     }
 
     [Fact]
@@ -62,14 +57,14 @@ public abstract class BasicTestsBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
 
         var knows = new Knows<Person, Person>(p1, p2) { Since = DateTime.UtcNow };
 
-        await this.provider.CreateRelationship(knows);
+        await this.Graph.CreateRelationship(knows);
 
-        var fetched = await this.provider.GetRelationship<Knows<Person, Person>>(knows.Id);
+        var fetched = await this.Graph.GetRelationship<Knows<Person, Person>>(knows.Id);
         Assert.Equal(p1.Id, fetched.SourceId);
         Assert.Equal(p2.Id, fetched.TargetId);
     }
@@ -83,9 +78,9 @@ public abstract class BasicTestsBase
         var knows = new Knows<Person, Person>(p1, p2) { Since = DateTime.UtcNow };
 
         // This should add the nodes and create the relationship
-        await this.provider.CreateRelationship(knows, new GraphOperationOptions { CreateMissingNodes = true });
+        await this.Graph.CreateRelationship(knows, new GraphOperationOptions { CreateMissingNodes = true });
 
-        var fetched = await this.provider.GetRelationship<Knows<Person, Person>>(knows.Id);
+        var fetched = await this.Graph.GetRelationship<Knows<Person, Person>>(knows.Id);
         Assert.Equal(p1.Id, fetched.SourceId);
         Assert.Equal(p2.Id, fetched.TargetId);
     }
@@ -94,12 +89,12 @@ public abstract class BasicTestsBase
     public async Task CanUpdateNode()
     {
         var person = new Person { FirstName = "John", LastName = "Doe" };
-        await this.provider.CreateNode(person);
+        await this.Graph.CreateNode(person);
         person.LastName = "Smith";
 
-        await this.provider.UpdateNode(person);
+        await this.Graph.UpdateNode(person);
 
-        var updated = await this.provider.GetNode<Person>(person.Id);
+        var updated = await this.Graph.GetNode<Person>(person.Id);
 
         Assert.Equal("Smith", updated.LastName);
     }
@@ -108,9 +103,9 @@ public abstract class BasicTestsBase
     public async Task CanCreateAndDeleteNode()
     {
         var person = new Person { FirstName = "ToDelete" };
-        await this.provider.CreateNode(person);
-        await this.provider.DeleteNode(person.Id);
-        await Assert.ThrowsAsync<GraphException>(() => this.provider.GetNode<Person>(person.Id));
+        await this.Graph.CreateNode(person);
+        await this.Graph.DeleteNode(person.Id);
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetNode<Person>(person.Id));
     }
 
     [Fact]
@@ -118,14 +113,14 @@ public abstract class BasicTestsBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
 
         var knows = new Knows<Person, Person>(p1, p2) { Since = DateTime.UtcNow };
 
-        await this.provider.CreateRelationship(knows);
-        await this.provider.DeleteRelationship(knows.Id);
-        await Assert.ThrowsAsync<GraphException>(() => this.provider.GetRelationship<Knows<Person, Person>>(knows.Id));
+        await this.Graph.CreateRelationship(knows);
+        await this.Graph.DeleteRelationship(knows.Id);
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetRelationship<Knows<Person, Person>>(knows.Id));
     }
 
     [Fact]
@@ -133,11 +128,11 @@ public abstract class BasicTestsBase
     {
         var person = new Person { FirstName = "John", LastName = "Doe" };
         var friend = new Person { FirstName = "Jane", LastName = "Smith" };
-        await this.provider.CreateNode(person);
-        await this.provider.CreateNode(friend);
+        await this.Graph.CreateNode(person);
+        await this.Graph.CreateNode(friend);
         var knows = new Knows<Person, Person>(person, friend) { Since = DateTime.Now };
-        await this.provider.CreateRelationship(knows);
-        var fetched = await this.provider.GetRelationship<Knows<Person, Person>>(knows.Id);
+        await this.Graph.CreateRelationship(knows);
+        var fetched = await this.Graph.GetRelationship<Knows<Person, Person>>(knows.Id);
         Assert.Equal(person.Id, fetched.SourceId);
         Assert.Equal(friend.Id, fetched.TargetId);
     }
@@ -147,10 +142,10 @@ public abstract class BasicTestsBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
         var ids = new[] { p1.Id, p2.Id };
-        var fetched = await this.provider.GetNodes<Person>(ids);
+        var fetched = await this.Graph.GetNodes<Person>(ids);
         Assert.Equal(2, ((ICollection<Person>)fetched).Count);
         Assert.Contains(fetched, x => x.Id == p1.Id);
         Assert.Contains(fetched, x => x.Id == p2.Id);
@@ -162,14 +157,14 @@ public abstract class BasicTestsBase
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
         var p3 = new Person { FirstName = "C" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
-        await this.provider.CreateNode(p3);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
+        await this.Graph.CreateNode(p3);
         var knows1 = new Knows<Person, Person>(p1, p2) { Since = DateTime.UtcNow };
         var knows2 = new Knows<Person, Person>(p2, p3) { Since = DateTime.UtcNow };
-        await this.provider.CreateRelationship(knows1);
-        await this.provider.CreateRelationship(knows2);
-        var rels = await this.provider.GetRelationships<Knows<Person, Person>>([knows1.Id, knows2.Id]);
+        await this.Graph.CreateRelationship(knows1);
+        await this.Graph.CreateRelationship(knows2);
+        var rels = await this.Graph.GetRelationships<Knows<Person, Person>>([knows1.Id, knows2.Id]);
         Assert.Equal(2, ((ICollection<Knows<Person, Person>>)rels).Count);
         Assert.Contains(rels, r => r.Id == knows1.Id);
         Assert.Contains(rels, r => r.Id == knows2.Id);
@@ -180,14 +175,14 @@ public abstract class BasicTestsBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
 
         var knows = new Knows<Person, Person>(p1, p2) { Since = DateTime.UtcNow };
-        await this.provider.CreateRelationship(knows);
+        await this.Graph.CreateRelationship(knows);
         knows.Since = DateTime.UtcNow.AddYears(-1);
-        await this.provider.UpdateRelationship(knows);
-        var updated = await this.provider.GetRelationship<Knows<Person, Person>>(knows.Id);
+        await this.Graph.UpdateRelationship(knows);
+        var updated = await this.Graph.GetRelationship<Knows<Person, Person>>(knows.Id);
         Assert.Equal(knows.Id, updated.Id);
         Assert.Equal(p1.Id, updated.SourceId);
         Assert.Equal(p2.Id, updated.TargetId);
@@ -197,11 +192,11 @@ public abstract class BasicTestsBase
     [Fact]
     public async Task CanBeginTransactionAndRollback()
     {
-        var tx = await this.provider.BeginTransaction();
+        var tx = await this.Graph.BeginTransaction();
         var person = new Person { FirstName = "TxTest" };
-        await this.provider.CreateNode(person, new(), tx);
+        await this.Graph.CreateNode(person, new(), tx);
         await tx.DisposeAsync(); // Rollback
-        await Assert.ThrowsAsync<GraphException>(() => this.provider.GetNode<Person>(person.Id));
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetNode<Person>(person.Id));
     }
 
     public class PersonWithCycle : Node
@@ -225,7 +220,7 @@ public abstract class BasicTestsBase
             Bar = person.Foo
         };
 
-        await Assert.ThrowsAsync<GraphException>(() => this.provider.CreateNode(person));
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
     }
 
     public class PersonWithGenericPropertyOfPrimitive : Node
@@ -240,7 +235,7 @@ public abstract class BasicTestsBase
     {
         var person = new PersonWithGenericPropertyOfPrimitive { FirstName = "A", GenericProperty = new List<string> { "B" } };
 
-        await this.provider.CreateNode(person);
+        await this.Graph.CreateNode(person);
     }
 
     public class PersonWithGenericDictionaryProperty : Node
@@ -255,20 +250,20 @@ public abstract class BasicTestsBase
     {
         var person = new PersonWithGenericDictionaryProperty { FirstName = "A", GenericProperty = new Dictionary<string, Person>() };
 
-        await Assert.ThrowsAsync<GraphException>(() => this.provider.CreateNode(person));
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
     }
 
     [Fact]
     public void CanQueryNodesLinq()
     {
-        var queryable = this.provider.Nodes<Person>();
+        var queryable = this.Graph.Nodes<Person>();
         Assert.NotNull(queryable);
     }
 
     [Fact]
     public void CanQueryRelationshipsLinq()
     {
-        var queryable = this.provider.Relationships<Knows<Person, Person>>();
+        var queryable = this.Graph.Relationships<Knows<Person, Person>>();
         Assert.NotNull(queryable);
     }
 
@@ -280,10 +275,10 @@ public abstract class BasicTestsBase
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow, IsBidirectional = true };
         alice.Knows.Add(knows);
 
-        await this.provider.CreateNode(alice, new GraphOperationOptions { CreateMissingNodes = true, TraversalDepth = 1 });
+        await this.Graph.CreateNode(alice, new GraphOperationOptions { CreateMissingNodes = true, TraversalDepth = 1 });
 
         // Query Alice and include her friends via Knows
-        var aliceFromProvider = await this.provider.GetNode<PersonWithNavigationProperty>(alice.Id, new GraphOperationOptions { TraversalDepth = -1 });
+        var aliceFromProvider = await this.Graph.GetNode<PersonWithNavigationProperty>(alice.Id, new GraphOperationOptions { TraversalDepth = -1 });
 
         Assert.NotNull(aliceFromProvider);
         Assert.Equal("Alice", aliceFromProvider.FirstName);
@@ -293,7 +288,7 @@ public abstract class BasicTestsBase
         Assert.Contains(aliceFromProvider.Knows, k => k.Target!.FirstName == "Bob");
 
         // Get Bob
-        var bobFromProvider = await this.provider.GetNode<PersonWithNavigationProperty>(bob.Id, new GraphOperationOptions { TraversalDepth = -1 });
+        var bobFromProvider = await this.Graph.GetNode<PersonWithNavigationProperty>(bob.Id, new GraphOperationOptions { TraversalDepth = -1 });
         Assert.NotNull(bobFromProvider);
         Assert.Equal("Bob", bobFromProvider.FirstName);
         Assert.Equal(bob.Id, bobFromProvider.Id);
@@ -312,6 +307,6 @@ public abstract class BasicTestsBase
     public async Task CannotAddNodeWithINodeProperty()
     {
         var person = new PersonWithINodeProperty { FirstName = "A", LastName = "B", Friend = new Person { FirstName = "C", LastName = "D" } };
-        await Assert.ThrowsAsync<GraphException>(() => this.provider.CreateNode(person));
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
     }
 }

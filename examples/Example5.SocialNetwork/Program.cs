@@ -304,11 +304,11 @@ catch (Exception ex)
 }
 finally
 {
-    graph.Dispose();
+    await graph.DisposeAsync();
     await using (var session = driver.AsyncSession())
     {
         await session.RunAsync($"DROP DATABASE {databaseName}");
     }
-    driver.Dispose();
+    await driver.DisposeAsync();
 }
 */

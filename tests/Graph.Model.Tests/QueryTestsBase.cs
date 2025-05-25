@@ -14,14 +14,9 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class QueryTestsBase
+public abstract class QueryTestsBase : ITestBase
 {
-    private IGraph provider;
-
-    protected QueryTestsBase(IGraph provider)
-    {
-        this.provider = provider;
-    }
+    public abstract IGraph Graph { get; }
 
     [Fact]
     public async Task CanQueryNodesByProperty()
@@ -29,11 +24,11 @@ public abstract class QueryTestsBase
         var p1 = new Person { FirstName = "Alice", LastName = "Smith" };
         var p2 = new Person { FirstName = "Bob", LastName = "Smith" };
         var p3 = new Person { FirstName = "Charlie", LastName = "Jones" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
-        await this.provider.CreateNode(p3);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
+        await this.Graph.CreateNode(p3);
 
-        var smiths = this.provider.Nodes<Person>().Where(p => p.LastName == "Smith").ToList();
+        var smiths = this.Graph.Nodes<Person>().Where(p => p.LastName == "Smith").ToList();
         Assert.Contains(smiths, p => p.FirstName == "Alice");
         Assert.Contains(smiths, p => p.FirstName == "Bob");
         Assert.DoesNotContain(smiths, p => p.FirstName == "Charlie");
@@ -44,10 +39,10 @@ public abstract class QueryTestsBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
 
-        var all = this.provider.Nodes<Person>().ToList();
+        var all = this.Graph.Nodes<Person>().ToList();
         Assert.True(all.Count >= 2);
         Assert.Contains(all, p => p.FirstName == "A");
         Assert.Contains(all, p => p.FirstName == "B");
@@ -59,11 +54,11 @@ public abstract class QueryTestsBase
         var p1 = new Person { FirstName = "Charlie", LastName = "Smith" };
         var p2 = new Person { FirstName = "Alice", LastName = "Smith" };
         var p3 = new Person { FirstName = "Bob", LastName = "Jones" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
-        await this.provider.CreateNode(p3);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
+        await this.Graph.CreateNode(p3);
 
-        var smithsOrdered = this.provider.Nodes<Person>()
+        var smithsOrdered = this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .OrderBy(p => p.FirstName)
             .ToList();
@@ -78,16 +73,16 @@ public abstract class QueryTestsBase
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
         var p3 = new Person { FirstName = "C" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
-        await this.provider.CreateNode(p3);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
+        await this.Graph.CreateNode(p3);
 
-        var taken = this.provider.Nodes<Person>().OrderBy(p => p.FirstName).Take(2).ToList();
+        var taken = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Take(2).ToList();
         Assert.Equal(2, taken.Count);
         Assert.Equal("A", taken[0].FirstName);
         Assert.Equal("B", taken[1].FirstName);
 
-        var skipped = this.provider.Nodes<Person>().OrderBy(p => p.FirstName).Skip(1).ToList();
+        var skipped = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Skip(1).ToList();
         Assert.Contains(skipped, p => p.FirstName == "B");
         Assert.Contains(skipped, p => p.FirstName == "C");
     }
@@ -97,13 +92,13 @@ public abstract class QueryTestsBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
 
-        var first = this.provider.Nodes<Person>().OrderBy(p => p.FirstName).First();
+        var first = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).First();
         Assert.Equal("A", first.FirstName);
 
-        var single = this.provider.Nodes<Person>().Single(p => p.FirstName == "A");
+        var single = this.Graph.Nodes<Person>().Single(p => p.FirstName == "A");
         Assert.Equal("A", single.FirstName);
     }
 
@@ -112,13 +107,13 @@ public abstract class QueryTestsBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.provider.CreateNode(p1);
-        await this.provider.CreateNode(p2);
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
 
-        var anyA = this.provider.Nodes<Person>().Any(p => p.FirstName == "A");
+        var anyA = this.Graph.Nodes<Person>().Any(p => p.FirstName == "A");
         Assert.True(anyA);
 
-        var count = this.provider.Nodes<Person>().Count();
+        var count = this.Graph.Nodes<Person>().Count();
         Assert.True(count >= 2);
     }
 
@@ -130,10 +125,10 @@ public abstract class QueryTestsBase
         var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
         alice.Knows.Add(knows);
 
-        await this.provider.CreateNode(alice, new GraphOperationOptions().WithRelationships().WithCreateMissingNodes());
+        await this.Graph.CreateNode(alice, new GraphOperationOptions().WithRelationships().WithCreateMissingNodes());
 
         // Query Alice and include her friends via Knows
-        var people = this.provider.Nodes<PersonWithNavigationProperty>(new GraphOperationOptions().WithRelationships()).ToList();
+        var people = this.Graph.Nodes<PersonWithNavigationProperty>(new GraphOperationOptions().WithRelationships()).ToList();
         var aliceFromDb = people.FirstOrDefault(p => p.FirstName == "Alice");
 
         Assert.NotNull(aliceFromDb);
@@ -151,11 +146,11 @@ public abstract class QueryTestsBase
         alice.Knows.Add(knows);
 
         // Create the relationship which will create both nodes
-        await this.provider.CreateRelationship(knows, new GraphOperationOptions().WithCreateMissingNodes());
+        await this.Graph.CreateRelationship(knows, new GraphOperationOptions().WithCreateMissingNodes());
 
         // TODO: We need to re-examine this. We shouldn't have to load the node and the relationships explicitly.
         // First, load Alice with her relationships
-        var aliceWithRelationships = await this.provider.GetNode<PersonWithNavigationProperty>(
+        var aliceWithRelationships = await this.Graph.GetNode<PersonWithNavigationProperty>(
             alice.Id,
             new GraphOperationOptions().WithRelationships());
 

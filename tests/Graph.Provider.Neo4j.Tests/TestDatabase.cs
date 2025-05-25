@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Runtime.CompilerServices;
 using Neo4j.Driver;
 
-public class TestDatabase : IDisposable
+public class TestDatabase
 {
-    private readonly string databaseName = "tests" + Guid.NewGuid().ToString("N");
+    private readonly string databaseName = "GraphModelTests" + Guid.NewGuid().ToString("N");
     private readonly IDriver driver;
 
     public TestDatabase(string endpoint, string? username = null, string? password = null)
@@ -25,33 +24,30 @@ public class TestDatabase : IDisposable
         this.driver = username != null && password != null
             ? GraphDatabase.Driver(endpoint, AuthTokens.Basic(username, password))
             : GraphDatabase.Driver(endpoint);
-
-        // Create the database if it doesn't exist
-        using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
-        session.RunAsync($"CREATE DATABASE {this.databaseName} IF NOT EXISTS").Wait();
-        session.CloseAsync().Wait();
-
-        this.WaitForDatabaseOnline().Wait();
     }
 
     public string DatabaseName => this.databaseName;
 
-    public async Task Clean()
+    public async Task Setup()
+    {
+        using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
+        await session.RunAsync($"CREATE OR REPLACE DATABASE {this.databaseName}");
+        await WaitForDatabaseOnline();
+    }
+
+    public async Task Reset()
     {
         using var session = driver.AsyncSession(builder => builder.WithDatabase(this.databaseName));
         await session.RunAsync("MATCH (n) DETACH DELETE n");
         await session.RunAsync("CALL apoc.schema.assert({}, {})");
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
         {
-            session.RunAsync($"DROP DATABASE {this.databaseName}").Wait();
-            session.CloseAsync().Wait();
+            await session.RunAsync($"DROP DATABASE {this.databaseName}");
         }
-
-        this.driver?.Dispose();
     }
 
     private async Task WaitForDatabaseOnline(int maxAttempts = 30, int delayMs = 500)
@@ -76,11 +72,12 @@ public class TestDatabase : IDisposable
         {
             try
             {
-                await using var session = driver.AsyncSession(builder => builder.WithDatabase(this.databaseName));
-                var result = await session.RunAsync("RETURN 1");
-                await result.ConsumeAsync();
-                await session.CloseAsync();
-                return;
+                await using (var session = driver.AsyncSession(builder => builder.WithDatabase(this.databaseName)))
+                {
+                    var result = await session.RunAsync("RETURN 1");
+                    await result.ConsumeAsync();
+                    return;
+                }
             }
             catch (Neo4jException ex) when (ex.Message.Contains("not found") || ex.Message.Contains("does not exist"))
             {

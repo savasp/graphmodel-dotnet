@@ -12,41 +12,47 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model;
-using Microsoft.Extensions.Logging;
-
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
 internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
 {
     private const string Endpoint = "bolt://localhost:7687";
 
-    private readonly TestDatabase testDatabase;
-    private readonly Neo4jGraphProvider provider;
+    private TestDatabase? testDatabase;
+    private Neo4jGraphProvider? provider;
 
-    public Neo4jTestInfrastructureWithDbInstance()
+    public Neo4jGraphProvider GraphProvider => provider ?? throw new InvalidOperationException("Graph provider is not initialized.");
+
+    public async Task Setup()
     {
-        // Read the connection endpoint, username, and password from environment variables
         var connectionString = Environment.GetEnvironmentVariable("NEO4J_CONNECTION_STRING") ?? Endpoint;
         var password = Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "password";
         var username = Environment.GetEnvironmentVariable("NEO4J_USERNAME") ?? "neo4j";
-        this.testDatabase = new TestDatabase(connectionString, username, password);
-        this.provider = new Neo4jGraphProvider(connectionString, username, password, this.testDatabase.DatabaseName);
-
+        testDatabase = new TestDatabase(connectionString, username, password);
+        await testDatabase.Setup();
+        provider = new Neo4jGraphProvider(connectionString, username, password, testDatabase.DatabaseName);
     }
 
-    public IGraph GraphProvider => this.provider;
-
-    public async Task GetReady()
+    public async Task ResetDatabase()
     {
-        await this.testDatabase.Clean();
+        if (testDatabase != null)
+        {
+            await testDatabase.Reset();
+        }
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        this.provider.Dispose();
-        this.testDatabase.Dispose();
+        if (provider != null)
+        {
+            await provider.DisposeAsync();
+            provider = null;
+        }
 
-        return ValueTask.CompletedTask;
+        if (testDatabase != null)
+        {
+            await testDatabase.DisposeAsync();
+            testDatabase = null;
+        }
     }
 }
