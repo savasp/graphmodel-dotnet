@@ -11,9 +11,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Graph.Model.Tests", "tests\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Example1.BasicCRUD", "examples\Example1.BasicCRUD\Example1.BasicCRUD.csproj", "{75EF6E67-2DBB-427A-B9EF-37EA470EEB3A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Example3.SocialNetwork", "examples\Example5.SocialNetwork\Example3.SocialNetwork.csproj", "{C9185EB2-53C4-4AD3-817E-85F899F1EB87}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Example3.SocialNetwork", "examples\Example5.SocialNetwork\Example5.SocialNetwork.csproj", "{C9185EB2-53C4-4AD3-817E-85F899F1EB87}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Example3.AdvancedScenarios", "examples\Example4.AdvancedScenarios\Example3.AdvancedScenarios.csproj", "{1FC6E9A5-4B36-4526-B6CA-B95ECBB0CEEA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Example3.AdvancedScenarios", "examples\Example4.AdvancedScenarios\Example4.AdvancedScenarios.csproj", "{1FC6E9A5-4B36-4526-B6CA-B95ECBB0CEEA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Example3.TransactionManagement", "examples\Example3.TransactionManagement\Example3.TransactionManagement.csproj", "{4AE9BD25-CBBE-45E1-A1FF-8BBEB65EFFCE}"
 EndProject
