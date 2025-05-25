@@ -25,7 +25,7 @@ public class AdvancedQueryTests : Model.Tests.AdvancedQueryTestsBase, IAsyncLife
 
     public async Task InitializeAsync()
     {
-        await fixture.TestInfrastructure.ResetDatabase();
+        await fixture.TestInfrastructure.GetReady();
     }
 
     public Task DisposeAsync()

@@ -25,7 +25,7 @@ public class QueryTraversalTests : Model.Tests.QueryTraversalTestsBase, IAsyncLi
 
     public async Task InitializeAsync()
     {
-        await fixture.TestInfrastructure.ResetDatabase();
+        await fixture.TestInfrastructure.GetReady();
     }
 
     public Task DisposeAsync()

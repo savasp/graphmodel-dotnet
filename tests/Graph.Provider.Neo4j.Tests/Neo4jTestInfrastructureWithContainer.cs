@@ -14,7 +14,6 @@
 
 using Cvoya.Graph.Model;
 using DotNet.Testcontainers.Containers;
-using Microsoft.Extensions.Logging;
 using Testcontainers.Neo4j;
 
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
@@ -24,31 +23,57 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
     private static int numberOfInstances = 0;
     private static readonly Lock @lock = new();
     private static Neo4jContainer? container;
+
     private Neo4jGraphProvider provider;
+    private TestDatabase testDatabase;
 
     public Neo4jTestInfrastructureWithContainer()
     {
-        var connectionString = EnsureReady().GetAwaiter().GetResult();
-        var logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<Neo4jGraphProvider>();
-        this.provider = new Neo4jGraphProvider(connectionString, username: "neo4j", password: "password", logger: logger);
-    }
+        // Ensure the container is running and ready
+        EnsureReady().Wait();
 
-    public IGraph GraphProvider => this.provider;
-
-    public async Task ResetDatabase()
-    {
-        await provider.ExecuteCypher("CREATE OR REPLACE DATABASE tests");
-    }
-
-    public async Task<string> EnsureReady()
-    {
-        if (container != null && container.State == TestcontainersStates.Running)
+        if (container == null)
         {
-            return container.GetConnectionString();
+            throw new InvalidOperationException("Container is not initialized.");
         }
 
+        // Create the test database and provider. The container is set up to not use authentication.
+        var connectionString = container.GetConnectionString().Replace("neo4j", "bolt");
+        this.testDatabase = new TestDatabase(connectionString);
+        this.provider = new Neo4jGraphProvider(connectionString, username: null, password: null, this.testDatabase.DatabaseName);
+    }
+
+    public IGraph GraphProvider => this.provider ?? throw new InvalidOperationException("Graph provider is not initialized.");
+
+    public async Task GetReady()
+    {
+        Interlocked.Increment(ref numberOfInstances);
+        // Clean the database before each test
+        await this.testDatabase.Clean();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        this.provider?.Dispose();
+        this.testDatabase?.Dispose();
+
+        var remaining = Interlocked.Decrement(ref numberOfInstances);
+        if (container != null && remaining == 0)
+        {
+            await container.DisposeAsync();
+            container = null;
+        }
+    }
+
+    private Task<string> EnsureReady()
+    {
         lock (@lock)
         {
+            if (container != null && container.State == TestcontainersStates.Running)
+            {
+                return Task.FromResult(container.GetConnectionString());
+            }
+
             if (container == null)
             {
                 container = new Neo4jBuilder()
@@ -60,24 +85,13 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
                     .WithEnvironment("NEO4J_AUTH", "none")
                     .Build();
             }
-        }
 
-        if (container.State != TestcontainersStates.Running)
-        {
-            Interlocked.Increment(ref numberOfInstances);
-            await container.StartAsync();
-        }
+            if (container.State != TestcontainersStates.Running)
+            {
+                container.StartAsync().Wait();
+            }
 
-        return container.GetConnectionString();
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        Interlocked.Decrement(ref numberOfInstances);
-        if (container != null && Volatile.Read(ref numberOfInstances) == 0)
-        {
-            await container.DisposeAsync();
-            container = null;
+            return Task.FromResult(container.GetConnectionString());
         }
     }
 }
