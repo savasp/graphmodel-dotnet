@@ -97,8 +97,8 @@ internal abstract class Neo4jEntityManagerBase
         && typeof(IEnumerable).IsAssignableFrom(type)
         && type switch
         {
-            { IsArray: true } => type.GetElementType()!.IsRelationshipType(),
-            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } arg && arg.IsRelationshipType(),
+            { IsArray: true } => typeof(Model.IRelationship).IsAssignableFrom(type.GetElementType()!),
+            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } arg && typeof(Model.IRelationship).IsAssignableFrom(arg),
             _ => false
         };
 
