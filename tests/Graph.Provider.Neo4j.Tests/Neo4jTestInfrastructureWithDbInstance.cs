@@ -37,12 +37,19 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
 
     public IGraph GraphProvider => this.provider;
 
-    public async Task GetReady()
+    public async Task ResetDatabase()
     {
-        await this.testDatabase.Clean();
+        await using var driver = GraphDatabase.Driver(Endpoint, AuthTokens.Basic("neo4j", "password"));
+        await using var session = driver.AsyncSession(builder => builder.WithDatabase(this.databaseName));
+        await session.RunAsync("MATCH (n) DETACH DELETE n");
     }
 
-    public ValueTask DisposeAsync()
+    public Task<string> EnsureReady()
+    {
+        return Task.FromResult(Endpoint);
+    }
+
+    public async ValueTask DisposeAsync()
     {
         this.provider.Dispose();
         this.testDatabase.Dispose();
