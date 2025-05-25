@@ -49,7 +49,7 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
         return Task.FromResult(Endpoint);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         this.provider.Dispose();
         this.testDatabase.Dispose();
