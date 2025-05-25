@@ -22,21 +22,13 @@ public class Person : Node
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public int Age { get; set; }
-    public string? Department { get; set; }
+    public string? City { get; set; }
+    public List<Knows> Knows { get; set; } = new List<Knows>();
 }
 
-[Node("Company")]
-public class Company : Node
-{
-    public string Name { get; set; } = string.Empty;
-    public string Industry { get; set; } = string.Empty;
-    public DateTime Founded { get; set; }
-}
 
-[Relationship("WORKS_FOR")]
-public class WorksFor : Relationship<Person, Company>
+[Relationship("KNOWS")]
+public class Knows : Relationship<Person, Person>
 {
-    public string Position { get; set; } = string.Empty;
-    public DateTime StartDate { get; set; }
-    public decimal Salary { get; set; }
+    public DateTime Since { get; set; }
 }

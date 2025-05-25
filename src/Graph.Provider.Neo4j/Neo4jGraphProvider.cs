@@ -583,15 +583,16 @@ public class Neo4jGraphProvider : IGraph
     // Get the label for a type (NodeAttribute/RelationshipAttribute or namespace-qualified name with dots replaced by underscores)
     internal static string GetLabel(Type type)
     {
-        var nodeAttr = type.GetCustomAttribute<NodeAttribute>();
+        var nodeAttr = type.GetCustomAttribute<NodeAttribute>(inherit: false);
         if (nodeAttr?.Label is { Length: > 0 }) return nodeAttr.Label;
 
-        var relAttr = type.GetCustomAttribute<RelationshipAttribute>();
+        var relAttr = type.GetCustomAttribute<RelationshipAttribute>(inherit: false);
         if (relAttr?.Label is { Length: > 0 }) return relAttr.Label;
 
-        var propertyAttr = type.GetCustomAttribute<PropertyAttribute>();
+        var propertyAttr = type.GetCustomAttribute<PropertyAttribute>(inherit: false);
         if (propertyAttr?.Label is { Length: > 0 }) return propertyAttr.Label;
 
+        // Fall back to the namespace-qualified type name with dots replaced by underscores
         var label = type.Name.Replace("`", "");
         return label ?? throw new GraphException($"Type '{type}' does not have a valid FullName.");
     }

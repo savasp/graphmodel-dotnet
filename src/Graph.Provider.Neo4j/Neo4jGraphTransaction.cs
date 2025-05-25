@@ -57,4 +57,9 @@ internal class Neo4jGraphTransaction(IAsyncSession session, IAsyncTransaction tr
     }
 
     public IAsyncTransaction? GetTransaction() => _transaction;
+
+    public void Dispose()
+    {
+        DisposeAsync().GetAwaiter().GetResult();
+    }
 }

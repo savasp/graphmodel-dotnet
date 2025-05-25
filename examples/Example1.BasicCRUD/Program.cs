@@ -14,19 +14,29 @@
 
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j;
-using Microsoft.Extensions.Logging;
+using Neo4j.Driver;
 
 // Example 1: Basic CRUD Operations
 // Demonstrates fundamental create, read, update, delete operations with nodes and relationships
 
 Console.WriteLine("=== Example 1: Basic CRUD Operations ===\n");
 
-// Configure logging
-using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-var logger = loggerFactory.CreateLogger("Example1");
+const string databaseName = "example1";
+
+// ==== SETUP a new database ====
+Console.WriteLine("0. Setting up a new database...");
+var driver = GraphDatabase.Driver("bolt://localhost:7687", AuthTokens.Basic("neo4j", "password"));
+await using (var session = driver.AsyncSession())
+{
+    await session.RunAsync($"CREATE OR REPLACE DATABASE {databaseName}");
+}
+
+Console.WriteLine($"✓ Created database: {databaseName}");
+
+// We start with the Neo4j Graph Provider here
 
 // Create graph instance with Neo4j provider
-var graph = new Neo4jGraphProvider("neo4j://localhost:7687", "neo4j", "password", null, logger);
+var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
 
 try
 {
@@ -219,4 +229,9 @@ catch (Exception ex)
 finally
 {
     graph.Dispose();
+    await using (var session = driver.AsyncSession())
+    {
+        await session.RunAsync($"DROP DATABASE {databaseName}");
+    }
+    driver.Dispose();
 }

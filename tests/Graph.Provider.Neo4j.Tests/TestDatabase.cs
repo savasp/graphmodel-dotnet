@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Runtime.CompilerServices;
 using Neo4j.Driver;
 
 public class TestDatabase : IDisposable
@@ -35,10 +36,11 @@ public class TestDatabase : IDisposable
 
     public string DatabaseName => this.databaseName;
 
-    public Task Clean()
+    public async Task Clean()
     {
         using var session = driver.AsyncSession(builder => builder.WithDatabase(this.databaseName));
-        return session.RunAsync("MATCH (n) DETACH DELETE n");
+        await session.RunAsync("MATCH (n) DETACH DELETE n");
+        await session.RunAsync("CALL apoc.schema.assert({}, {})");
     }
 
     public void Dispose()

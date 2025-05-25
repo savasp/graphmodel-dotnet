@@ -16,27 +16,30 @@ using Cvoya.Graph.Model;
 
 // ==== DOMAIN MODEL ====
 
-[Node("Person")]
-public class Person : Node
+[Node("Account")]
+public class Account : Node
 {
-    public string Name { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
-    public int Age { get; set; }
-    public string? Department { get; set; }
+    public string AccountNumber { get; set; } = string.Empty;
+    public string Owner { get; set; } = string.Empty;
+    public decimal Balance { get; set; }
 }
 
-[Node("Company")]
-public class Company : Node
+[Node("Bank")]
+public class Bank : Node
 {
     public string Name { get; set; } = string.Empty;
-    public string Industry { get; set; } = string.Empty;
-    public DateTime Founded { get; set; }
+    public string Country { get; set; } = string.Empty;
 }
 
-[Relationship("WORKS_FOR")]
-public class WorksFor : Relationship<Person, Company>
+[Relationship("HAS_ACCOUNT")]
+public class BankAccount : Relationship<Account, Bank>
 {
-    public string Position { get; set; } = string.Empty;
-    public DateTime StartDate { get; set; }
-    public decimal Salary { get; set; }
+}
+
+[Relationship("TRANSFER")]
+public class Transfer : Relationship<Account, Account>
+{
+    public decimal Amount { get; set; } = 0m;
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public string Description { get; set; } = string.Empty;
 }
