@@ -65,7 +65,9 @@ public class Neo4jGraphProvider : IGraph
 
         this.databaseName = databaseName;
 
-        this.driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
+        this.driver = username is null
+            ? GraphDatabase.Driver(uri)
+            : GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
     }
 
     /// <inheritdoc />

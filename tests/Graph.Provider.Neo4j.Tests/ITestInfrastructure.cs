@@ -41,13 +41,7 @@ public interface ITestInfrastructure : IAsyncDisposable
     IGraph GraphProvider { get; }
 
     /// <summary>
-    /// Resets the Neo4j database by deleting all nodes and relationships.
+    /// Ensures that the test infrastructure is ready for use.
     /// </summary>
-    Task ResetDatabase();
-
-    /// <summary>
-    /// Ensures that the Neo4j infrastructure is started and ready to accept connections.
-    /// </summary>
-    /// <returns>The connection string to connect to the Neo4j database.</returns>
-    Task<string> EnsureReady();
+    Task GetReady();
 }
