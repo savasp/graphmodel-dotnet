@@ -31,7 +31,7 @@ internal abstract class Neo4jEntityManagerBase
     protected readonly Neo4jQueryExecutor QueryExecutor;
     protected readonly Neo4jConstraintManager ConstraintManager;
     protected readonly Neo4jEntityConverter EntityConverter;
-    protected readonly ILogger? Logger;
+    protected readonly Microsoft.Extensions.Logging.ILogger? Logger;
 
     /// <summary>
     /// Initializes a new instance of the Neo4jEntityManagerBase class.
@@ -44,7 +44,7 @@ internal abstract class Neo4jEntityManagerBase
         Neo4jQueryExecutor queryExecutor,
         Neo4jConstraintManager constraintManager,
         Neo4jEntityConverter entityConverter,
-        ILogger? logger = null)
+        Microsoft.Extensions.Logging.ILogger? logger = null)
     {
         QueryExecutor = queryExecutor ?? throw new ArgumentNullException(nameof(queryExecutor));
         ConstraintManager = constraintManager ?? throw new ArgumentNullException(nameof(constraintManager));
@@ -87,7 +87,7 @@ internal abstract class Neo4jEntityManagerBase
     /// Checks if a type is a relationship type.
     /// </summary>
     protected static bool IsRelationshipType(Type type) =>
-        typeof(Model.IRelationship).IsAssignableFrom(type);
+        Helpers.IsRelationshipType(type);
 
     /// <summary>
     /// Checks if a type is a collection of relationship types.
@@ -149,7 +149,7 @@ internal abstract class Neo4jEntityManagerBase
     /// Logs a message with the provided action if a logger is available.
     /// </summary>
     /// <param name="logAction">The action to execute with the logger</param>
-    protected void Log(Action<ILogger> logAction)
+    protected void Log(Action<Microsoft.Extensions.Logging.ILogger> logAction)
     {
         if (Logger != null)
         {

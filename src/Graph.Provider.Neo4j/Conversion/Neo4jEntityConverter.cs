@@ -26,13 +26,13 @@ namespace Cvoya.Graph.Provider.Neo4j.Conversion;
 internal class Neo4jEntityConverter
 {
     private const int WGS84 = 4326;
-    private readonly ILogger? _logger;
+    private readonly Microsoft.Extensions.Logging.ILogger? _logger;
 
     /// <summary>
     /// Initializes a new instance of the Neo4jEntityConverter class.
     /// </summary>
     /// <param name="logger">Optional logger for conversion errors</param>
-    public Neo4jEntityConverter(ILogger? logger = null)
+    public Neo4jEntityConverter(Microsoft.Extensions.Logging.ILogger? logger = null)
     {
         _logger = logger;
     }
@@ -40,13 +40,13 @@ internal class Neo4jEntityConverter
     /// <summary>
     /// Populates a node entity with values from a Neo4j node
     /// </summary>
-    public void PopulateNodeEntity(object entity, INode neo4jNode)
+    public void PopulateNodeEntity(object entity, global::Neo4j.Driver.INode neo4jNode)
     {
         var entityType = entity.GetType();
         var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
 
         // Special handling for INode.Id - always use the Id property from neo4j node
-        if (entity is Model.INode node && neo4jNode.Properties.ContainsKey("Id"))
+        if (entity is Cvoya.Graph.Model.INode node && neo4jNode.Properties.ContainsKey("Id"))
         {
             node.Id = neo4jNode.Properties["Id"].As<string>();
         }
@@ -60,7 +60,7 @@ internal class Neo4jEntityConverter
             }
 
             // Skip complex properties (other nodes)
-            if (prop.PropertyType.IsAssignableTo(typeof(Model.INode)))
+            if (prop.PropertyType.IsAssignableTo(typeof(Cvoya.Graph.Model.INode)))
             {
                 continue;
             }
@@ -89,7 +89,7 @@ internal class Neo4jEntityConverter
     /// <summary>
     /// Populates a relationship entity with values from a Neo4j relationship
     /// </summary>
-    public void PopulateRelationshipEntity(object entity, IRelationship neo4jRelationship)
+    public void PopulateRelationshipEntity(object entity, global::Neo4j.Driver.IRelationship neo4jRelationship)
     {
         var entityType = entity.GetType();
         var properties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
@@ -103,7 +103,7 @@ internal class Neo4jEntityConverter
             }
 
             // Skip complex properties
-            if (prop.PropertyType.IsAssignableTo(typeof(Model.INode)))
+            if (prop.PropertyType.IsAssignableTo(typeof(Cvoya.Graph.Model.INode)))
             {
                 continue;
             }

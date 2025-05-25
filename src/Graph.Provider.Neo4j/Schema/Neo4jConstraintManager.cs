@@ -30,7 +30,7 @@ internal class Neo4jConstraintManager
     private bool _constraintsLoaded = false;
     private readonly string _databaseName;
     private readonly IDriver _driver;
-    private readonly ILogger? _logger;
+    private readonly Microsoft.Extensions.Logging.ILogger? _logger;
 
     /// <summary>
     /// Initializes a new instance of the Neo4jConstraintManager class.
@@ -38,7 +38,7 @@ internal class Neo4jConstraintManager
     /// <param name="driver">The Neo4j driver</param>
     /// <param name="databaseName">The database name</param>
     /// <param name="logger">Optional logger</param>
-    public Neo4jConstraintManager(IDriver driver, string databaseName, ILogger? logger = null)
+    public Neo4jConstraintManager(IDriver driver, string databaseName, Microsoft.Extensions.Logging.ILogger? logger = null)
     {
         _driver = driver ?? throw new ArgumentNullException(nameof(driver));
         _databaseName = databaseName ?? throw new ArgumentNullException(nameof(databaseName));

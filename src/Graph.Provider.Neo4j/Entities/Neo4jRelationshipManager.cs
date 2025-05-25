@@ -34,7 +34,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
         Neo4jQueryExecutor queryExecutor,
         Neo4jConstraintManager constraintManager, 
         Neo4jEntityConverter entityConverter,
-        ILogger? logger = null)
+        Microsoft.Extensions.Logging.ILogger? logger = null)
         : base(queryExecutor, constraintManager, entityConverter, logger)
     {
     }
@@ -44,7 +44,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// </summary>
     /// <param name="relationship">The relationship to create</param>
     /// <param name="tx">The transaction to use</param>
-    public async Task CreateRelationship(IRelationship relationship, IAsyncTransaction tx)
+    public async Task CreateRelationship(Cvoya.Graph.Model.IRelationship relationship, IAsyncTransaction tx)
     {
         var type = relationship.GetType();
         var label = Neo4jTypeManager.GetLabel(type);
@@ -71,7 +71,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// </summary>
     /// <param name="relationship">The relationship to update</param>
     /// <param name="tx">The transaction to use</param>
-    public async Task UpdateRelationship(IRelationship relationship, IAsyncTransaction tx)
+    public async Task UpdateRelationship(Cvoya.Graph.Model.IRelationship relationship, IAsyncTransaction tx)
     {
         var (simpleProps, complexProps) = GetSimpleAndComplexProperties(relationship);
         CheckRelationshipProperties(complexProps);
@@ -91,7 +91,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// <param name="tx">The transaction to use</param>
     /// <returns>The relationship instance</returns>
     /// <exception cref="GraphException">Thrown if the relationship is not found</exception>
-    public async Task<IRelationship> GetRelationship(Type relationshipType, string id, IAsyncTransaction tx)
+    public async Task<Cvoya.Graph.Model.IRelationship> GetRelationship(Type relationshipType, string id, IAsyncTransaction tx)
     {
         var label = Neo4jTypeManager.GetLabel(relationshipType);
         var cypher = $"MATCH ()-[r:{label}]->() WHERE r.{nameof(Model.IRelationship.Id)} = $id RETURN r";
@@ -105,7 +105,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
             throw new GraphException(ex.Message, ex);
         }
 
-        var relationship = Activator.CreateInstance(relationshipType) as IRelationship;
+        var relationship = Activator.CreateInstance(relationshipType) as Cvoya.Graph.Model.IRelationship;
         if (relationship is null)
         {
             throw new GraphException($"Failed to create instance of type {relationshipType.Name}");
@@ -113,7 +113,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
 
         EntityConverter.PopulateRelationshipEntity(
             relationship, 
-            records[0]["r"].As<IRelationship>());
+            records[0]["r"].As<global::Neo4j.Driver.IRelationship>());
         
         return relationship;
     }
@@ -126,7 +126,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// <param name="tx">The transaction to use</param>
     /// <param name="nodeManager">The node manager for fetching nodes</param>
     public async Task LoadRelationshipNodes(
-        IRelationship relationship, 
+        Cvoya.Graph.Model.IRelationship relationship, 
         GraphOperationOptions options,
         IAsyncTransaction tx,
         Neo4jNodeManager nodeManager)
@@ -180,7 +180,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
         List<string> relationshipPropertyNames = ["Source", "Target"];
         var check = complexProps
             .Select(p => p.Key)
-            .Where(p => !(relationshipPropertyNames.Contains(p.Name) && p.PropertyType.IsAssignableTo(typeof(Model.INode))));
+            .Where(p => !(relationshipPropertyNames.Contains(p.Name) && p.PropertyType.IsAssignableTo(typeof(Cvoya.Graph.Model.INode))));
 
         if (check.Any())
         {

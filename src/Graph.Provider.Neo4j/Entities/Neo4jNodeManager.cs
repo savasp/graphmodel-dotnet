@@ -33,7 +33,7 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
         Neo4jQueryExecutor queryExecutor,
         Neo4jConstraintManager constraintManager,
         Neo4jEntityConverter entityConverter,
-        ILogger? logger = null)
+        Microsoft.Extensions.Logging.ILogger? logger = null)
         : base(queryExecutor, constraintManager, entityConverter, logger)
     {
     }
@@ -86,7 +86,7 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     /// </summary>
     /// <param name="node">The node to update</param>
     /// <param name="tx">The transaction to use</param>
-    public async Task UpdateNode(INode node, IAsyncTransaction tx)
+    public async Task UpdateNode(Cvoya.Graph.Model.INode node, IAsyncTransaction tx)
     {
         var (simpleProps, complexProps) = GetSimpleAndComplexProperties(node);
         CheckNodeProperties(complexProps);
@@ -106,7 +106,7 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     /// <param name="tx">The transaction to use</param>
     /// <returns>The node instance</returns>
     /// <exception cref="GraphException">Thrown if the node is not found</exception>
-    public async Task<INode> GetNode(Type nodeType, string id, IAsyncTransaction tx)
+    public async Task<Cvoya.Graph.Model.INode> GetNode(Type nodeType, string id, IAsyncTransaction tx)
     {
         var label = Neo4jTypeManager.GetLabel(nodeType);
         var cypher = $"MATCH (n:{label}) WHERE n.{nameof(Model.INode.Id)} = $id RETURN n";
@@ -120,13 +120,13 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
             throw new GraphException(ex.Message, ex);
         }
 
-        var node = Activator.CreateInstance(nodeType) as INode;
+        var node = Activator.CreateInstance(nodeType) as Cvoya.Graph.Model.INode;
         if (node == null)
         {
             throw new GraphException($"Failed to create instance of type {nodeType.Name}");
         }
 
-        EntityConverter.PopulateNodeEntity(node, records[0]["n"].As<INode>());
+        EntityConverter.PopulateNodeEntity(node, records[0]["n"].As<global::Neo4j.Driver.INode>());
         return node;
     }
 
@@ -139,7 +139,7 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     {
         var check = complexProps
             .Select(p => p.Key)
-            .Where(p => p.PropertyType.IsAssignableTo(typeof(Model.INode)));
+            .Where(p => p.PropertyType.IsAssignableTo(typeof(Cvoya.Graph.Model.INode)));
 
         if (check.Any())
         {
