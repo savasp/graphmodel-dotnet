@@ -25,7 +25,7 @@ public class QueryTests : Model.Tests.QueryTestsBase, IAsyncLifetime, IClassFixt
 
     public async Task InitializeAsync()
     {
-        await fixture.TestInfrastructure.ResetDatabase();
+        await fixture.TestInfrastructure.GetReady();
     }
 
     public Task DisposeAsync()

@@ -25,7 +25,7 @@ public class RelationshipTraversalTests : Model.Tests.RelationshipTraversalTests
 
     public async Task InitializeAsync()
     {
-        await fixture.TestInfrastructure.ResetDatabase();
+        await fixture.TestInfrastructure.GetReady();
     }
 
     public Task DisposeAsync()

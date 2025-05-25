@@ -1,0 +1,33 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '10.0.x'
+    
+    - name: Restore dependencies
+      run: dotnet restore
+      working-directory: .
+    
+    - name: Build
+      run: dotnet build --no-restore
+      working-directory: .
+    
+    - name: Test with Docker containers
+      env:
+        USE_NEO4J_CONTAINERS: true
+      run: dotnet test --no-build --verbosity normal
+      working-directory: tests/Graph.Provider.Neo4j.Tests

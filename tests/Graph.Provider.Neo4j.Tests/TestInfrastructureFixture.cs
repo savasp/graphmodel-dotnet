@@ -20,9 +20,18 @@ public class TestInfrastructureFixture : IDisposable
 
     public TestInfrastructureFixture()
     {
-        // TODO: Configure these based an environment variable, appsettings.json, etc.
-        //this.testInfrastructure = new Neo4jTestInfrastructureWithContainer();
-        this.testInfrastructure = new Neo4jTestInfrastructureWithDbInstance();
+        // Check for environment variable to determine which infrastructure to use
+        var useContainers = Environment.GetEnvironmentVariable("USE_NEO4J_CONTAINERS");
+
+        // Default to containers in CI environments (GitHub Actions sets CI=true)
+        if (string.IsNullOrEmpty(useContainers))
+        {
+            useContainers = Environment.GetEnvironmentVariable("CI") ?? "false";
+        }
+
+        this.testInfrastructure = bool.Parse(useContainers)
+            ? new Neo4jTestInfrastructureWithContainer()
+            : new Neo4jTestInfrastructureWithDbInstance();
     }
 
     public ITestInfrastructure TestInfrastructure => this.testInfrastructure;
