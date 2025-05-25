@@ -25,7 +25,7 @@ using Neo4j.Driver;
 namespace Cvoya.Graph.Provider.Neo4j;
 
 /// <summary>
-/// Neo4j implementation of the IGraph interface.
+/// Neo4j implementation of the IGraph interface using a modular design.
 /// </summary>
 public class Neo4jGraphProviderModular : IGraph
 {
@@ -88,243 +88,21 @@ public class Neo4jGraphProviderModular : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<string> CreateNode(Cvoya.Graph.Model.INode node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public IQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null) 
+        where N : Cvoya.Graph.Model.INode, new()
     {
-        // Validate the node
-        if (node == null) throw new ArgumentNullException(nameof(node));
-        node.EnsureNoReferenceCycle();
-
-        if (string.IsNullOrEmpty(node.Id))
-        {
-            node.Id = Guid.NewGuid().ToString(); // Generate new ID
-        }
-        else if (!Guid.TryParse(node.Id, out _))
-        {
-            throw new ArgumentException($"Node ID '{node.Id}' is not a valid GUID");
-        }
-
-        // Execute the operation
-        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
-        try
-        {
-            // Create the node
-            var nodeId = await _nodeManager.CreateNode(parentId: null, node: node, tx: tx);
-
-            // Commit if no external transaction
-            if (transaction == null)
-            {
-                await tx.CommitAsync();
-            }
-
-            return nodeId;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to create node");
-            if (transaction == null)
-            {
-                await tx.RollbackAsync();
-            }
-            throw new GraphException("Failed to create node", ex);
-        }
-        finally
-        {
-            if (transaction == null)
-            {
-                await session.CloseAsync();
-            }
-        }
+        var provider = new Neo4jQueryProvider(this, options, _logger, transaction as Neo4jGraphTransaction);
+        var query = new Neo4jQuery<N>(provider);
+        return query;
     }
 
     /// <inheritdoc />
-    public async Task UpdateNode(Cvoya.Graph.Model.INode node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public IQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null) 
+        where R : Cvoya.Graph.Model.IRelationship, new()
     {
-        // Validate the node
-        if (node == null) throw new ArgumentNullException(nameof(node));
-        node.EnsureNoReferenceCycle();
-
-        if (string.IsNullOrEmpty(node.Id))
-            throw new ArgumentException("Cannot update a node with no ID");
-
-        // Execute the operation
-        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
-        try
-        {
-            await _nodeManager.UpdateNode(node, tx);
-
-            // Commit if no external transaction
-            if (transaction == null)
-            {
-                await tx.CommitAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to update node");
-            if (transaction == null)
-            {
-                await tx.RollbackAsync();
-            }
-            throw new GraphException("Failed to update node", ex);
-        }
-        finally
-        {
-            if (transaction == null)
-            {
-                await session.CloseAsync();
-            }
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task DeleteNode(string nodeId, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
-    {
-        if (string.IsNullOrEmpty(nodeId))
-            throw new ArgumentException("Node ID cannot be null or empty");
-
-        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
-        try
-        {
-            var detachDelete = options.CascadeDelete;
-            var cypher = detachDelete
-                ? $"MATCH (n) WHERE n.{nameof(Model.INode.Id)} = $nodeId DETACH DELETE n"
-                : $"MATCH (n) WHERE n.{nameof(Model.INode.Id)} = $nodeId DELETE n";
-
-            await tx.RunAsync(cypher, new { nodeId });
-
-            if (transaction == null)
-            {
-                await tx.CommitAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to delete node");
-            if (transaction == null)
-            {
-                await tx.RollbackAsync();
-            }
-            throw new GraphException("Failed to delete node", ex);
-        }
-        finally
-        {
-            if (transaction == null)
-            {
-                await session.CloseAsync();
-            }
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task CreateRelationship(Cvoya.Graph.Model.IRelationship relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
-    {
-        if (relationship == null) throw new ArgumentNullException(nameof(relationship));
-        relationship.EnsureNoReferenceCycle();
-
-        if (string.IsNullOrEmpty(relationship.SourceId) || string.IsNullOrEmpty(relationship.TargetId))
-            throw new ArgumentException("Relationship source and target IDs cannot be null or empty");
-
-        if (string.IsNullOrEmpty(relationship.Id))
-            relationship.Id = Guid.NewGuid().ToString();
-
-        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
-        try
-        {
-            await _relationshipManager.CreateRelationship(relationship, tx);
-
-            if (transaction == null)
-            {
-                await tx.CommitAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to create relationship");
-            if (transaction == null)
-            {
-                await tx.RollbackAsync();
-            }
-            throw new GraphException("Failed to create relationship", ex);
-        }
-        finally
-        {
-            if (transaction == null)
-            {
-                await session.CloseAsync();
-            }
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task UpdateRelationship(Cvoya.Graph.Model.IRelationship relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
-    {
-        if (relationship == null) throw new ArgumentNullException(nameof(relationship));
-        relationship.EnsureNoReferenceCycle();
-
-        if (string.IsNullOrEmpty(relationship.Id))
-            throw new ArgumentException("Cannot update a relationship with no ID");
-
-        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
-        try
-        {
-            await _relationshipManager.UpdateRelationship(relationship, tx);
-
-            if (transaction == null)
-            {
-                await tx.CommitAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to update relationship");
-            if (transaction == null)
-            {
-                await tx.RollbackAsync();
-            }
-            throw new GraphException("Failed to update relationship", ex);
-        }
-        finally
-        {
-            if (transaction == null)
-            {
-                await session.CloseAsync();
-            }
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task DeleteRelationship(string relationshipId, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
-    {
-        if (string.IsNullOrEmpty(relationshipId))
-            throw new ArgumentException("Relationship ID cannot be null or empty");
-
-        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
-        try
-        {
-            var cypher = $"MATCH ()-[r]->() WHERE r.{nameof(Model.IRelationship.Id)} = $relationshipId DELETE r";
-            await tx.RunAsync(cypher, new { relationshipId });
-
-            if (transaction == null)
-            {
-                await tx.CommitAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Failed to delete relationship");
-            if (transaction == null)
-            {
-                await tx.RollbackAsync();
-            }
-            throw new GraphException("Failed to delete relationship", ex);
-        }
-        finally
-        {
-            if (transaction == null)
-            {
-                await session.CloseAsync();
-            }
-        }
+        var provider = new Neo4jQueryProvider(this, options, _logger, transaction as Neo4jGraphTransaction);
+        var query = new Neo4jQuery<R>(provider);
+        return query;
     }
 
     /// <inheritdoc />
@@ -626,6 +404,246 @@ public class Neo4jGraphProviderModular : IGraph
     public Task DeleteRelationship(string relationshipId, IGraphTransaction? transaction = null)
     {
         return DeleteRelationship(relationshipId, new GraphOperationOptions(), transaction);
+    }
+
+    /// <inheritdoc />
+    public async Task<string> CreateNode(Cvoya.Graph.Model.INode node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    {
+        // Validate the node
+        if (node == null) throw new ArgumentNullException(nameof(node));
+        node.EnsureNoReferenceCycle();
+
+        if (string.IsNullOrEmpty(node.Id))
+        {
+            node.Id = Guid.NewGuid().ToString(); // Generate new ID
+        }
+        else if (!Guid.TryParse(node.Id, out _))
+        {
+            throw new ArgumentException($"Node ID '{node.Id}' is not a valid GUID");
+        }
+
+        // Execute the operation
+        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
+        try
+        {
+            // Create the node
+            var nodeId = await _nodeManager.CreateNode(parentId: null, node: node, tx: tx);
+
+            // Commit if no external transaction
+            if (transaction == null)
+            {
+                await tx.CommitAsync();
+            }
+
+            return nodeId;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to create node");
+            if (transaction == null)
+            {
+                await tx.RollbackAsync();
+            }
+            throw new GraphException("Failed to create node", ex);
+        }
+        finally
+        {
+            if (transaction == null)
+            {
+                await session.CloseAsync();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateNode(Cvoya.Graph.Model.INode node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    {
+        // Validate the node
+        if (node == null) throw new ArgumentNullException(nameof(node));
+        node.EnsureNoReferenceCycle();
+
+        if (string.IsNullOrEmpty(node.Id))
+            throw new ArgumentException("Cannot update a node with no ID");
+
+        // Execute the operation
+        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
+        try
+        {
+            await _nodeManager.UpdateNode(node, tx);
+
+            // Commit if no external transaction
+            if (transaction == null)
+            {
+                await tx.CommitAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to update node");
+            if (transaction == null)
+            {
+                await tx.RollbackAsync();
+            }
+            throw new GraphException("Failed to update node", ex);
+        }
+        finally
+        {
+            if (transaction == null)
+            {
+                await session.CloseAsync();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task DeleteNode(string nodeId, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    {
+        if (string.IsNullOrEmpty(nodeId))
+            throw new ArgumentException("Node ID cannot be null or empty");
+
+        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
+        try
+        {
+            var detachDelete = options.CascadeDelete;
+            var cypher = detachDelete
+                ? $"MATCH (n) WHERE n.{nameof(Model.INode.Id)} = $nodeId DETACH DELETE n"
+                : $"MATCH (n) WHERE n.{nameof(Model.INode.Id)} = $nodeId DELETE n";
+
+            await tx.RunAsync(cypher, new { nodeId });
+
+            if (transaction == null)
+            {
+                await tx.CommitAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to delete node");
+            if (transaction == null)
+            {
+                await tx.RollbackAsync();
+            }
+            throw new GraphException("Failed to delete node", ex);
+        }
+        finally
+        {
+            if (transaction == null)
+            {
+                await session.CloseAsync();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task CreateRelationship(Cvoya.Graph.Model.IRelationship relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    {
+        if (relationship == null) throw new ArgumentNullException(nameof(relationship));
+        relationship.EnsureNoReferenceCycle();
+
+        if (string.IsNullOrEmpty(relationship.SourceId) || string.IsNullOrEmpty(relationship.TargetId))
+            throw new ArgumentException("Relationship source and target IDs cannot be null or empty");
+
+        if (string.IsNullOrEmpty(relationship.Id))
+            relationship.Id = Guid.NewGuid().ToString();
+
+        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
+        try
+        {
+            await _relationshipManager.CreateRelationship(relationship, tx);
+
+            if (transaction == null)
+            {
+                await tx.CommitAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to create relationship");
+            if (transaction == null)
+            {
+                await tx.RollbackAsync();
+            }
+            throw new GraphException("Failed to create relationship", ex);
+        }
+        finally
+        {
+            if (transaction == null)
+            {
+                await session.CloseAsync();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateRelationship(Cvoya.Graph.Model.IRelationship relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    {
+        if (relationship == null) throw new ArgumentNullException(nameof(relationship));
+        relationship.EnsureNoReferenceCycle();
+
+        if (string.IsNullOrEmpty(relationship.Id))
+            throw new ArgumentException("Cannot update a relationship with no ID");
+
+        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
+        try
+        {
+            await _relationshipManager.UpdateRelationship(relationship, tx);
+
+            if (transaction == null)
+            {
+                await tx.CommitAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to update relationship");
+            if (transaction == null)
+            {
+                await tx.RollbackAsync();
+            }
+            throw new GraphException("Failed to update relationship", ex);
+        }
+        finally
+        {
+            if (transaction == null)
+            {
+                await session.CloseAsync();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task DeleteRelationship(string relationshipId, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    {
+        if (string.IsNullOrEmpty(relationshipId))
+            throw new ArgumentException("Relationship ID cannot be null or empty");
+
+        var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
+        try
+        {
+            var cypher = $"MATCH ()-[r]->() WHERE r.{nameof(Model.IRelationship.Id)} = $relationshipId DELETE r";
+            await tx.RunAsync(cypher, new { relationshipId });
+
+            if (transaction == null)
+            {
+                await tx.CommitAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to delete relationship");
+            if (transaction == null)
+            {
+                await tx.RollbackAsync();
+            }
+            throw new GraphException("Failed to delete relationship", ex);
+        }
+        finally
+        {
+            if (transaction == null)
+            {
+                await session.CloseAsync();
+            }
+        }
     }
 
     /// <summary>
