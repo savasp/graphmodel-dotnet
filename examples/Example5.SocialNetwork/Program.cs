@@ -19,8 +19,6 @@ using Neo4j.Driver;
 // Example 5: Social Network
 // Demonstrates a complete social network implementation with users, posts, and interactions
 
-
-
 Console.WriteLine("=== Example 5: Social Network ===\n");
 
 /* This example still has some issues with featurs that haven't been implemented properly.

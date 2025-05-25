@@ -37,6 +37,7 @@ Console.WriteLine($"✓ Created database: {databaseName}");
 // Create graph instance with Neo4j provider
 var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
 
+/*
 try
 {
     // ==== SETUP: Create initial data ====
@@ -247,3 +248,5 @@ finally
     }
     await driver.DisposeAsync();
 }
+
+*/

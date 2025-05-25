@@ -17,196 +17,197 @@ namespace Cvoya.Graph.Model.Tests;
 public abstract class RelationshipTraversalTestsBase : ITestBase
 {
     public abstract IGraph Graph { get; }
-
-    [Fact]
-    public async Task CreateRelationship_WithCreateMissingNodes_CreatesSourceAndTarget()
-    {
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-
-        // Create relationship with missing nodes
-        await Graph.CreateRelationship(knows, new GraphOperationOptions
+    /*
+        [Fact]
+        public async Task CreateRelationship_WithCreateMissingNodes_CreatesSourceAndTarget()
         {
-            CreateMissingNodes = true
-        });
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
 
-        // All should exist
-        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(alice.Id));
-        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
-        Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id));
-    }
-
-    [Fact]
-    public async Task CreateRelationship_WithoutCreateMissingNodes_FailsIfNodesNotExist()
-    {
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-
-        // Should fail because nodes don't exist
-        await Assert.ThrowsAsync<GraphException>(() =>
-            Graph.CreateRelationship(knows, new GraphOperationOptions
+            // Create relationship with missing nodes
+            await Graph.CreateRelationship(knows, new GraphOperationOptions
             {
-                CreateMissingNodes = false
-            }));
-    }
+                CreateMissingNodes = true
+            });
 
-    [Fact]
-    public async Task CreateRelationship_WithDeepTraversal_CreatesConnectedGraph()
-    {
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
+            // All should exist
+            Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(alice.Id));
+            Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
+            Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id));
+        }
 
-        // Bob knows Charlie
-        var bobKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(bob, charlie) { Since = DateTime.UtcNow };
-        bob.Knows.Add(bobKnowsCharlie);
-
-        // Create Alice->Bob relationship with deep traversal
-        var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-
-        await Graph.CreateRelationship(aliceKnowsBob, new GraphOperationOptions
+        [Fact]
+        public async Task CreateRelationship_WithoutCreateMissingNodes_FailsIfNodesNotExist()
         {
-            TraversalDepth = 2,
-            CreateMissingNodes = true
-        });
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
 
-        // All nodes and relationships should exist
-        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(alice.Id));
-        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
-        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(charlie.Id));
-        Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(aliceKnowsBob.Id));
-        Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(bobKnowsCharlie.Id));
-    }
+            // Should fail because nodes don't exist
+            await Assert.ThrowsAsync<GraphException>(() =>
+                Graph.CreateRelationship(knows, new GraphOperationOptions
+                {
+                    CreateMissingNodes = false
+                }));
+        }
 
-    [Fact]
-    public async Task UpdateRelationship_WithUpdateExistingNodes_UpdatesConnectedNodes()
-    {
-        // Setup initial graph
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-        await Graph.CreateRelationship(knows);
-
-        // Update relationship and connected nodes
-        knows.Since = DateTime.UtcNow.AddDays(-365);
-        alice.FirstName = "Alice Updated";
-        bob.FirstName = "Bob Updated";
-        knows.Source = alice;
-        knows.Target = bob;
-
-        await Graph.UpdateRelationship(knows, new GraphOperationOptions
+        [Fact]
+        public async Task CreateRelationship_WithDeepTraversal_CreatesConnectedGraph()
         {
-            TraversalDepth = 1,
-            UpdateExistingNodes = true
-        });
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
 
-        // Relationship and nodes should be updated
-        var fetchedRel = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id);
-        Assert.True((DateTime.UtcNow - fetchedRel.Since).TotalDays > 360);
+            // Bob knows Charlie
+            var bobKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(bob, charlie) { Since = DateTime.UtcNow };
+            bob.Knows.Add(bobKnowsCharlie);
 
-        var fetchedAlice = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id);
-        Assert.Equal("Alice Updated", fetchedAlice.FirstName);
+            // Create Alice->Bob relationship with deep traversal
+            var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
 
-        var fetchedBob = await Graph.GetNode<PersonWithNavigationProperty>(bob.Id);
-        Assert.Equal("Bob Updated", fetchedBob.FirstName);
-    }
+            await Graph.CreateRelationship(aliceKnowsBob, new GraphOperationOptions
+            {
+                TraversalDepth = 2,
+                CreateMissingNodes = true
+            });
 
-    [Fact]
-    public async Task UpdateRelationship_WithoutUpdateExistingNodes_OnlyUpdatesRelationship()
-    {
-        // Setup initial graph
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
+            // All nodes and relationships should exist
+            Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(alice.Id));
+            Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
+            Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(charlie.Id));
+            Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(aliceKnowsBob.Id));
+            Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(bobKnowsCharlie.Id));
+        }
 
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-        await Graph.CreateRelationship(knows);
-
-        // Update relationship but not nodes
-        knows.Since = DateTime.UtcNow.AddDays(-365);
-        alice.FirstName = "Alice Updated";
-        bob.FirstName = "Bob Updated";
-        knows.Source = alice;
-        knows.Target = bob;
-
-        await Graph.UpdateRelationship(knows, new GraphOperationOptions
+        [Fact]
+        public async Task UpdateRelationship_WithUpdateExistingNodes_UpdatesConnectedNodes()
         {
-            TraversalDepth = 1,
-            UpdateExistingNodes = false
-        });
+            // Setup initial graph
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            await Graph.CreateNode(alice);
+            await Graph.CreateNode(bob);
 
-        // Only relationship should be updated
-        var fetchedRel = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id);
-        Assert.True((DateTime.UtcNow - fetchedRel.Since).TotalDays > 360);
+            var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            await Graph.CreateRelationship(knows);
 
-        var fetchedAlice = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id);
-        Assert.Equal("Alice", fetchedAlice.FirstName); // Not updated
+            // Update relationship and connected nodes
+            knows.Since = DateTime.UtcNow.AddDays(-365);
+            alice.FirstName = "Alice Updated";
+            bob.FirstName = "Bob Updated";
+            knows.Source = alice;
+            knows.Target = bob;
 
-        var fetchedBob = await Graph.GetNode<PersonWithNavigationProperty>(bob.Id);
-        Assert.Equal("Bob", fetchedBob.FirstName); // Not updated
-    }
+            await Graph.UpdateRelationship(knows, new GraphOperationOptions
+            {
+                TraversalDepth = 1,
+                UpdateExistingNodes = true
+            });
 
-    [Fact]
-    public async Task CreateRelationship_WithFluentApi_WorksCorrectly()
-    {
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
+            // Relationship and nodes should be updated
+            var fetchedRel = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id);
+            Assert.True((DateTime.UtcNow - fetchedRel.Since).TotalDays > 360);
 
-        // Bob has relationship to Charlie
-        var bobKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(bob, charlie) { Since = DateTime.UtcNow };
-        bob.Knows.Add(bobKnowsCharlie);
+            var fetchedAlice = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id);
+            Assert.Equal("Alice Updated", fetchedAlice.FirstName);
 
-        var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            var fetchedBob = await Graph.GetNode<PersonWithNavigationProperty>(bob.Id);
+            Assert.Equal("Bob Updated", fetchedBob.FirstName);
+        }
 
-        await Graph.CreateRelationship(aliceKnowsBob,
-            new GraphOperationOptions()
-                .WithDepth(0)  // Only create immediate nodes, no traversal
-                .WithCreateMissingNodes());
+        [Fact]
+        public async Task UpdateRelationship_WithoutUpdateExistingNodes_OnlyUpdatesRelationship()
+        {
+            // Setup initial graph
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            await Graph.CreateNode(alice);
+            await Graph.CreateNode(bob);
 
-        // Alice, Bob, and relationship should exist
-        // Charlie should NOT exist (depth = 0, no traversal)
-        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(alice.Id));
-        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
-        Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(aliceKnowsBob.Id));
-        await Assert.ThrowsAsync<GraphException>(() => Graph.GetNode<PersonWithNavigationProperty>(charlie.Id));
-    }
+            var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            await Graph.CreateRelationship(knows);
 
-    [Fact]
-    public async Task CreateRelationship_WithFullDepth_CreatesEntireSubgraph()
-    {
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
-        var david = new PersonWithNavigationProperty { FirstName = "David" };
+            // Update relationship but not nodes
+            knows.Since = DateTime.UtcNow.AddDays(-365);
+            alice.FirstName = "Alice Updated";
+            bob.FirstName = "Bob Updated";
+            knows.Source = alice;
+            knows.Target = bob;
 
-        // Create a chain: Alice -> Bob -> Charlie -> David
-        var charlieKnowsDavid = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(charlie, david) { Since = DateTime.UtcNow };
-        charlie.Knows.Add(charlieKnowsDavid);
+            await Graph.UpdateRelationship(knows, new GraphOperationOptions
+            {
+                TraversalDepth = 1,
+                UpdateExistingNodes = false
+            });
 
-        var bobKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(bob, charlie) { Since = DateTime.UtcNow };
-        bob.Knows.Add(bobKnowsCharlie);
+            // Only relationship should be updated
+            var fetchedRel = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id);
+            Assert.True((DateTime.UtcNow - fetchedRel.Since).TotalDays > 360);
 
-        var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            var fetchedAlice = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id);
+            Assert.Equal("Alice", fetchedAlice.FirstName); // Not updated
 
-        await Graph.CreateRelationship(aliceKnowsBob,
-            new GraphOperationOptions()
-                .WithFullGraph()
-                .WithCreateMissingNodes());
+            var fetchedBob = await Graph.GetNode<PersonWithNavigationProperty>(bob.Id);
+            Assert.Equal("Bob", fetchedBob.FirstName); // Not updated
+        }
 
-        // Everything should exist
-        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(alice.Id));
-        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
-        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(charlie.Id));
-        Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(david.Id));
-        Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(aliceKnowsBob.Id));
-        Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(bobKnowsCharlie.Id));
-        Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(charlieKnowsDavid.Id));
-    }
+        [Fact]
+        public async Task CreateRelationship_WithFluentApi_WorksCorrectly()
+        {
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
+
+            // Bob has relationship to Charlie
+            var bobKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(bob, charlie) { Since = DateTime.UtcNow };
+            bob.Knows.Add(bobKnowsCharlie);
+
+            var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+
+            await Graph.CreateRelationship(aliceKnowsBob,
+                new GraphOperationOptions()
+                    .WithDepth(0)  // Only create immediate nodes, no traversal
+                    .WithCreateMissingNodes());
+
+            // Alice, Bob, and relationship should exist
+            // Charlie should NOT exist (depth = 0, no traversal)
+            Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(alice.Id));
+            Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
+            Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(aliceKnowsBob.Id));
+            await Assert.ThrowsAsync<GraphException>(() => Graph.GetNode<PersonWithNavigationProperty>(charlie.Id));
+        }
+
+        [Fact]
+        public async Task CreateRelationship_WithFullDepth_CreatesEntireSubgraph()
+        {
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
+            var david = new PersonWithNavigationProperty { FirstName = "David" };
+
+            // Create a chain: Alice -> Bob -> Charlie -> David
+            var charlieKnowsDavid = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(charlie, david) { Since = DateTime.UtcNow };
+            charlie.Knows.Add(charlieKnowsDavid);
+
+            var bobKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(bob, charlie) { Since = DateTime.UtcNow };
+            bob.Knows.Add(bobKnowsCharlie);
+
+            var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+
+            await Graph.CreateRelationship(aliceKnowsBob,
+                new GraphOperationOptions()
+                    .WithFullGraph()
+                    .WithCreateMissingNodes());
+
+            // Everything should exist
+            Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(alice.Id));
+            Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(bob.Id));
+            Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(charlie.Id));
+            Assert.NotNull(await Graph.GetNode<PersonWithNavigationProperty>(david.Id));
+            Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(aliceKnowsBob.Id));
+            Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(bobKnowsCharlie.Id));
+            Assert.NotNull(await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(charlieKnowsDavid.Id));
+        }
+    */
 }

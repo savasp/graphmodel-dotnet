@@ -32,12 +32,12 @@ public class Bank : Node
 }
 
 [Relationship("HAS_ACCOUNT")]
-public class BankAccount : Relationship<Account, Bank>
+public class BankAccount : Relationship
 {
 }
 
 [Relationship("TRANSFER")]
-public class Transfer : Relationship<Account, Account>
+public class Transfer : Relationship
 {
     public decimal Amount { get; set; } = 0m;
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;

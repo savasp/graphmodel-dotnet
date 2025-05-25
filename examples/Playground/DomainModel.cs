@@ -40,7 +40,7 @@ public class Company : Node
 }
 
 [Relationship("WORKS_AT")]
-public class WorksΑt : Relationship<Person, Department>
+public class WorksAt : Relationship
 {
     public string Role { get; set; } = string.Empty;
     public DateTime StartDate { get; set; }
@@ -48,6 +48,6 @@ public class WorksΑt : Relationship<Person, Department>
 }
 
 [Relationship("PART_OF")]
-public class PartOf : Relationship<Department, Company>
+public class PartOf : Relationship
 {
 }

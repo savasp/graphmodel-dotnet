@@ -35,7 +35,7 @@ internal static class SerializationExtensions
             switch (property)
             {
                 // This must come first!
-                case { PropertyType: var t } when t.IsRelationshipType() || t.IsCollectionOfRelationshipType():
+                case { PropertyType: var t } when Helpers.IsRelationshipType(t) || Helpers.IsCollectionOfRelationshipType(t):
                     continue;
                 // This must come second!
                 case { PropertyType: var t } when t.IsPrimitiveOrSimple() || t.IsCollectionOfSimple():
@@ -255,28 +255,22 @@ internal static class SerializationExtensions
     }
 
     public static bool IsRelationshipType(this Type type) =>
-        typeof(Model.IRelationship).IsAssignableFrom(type);
+        Helpers.IsRelationshipType(type);
 
     public static bool IsCollectionOfRelationshipType(this Type type) =>
-        type != typeof(string)
-        && typeof(IEnumerable).IsAssignableFrom(type)
-        && type switch
+        Helpers.IsCollectionOfRelationshipType(type);
+
+    public static bool IsPrimitiveOrSimple(this Type type) =>
+        type switch
         {
-            { IsArray: true } => type.GetElementType()!.IsRelationshipType(),
-            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } arg && arg.IsRelationshipType(),
+            _ when type.IsPrimitive => true,
+            _ when type.IsEnum => true,
+            _ when type == typeof(string) => true,
+            _ when type.IsValueType => true,
+            _ when type == typeof(decimal) => true,
+            _ when type == typeof(Model.Point) => true,
             _ => false
         };
-
-    public static bool IsPrimitiveOrSimple(this Type type) => type switch
-    {
-        _ when type.IsPrimitive => true,
-        _ when type.IsEnum => true,
-        _ when type == typeof(string) => true,
-        _ when type.IsValueType => true,
-        _ when type == typeof(decimal) => true,
-        _ when type == typeof(Model.Point) => true,
-        _ => false
-    };
 
     public static bool IsCollectionOfSimple(this Type type) =>
         type != typeof(string)
@@ -293,7 +287,7 @@ internal static class SerializationExtensions
     {
         _ when type.IsPrimitiveOrSimple() => true,
         _ when type.IsCollectionOfSimple() => true,
-        _ when type.IsRelationshipType() => true,
+        _ when Helpers.IsRelationshipType(type) => true,
         _ => false
     };
 

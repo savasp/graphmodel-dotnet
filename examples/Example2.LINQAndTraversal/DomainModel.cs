@@ -28,7 +28,7 @@ public class Person : Node
 
 
 [Relationship("KNOWS")]
-public class Knows : Relationship<Person, Person>
+public class Knows : Relationship
 {
     public DateTime Since { get; set; }
 }

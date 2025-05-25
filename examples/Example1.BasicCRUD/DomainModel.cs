@@ -34,7 +34,7 @@ public class Company : Node
 }
 
 [Relationship("WORKS_FOR")]
-public class WorksFor : Relationship<Person, Company>
+public class WorksFor : Relationship
 {
     public string Position { get; set; } = string.Empty;
     public DateTime StartDate { get; set; }

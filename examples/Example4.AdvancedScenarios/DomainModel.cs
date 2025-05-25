@@ -36,7 +36,7 @@ public class Content : Node
 }
 
 [Relationship("CONTAINS")]
-public class ContainedIn : Relationship<Content, Blog>
+public class ContainedIn : Relationship
 {
     public ContainedIn() : base(isBidirectional: true)
     {
@@ -59,7 +59,7 @@ public class Video : Content
 }
 
 [Relationship("CONTAINS")]
-public class Contains : Relationship<Blog, Article>
+public class Contains : Relationship
 {
     public Contains() : base(isBidirectional: true)
     {
@@ -67,7 +67,7 @@ public class Contains : Relationship<Blog, Article>
 }
 
 [Relationship("REFERENCES")]
-public class References : Relationship<Article, Video>
+public class References : Relationship
 {
     public string Context { get; set; } = string.Empty;
 }
@@ -76,11 +76,10 @@ public class References : Relationship<Article, Video>
 public class Tag : Node
 {
     public string Name { get; set; } = string.Empty;
-    public Relationship<Tag, Content> TaggedContent { get; set; } = new Relationship<Tag, Content>();
 }
 
 [Relationship("REFERENCE")]
-public class Reference : Relationship<Article, Video>
+public class Reference : Relationship
 {
     public Reference() : base(isBidirectional: true)
     {
@@ -89,7 +88,7 @@ public class Reference : Relationship<Article, Video>
 }
 
 [Relationship("TAGGED_WITH")]
-public class TaggedContent : Relationship<Content, Tag>
+public class TaggedContent : Relationship
 {
     public TaggedContent() : base(isBidirectional: true)
     {
@@ -97,7 +96,7 @@ public class TaggedContent : Relationship<Content, Tag>
 }
 
 [Relationship("TAGGED_WITH")]
-public class TaggedWith : Relationship<Content, Tag>
+public class TaggedWith : Relationship
 {
     public TaggedWith() : base(isBidirectional: true)
     {

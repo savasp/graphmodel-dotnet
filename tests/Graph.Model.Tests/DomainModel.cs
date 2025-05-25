@@ -32,20 +32,13 @@ public class Address
 }
 
 [Relationship("KNOWS")]
-public class Knows<T, S> : Relationship<T, S>
-    where T : Person
-    where S : Person
+public class Knows : IRelationship
 {
-    public Knows() { }
-    public Knows(T source, S target) : base(source, target)
-    {
-    }
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string SourceId { get; set; } = string.Empty;
+    public string TargetId { get; set; } = string.Empty;
+    public bool IsBidirectional { get; set; }
     public DateTime Since { get; set; }
-}
-
-public class PersonWithNavigationProperty : Person
-{
-    public List<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>> Knows { get; set; } = new();
 }
 
 public class PersonWithComplexProperty : Person
@@ -53,10 +46,51 @@ public class PersonWithComplexProperty : Person
     public Address Address { get; set; } = new Address();
 }
 
-public class KnowsWithComplexProperty : Relationship<PersonWithComplexProperty, PersonWithComplexProperty>
+public class KnowsWithComplexProperty : Relationship
 {
     public KnowsWithComplexProperty() { }
-    public KnowsWithComplexProperty(PersonWithComplexProperty p1, PersonWithComplexProperty p2) : base(p1, p2) { }
+    public KnowsWithComplexProperty(PersonWithComplexProperty p1, PersonWithComplexProperty p2) : base(p1.Id, p2.Id) { }
     public DateTime Since { get; set; }
     public Address MetAt { get; set; } = new Address();
+}
+
+public class Class1 : Node
+{
+    public string Property1 { get; set; } = string.Empty;
+    public string Property2 { get; set; } = string.Empty;
+    public ComplexClassA? A { get; set; } = null;
+    public ComplexClassB? B { get; set; } = null;
+}
+
+public class Class2 : Node
+{
+    public string Property1 { get; set; } = string.Empty;
+    public string Property2 { get; set; } = string.Empty;
+    public List<ComplexClassA> A { get; set; } = new List<ComplexClassA>();
+    public List<ComplexClassB> B { get; set; } = new List<ComplexClassB>();
+}
+public class ComplexClassA
+{
+    public string Property1 { get; set; } = string.Empty;
+    public string Property2 { get; set; } = string.Empty;
+    public ComplexClassB? B { get; set; } = null;
+    public ComplexClassC? C { get; set; } = null;
+}
+
+public class ComplexClassB
+{
+    public string Property1 { get; set; } = string.Empty;
+    public ComplexClassA? A { get; set; } = null;
+}
+
+public class ComplexClassC
+{
+    public string Property1 { get; set; } = string.Empty;
+    public ComplexClassB? B { get; set; } = null;
+}
+
+public class ComplexClassD
+{
+    public string Property1 { get; set; } = string.Empty;
+    public string Property2 { get; set; } = string.Empty;
 }

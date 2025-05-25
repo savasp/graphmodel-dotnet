@@ -22,17 +22,22 @@ namespace Cvoya.Graph.Model;
 /// Use this class as a base class for your domain-specific relationship models to get automatic ID generation
 /// and basic relationship functionality.
 /// </remarks>
+[Relationship("GENERIC")]
 public abstract class Relationship : IRelationship
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="Relationship"/> class with specified directionality.
     /// </summary>
+    /// <param name="sourceId">The ID of the source node in the relationship.</param>
+    /// <param name="targetId">The ID of the target node in the relationship.</param>
     /// <param name="isBidirectional">Indicates whether the relationship is bidirectional.</param>
     /// <remarks>
     /// Set isBidirectional to true if the relationship can be traversed in both directions.
     /// </remarks>
-    public Relationship(bool isBidirectional = false)
+    public Relationship(string? sourceId = null, string? targetId = null, bool isBidirectional = false)
     {
+        SourceId = sourceId ?? string.Empty;
+        TargetId = targetId ?? string.Empty;
         IsBidirectional = isBidirectional;
     }
 

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j;
 using Neo4j.Driver;
@@ -19,6 +20,7 @@ using Neo4j.Driver;
 // Playground to explore ideas and the interface
 
 const string databaseName = "GraphModelPlayground";
+
 
 // ==== SETUP a new database ====
 var driver = GraphDatabase.Driver("bolt://localhost:7687", AuthTokens.Basic("neo4j", "password"));
@@ -32,7 +34,7 @@ await using (var session = driver.AsyncSession())
 
 var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
 
-
+/*
 var person = new Person
 {
     Name = "John Doe",
@@ -94,4 +96,4 @@ var departmentPartOfCompany = graph.Relationships<PartOf>(new GraphOperationOpti
 
 Console.WriteLine($"John Doe works for {johnWorksAtDepartment!.Name} in {departmentPartOfCompany!.Name} department at {departmentPartOfCompany!.Name}.");
 
-// In one expression
+*/

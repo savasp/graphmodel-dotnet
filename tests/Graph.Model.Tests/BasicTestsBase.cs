@@ -31,11 +31,13 @@ public abstract class BasicTestsBase : ITestBase
     [Fact]
     public async Task CanCreateAndGetNodeWithComplexProperties()
     {
-        var person = new PersonWithComplexProperty { FirstName = "John", LastName = "Doe" };
+        var person = new PersonWithComplexProperty { FirstName = "John", LastName = "Doe", Address = new Address { Street = "123 Main St", City = "Somewhere" } };
         await this.Graph.CreateNode(person);
         var fetched = await this.Graph.GetNode<PersonWithComplexProperty>(person.Id);
         Assert.Equal("John", fetched.FirstName);
         Assert.Equal("Doe", fetched.LastName);
+        Assert.Equal("123 Main St", fetched.Address.Street);
+        Assert.Equal("Somewhere", fetched.Address.City);
     }
 
     [Fact]
@@ -60,29 +62,15 @@ public abstract class BasicTestsBase : ITestBase
         await this.Graph.CreateNode(p1);
         await this.Graph.CreateNode(p2);
 
-        var knows = new Knows<Person, Person>(p1, p2) { Since = DateTime.UtcNow };
+        var dateTime = DateTime.UtcNow;
+        var knows = new Knows { SourceId = p1.Id, TargetId = p2.Id, Since = dateTime };
 
         await this.Graph.CreateRelationship(knows);
 
-        var fetched = await this.Graph.GetRelationship<Knows<Person, Person>>(knows.Id);
+        var fetched = await this.Graph.GetRelationship<Knows>(knows.Id);
         Assert.Equal(p1.Id, fetched.SourceId);
         Assert.Equal(p2.Id, fetched.TargetId);
-    }
-
-    [Fact]
-    public async Task CanCreateRelationshipAndAddNodesAtTheSameTime()
-    {
-        var p1 = new Person { FirstName = "A" };
-        var p2 = new Person { FirstName = "B" };
-
-        var knows = new Knows<Person, Person>(p1, p2) { Since = DateTime.UtcNow };
-
-        // This should add the nodes and create the relationship
-        await this.Graph.CreateRelationship(knows, new GraphOperationOptions { CreateMissingNodes = true });
-
-        var fetched = await this.Graph.GetRelationship<Knows<Person, Person>>(knows.Id);
-        Assert.Equal(p1.Id, fetched.SourceId);
-        Assert.Equal(p2.Id, fetched.TargetId);
+        Assert.Equal(dateTime, fetched.Since);
     }
 
     [Fact]
@@ -116,25 +104,11 @@ public abstract class BasicTestsBase : ITestBase
         await this.Graph.CreateNode(p1);
         await this.Graph.CreateNode(p2);
 
-        var knows = new Knows<Person, Person>(p1, p2) { Since = DateTime.UtcNow };
+        var knows = new Knows { SourceId = p1.Id, TargetId = p2.Id, Since = DateTime.UtcNow };
 
         await this.Graph.CreateRelationship(knows);
         await this.Graph.DeleteRelationship(knows.Id);
-        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetRelationship<Knows<Person, Person>>(knows.Id));
-    }
-
-    [Fact]
-    public async Task CanCreatePersonWithFriendExample()
-    {
-        var person = new Person { FirstName = "John", LastName = "Doe" };
-        var friend = new Person { FirstName = "Jane", LastName = "Smith" };
-        await this.Graph.CreateNode(person);
-        await this.Graph.CreateNode(friend);
-        var knows = new Knows<Person, Person>(person, friend) { Since = DateTime.Now };
-        await this.Graph.CreateRelationship(knows);
-        var fetched = await this.Graph.GetRelationship<Knows<Person, Person>>(knows.Id);
-        Assert.Equal(person.Id, fetched.SourceId);
-        Assert.Equal(friend.Id, fetched.TargetId);
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetRelationship<Knows>(knows.Id));
     }
 
     [Fact]
@@ -160,12 +134,12 @@ public abstract class BasicTestsBase : ITestBase
         await this.Graph.CreateNode(p1);
         await this.Graph.CreateNode(p2);
         await this.Graph.CreateNode(p3);
-        var knows1 = new Knows<Person, Person>(p1, p2) { Since = DateTime.UtcNow };
-        var knows2 = new Knows<Person, Person>(p2, p3) { Since = DateTime.UtcNow };
+        var knows1 = new Knows { SourceId = p1.Id, TargetId = p2.Id, Since = DateTime.UtcNow };
+        var knows2 = new Knows { SourceId = p2.Id, TargetId = p3.Id, Since = DateTime.UtcNow };
         await this.Graph.CreateRelationship(knows1);
         await this.Graph.CreateRelationship(knows2);
-        var rels = await this.Graph.GetRelationships<Knows<Person, Person>>([knows1.Id, knows2.Id]);
-        Assert.Equal(2, ((ICollection<Knows<Person, Person>>)rels).Count);
+        var rels = await this.Graph.GetRelationships<Knows>(new[] { knows1.Id, knows2.Id });
+        Assert.Equal(2, ((ICollection<Knows>)rels).Count);
         Assert.Contains(rels, r => r.Id == knows1.Id);
         Assert.Contains(rels, r => r.Id == knows2.Id);
     }
@@ -178,11 +152,11 @@ public abstract class BasicTestsBase : ITestBase
         await this.Graph.CreateNode(p1);
         await this.Graph.CreateNode(p2);
 
-        var knows = new Knows<Person, Person>(p1, p2) { Since = DateTime.UtcNow };
+        var knows = new Knows { SourceId = p1.Id, TargetId = p2.Id, Since = DateTime.UtcNow };
         await this.Graph.CreateRelationship(knows);
         knows.Since = DateTime.UtcNow.AddYears(-1);
         await this.Graph.UpdateRelationship(knows);
-        var updated = await this.Graph.GetRelationship<Knows<Person, Person>>(knows.Id);
+        var updated = await this.Graph.GetRelationship<Knows>(knows.Id);
         Assert.Equal(knows.Id, updated.Id);
         Assert.Equal(p1.Id, updated.SourceId);
         Assert.Equal(p2.Id, updated.TargetId);
@@ -223,7 +197,7 @@ public abstract class BasicTestsBase : ITestBase
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
     }
 
-    public class PersonWithGenericPropertyOfPrimitive : Node
+    public class PersonWithGenericCollectionOfPrimitiveProperty : Node
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
@@ -231,11 +205,16 @@ public abstract class BasicTestsBase : ITestBase
     }
 
     [Fact]
-    public async Task CanAddNodeWithGenericPropertyOfPrimitive()
+    public async Task CanAddAndGetNodeWithGenericCollectionOfPrimitiveProperty()
     {
-        var person = new PersonWithGenericPropertyOfPrimitive { FirstName = "A", GenericProperty = new List<string> { "B" } };
+        var person = new PersonWithGenericCollectionOfPrimitiveProperty { FirstName = "A", GenericProperty = new List<string> { "B", "C" } };
 
         await this.Graph.CreateNode(person);
+
+        var fetched = await this.Graph.GetNode<PersonWithGenericCollectionOfPrimitiveProperty>(person.Id);
+        Assert.Equal("A", fetched.FirstName);
+        Assert.Equal(person.GenericProperty.Count, fetched.GenericProperty.Count);
+        Assert.All(fetched.GenericProperty, item => Assert.Contains(item, person.GenericProperty));
     }
 
     public class PersonWithGenericDictionaryProperty : Node
@@ -261,39 +240,10 @@ public abstract class BasicTestsBase : ITestBase
     }
 
     [Fact]
-    public void CanQueryRelationshipsLinq()
+    public void CanCreateRelationshipsQuery()
     {
-        var queryable = this.Graph.Relationships<Knows<Person, Person>>();
+        var queryable = this.Graph.Relationships<Knows>();
         Assert.NotNull(queryable);
-    }
-
-    [Fact]
-    public async Task CanAddNodesAndRelationships()
-    {
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice", LastName = "Smith" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob", LastName = "Jones" };
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow, IsBidirectional = true };
-        alice.Knows.Add(knows);
-
-        await this.Graph.CreateNode(alice, new GraphOperationOptions { CreateMissingNodes = true, TraversalDepth = 1 });
-
-        // Query Alice and include her friends via Knows
-        var aliceFromProvider = await this.Graph.GetNode<PersonWithNavigationProperty>(alice.Id, new GraphOperationOptions { TraversalDepth = -1 });
-
-        Assert.NotNull(aliceFromProvider);
-        Assert.Equal("Alice", aliceFromProvider.FirstName);
-        Assert.Equal(alice.Id, aliceFromProvider.Id);
-        Assert.NotNull(aliceFromProvider.Knows);
-        // Check navigation property
-        Assert.Contains(aliceFromProvider.Knows, k => k.Target!.FirstName == "Bob");
-
-        // Get Bob
-        var bobFromProvider = await this.Graph.GetNode<PersonWithNavigationProperty>(bob.Id, new GraphOperationOptions { TraversalDepth = -1 });
-        Assert.NotNull(bobFromProvider);
-        Assert.Equal("Bob", bobFromProvider.FirstName);
-        Assert.Equal(bob.Id, bobFromProvider.Id);
-        // Check navigation property
-        Assert.Contains(bobFromProvider.Knows, k => k.Target!.FirstName == "Alice");
     }
 
     public class PersonWithINodeProperty : Node
@@ -307,6 +257,117 @@ public abstract class BasicTestsBase : ITestBase
     public async Task CannotAddNodeWithINodeProperty()
     {
         var person = new PersonWithINodeProperty { FirstName = "A", LastName = "B", Friend = new Person { FirstName = "C", LastName = "D" } };
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
+    }
+
+    public class PersonWithINodePropertyInComplexProperty : Node
+    {
+        public class FooComplexType
+        {
+            public Person? Bar { get; set; } = null;
+        }
+
+        public FooComplexType Foo { get; set; } = new();
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+    }
+
+    [Fact]
+    public async Task CannotAddNodeWithINodePropertyInComplexProperty()
+    {
+        var person = new PersonWithINodePropertyInComplexProperty
+        {
+            FirstName = "A",
+            LastName = "B",
+            Foo = new()
+            {
+                Bar = new Person { FirstName = "C", LastName = "D" }
+            }
+        };
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
+    }
+
+    public class PersonWithIRelationshipPropertyInComplexProperty : Node
+    {
+        public class FooComplexType
+        {
+            public Knows? Knows { get; set; } = null;
+        }
+
+        public FooComplexType Foo { get; set; } = new();
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+    }
+
+    [Fact]
+    public async Task CannotAddNodeWithIRelationshipPropertyInComplexProperty()
+    {
+        var person = new PersonWithIRelationshipPropertyInComplexProperty
+        {
+            FirstName = "A",
+            LastName = "B",
+            Foo = new()
+            {
+                Knows = new Knows { SourceId = "1", TargetId = "2", Since = DateTime.UtcNow }
+            }
+        };
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
+    }
+
+    public class PersonWithListIRelationshipPropertyInComplexProperty : Node
+    {
+        public class FooComplexType
+        {
+            public List<Knows> Knows { get; set; } = new();
+        }
+
+        public FooComplexType Foo { get; set; } = new();
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+    }
+
+    [Fact]
+    public async Task CannotAddNodeWithListIRelationshipPropertyInComplexProperty()
+    {
+        var person = new PersonWithListIRelationshipPropertyInComplexProperty
+        {
+            FirstName = "A",
+            LastName = "B",
+            Foo = new()
+            {
+                Knows = [new Knows { SourceId = "1", TargetId = "2", Since = DateTime.UtcNow }]
+            }
+        };
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
+    }
+
+    public class PersonWithListINodeProperty : Node
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public List<Person> Friends { get; set; } = new List<Person>();
+    }
+
+    [Fact]
+    public async Task CannotAddNodeWithListINodeProperty()
+    {
+        var person = new PersonWithListINodeProperty { FirstName = "A", LastName = "B" };
+        person.Friends.Add(new Person { FirstName = "C", LastName = "D" });
+        person.Friends.Add(new Person { FirstName = "E", LastName = "F" });
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
+    }
+
+    public class PersonWithIRelationshipProperty : Node
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public Person? Friend { get; set; } = null;
+    }
+
+    [Fact]
+    public async Task CannotAddNodeWithRelationshipProperty()
+    {
+        var person = new PersonWithIRelationshipProperty { FirstName = "A", LastName = "B", Friend = new Person { FirstName = "C", LastName = "D" } };
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
     }
 }

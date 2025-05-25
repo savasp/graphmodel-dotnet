@@ -17,221 +17,222 @@ namespace Cvoya.Graph.Model.Tests;
 public abstract class RetrievalTraversalTestsBase : ITestBase
 {
     public abstract IGraph Graph { get; }
+    /*
+        [Fact]
+        public async Task GetNode_WithDepthZero_ReturnsOnlyNode()
+        {
+            // Setup: Create a graph
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
 
-    [Fact]
-    public async Task GetNode_WithDepthZero_ReturnsOnlyNode()
-    {
-        // Setup: Create a graph
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            await Graph.CreateNode(alice);
+            await Graph.CreateNode(bob);
+            await Graph.CreateRelationship(knows);
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateRelationship(knows);
+            // Act: Get node without relationships
+            var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
+                new GraphOperationOptions { TraversalDepth = 0 });
 
-        // Act: Get node without relationships
-        var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
-            new GraphOperationOptions { TraversalDepth = 0 });
+            // Assert
+            Assert.Equal("Alice", retrieved.FirstName);
+            Assert.Empty(retrieved.Knows); // No relationships loaded
+        }
 
-        // Assert
-        Assert.Equal("Alice", retrieved.FirstName);
-        Assert.Empty(retrieved.Knows); // No relationships loaded
-    }
+        [Fact]
+        public async Task GetNode_WithDepthOne_ReturnsNodeWithRelationships()
+        {
+            // Setup: Create a graph
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
+            var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            var aliceKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, charlie) { Since = DateTime.UtcNow };
 
-    [Fact]
-    public async Task GetNode_WithDepthOne_ReturnsNodeWithRelationships()
-    {
-        // Setup: Create a graph
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
-        var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-        var aliceKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, charlie) { Since = DateTime.UtcNow };
+            await Graph.CreateNode(alice);
+            await Graph.CreateNode(bob);
+            await Graph.CreateNode(charlie);
+            await Graph.CreateRelationship(aliceKnowsBob);
+            await Graph.CreateRelationship(aliceKnowsCharlie);
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
-        await Graph.CreateRelationship(aliceKnowsBob);
-        await Graph.CreateRelationship(aliceKnowsCharlie);
+            // Act: Get node with immediate relationships
+            var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
+                new GraphOperationOptions { TraversalDepth = 1 });
 
-        // Act: Get node with immediate relationships
-        var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
-            new GraphOperationOptions { TraversalDepth = 1 });
+            // Assert
+            Assert.Equal("Alice", retrieved.FirstName);
+            Assert.Equal(2, retrieved.Knows.Count);
+            Assert.Contains(retrieved.Knows, k => k.Target!.FirstName == "Bob");
+            Assert.Contains(retrieved.Knows, k => k.Target!.FirstName == "Charlie");
+        }
 
-        // Assert
-        Assert.Equal("Alice", retrieved.FirstName);
-        Assert.Equal(2, retrieved.Knows.Count);
-        Assert.Contains(retrieved.Knows, k => k.Target!.FirstName == "Bob");
-        Assert.Contains(retrieved.Knows, k => k.Target!.FirstName == "Charlie");
-    }
+        [Fact]
+        public async Task GetNode_WithFullDepth_ReturnsEntireConnectedGraph()
+        {
+            // Setup: Create a chain: Alice -> Bob -> Charlie
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
+            var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            var bobKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(bob, charlie) { Since = DateTime.UtcNow };
 
-    [Fact]
-    public async Task GetNode_WithFullDepth_ReturnsEntireConnectedGraph()
-    {
-        // Setup: Create a chain: Alice -> Bob -> Charlie
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
-        var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-        var bobKnowsCharlie = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(bob, charlie) { Since = DateTime.UtcNow };
+            await Graph.CreateNode(alice);
+            await Graph.CreateNode(bob);
+            await Graph.CreateNode(charlie);
+            await Graph.CreateRelationship(aliceKnowsBob);
+            await Graph.CreateRelationship(bobKnowsCharlie);
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
-        await Graph.CreateRelationship(aliceKnowsBob);
-        await Graph.CreateRelationship(bobKnowsCharlie);
+            // Act: Get node with full depth
+            var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
+                new GraphOperationOptions { TraversalDepth = -1 });
 
-        // Act: Get node with full depth
-        var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
-            new GraphOperationOptions { TraversalDepth = -1 });
+            // Assert
+            Assert.Equal("Alice", retrieved.FirstName);
+            Assert.Single(retrieved.Knows);
 
-        // Assert
-        Assert.Equal("Alice", retrieved.FirstName);
-        Assert.Single(retrieved.Knows);
+            var retrievedBob = retrieved.Knows[0].Target;
+            Assert.Equal("Bob", retrievedBob!.FirstName);
+            Assert.Single(retrievedBob.Knows);
 
-        var retrievedBob = retrieved.Knows[0].Target;
-        Assert.Equal("Bob", retrievedBob!.FirstName);
-        Assert.Single(retrievedBob.Knows);
+            var retrievedCharlie = retrievedBob.Knows[0].Target;
+            Assert.Equal("Charlie", retrievedCharlie!.FirstName);
+        }
 
-        var retrievedCharlie = retrievedBob.Knows[0].Target;
-        Assert.Equal("Charlie", retrievedCharlie!.FirstName);
-    }
+        [Fact]
+        public async Task GetRelationship_WithDepthZero_ReturnsOnlyRelationship()
+        {
+            // Setup
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
 
-    [Fact]
-    public async Task GetRelationship_WithDepthZero_ReturnsOnlyRelationship()
-    {
-        // Setup
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            await Graph.CreateNode(alice);
+            await Graph.CreateNode(bob);
+            await Graph.CreateRelationship(knows);
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateRelationship(knows);
+            // Act: Get relationship without loading nodes
+            var retrieved = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id,
+                new GraphOperationOptions { TraversalDepth = 0 });
 
-        // Act: Get relationship without loading nodes
-        var retrieved = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id,
-            new GraphOperationOptions { TraversalDepth = 0 });
+            // Assert
+            Assert.Equal(alice.Id, retrieved.SourceId);
+            Assert.Equal(bob.Id, retrieved.TargetId);
+            Assert.Null(retrieved.Source); // Nodes not loaded
+            Assert.Null(retrieved.Target);
+        }
 
-        // Assert
-        Assert.Equal(alice.Id, retrieved.SourceId);
-        Assert.Equal(bob.Id, retrieved.TargetId);
-        Assert.Null(retrieved.Source); // Nodes not loaded
-        Assert.Null(retrieved.Target);
-    }
+        [Fact]
+        public async Task GetRelationship_WithDepthOne_ReturnsRelationshipWithNodes()
+        {
+            // Setup
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
 
-    [Fact]
-    public async Task GetRelationship_WithDepthOne_ReturnsRelationshipWithNodes()
-    {
-        // Setup
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            await Graph.CreateNode(alice);
+            await Graph.CreateNode(bob);
+            await Graph.CreateRelationship(knows);
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateRelationship(knows);
+            // Act: Get relationship with nodes
+            var retrieved = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id,
+                new GraphOperationOptions { TraversalDepth = 1 });
 
-        // Act: Get relationship with nodes
-        var retrieved = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id,
-            new GraphOperationOptions { TraversalDepth = 1 });
+            // Assert
+            Assert.NotNull(retrieved.Source);
+            Assert.NotNull(retrieved.Target);
+            Assert.Equal("Alice", retrieved.Source.FirstName);
+            Assert.Equal("Bob", retrieved.Target.FirstName);
+            Assert.Empty(retrieved.Source.Knows); // No deeper traversal
+            Assert.Empty(retrieved.Target.Knows);
+        }
 
-        // Assert
-        Assert.NotNull(retrieved.Source);
-        Assert.NotNull(retrieved.Target);
-        Assert.Equal("Alice", retrieved.Source.FirstName);
-        Assert.Equal("Bob", retrieved.Target.FirstName);
-        Assert.Empty(retrieved.Source.Knows); // No deeper traversal
-        Assert.Empty(retrieved.Target.Knows);
-    }
+        [Fact]
+        public async Task GetNodes_WithRelationshipTypeFilter_LoadsOnlySpecifiedTypes()
+        {
+            // Setup with multiple relationship types
+            var alice = new PersonWithMultipleRelationshipTypes { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
 
-    [Fact]
-    public async Task GetNodes_WithRelationshipTypeFilter_LoadsOnlySpecifiedTypes()
-    {
-        // Setup with multiple relationship types
-        var alice = new PersonWithMultipleRelationshipTypes { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
+            var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            var works = new WorksWith(alice, charlie) { Since = DateTime.UtcNow };
 
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-        var works = new WorksWith(alice, charlie) { Since = DateTime.UtcNow };
+            await Graph.CreateNode(alice);
+            await Graph.CreateNode(bob);
+            await Graph.CreateNode(charlie);
+            await Graph.CreateRelationship(knows);
+            await Graph.CreateRelationship(works);
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
-        await Graph.CreateRelationship(knows);
-        await Graph.CreateRelationship(works);
+            // Act: Get node with only KNOWS relationships
+            var retrieved = await Graph.GetNode<PersonWithMultipleRelationshipTypes>(alice.Id,
+                new GraphOperationOptions
+                {
+                    TraversalDepth = 1,
+                    RelationshipTypes = new HashSet<string> { "KNOWS" }
+                });
 
-        // Act: Get node with only KNOWS relationships
-        var retrieved = await Graph.GetNode<PersonWithMultipleRelationshipTypes>(alice.Id,
-            new GraphOperationOptions
-            {
-                TraversalDepth = 1,
-                RelationshipTypes = new HashSet<string> { "KNOWS" }
-            });
+            // Assert
+            Assert.Single(retrieved.Knows);
+            Assert.Empty(retrieved.WorksWith); // Filtered out
+        }
 
-        // Assert
-        Assert.Single(retrieved.Knows);
-        Assert.Empty(retrieved.WorksWith); // Filtered out
-    }
+        [Fact]
+        public async Task GetNode_WithFluentApi_WorksCorrectly()
+        {
+            // Setup
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
 
-    [Fact]
-    public async Task GetNode_WithFluentApi_WorksCorrectly()
-    {
-        // Setup
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            await Graph.CreateNode(alice);
+            await Graph.CreateNode(bob);
+            await Graph.CreateRelationship(knows);
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateRelationship(knows);
+            // Act: Use fluent API
+            var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
+                new GraphOperationOptions().WithRelationships());
 
-        // Act: Use fluent API
-        var retrieved = await Graph.GetNode<PersonWithNavigationProperty>(alice.Id,
-            new GraphOperationOptions().WithRelationships());
+            // Assert
+            Assert.Equal("Alice", retrieved.FirstName);
+            Assert.Single(retrieved.Knows);
+            Assert.Equal("Bob", retrieved.Knows[0].Target!.FirstName);
+        }
 
-        // Assert
-        Assert.Equal("Alice", retrieved.FirstName);
-        Assert.Single(retrieved.Knows);
-        Assert.Equal("Bob", retrieved.Knows[0].Target!.FirstName);
-    }
+        [Fact]
+        public async Task GetNodes_Batch_WithTraversal_LoadsAllGraphs()
+        {
+            // Setup multiple disconnected graphs
+            var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
+            var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
+            var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
+            var david = new PersonWithNavigationProperty { FirstName = "David" };
 
-    [Fact]
-    public async Task GetNodes_Batch_WithTraversal_LoadsAllGraphs()
-    {
-        // Setup multiple disconnected graphs
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob" };
-        var charlie = new PersonWithNavigationProperty { FirstName = "Charlie" };
-        var david = new PersonWithNavigationProperty { FirstName = "David" };
+            var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
+            var charlieKnowsDavid = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(charlie, david) { Since = DateTime.UtcNow };
 
-        var aliceKnowsBob = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-        var charlieKnowsDavid = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(charlie, david) { Since = DateTime.UtcNow };
+            await Graph.CreateNode(alice);
+            await Graph.CreateNode(bob);
+            await Graph.CreateNode(charlie);
+            await Graph.CreateNode(david);
+            await Graph.CreateRelationship(aliceKnowsBob);
+            await Graph.CreateRelationship(charlieKnowsDavid);
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
-        await Graph.CreateNode(david);
-        await Graph.CreateRelationship(aliceKnowsBob);
-        await Graph.CreateRelationship(charlieKnowsDavid);
+            // Act: Get multiple nodes with relationships
+            var nodes = await Graph.GetNodes<PersonWithNavigationProperty>(
+                [alice.Id, charlie.Id],
+                new GraphOperationOptions { TraversalDepth = 1 });
 
-        // Act: Get multiple nodes with relationships
-        var nodes = await Graph.GetNodes<PersonWithNavigationProperty>(
-            [alice.Id, charlie.Id],
-            new GraphOperationOptions { TraversalDepth = 1 });
+            // Assert
+            var nodeList = nodes.ToList();
+            Assert.Equal(2, nodeList.Count);
 
-        // Assert
-        var nodeList = nodes.ToList();
-        Assert.Equal(2, nodeList.Count);
+            var retrievedAlice = nodeList.First(n => n.FirstName == "Alice");
+            Assert.Single(retrievedAlice.Knows);
+            Assert.Equal("Bob", retrievedAlice.Knows[0].Target!.FirstName);
 
-        var retrievedAlice = nodeList.First(n => n.FirstName == "Alice");
-        Assert.Single(retrievedAlice.Knows);
-        Assert.Equal("Bob", retrievedAlice.Knows[0].Target!.FirstName);
-
-        var retrievedCharlie = nodeList.First(n => n.FirstName == "Charlie");
-        Assert.Single(retrievedCharlie.Knows);
-        Assert.Equal("David", retrievedCharlie.Knows[0].Target!.FirstName);
-    }
+            var retrievedCharlie = nodeList.First(n => n.FirstName == "Charlie");
+            Assert.Single(retrievedCharlie.Knows);
+            Assert.Equal("David", retrievedCharlie.Knows[0].Target!.FirstName);
+        }
+        */
 }

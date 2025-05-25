@@ -160,7 +160,7 @@ internal class Neo4jExpressionVisitor(
                 if (genericDef == typeof(Neo4jQueryable<>))
                 {
                     var elementType = queryableType.GetGenericArguments()[0];
-                    var label = Neo4jGraphProvider.GetLabel(elementType);
+                    var label = Schema.Neo4jTypeManager.GetLabel(elementType);
                     if (typeof(Model.IRelationship).IsAssignableFrom(elementType))
                     {
                         // For relationships, include source and target nodes to get their IDs

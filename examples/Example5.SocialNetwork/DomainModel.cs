@@ -23,29 +23,26 @@ public class User : Node
     public string Email { get; set; } = string.Empty;
     public DateTime JoinedDate { get; set; }
     public string? Bio { get; set; } = string.Empty;
-    public List<Follows> Following { get; set; } = new List<Follows>();
-    public List<Follows> Followers { get; set; } = new List<Follows>();
-    public List<Posted> Posts { get; set; } = new List<Posted>();
 }
 
 [Relationship("FOLLOWS")]
-public class Follows : Relationship<User, User>
+public class Follows : Relationship
 {
     public DateTime Since { get; set; }
 }
 
 [Relationship("LIKED_BY")]
-public class LikedBy : Relationship<Post, User>
+public class LikedBy : Relationship
 {
 }
 
 [Relationship("POSTED")]
-public class Posted : Relationship<User, Post>
+public class Posted : Relationship
 {
 }
 
 [Relationship("LIKES")]
-public class Likes : Relationship<User, Post>
+public class Likes : Relationship
 {
     public DateTime LikedAt { get; set; }
 }
@@ -55,28 +52,26 @@ public class Comment : Node
 {
     public string Content { get; set; } = string.Empty;
     public DateTime CommentedAt { get; set; }
-    public Author Author { get; set; } = new Author();
-    public ReplyTo ReplyTo { get; set; } = new ReplyTo();
 }
 
 [Relationship("REPLY_TO")]
-public class ReplyTo : Relationship<Comment, Comment>
+public class ReplyTo : Relationship
 {
 }
 
 [Relationship("COMMENTED_ON")]
-public class CommentedOn : Relationship<Comment, Post>
+public class CommentedOn : Relationship
 {
 }
 
 [Relationship("WROTE")]
-public class Wrote : Relationship<User, Comment>
+public class Wrote : Relationship
 {
     public DateTime WrittenAt { get; set; }
 }
 
 [Relationship("AUTHORED_BY")]
-public class Author : Relationship<Post, User>
+public class Author : Relationship
 {
     public DateTime PublishedDate { get; set; }
     public int Likes { get; set; }
@@ -88,6 +83,4 @@ public class Post : Node
     public Author Author { get; set; } = new Author();
     public DateTime PostedAt { get; set; }
     public string Content { get; set; } = string.Empty;
-    public List<string> Tags { get; set; } = [];
-    public List<LikedBy> LikedBy { get; set; } = new List<LikedBy>();
 }

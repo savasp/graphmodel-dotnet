@@ -59,12 +59,6 @@ internal class Neo4jQueryProvider(
 
         var result = visitor.ExecuteQuery(cypher, elementType);
 
-        // Apply traversal depth if options are specified
-        if (_options.TraversalDepth > 0 && result is IEnumerable enumerable && result is not string)
-        {
-            ApplyTraversalDepthSync(enumerable, _options, elementType);
-        }
-
         return result;
     }
 
@@ -106,71 +100,18 @@ internal class Neo4jQueryProvider(
 
         var lastSelect = GetLastSelect(expression);
 
-        // Check if we have TraversalDepth > 0 and a Select projection
-        if (_options.TraversalDepth > 0 && lastSelect != null)
+        var visitor = new Neo4jExpressionVisitor(_provider, _rootType, elementType, _transaction);
+        var cypher = visitor.Translate(expression);
+
+        var result = visitor.ExecuteQuery(cypher, elementType);
+
+        // Check if this was a grouping query
+        if (visitor.IsGroupingQuery)
         {
-            // Execute without projection first to load relationships
-            var expressionWithoutProjection = RemoveLastSelect(expression);
-
-            // Get the original entity type from the expression without projection
-            var originalElementType = GetElementTypeFromExpression(expressionWithoutProjection);
-            if (originalElementType == null)
-            {
-                // If we can't determine it from the expression, use the root type
-                originalElementType = _rootType;
-            }
-
-            var visitor = new Neo4jExpressionVisitor(_provider, _rootType, originalElementType, _transaction);
-            var cypher = visitor.Translate(expressionWithoutProjection);
-
-            var result = visitor.ExecuteQuery(cypher, originalElementType);
-
-            // Apply traversal depth to load relationships
-            if (_options.TraversalDepth > 0)
-            {
-                if (result is IEnumerable enumerable && result is not string)
-                {
-                    ApplyTraversalDepthSync(enumerable, _options, originalElementType);
-                }
-                else if (result != null)
-                {
-                    // Handle single entity - create a temporary list
-                    var tempList = new List<object> { result };
-                    ApplyTraversalDepthSync(tempList, _options, originalElementType);
-                }
-            }
-
-            // Now apply the projection in memory
-            if (lastSelect != null)
-            {
-                result = ApplyProjection(result!, lastSelect, originalElementType);
-            }
-
-            // Handle the result based on expected return type
-            return HandleResult<TResult>(result, resultType, elementType, isEnumerableResult);
+            return (TResult)result!;
         }
-        else
-        {
-            // Normal execution path (unchanged)
-            var visitor = new Neo4jExpressionVisitor(_provider, _rootType, elementType, _transaction);
-            var cypher = visitor.Translate(expression);
 
-            var result = visitor.ExecuteQuery(cypher, elementType);
-
-            // Check if this was a grouping query
-            if (visitor.IsGroupingQuery)
-            {
-                return (TResult)result!;
-            }
-
-            // Apply traversal depth if options are specified
-            if (_options.TraversalDepth > 0 && result is IEnumerable enumerable && result is not string)
-            {
-                ApplyTraversalDepthSync(enumerable, _options, elementType);
-            }
-
-            return HandleResult<TResult>(result, resultType, elementType, isEnumerableResult);
-        }
+        return HandleResult<TResult>(result, resultType, elementType, isEnumerableResult);
     }
 
     private TResult HandleResult<TResult>(object? result, Type resultType, Type elementType, bool isEnumerableResult)
@@ -434,42 +375,6 @@ internal class Neo4jQueryProvider(
         _ => null
     };
 
-    private void ApplyTraversalDepthSync(IEnumerable results, GraphOperationOptions options, Type elementType)
-    {
-        // Convert to async and wait
-        var task = ApplyTraversalDepthAsync(results, options, elementType);
-        task.GetAwaiter().GetResult();
-    }
-
-    private async Task ApplyTraversalDepthAsync(IEnumerable results, GraphOperationOptions options, Type elementType)
-    {
-        var (session, tx) = await _provider.GetOrCreateTransaction(_transaction);
-        try
-        {
-            var processedNodes = new HashSet<string>();
-
-            foreach (var item in results)
-            {
-                switch (item)
-                {
-                    case Model.INode node:
-                        await _provider.LoadNodeRelationships(node, options, tx, currentDepth: 0, processedNodes);
-                        break;
-                    case Model.IRelationship relationship:
-                        await _provider.LoadRelationshipNodes(relationship, options, tx);
-                        break;
-                }
-            }
-        }
-        finally
-        {
-            if (_transaction == null)
-            {
-                await session.CloseAsync();
-            }
-        }
-    }
-
     // Async versions for async LINQ operations
     public async Task<object?> ExecuteAsync(Expression expression)
     {
@@ -478,12 +383,6 @@ internal class Neo4jQueryProvider(
         var cypher = visitor.Translate(expression);
 
         var result = await visitor.ExecuteQueryAsync(cypher, elementType);
-
-        // Apply traversal depth if options are specified
-        if (_options.TraversalDepth > 0 && result is IEnumerable enumerable && result is not string)
-        {
-            await ApplyTraversalDepthAsync(enumerable, _options, elementType);
-        }
 
         return result;
     }
@@ -503,12 +402,6 @@ internal class Neo4jQueryProvider(
         var cypher = visitor.Translate(expression);
 
         var result = await visitor.ExecuteQueryAsync(cypher, elementType);
-
-        // Apply traversal depth if options are specified
-        if (_options.TraversalDepth > 0 && result is IEnumerable enumerable && result is not string)
-        {
-            await ApplyTraversalDepthAsync(enumerable, _options, elementType);
-        }
 
         if (!isEnumerableResult || typeof(TResult) == typeof(string))
         {

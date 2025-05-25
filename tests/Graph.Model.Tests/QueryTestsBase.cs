@@ -116,46 +116,4 @@ public abstract class QueryTestsBase : ITestBase
         var count = this.Graph.Nodes<Person>().Count();
         Assert.True(count >= 2);
     }
-
-    [Fact]
-    public async Task CanQueryNodeViaRelationshipNavigation()
-    {
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice", LastName = "Smith" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob", LastName = "Jones" };
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-        alice.Knows.Add(knows);
-
-        await this.Graph.CreateNode(alice, new GraphOperationOptions().WithRelationships().WithCreateMissingNodes());
-
-        // Query Alice and include her friends via Knows
-        var people = this.Graph.Nodes<PersonWithNavigationProperty>(new GraphOperationOptions().WithRelationships()).ToList();
-        var aliceFromDb = people.FirstOrDefault(p => p.FirstName == "Alice");
-
-        Assert.NotNull(aliceFromDb);
-        Assert.NotNull(aliceFromDb.Knows);
-        // Check navigation property
-        Assert.Contains(aliceFromDb.Knows, k => k.Target!.FirstName == "Bob");
-    }
-
-    [Fact]
-    public async Task CanProjectPropertiesViaNavigationProperty()
-    {
-        var alice = new PersonWithNavigationProperty { FirstName = "Alice", LastName = "Smith" };
-        var bob = new PersonWithNavigationProperty { FirstName = "Bob", LastName = "Jones" };
-        var knows = new Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>(alice, bob) { Since = DateTime.UtcNow };
-        alice.Knows.Add(knows);
-
-        // Create the relationship which will create both nodes
-        await this.Graph.CreateRelationship(knows, new GraphOperationOptions().WithCreateMissingNodes());
-
-        // TODO: We need to re-examine this. We shouldn't have to load the node and the relationships explicitly.
-        // First, load Alice with her relationships
-        var aliceWithRelationships = await this.Graph.GetNode<PersonWithNavigationProperty>(
-            alice.Id,
-            new GraphOperationOptions().WithRelationships());
-
-        // Now we can access the relationships
-        var friendsNames = aliceWithRelationships.Knows.Select(k => k.Target!.FirstName).ToList();
-        Assert.Contains("Bob", friendsNames);
-    }
 }
