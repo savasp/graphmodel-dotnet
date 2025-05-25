@@ -15,12 +15,21 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Base class for Neo4j nodes that provides default implementation for INode
+/// Base class for graph nodes that provides a default implementation of the INode interface.
+/// This serves as a foundation for creating domain-specific node entities.
 /// </summary>
+/// <remarks>
+/// Use this class as a base class for your domain models to get automatic ID generation
+/// and basic node functionality.
+/// </remarks>
 public abstract class Node : INode
 {
     /// <summary>
-    /// Gets or sets the ID of the node
+    /// Gets or sets the unique identifier of this node.
+    /// Automatically initialized with a new GUID string when a node is created.
     /// </summary>
+    /// <remarks>
+    /// The default format used is the "N" format (32 digits without hyphens).
+    /// </remarks>
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 }

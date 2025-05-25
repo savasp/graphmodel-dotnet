@@ -15,8 +15,15 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents a node in the graph.
+/// Defines the contract for node entities in the graph model.
+/// Nodes represent primary data entities that can be connected via relationships.
+/// This interface serves as a marker interface that extends IEntity, 
+/// signifying that implementing classes represent nodes rather than relationships.
 /// </summary>
+/// <remarks>
+/// Implement this interface on classes that represent domain entities in your graph model.
+/// Typically used with the <see cref="NodeAttribute"/> to define node metadata.
+/// </remarks>
 public interface INode : IEntity
 {
 }

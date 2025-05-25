@@ -15,19 +15,49 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents a transaction in the graph store.
+/// Defines the contract for transaction management in the graph system.
 /// </summary>
+/// <remarks>
+/// Transactions provide atomic, consistent, isolated, and durable (ACID) operations
+/// for graph mutations. Implement the using pattern or await using pattern with this interface.
+/// </remarks>
+/// <example>
+/// <code>
+/// await using var transaction = await graph.BeginTransaction();
+/// try
+/// {
+///     await graph.CreateNode(person, transaction: transaction);
+///     await graph.CreateNode(address, transaction: transaction);
+///     var livesAt = new LivesAt { Source = person, Target = address };
+///     await graph.CreateRelationship(livesAt, transaction: transaction);
+///     await transaction.Commit();
+/// }
+/// catch
+/// {
+///     await transaction.Rollback();
+///     throw;
+/// }
+/// </code>
+/// </example>
 public interface IGraphTransaction : IAsyncDisposable
 {
     /// <summary>
-    /// Commits the transaction.
+    /// Commits the transaction, making all changes permanent.
     /// </summary>
-    /// <returns>A task that represents the asynchronous commit operation.</returns>
+    /// <returns>A task representing the asynchronous commit operation.</returns>
+    /// <exception cref="GraphTransactionException">Thrown if the commit fails.</exception>
+    /// <remarks>
+    /// After calling Commit, the transaction is considered complete and cannot be used further.
+    /// </remarks>
     Task Commit();
 
     /// <summary>
-    /// Rolls back the transaction.
+    /// Rolls back the transaction, discarding all pending changes.
     /// </summary>
-    /// <returns>A task that represents the asynchronous rollback operation.</returns>
+    /// <returns>A task representing the asynchronous rollback operation.</returns>
+    /// <exception cref="GraphTransactionException">Thrown if the rollback fails.</exception>
+    /// <remarks>
+    /// After calling Rollback, the transaction is considered complete and cannot be used further.
+    /// </remarks>
     Task Rollback();
 }

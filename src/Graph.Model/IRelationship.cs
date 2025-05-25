@@ -15,22 +15,37 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents a directional relationship.
+/// Defines the contract for relationship entities in the graph model.
+/// Relationships connect two nodes and can have their own properties.
 /// </summary>
+/// <remarks>
+/// Relationships form the connections between nodes, creating the graph structure.
+/// Typically used with the <see cref="RelationshipAttribute"/> to define relationship metadata.
+/// </remarks>
 public interface IRelationship : IEntity
 {
     /// <summary>
-    /// The direction of the relationship.
+    /// Gets or sets whether this relationship is bidirectional.
     /// </summary>
+    /// <remarks>
+    /// When true, the relationship can be traversed in both directions.
+    /// When false, the relationship is directed from source to target.
+    /// </remarks>
     bool IsBidirectional { get; set; }
 
     /// <summary>
-    /// The node Id of one of the source node.
+    /// Gets or sets the ID of the source node in this relationship.
     /// </summary>
+    /// <remarks>
+    /// This is the ID of the node from which the relationship originates.
+    /// </remarks>
     string SourceId { get; set; }
 
     /// <summary>
-    /// The node Id of one of the target node.
+    /// Gets or sets the ID of the target node in this relationship.
     /// </summary>
+    /// <remarks>
+    /// This is the ID of the node to which the relationship points.
+    /// </remarks>
     string TargetId { get; set; }
 }

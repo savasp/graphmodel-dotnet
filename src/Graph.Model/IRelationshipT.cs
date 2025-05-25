@@ -15,21 +15,33 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents a directional relationship with a specific type.
+/// Defines a strongly-typed relationship between two specific node types.
 /// </summary>
-/// <typeparam name="S">The type of the source node in the relationship</typeparam>
-/// <typeparam name="T">The type of the target node in the relationship</typeparam>
+/// <typeparam name="S">The type of the source node in the relationship.</typeparam>
+/// <typeparam name="T">The type of the target node in the relationship.</typeparam>
+/// <remarks>
+/// This interface extends <see cref="IRelationship"/> by adding strongly-typed references
+/// to the actual source and target node objects, facilitating more type-safe graph traversal.
+/// </remarks>
 public interface IRelationship<S, T> : IRelationship
     where S : INode
     where T : INode
 {
     /// <summary>
-    /// Gets the source node of the relationship.
+    /// Gets or sets the source node of the relationship.
     /// </summary>
+    /// <remarks>
+    /// When set, this also updates the <see cref="IRelationship.SourceId"/> property.
+    /// May be null if the relationship is not fully loaded.
+    /// </remarks>
     S? Source { get; set; }
 
     /// <summary>
-    /// Gets the target node of the relationship.
+    /// Gets or sets the target node of the relationship.
     /// </summary>
+    /// <remarks>
+    /// When set, this also updates the <see cref="IRelationship.TargetId"/> property.
+    /// May be null if the relationship is not fully loaded.
+    /// </remarks>
     T? Target { get; set; }
 }

@@ -17,15 +17,27 @@ namespace Cvoya.Graph.Model;
 /// <summary>
 /// Attribute to specify custom labels for graph nodes.
 /// </summary>
+/// <param name="label">The label to apply to the node. Cannot be null.</param>
 /// <remarks>
-/// Creates a new NodeAttribute.
+/// Use this attribute on classes implementing INode to define how the node
+/// should be labeled in the graph storage system.
 /// </remarks>
-/// <param name="label">The label to apply to the node.</param>
+/// <example>
+/// <code>
+/// [Node("Person")]
+/// public class Person : INode
+/// {
+///     public string Id { get; set; } = Guid.NewGuid().ToString();
+///     public string Name { get; set; } = string.Empty;
+/// }
+/// </code>
+/// </example>
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
 public class NodeAttribute(string label) : Attribute
 {
     /// <summary>
-    /// The label to apply to the node.
+    /// Gets the label to apply to the node.
     /// </summary>
+    /// <value>The node label used for graph storage.</value>
     public string Label { get; } = label ?? throw new ArgumentNullException(nameof(label));
 }

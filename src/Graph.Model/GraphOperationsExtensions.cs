@@ -15,13 +15,22 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Extension methods for GraphOperationOptions fluent API
+/// Extension methods for the <see cref="GraphOperationOptions"/> struct,
+/// providing a fluent API for configuration.
 /// </summary>
 public static class GraphOperationExtensions
 {
     /// <summary>
-    /// Configure to include immediate relationships (depth = 1)
+    /// Configures options to include immediate relationships (depth = 1).
     /// </summary>
+    /// <param name="options">The options to configure.</param>
+    /// <returns>The updated options with immediate relationship traversal enabled.</returns>
+    /// <example>
+    /// <code>
+    /// var options = new GraphOperationOptions().WithRelationships();
+    /// await graph.GetNode&lt;Person&gt;(id, options);
+    /// </code>
+    /// </example>
     public static GraphOperationOptions WithRelationships(this GraphOperationOptions options)
     {
         options.TraversalDepth = 1;
@@ -29,8 +38,19 @@ public static class GraphOperationExtensions
     }
     
     /// <summary>
-    /// Configure to traverse the entire graph (depth = -1)
+    /// Configures options to traverse the entire graph (depth = -1).
     /// </summary>
+    /// <param name="options">The options to configure.</param>
+    /// <returns>The updated options with full graph traversal enabled.</returns>
+    /// <remarks>
+    /// Be careful with this option as it could lead to loading large portions of the graph.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// var options = new GraphOperationOptions().WithFullGraph();
+    /// await graph.GetNode&lt;Person&gt;(id, options);
+    /// </code>
+    /// </example>
     public static GraphOperationOptions WithFullGraph(this GraphOperationOptions options)
     {
         options.TraversalDepth = -1;
@@ -38,8 +58,17 @@ public static class GraphOperationExtensions
     }
     
     /// <summary>
-    /// Configure to traverse to a specific depth
+    /// Configures options to traverse to a specific depth.
     /// </summary>
+    /// <param name="options">The options to configure.</param>
+    /// <param name="depth">The maximum traversal depth.</param>
+    /// <returns>The updated options with the specified traversal depth.</returns>
+    /// <example>
+    /// <code>
+    /// var options = new GraphOperationOptions().WithDepth(2);
+    /// await graph.GetNode&lt;Person&gt;(id, options);
+    /// </code>
+    /// </example>
     public static GraphOperationOptions WithDepth(this GraphOperationOptions options, int depth)
     {
         options.TraversalDepth = depth;
@@ -47,8 +76,16 @@ public static class GraphOperationExtensions
     }
     
     /// <summary>
-    /// Configure to create missing nodes when creating relationships
+    /// Configures options to create missing nodes when processing relationships.
     /// </summary>
+    /// <param name="options">The options to configure.</param>
+    /// <returns>The updated options with automatic node creation enabled.</returns>
+    /// <example>
+    /// <code>
+    /// var options = new GraphOperationOptions().WithCreateMissingNodes();
+    /// await graph.CreateRelationship(relationship, options);
+    /// </code>
+    /// </example>
     public static GraphOperationOptions WithCreateMissingNodes(this GraphOperationOptions options)
     {
         options.CreateMissingNodes = true;
@@ -56,8 +93,16 @@ public static class GraphOperationExtensions
     }
     
     /// <summary>
-    /// Configure to update existing nodes during traversal
+    /// Configures options to update existing nodes during traversal.
     /// </summary>
+    /// <param name="options">The options to configure.</param>
+    /// <returns>The updated options with automatic node updates enabled.</returns>
+    /// <example>
+    /// <code>
+    /// var options = new GraphOperationOptions().WithUpdateExistingNodes();
+    /// await graph.CreateRelationship(relationship, options);
+    /// </code>
+    /// </example>
     public static GraphOperationOptions WithUpdateExistingNodes(this GraphOperationOptions options)
     {
         options.UpdateExistingNodes = true;
@@ -65,8 +110,17 @@ public static class GraphOperationExtensions
     }
     
     /// <summary>
-    /// Configure to only process specific relationship types
+    /// Configures options to only process specific relationship types during traversal.
     /// </summary>
+    /// <param name="options">The options to configure.</param>
+    /// <param name="types">The relationship types to include.</param>
+    /// <returns>The updated options with relationship type filtering enabled.</returns>
+    /// <example>
+    /// <code>
+    /// var options = new GraphOperationOptions().WithRelationshipTypes("FOLLOWS", "FRIENDS_WITH");
+    /// await graph.GetNode&lt;Person&gt;(id, options);
+    /// </code>
+    /// </example>
     public static GraphOperationOptions WithRelationshipTypes(this GraphOperationOptions options, params string[] types)
     {
         options.RelationshipTypes = new HashSet<string>(types);
