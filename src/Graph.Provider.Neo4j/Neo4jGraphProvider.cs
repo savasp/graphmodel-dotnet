@@ -977,6 +977,10 @@ public class Neo4jGraphProvider : IGraph
             var elementType = prop.PropertyType.GetGenericArguments()[0];
             var relLabel = GetLabel(elementType);
 
+            // Skip property relationships (those starting with "__PROPERTY__")
+            if (relLabel.StartsWith("__PROPERTY__"))
+                continue;
+                
             // Check if we should process this relationship type
             if (options.RelationshipTypes?.Any() == true && !options.RelationshipTypes.Contains(relLabel))
                 continue;
@@ -1099,6 +1103,10 @@ public class Neo4jGraphProvider : IGraph
         {
             var elementType = prop.PropertyType.GetGenericArguments()[0];
             var relLabel = GetLabel(elementType);
+            
+            // Skip property relationships (those starting with "__PROPERTY__")
+            if (relLabel.StartsWith("__PROPERTY__"))
+                continue;
 
             // Check if we should process this relationship type
             if (options.RelationshipTypes?.Any() == true && !options.RelationshipTypes.Contains(relLabel))

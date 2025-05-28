@@ -395,10 +395,50 @@ internal static class CypherExpressionBuilder
             return $"trim({varName}.{me3.Member.Name})";
         if (mcex.Method.Name == "Substring" && mcex.Object is MemberExpression me4 && mcex.Arguments.Count > 0)
         {
-            var start = BuildCypherExpression(mcex.Arguments[0], varName);
-            var len = mcex.Arguments.Count > 1 ? ", " + BuildCypherExpression(mcex.Arguments[1], varName) : "";
-            return $"substring({varName}.{me4.Member.Name}, {start}{len})";
+            var expr = BuildCypherExpression(mcex.Arguments[0], varName);
+            var lengthExpr = mcex.Arguments.Count > 1 ? BuildCypherExpression(mcex.Arguments[1], varName) : null;
+            if (lengthExpr != null)
+                return $"substring({varName}.{me4.Member.Name}, {expr}, {lengthExpr})";
+            return $"substring({varName}.{me4.Member.Name}, {expr})";
         }
+
+        // Graph traversal methods
+        if (mcex.Method.DeclaringType == typeof(GraphQueryExtensions))
+        {
+            if (mcex.Method.Name == "TraverseOutgoing" || mcex.Method.Name == "TraverseIncoming" || mcex.Method.Name == "TraverseBoth")
+            {
+                // These methods are handled specially by the Neo4jQueryProvider and don't directly translate to Cypher
+                // The implementation is in Neo4jGraphProvider.LoadNodeRelationships
+                return null;
+            }
+            
+            if (mcex.Method.Name == "WithRelationshipTypes" && mcex.Arguments.Count > 1)
+            {
+                // Extract the relationship types
+                if (mcex.Arguments[1] is ConstantExpression ce && ce.Value is string[] relationshipTypes)
+                {
+                    // This information is handled by the query provider
+                    return null;
+                }
+            }
+            
+            if (mcex.Method.Name == "WithoutRelationshipTypes" && mcex.Arguments.Count > 1)
+            {
+                // Extract the relationship types to exclude
+                if (mcex.Arguments[1] is ConstantExpression ce && ce.Value is string[] relationshipTypes)
+                {
+                    // This information is handled by the query provider
+                    return null;
+                }
+            }
+            
+            if (mcex.Method.Name == "WithoutPropertyRelationships")
+            {
+                // This information is handled by the query provider
+                return null;
+            }
+        }
+        
         if (mcex.Method.Name == "Replace" && mcex.Object is MemberExpression me5 && mcex.Arguments.Count == 2)
         {
             var oldVal = BuildCypherExpression(mcex.Arguments[0], varName);
