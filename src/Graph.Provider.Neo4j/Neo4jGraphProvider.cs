@@ -14,6 +14,7 @@
 
 using System.Collections;
 using System.Reflection;
+using System.Threading;
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j.Linq;
 using Microsoft.Extensions.Logging;
@@ -32,7 +33,7 @@ public class Neo4jGraphProvider : IGraph
 
     // Tracks labels/types for which constraints have been created
     private readonly HashSet<string> constrainedLabels = [];
-    private readonly Lock constraintLock = new();
+    private readonly object constraintLock = new();
     private bool constraintsLoaded = false;
 
     private readonly string databaseName;
@@ -649,7 +650,7 @@ public class Neo4jGraphProvider : IGraph
 
     private void CheckRelationshipProperties(Dictionary<PropertyInfo, object?> complexProps)
     {
-        List<string> relationshipPropertyNames = [nameof(IRelationship<,>.Source), nameof(IRelationship<,>.Target)];
+        List<string> relationshipPropertyNames = ["Source", "Target"];
         var check = complexProps
             .Select(p => p.Key)
             .Where(p => !(relationshipPropertyNames.Contains(p.Name) && p.PropertyType.IsAssignableTo(typeof(Model.INode))));
