@@ -389,50 +389,22 @@ internal class Neo4jQueryProvider(
 
     public async Task<TResult> ExecuteAsync<TResult>(Expression expression)
     {
-        var elementType = typeof(TResult);
-        // If TResult is IEnumerable<T>, get T
-        bool isEnumerableResult = false;
-        if (elementType.IsGenericType && elementType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-        {
-            elementType = elementType.GetGenericArguments()[0];
-            isEnumerableResult = true;
-        }
+        // Use the new graph query builder
+        var (cypher, parameters) = CypherExpressionBuilder.BuildGraphQuery(
+            expression,
+            typeof(TResult),
+            _provider);
 
-        var visitor = new Neo4jExpressionVisitor(_provider, _rootType, elementType, _transaction);
-        var cypher = visitor.Translate(expression);
+        // Log the generated query for debugging
+        System.Diagnostics.Debug.WriteLine($"Generated Cypher: {cypher}");
 
-        var result = await visitor.ExecuteQueryAsync(cypher, elementType);
-
-        if (!isEnumerableResult || typeof(TResult) == typeof(string))
+        // Execute the query
+        await foreach (var result in _provider.ExecuteCypherAsync<TResult>(
+            cypher,
+            parameters,
+            _transaction))
         {
-            if (result is System.Collections.IEnumerable enumerableRes && result is not string)
-            {
-                var enumerator = enumerableRes.GetEnumerator();
-                if (enumerator.MoveNext())
-                    return (TResult)enumerator.Current!;
-                return default!;
-            }
-            return (TResult)result!;
-        }
-
-        // Always return the sequence for IEnumerable
-        if (result is System.Collections.IEnumerable enumerableResult && result is not string)
-        {
-            return (TResult)result!;
-        }
-        else if (result is not null)
-        {
-            // Wrap single value in a list
-            var listType = typeof(List<>).MakeGenericType(elementType);
-            var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
-            list.Add(result);
-            return (TResult)list;
-        }
-        else
-        {
-            // Return empty list
-            var listType = typeof(List<>).MakeGenericType(elementType);
-            return (TResult)Activator.CreateInstance(listType)!;
+            yield return result;
         }
     }
 }

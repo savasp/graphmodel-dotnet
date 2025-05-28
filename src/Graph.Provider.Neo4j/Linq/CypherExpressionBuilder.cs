@@ -443,6 +443,468 @@ internal static class CypherExpressionBuilder
         return null;
     }
 
+    public static (string cypher, Dictionary<string, object?> parameters) BuildGraphQuery(
+            Expression expression,
+            Type elementType,
+            Neo4jGraphProvider provider)
+    {
+        var builder = new CypherExpressionBuilder();
+        var context = new CypherBuildContext();
+
+        // Process the expression tree
+        builder.ProcessExpression(expression, elementType, context, provider);
+
+        // Build the final Cypher query
+        var cypher = builder.BuildCypherQuery(context);
+
+        return (cypher, context.Parameters);
+    }
+
+    private void ProcessExpression(
+        Expression expression,
+        Type elementType,
+        CypherBuildContext context,
+        Neo4jGraphProvider provider)
+    {
+        switch (expression)
+        {
+            case MethodCallExpression methodCall:
+                ProcessMethodCall(methodCall, elementType, context, provider);
+                break;
+            case ConstantExpression constant when constant.Type.IsGenericType &&
+                constant.Type.GetGenericTypeDefinition() == typeof(Neo4jQueryable<>):
+                // Root queryable
+                context.CurrentAlias = "n";
+                context.RootType = elementType;
+                context.Match.Append($"({context.CurrentAlias}:{Neo4jTypeManager.GetLabel(elementType)})");
+                break;
+            default:
+                throw new NotSupportedException($"Expression type {expression.GetType()} is not supported");
+        }
+    }
+
+    private void ProcessMethodCall(
+        MethodCallExpression methodCall,
+        Type elementType,
+        CypherBuildContext context,
+        Neo4jGraphProvider provider)
+    {
+        // First, process the source
+        if (methodCall.Arguments.Count > 0 && methodCall.Arguments[0] is Expression source)
+        {
+            ProcessExpression(source, GetSourceElementType(methodCall), context, provider);
+        }
+
+        // Handle graph-specific methods
+        if (methodCall.Method.DeclaringType == typeof(GraphQueryExtensions))
+        {
+            ProcessGraphExtensionMethod(methodCall, elementType, context, provider);
+        }
+        else if (methodCall.Method.DeclaringType == typeof(Queryable))
+        {
+            ProcessStandardLinqMethod(methodCall, elementType, context, provider);
+        }
+        else if (IsGraphTraversalMethod(methodCall))
+        {
+            ProcessGraphTraversalMethod(methodCall, elementType, context, provider);
+        }
+    }
+
+    private void ProcessGraphExtensionMethod(
+        MethodCallExpression methodCall,
+        Type elementType,
+        CypherBuildContext context,
+        Neo4jGraphProvider provider)
+    {
+        switch (methodCall.Method.Name)
+        {
+            case nameof(GraphQueryExtensions.ConnectedBy):
+                ProcessConnectedBy(methodCall, context);
+                break;
+            case nameof(GraphQueryExtensions.ShortestPath):
+                ProcessShortestPath(methodCall, context);
+                break;
+            default:
+                throw new NotSupportedException($"Graph method {methodCall.Method.Name} is not supported");
+        }
+    }
+
+    private void ProcessConnectedBy(MethodCallExpression methodCall, CypherBuildContext context)
+    {
+        var genericArgs = methodCall.Method.GetGenericArguments();
+        var sourceType = genericArgs[0];
+        var relationshipType = genericArgs[1];
+        var targetType = genericArgs[2];
+
+        var sourceAlias = context.CurrentAlias;
+        var relAlias = context.GetNextAlias("r");
+        var targetAlias = context.GetNextAlias("n");
+
+        // Build the relationship pattern
+        var relLabel = Neo4jTypeManager.GetRelationshipType(relationshipType);
+        var targetLabel = Neo4jTypeManager.GetLabel(targetType);
+
+        if (context.Match.Length > 0) context.Match.AppendLine();
+        context.Match.Append($"MATCH ({sourceAlias})-[{relAlias}:{relLabel}]->({targetAlias}:{targetLabel})");
+
+        // Handle relationship filter if present
+        if (methodCall.Arguments.Count > 1)
+        {
+            var filterExpression = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+            if (filterExpression != null && !IsConstantTrue(filterExpression.Body))
+            {
+                var oldAlias = context.CurrentAlias;
+                context.CurrentAlias = relAlias;
+
+                if (context.Where.Length > 0) context.Where.Append(" AND ");
+                ProcessWhereClause(filterExpression.Body, context);
+
+                context.CurrentAlias = oldAlias;
+            }
+        }
+
+        context.CurrentAlias = targetAlias;
+        context.Return = targetAlias;
+    }
+
+    private void ProcessShortestPath(MethodCallExpression methodCall, CypherBuildContext context)
+    {
+        var sourceAlias = context.CurrentAlias;
+        var targetAlias = context.GetNextAlias("target");
+        var pathAlias = context.GetNextAlias("path");
+
+        // Extract target filter
+        var targetFilter = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+        var maxHops = methodCall.Arguments[2] is ConstantExpression constExpr ?
+            constExpr.Value as int? : null;
+
+        // Build shortest path pattern
+        if (context.Match.Length > 0) context.Match.AppendLine();
+        context.Match.Append($"MATCH {pathAlias} = shortestPath(({sourceAlias})-[*");
+        if (maxHops.HasValue)
+        {
+            context.Match.Append($"..{maxHops}");
+        }
+        context.Match.Append($"]->({targetAlias}))");
+
+        // Apply target filter
+        if (targetFilter != null)
+        {
+            var oldAlias = context.CurrentAlias;
+            context.CurrentAlias = targetAlias;
+
+            if (context.Where.Length > 0) context.Where.Append(" AND ");
+            ProcessWhereClause(targetFilter.Body, context);
+
+            context.CurrentAlias = oldAlias;
+        }
+
+        // Return path structure
+        context.Return = $"{{ nodes: nodes({pathAlias}), relationships: relationships({pathAlias}) }}";
+        context.IsPathResult = true;
+    }
+
+    private void ProcessStandardLinqMethod(
+        MethodCallExpression methodCall,
+        Type elementType,
+        CypherBuildContext context,
+        Neo4jGraphProvider provider)
+    {
+        switch (methodCall.Method.Name)
+        {
+            case "Where":
+                var predicate = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+                if (predicate != null)
+                {
+                    if (context.Where.Length > 0) context.Where.Append(" AND ");
+                    ProcessWhereClause(predicate.Body, context);
+                }
+                break;
+
+            case "Select":
+                var selector = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+                if (selector != null)
+                {
+                    ProcessSelectClause(selector, context);
+                }
+                break;
+
+            case "OrderBy":
+            case "OrderByDescending":
+                var orderSelector = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+                if (orderSelector != null)
+                {
+                    ProcessOrderByClause(orderSelector, methodCall.Method.Name == "OrderByDescending", context);
+                }
+                break;
+
+            case "Take":
+                if (methodCall.Arguments[1] is ConstantExpression limit)
+                {
+                    context.Limit = (int)limit.Value!;
+                }
+                break;
+
+            case "Skip":
+                if (methodCall.Arguments[1] is ConstantExpression skip)
+                {
+                    context.Skip = (int)skip.Value!;
+                }
+                break;
+
+            case "Distinct":
+                context.IsDistinct = true;
+                break;
+
+            case "Count":
+                context.Return = $"COUNT({context.CurrentAlias})";
+                context.IsCountQuery = true;
+                break;
+
+            case "Any":
+                if (methodCall.Arguments.Count > 1)
+                {
+                    var anyPredicate = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+                    if (anyPredicate != null)
+                    {
+                        if (context.Where.Length > 0) context.Where.Append(" AND ");
+                        ProcessWhereClause(anyPredicate.Body, context);
+                    }
+                }
+                context.Return = $"COUNT({context.CurrentAlias}) > 0";
+                context.IsBooleanQuery = true;
+                break;
+
+            case "First":
+            case "FirstOrDefault":
+            case "Single":
+            case "SingleOrDefault":
+                context.Limit = methodCall.Method.Name.StartsWith("Single") ? 2 : 1;
+                if (methodCall.Arguments.Count > 1)
+                {
+                    var firstPredicate = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+                    if (firstPredicate != null)
+                    {
+                        if (context.Where.Length > 0) context.Where.Append(" AND ");
+                        ProcessWhereClause(firstPredicate.Body, context);
+                    }
+                }
+                context.IsSingleResult = true;
+                break;
+        }
+    }
+
+    private bool IsGraphTraversalMethod(MethodCallExpression methodCall)
+    {
+        return methodCall.Method.DeclaringType?.IsGenericType == true &&
+               methodCall.Method.DeclaringType.GetGenericTypeDefinition() == typeof(GraphTraversal<,>);
+    }
+
+    private void ProcessGraphTraversalMethod(
+        MethodCallExpression methodCall,
+        Type elementType,
+        CypherBuildContext context,
+        Neo4jGraphProvider provider)
+    {
+        // Handle methods from GraphTraversal<TNode, TRelationship>
+        switch (methodCall.Method.Name)
+        {
+            case "TraversalToInternal":
+                ProcessTraversalTo(methodCall, context);
+                break;
+            case "TraversalRelationshipsInternal":
+                ProcessTraversalRelationships(methodCall, context);
+                break;
+            case "TraversalPathsInternal":
+                ProcessTraversalPaths(methodCall, context);
+                break;
+        }
+    }
+
+    private void ProcessTraversalTo(MethodCallExpression methodCall, CypherBuildContext context)
+    {
+        // Extract traversal parameters
+        var source = methodCall.Arguments[0];
+        var direction = (TraversalDirection)((ConstantExpression)methodCall.Arguments[1]).Value!;
+        var nodeFilter = ExtractLambdaFromConstant(methodCall.Arguments[2]);
+        var relationshipFilter = ExtractLambdaFromConstant(methodCall.Arguments[3]);
+        var targetFilter = ExtractLambdaFromConstant(methodCall.Arguments[4]);
+        var minDepth = (int)((ConstantExpression)methodCall.Arguments[5]).Value!;
+        var maxDepth = (int)((ConstantExpression)methodCall.Arguments[6]).Value!;
+
+        var genericArgs = methodCall.Method.GetGenericArguments();
+        var relationshipType = genericArgs[1];
+        var targetType = genericArgs[2];
+
+        var sourceAlias = context.CurrentAlias;
+        var relAlias = context.GetNextAlias("r");
+        var targetAlias = context.GetNextAlias("n");
+
+        // Build traversal pattern
+        var relLabel = Neo4jTypeManager.GetRelationshipType(relationshipType);
+        var targetLabel = Neo4jTypeManager.GetLabel(targetType);
+
+        if (context.Match.Length > 0) context.Match.AppendLine();
+        context.Match.Append($"MATCH ({sourceAlias})");
+
+        var relPattern = $"[{relAlias}:{relLabel}*{minDepth}..{maxDepth}]";
+        switch (direction)
+        {
+            case TraversalDirection.Outgoing:
+                context.Match.Append($"-{relPattern}->");
+                break;
+            case TraversalDirection.Incoming:
+                context.Match.Append($"<-{relPattern}-");
+                break;
+            case TraversalDirection.Both:
+                context.Match.Append($"-{relPattern}-");
+                break;
+        }
+        context.Match.Append($"({targetAlias}:{targetLabel})");
+
+        // Apply filters
+        if (nodeFilter != null && !IsConstantTrue(nodeFilter.Body))
+        {
+            var oldAlias = context.CurrentAlias;
+            context.CurrentAlias = sourceAlias;
+            if (context.Where.Length > 0) context.Where.Append(" AND ");
+            ProcessWhereClause(nodeFilter.Body, context);
+            context.CurrentAlias = oldAlias;
+        }
+
+        if (relationshipFilter != null && !IsConstantTrue(relationshipFilter.Body))
+        {
+            if (context.Where.Length > 0) context.Where.Append(" AND ");
+            context.Where.Append($"ALL(r IN {relAlias} WHERE ");
+
+            var oldAlias = context.CurrentAlias;
+            context.CurrentAlias = "r";
+            ProcessWhereClause(relationshipFilter.Body, context);
+            context.CurrentAlias = oldAlias;
+
+            context.Where.Append(")");
+        }
+
+        if (targetFilter != null && !IsConstantTrue(targetFilter.Body))
+        {
+            var oldAlias = context.CurrentAlias;
+            context.CurrentAlias = targetAlias;
+            if (context.Where.Length > 0) context.Where.Append(" AND ");
+            ProcessWhereClause(targetFilter.Body, context);
+            context.CurrentAlias = oldAlias;
+        }
+
+        context.CurrentAlias = targetAlias;
+        context.Return = targetAlias;
+    }
+
+    private void ProcessTraversalRelationships(MethodCallExpression methodCall, CypherBuildContext context)
+    {
+        // Similar to ProcessTraversalTo but returns relationships
+        // Implementation details...
+        throw new NotImplementedException("ProcessTraversalRelationships");
+    }
+
+    private void ProcessTraversalPaths(MethodCallExpression methodCall, CypherBuildContext context)
+    {
+        // Similar to ProcessTraversalTo but returns paths
+        // Implementation details...
+        throw new NotImplementedException("ProcessTraversalPaths");
+    }
+
+    private string BuildCypherQuery(CypherBuildContext context)
+    {
+        var query = new StringBuilder();
+
+        // MATCH clause
+        query.Append("MATCH ").AppendLine(context.Match.ToString());
+
+        // WHERE clause
+        if (context.Where.Length > 0)
+        {
+            query.Append("WHERE ").AppendLine(context.Where.ToString());
+        }
+
+        // RETURN clause
+        query.Append("RETURN ");
+        if (context.IsDistinct)
+        {
+            query.Append("DISTINCT ");
+        }
+        query.AppendLine(context.Return ?? context.CurrentAlias);
+
+        // ORDER BY clause
+        if (context.OrderBy.Length > 0)
+        {
+            query.Append("ORDER BY ").AppendLine(context.OrderBy.ToString());
+        }
+
+        // SKIP/LIMIT
+        if (context.Skip > 0)
+        {
+            query.AppendLine($"SKIP {context.Skip}");
+        }
+        if (context.Limit > 0)
+        {
+            query.AppendLine($"LIMIT {context.Limit}");
+        }
+
+        return query.ToString();
+    }
+
+    private static void ProcessWhereClause(Expression expression, CypherBuildContext context)
+    {
+        // Process WHERE clause expressions
+        // This would handle property access, comparisons, etc.
+        // Implementation would be similar to existing expression processing
+        throw new NotImplementedException("ProcessWhereClause implementation needed");
+    }
+
+    private static void ProcessSelectClause(LambdaExpression selector, CypherBuildContext context)
+    {
+        // Process SELECT projections
+        throw new NotImplementedException("ProcessSelectClause implementation needed");
+    }
+
+    private static void ProcessOrderByClause(LambdaExpression selector, bool descending, CypherBuildContext context)
+    {
+        // Process ORDER BY
+        throw new NotImplementedException("ProcessOrderByClause implementation needed");
+    }
+
+    private static Type GetSourceElementType(MethodCallExpression methodCall)
+    {
+        // Extract element type from the source expression
+        if (methodCall.Arguments[0].Type.IsGenericType)
+        {
+            return methodCall.Arguments[0].Type.GetGenericArguments()[0];
+        }
+        return methodCall.Type;
+    }
+
+    private static LambdaExpression? ExtractLambdaFromQuote(Expression expression)
+    {
+        if (expression is UnaryExpression { NodeType: ExpressionType.Quote } unary)
+        {
+            return unary.Operand as LambdaExpression;
+        }
+        return expression as LambdaExpression;
+    }
+
+    private static LambdaExpression? ExtractLambdaFromConstant(Expression expression)
+    {
+        if (expression is ConstantExpression constant)
+        {
+            return constant.Value as LambdaExpression;
+        }
+        return null;
+    }
+
+    private static bool IsConstantTrue(Expression expression)
+    {
+        return expression is ConstantExpression { Value: true };
+    }
+
     internal static string FormatValueForCypher(object? value)
     {
         return value switch
