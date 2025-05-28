@@ -128,7 +128,10 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
         var label = Neo4jTypeManager.GetLabel(typeof(T));
 
         // Create a parameterized query to get all nodes in one go
-        var cypher = $"MATCH ()-[r:{label}]->() WHERE r.{nameof(Model.IRelationship.Id)} IN $ids RETURN r";
+        var cypher = $@"
+            MATCH ()-[r:{label}]->()
+            WHERE r.{nameof(Model.IRelationship.Id)} IN $ids
+            RETURN r";
         var cursor = await tx.RunAsync(cypher, new { ids });
         var records = await cursor.ToListAsync();
 
@@ -137,7 +140,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
 
         var result = new List<T>();
 
-        foreach (var record in records)
+        foreach (var record in records.Select(r => r["r"]))
         {
             var neo4jRelationship = record.As<global::Neo4j.Driver.IRelationship>();
             var relationship = await EntityConverter.DeserializeRelationship<T>(neo4jRelationship);

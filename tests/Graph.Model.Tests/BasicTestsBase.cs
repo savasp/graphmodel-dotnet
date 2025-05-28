@@ -138,7 +138,7 @@ public abstract class BasicTestsBase : ITestBase
         var knows2 = new Knows { SourceId = p2.Id, TargetId = p3.Id, Since = DateTime.UtcNow };
         await this.Graph.CreateRelationship(knows1);
         await this.Graph.CreateRelationship(knows2);
-        var rels = await this.Graph.GetRelationships<Knows>(new[] { knows1.Id, knows2.Id });
+        var rels = await this.Graph.GetRelationships<Knows>([knows1.Id, knows2.Id]);
         Assert.Equal(2, ((ICollection<Knows>)rels).Count);
         Assert.Contains(rels, r => r.Id == knows1.Id);
         Assert.Contains(rels, r => r.Id == knows2.Id);

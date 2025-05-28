@@ -165,31 +165,16 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     public async Task<IEnumerable<T>> GetNodes<T>(IEnumerable<string> ids, GraphOperationOptions options, IAsyncTransaction tx)
         where T : class, Cvoya.Graph.Model.INode, new()
     {
+        // TODO: Implement a more efficient way to get multiple nodes
+
         if (!ids.Any())
         {
-            return Enumerable.Empty<T>();
+            return [];
         }
 
-        var label = Neo4jTypeManager.GetLabel(typeof(T));
-        var idList = string.Join(",", ids.Select(id => $"'{id}'"));
-        var cypher = $"MATCH (n:{label}) WHERE n.{nameof(Model.INode.Id)} IN [{idList}] RETURN n, elementId(n) as neo4jNodeId";
+        IEnumerable<T> results = await Task.WhenAll(ids.Select(async id => await GetNode<T>(id, options, tx)));
 
-        var result = await tx.RunAsync(cypher);
-        var records = await result.ToListAsync();
-
-        if (!records.Any())
-        {
-            return Enumerable.Empty<T>();
-        }
-
-        var nodes = new List<T>();
-        foreach (var record in records)
-        {
-            var node = await EntityConverter.DeserializeNode<T>(record["n"].As<global::Neo4j.Driver.INode>());
-            nodes.Add(node);
-        }
-
-        return nodes;
+        return results;
     }
 
     /// <summary>

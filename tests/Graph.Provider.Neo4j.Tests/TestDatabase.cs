@@ -50,7 +50,7 @@ public class TestDatabase
         }
     }
 
-    private async Task WaitForDatabaseOnline(int maxAttempts = 30, int delayMs = 500)
+    private async Task WaitForDatabaseOnline(int maxAttempts = 30, int delayMs = 1000)
     {
         // First, wait for SHOW DATABASES to report online
         for (int attempt = 0; attempt < maxAttempts; attempt++)
