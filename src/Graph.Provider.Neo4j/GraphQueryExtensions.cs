@@ -141,3 +141,97 @@ public enum TraversalDirection
     Incoming,
     Both
 }
+
+public class GraphExpansion<TNode> : IGraphExpansion<TNode>
+    where TNode : class, INode, new()
+{
+    private readonly IQueryable<TNode> _source;
+    private readonly List<(string? Pattern, Type? RelationshipType, Type? TargetType)> _includes = [];
+
+    public GraphExpansion(IQueryable<TNode> source)
+    {
+        _source = source;
+    }
+
+    public IGraphExpansion<TNode> Include<TRelationship, TTargetNode>()
+        where TRelationship : class, IRelationship, new()
+        where TTargetNode : class, INode, new()
+    {
+        _includes.Add((null, typeof(TRelationship), typeof(TTargetNode)));
+        return this;
+    }
+
+    public IGraphExpansion<TNode> Include(string pattern)
+    {
+        _includes.Add((pattern, null, null));
+        return this;
+    }
+
+    public IQueryable<GraphResult<TNode>> Execute()
+    {
+        var provider = (_source.Provider as Neo4jQueryProvider)
+            ?? throw new InvalidOperationException("Query provider must be Neo4jQueryProvider");
+
+        var expression = Expression.Call(
+            null,
+            typeof(GraphQueryExtensions).GetMethod(nameof(GraphQueryExtensions.Expand))!.MakeGenericMethod(typeof(TNode)),
+            _source.Expression,
+            Expression.Constant(_includes)
+        );
+
+        return provider.CreateQuery<GraphResult<TNode>>(expression);
+    }
+}
+
+public class GraphPattern<TNode> : IGraphPattern<TNode>
+    where TNode : class, INode, new()
+{
+    private readonly IQueryable<TNode> _source;
+    private readonly string _pattern;
+
+    public GraphPattern(IQueryable<TNode> source, string pattern)
+    {
+        _source = source;
+        _pattern = pattern;
+    }
+
+    public IQueryable<GraphResult<TNode>> Execute()
+    {
+        var provider = (_source.Provider as Neo4jQueryProvider)
+            ?? throw new InvalidOperationException("Query provider must be Neo4jQueryProvider");
+
+        var expression = Expression.Call(
+            null,
+            typeof(GraphQueryExtensions).GetMethod(nameof(GraphQueryExtensions.Match))!.MakeGenericMethod(typeof(TNode)),
+            _source.Expression,
+            Expression.Constant(_pattern)
+        );
+
+        return provider.CreateQuery<GraphResult<TNode>>(expression);
+    }
+
+    public IQueryable<T> Return<T>() where T : class, new()
+    {
+        var provider = (_source.Provider as Neo4jQueryProvider)
+            ?? throw new InvalidOperationException("Query provider must be Neo4jQueryProvider");
+
+        var expression = Expression.Call(
+            null,
+            typeof(GraphQueryExtensions).GetMethod(nameof(GraphQueryExtensions.Match))!.MakeGenericMethod(typeof(TNode)),
+            _source.Expression,
+            Expression.Constant(_pattern)
+        );
+
+        return provider.CreateQuery<T>(expression);
+    }
+
+    public IGraphPattern<TNode> Where(string condition)
+    {
+        throw new NotImplementedException();
+    }
+
+    IGraphPattern<TNode> IGraphPattern<TNode>.Bind<T>(string variable)
+    {
+        throw new NotImplementedException();
+    }
+}

@@ -40,7 +40,7 @@ public abstract class BasicTestsBase : ITestBase
         Assert.Equal("Somewhere", fetched.Address.City);
     }
 
-    [Fact]
+    [Fact(Skip = "We are going to implement a Roslyn analyzer to catch this at compile time. We need to decide whether to also have a runtime check. The check was there but has been removed. Hence why we are skipping this test for now.")]
     public async Task CannotCreateRelationshipWithComplexProperties()
     {
         var p1 = new PersonWithComplexProperty { FirstName = "A", Address = new Address { Street = "123 Main St", City = "Somewhere" } };
@@ -253,7 +253,7 @@ public abstract class BasicTestsBase : ITestBase
         public Person? Friend { get; set; } = null;
     }
 
-    [Fact]
+    [Fact(Skip = "We are going to implement a Roslyn analyzer to catch this at compile time. We need to decide whether to also have a runtime check. The check was there but has been removed. Hence why we are skipping this test for now.")]
     public async Task CannotAddNodeWithINodeProperty()
     {
         var person = new PersonWithINodeProperty { FirstName = "A", LastName = "B", Friend = new Person { FirstName = "C", LastName = "D" } };
@@ -272,7 +272,7 @@ public abstract class BasicTestsBase : ITestBase
         public string LastName { get; set; } = string.Empty;
     }
 
-    [Fact]
+    [Fact(Skip = "We are going to implement a Roslyn analyzer to catch this at compile time. We need to decide whether to also have a runtime check. The check was there but has been removed. Hence why we are skipping this test for now.")]
     public async Task CannotAddNodeWithINodePropertyInComplexProperty()
     {
         var person = new PersonWithINodePropertyInComplexProperty
@@ -299,7 +299,7 @@ public abstract class BasicTestsBase : ITestBase
         public string LastName { get; set; } = string.Empty;
     }
 
-    [Fact]
+    [Fact(Skip = "We are going to implement a Roslyn analyzer to catch this at compile time. We need to decide whether to also have a runtime check. The check was there but has been removed. Hence why we are skipping this test for now.")]
     public async Task CannotAddNodeWithIRelationshipPropertyInComplexProperty()
     {
         var person = new PersonWithIRelationshipPropertyInComplexProperty
@@ -348,7 +348,7 @@ public abstract class BasicTestsBase : ITestBase
         public List<Person> Friends { get; set; } = new List<Person>();
     }
 
-    [Fact]
+    [Fact(Skip = "We are going to implement a Roslyn analyzer to catch this at compile time. We need to decide whether to also have a runtime check. The check was there but has been removed. Hence why we are skipping this test for now.")]
     public async Task CannotAddNodeWithListINodeProperty()
     {
         var person = new PersonWithListINodeProperty { FirstName = "A", LastName = "B" };

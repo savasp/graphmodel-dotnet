@@ -386,25 +386,26 @@ internal class Neo4jQueryProvider(
 
         return result;
     }
-
-    public async Task<TResult> ExecuteAsync<TResult>(Expression expression)
-    {
-        // Use the new graph query builder
-        var (cypher, parameters) = CypherExpressionBuilder.BuildGraphQuery(
-            expression,
-            typeof(TResult),
-            _provider);
-
-        // Log the generated query for debugging
-        System.Diagnostics.Debug.WriteLine($"Generated Cypher: {cypher}");
-
-        // Execute the query
-        await foreach (var result in _provider.ExecuteCypherAsync<TResult>(
-            cypher,
-            parameters,
-            _transaction))
+    /*
+        public async Task<TResult> ExecuteAsync<TResult>(Expression expression)
         {
-            yield return result;
+            // Use the new graph query builder
+            var (cypher, parameters) = CypherExpressionBuilder.BuildGraphQuery(
+                expression,
+                typeof(TResult),
+                _provider);
+
+            // Log the generated query for debugging
+            System.Diagnostics.Debug.WriteLine($"Generated Cypher: {cypher}");
+
+            var visitor = new Neo4jExpressionVisitor(_provider, _rootType, elementType, _transaction);
+            var cypher = visitor.Translate(expression);
+
+            // Execute the query
+            await foreach (var result in visitor.ExecuteQueryAsync(cypher, elementType))
+            {
+                yield return result;
+            }
         }
-    }
+        */
 }
