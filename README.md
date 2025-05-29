@@ -1,5 +1,7 @@
 # GraphModel
 
+**Note**: The build is currently broken as the project is going through a major refactoring. GitHub's coee agent cannot work on Pull Requess against branches other than `main` so here we are :( 
+
 Additional context for the project from [Savas Parastatidis](https://savas.me)' blog: [Playing with graphs and neo4j](https://savas.me/2025/05/23/playing-with-graphs-and-neo4j/).
 
 GraphModel is a modular .NET project for working with graph data structures and graph databases. It consists of two main libraries:
