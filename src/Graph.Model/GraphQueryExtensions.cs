@@ -4,7 +4,14 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//      https://www.apache.org/licenses/LICENSE-2.0
+//      htt    public static IGraphQueryable<TTarget> Neighbors<TSource, TTarget>(
+this IGraphQueryable<TSource> source,
+TraversalDirection direction = TraversalDirection.Outgoing)
+        where TSource : class, INode, new()
+        where TTarget : class, INode, new()
+    {
+        return source.AsGraphQueryable().Query<TSource>().FollowPath<TSource>(1, 1).InDirection(direction).To<TTarget>().AsQueryable();
+    }.apache.org / licenses / LICENSE - 2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -27,7 +34,7 @@ public static class GraphQueryableExtensions
     /// <typeparam name="T">The type of entities</typeparam>
     /// <param name="source">The source queryable</param>
     /// <returns>An enhanced graph queryable</returns>
-    public static IGraphQueryable<T> AsGraphQueryable<T>(this IQueryable<T> source) 
+    public static IGraphQueryable<T> AsGraphQueryable<T>(this IQueryable<T> source)
         where T : class, IEntity, new()
     {
         // Implementation would be provider-specific
@@ -41,7 +48,7 @@ public static class GraphQueryableExtensions
     /// <param name="source">The source queryable</param>
     /// <param name="options">The graph operation options</param>
     /// <returns>An enhanced graph queryable</returns>
-    public static IGraphQueryable<T> AsGraphQueryable<T>(this IQueryable<T> source, GraphOperationOptions options) 
+    public static IGraphQueryable<T> AsGraphQueryable<T>(this IQueryable<T> source, GraphOperationOptions options)
         where T : class, IEntity, new()
     {
         // Implementation would be provider-specific
@@ -54,7 +61,7 @@ public static class GraphQueryableExtensions
     /// <typeparam name="T">The type of entities</typeparam>
     /// <param name="source">The source queryable</param>
     /// <returns>A graph query builder</returns>
-    public static IGraphQueryBuilder<T> Query<T>(this IQueryable<T> source) 
+    public static IGraphQueryBuilder<T> Query<T>(this IQueryable<T> source)
         where T : class, IEntity, new()
     {
         // Implementation would be provider-specific
@@ -68,7 +75,7 @@ public static class GraphQueryableExtensions
     /// <param name="source">The source queryable</param>
     /// <param name="options">The options to apply</param>
     /// <returns>A queryable with the options applied</returns>
-    public static IGraphQueryable<T> WithOptions<T>(this IQueryable<T> source, GraphOperationOptions options) 
+    public static IGraphQueryable<T> WithOptions<T>(this IQueryable<T> source, GraphOperationOptions options)
         where T : class, IEntity, new()
     {
         return source.AsGraphQueryable().WithOptions(options);
@@ -81,7 +88,7 @@ public static class GraphQueryableExtensions
     /// <param name="source">The source queryable</param>
     /// <param name="depth">The traversal depth</param>
     /// <returns>A queryable with the depth applied</returns>
-    public static IGraphQueryable<T> WithDepth<T>(this IQueryable<T> source, int depth) 
+    public static IGraphQueryable<T> WithDepth<T>(this IQueryable<T> source, int depth)
         where T : class, IEntity, new()
     {
         return source.AsGraphQueryable().WithDepth(depth);
@@ -94,7 +101,7 @@ public static class GraphQueryableExtensions
     /// <param name="source">The source queryable</param>
     /// <param name="transaction">The transaction to use</param>
     /// <returns>A queryable bound to the transaction</returns>
-    public static IGraphQueryable<T> InTransaction<T>(this IQueryable<T> source, IGraphTransaction transaction) 
+    public static IGraphQueryable<T> InTransaction<T>(this IQueryable<T> source, IGraphTransaction transaction)
         where T : class, IEntity, new()
     {
         return source.AsGraphQueryable().InTransaction(transaction);
@@ -120,7 +127,7 @@ public static class GraphTraversalExtensions
         where TRel : class, IRelationship, new()
         where TTarget : class, INode, new()
     {
-        return source.AsGraphQueryable().Traverse<TRel>().To<TTarget>();
+        return source.AsGraphQueryable().Traverse<TSource, TRel>().To<TTarget>();
     }
 
     /// <summary>
@@ -141,11 +148,11 @@ public static class GraphTraversalExtensions
         where TRel : class, IRelationship, new()
         where TTarget : class, INode, new()
     {
-        var traversal = source.AsGraphQueryable().Traverse<TRel>();
-        
+        var traversal = source.AsGraphQueryable().Traverse<TSource, TRel>();
+
         if (relationshipPredicate != null)
             traversal = traversal.WhereRelationship(relationshipPredicate);
-            
+
         if (targetPredicate != null)
             return traversal.To<TTarget>(targetPredicate);
         else
@@ -166,7 +173,7 @@ public static class GraphTraversalExtensions
         where TRel : class, IRelationship, new()
         where TTarget : class, INode, new()
     {
-        return source.AsGraphQueryable().Traverse<TRel>().InDirection(TraversalDirection.Incoming).To<TTarget>();
+        return source.AsGraphQueryable().Traverse<TSource, TRel>().InDirection(TraversalDirection.Incoming).To<TTarget>();
     }
 
     /// <summary>
@@ -177,13 +184,13 @@ public static class GraphTraversalExtensions
     /// <param name="source">The source queryable</param>
     /// <param name="maxLength">Maximum path length to consider</param>
     /// <returns>A queryable for shortest path results</returns>
-    public static IGraphQueryable<IGraphMultiPath> ShortestPathTo<TSource, TTarget>(
+    public static IQueryable<IGraphMultiPath> ShortestPathTo<TSource, TTarget>(
         this IQueryable<TSource> source,
         int maxLength = 10)
         where TSource : class, INode, new()
         where TTarget : class, INode, new()
     {
-        return source.Query().ShortestPathTo<TTarget>().WithMaxLength(maxLength).Paths().AsQueryable();
+        return source.AsGraphQueryable().Query<TSource>().ShortestPathTo<TSource, TTarget>().WithMaxLength(maxLength).Paths();
     }
 
     /// <summary>
@@ -195,14 +202,14 @@ public static class GraphTraversalExtensions
     /// <param name="minLength">Minimum path length</param>
     /// <param name="maxLength">Maximum path length</param>
     /// <returns>A queryable for all paths within the length constraints</returns>
-    public static IGraphQueryable<IGraphMultiPath> AllPathsTo<TSource, TTarget>(
+    public static IQueryable<IGraphMultiPath> AllPathsTo<TSource, TTarget>(
         this IQueryable<TSource> source,
         int minLength = 1,
         int maxLength = 5)
         where TSource : class, INode, new()
         where TTarget : class, INode, new()
     {
-        return source.Query().FollowPath(minLength, maxLength).To<TTarget>().AsQueryable();
+        return source.AsGraphQueryable().Query<TSource>().FollowPath<TSource>(minLength, maxLength).Paths();
     }
 
     /// <summary>
@@ -219,7 +226,7 @@ public static class GraphTraversalExtensions
         where TSource : class, INode, new()
         where TRel : class, IRelationship, new()
     {
-        return source.AsGraphQueryable().Traverse<TRel>().InDirection(direction).Relationships();
+        return source.AsGraphQueryable().Traverse<TSource, TRel>().InDirection(direction).Relationships();
     }
 
     /// <summary>
@@ -236,7 +243,7 @@ public static class GraphTraversalExtensions
         where TSource : class, INode, new()
         where TTarget : class, INode, new()
     {
-        return source.Query().FollowPath(1, 1).InDirection(direction).To<TTarget>().AsQueryable();
+        return source.AsGraphQueryable().Query<TSource>().FollowPath<TSource>(1, 1).InDirection(direction).To<TTarget>();
     }
 }
 
@@ -252,7 +259,7 @@ public static class GraphPatternExtensions
     /// <param name="source">The source queryable</param>
     /// <param name="pattern">The pattern string to match</param>
     /// <returns>A pattern matcher</returns>
-    public static IGraphPattern<T> Match<T>(this IQueryable<T> source, string pattern) 
+    public static IGraphPattern<T> Match<T>(this IQueryable<T> source, string pattern)
         where T : class, IEntity, new()
     {
         return source.AsGraphQueryable().Match(pattern);
@@ -264,7 +271,7 @@ public static class GraphPatternExtensions
     /// <typeparam name="T">The type of nodes</typeparam>
     /// <param name="source">The source queryable</param>
     /// <returns>A queryable for triangle patterns</returns>
-    public static IGraphQueryable<IPatternMatch> Triangles<T>(this IQueryable<T> source) 
+    public static IGraphQueryable<IPatternMatch> Triangles<T>(this IQueryable<T> source)
         where T : class, INode, new()
     {
         return source.AsGraphQueryable()
@@ -278,7 +285,7 @@ public static class GraphPatternExtensions
     /// <typeparam name="T">The type of nodes</typeparam>
     /// <param name="source">The source queryable</param>
     /// <returns>A queryable for square patterns</returns>
-    public static IGraphQueryable<IPatternMatch> Squares<T>(this IQueryable<T> source) 
+    public static IGraphQueryable<IPatternMatch> Squares<T>(this IQueryable<T> source)
         where T : class, INode, new()
     {
         return source.AsGraphQueryable()
@@ -293,7 +300,7 @@ public static class GraphPatternExtensions
     /// <param name="source">The source queryable</param>
     /// <param name="minConnections">Minimum number of connections to be considered a star</param>
     /// <returns>A queryable for star pattern results</returns>
-    public static IGraphQueryable<IPatternMatch> Stars<T>(this IQueryable<T> source, int minConnections = 3) 
+    public static IGraphQueryable<IPatternMatch> Stars<T>(this IQueryable<T> source, int minConnections = 3)
         where T : class, INode, new()
     {
         // This would require a more complex pattern or aggregation
@@ -315,7 +322,7 @@ public static class GraphAnalysisExtensions
     /// <typeparam name="T">The type of nodes</typeparam>
     /// <param name="source">The source queryable</param>
     /// <returns>A queryable for degree centrality results</returns>
-    public static IGraphQueryable<INodeCentrality<T>> DegreeCentrality<T>(this IQueryable<T> source) 
+    public static IGraphQueryable<INodeCentrality<T>> DegreeCentrality<T>(this IQueryable<T> source)
         where T : class, IEntity, new()
     {
         return source.AsGraphQueryable().Analysis().Centrality(CentralityType.Degree);
@@ -327,7 +334,7 @@ public static class GraphAnalysisExtensions
     /// <typeparam name="T">The type of nodes</typeparam>
     /// <param name="source">The source queryable</param>
     /// <returns>A queryable for betweenness centrality results</returns>
-    public static IGraphQueryable<INodeCentrality<T>> BetweennessCentrality<T>(this IQueryable<T> source) 
+    public static IGraphQueryable<INodeCentrality<T>> BetweennessCentrality<T>(this IQueryable<T> source)
         where T : class, IEntity, new()
     {
         return source.AsGraphQueryable().Analysis().Centrality(CentralityType.Betweenness);
@@ -339,7 +346,7 @@ public static class GraphAnalysisExtensions
     /// <typeparam name="T">The type of nodes</typeparam>
     /// <param name="source">The source queryable</param>
     /// <returns>A queryable for PageRank results</returns>
-    public static IGraphQueryable<INodeCentrality<T>> PageRank<T>(this IQueryable<T> source) 
+    public static IGraphQueryable<INodeCentrality<T>> PageRank<T>(this IQueryable<T> source)
         where T : class, IEntity, new()
     {
         return source.AsGraphQueryable().Analysis().Centrality(CentralityType.PageRank);
@@ -351,7 +358,7 @@ public static class GraphAnalysisExtensions
     /// <typeparam name="T">The type of nodes</typeparam>
     /// <param name="source">The source queryable</param>
     /// <returns>A queryable for community detection results</returns>
-    public static IGraphQueryable<ICommunity<T>> Communities<T>(this IQueryable<T> source) 
+    public static IGraphQueryable<ICommunity<T>> Communities<T>(this IQueryable<T> source)
         where T : class, IEntity, new()
     {
         return source.AsGraphQueryable().Analysis().Communities(CommunityDetectionAlgorithm.Louvain);
@@ -363,7 +370,7 @@ public static class GraphAnalysisExtensions
     /// <typeparam name="T">The type of nodes</typeparam>
     /// <param name="source">The source queryable</param>
     /// <returns>A queryable for strongly connected components</returns>
-    public static IGraphQueryable<IConnectedComponent<T>> StronglyConnectedComponents<T>(this IQueryable<T> source) 
+    public static IGraphQueryable<IConnectedComponent<T>> StronglyConnectedComponents<T>(this IQueryable<T> source)
         where T : class, IEntity, new()
     {
         return source.AsGraphQueryable().Analysis().StronglyConnectedComponents();
@@ -375,7 +382,7 @@ public static class GraphAnalysisExtensions
     /// <typeparam name="T">The type of entities</typeparam>
     /// <param name="source">The source queryable</param>
     /// <returns>A graph analysis interface</returns>
-    public static IGraphAnalysis<T> Analysis<T>(this IGraphQueryable<T> source) 
+    public static IGraphAnalysis<T> Analysis<T>(this IGraphQueryable<T> source)
         where T : class, IEntity, new()
     {
         // Implementation would be provider-specific
@@ -438,6 +445,7 @@ public static class GraphAggregationExtensions
         Expression<Func<IEnumerable<TTarget>, TResult>> aggregator)
         where TSource : class, IEntity, new()
         where TTarget : class, IEntity, new()
+        where TResult : class
     {
         // This would require provider-specific implementation
         throw new NotImplementedException("This extension requires a graph provider implementation");

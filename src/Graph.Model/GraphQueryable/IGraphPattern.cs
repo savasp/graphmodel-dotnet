@@ -79,7 +79,7 @@ public interface IGraphPattern<T> where T : class, IEntity, new()
     /// <typeparam name="TResult">The type of result to project</typeparam>
     /// <param name="selector">The projection expression</param>
     /// <returns>A queryable for the pattern results</returns>
-    IGraphQueryable<TResult> Select<TResult>(Expression<Func<IPatternContext, TResult>> selector);
+    IGraphQueryable<TResult> Select<TResult>(Expression<Func<IPatternContext, TResult>> selector) where TResult : class;
 
     /// <summary>
     /// Executes the pattern and returns all matches
@@ -360,13 +360,13 @@ public enum PatternRelationshipDirection
 {
     /// <summary>Outgoing relationship</summary>
     Outgoing,
-    
+
     /// <summary>Incoming relationship</summary>
     Incoming,
-    
+
     /// <summary>Bidirectional relationship</summary>
     Both,
-    
+
     /// <summary>Any direction</summary>
     Any
 }

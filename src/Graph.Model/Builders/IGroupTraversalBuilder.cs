@@ -36,7 +36,7 @@ public interface IGroupTraversalBuilder<TSource, TKey> where TSource : class, IE
     /// <typeparam name="TResult">The type of the projection result</typeparam>
     /// <param name="selector">The projection expression</param>
     /// <returns>A queryable for the projected group results</returns>
-    IGraphQueryable<TResult> Select<TResult>(Expression<Func<IGrouping<TKey, TSource>, TResult>> selector);
+    IGraphQueryable<TResult> Select<TResult>(Expression<Func<IGrouping<TKey, TSource>, TResult>> selector) where TResult : class;
 
     /// <summary>
     /// Orders the groups by a key

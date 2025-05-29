@@ -16,7 +16,7 @@ using System.Linq.Expressions;
 
 namespace Cvoya.Graph.Model;
 
-// <summary>
+/// <summary>
 /// Builder for relationship traversal operations
 /// </summary>
 /// <typeparam name="TSource">The type of the source entity</typeparam>

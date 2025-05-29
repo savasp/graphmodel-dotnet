@@ -56,24 +56,32 @@ public interface IGraphQueryBuilder<T> where T : class, IEntity, new()
     /// <summary>
     /// Traverses via a specific relationship type
     /// </summary>
+    /// <typeparam name="TNode">The type of source node (must be same as T)</typeparam>
     /// <typeparam name="TRel">The type of relationship to traverse</typeparam>
     /// <returns>A relationship traversal builder</returns>
-    IRelationshipTraversalBuilder<T, TRel> Via<TRel>() where TRel : class, IRelationship, new();
+    IRelationshipTraversalBuilder<TNode, TRel> Via<TNode, TRel>()
+        where TNode : class, INode, new()
+        where TRel : class, IRelationship, new();
 
     /// <summary>
     /// Follows a path of specified length
     /// </summary>
+    /// <typeparam name="TNode">The type of source node (must be same as T)</typeparam>
     /// <param name="minLength">The minimum path length</param>
     /// <param name="maxLength">The maximum path length</param>
     /// <returns>A path traversal builder</returns>
-    IPathTraversalBuilder<T> FollowPath(int minLength, int maxLength);
+    IPathTraversalBuilder<TNode> FollowPath<TNode>(int minLength, int maxLength)
+        where TNode : class, INode, new();
 
     /// <summary>
     /// Finds the shortest path to target nodes
     /// </summary>
+    /// <typeparam name="TNode">The type of source node (must be same as T)</typeparam>
     /// <typeparam name="TTarget">The type of target nodes</typeparam>
     /// <returns>A shortest path builder</returns>
-    IShortestPathBuilder<T, TTarget> ShortestPathTo<TTarget>() where TTarget : class, INode, new();
+    IShortestPathBuilder<TNode, TTarget> ShortestPathTo<TNode, TTarget>()
+        where TNode : class, INode, new()
+        where TTarget : class, INode, new();
 
     /// <summary>
     /// Aggregates connected data
@@ -81,7 +89,7 @@ public interface IGraphQueryBuilder<T> where T : class, IEntity, new()
     /// <typeparam name="TResult">The type of aggregation result</typeparam>
     /// <param name="aggregator">The aggregation expression</param>
     /// <returns>A queryable for the aggregated results</returns>
-    IGraphQueryable<TResult> Aggregate<TResult>(Expression<Func<IGrouping<T, IEntity>, TResult>> aggregator);
+    IGraphQueryable<TResult> Aggregate<TResult>(Expression<Func<IGrouping<T, IEntity>, TResult>> aggregator) where TResult : class;
 
     /// <summary>
     /// Groups entities by a key
@@ -97,7 +105,7 @@ public interface IGraphQueryBuilder<T> where T : class, IEntity, new()
     /// <typeparam name="TResult">The type to project to</typeparam>
     /// <param name="selector">The projection expression</param>
     /// <returns>A queryable for the projected results</returns>
-    IGraphQueryable<TResult> Select<TResult>(Expression<Func<T, TResult>> selector);
+    IGraphQueryable<TResult> Select<TResult>(Expression<Func<T, TResult>> selector) where TResult : class;
 
     /// <summary>
     /// Projects the current entities to multiple results (flattening)
@@ -105,7 +113,7 @@ public interface IGraphQueryBuilder<T> where T : class, IEntity, new()
     /// <typeparam name="TResult">The type of the flattened results</typeparam>
     /// <param name="selector">The projection expression</param>
     /// <returns>A queryable for the flattened results</returns>
-    IGraphQueryable<TResult> SelectMany<TResult>(Expression<Func<T, IEnumerable<TResult>>> selector);
+    IGraphQueryable<TResult> SelectMany<TResult>(Expression<Func<T, IEnumerable<TResult>>> selector) where TResult : class;
 
     /// <summary>
     /// Orders the results by a key

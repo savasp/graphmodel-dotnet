@@ -99,16 +99,15 @@ public interface IGraphQueryable<T> : IQueryable<T> where T : class
     /// <summary>
     /// Initiates graph pattern matching from this query
     /// </summary>
-    /// typeparam name="T">The type of entities to match</typeparam>
     /// <param name="pattern">The pattern to match</param>
     /// <returns>A pattern matcher for complex graph patterns</returns>
-    IGraphPattern<T> Match(string pattern);
+    IGraphPattern<TEntity> Match<TEntity>(string pattern) where TEntity : class, IEntity, new();
 
     /// <summary>
     /// Creates a graph query builder for complex multi-step queries
     /// </summary>
     /// <returns>A fluent query builder</returns>
-    IGraphQueryBuilder<T> Query();
+    IGraphQueryBuilder<TEntity> Query<TEntity>() where TEntity : class, IEntity, new();
 
     /// <summary>
     /// Enables query result caching for this query
