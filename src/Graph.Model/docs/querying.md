@@ -1,6 +1,6 @@
-# Querying with LINQ
+# Enhanced Querying with LINQ
 
-Graph Model provides full LINQ support for querying nodes and relationships in your graph. This allows you to use familiar C# syntax for complex graph queries.
+Graph Model provides powerful querying capabilities through enhanced LINQ support via `IGraphQueryable<T>`. This extends standard LINQ with graph-specific operations for traversal, performance optimization, and advanced query patterns.
 
 ## Basic Queries
 
@@ -8,92 +8,170 @@ Graph Model provides full LINQ support for querying nodes and relationships in y
 
 ```csharp
 // Simple where clause
-var adults = graph.Nodes<Person>()
+var adults = await graph.Nodes<Person>()
     .Where(p => p.Age >= 18)
-    .ToList();
+    .ToListAsync();
 
 // Multiple conditions
-var youngEngineers = graph.Nodes<Person>()
+var youngEngineers = await graph.Nodes<Person>()
     .Where(p => p.Age < 30 && p.Bio.Contains("engineer"))
-    .ToList();
+    .ToListAsync();
 
 // String operations
-var smiths = graph.Nodes<Person>()
+var smiths = await graph.Nodes<Person>()
     .Where(p => p.LastName.StartsWith("Sm"))
-    .ToList();
+    .ToListAsync();
 ```
 
 ### Ordering and Pagination
 
 ```csharp
 // Order by single property
-var byAge = graph.Nodes<Person>()
+var byAge = await graph.Nodes<Person>()
     .OrderBy(p => p.Age)
-    .ToList();
+    .ToListAsync();
 
 // Order by multiple properties
-var sorted = graph.Nodes<Person>()
+var sorted = await graph.Nodes<Person>()
     .OrderBy(p => p.LastName)
     .ThenBy(p => p.FirstName)
-    .ToList();
+    .ToListAsync();
 
 // Pagination
-var page = graph.Nodes<Person>()
+var page = await graph.Nodes<Person>()
     .OrderBy(p => p.LastName)
     .Skip(20)
     .Take(10)
-    .ToList();
+    .ToListAsync();
 ```
 
-## Projection
+## Enhanced Graph Operations
+
+### Depth Control
+
+```csharp
+// Load nodes with relationships up to 2 levels deep
+var peopleWithConnections = await graph.Nodes<Person>()
+    .WithDepth(2)
+    .ToListAsync();
+
+// Specify depth range
+var connections = await graph.Nodes<Person>()
+    .WithDepth(1, 3) // Minimum 1 level, maximum 3 levels
+    .ToListAsync();
+```
+
+### Performance Optimization
+
+```csharp
+// Use caching for expensive queries
+var cachedResults = await graph.Nodes<Person>()
+    .Where(p => p.Age > 30)
+    .Cached(TimeSpan.FromMinutes(5))
+    .ToListAsync();
+
+// Provide query hints
+var optimizedQuery = await graph.Nodes<Person>()
+    .WithHint("USE_INDEX")
+    .UseIndex("person_age_idx")
+    .Where(p => p.Age > 30)
+    .ToListAsync();
+
+// Enable profiling for performance analysis
+var profiledQuery = await graph.Nodes<Person>()
+    .WithProfiling()
+    .Where(p => p.Age > 30)
+    .ToListAsync();
+```
+
+### Transaction Context
+
+```csharp
+await using var transaction = await graph.BeginTransaction();
+
+var results = await graph.Nodes<Person>()
+    .InTransaction(transaction)
+    .Where(p => p.Age > 30)
+    .ToListAsync();
+
+await transaction.Commit();
+```
+
+## Advanced Graph Traversal
+
+### Graph Traversal Queries
+
+```csharp
+// Multi-hop traversal with relationship filtering
+var friendsOfFriends = await graph.Nodes<Person>()
+    .Where(p => p.FirstName == "Alice")
+    .Traverse<Person, Knows>()
+    .InDirection(TraversalDirection.Outgoing)
+    .WhereRelationship(k => k.Since > DateTime.Now.AddYears(-1)) // Recent friendships only
+    .WithDepth(1, 2) // 1-2 hops away
+    .ToTarget<Person>()
+    .Where(p => p.Age > 25) // Filter target nodes
+    .ToListAsync();
+
+// Complex traversal with multiple relationship types
+var socialNetwork = await graph.Nodes<Person>()
+    .Where(p => p.Id == "alice-123")
+    .Traverse<Person, Knows>()
+    .InDirection(TraversalDirection.Bidirectional)
+    .WithDepth(2)
+    .Union(
+        graph.Nodes<Person>()
+            .Where(p => p.Id == "alice-123")
+            .Traverse<Person, WorksWith>()
+            .InDirection(TraversalDirection.Outgoing)
+            .WithDepth(1)
+    )
+    .ToListAsync();
+```
+
+### Pattern Matching
+
+```csharp
+// Find triangular relationships (mutual friends)
+var triangles = await graph.Nodes<Person>()
+    .Match<Person>("(a:Person)-[:KNOWS]->(b:Person)-[:KNOWS]->(c:Person)-[:KNOWS]->(a)")
+    .ToListAsync();
+
+// Complex patterns with property constraints
+var complexPattern = await graph.Nodes<Person>()
+    .Match<Person>("(senior:Person {Age > 50})-[:MENTORS]->(junior:Person {Age < 30})")
+    .ToListAsync();
+```
+
+## Projection and Results
 
 ### Anonymous Types
 
 ```csharp
-var names = graph.Nodes<Person>()
+var names = await graph.Nodes<Person>()
     .Where(p => p.Age > 25)
     .Select(p => new
     {
         FullName = p.FirstName + " " + p.LastName,
-        p.Age
+        p.Age,
+        IsAdult = p.Age >= 18
     })
-    .ToList();
+    .ToListAsync();
 ```
 
-### String and Math Functions
+### Transformations
 
 ```csharp
-var projected = graph.Nodes<Person>()
+var projected = await graph.Nodes<Person>()
     .Select(p => new
     {
         UpperName = p.FirstName.ToUpper(),
         NameLength = p.FirstName.Length,
-        Trimmed = p.Bio.Trim(),
-        Substring = p.FirstName.Substring(0, 1),
-        Replaced = p.Bio.Replace("engineer", "developer"),
-        // Math operations
         AgePlusTen = p.Age + 10,
-        AgeSquared = p.Age * p.Age,
-        SqrtAge = Math.Sqrt(p.Age)
+        // DateTime operations
+        BirthYear = DateTime.Now.Year - p.Age
     })
-    .ToList();
-```
-
-### DateTime Functions
-
-```csharp
-var timeQueries = graph.Nodes<Event>()
-    .Select(e => new
-    {
-        e.Name,
-        Year = e.Date.Year,
-        Month = e.Date.Month,
-        Day = e.Date.Day,
-        Now = DateTime.Now,
-        Today = DateTime.Today,
-        UtcNow = DateTime.UtcNow
-    })
-    .ToList();
+    .ToListAsync();
 ```
 
 ## Aggregations
@@ -102,40 +180,70 @@ var timeQueries = graph.Nodes<Event>()
 
 ```csharp
 // Count with predicate
-var adultCount = graph.Nodes<Person>()
-    .Count(p => p.Age >= 18);
+var adultCount = await graph.Nodes<Person>()
+    .CountAsync(p => p.Age >= 18);
 
 // Check existence
-var hasMinors = graph.Nodes<Person>()
-    .Any(p => p.Age < 18);
+var hasMinors = await graph.Nodes<Person>()
+    .AnyAsync(p => p.Age < 18);
 
 // Check all match condition
-var allAdults = graph.Nodes<Person>()
-    .All(p => p.Age >= 18);
+var allAdults = await graph.Nodes<Person>()
+    .AllAsync(p => p.Age >= 18);
 ```
 
 ### First, Single, Last
 
 ```csharp
 // Get first matching
-var firstSmith = graph.Nodes<Person>()
+var firstSmith = await graph.Nodes<Person>()
     .Where(p => p.LastName == "Smith")
     .OrderBy(p => p.FirstName)
+    .FirstOrDefaultAsync();
+
+// Get exactly one matching (throws if zero or multiple)
+var specificPerson = await graph.Nodes<Person>()
+    .SingleAsync(p => p.Id == "unique-id");
+
+// Get last matching
+var youngestPerson = await graph.Nodes<Person>()
+    .OrderBy(p => p.Age)
+    .LastOrDefaultAsync();
+```
+
+### Mathematical Aggregations
+
+```csharp
+// Sum, average, min, max
+var stats = await graph.Nodes<Person>()
+    .GroupBy(p => 1) // Group all into single group
+    .Select(g => new
+    {
+        TotalAge = g.Sum(p => p.Age),
+        AverageAge = g.Average(p => p.Age),
+        MinAge = g.Min(p => p.Age),
+        MaxAge = g.Max(p => p.Age),
+        Count = g.Count()
+    })
+    .FirstAsync();
+```
+
     .First();
 
 // Get single (throws if multiple)
 var theAlice = graph.Nodes<Person>()
-    .Single(p => p.FirstName == "Alice");
+.Single(p => p.FirstName == "Alice");
 
 // Get last
 var youngest = graph.Nodes<Person>()
-    .OrderBy(p => p.Age)
-    .Last();
+.OrderBy(p => p.Age)
+.Last();
 
 // Safe versions that return null
 var maybeAlice = graph.Nodes<Person>()
-    .FirstOrDefault(p => p.FirstName == "Alice");
-```
+.FirstOrDefault(p => p.FirstName == "Alice");
+
+````
 
 ### GroupBy and Aggregates
 
@@ -162,7 +270,7 @@ var ageStats = graph.Nodes<Person>()
         MaxAge = g.Max(p => p.Age)
     })
     .ToList();
-```
+````
 
 ## Working with Relationships
 

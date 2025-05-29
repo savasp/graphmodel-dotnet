@@ -1,42 +1,45 @@
 # Attributes and Configuration
 
-Graph Model uses attributes to configure how your domain classes map to graph elements. This provides a clean, declarative way to control graph behavior.
+Graph Model uses attributes to provide declarative configuration for how your domain classes map to graph elements. This approach offers clean, type-safe configuration with support for indexing, custom labeling, and property control.
 
 ## Node Configuration
 
 ### NodeAttribute
 
-The `[Node]` attribute specifies how a class maps to a graph node.
+The `[Node]` attribute specifies how a class maps to a graph node with custom labeling support.
 
 ```csharp
 [Node("Person")]
 public class Person : INode
 {
-    public string Id { get; set; }
-    public string Name { get; set; }
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Name { get; set; } = string.Empty;
 }
 ```
 
-Without the attribute, the class name is used as the node label:
+**Default Behavior**: Without the attribute, the class name is used as the node label:
 
 ```csharp
 // This will create nodes with label "Employee"
 public class Employee : INode
 {
-    public string Id { get; set; }
+    public string Id { get; set; } = Guid.NewGuid().ToString();
 }
 ```
 
 ### Multiple Labels
 
-Some providers support multiple labels on nodes:
+Graph providers that support multiple labels can use multiple `[Node]` attributes:
 
 ```csharp
 [Node("Person")]
 [Node("Employee")]
-public class Employee : INode
+[Node("Manager")]
+public class Manager : INode
 {
-    public string Id { get; set; }
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Name { get; set; } = string.Empty;
+    public string Department { get; set; } = string.Empty;
 }
 ```
 
@@ -44,40 +47,57 @@ public class Employee : INode
 
 ### PropertyAttribute
 
-Control how properties are mapped to the graph:
+The `[Property]` attribute provides fine-grained control over property mapping, including custom names, indexing, and serialization behavior:
 
 ```csharp
 [Node("Person")]
 public class Person : INode
 {
-    public string Id { get; set; }
+    public string Id { get; set; } = Guid.NewGuid().ToString();
 
     [Property("full_name")]
-    public string FullName { get; set; }
+    public string FullName { get; set; } = string.Empty;
 
-    [Property("date_of_birth")]
+    [Property(Index = true)]
+    public string Email { get; set; } = string.Empty;
+
+    [Property("birth_date", Index = true)]
     public DateTime DateOfBirth { get; set; }
 
-    // Without attribute, property name is used as-is
+    [Property(Ignore = true)]
+    public string TemporaryCalculation { get; set; } = string.Empty;
+
+    // This property uses its own name in the graph
     public int Age { get; set; }
-}
 ```
 
-### Ignored Properties
+### Property Configuration Options
 
-Properties can be excluded from graph persistence:
+| Option   | Description                           | Example                     |
+| -------- | ------------------------------------- | --------------------------- |
+| `Label`  | Custom property name in graph storage | `[Property("full_name")]`   |
+| `Index`  | Create database index for performance | `[Property(Index = true)]`  |
+| `Ignore` | Exclude from graph persistence        | `[Property(Ignore = true)]` |
+
+### Indexing Strategy
+
+Use indexing strategically for properties that are frequently queried:
 
 ```csharp
+[Node("Person")]
 public class Person : INode
 {
-    public string Id { get; set; }
-    public string Name { get; set; }
+    public string Id { get; set; } = Guid.NewGuid().ToString();
 
-    [Ignore]
-    public string TempData { get; set; } // Not persisted
+    [Property(Index = true)] // Frequently searched
+    public string Email { get; set; } = string.Empty;
 
-    // Computed properties are naturally ignored
-    public string DisplayName => $"{Name} ({Age})";
+    [Property(Index = true)] // Used in range queries
+    public DateTime DateOfBirth { get; set; }
+
+    [Property] // Regular property, no index needed
+    public string Bio { get; set; } = string.Empty;
+}
 }
 ```
 
@@ -111,24 +131,66 @@ public class Person : INode
 
 ### RelationshipAttribute
 
-Configure relationship types:
+The `[Relationship]` attribute configures how relationship classes map to graph edges, with support for directionality and custom labeling:
 
 ```csharp
-[Relationship("KNOWS")]
+[Relationship("KNOWS", Direction = RelationshipDirection.Bidirectional)]
 public class Knows : IRelationship<Person, Person>
 {
-    public string Id { get; set; }
-    public string SourceId { get; set; }
-    public string TargetId { get; set; }
-    public Person Source { get; set; }
-    public Person Target { get; set; }
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string SourceId { get; set; } = string.Empty;
+    public string TargetId { get; set; } = string.Empty;
+    public bool IsBidirectional { get; set; } = true;
 
-    [Property("since_date")]
+    public Person? Source { get; set; }
+    public Person? Target { get; set; }
+
+    [Property("since_date", Index = true)]
     public DateTime Since { get; set; }
+
+    [Property]
+    public string Relationship { get; set; } = string.Empty;
 }
 ```
 
-### Bidirectional Relationships
+### Relationship Direction Options
+
+The `RelationshipDirection` enum controls how relationships are interpreted:
+
+```csharp
+public enum RelationshipDirection
+{
+    Outgoing,      // Source -> Target (default)
+    Incoming,      // Target -> Source
+    Bidirectional  // Source <-> Target
+}
+```
+
+### Direction Examples
+
+```csharp
+// Unidirectional: Person follows another Person
+[Relationship("FOLLOWS", Direction = RelationshipDirection.Outgoing)]
+public class Follows : IRelationship<Person, Person>
+{
+    // Implementation...
+}
+
+// Bidirectional: Person is friends with another Person
+[Relationship("FRIENDS_WITH", Direction = RelationshipDirection.Bidirectional)]
+public class FriendsWith : IRelationship<Person, Person>
+{
+    public bool IsBidirectional { get; set; } = true;
+    // Implementation...
+}
+
+// Incoming relationship (less common)
+[Relationship("REPORTS_TO", Direction = RelationshipDirection.Incoming)]
+public class ReportsTo : IRelationship<Person, Person>
+{
+    // Implementation...
+}
+```
 
 ```csharp
 [Relationship("FRIEND_OF")]

@@ -1,6 +1,6 @@
 # Getting Started with Graph Model
 
-This guide will walk you through the basics of using Graph Model in your .NET applications.
+This guide will walk you through the basics of using Graph Model in your .NET applications, covering installation, domain modeling, and basic operations.
 
 ## Installation
 
@@ -20,7 +20,7 @@ dotnet add package Cvoya.Graph.Provider.Neo4j
 
 ### 1. Define Your Domain Model
 
-Start by defining your nodes and relationships:
+Start by defining your nodes and relationships with proper attributes and modern C# features:
 
 ```csharp
 using Cvoya.Graph.Model;
@@ -28,20 +28,43 @@ using Cvoya.Graph.Model;
 [Node("Person")]
 public class Person : INode
 {
-    public string Id { get; set; }
-    public string FirstName { get; set; }
-    public string LastName { get; set; }
-    public int Age { get; set; }
-    public string Bio { get; set; }
+    public string Id { get; set; } = Guid.NewGuid().ToString();
 
-    // Navigation property (optional)
-    public IList<Knows> Knows { get; set; } = new List<Knows>();
+    [Property("first_name", Index = true)]
+    public string FirstName { get; set; } = string.Empty;
+
+    [Property("last_name", Index = true)]
+    public string LastName { get; set; } = string.Empty;
+
+    [Property(Index = true)]
+    public int Age { get; set; }
+
+    [Property]
+    public string Bio { get; set; } = string.Empty;
+
+    [Property("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Property(Ignore = true)]
+    public string FullName => $"{FirstName} {LastName}";
 }
 
-[Relationship("KNOWS")]
-public class Knows : Relationship<Person, Person>
+[Relationship("KNOWS", Direction = RelationshipDirection.Bidirectional)]
+public class Knows : IRelationship<Person, Person>
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string SourceId { get; set; } = string.Empty;
+    public string TargetId { get; set; } = string.Empty;
+    public bool IsBidirectional { get; set; } = true;
+
+    public Person? Source { get; set; }
+    public Person? Target { get; set; }
+
+    [Property("since_date", Index = true)]
     public DateTime Since { get; set; }
+
+    [Property]
+    public string Relationship { get; set; } = "friend";
 }
 ```
 

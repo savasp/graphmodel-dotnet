@@ -1,6 +1,14 @@
-# Transactions
+# Transaction Management
 
-Graph Model provides comprehensive transaction support to ensure data consistency and atomicity in your graph operations.
+Graph Model provides comprehensive transaction support with full async/await patterns to ensure ACID properties and data consistency in your graph operations.
+
+## Key Features
+
+- **Full ACID compliance** - Atomicity, Consistency, Isolation, and Durability
+- **Async/await support** - Modern asynchronous transaction patterns
+- **Automatic resource management** - Implements `IAsyncDisposable` and `IDisposable`
+- **Exception safety** - Automatic rollback on errors
+- **Flexible scope** - All operations support optional transaction parameters
 
 ## Basic Transaction Usage
 
@@ -10,36 +18,44 @@ Graph Model provides comprehensive transaction support to ensure data consistenc
 await using var transaction = await graph.BeginTransaction();
 try
 {
-    // Perform your operations
-    await graph.CreateNode(node1, transaction: transaction);
-    await graph.CreateNode(node2, transaction: transaction);
-    await graph.CreateRelationship(relationship, transaction: transaction);
+    // Perform your operations within the transaction
+    await graph.CreateNode(person, transaction: transaction);
+    await graph.CreateNode(company, transaction: transaction);
 
-    // Commit if all operations succeed
+    var worksAt = new WorksAt
+    {
+        SourceId = person.Id,
+        TargetId = company.Id,
+        StartDate = DateTime.UtcNow
+    };
+    await graph.CreateRelationship(worksAt, transaction: transaction);
+
+    // Explicitly commit if all operations succeed
     await transaction.Commit();
 }
 catch (Exception ex)
 {
-    // Rollback on any error
+    // Automatic rollback on any error
     await transaction.Rollback();
     throw;
 }
 ```
 
-### Automatic Disposal
+### Automatic Disposal Pattern
 
-Transactions implement `IAsyncDisposable`, so they will automatically rollback if not committed:
+Transactions implement `IAsyncDisposable`, providing automatic rollback if not explicitly committed:
 
 ```csharp
 await using (var transaction = await graph.BeginTransaction())
 {
     await graph.CreateNode(node, transaction: transaction);
+    await graph.UpdateNode(existingNode, transaction: transaction);
 
-    if (someCondition)
+    if (someBusinessCondition)
     {
         await transaction.Commit();
     }
-    // If not committed, transaction will rollback on disposal
+    // If not committed, transaction automatically rolls back on disposal
 }
 ```
 
