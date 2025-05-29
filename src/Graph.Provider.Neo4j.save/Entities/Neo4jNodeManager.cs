@@ -51,17 +51,18 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     /// <summary>
     /// Creates a node in Neo4j.
     /// </summary>
+    /// <param name="parentId">Optional parent node ID for hierarchical relationships</param>
     /// <param name="node">The node to create</param>
     /// <param name="options">Graph operation options</param>
     /// <param name="tx">The transaction to use</param>
     /// <param name="propertyName">Optional property name when creating from a parent relationship</param>
     /// <returns>The ID of the created node</returns>
-    public async Task<string> CreateNode(Model.INode node, GraphOperationOptions options, IAsyncTransaction tx, string? propertyName = null)
+    public async Task<string> CreateNode(string? parentId, object node, GraphOperationOptions options, IAsyncTransaction tx, string? propertyName = null)
     {
         // Create a dictionary to track object instances if not already exists
         var objectTracker = new Dictionary<object, string>();
 
-        return await CreateNodeInternal(node.Id, node, options, tx, propertyName, objectTracker);
+        return await CreateNodeInternal(parentId, node, options, tx, propertyName, objectTracker);
     }
 
     /// <summary>

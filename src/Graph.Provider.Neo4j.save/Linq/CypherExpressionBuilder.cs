@@ -15,13 +15,11 @@
 using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
-using System.Text;
 using Cvoya.Graph.Model;
-using Cvoya.Graph.Provider.Neo4j.Schema;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq;
 
-internal class CypherExpressionBuilder
+internal static class CypherExpressionBuilder
 {
     public static string BuildCypherConcat(Expression expr, string varName)
     {
@@ -474,7 +472,7 @@ internal class CypherExpressionBuilder
                 ProcessMethodCall(methodCall, elementType, context, provider);
                 break;
             case ConstantExpression constant when constant.Type.IsGenericType &&
-                constant.Type.GetGenericTypeDefinition() == typeof(GraphQueryable<>):
+                constant.Type.GetGenericTypeDefinition() == typeof(Neo4jQueryable<>):
                 // Root queryable
                 context.CurrentAlias = "n";
                 context.RootType = elementType;
@@ -543,7 +541,7 @@ internal class CypherExpressionBuilder
         var targetAlias = context.GetNextAlias("n");
 
         // Build the relationship pattern
-        var relLabel = Neo4jTypeManager.GetLabel(relationshipType);
+        var relLabel = Neo4jTypeManager.GetRelationshipType(relationshipType);
         var targetLabel = Neo4jTypeManager.GetLabel(targetType);
 
         if (context.Match.Length > 0) context.Match.AppendLine();
@@ -743,7 +741,7 @@ internal class CypherExpressionBuilder
         var targetAlias = context.GetNextAlias("n");
 
         // Build traversal pattern
-        var relLabel = Neo4jTypeManager.GetLabel(relationshipType);
+        var relLabel = Neo4jTypeManager.GetRelationshipType(relationshipType);
         var targetLabel = Neo4jTypeManager.GetLabel(targetType);
 
         if (context.Match.Length > 0) context.Match.AppendLine();
@@ -854,7 +852,7 @@ internal class CypherExpressionBuilder
         return query.ToString();
     }
 
-    private void ProcessWhereClause(Expression expression, CypherBuildContext context)
+    private static void ProcessWhereClause(Expression expression, CypherBuildContext context)
     {
         // Process WHERE clause expressions
         // This would handle property access, comparisons, etc.
@@ -862,13 +860,13 @@ internal class CypherExpressionBuilder
         throw new NotImplementedException("ProcessWhereClause implementation needed");
     }
 
-    private void ProcessSelectClause(LambdaExpression selector, CypherBuildContext context)
+    private static void ProcessSelectClause(LambdaExpression selector, CypherBuildContext context)
     {
         // Process SELECT projections
         throw new NotImplementedException("ProcessSelectClause implementation needed");
     }
 
-    private void ProcessOrderByClause(LambdaExpression selector, bool descending, CypherBuildContext context)
+    private static void ProcessOrderByClause(LambdaExpression selector, bool descending, CypherBuildContext context)
     {
         // Process ORDER BY
         throw new NotImplementedException("ProcessOrderByClause implementation needed");

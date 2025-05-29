@@ -164,7 +164,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// <param name="relationshipId">The ID of the relationship to delete</param>
     /// <param name="options">Graph operation options</param>
     /// <param name="tx">The transaction to use</param>
-    public async Task DeleteRelationship(string relationshipId, GraphOperationOptions options, IAsyncTransaction tx)
+    public static async Task DeleteRelationship(string relationshipId, GraphOperationOptions options, IAsyncTransaction tx)
     {
         var cypher = $"MATCH ()-[r]->() WHERE r.{nameof(Model.IRelationship.Id)} = $relationshipId DELETE r";
         await tx.RunAsync(cypher, new { relationshipId });

@@ -15,10 +15,10 @@
     <!-- Package Information -->
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Provider.Neo4j</PackageId>
-        <Version>0.2.0</Version>
+        <Version>0.1.2</Version>
         <Authors>Savas Parastatidis</Authors>
         <Company>Cvoya</Company>
-        <Description>A graph provider for the Neo4j database with support for LINQ and the updated Graph.Model abstraction.</Description>
+        <Description>A graph provider for the Neo4j database with support for LINQ.</Description>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/savasp/graphmodel</PackageProjectUrl>
         <RepositoryUrl>https://github.com/savasp/graphmodel</RepositoryUrl>
@@ -32,6 +32,7 @@
     <ItemGroup>
         <None Include="README.md" Pack="true" PackagePath="\" />
     </ItemGroup>
+
 
     <PropertyGroup>
         <!-- Generate XML documentation -->

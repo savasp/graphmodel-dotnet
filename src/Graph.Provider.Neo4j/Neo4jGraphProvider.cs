@@ -24,13 +24,14 @@ using Neo4j.Driver;
 namespace Cvoya.Graph.Provider.Neo4j;
 
 /// <summary>
-/// Neo4j implementation of the IGraph interface using a modular design.
+/// Neo4j implementation of the IGraph interface using a modular design with IGraphQueryable support.
 /// </summary>
 public class Neo4jGraphProvider : IGraph
 {
     private readonly Microsoft.Extensions.Logging.ILogger? _logger;
     private readonly IDriver _driver;
     private readonly string _databaseName;
+    private bool _disposed;
 
     // Component services
     private readonly Neo4jQueryExecutor _queryExecutor;
@@ -47,259 +48,509 @@ public class Neo4jGraphProvider : IGraph
     /// <param name="password">The password for authentication.</param>
     /// <param name="databaseName">The name of the database.</param>
     /// <param name="logger">The logger instance.</param>
-    /// <remarks>
-    /// The environment variables used for configuration, if not provided, are:
-    /// - NEO4J_URI: The URI of the Neo4j database. Default: "bolt://localhost:7687".
-    /// - NEO4J_USER: The username for authentication. Default: "neo4j".
-    /// - NEO4J_PASSWORD: The password for authentication. Default: "password".
-    /// - NEO4J_DATABASE: The name of the database. Default: "neo4j".
-    /// </remarks>
     public Neo4jGraphProvider(
-        string? uri = null,
-        string? username = null,
-        string? password = null,
-        string? databaseName = null,
+        string uri,
+        string username,
+        string password,
+        string databaseName = "neo4j",
         Microsoft.Extensions.Logging.ILogger? logger = null)
     {
-        _logger = logger;
-        uri ??= Environment.GetEnvironmentVariable("NEO4J_URI") ?? "bolt://localhost:7687";
-        username ??= Environment.GetEnvironmentVariable("NEO4J_USER") ?? "neo4j";
-        password ??= Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "password";
-        _databaseName = databaseName ?? Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
+        ArgumentNullException.ThrowIfNull(uri);
+        ArgumentNullException.ThrowIfNull(username);
+        ArgumentNullException.ThrowIfNull(password);
+        ArgumentNullException.ThrowIfNull(databaseName);
 
-        _driver = username is null
-            ? GraphDatabase.Driver(uri)
-            : GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
+        _logger = logger;
+        _databaseName = databaseName;
+
+        // Create the Neo4j driver
+        _driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
 
         // Initialize component services
-        _entityConverter = new Neo4jEntityConverter(logger);
-        _queryExecutor = new Neo4jQueryExecutor(_driver, _databaseName, logger);
-        _constraintManager = new Neo4jConstraintManager(_driver, _databaseName, logger);
-        _nodeManager = new Neo4jNodeManager(_queryExecutor, _constraintManager, _entityConverter, logger);
-        _relationshipManager = new Neo4jRelationshipManager(_queryExecutor, _constraintManager, _entityConverter, logger);
+        _queryExecutor = new Neo4jQueryExecutor(_driver, _databaseName, _logger);
+        _constraintManager = new Neo4jConstraintManager(_driver, _databaseName, _logger);
+        _entityConverter = new Neo4jEntityConverter(_logger);
+        _nodeManager = new Neo4jNodeManager(_queryExecutor, _constraintManager, _entityConverter, _logger);
+        _relationshipManager = new Neo4jRelationshipManager(_queryExecutor, _constraintManager, _entityConverter, _logger);
+
+        _logger?.LogInformation("Neo4jGraphProvider initialized for database '{Database}' at '{Uri}'", databaseName, uri);
     }
 
     /// <summary>
-    /// Begins a new transaction.
+    /// Initializes a new instance of the <see cref="Neo4jGraphProvider"/> class with an existing driver.
     /// </summary>
-    /// <returns>A new graph transaction</returns>
-    public async Task<IGraphTransaction> BeginTransaction()
+    /// <param name="driver">The Neo4j driver instance.</param>
+    /// <param name="databaseName">The name of the database.</param>
+    /// <param name="logger">The logger instance.</param>
+    public Neo4jGraphProvider(
+        IDriver driver,
+        string databaseName = "neo4j",
+        Microsoft.Extensions.Logging.ILogger? logger = null)
     {
-        var session = _driver.AsyncSession(builder => builder.WithDatabase(_databaseName));
-        var transaction = await session.BeginTransactionAsync();
-        return new Neo4jGraphTransaction(session, transaction);
+        ArgumentNullException.ThrowIfNull(driver);
+        ArgumentNullException.ThrowIfNull(databaseName);
+
+        _logger = logger;
+        _driver = driver;
+        _databaseName = databaseName;
+
+        // Initialize component services
+        _queryExecutor = new Neo4jQueryExecutor(_driver, _databaseName, _logger);
+        _constraintManager = new Neo4jConstraintManager(_driver, _databaseName, _logger);
+        _entityConverter = new Neo4jEntityConverter(_logger);
+        _nodeManager = new Neo4jNodeManager(_queryExecutor, _constraintManager, _entityConverter, _logger);
+        _relationshipManager = new Neo4jRelationshipManager(_queryExecutor, _constraintManager, _entityConverter, _logger);
+
+        _logger?.LogInformation("Neo4jGraphProvider initialized with existing driver for database '{Database}'", databaseName);
     }
 
+    #region IGraph Implementation
+
     /// <inheritdoc />
-    public IQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public IGraphQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where N : class, Cvoya.Graph.Model.INode, new()
     {
-        var provider = new Neo4jQueryProvider(this, options, _logger, transaction as Neo4jGraphTransaction);
-        var query = new Neo4jQueryable<N>(provider, options, transaction);
-        return query;
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        try
+        {
+            _logger?.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
+
+            var queryProvider = new GraphQueryProvider(this, options, _logger, transaction, typeof(N));
+            return new GraphQueryable<N>(queryProvider, options, transaction);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to create nodes queryable for type {typeof(N).Name}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
     }
 
     /// <inheritdoc />
-    public IQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public IGraphQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : class, Cvoya.Graph.Model.IRelationship, new()
     {
-        var provider = new Neo4jQueryProvider(this, options, _logger, transaction as Neo4jGraphTransaction);
-        var query = new Neo4jQueryable<R>(provider, options, transaction);
-        return query;
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        try
+        {
+            _logger?.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
+
+            var queryProvider = new GraphQueryProvider(this, options, _logger, transaction, typeof(R));
+            return new GraphQueryable<R>(queryProvider, options, transaction);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to create relationships queryable for type {typeof(R).Name}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
     }
 
     /// <inheritdoc />
-    public Task<N> GetNode<N>(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task<N> GetNode<N>(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where N : class, Cvoya.Graph.Model.INode, new()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(id);
 
-        // Validate the node type
-        Helpers.EnforceGraphConstraintsForNodeType<N>();
-
-        return ExecuteInTransaction(transaction, async tx =>
+        try
         {
-            return await _nodeManager.GetNode<N>(id, options, tx);
-        }, $"Failed to get node with ID: {id}");
+            _logger?.LogDebug("Getting node {NodeId} of type {NodeType}", id, typeof(N).Name);
+
+            var result = await ExecuteInTransaction(
+                transaction,
+                tx => _nodeManager.GetNode<N>(id, options, tx),
+                $"Failed to get node {id} of type {typeof(N).Name}");
+
+            _logger?.LogDebug("Successfully retrieved node {NodeId}", id);
+            return result;
+        }
+        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException)
+        {
+            var message = $"Failed to get node {id} of type {typeof(N).Name}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
     }
 
     /// <inheritdoc />
-    public Task<IEnumerable<N>> GetNodes<N>(
-        IEnumerable<string> ids,
-        GraphOperationOptions options = default,
-        IGraphTransaction? transaction = null)
+    public async Task<IEnumerable<N>> GetNodes<N>(IEnumerable<string> ids, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where N : class, Cvoya.Graph.Model.INode, new()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(ids);
 
-        // Validate the node type
-        Helpers.EnforceGraphConstraintsForNodeType<N>();
-
-        var idList = ids.ToList();
-        if (idList.Count == 0)
+        try
         {
-            return Task.FromResult(Enumerable.Empty<N>());
+            var idList = ids.ToList();
+            _logger?.LogDebug("Getting {Count} nodes of type {NodeType}", idList.Count, typeof(N).Name);
+
+            var tasks = ExecuteInTransaction(
+                transaction,
+                tx => _nodeManager.GetNodes<N>(idList, options, tx),
+                $"Failed to get nodes of type {typeof(N).Name}");
+
+            var result = await tasks;
+
+            _logger?.LogDebug("Successfully retrieved {Count} nodes", result.Count());
+            return result;
         }
-
-        return ExecuteInTransaction(transaction, async tx =>
+        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException)
         {
-            return await _nodeManager.GetNodes<N>(idList, options, tx);
-        }, "Failed to get nodes");
+            var message = $"Failed to get nodes of type {typeof(N).Name}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
     }
 
     /// <inheritdoc />
-    public Task<R> GetRelationship<R>(
-        string id,
-        GraphOperationOptions options = default,
-        IGraphTransaction? transaction = null)
+    public async Task<R> GetRelationship<R>(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : class, Cvoya.Graph.Model.IRelationship, new()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(id);
 
-        // Validate the relationship type
-        Helpers.EnforceGraphConstraintsForRelationshipType<R>();
-
-        return ExecuteInTransaction(transaction, async tx =>
+        try
         {
-            return await _relationshipManager.GetRelationship<R>(id, options, tx);
-        }, $"Failed to get relationship with ID: {id}");
+            _logger?.LogDebug("Getting relationship {RelationshipId} of type {RelationshipType}", id, typeof(R).Name);
+
+            var result = await ExecuteInTransaction(
+                transaction,
+                tx => _relationshipManager.GetRelationship<R>(id, options, tx),
+                $"Failed to get relationship {id} of type {typeof(R).Name}");
+
+            _logger?.LogDebug("Successfully retrieved relationship {RelationshipId}", id);
+            return result;
+        }
+        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException)
+        {
+            var message = $"Failed to get relationship {id} of type {typeof(R).Name}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
     }
 
     /// <inheritdoc />
-    public Task<IEnumerable<R>> GetRelationships<R>(
-        IEnumerable<string> ids,
-        GraphOperationOptions options = default,
-        IGraphTransaction? transaction = null)
+    public async Task<IEnumerable<R>> GetRelationships<R>(IEnumerable<string> ids, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : class, Cvoya.Graph.Model.IRelationship, new()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(ids);
 
-        // Validate the relationship type
-        Helpers.EnforceGraphConstraintsForRelationshipType<R>();
-
-        var idList = ids.ToList();
-        if (idList.Count == 0)
+        try
         {
-            return Task.FromResult(Enumerable.Empty<R>());
+            var idList = ids.ToList();
+            _logger?.LogDebug("Getting {Count} relationships of type {RelationshipType}", idList.Count, typeof(R).Name);
+
+            var result = await ExecuteInTransaction(
+                transaction,
+                tx => _relationshipManager.GetRelationships<R>(idList, options, tx),
+                $"Failed to get relationships of type {typeof(R).Name}");
+
+            _logger?.LogDebug("Successfully retrieved {Count} relationships", result.Count());
+            return result;
         }
-
-        return ExecuteInTransaction(transaction, async tx =>
+        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException)
         {
-            return await _relationshipManager.GetRelationships<R>(idList, options, tx);
-        }, $"Failed to get relationships");
+            var message = $"Failed to get relationships of type {typeof(R).Name}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
     }
 
     /// <inheritdoc />
-    public Task CreateNode<N>(N node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task CreateNode<N>(N node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where N : class, Cvoya.Graph.Model.INode, new()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(node);
 
-        // Validate the node        
         Helpers.EnforceGraphConstraintsForNode(node);
 
-        return ExecuteInTransaction<bool>(transaction, async tx =>
+        try
         {
-            // Create the node
-            await _nodeManager.CreateNode(parentId: null, node: node, options, tx: tx);
-            return true;
-        }, $"Failed to create node");
+            _logger?.LogDebug("Creating node of type {NodeType}", typeof(N).Name);
+
+            await ExecuteInTransaction(
+                transaction,
+                tx => _nodeManager.CreateNode(node, options, tx),
+                $"Failed to create node of type {typeof(N).Name}");
+
+            _logger?.LogDebug("Successfully created node {NodeId}", node.Id);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to create node of type {typeof(N).Name}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
     }
 
     /// <inheritdoc />
-    public Task CreateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task CreateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : class, Cvoya.Graph.Model.IRelationship, new()
     {
-        // Validate the relationship        
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(relationship);
+
         Helpers.EnforceGraphConstraintsForRelationship(relationship);
 
-        return ExecuteInTransaction<bool>(transaction, async tx =>
+        try
         {
-            // Create the relationship
-            await _relationshipManager.CreateRelationship(relationship, options, tx);
-            return true;
-        }, $"Failed to create relationship");
+            _logger?.LogDebug("Creating relationship of type {RelationshipType}", typeof(R).Name);
+
+            await ExecuteInTransaction(
+                transaction,
+                async tx =>
+                {
+                    await _relationshipManager.CreateRelationship(relationship, options, tx);
+                    return true;
+                },
+                $"Failed to create relationship of type {typeof(R).Name}");
+
+            _logger?.LogDebug("Successfully created relationship {RelationshipId}", relationship.Id);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to create relationship of type {typeof(R).Name}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
     }
 
     /// <inheritdoc />
-    public Task UpdateNode<N>(N node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task UpdateNode<N>(N node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where N : class, Cvoya.Graph.Model.INode, new()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(node);
+
         Helpers.EnforceGraphConstraintsForNode(node);
 
-        return ExecuteInTransaction<bool>(transaction, async tx =>
+        try
         {
-            // Update the node
-            await _nodeManager.UpdateNode(node, options, tx);
-            return true;
-        }, $"Failed to update node");
+            _logger?.LogDebug("Updating node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
+
+            await ExecuteInTransaction(
+                transaction,
+                async tx =>
+                {
+                    await _nodeManager.UpdateNode(node, options, tx);
+                    return true;
+                },
+            $"Failed to update node {node.Id} of type {typeof(N).Name}");
+
+            _logger?.LogDebug("Successfully updated node {NodeId}", node.Id);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to update node {node.Id} of type {typeof(N).Name}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
     }
 
     /// <inheritdoc />
-    public Task UpdateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task UpdateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : class, Cvoya.Graph.Model.IRelationship, new()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(relationship);
+
         Helpers.EnforceGraphConstraintsForRelationship(relationship);
 
-        return ExecuteInTransaction<bool>(transaction, async tx =>
+        try
         {
-            // Update the node
-            await _relationshipManager.UpdateRelationship(relationship, options, tx);
-            return true;
-        }, $"Failed to update relationship");
+            _logger?.LogDebug("Updating relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
+
+            await ExecuteInTransaction(
+                transaction,
+                async tx =>
+                {
+                    await _relationshipManager.UpdateRelationship(relationship, options, tx);
+                    return true;
+                },
+            $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}");
+
+            _logger?.LogDebug("Successfully updated relationship {RelationshipId}", relationship.Id);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
     }
 
     /// <inheritdoc />
-    public Task DeleteRelationship(string relationshipId, GraphOperationOptions options, IGraphTransaction? transaction = null)
+    public async Task<IGraphTransaction> BeginTransaction()
     {
-        ArgumentNullException.ThrowIfNull(relationshipId);
+        ObjectDisposedException.ThrowIf(_disposed, this);
 
-        return ExecuteInTransaction<bool>(transaction, async tx =>
+        try
         {
-            // Delete the relationship
-            await Neo4jRelationshipManager.DeleteRelationship(relationshipId, options, tx);
-            return true;
-        }, $"Failed to delete relationship");
+            _logger?.LogDebug("Beginning new transaction");
+
+            var session = _driver.AsyncSession(o => o.WithDatabase(_databaseName));
+            var transaction = await session.BeginTransactionAsync();
+            var graphTransaction = new Neo4jGraphTransaction(session, transaction);
+
+            _logger?.LogDebug("Successfully began transaction");
+            return graphTransaction;
+        }
+        catch (Exception ex) when (ex is not GraphTransactionException)
+        {
+            const string message = "Failed to begin transaction";
+            _logger?.LogError(ex, message);
+            throw new GraphTransactionException(message, ex);
+        }
     }
 
     /// <inheritdoc />
-    public Task DeleteNode(string nodeId, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task DeleteNode(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
     {
-        ArgumentNullException.ThrowIfNull(nodeId);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(id);
 
-        return ExecuteInTransaction<bool>(transaction, async tx =>
+        try
         {
-            // Delete the node
-            await _nodeManager.DeleteNode(nodeId, options, tx);
-            return true;
-        }, $"Failed to delete node");
+            _logger?.LogDebug("Deleting node {NodeId}", id);
+
+            await ExecuteInTransaction(
+                transaction,
+                async tx =>
+                {
+                    await _nodeManager.DeleteNode(id, options, tx);
+                    return true;
+                },
+                $"Failed to delete node {id}");
+
+            _logger?.LogDebug("Successfully deleted node {NodeId}", id);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to delete node {id}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task DeleteRelationship(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(id);
+
+        try
+        {
+            _logger?.LogDebug("Deleting relationship {RelationshipId}", id);
+
+            await ExecuteInTransaction(
+                transaction,
+                async tx =>
+                {
+                    await _relationshipManager.DeleteRelationship(id, options, tx);
+                    return true;
+                },
+                $"Failed to delete relationship {id}");
+
+            _logger?.LogDebug("Successfully deleted relationship {RelationshipId}", id);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to delete relationship {id}";
+            _logger?.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
+    }
+
+    #endregion
+
+    #region Internal Access Methods for Query Provider
+
+    /// <summary>
+    /// Gets the internal query executor for use by the query provider.
+    /// </summary>
+    internal Neo4jQueryExecutor QueryExecutor => _queryExecutor;
+
+    /// <summary>
+    /// Gets the internal entity converter for use by the query provider.
+    /// </summary>
+    internal Neo4jEntityConverter EntityConverter => _entityConverter;
+
+    /// <summary>
+    /// Gets the internal constraint manager for use by the query provider.
+    /// </summary>
+    internal Neo4jConstraintManager ConstraintManager => _constraintManager;
+
+    /// <summary>
+    /// Gets the database name for use by the query provider.
+    /// </summary>
+    internal string DatabaseName => _databaseName;
+
+    /// <summary>
+    /// Gets the driver instance for use by the query provider.
+    /// </summary>
+    internal IDriver Driver => _driver;
+
+    /// <summary>
+    /// Extracts the underlying Neo4j transaction from a graph transaction.
+    /// </summary>
+    /// <param name="transaction">The graph transaction to extract from</param>
+    /// <returns>The underlying Neo4j transaction or null</returns>
+    private static IAsyncTransaction? ExtractNeo4jTransaction(IGraphTransaction? transaction)
+    {
+        return (transaction as Neo4jGraphTransaction)?.GetTransaction();
     }
 
     /// <summary>
-    /// Gets or creates a Neo4j transaction from a graph transaction.
+    /// Gets or creates a Neo4j transaction for query execution.
     /// </summary>
+    /// <param name="transaction">The graph transaction to use or null to create a new one</param>
+    /// <returns>A tuple containing the session and transaction</returns>
     internal async Task<(IAsyncSession, IAsyncTransaction)> GetOrCreateTransaction(IGraphTransaction? transaction)
     {
         return await _queryExecutor.GetOrCreateTransaction(transaction);
     }
 
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        DisposeAsync().AsTask().GetAwaiter().GetResult();
-    }
+    #endregion
+
+    #region IAsyncDisposable Implementation
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        await _driver.DisposeAsync();
-        GC.SuppressFinalize(this);
+        if (_disposed)
+            return;
+
+        try
+        {
+            _logger?.LogDebug("Disposing Neo4jGraphProvider");
+
+            await _driver.DisposeAsync();
+
+            _logger?.LogDebug("Neo4jGraphProvider disposed successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error during Neo4jGraphProvider disposal");
+        }
+        finally
+        {
+            _disposed = true;
+        }
     }
+
+    #endregion
+
+    #region private
 
     private async Task<T> ExecuteInTransaction<T>(
         IGraphTransaction? transaction,
         Func<IAsyncTransaction, Task<T>> function,
-        string errorMessage)
+    string errorMessage)
     {
         var (session, tx) = await _queryExecutor.GetOrCreateTransaction(transaction);
         try
@@ -336,4 +587,5 @@ public class Neo4jGraphProvider : IGraph
             }
         }
     }
+    #endregion
 }

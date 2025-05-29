@@ -48,56 +48,36 @@ internal class GraphTraversal<TNode, TRelationship> : IGraphTraversal<TNode, TRe
         return this;
     }
 
-    public IGraphTraversal<TNode, TRelationship> InDirection(TraversalDirection direction)
+    public IQueryable<TTargetNode> To<TTargetNode>() where TTargetNode : class, INode, new()
     {
-        return new GraphTraversal<TNode, TRelationship>(_source, direction, _nodeFilter)
-        {
-            _relationshipFilter = _relationshipFilter,
-            _minDepth = _minDepth,
-            _maxDepth = _maxDepth
-        };
+        return To<TTargetNode>(null);
     }
 
-    public IGraphTraversal<TNode, TRelationship> WhereRelationship(Expression<Func<TRelationship, bool>> predicate)
+    public IQueryable<TTargetNode> To<TTargetNode>(Expression<Func<TTargetNode, bool>>? targetFilter)
+        where TTargetNode : class, INode, new()
     {
-        return Where(predicate);
-    }
-
-    public IGraphTraversal<TNode, TRelationship> WithDepth(int maxDepth)
-    {
-        return WithDepth(1, maxDepth);
-    }
-
-    public IGraphQueryable<TTarget> To<TTarget>() where TTarget : class, INode, new()
-    {
-        return To<TTarget>(_ => true);
-    }
-
-    public IGraphQueryable<TTarget> To<TTarget>(Expression<Func<TTarget, bool>> predicate)
-        where TTarget : class, INode, new()
-    {
-        var provider = (_source.Provider as GraphQueryProvider)
+        var provider = (_source.Provider as Neo4jQueryProvider)
             ?? throw new InvalidOperationException("Query provider must be Neo4jQueryProvider");
 
         // Build the traversal expression
         var expression = Expression.Call(
             null,
-            TraversalToMethod.MakeGenericMethod(typeof(TNode), typeof(TRelationship), typeof(TTarget)),
+            TraversalToMethod.MakeGenericMethod(typeof(TNode), typeof(TRelationship), typeof(TTargetNode)),
             _source.Expression,
             Expression.Constant(_direction),
             Expression.Constant(_nodeFilter, typeof(Expression<Func<TNode, bool>>)),
             Expression.Constant(_relationshipFilter, typeof(Expression<Func<TRelationship, bool>>)),
-            Expression.Constant(predicate, typeof(Expression<Func<TTarget, bool>>)),
+            Expression.Constant(targetFilter, typeof(Expression<Func<TTargetNode, bool>>)),
             Expression.Constant(_minDepth),
             Expression.Constant(_maxDepth)
         );
 
-        return new GraphQueryable<TTarget>(provider, expression);
+        return provider.CreateQuery<TTargetNode>(expression);
     }
 
-    public IGraphQueryable<TRelationship> Relationships()
+    public IQueryable<TRelationship> Relationships()
     {
-        var provider = (_source.Provider as GraphQueryProvider)
+        var provider = (_source.Provider as Neo4jQueryProvider)
             ?? throw new InvalidOperationException("Query provider must be Neo4jQueryProvider");
 
         var expression = Expression.Call(
@@ -111,13 +91,12 @@ internal class GraphTraversal<TNode, TRelationship> : IGraphTraversal<TNode, TRe
             Expression.Constant(_maxDepth)
         );
 
-        return new GraphQueryable<TRelationship>(provider, expression);
+        return provider.CreateQuery<TRelationship>(expression);
     }
 
-    public IQueryable<IGraphPath<TNode, TRelationship, TTarget>> Paths<TTarget>()
-        where TTarget : class, INode, new()
+    public IQueryable<GraphPath<TNode>> Paths()
     {
-        var provider = (_source.Provider as GraphQueryProvider)
+        var provider = (_source.Provider as Neo4jQueryProvider)
             ?? throw new InvalidOperationException("Query provider must be Neo4jQueryProvider");
 
         var expression = Expression.Call(
@@ -131,26 +110,7 @@ internal class GraphTraversal<TNode, TRelationship> : IGraphTraversal<TNode, TRe
             Expression.Constant(_maxDepth)
         );
 
-        return provider.CreateQuery<IGraphPath<TNode, TRelationship, TTarget>>(expression);
-    }
-
-    public IGraphTraversal<TNode, TNextRel> ThenTraverse<TNextRel>()
-        where TNextRel : class, IRelationship, new()
-    {
-        // This would typically require chaining traversals which is complex
-        // For now, throw not implemented as this is advanced functionality
-        throw new NotImplementedException("ThenTraverse is not yet implemented");
-    }
-
-    public IGraphTraversal<TNode, TRelationship> WithOptions(TraversalOptions options)
-    {
-        var result = new GraphTraversal<TNode, TRelationship>(_source, options.Direction, _nodeFilter)
-        {
-            _relationshipFilter = _relationshipFilter,
-            _minDepth = options.MinDepth,
-            _maxDepth = options.MaxDepth
-        };
-        return result;
+        return provider.CreateQuery<GraphPath<TNode>>(expression);
     }
 
     public IGraphTraversal<TNode, TRelationship> WithDepth(int minDepth, int maxDepth)
@@ -205,7 +165,7 @@ internal class GraphTraversal<TNode, TRelationship> : IGraphTraversal<TNode, TRe
         throw new NotImplementedException("This method should not be called directly");
     }
 
-    private static IQueryable<GraphPath<TSourceNode, TRel>> TraversalPathsInternal<TSourceNode, TRel>(
+    private static IQueryable<GraphPath<TSourceNode>> TraversalPathsInternal<TSourceNode, TRel>(
         IQueryable<TSourceNode> source,
         TraversalDirection direction,
         Expression<Func<TSourceNode, bool>>? nodeFilter,
@@ -216,5 +176,50 @@ internal class GraphTraversal<TNode, TRelationship> : IGraphTraversal<TNode, TRe
         where TRel : class, IRelationship, new()
     {
         throw new NotImplementedException("This method should not be called directly");
+    }
+
+    public IGraphTraversal<TNode, TRelationship> InDirection(TraversalDirection direction)
+    {
+        throw new NotImplementedException();
+    }
+
+    public IGraphTraversal<TNode, TRelationship> WhereRelationship(Expression<Func<TRelationship, bool>> predicate)
+    {
+        throw new NotImplementedException();
+    }
+
+    public IGraphTraversal<TNode, TRelationship> WithDepth(int maxDepth)
+    {
+        throw new NotImplementedException();
+    }
+
+    IGraphQueryable<TTarget> IGraphTraversal<TNode, TRelationship>.To<TTarget>()
+    {
+        throw new NotImplementedException();
+    }
+
+    IGraphQueryable<TTarget> IGraphTraversal<TNode, TRelationship>.To<TTarget>(Expression<Func<TTarget, bool>> predicate)
+    {
+        throw new NotImplementedException();
+    }
+
+    IGraphQueryable<TRelationship> IGraphTraversal<TNode, TRelationship>.Relationships()
+    {
+        throw new NotImplementedException();
+    }
+
+    IQueryable<IGraphPath<TNode, TRelationship, TTarget>> IGraphTraversal<TNode, TRelationship>.Paths<TTarget>()
+    {
+        throw new NotImplementedException();
+    }
+
+    IGraphTraversal<TNode, TNextRel> IGraphTraversal<TNode, TRelationship>.ThenTraverse<TNextRel>()
+    {
+        throw new NotImplementedException();
+    }
+
+    public IGraphTraversal<TNode, TRelationship> WithOptions(TraversalOptions options)
+    {
+        throw new NotImplementedException();
     }
 }

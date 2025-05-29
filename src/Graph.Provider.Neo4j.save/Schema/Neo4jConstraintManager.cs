@@ -64,7 +64,7 @@ internal class Neo4jConstraintManager
         // Create the session and transaction outside the provider
         var session = _driver.AsyncSession(builder => builder.WithDatabase(_databaseName));
         await using var _ = session;
-
+        
         var tx = await session.BeginTransactionAsync();
         await using var __ = tx;
 
@@ -98,7 +98,7 @@ internal class Neo4jConstraintManager
         var cypher = "SHOW CONSTRAINTS";
         var session = _driver.AsyncSession(builder => builder.WithDatabase(_databaseName));
         await using var _ = session;
-
+        
         var tx = await session.BeginTransactionAsync();
         await using var __ = tx;
 
@@ -108,7 +108,7 @@ internal class Neo4jConstraintManager
             while (await cursor.FetchAsync())
             {
                 var record = cursor.Current;
-                if (record.Values.TryGetValue("labelsOrTypes", out var labelsOrTypesObj) &&
+                if (record.Values.TryGetValue("labelsOrTypes", out var labelsOrTypesObj) && 
                     labelsOrTypesObj is IEnumerable<object> labelsOrTypes)
                 {
                     foreach (var label in labelsOrTypes)
@@ -120,7 +120,7 @@ internal class Neo4jConstraintManager
                     }
                 }
             }
-
+            
             await tx.CommitAsync();
         }
         catch (Exception ex)
