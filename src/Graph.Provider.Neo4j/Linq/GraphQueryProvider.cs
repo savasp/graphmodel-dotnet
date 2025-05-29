@@ -35,20 +35,37 @@ internal class GraphQueryProvider(
     public IQueryable CreateQuery(Expression expression)
     {
         var elementType = expression.Type.GetGenericArguments().FirstOrDefault() ?? _elementType;
-        var queryableType = typeof(Neo4jQueryable<>).MakeGenericType(elementType);
+        var queryableType = typeof(GraphQueryable<>).MakeGenericType(elementType);
 
-        // Pass options to the new queryable
+        // Pass options and context to the new queryable
         return (IQueryable)Activator.CreateInstance(
             queryableType,
             this,
             _options,
             expression,
-            _transaction)!;
+            _transaction,
+            new GraphQueryContext())!;
     }
 
     public IQueryable<TElement> CreateQuery<TElement>(Expression expression)
     {
-        return new Neo4jQueryable<TElement>(this, _options, expression, _transaction);
+        // We need to handle the case where TElement might not be a class
+        // Use reflection to create the appropriate GraphQueryable<T> instance
+        var elementType = typeof(TElement);
+        if (!elementType.IsClass && !elementType.IsInterface)
+        {
+            throw new InvalidOperationException($"Type {elementType.Name} must be a reference type to be used in graph queries");
+        }
+        
+        // Use reflection to create GraphQueryable<TElement> since we can't guarantee TElement : class constraint
+        var queryableType = typeof(GraphQueryable<>).MakeGenericType(elementType);
+        return (IQueryable<TElement>)Activator.CreateInstance(
+            queryableType,
+            this,
+            _options,
+            expression,
+            _transaction,
+            new GraphQueryContext())!;
     }
 
     public object? Execute(Expression expression)

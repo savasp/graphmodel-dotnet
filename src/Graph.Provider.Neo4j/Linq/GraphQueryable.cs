@@ -64,14 +64,20 @@ internal class GraphQueryable<T> : IGraphQueryable<T> where T : class
 
     public IGraphQueryable<T> WithDepth(int depth)
     {
-        var newOptions = Options with { Depth = depth };
-        return WithOptions(newOptions);
+        // Depth control is handled through the query context, not options
+        // For now, we'll store this in the expression for the query provider to handle
+        var methodInfo = typeof(IGraphQueryable<T>).GetMethod(nameof(WithDepth), [typeof(int)])!;
+        var newExpression = Expression.Call(Expression, methodInfo, Expression.Constant(depth));
+        return new GraphQueryable<T>((GraphQueryProvider)Provider, Options, newExpression, Transaction, Context);
     }
 
     public IGraphQueryable<T> WithDepth(int minDepth, int maxDepth)
     {
-        var newOptions = Options with { Depth = maxDepth, MinDepth = minDepth };
-        return WithOptions(newOptions);
+        // Depth control is handled through the query context, not options
+        // For now, we'll store this in the expression for the query provider to handle
+        var methodInfo = typeof(IGraphQueryable<T>).GetMethod(nameof(WithDepth), [typeof(int), typeof(int)])!;
+        var newExpression = Expression.Call(Expression, methodInfo, Expression.Constant(minDepth), Expression.Constant(maxDepth));
+        return new GraphQueryable<T>((GraphQueryProvider)Provider, Options, newExpression, Transaction, Context);
     }
 
     public IGraphQueryable<T> InTransaction(IGraphTransaction transaction)
@@ -81,19 +87,19 @@ internal class GraphQueryable<T> : IGraphQueryable<T> where T : class
 
     public IGraphQueryable<T> WithHint(string hint)
     {
-        var newContext = _context.WithHint(hint);
+        var newContext = ((GraphQueryContext)_context).WithHint(hint);
         return new GraphQueryable<T>((GraphQueryProvider)Provider, Options, Expression, Transaction, newContext);
     }
 
     public IGraphQueryable<T> WithHints(params string[] hints)
     {
-        var newContext = _context.WithHints(hints);
+        var newContext = ((GraphQueryContext)_context).WithHints(hints);
         return new GraphQueryable<T>((GraphQueryProvider)Provider, Options, Expression, Transaction, newContext);
     }
 
     public IGraphQueryable<T> UseIndex(string indexName)
     {
-        var newContext = _context.WithIndexHint(indexName);
+        var newContext = ((GraphQueryContext)_context).WithIndexHint(indexName);
         return new GraphQueryable<T>((GraphQueryProvider)Provider, Options, Expression, Transaction, newContext);
     }
 
@@ -119,31 +125,31 @@ internal class GraphQueryable<T> : IGraphQueryable<T> where T : class
 
     public IGraphQueryable<T> Cached(TimeSpan duration)
     {
-        var newContext = _context.WithCaching(duration);
+        var newContext = ((GraphQueryContext)_context).WithCaching(duration);
         return new GraphQueryable<T>((GraphQueryProvider)Provider, Options, Expression, Transaction, newContext);
     }
 
     public IGraphQueryable<T> Cached(string cacheKey, TimeSpan duration)
     {
-        var newContext = _context.WithCaching(cacheKey, duration);
+        var newContext = ((GraphQueryContext)_context).WithCaching(cacheKey, duration);
         return new GraphQueryable<T>((GraphQueryProvider)Provider, Options, Expression, Transaction, newContext);
     }
 
     public IGraphQueryable<T> IncludeMetadata(GraphMetadataTypes metadata)
     {
-        var newContext = _context.WithMetadata(metadata);
+        var newContext = ((GraphQueryContext)_context).WithMetadata(metadata);
         return new GraphQueryable<T>((GraphQueryProvider)Provider, Options, Expression, Transaction, newContext);
     }
 
     public IGraphQueryable<T> WithTimeout(TimeSpan timeout)
     {
-        var newContext = _context.WithTimeout(timeout);
+        var newContext = ((GraphQueryContext)_context).WithTimeout(timeout);
         return new GraphQueryable<T>((GraphQueryProvider)Provider, Options, Expression, Transaction, newContext);
     }
 
     public IGraphQueryable<T> WithProfiling()
     {
-        var newContext = _context.WithProfiling(true);
+        var newContext = ((GraphQueryContext)_context).WithProfiling(true);
         return new GraphQueryable<T>((GraphQueryProvider)Provider, Options, Expression, Transaction, newContext);
     }
 }
