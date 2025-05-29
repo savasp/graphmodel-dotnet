@@ -326,7 +326,7 @@ public abstract class BasicTestsBase : ITestBase
         public string LastName { get; set; } = string.Empty;
     }
 
-    [Fact]
+    [Fact(Skip = "We are going to implement a Roslyn analyzer to catch this at compile time. We need to decide whether to also have a runtime check. The check was there but has been removed. Hence why we are skipping this test for now.")]
     public async Task CannotAddNodeWithListIRelationshipPropertyInComplexProperty()
     {
         var person = new PersonWithListIRelationshipPropertyInComplexProperty

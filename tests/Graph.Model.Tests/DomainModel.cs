@@ -25,8 +25,9 @@ public class Person : INode
     public string Bio { get; set; } = string.Empty;
 }
 
-public class Address
+public class Address : INode
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Street { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
 }
@@ -41,9 +42,31 @@ public class Knows : IRelationship
     public DateTime Since { get; set; }
 }
 
+[Relationship("LIVES_AT")]
+public class LivesAt : IRelationship
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string SourceId { get; set; } = string.Empty;
+    public string TargetId { get; set; } = string.Empty;
+    public bool IsBidirectional { get; set; }
+    public DateTime MovedInDate { get; set; } = DateTime.UtcNow;
+}
+
 public class PersonWithComplexProperty : Person
 {
     public Address Address { get; set; } = new Address();
+}
+
+public class PersonWithComplexProperties : INode
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public int Age { get; set; } = 30;
+    public DateTime DateOfBirth { get; set; } = DateTime.UtcNow;
+    public string Bio { get; set; } = string.Empty;
+    public Address Address { get; set; } = new Address();
+    public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
 }
 
 public class KnowsWithComplexProperty : Relationship
