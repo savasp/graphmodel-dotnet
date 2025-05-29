@@ -17,103 +17,305 @@ using System.Linq.Expressions;
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents a graph traversal operation.
+/// Interface for building graph traversal queries from a starting point
 /// </summary>
-public interface IGraphTraversal<TNode, TRelationship>
-    where TNode : class, INode, new()
-    where TRelationship : class, IRelationship, new()
+/// <typeparam name="TSource">The type of the source entity</typeparam>
+/// <typeparam name="TRel">The type of the relationship being traversed</typeparam>
+public interface IGraphTraversal<TSource, TRel>
+    where TSource : class, INode, new()
+    where TRel : class, IRelationship, new()
 {
     /// <summary>
-    /// Filters relationships during traversal.
+    /// Specifies the direction of traversal for this relationship
     /// </summary>
-    IGraphTraversal<TNode, TRelationship> Where(Expression<Func<TRelationship, bool>> predicate);
+    /// <param name="direction">The traversal direction</param>
+    /// <returns>A traversal with the specified direction</returns>
+    IGraphTraversal<TSource, TRel> InDirection(TraversalDirection direction);
 
     /// <summary>
-    /// Specifies the target node type to reach.
+    /// Filters relationships based on a predicate
     /// </summary>
-    IQueryable<TTargetNode> To<TTargetNode>() where TTargetNode : class, INode, new();
+    /// <param name="predicate">The predicate to apply to relationships</param>
+    /// <returns>A traversal with the specified relationship filter</returns>
+    IGraphTraversal<TSource, TRel> WhereRelationship(Expression<Func<TRel, bool>> predicate);
 
     /// <summary>
-    /// Specifies the target nodes with a filter.
+    /// Limits the depth of this traversal
     /// </summary>
-    IQueryable<TTargetNode> To<TTargetNode>(Expression<Func<TTargetNode, bool>> targetFilter)
-        where TTargetNode : class, INode, new();
+    /// <param name="minDepth">The minimum depth to traverse</param>
+    /// <param name="maxDepth">The maximum depth to traverse</param>
+    /// <returns>A traversal with the specified depth limits</returns>
+    IGraphTraversal<TSource, TRel> WithDepth(int minDepth, int maxDepth);
 
     /// <summary>
-    /// Returns the relationships found during traversal.
+    /// Sets the maximum depth of this traversal
     /// </summary>
-    IQueryable<TRelationship> Relationships();
+    /// <param name="maxDepth">The maximum depth to traverse</param>
+    /// <returns>A traversal with the specified maximum depth</returns>
+    IGraphTraversal<TSource, TRel> WithDepth(int maxDepth);
 
     /// <summary>
-    /// Returns paths found during traversal.
+    /// Continues traversal to a specific target node type
     /// </summary>
-    IQueryable<GraphPath<TNode>> Paths();
+    /// <typeparam name="TTarget">The type of target nodes</typeparam>
+    /// <returns>A queryable for the target nodes</returns>
+    IGraphQueryable<TTarget> To<TTarget>() where TTarget : class, INode, new();
 
     /// <summary>
-    /// Limits the traversal depth.
+    /// Continues traversal to target nodes with filtering
     /// </summary>
-    IGraphTraversal<TNode, TRelationship> WithDepth(int minDepth, int maxDepth);
+    /// <typeparam name="TTarget">The type of target nodes</typeparam>
+    /// <param name="predicate">The predicate to apply to target nodes</param>
+    /// <returns>A queryable for the filtered target nodes</returns>
+    IGraphQueryable<TTarget> To<TTarget>(Expression<Func<TTarget, bool>> predicate)
+        where TTarget : class, INode, new();
+
+    /// <summary>
+    /// Returns the relationships themselves rather than traversing to targets
+    /// </summary>
+    /// <returns>A queryable for the relationships</returns>
+    IGraphQueryable<TRel> Relationships();
+
+    /// <summary>
+    /// Returns the traversal paths including source, relationship, and target
+    /// </summary>
+    /// <typeparam name="TTarget">The type of target nodes</typeparam>
+    /// <returns>A queryable for the complete paths</returns>
+    IQueryable<IGraphPath<TSource, TRel, TTarget>> Paths<TTarget>()
+        where TTarget : class, INode, new();
+
+    /// <summary>
+    /// Continues traversal with another relationship type
+    /// </summary>
+    /// <typeparam name="TNextRel">The type of the next relationship</typeparam>
+    /// <returns>A new traversal for the chained relationship</returns>
+    IGraphTraversal<TSource, TNextRel> ThenTraverse<TNextRel>()
+        where TNextRel : class, IRelationship, new();
+
+    /// <summary>
+    /// Applies traversal options to this traversal
+    /// </summary>
+    /// <param name="options">The traversal options to apply</param>
+    /// <returns>A traversal with the specified options</returns>
+    IGraphTraversal<TSource, TRel> WithOptions(TraversalOptions options);
 }
 
 /// <summary>
-/// Represents a graph expansion operation.
+/// Represents a complete path through the graph including source, relationship, and target
 /// </summary>
-public interface IGraphExpansion<TNode> where TNode : class, INode, new()
+/// <typeparam name="TSource">The type of the source node</typeparam>
+/// <typeparam name="TRel">The type of the relationship</typeparam>
+/// <typeparam name="TTarget">The type of the target node</typeparam>
+public interface IGraphPath<TSource, TRel, TTarget>
+    where TSource : class, INode, new()
+    where TRel : class, IRelationship, new()
+    where TTarget : class, INode, new()
 {
     /// <summary>
-    /// Includes related nodes via a specific relationship type.
+    /// Gets the source node of this path
     /// </summary>
-    IGraphExpansion<TNode> Include<TRelationship, TTargetNode>()
-        where TRelationship : class, IRelationship, new()
-        where TTargetNode : class, INode, new();
+    TSource Source { get; }
 
     /// <summary>
-    /// Includes related nodes with a custom pattern.
+    /// Gets the relationship in this path
     /// </summary>
-    IGraphExpansion<TNode> Include(string pattern);
+    TRel Relationship { get; }
 
     /// <summary>
-    /// Executes the expansion and returns the results.
+    /// Gets the target node of this path
     /// </summary>
-    IQueryable<GraphResult<TNode>> Execute();
+    TTarget Target { get; }
+
+    /// <summary>
+    /// Gets the length of this path (number of hops)
+    /// </summary>
+    int Length { get; }
+
+    /// <summary>
+    /// Gets the total weight of this path if weights are defined
+    /// </summary>
+    double? Weight { get; }
+
+    /// <summary>
+    /// Gets metadata about this path
+    /// </summary>
+    IGraphPathMetadata Metadata { get; }
 }
 
 /// <summary>
-/// Represents a graph pattern matching operation.
+/// Interface for multi-hop graph paths
 /// </summary>
-public interface IGraphPattern<TNode> where TNode : class, INode, new()
+public interface IGraphMultiPath
 {
     /// <summary>
-    /// Binds a variable in the pattern to a type.
+    /// Gets all nodes in this path in order
     /// </summary>
-    IGraphPattern<TNode> Bind<T>(string variable) where T : class, IEntity, new();
+    IReadOnlyList<INode> Nodes { get; }
 
     /// <summary>
-    /// Adds a WHERE clause to the pattern.
+    /// Gets all relationships in this path in order
     /// </summary>
-    IGraphPattern<TNode> Where(string condition);
+    IReadOnlyList<IRelationship> Relationships { get; }
 
     /// <summary>
-    /// Executes the pattern and returns results.
+    /// Gets the length of this path (number of hops)
     /// </summary>
-    IQueryable<T> Return<T>() where T : class, new();
+    int Length { get; }
+
+    /// <summary>
+    /// Gets the total weight of this path if weights are defined
+    /// </summary>
+    double? Weight { get; }
+
+    /// <summary>
+    /// Gets the source node (first node in the path)
+    /// </summary>
+    INode Source { get; }
+
+    /// <summary>
+    /// Gets the target node (last node in the path)
+    /// </summary>
+    INode Target { get; }
+
+    /// <summary>
+    /// Gets metadata about this path
+    /// </summary>
+    IGraphPathMetadata Metadata { get; }
 }
 
 /// <summary>
-/// Represents a path in the graph.
+/// Metadata information about a graph path
 /// </summary>
-public class GraphPath<TNode> where TNode : class, INode, new()
+public interface IGraphPathMetadata
 {
-    public required IReadOnlyList<TNode> Nodes { get; init; }
-    public required IReadOnlyList<IRelationship> Relationships { get; init; }
-    public int Length => Relationships.Count;
+    /// <summary>
+    /// Gets the unique identifier for this path
+    /// </summary>
+    string Id { get; }
+
+    /// <summary>
+    /// Gets the cost metrics for this path
+    /// </summary>
+    IGraphPathCost Cost { get; }
+
+    /// <summary>
+    /// Gets additional properties associated with this path
+    /// </summary>
+    IReadOnlyDictionary<string, object> Properties { get; }
 }
 
 /// <summary>
-/// Represents an expanded graph result.
+/// Cost metrics for a graph path
 /// </summary>
-public class GraphResult<TNode> where TNode : class, INode, new()
+public interface IGraphPathCost
 {
-    public required TNode Root { get; init; }
-    public required IReadOnlyDictionary<string, IEnumerable<IEntity>> RelatedEntities { get; init; }
+    /// <summary>
+    /// Gets the total distance/weight of the path
+    /// </summary>
+    double Distance { get; }
+
+    /// <summary>
+    /// Gets the number of hops in the path
+    /// </summary>
+    int Hops { get; }
+
+    /// <summary>
+    /// Gets the computation cost of finding this path
+    /// </summary>
+    double ComputationCost { get; }
+}
+
+/// <summary>
+/// Direction for graph traversal
+/// </summary>
+public enum TraversalDirection
+{
+    /// <summary>Follow outgoing relationships</summary>
+    Outgoing,
+
+    /// <summary>Follow incoming relationships</summary>
+    Incoming,
+
+    /// <summary>Follow relationships in both directions</summary>
+    Both,
+
+    /// <summary>Use the natural direction of the relationship</summary>
+    Natural
+}
+
+/// <summary>
+/// Options for controlling graph traversal behavior
+/// </summary>
+public class TraversalOptions
+{
+    /// <summary>
+    /// Gets or sets the maximum depth to traverse
+    /// </summary>
+    public int MaxDepth { get; set; } = 1;
+
+    /// <summary>
+    /// Gets or sets the minimum depth to traverse
+    /// </summary>
+    public int MinDepth { get; set; } = 1;
+
+    /// <summary>
+    /// Gets or sets whether to include the starting nodes in results
+    /// </summary>
+    public bool IncludeStartNodes { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets the traversal direction
+    /// </summary>
+    public TraversalDirection Direction { get; set; } = TraversalDirection.Outgoing;
+
+    /// <summary>
+    /// Gets or sets whether to avoid cycles during traversal
+    /// </summary>
+    public bool AvoidCycles { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the maximum number of results to return
+    /// </summary>
+    public int? MaxResults { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to compute path weights
+    /// </summary>
+    public bool ComputeWeights { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets the property name to use for edge weights
+    /// </summary>
+    public string? WeightProperty { get; set; }
+
+    /// <summary>
+    /// Gets or sets the traversal strategy
+    /// </summary>
+    public TraversalStrategy Strategy { get; set; } = TraversalStrategy.DepthFirst;
+
+    /// <summary>
+    /// Gets or sets additional traversal hints
+    /// </summary>
+    public List<string> Hints { get; set; } = new();
+}
+
+/// <summary>
+/// Strategy for traversing the graph
+/// </summary>
+public enum TraversalStrategy
+{
+    /// <summary>Use depth-first traversal</summary>
+    DepthFirst,
+
+    /// <summary>Use breadth-first traversal</summary>
+    BreadthFirst,
+
+    /// <summary>Use shortest path algorithm</summary>
+    ShortestPath,
+
+    /// <summary>Use weighted shortest path algorithm</summary>
+    WeightedShortestPath,
+
+    /// <summary>Let the provider choose the optimal strategy</summary>
+    Automatic
 }
