@@ -24,13 +24,11 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq;
 internal class GraphQueryBuilder<T> : IGraphQueryBuilder<T> where T : class, IEntity, new()
 {
     private readonly GraphQueryProvider _provider;
-    private readonly GraphOperationOptions _options;
     private readonly IGraphTransaction? _transaction;
 
-    public GraphQueryBuilder(GraphQueryProvider provider, GraphOperationOptions options, IGraphTransaction? transaction)
+    public GraphQueryBuilder(GraphQueryProvider provider, IGraphTransaction? transaction)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-        _options = options;
         _transaction = transaction;
     }
 
@@ -153,14 +151,15 @@ internal class GraphQueryBuilder<T> : IGraphQueryBuilder<T> where T : class, IEn
         throw new NotImplementedException("Query builder WithDepth single not yet implemented");
     }
 
-    public IGraphQueryBuilder<T> WithOptions(GraphOperationOptions options)
+    public IGraphQueryBuilder<T> WithCascadeDelete()
     {
-        return new GraphQueryBuilder<T>(_provider, options, _transaction);
+        // For now, just return this since cascade delete will be handled through query context
+        throw new NotImplementedException("Query builder WithCascadeDelete not yet implemented");
     }
 
     public IGraphQueryBuilder<T> InTransaction(IGraphTransaction transaction)
     {
-        return new GraphQueryBuilder<T>(_provider, _options, transaction);
+        return new GraphQueryBuilder<T>(_provider, transaction);
     }
 
     public IGraphQueryable<T> AsQueryable()

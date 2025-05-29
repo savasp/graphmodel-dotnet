@@ -22,11 +22,6 @@ namespace Cvoya.Graph.Model;
 public interface IGraphQueryable<T> : IQueryable<T> where T : class
 {
     /// <summary>
-    /// Gets the graph operation options for this query
-    /// </summary>
-    GraphOperationOptions Options { get; }
-
-    /// <summary>
     /// Gets the transaction context for this query, if any
     /// </summary>
     IGraphTransaction? Transaction { get; }
@@ -35,13 +30,6 @@ public interface IGraphQueryable<T> : IQueryable<T> where T : class
     /// Gets metadata about the query execution context
     /// </summary>
     IGraphQueryContext Context { get; }
-
-    /// <summary>
-    /// Applies graph operation options to this query
-    /// </summary>
-    /// <param name="options">The options to apply</param>
-    /// <returns>A new query with the specified options</returns>
-    IGraphQueryable<T> WithOptions(GraphOperationOptions options);
 
     /// <summary>
     /// Applies a specific traversal depth to this query
@@ -143,6 +131,12 @@ public interface IGraphQueryable<T> : IQueryable<T> where T : class
     /// </summary>
     /// <returns>A new query with profiling enabled</returns>
     IGraphQueryable<T> WithProfiling();
+
+    /// <summary>
+    /// Enables cascade delete behavior for this query
+    /// </summary>
+    /// <returns>A new query with cascade delete enabled</returns>
+    IGraphQueryable<T> WithCascadeDelete();
 }
 
 

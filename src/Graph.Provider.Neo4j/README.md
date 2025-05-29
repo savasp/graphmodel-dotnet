@@ -9,7 +9,7 @@ This package provides a complete implementation of the `IGraph` interface for Ne
 ## Features
 
 - Full LINQ support for graph queries
-- Complex property serialization with `__PROPERTY__` relationships  
+- Complex property serialization with `__PROPERTY__` relationships
 - Graph traversal operations
 - Transaction management
 - Neo4j-specific optimizations

@@ -195,18 +195,17 @@ public interface IGraphQueryBuilder<T> where T : class, IEntity, new()
     IGraphQueryBuilder<T> WithDepth(int maxDepth);
 
     /// <summary>
-    /// Applies graph operation options
-    /// </summary>
-    /// <param name="options">The options to apply</param>
-    /// <returns>A query builder with the options applied</returns>
-    IGraphQueryBuilder<T> WithOptions(GraphOperationOptions options);
-
-    /// <summary>
     /// Executes within a specific transaction
     /// </summary>
     /// <param name="transaction">The transaction to use</param>
     /// <returns>A query builder bound to the transaction</returns>
     IGraphQueryBuilder<T> InTransaction(IGraphTransaction transaction);
+
+    /// <summary>
+    /// Enables cascade delete behavior for operations in this query
+    /// </summary>
+    /// <returns>A query builder with cascade delete enabled</returns>
+    IGraphQueryBuilder<T> WithCascadeDelete();
 
     /// <summary>
     /// Converts the query builder to a queryable for final execution

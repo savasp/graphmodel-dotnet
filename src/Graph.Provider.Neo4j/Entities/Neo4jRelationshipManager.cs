@@ -41,9 +41,8 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// Creates a relationship between two nodes in Neo4j.
     /// </summary>
     /// <param name="relationship">The relationship to create</param>
-    /// <param name="options">Graph operation options</param>
     /// <param name="tx">The transaction to use</param>
-    public async Task CreateRelationship(Cvoya.Graph.Model.IRelationship relationship, GraphOperationOptions options, IAsyncTransaction tx)
+    public async Task CreateRelationship(Cvoya.Graph.Model.IRelationship relationship, IAsyncTransaction tx)
     {
         var type = relationship.GetType();
         var label = Neo4jTypeManager.GetLabel(type);
@@ -67,9 +66,8 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// Updates a relationship with the given data.
     /// </summary>
     /// <param name="relationship">The relationship to update</param>
-    /// <param name="options">Graph operation options</param>
     /// <param name="tx">The transaction to use</param>
-    public async Task UpdateRelationship(Cvoya.Graph.Model.IRelationship relationship, GraphOperationOptions options, IAsyncTransaction tx)
+    public async Task UpdateRelationship(Cvoya.Graph.Model.IRelationship relationship, IAsyncTransaction tx)
     {
         var (simpleProps, _) = GetSimpleAndComplexProperties(relationship);
 
@@ -84,11 +82,10 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// Gets a relationship by its ID and type.
     /// </summary>
     /// <param name="id">The ID of the relationship</param>
-    /// <param name="options">Graph operation options</param>
     /// <param name="tx">The transaction to use</param>
     /// <returns>The relationship instance</returns>
     /// <exception cref="GraphException">Thrown if the relationship is not found</exception>
-    public async Task<T> GetRelationship<T>(string id, GraphOperationOptions options, IAsyncTransaction tx)
+    public async Task<T> GetRelationship<T>(string id, IAsyncTransaction tx)
         where T : class, Cvoya.Graph.Model.IRelationship, new()
     {
         var label = Neo4jTypeManager.GetLabel(typeof(T));
@@ -114,10 +111,9 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// Gets multiple relationships by their IDs.
     /// </summary>
     /// <param name="ids">The IDs of the relationships</param>
-    /// <param name="options">Graph operation options</param>
     /// <param name="tx">The transaction to use</param>
     /// <returns>A collection of relationships</returns>
-    public async Task<IEnumerable<T>> GetRelationships<T>(IEnumerable<string> ids, GraphOperationOptions options, IAsyncTransaction tx)
+    public async Task<IEnumerable<T>> GetRelationships<T>(IEnumerable<string> ids, IAsyncTransaction tx)
         where T : class, Cvoya.Graph.Model.IRelationship, new()
     {
         if (!ids.Any())
@@ -162,9 +158,9 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// Deletes a relationship by its ID.
     /// </summary>
     /// <param name="relationshipId">The ID of the relationship to delete</param>
-    /// <param name="options">Graph operation options</param>
+    /// <param name="cascadeDelete">Whether to cascade delete related entities</param>
     /// <param name="tx">The transaction to use</param>
-    public async Task DeleteRelationship(string relationshipId, GraphOperationOptions options, IAsyncTransaction tx)
+    public async Task DeleteRelationship(string relationshipId, bool cascadeDelete, IAsyncTransaction tx)
     {
         var cypher = $"MATCH ()-[r]->() WHERE r.{nameof(Model.IRelationship.Id)} = $relationshipId DELETE r";
         await tx.RunAsync(cypher, new { relationshipId });

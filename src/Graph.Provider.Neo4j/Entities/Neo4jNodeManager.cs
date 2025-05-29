@@ -52,25 +52,23 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     /// Creates a node in Neo4j.
     /// </summary>
     /// <param name="node">The node to create</param>
-    /// <param name="options">Graph operation options</param>
     /// <param name="tx">The transaction to use</param>
     /// <param name="propertyName">Optional property name when creating from a parent relationship</param>
     /// <returns>The ID of the created node</returns>
-    public async Task<string> CreateNode(Model.INode node, GraphOperationOptions options, IAsyncTransaction tx, string? propertyName = null)
+    public async Task<string> CreateNode(Model.INode node, IAsyncTransaction tx, string? propertyName = null)
     {
         // Create a dictionary to track object instances if not already exists
         var objectTracker = new Dictionary<object, string>();
 
-        return await CreateNodeInternal(node.Id, node, options, tx, propertyName, objectTracker);
+        return await CreateNodeInternal(node.Id, node, tx, propertyName, objectTracker);
     }
 
     /// <summary>
     /// Updates a node with the given data.
     /// </summary>
     /// <param name="node">The node to update</param>
-    /// <param name="options">Graph operation options</param>
     /// <param name="tx">The transaction to use</param>
-    public async Task UpdateNode(Cvoya.Graph.Model.INode node, GraphOperationOptions options, IAsyncTransaction tx)
+    public async Task UpdateNode(Cvoya.Graph.Model.INode node, IAsyncTransaction tx)
     {
         var (simpleProps, _) = GetSimpleAndComplexProperties(node);
 
@@ -85,11 +83,10 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     /// Gets a node by its ID and type.
     /// </summary>
     /// <param name="id">The ID of the node</param>
-    /// <param name="options">Graph operation options</param>
     /// <param name="tx">The transaction to use</param>
     /// <returns>The node instance</returns>
     /// <exception cref="GraphException">Thrown if the node is not found</exception>
-    public async Task<T> GetNode<T>(string id, GraphOperationOptions options, IAsyncTransaction tx)
+    public async Task<T> GetNode<T>(string id, IAsyncTransaction tx)
     where T : class, Cvoya.Graph.Model.INode, new()
     {
         var label = Neo4jTypeManager.GetLabel(typeof(T));
@@ -157,11 +154,10 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     /// Gets a node by its ID and type.
     /// </summary>
     /// <param name="ids">The IDs for the nodes to retrieve</param>
-    /// <param name="options">Graph operation options</param>
     /// <param name="tx">The transaction to use</param>
     /// <returns>The node instance</returns>
     /// <exception cref="GraphException">Thrown if the node is not found</exception>
-    public async Task<IEnumerable<T>> GetNodes<T>(IEnumerable<string> ids, GraphOperationOptions options, IAsyncTransaction tx)
+    public async Task<IEnumerable<T>> GetNodes<T>(IEnumerable<string> ids, IAsyncTransaction tx)
         where T : class, Cvoya.Graph.Model.INode, new()
     {
         // TODO: Implement a more efficient way to get multiple nodes
@@ -171,7 +167,7 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
             return [];
         }
 
-        IEnumerable<T> results = await Task.WhenAll(ids.Select(async id => await GetNode<T>(id, options, tx)));
+        IEnumerable<T> results = await Task.WhenAll(ids.Select(async id => await GetNode<T>(id, tx)));
 
         return results;
     }
@@ -180,11 +176,11 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     /// Deletes a node by its ID.
     /// </summary>
     /// <param name="nodeId">The ID of the node to delete</param>
-    /// <param name="options">Graph operation options</param>
+    /// <param name="cascadeDelete">Whether to cascade delete related nodes</param>
     /// <param name="tx">The transaction to use</param>
-    public async Task DeleteNode(string nodeId, GraphOperationOptions options, IAsyncTransaction tx)
+    public async Task DeleteNode(string nodeId, bool cascadeDelete, IAsyncTransaction tx)
     {
-        var cypher = options.CascadeDelete
+        var cypher = cascadeDelete
             ? $"MATCH (n) WHERE n.{nameof(Model.INode.Id)} = $nodeId DETACH DELETE n"
             : $"MATCH (n) WHERE n.{nameof(Model.INode.Id)} = $nodeId DELETE n";
 
@@ -193,7 +189,7 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
 
 
 
-    private async Task<string> CreateNodeInternal(string? parentId, object node, GraphOperationOptions options, IAsyncTransaction tx, string? propertyName, Dictionary<object, string> objectTracker)
+    private async Task<string> CreateNodeInternal(string? parentId, object node, IAsyncTransaction tx, string? propertyName, Dictionary<object, string> objectTracker)
     {
         // Check if we've already created this object instance
         if (objectTracker.TryGetValue(node, out var existingNodeId))
@@ -241,13 +237,13 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
                 foreach (var item in (IEnumerable)prop.Value)
                 {
                     // Create a new for each object referenced
-                    await CreateNodeInternal(nodeId, item, options, tx, prop.Key.Name, objectTracker);
+                    await CreateNodeInternal(nodeId, item, tx, prop.Key.Name, objectTracker);
                 }
             }
             else
             {
                 // For single complex properties, create the node directly
-                await CreateNodeInternal(nodeId, prop.Value, options, tx, prop.Key.Name, objectTracker);
+                await CreateNodeInternal(nodeId, prop.Value, tx, prop.Key.Name, objectTracker);
             }
         }
 

@@ -50,6 +50,11 @@ public interface IGraphQueryContext
     bool ProfilingEnabled { get; }
 
     /// <summary>
+    /// Gets whether cascade delete is enabled for this query
+    /// </summary>
+    bool CascadeDeleteEnabled { get; }
+
+    /// <summary>
     /// Gets the metadata types to include in results
     /// </summary>
     GraphMetadataTypes MetadataTypes { get; }

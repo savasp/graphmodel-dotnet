@@ -94,10 +94,9 @@ internal class GraphTraversal<TNode, TRelationship> : IGraphTraversal<TNode, TRe
 
         // Get the provider's options and transaction from the source queryable
         var sourceQueryable = _source as GraphQueryable<TNode>;
-        var options = sourceQueryable?.Options ?? new GraphOperationOptions();
         var transaction = sourceQueryable?.Transaction;
-        
-        return new GraphQueryable<TTarget>(provider, options, expression, transaction, new GraphQueryContext());
+
+        return new GraphQueryable<TTarget>(provider, expression, transaction, new GraphQueryContext());
     }
 
     public IGraphQueryable<TRelationship> Relationships()
@@ -118,10 +117,9 @@ internal class GraphTraversal<TNode, TRelationship> : IGraphTraversal<TNode, TRe
 
         // Get the provider's options and transaction from the source queryable
         var sourceQueryable = _source as GraphQueryable<TNode>;
-        var options = sourceQueryable?.Options ?? new GraphOperationOptions();
         var transaction = sourceQueryable?.Transaction;
 
-        return new GraphQueryable<TRelationship>(provider, options, expression, transaction, new GraphQueryContext());
+        return new GraphQueryable<TRelationship>(provider, expression, transaction, new GraphQueryContext());
     }
 
     public IQueryable<IGraphPath<TNode, TRelationship, TTarget>> Paths<TTarget>()

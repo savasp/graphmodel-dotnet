@@ -107,7 +107,7 @@ public class Neo4jGraphProvider : IGraph
     #region IGraph Implementation
 
     /// <inheritdoc />
-    public IGraphQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
         where N : class, Cvoya.Graph.Model.INode, new()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -116,8 +116,8 @@ public class Neo4jGraphProvider : IGraph
         {
             _logger?.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
 
-            var queryProvider = new GraphQueryProvider(this, options, _logger, transaction, typeof(N));
-            return new GraphQueryable<N>(queryProvider, options, transaction);
+            var queryProvider = new GraphQueryProvider(this, _logger, transaction, typeof(N));
+            return new GraphQueryable<N>(queryProvider, transaction);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
@@ -128,7 +128,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public IGraphQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
         where R : class, Cvoya.Graph.Model.IRelationship, new()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -137,8 +137,8 @@ public class Neo4jGraphProvider : IGraph
         {
             _logger?.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
 
-            var queryProvider = new GraphQueryProvider(this, options, _logger, transaction, typeof(R));
-            return new GraphQueryable<R>(queryProvider, options, transaction);
+            var queryProvider = new GraphQueryProvider(this, _logger, transaction, typeof(R));
+            return new GraphQueryable<R>(queryProvider, transaction);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
@@ -149,7 +149,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<N> GetNode<N>(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task<N> GetNode<N>(string id, IGraphTransaction? transaction = null)
         where N : class, Cvoya.Graph.Model.INode, new()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -161,7 +161,7 @@ public class Neo4jGraphProvider : IGraph
 
             var result = await ExecuteInTransaction(
                 transaction,
-                tx => _nodeManager.GetNode<N>(id, options, tx),
+                tx => _nodeManager.GetNode<N>(id, tx),
                 $"Failed to get node {id} of type {typeof(N).Name}");
 
             _logger?.LogDebug("Successfully retrieved node {NodeId}", id);
@@ -176,7 +176,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<IEnumerable<N>> GetNodes<N>(IEnumerable<string> ids, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task<IEnumerable<N>> GetNodes<N>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
         where N : class, Cvoya.Graph.Model.INode, new()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -189,7 +189,7 @@ public class Neo4jGraphProvider : IGraph
 
             var tasks = ExecuteInTransaction(
                 transaction,
-                tx => _nodeManager.GetNodes<N>(idList, options, tx),
+                tx => _nodeManager.GetNodes<N>(idList, tx),
                 $"Failed to get nodes of type {typeof(N).Name}");
 
             var result = await tasks;
@@ -206,7 +206,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<R> GetRelationship<R>(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task<R> GetRelationship<R>(string id, IGraphTransaction? transaction = null)
         where R : class, Cvoya.Graph.Model.IRelationship, new()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -218,7 +218,7 @@ public class Neo4jGraphProvider : IGraph
 
             var result = await ExecuteInTransaction(
                 transaction,
-                tx => _relationshipManager.GetRelationship<R>(id, options, tx),
+                tx => _relationshipManager.GetRelationship<R>(id, tx),
                 $"Failed to get relationship {id} of type {typeof(R).Name}");
 
             _logger?.LogDebug("Successfully retrieved relationship {RelationshipId}", id);
@@ -233,7 +233,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<IEnumerable<R>> GetRelationships<R>(IEnumerable<string> ids, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task<IEnumerable<R>> GetRelationships<R>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
         where R : class, Cvoya.Graph.Model.IRelationship, new()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -246,7 +246,7 @@ public class Neo4jGraphProvider : IGraph
 
             var result = await ExecuteInTransaction(
                 transaction,
-                tx => _relationshipManager.GetRelationships<R>(idList, options, tx),
+                tx => _relationshipManager.GetRelationships<R>(idList, tx),
                 $"Failed to get relationships of type {typeof(R).Name}");
 
             _logger?.LogDebug("Successfully retrieved {Count} relationships", result.Count());
@@ -261,7 +261,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task CreateNode<N>(N node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task CreateNode<N>(N node, IGraphTransaction? transaction = null)
         where N : class, Cvoya.Graph.Model.INode, new()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -275,7 +275,7 @@ public class Neo4jGraphProvider : IGraph
 
             await ExecuteInTransaction(
                 transaction,
-                tx => _nodeManager.CreateNode(node, options, tx),
+                tx => _nodeManager.CreateNode(node, tx),
                 $"Failed to create node of type {typeof(N).Name}");
 
             _logger?.LogDebug("Successfully created node {NodeId}", node.Id);
@@ -289,7 +289,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task CreateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task CreateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
         where R : class, Cvoya.Graph.Model.IRelationship, new()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -305,7 +305,7 @@ public class Neo4jGraphProvider : IGraph
                 transaction,
                 async tx =>
                 {
-                    await _relationshipManager.CreateRelationship(relationship, options, tx);
+                    await _relationshipManager.CreateRelationship(relationship, tx);
                     return true;
                 },
                 $"Failed to create relationship of type {typeof(R).Name}");
@@ -321,7 +321,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task UpdateNode<N>(N node, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task UpdateNode<N>(N node, IGraphTransaction? transaction = null)
         where N : class, Cvoya.Graph.Model.INode, new()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -337,7 +337,7 @@ public class Neo4jGraphProvider : IGraph
                 transaction,
                 async tx =>
                 {
-                    await _nodeManager.UpdateNode(node, options, tx);
+                    await _nodeManager.UpdateNode(node, tx);
                     return true;
                 },
             $"Failed to update node {node.Id} of type {typeof(N).Name}");
@@ -353,7 +353,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task UpdateRelationship<R>(R relationship, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task UpdateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
         where R : class, Cvoya.Graph.Model.IRelationship, new()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -369,7 +369,7 @@ public class Neo4jGraphProvider : IGraph
                 transaction,
                 async tx =>
                 {
-                    await _relationshipManager.UpdateRelationship(relationship, options, tx);
+                    await _relationshipManager.UpdateRelationship(relationship, tx);
                     return true;
                 },
             $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}");
@@ -409,7 +409,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task DeleteNode(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task DeleteNode(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(id);
@@ -422,7 +422,7 @@ public class Neo4jGraphProvider : IGraph
                 transaction,
                 async tx =>
                 {
-                    await _nodeManager.DeleteNode(id, options, tx);
+                    await _nodeManager.DeleteNode(id, cascadeDelete, tx);
                     return true;
                 },
                 $"Failed to delete node {id}");
@@ -438,7 +438,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public async Task DeleteRelationship(string id, GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public async Task DeleteRelationship(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(id);
@@ -451,7 +451,7 @@ public class Neo4jGraphProvider : IGraph
                 transaction,
                 async tx =>
                 {
-                    await _relationshipManager.DeleteRelationship(id, options, tx);
+                    await _relationshipManager.DeleteRelationship(id, cascadeDelete, tx);
                     return true;
                 },
                 $"Failed to delete relationship {id}");

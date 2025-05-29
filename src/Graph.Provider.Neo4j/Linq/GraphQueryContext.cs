@@ -27,6 +27,7 @@ internal class GraphQueryContext : IGraphQueryContext
     public IGraphQueryCacheConfig? CacheConfig { get; init; }
     public TimeSpan? Timeout { get; init; }
     public bool ProfilingEnabled { get; init; }
+    public bool CascadeDeleteEnabled { get; init; }
     public GraphMetadataTypes MetadataTypes { get; init; } = GraphMetadataTypes.None;
 
     public GraphQueryContext WithHints(IReadOnlyList<string> hints)
@@ -37,6 +38,7 @@ internal class GraphQueryContext : IGraphQueryContext
             CacheConfig = CacheConfig,
             Timeout = Timeout,
             ProfilingEnabled = ProfilingEnabled,
+            CascadeDeleteEnabled = CascadeDeleteEnabled,
             MetadataTypes = MetadataTypes
         };
     }
@@ -89,6 +91,20 @@ internal class GraphQueryContext : IGraphQueryContext
             CacheConfig = CacheConfig,
             Timeout = Timeout,
             ProfilingEnabled = enabled,
+            CascadeDeleteEnabled = CascadeDeleteEnabled,
+            MetadataTypes = MetadataTypes
+        };
+    }
+
+    public GraphQueryContext WithCascadeDelete(bool enabled)
+    {
+        return new GraphQueryContext
+        {
+            Hints = Hints,
+            CacheConfig = CacheConfig,
+            Timeout = Timeout,
+            ProfilingEnabled = ProfilingEnabled,
+            CascadeDeleteEnabled = enabled,
             MetadataTypes = MetadataTypes
         };
     }
@@ -101,6 +117,7 @@ internal class GraphQueryContext : IGraphQueryContext
             CacheConfig = cacheConfig,
             Timeout = Timeout,
             ProfilingEnabled = ProfilingEnabled,
+            CascadeDeleteEnabled = CascadeDeleteEnabled,
             MetadataTypes = MetadataTypes
         };
     }
@@ -113,6 +130,7 @@ internal class GraphQueryContext : IGraphQueryContext
             CacheConfig = CacheConfig,
             Timeout = timeout,
             ProfilingEnabled = ProfilingEnabled,
+            CascadeDeleteEnabled = CascadeDeleteEnabled,
             MetadataTypes = MetadataTypes
         };
     }
@@ -125,6 +143,7 @@ internal class GraphQueryContext : IGraphQueryContext
             CacheConfig = CacheConfig,
             Timeout = Timeout,
             ProfilingEnabled = ProfilingEnabled,
+            CascadeDeleteEnabled = CascadeDeleteEnabled,
             MetadataTypes = metadataTypes
         };
     }

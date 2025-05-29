@@ -20,7 +20,6 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq;
 
 internal class GraphQueryProvider(
     Neo4jGraphProvider provider,
-    GraphOperationOptions options,
     Microsoft.Extensions.Logging.ILogger? logger,
     IGraphTransaction? transaction,
     Type? rootType = null) : IQueryProvider
@@ -30,18 +29,16 @@ internal class GraphQueryProvider(
     private readonly Type _rootType = rootType ?? typeof(object);
     private readonly Type _elementType = rootType ?? typeof(object);
     private readonly IGraphTransaction? _transaction = transaction;
-    private readonly GraphOperationOptions _options = options;
 
     public IQueryable CreateQuery(Expression expression)
     {
         var elementType = expression.Type.GetGenericArguments().FirstOrDefault() ?? _elementType;
         var queryableType = typeof(GraphQueryable<>).MakeGenericType(elementType);
 
-        // Pass options and context to the new queryable
+        // Pass context to the new queryable
         return (IQueryable)Activator.CreateInstance(
             queryableType,
             this,
-            _options,
             expression,
             _transaction,
             new GraphQueryContext())!;
@@ -56,13 +53,12 @@ internal class GraphQueryProvider(
         {
             throw new InvalidOperationException($"Type {elementType.Name} must be a reference type to be used in graph queries");
         }
-        
+
         // Use reflection to create GraphQueryable<TElement> since we can't guarantee TElement : class constraint
         var queryableType = typeof(GraphQueryable<>).MakeGenericType(elementType);
         return (IQueryable<TElement>)Activator.CreateInstance(
             queryableType,
             this,
-            _options,
             expression,
             _transaction,
             new GraphQueryContext())!;

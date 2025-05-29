@@ -25,14 +25,12 @@ internal class GraphPattern<T> : IGraphPattern<T> where T : class, IEntity, new(
 {
     private readonly GraphQueryProvider _provider;
     private readonly string _pattern;
-    private readonly GraphOperationOptions _options;
     private readonly IGraphTransaction? _transaction;
 
-    public GraphPattern(GraphQueryProvider provider, string pattern, GraphOperationOptions options, IGraphTransaction? transaction)
+    public GraphPattern(GraphQueryProvider provider, string pattern, IGraphTransaction? transaction)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _pattern = pattern ?? throw new ArgumentNullException(nameof(pattern));
-        _options = options;
         _transaction = transaction;
     }
 
