@@ -48,11 +48,18 @@ public class Neo4jGraphProvider : IGraph
     /// <param name="password">The password for authentication.</param>
     /// <param name="databaseName">The name of the database.</param>
     /// <param name="logger">The logger instance.</param>
+    /// <remarks>
+    /// The environment variables used for configuration, if not provided, are:
+    /// - NEO4J_URI: The URI of the Neo4j database. Default: "bolt://localhost:7687".
+    /// - NEO4J_USER: The username for authentication. Default: "neo4j".
+    /// - NEO4J_PASSWORD: The password for authentication. Default: "password".
+    /// - NEO4J_DATABASE: The name of the database. Default: "neo4j".
+    /// </remarks>
     public Neo4jGraphProvider(
-        string uri,
-        string username,
-        string password,
-        string databaseName = "neo4j",
+        string? uri,
+        string? username,
+        string? password,
+        string? databaseName = "neo4j",
         Microsoft.Extensions.Logging.ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(uri);
@@ -61,7 +68,11 @@ public class Neo4jGraphProvider : IGraph
         ArgumentNullException.ThrowIfNull(databaseName);
 
         _logger = logger;
-        _databaseName = databaseName;
+
+        uri ??= Environment.GetEnvironmentVariable("NEO4J_URI") ?? "bolt://localhost:7687";
+        username ??= Environment.GetEnvironmentVariable("NEO4J_USER") ?? "neo4j";
+        password ??= Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "password";
+        _databaseName = databaseName ?? Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
 
         // Create the Neo4j driver
         _driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));

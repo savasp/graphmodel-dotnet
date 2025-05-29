@@ -168,7 +168,7 @@ public abstract class BasicTestsBase : ITestBase
     {
         var tx = await this.Graph.BeginTransaction();
         var person = new Person { FirstName = "TxTest" };
-        await this.Graph.CreateNode(person, new(), tx);
+        await this.Graph.CreateNode(person, tx);
         await tx.DisposeAsync(); // Rollback
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetNode<Person>(person.Id));
     }
