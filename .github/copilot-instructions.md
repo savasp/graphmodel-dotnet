@@ -6,6 +6,8 @@ If you need to explain something, keep it simple and straightforward. Use exampl
 
 When writing code, make sure it's clean and easy to read. Use meaningful variable names and keep your code organized. Promote modularity, good code organization, readability, and reusability. Break down complex problems into smaller, manageable pieces.
 
+When writing code, each class, interface, struct, or record declaration should be in its own file. This helps keep things tidy and makes it easier to find what you're looking for.
+
 If you need to use comments, keep them concise and relevant. They should help explain the "why" behind your code, not just the "what".
 
 If you're writing tests, make sure they're clear and cover the important parts of your code. Use descriptive names for your test methods.

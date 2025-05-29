@@ -30,7 +30,8 @@ public interface IGraph : IAsyncDisposable
     /// <returns>A queryable interface to the nodes</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
-    IGraphQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null) where N : INode, new();
+    IGraphQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+        where N : class, INode, new();
 
     /// <summary>
     /// Gets a queryable interface to relationships in the graph with options for node loading
@@ -43,7 +44,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when the query fails</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     IGraphQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
-        where R : IRelationship, new();
+        where R : class, IRelationship, new();
 
     /// <summary>
     /// Gets a node by ID with options for relationship loading

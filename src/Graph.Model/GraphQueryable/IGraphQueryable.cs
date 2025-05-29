@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Linq.Expressions;
-
 namespace Cvoya.Graph.Model;
 
 /// <summary>
@@ -21,7 +19,7 @@ namespace Cvoya.Graph.Model;
 /// with graph-specific functionality while maintaining full LINQ compatibility.
 /// </summary>
 /// <typeparam name="T">The type of elements in the query</typeparam>
-public interface IGraphQueryable<T> : IOrderedQueryable<T> where T : class
+public interface IGraphQueryable<T> : IQueryable<T> where T : class
 {
     /// <summary>
     /// Gets the graph operation options for this query
@@ -91,13 +89,17 @@ public interface IGraphQueryable<T> : IOrderedQueryable<T> where T : class
     /// <summary>
     /// Initiates a graph traversal from this query
     /// </summary>
+    /// <typeparam name="TSource">The type of source nodes</typeparam>
     /// <typeparam name="TRel">The type of relationship to traverse</typeparam>
     /// <returns>A traversal builder for the specified relationship type</returns>
-    IGraphTraversal<T, TRel> Traverse<TRel>() where TRel : class, IRelationship, new();
+    IGraphTraversal<TSource, TRel> Traverse<TSource, TRel>()
+        where TSource : class, INode, new()
+        where TRel : class, IRelationship, new();
 
     /// <summary>
     /// Initiates graph pattern matching from this query
     /// </summary>
+    /// typeparam name="T">The type of entities to match</typeparam>
     /// <param name="pattern">The pattern to match</param>
     /// <returns>A pattern matcher for complex graph patterns</returns>
     IGraphPattern<T> Match(string pattern);
@@ -144,113 +146,4 @@ public interface IGraphQueryable<T> : IOrderedQueryable<T> where T : class
     IGraphQueryable<T> WithProfiling();
 }
 
-/// <summary>
-/// Interface for graph query execution context and metadata
-/// </summary>
-public interface IGraphQueryContext
-{
-    /// <summary>
-    /// Gets the unique identifier for this query context
-    /// </summary>
-    Guid QueryId { get; }
 
-    /// <summary>
-    /// Gets the timestamp when the query was created
-    /// </summary>
-    DateTimeOffset CreatedAt { get; }
-
-    /// <summary>
-    /// Gets the optimization hints applied to this query
-    /// </summary>
-    IReadOnlyList<string> Hints { get; }
-
-    /// <summary>
-    /// Gets the cache configuration for this query
-    /// </summary>
-    IGraphQueryCacheConfig? CacheConfig { get; }
-
-    /// <summary>
-    /// Gets the timeout configuration for this query
-    /// </summary>
-    TimeSpan? Timeout { get; }
-
-    /// <summary>
-    /// Gets whether profiling is enabled for this query
-    /// </summary>
-    bool ProfilingEnabled { get; }
-
-    /// <summary>
-    /// Gets the metadata types to include in results
-    /// </summary>
-    GraphMetadataTypes MetadataTypes { get; }
-}
-
-/// <summary>
-/// Interface for graph query caching configuration
-/// </summary>
-public interface IGraphQueryCacheConfig
-{
-    /// <summary>
-    /// Gets the cache key for this query
-    /// </summary>
-    string Key { get; }
-
-    /// <summary>
-    /// Gets how long results should be cached
-    /// </summary>
-    TimeSpan Duration { get; }
-
-    /// <summary>
-    /// Gets the cache invalidation strategy
-    /// </summary>
-    GraphCacheInvalidationStrategy InvalidationStrategy { get; }
-}
-
-/// <summary>
-/// Flags enum for specifying what metadata to include in query results
-/// </summary>
-[Flags]
-public enum GraphMetadataTypes
-{
-    /// <summary>No additional metadata</summary>
-    None = 0,
-    
-    /// <summary>Include entity IDs</summary>
-    Ids = 1,
-    
-    /// <summary>Include entity labels/types</summary>
-    Labels = 2,
-    
-    /// <summary>Include relationship directions</summary>
-    Directions = 4,
-    
-    /// <summary>Include creation timestamps</summary>
-    CreatedAt = 8,
-    
-    /// <summary>Include last modified timestamps</summary>
-    ModifiedAt = 16,
-    
-    /// <summary>Include query execution statistics</summary>
-    Statistics = 32,
-    
-    /// <summary>Include all available metadata</summary>
-    All = Ids | Labels | Directions | CreatedAt | ModifiedAt | Statistics
-}
-
-/// <summary>
-/// Cache invalidation strategies for graph queries
-/// </summary>
-public enum GraphCacheInvalidationStrategy
-{
-    /// <summary>Cache expires after the specified duration</summary>
-    TimeBasedExpiration,
-    
-    /// <summary>Cache is invalidated when related entities change</summary>
-    EntityChangeInvalidation,
-    
-    /// <summary>Cache is invalidated manually</summary>
-    ManualInvalidation,
-    
-    /// <summary>Cache is invalidated when any part of the graph changes</summary>
-    GraphChangeInvalidation
-}
