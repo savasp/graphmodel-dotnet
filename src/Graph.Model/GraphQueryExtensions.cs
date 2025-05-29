@@ -236,7 +236,8 @@ public static class GraphTraversalExtensions
         where TSource : class, INode, new()
         where TTarget : class, INode, new()
     {
-        return source.AsGraphQueryable().Query<TSource>().FollowPath<TSource>(1, 1).InDirection(direction).To<TTarget>();
+        // TODO: Implement proper conversion from IGraphQueryBuilder to IGraphQueryable
+        throw new NotImplementedException("This extension requires a graph provider implementation");
     }
 }
 

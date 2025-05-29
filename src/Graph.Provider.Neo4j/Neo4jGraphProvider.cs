@@ -91,7 +91,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public IQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public IGraphQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where N : class, Cvoya.Graph.Model.INode, new()
     {
         var provider = new Neo4jQueryProvider(this, options, _logger, transaction as Neo4jGraphTransaction);
@@ -100,7 +100,7 @@ public class Neo4jGraphProvider : IGraph
     }
 
     /// <inheritdoc />
-    public IQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
+    public IGraphQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
         where R : class, Cvoya.Graph.Model.IRelationship, new()
     {
         var provider = new Neo4jQueryProvider(this, options, _logger, transaction as Neo4jGraphTransaction);
