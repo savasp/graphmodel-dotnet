@@ -96,7 +96,7 @@ internal class GraphQueryProvider(
         var elementType = GetElementTypeFromExpression(expression) ?? _elementType;
 
         // Use the new CypherExpressionBuilder which has complete traversal support
-        var (cypher, parameters) = CypherExpressionBuilder.BuildGraphQuery(expression, elementType, _provider);
+        var (cypher, parameters, context) = CypherExpressionBuilder.BuildGraphQuery(expression, elementType, _provider);
 
         // Debug output to see what the new builder generates
         Console.WriteLine($"DEBUG - New CypherExpressionBuilder generated: {cypher}");
@@ -104,7 +104,7 @@ internal class GraphQueryProvider(
 
         // Execute the query using the new CypherExpressionBuilder execution method
         var nonNullableParams = parameters.ToDictionary(kvp => kvp.Key, kvp => kvp.Value ?? (object)DBNull.Value);
-        var result = CypherExpressionBuilder.ExecuteQuery(cypher, nonNullableParams, elementType, _provider, _transaction);
+        var result = CypherExpressionBuilder.ExecuteQuery(cypher, nonNullableParams, elementType, _provider, context, _transaction);
 
         return result;
     }
@@ -148,7 +148,7 @@ internal class GraphQueryProvider(
         var lastSelect = GetLastSelect(expression);
 
         // Use the new CypherExpressionBuilder which has complete traversal support
-        var (cypher, parameters) = CypherExpressionBuilder.BuildGraphQuery(expression, elementType, _provider);
+        var (cypher, parameters, context) = CypherExpressionBuilder.BuildGraphQuery(expression, elementType, _provider);
 
         // Debug output to see what the new builder generates
         Console.WriteLine($"DEBUG - New CypherExpressionBuilder generated: {cypher}");
@@ -156,7 +156,7 @@ internal class GraphQueryProvider(
 
         // Execute the query using the new CypherExpressionBuilder execution method
         var nonNullableParams = parameters.ToDictionary(kvp => kvp.Key, kvp => kvp.Value ?? (object)DBNull.Value);
-        var result = CypherExpressionBuilder.ExecuteQuery(cypher, nonNullableParams, elementType, _provider, _transaction);
+        var result = CypherExpressionBuilder.ExecuteQuery(cypher, nonNullableParams, elementType, _provider, context, _transaction);
 
         return HandleResult<TResult>(result, resultType, elementType, isEnumerableResult);
     }
@@ -432,12 +432,11 @@ internal class GraphQueryProvider(
         var result = await visitor.ExecuteQueryAsync(cypher, elementType);
 
         return result;
-    }
-    /*
+    }        /*
         public async Task<TResult> ExecuteAsync<TResult>(Expression expression)
         {
             // Use the new graph query builder
-            var (cypher, parameters) = CypherExpressionBuilder.BuildGraphQuery(
+            var (cypher, parameters, context) = CypherExpressionBuilder.BuildGraphQuery(
                 expression,
                 typeof(TResult),
                 _provider);

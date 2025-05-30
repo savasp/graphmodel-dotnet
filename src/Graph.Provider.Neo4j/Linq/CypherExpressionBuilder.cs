@@ -446,7 +446,7 @@ internal class CypherExpressionBuilder
         return null;
     }
 
-    public static (string cypher, Dictionary<string, object?> parameters) BuildGraphQuery(
+    public static (string cypher, Dictionary<string, object?> parameters, CypherBuildContext context) BuildGraphQuery(
             Expression expression,
             Type elementType,
             Neo4jGraphProvider provider)
@@ -460,7 +460,7 @@ internal class CypherExpressionBuilder
         // Build the final Cypher query
         var cypher = builder.BuildCypherQuery(context);
 
-        return (cypher, context.Parameters);
+        return (cypher, context.Parameters, context);
     }
 
     private void ProcessExpression(
@@ -810,9 +810,68 @@ internal class CypherExpressionBuilder
 
     private void ProcessTraversalPaths(MethodCallExpression methodCall, CypherBuildContext context)
     {
-        // Similar to ProcessTraversalTo but returns paths
-        // Implementation details...
-        throw new NotImplementedException("ProcessTraversalPaths");
+        // Extract traversal parameters - similar to ProcessTraversalTo
+        var source = methodCall.Arguments[0];
+        var direction = (TraversalDirection)((ConstantExpression)methodCall.Arguments[1]).Value!;
+        var nodeFilter = ExtractLambdaFromConstant(methodCall.Arguments[2]);
+        var relationshipFilter = ExtractLambdaFromConstant(methodCall.Arguments[3]);
+        var minDepth = (int)((ConstantExpression)methodCall.Arguments[4]).Value!;
+        var maxDepth = (int)((ConstantExpression)methodCall.Arguments[5]).Value!;
+
+        var genericArgs = methodCall.Method.GetGenericArguments();
+        var relationshipType = genericArgs[1];
+
+        var sourceAlias = context.CurrentAlias;
+        var relAlias = context.GetNextAlias("r");
+        var targetAlias = context.GetNextAlias("n");
+
+        // Build traversal pattern - similar to ProcessTraversalTo but structured for path results
+        var relLabel = Neo4jTypeManager.GetLabel(relationshipType);
+
+        if (context.Match.Length > 0) context.Match.AppendLine();
+        context.Match.Append($"MATCH ({sourceAlias})");
+
+        // For path queries, we typically want single-hop relationships to match the expected test structure
+        var relPattern = minDepth == 1 && maxDepth == 1
+            ? $"[{relAlias}:{relLabel}]"
+            : $"[{relAlias}:{relLabel}*{minDepth}..{maxDepth}]";
+
+        switch (direction)
+        {
+            case TraversalDirection.Outgoing:
+                context.Match.Append($"-{relPattern}->");
+                break;
+            case TraversalDirection.Incoming:
+                context.Match.Append($"<-{relPattern}-");
+                break;
+            case TraversalDirection.Both:
+                context.Match.Append($"-{relPattern}-");
+                break;
+        }
+        context.Match.Append($"({targetAlias})");
+
+        // Apply filters - similar to ProcessTraversalTo
+        if (nodeFilter != null && !IsConstantTrue(nodeFilter.Body))
+        {
+            var oldAlias = context.CurrentAlias;
+            context.CurrentAlias = sourceAlias;
+            if (context.Where.Length > 0) context.Where.Append(" AND ");
+            ProcessWhereClause(nodeFilter.Body, context);
+            context.CurrentAlias = oldAlias;
+        }
+
+        if (relationshipFilter != null && !IsConstantTrue(relationshipFilter.Body))
+        {
+            var oldAlias = context.CurrentAlias;
+            context.CurrentAlias = relAlias;
+            if (context.Where.Length > 0) context.Where.Append(" AND ");
+            ProcessWhereClause(relationshipFilter.Body, context);
+            context.CurrentAlias = oldAlias;
+        }
+
+        // Return structured path data - source, relationship, target as separate columns
+        context.Return = $"{sourceAlias}, {relAlias}, {targetAlias}";
+        context.IsPathResult = true;
     }
 
     private string BuildCypherQuery(CypherBuildContext context)
@@ -965,12 +1024,12 @@ internal class CypherExpressionBuilder
         }
     }
 
-    public static object? ExecuteQuery(string cypher, IDictionary<string, object> parameters, Type elementType, Neo4jGraphProvider provider, IGraphTransaction? transaction = null)
+    public static object? ExecuteQuery(string cypher, IDictionary<string, object> parameters, Type elementType, Neo4jGraphProvider provider, CypherBuildContext? context = null, IGraphTransaction? transaction = null)
     {
-        return ExecuteQueryAsync(cypher, parameters, elementType, provider, transaction).GetAwaiter().GetResult();
+        return ExecuteQueryAsync(cypher, parameters, elementType, provider, context, transaction).GetAwaiter().GetResult();
     }
 
-    public static async Task<object?> ExecuteQueryAsync(string cypher, IDictionary<string, object> parameters, Type elementType, Neo4jGraphProvider provider, IGraphTransaction? transaction = null)
+    public static async Task<object?> ExecuteQueryAsync(string cypher, IDictionary<string, object> parameters, Type elementType, Neo4jGraphProvider provider, CypherBuildContext? context = null, IGraphTransaction? transaction = null)
     {
         Console.WriteLine($"DEBUG - Executing Cypher: {cypher}");
         Console.WriteLine($"DEBUG - Parameters: {string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
@@ -987,46 +1046,58 @@ internal class CypherExpressionBuilder
         var listType = typeof(List<>).MakeGenericType(elementType);
         var items = (System.Collections.IList)Activator.CreateInstance(listType)!;
 
+        // Check if this is a path result based on context
+        bool isPathResult = context?.IsPathResult == true;
+        Console.WriteLine($"DEBUG - IsPathResult: {isPathResult}");
+
         await foreach (var record in cursor)
         {
             Console.WriteLine($"DEBUG - Record keys: {string.Join(", ", record.Keys)}");
             object? item = null;
 
-            // Try to parse the result based on what's returned
-            if (record.Keys.Count == 1)
+            if (isPathResult)
             {
-                var key = record.Keys.First();
-                var value = record[key];
-                Console.WriteLine($"DEBUG - Record value type: {value?.GetType().Name}, value: {value}");
-
-                if (value is global::Neo4j.Driver.INode node)
-                {
-                    Console.WriteLine($"DEBUG - Converting Neo4j node with labels: {string.Join(", ", node.Labels)}");
-                    // Convert Neo4j node to the target entity type
-                    item = ConvertNodeToEntity(node, elementType);
-                    Console.WriteLine($"DEBUG - Converted to: {item?.GetType().Name}");
-                }
-                else if (value is global::Neo4j.Driver.IRelationship rel)
-                {
-                    Console.WriteLine($"DEBUG - Converting Neo4j relationship: {rel.Type}");
-                    // Convert Neo4j relationship to the target entity type
-                    item = ConvertRelationshipToEntity(rel, elementType);
-                }
-                else
-                {
-                    Console.WriteLine($"DEBUG - Converting direct value");
-                    // Direct value (e.g., for aggregations or simple projections)
-                    item = ConvertValue(value, elementType);
-                }
+                // Handle path results - these typically have multiple columns or a path object
+                item = ConvertPathResult(record, elementType);
             }
             else
             {
-                // Multiple columns - might be a projection or complex result
-                // For now, assume it's a node if the first key matches a pattern
-                var nodeKey = record.Keys.FirstOrDefault(k => k.StartsWith('n'));
-                if (nodeKey != null && record[nodeKey] is global::Neo4j.Driver.INode node)
+                // Handle regular entity results
+                if (record.Keys.Count == 1)
                 {
-                    item = ConvertNodeToEntity(node, elementType);
+                    var key = record.Keys.First();
+                    var value = record[key];
+                    Console.WriteLine($"DEBUG - Record value type: {value?.GetType().Name}, value: {value}");
+
+                    if (value is global::Neo4j.Driver.INode node)
+                    {
+                        Console.WriteLine($"DEBUG - Converting Neo4j node with labels: {string.Join(", ", node.Labels)}");
+                        // Convert Neo4j node to the target entity type
+                        item = ConvertNodeToEntity(node, elementType);
+                        Console.WriteLine($"DEBUG - Converted to: {item?.GetType().Name}");
+                    }
+                    else if (value is global::Neo4j.Driver.IRelationship rel)
+                    {
+                        Console.WriteLine($"DEBUG - Converting Neo4j relationship: {rel.Type}");
+                        // Convert Neo4j relationship to the target entity type
+                        item = ConvertRelationshipToEntity(rel, elementType);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"DEBUG - Converting direct value");
+                        // Direct value (e.g., for aggregations or simple projections)
+                        item = ConvertValue(value, elementType);
+                    }
+                }
+                else
+                {
+                    // Multiple columns - might be a projection or complex result
+                    // For now, assume it's a node if the first key matches a pattern
+                    var nodeKey = record.Keys.FirstOrDefault(k => k.StartsWith('n'));
+                    if (nodeKey != null && record[nodeKey] is global::Neo4j.Driver.INode node)
+                    {
+                        item = ConvertNodeToEntity(node, elementType);
+                    }
                 }
             }
 
@@ -1067,21 +1138,47 @@ internal class CypherExpressionBuilder
 
     private static object? ConvertRelationshipToEntity(global::Neo4j.Driver.IRelationship relationship, Type entityType)
     {
-        // Similar to node conversion but for relationships
-        var entity = Activator.CreateInstance(entityType);
-        if (entity == null) return null;
-
-        var properties = entityType.GetProperties();
-        foreach (var property in properties)
+        try
         {
-            if (relationship.Properties.TryGetValue(property.Name, out var value))
-            {
-                var convertedValue = ConvertValue(value, property.PropertyType);
-                property.SetValue(entity, convertedValue);
-            }
-        }
+            // Create an instance of the entity type
+            var entity = Activator.CreateInstance(entityType);
+            if (entity == null) return null;
 
-        return entity;
+            // Map properties from the Neo4j relationship to the entity
+            var properties = entityType.GetProperties();
+            foreach (var property in properties)
+            {
+                if (relationship.Properties.TryGetValue(property.Name, out var value))
+                {
+                    var convertedValue = ConvertValue(value, property.PropertyType);
+                    property.SetValue(entity, convertedValue);
+                }
+            }
+
+            // Set the relationship IDs from Neo4j relationship metadata
+            if (entity is Cvoya.Graph.Model.IRelationship rel)
+            {
+                // Set the Id if it exists in properties, otherwise use ElementId
+                if (relationship.Properties.ContainsKey("Id"))
+                {
+                    rel.Id = relationship.Properties["Id"].ToString() ?? relationship.ElementId;
+                }
+                else
+                {
+                    rel.Id = relationship.ElementId;
+                }
+
+                // Note: SourceId and TargetId should be set by the caller
+                // since they need to come from the source and target nodes
+            }
+
+            return entity;
+        }
+        catch (Exception)
+        {
+            // Return null on any conversion errors
+            return null;
+        }
     }
 
     private static object? ConvertValue(object? value, Type targetType)
@@ -1107,6 +1204,156 @@ internal class CypherExpressionBuilder
         }
         catch
         {
+            return null;
+        }
+    }
+
+    private static object? ConvertPathResult(global::Neo4j.Driver.IRecord record, Type elementType)
+    {
+        Console.WriteLine($"DEBUG - Converting path result with keys: {string.Join(", ", record.Keys)}");
+
+        // Check if there's a direct path object in the result
+        foreach (var key in record.Keys)
+        {
+            var value = record[key];
+            if (value is global::Neo4j.Driver.IPath path)
+            {
+                Console.WriteLine($"DEBUG - Found Neo4j path with {path.Nodes.Count} nodes and {path.Relationships.Count} relationships");
+                return ConvertNeo4jPathToGraphPath(path, elementType);
+            }
+        }
+
+        // Check for multiple columns that represent a path structure
+        // Common patterns: source, relationship, target OR start, end, path OR n, r1, n2
+        if (record.Keys.Count >= 3)
+        {
+            // Look for source/start node - often the first node variable
+            var sourceKey = record.Keys.FirstOrDefault(k =>
+                k.Equals("source", StringComparison.OrdinalIgnoreCase) ||
+                k.Equals("start", StringComparison.OrdinalIgnoreCase) ||
+                k.Equals("from", StringComparison.OrdinalIgnoreCase) ||
+                k.Equals("n", StringComparison.OrdinalIgnoreCase) ||  // First node is often just "n"
+                (k.StartsWith('n') && !k.Contains('2') && !k.Contains('3'))); // n, n0, n1 but not n2, n3
+
+            // Look for target/end node - often the second or later node variable
+            var targetKey = record.Keys.FirstOrDefault(k =>
+                k != sourceKey && ( // Make sure it's not the same as source
+                k.Equals("target", StringComparison.OrdinalIgnoreCase) ||
+                k.Equals("end", StringComparison.OrdinalIgnoreCase) ||
+                k.Equals("to", StringComparison.OrdinalIgnoreCase) ||
+                k.Equals("n2", StringComparison.OrdinalIgnoreCase) ||
+                (k.StartsWith('n') && (k.Contains('2') || k.Contains('3') || k.Contains('1'))))); // n1, n2, n3
+
+            // Look for relationship
+            var relationshipKey = record.Keys.FirstOrDefault(k =>
+                k.Equals("relationship", StringComparison.OrdinalIgnoreCase) ||
+                k.Equals("rel", StringComparison.OrdinalIgnoreCase) ||
+                k.StartsWith('r'));
+
+            if (sourceKey != null && targetKey != null)
+            {
+                Console.WriteLine($"DEBUG - Found path components: source={sourceKey}, target={targetKey}, relationship={relationshipKey}");
+                return ConvertPathComponentsToGraphPath(record, sourceKey, targetKey, relationshipKey, elementType);
+            }
+        }
+
+        // Fallback: treat as regular single entity if no path structure detected
+        Console.WriteLine($"DEBUG - No path structure detected, treating as single entity");
+        if (record.Keys.Count == 1)
+        {
+            var key = record.Keys.First();
+            var value = record[key];
+
+            if (value is global::Neo4j.Driver.INode node)
+            {
+                return ConvertNodeToEntity(node, elementType);
+            }
+            else if (value is global::Neo4j.Driver.IRelationship rel)
+            {
+                return ConvertRelationshipToEntity(rel, elementType);
+            }
+        }
+
+        return null;
+    }
+
+    private static object? ConvertNeo4jPathToGraphPath(global::Neo4j.Driver.IPath neo4jPath, Type elementType)
+    {
+        // TODO: Implement conversion from Neo4j IPath to our GraphPath types
+        // For now, return the first node if the element type is a node type
+        if (neo4jPath.Nodes.Any())
+        {
+            var firstNode = neo4jPath.Nodes.First();
+            return ConvertNodeToEntity(firstNode, elementType);
+        }
+
+        return null;
+    }
+
+    private static object? ConvertPathComponentsToGraphPath(global::Neo4j.Driver.IRecord record, string sourceKey, string targetKey, string? relationshipKey, Type elementType)
+    {
+        try
+        {
+            // Check if we can extract the generic arguments from the element type
+            if (!elementType.IsGenericType || elementType.GetGenericTypeDefinition() != typeof(IGraphPath<,,>))
+            {
+                // Fallback to source node if not a path type
+                if (record[sourceKey] is global::Neo4j.Driver.INode sourceNode)
+                {
+                    return ConvertNodeToEntity(sourceNode, elementType);
+                }
+                return null;
+            }
+
+            var genericArgs = elementType.GetGenericArguments();
+            var sourceType = genericArgs[0];  // TSource
+            var relationshipType = genericArgs[1];  // TRel
+            var targetType = genericArgs[2];  // TTarget
+
+            // Convert the source node
+            if (!(record[sourceKey] is global::Neo4j.Driver.INode sourceNodeValue))
+            {
+                return null;
+            }
+            var sourceEntity = ConvertNodeToEntity(sourceNodeValue, sourceType);
+            if (sourceEntity == null) return null;
+
+            // Convert the target node
+            if (!(record[targetKey] is global::Neo4j.Driver.INode targetNodeValue))
+            {
+                return null;
+            }
+            var targetEntity = ConvertNodeToEntity(targetNodeValue, targetType);
+            if (targetEntity == null) return null;
+
+            // Convert the relationship (if present)
+            object? relationshipEntity = null;
+            if (!string.IsNullOrEmpty(relationshipKey) && record[relationshipKey] is global::Neo4j.Driver.IRelationship relationshipValue)
+            {
+                relationshipEntity = ConvertRelationshipToEntity(relationshipValue, relationshipType);
+            }
+
+            // If no relationship, create a basic one
+            if (relationshipEntity == null)
+            {
+                relationshipEntity = Activator.CreateInstance(relationshipType);
+                if (relationshipEntity is Cvoya.Graph.Model.IRelationship rel)
+                {
+                    rel.SourceId = (sourceEntity as Cvoya.Graph.Model.IEntity)?.Id ?? "";
+                    rel.TargetId = (targetEntity as Cvoya.Graph.Model.IEntity)?.Id ?? "";
+                }
+            }
+
+            // Create SimpleGraphPath instance using reflection
+            var simpleGraphPathType = typeof(SimpleGraphPath<,,>).MakeGenericType(sourceType, relationshipType, targetType);
+            var pathInstance = Activator.CreateInstance(simpleGraphPathType, sourceEntity, relationshipEntity, targetEntity);
+
+            return pathInstance;
+        }
+        catch (Exception ex)
+        {
+            // Log and return null on any conversion errors
+            Console.WriteLine($"Error converting path components: {ex.Message}");
             return null;
         }
     }
