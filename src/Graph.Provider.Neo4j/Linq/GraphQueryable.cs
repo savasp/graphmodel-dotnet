@@ -18,7 +18,7 @@ using Cvoya.Graph.Model;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq;
 
-internal class GraphQueryable<T> : IGraphQueryable<T> where T : class
+internal class GraphQueryable<T> : IGraphQueryable<T>, IOrderedQueryable<T> where T : class
 {
     private readonly IGraphQueryContext _context;
 

@@ -28,7 +28,9 @@ public abstract class QueryTestsBase : ITestBase
         await this.Graph.CreateNode(p2);
         await this.Graph.CreateNode(p3);
 
-        var smiths = this.Graph.Nodes<Person>().Where(p => p.LastName == "Smith").ToList();
+        var smiths = this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == "Smith")
+            .ToList();
         Assert.Contains(smiths, p => p.FirstName == "Alice");
         Assert.Contains(smiths, p => p.FirstName == "Bob");
         Assert.DoesNotContain(smiths, p => p.FirstName == "Charlie");

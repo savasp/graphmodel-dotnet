@@ -35,13 +35,24 @@ internal class GraphQueryProvider(
         var elementType = expression.Type.GetGenericArguments().FirstOrDefault() ?? _elementType;
         var queryableType = typeof(GraphQueryable<>).MakeGenericType(elementType);
 
-        // Pass context to the new queryable
-        return (IQueryable)Activator.CreateInstance(
-            queryableType,
-            this,
-            expression,
-            _transaction,
-            new GraphQueryContext())!;
+        // Get the internal constructor that takes 4 parameters
+        var constructor = queryableType.GetConstructor(
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+            null,
+            new[] { typeof(GraphQueryProvider), typeof(Expression), typeof(IGraphTransaction), typeof(IGraphQueryContext) },
+            null);
+
+        if (constructor == null)
+        {
+            throw new InvalidOperationException($"Could not find appropriate constructor for {queryableType.Name}");
+        }
+
+        return (IQueryable)constructor.Invoke(new object?[] {
+            this,          // provider
+            expression,    // expression
+            _transaction,  // transaction
+            new GraphQueryContext() // context
+        });
     }
 
     public IQueryable<TElement> CreateQuery<TElement>(Expression expression)
@@ -56,12 +67,25 @@ internal class GraphQueryProvider(
 
         // Use reflection to create GraphQueryable<TElement> since we can't guarantee TElement : class constraint
         var queryableType = typeof(GraphQueryable<>).MakeGenericType(elementType);
-        return (IQueryable<TElement>)Activator.CreateInstance(
-            queryableType,
-            this,
-            expression,
-            _transaction,
-            new GraphQueryContext())!;
+
+        // Get the internal constructor that takes 4 parameters
+        var constructor = queryableType.GetConstructor(
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+            null,
+            new[] { typeof(GraphQueryProvider), typeof(Expression), typeof(IGraphTransaction), typeof(IGraphQueryContext) },
+            null);
+
+        if (constructor == null)
+        {
+            throw new InvalidOperationException($"Could not find appropriate constructor for {queryableType.Name}");
+        }
+
+        return (IQueryable<TElement>)constructor.Invoke(new object?[] {
+            this,          // provider
+            expression,    // expression
+            _transaction,  // transaction
+            new GraphQueryContext() // context
+        });
     }
 
     public object? Execute(Expression expression)

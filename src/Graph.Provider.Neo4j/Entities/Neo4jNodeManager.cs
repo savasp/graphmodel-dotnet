@@ -60,7 +60,7 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
         // Create a dictionary to track object instances if not already exists
         var objectTracker = new Dictionary<object, string>();
 
-        return await CreateNodeInternal(node.Id, node, tx, propertyName, objectTracker);
+        return await CreateNodeInternal(null, node, tx, propertyName, objectTracker);
     }
 
     /// <summary>
@@ -186,8 +186,6 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
 
         await tx.RunAsync(cypher, new { nodeId });
     }
-
-
 
     private async Task<string> CreateNodeInternal(string? parentId, object node, IAsyncTransaction tx, string? propertyName, Dictionary<object, string> objectTracker)
     {

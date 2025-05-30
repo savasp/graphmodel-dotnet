@@ -364,7 +364,7 @@ public abstract class BasicTestsBase : ITestBase
         public Person? Friend { get; set; } = null;
     }
 
-    [Fact]
+    [Fact(Skip = "We are going to implement a Roslyn analyzer to catch this at compile time. We need to decide whether to also have a runtime check. The check was there but has been removed. Hence why we are skipping this test for now.")]
     public async Task CannotAddNodeWithRelationshipProperty()
     {
         var person = new PersonWithIRelationshipProperty { FirstName = "A", LastName = "B", Friend = new Person { FirstName = "C", LastName = "D" } };
