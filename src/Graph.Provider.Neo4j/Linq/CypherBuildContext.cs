@@ -71,6 +71,11 @@ internal class CypherBuildContext
     public bool IsPathResult { get; set; }
 
     /// <summary>
+    /// Whether this is a scalar result (single value, e.g., aggregate functions)
+    /// </summary>
+    public bool IsScalarResult { get; set; }
+
+    /// <summary>
     /// Number of records to skip (SKIP clause)
     /// </summary>
     public int Skip { get; set; }

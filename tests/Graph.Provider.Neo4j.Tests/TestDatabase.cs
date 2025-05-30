@@ -50,18 +50,21 @@ public class TestDatabase
         }
     }
 
-    private async Task WaitForDatabaseOnline(int maxAttempts = 30, int delayMs = 1000)
+    private async Task WaitForDatabaseOnline(int maxAttempts = 30, int delayMs = 100)
     {
         // First, wait for SHOW DATABASES to report online
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
             await using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
             var result = await session.RunAsync($"SHOW DATABASES YIELD name, currentStatus WHERE name = '{this.databaseName}' RETURN currentStatus");
-            var record = await result.SingleOrDefaultAsync();
-            var status = record?["currentStatus"].As<string>();
-            if (status == "online")
+            if (await result.FetchAsync())
             {
-                break;
+                var record = result.Current;
+                var status = record["currentStatus"].As<string>();
+                if (status == "online")
+                {
+                    break;
+                }
             }
             await session.CloseAsync();
             await Task.Delay(delayMs);

@@ -380,6 +380,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
 
         // Assert
         Assert.Single(recentRelationships);
+
         Assert.True(recentRelationships[0].Since > DateTime.UtcNow.AddYears(-1));
     }
 

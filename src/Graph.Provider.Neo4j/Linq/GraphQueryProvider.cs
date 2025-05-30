@@ -98,10 +98,6 @@ internal class GraphQueryProvider(
         // Use the new CypherExpressionBuilder which has complete traversal support
         var (cypher, parameters, context) = CypherExpressionBuilder.BuildGraphQuery(expression, elementType, _provider);
 
-        // Debug output to see what the new builder generates
-        Console.WriteLine($"DEBUG - New CypherExpressionBuilder generated: {cypher}");
-        Console.WriteLine($"DEBUG - Parameters: {string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
-
         // Execute the query using the new CypherExpressionBuilder execution method
         var nonNullableParams = parameters.ToDictionary(kvp => kvp.Key, kvp => kvp.Value ?? (object)DBNull.Value);
         var result = CypherExpressionBuilder.ExecuteQuery(cypher, nonNullableParams, elementType, _provider, context, _transaction);
@@ -116,25 +112,34 @@ internal class GraphQueryProvider(
 
         // Check if TResult is an enumerable type
         bool isEnumerableResult = false;
-        if (resultType.IsGenericType)
+
+        // First check if it's a string (which implements IEnumerable<char> but should be treated as scalar)
+        if (resultType == typeof(string))
         {
-            var genericDef = resultType.GetGenericTypeDefinition();
-            if (genericDef == typeof(IEnumerable<>) ||
-                genericDef == typeof(IList<>) ||
-                genericDef == typeof(List<>) ||
-                genericDef == typeof(ICollection<>))
-            {
-                elementType = resultType.GetGenericArguments()[0];
-                isEnumerableResult = true;
-            }
+            isEnumerableResult = false;
         }
+        // Check for array types
         else if (resultType.IsArray)
         {
             elementType = resultType.GetElementType()!;
             isEnumerableResult = true;
         }
-        // Also check if it implements IEnumerable<T>
-        else if (resultType != typeof(string))
+        // Check for generic collection types
+        else if (resultType.IsGenericType)
+        {
+            var genericDef = resultType.GetGenericTypeDefinition();
+            if (genericDef == typeof(IEnumerable<>) ||
+                genericDef == typeof(IList<>) ||
+                genericDef == typeof(List<>) ||
+                genericDef == typeof(ICollection<>) ||
+                genericDef == typeof(IQueryable<>))
+            {
+                elementType = resultType.GetGenericArguments()[0];
+                isEnumerableResult = true;
+            }
+        }
+        // Also check if it implements IEnumerable<T> (but not for primitive types)
+        else if (!resultType.IsPrimitive && resultType != typeof(decimal))
         {
             var enumerableInterface = resultType.GetInterfaces()
                 .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>));
@@ -150,9 +155,12 @@ internal class GraphQueryProvider(
         // Use the new CypherExpressionBuilder which has complete traversal support
         var (cypher, parameters, context) = CypherExpressionBuilder.BuildGraphQuery(expression, elementType, _provider);
 
-        // Debug output to see what the new builder generates
-        Console.WriteLine($"DEBUG - New CypherExpressionBuilder generated: {cypher}");
-        Console.WriteLine($"DEBUG - Parameters: {string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
+        // Force scalar handling for aggregate queries
+        if (context.IsScalarResult)
+        {
+            isEnumerableResult = false;
+            elementType = resultType;
+        }
 
         // Execute the query using the new CypherExpressionBuilder execution method
         var nonNullableParams = parameters.ToDictionary(kvp => kvp.Key, kvp => kvp.Value ?? (object)DBNull.Value);
@@ -163,11 +171,53 @@ internal class GraphQueryProvider(
 
     private TResult HandleResult<TResult>(object? result, Type resultType, Type elementType, bool isEnumerableResult)
     {
+        if (result == null)
+        {
+            return default(TResult)!;
+        }
+
+        // First, try direct cast if possible
+        if (result is TResult directResult)
+        {
+            return directResult;
+        }
+
         // Handle scalar results (Count, Any, All, First, Single, etc.)
         if (!isEnumerableResult || resultType == typeof(string))
         {
+            // If result is a list and TResult is scalar, unwrap the first item (if any)
+            if (result is IList listResult && listResult.Count > 0 && !resultType.IsAssignableTo(typeof(IEnumerable)) && resultType != typeof(string))
+            {
+                var single = listResult[0];
+                // Handle numeric conversions
+                if (resultType == typeof(int) && single is long longValue)
+                    return (TResult)(object)Convert.ToInt32(longValue);
+                if (resultType == typeof(int?) && single is long longValue2)
+                    return (TResult)(object)Convert.ToInt32(longValue2);
+                if (resultType == typeof(double) && single is float floatValue)
+                    return (TResult)(object)Convert.ToDouble(floatValue);
+                if (resultType == typeof(double?) && single is float floatValue2)
+                    return (TResult)(object)Convert.ToDouble(floatValue2);
+                if (single != null && single.GetType() != resultType)
+                {
+                    try { return (TResult)Convert.ChangeType(single, resultType); } catch { }
+                }
+                return (TResult)single!;
+            }
+
+            // Special handling for List<int> vs int mismatch - this is the core issue
+            if (resultType.IsGenericType &&
+                resultType.GetGenericTypeDefinition() == typeof(List<>) &&
+                result is int intValue)
+            {
+                var listType = typeof(List<>).MakeGenericType(resultType.GetGenericArguments()[0]);
+                var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
+                list.Add(intValue);
+                return (TResult)list;
+            }
+
             // Handle type conversions for scalar results
-            if (result != null && result.GetType() != resultType)
+            if (result.GetType() != resultType)
             {
                 // Special handling for numeric conversions
                 if (resultType == typeof(int) && result is long longValue)
@@ -178,63 +228,90 @@ internal class GraphQueryProvider(
                 {
                     return (TResult)(object)Convert.ToInt32(longValue2);
                 }
+                // Add handling for double/float conversions (for Average() operations)
+                else if (resultType == typeof(double) && result is float floatValue)
+                {
+                    return (TResult)(object)Convert.ToDouble(floatValue);
+                }
+                else if (resultType == typeof(double?) && result is float floatValue2)
+                {
+                    return (TResult)(object)Convert.ToDouble(floatValue2);
+                }
 
                 // Try general conversion
                 try
                 {
                     return (TResult)Convert.ChangeType(result, resultType);
                 }
-                catch
+                catch (Exception ex)
                 {
                     // If conversion fails, try direct cast
                     return (TResult)result;
                 }
             }
 
-            if (result is System.Collections.IEnumerable enumerableRes && result is not string)
+            // If we're expecting a scalar but got an enumerable, take the first element
+            if (result is IEnumerable enumerableRes && result is not string)
             {
                 var enumerator = enumerableRes.GetEnumerator();
                 if (enumerator.MoveNext())
                     return (TResult)enumerator.Current!;
                 return default!;
             }
+
+            // Handle the case where TResult is a List<T> but result is a single value
+            if (resultType.IsGenericType &&
+                (resultType.GetGenericTypeDefinition() == typeof(List<>) ||
+                 resultType.GetGenericTypeDefinition() == typeof(IList<>) ||
+                 resultType.GetGenericTypeDefinition() == typeof(ICollection<>) ||
+                 resultType.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
+            {
+                // We have a scalar value but need to return a list
+                var listType = typeof(List<>).MakeGenericType(elementType);
+                var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
+                list.Add(result);
+                return (TResult)(object)list;
+            }
+
             return (TResult)result!;
-        }
-
-        // Handle enumerable results
-        if (result is System.Collections.IEnumerable enumerableResult && result is not string)
-        {
-            // If the result is already the correct type, return it
-            if (result.GetType() == resultType || resultType.IsAssignableFrom(result.GetType()))
-            {
-                return (TResult)result;
-            }
-
-            // If we need to convert to array
-            if (resultType.IsArray)
-            {
-                var list = (System.Collections.IList)result;
-                var array = Array.CreateInstance(elementType, list.Count);
-                list.CopyTo(array, 0);
-                return (TResult)(object)array;
-            }
-
-            // Otherwise return as is (it should be a List<T> which implements IEnumerable<T>)
-            return (TResult)result;
-        }
-        else if (result is not null)
-        {
-            // Wrap single value in a list
-            var listType = typeof(List<>).MakeGenericType(elementType);
-            var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
-            list.Add(result);
-            return (TResult)(object)list;
         }
         else
         {
-            // Return empty list
-            var listType = typeof(List<>).MakeGenericType(elementType);
-            return (TResult)Activator.CreateInstance(listType)!;
+            // Handle enumerable results
+            if (result is System.Collections.IEnumerable enumerableResult && result is not string)
+            {
+                // If the result is already the correct type, return it
+                if (result.GetType() == resultType || resultType.IsAssignableFrom(result.GetType()))
+                {
+                    return (TResult)result;
+                }
+
+                // If we need to convert to array
+                if (resultType.IsArray)
+                {
+                    var list = (System.Collections.IList)result;
+                    var array = Array.CreateInstance(elementType, list.Count);
+                    list.CopyTo(array, 0);
+                    return (TResult)(object)array;
+                }
+
+                // Otherwise return as is (it should be a List<T> which implements IEnumerable<T>)
+                return (TResult)result;
+            }
+            else if (result is not null)
+            {
+                // Wrap single value in a list
+                var listType = typeof(List<>).MakeGenericType(elementType);
+                var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
+                list.Add(result);
+                return (TResult)(object)list;
+            }
+            else
+            {
+                // Return empty list
+                var listType = typeof(List<>).MakeGenericType(elementType);
+                return (TResult)Activator.CreateInstance(listType)!;
+            }
         }
     }
 

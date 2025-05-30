@@ -363,6 +363,35 @@ internal class CypherExpressionBuilder
                             return $"CASE WHEN {v3} < {v4} THEN {v3} ELSE {v4} END";
                     }
                 }
+                else if (mce.Method.DeclaringType == typeof(DateTime))
+                {
+                    // DateTime functions
+                    var target = BuildCypherExpression(mce.Object!, varName);
+                    switch (mce.Method.Name)
+                    {
+                        case "AddYears":
+                            var years = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"datetime({{epochMillis: {target}.epochMillis + ({years} * 365 * 24 * 60 * 60 * 1000)}})";
+                        case "AddMonths":
+                            var months = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"datetime({{epochMillis: {target}.epochMillis + ({months} * 30 * 24 * 60 * 60 * 1000)}})";
+                        case "AddDays":
+                            var days = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"datetime({{epochMillis: {target}.epochMillis + ({days} * 24 * 60 * 60 * 1000)}})";
+                        case "AddHours":
+                            var hours = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"datetime({{epochMillis: {target}.epochMillis + ({hours} * 60 * 60 * 1000)}})";
+                        case "AddMinutes":
+                            var minutes = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"datetime({{epochMillis: {target}.epochMillis + ({minutes} * 60 * 1000)}})";
+                        case "AddSeconds":
+                            var seconds = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"datetime({{epochMillis: {target}.epochMillis + ({seconds} * 1000)}})";
+                        case "AddMilliseconds":
+                            var milliseconds = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"datetime({{epochMillis: {target}.epochMillis + {milliseconds}}})";
+                    }
+                }
                 throw new NotSupportedException($"Method {mce.Method.Name} is not supported in projections");
 
             case ConditionalExpression cond:
@@ -453,6 +482,17 @@ internal class CypherExpressionBuilder
     {
         var builder = new CypherExpressionBuilder();
         var context = new CypherBuildContext();
+
+        // Detect aggregate/scalar operations
+        if (expression is MethodCallExpression methodCall)
+        {
+            var methodName = methodCall.Method.Name;
+            context.IsScalarResult = methodName switch
+            {
+                "Count" or "LongCount" or "Sum" or "Average" or "Min" or "Max" or "Any" or "All" or "First" or "FirstOrDefault" or "Single" or "SingleOrDefault" or "Last" or "LastOrDefault" => true,
+                _ => false
+            };
+        }
 
         // Process the expression tree
         builder.ProcessExpression(expression, elementType, context, provider);
@@ -664,6 +704,75 @@ internal class CypherExpressionBuilder
                 context.IsCountQuery = true;
                 break;
 
+            case "Average":
+                if (methodCall.Arguments.Count > 1)
+                {
+                    var avgSelector = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+                    if (avgSelector != null)
+                    {
+                        var property = BuildCypherExpression(avgSelector.Body, context.CurrentAlias);
+                        context.Return = $"AVG({property})";
+                    }
+                }
+                else
+                {
+                    // No selector, average the whole entity (doesn't make sense, but handle gracefully)
+                    throw new NotSupportedException("Average requires a property selector");
+                }
+                context.IsScalarResult = true;
+                break;
+
+            case "Sum":
+                if (methodCall.Arguments.Count > 1)
+                {
+                    var sumSelector = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+                    if (sumSelector != null)
+                    {
+                        var property = BuildCypherExpression(sumSelector.Body, context.CurrentAlias);
+                        context.Return = $"SUM({property})";
+                    }
+                }
+                else
+                {
+                    throw new NotSupportedException("Sum requires a property selector");
+                }
+                context.IsScalarResult = true;
+                break;
+
+            case "Min":
+                if (methodCall.Arguments.Count > 1)
+                {
+                    var minSelector = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+                    if (minSelector != null)
+                    {
+                        var property = BuildCypherExpression(minSelector.Body, context.CurrentAlias);
+                        context.Return = $"MIN({property})";
+                    }
+                }
+                else
+                {
+                    throw new NotSupportedException("Min requires a property selector");
+                }
+                context.IsScalarResult = true;
+                break;
+
+            case "Max":
+                if (methodCall.Arguments.Count > 1)
+                {
+                    var maxSelector = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+                    if (maxSelector != null)
+                    {
+                        var property = BuildCypherExpression(maxSelector.Body, context.CurrentAlias);
+                        context.Return = $"MAX({property})";
+                    }
+                }
+                else
+                {
+                    throw new NotSupportedException("Max requires a property selector");
+                }
+                context.IsScalarResult = true;
+                break;
+
             case "Any":
                 if (methodCall.Arguments.Count > 1)
                 {
@@ -803,9 +912,84 @@ internal class CypherExpressionBuilder
 
     private void ProcessTraversalRelationships(MethodCallExpression methodCall, CypherBuildContext context)
     {
-        // Similar to ProcessTraversalTo but returns relationships
-        // Implementation details...
-        throw new NotImplementedException("ProcessTraversalRelationships");
+        // Extract traversal parameters - similar to ProcessTraversalTo but without targetFilter
+        var source = methodCall.Arguments[0];
+        var direction = (TraversalDirection)((ConstantExpression)methodCall.Arguments[1]).Value!;
+        var nodeFilter = ExtractLambdaFromConstant(methodCall.Arguments[2]);
+        var relationshipFilter = ExtractLambdaFromConstant(methodCall.Arguments[3]);
+        var minDepth = (int)((ConstantExpression)methodCall.Arguments[4]).Value!;
+        var maxDepth = (int)((ConstantExpression)methodCall.Arguments[5]).Value!;
+
+        var genericArgs = methodCall.Method.GetGenericArguments();
+        var relationshipType = genericArgs[1]; // Only TSourceNode and TRel for relationship queries
+        // No targetType for relationship queries - we return relationships directly
+
+        var sourceAlias = context.CurrentAlias;
+        var relAlias = context.GetNextAlias("r");
+        var targetAlias = context.GetNextAlias("n"); // Still need a target for the pattern
+
+        // Build traversal pattern
+        var relLabel = Neo4jTypeManager.GetLabel(relationshipType);
+        // For relationship queries, we can traverse to any node type
+        // We'll use a generic pattern without specific target labels
+
+        if (context.Match.Length > 0) context.Match.AppendLine();
+        context.Match.Append($"MATCH ({sourceAlias})");
+
+        // For relationship queries, use single relationships not variable length patterns
+        var relPattern = minDepth == 1 && maxDepth == 1
+            ? $"[{relAlias}:{relLabel}]"
+            : $"[{relAlias}:{relLabel}*{minDepth}..{maxDepth}]";
+
+        switch (direction)
+        {
+            case TraversalDirection.Outgoing:
+                context.Match.Append($"-{relPattern}->");
+                break;
+            case TraversalDirection.Incoming:
+                context.Match.Append($"<-{relPattern}-");
+                break;
+            case TraversalDirection.Both:
+                context.Match.Append($"-{relPattern}-");
+                break;
+        }
+        context.Match.Append($"({targetAlias})"); // No specific label for target
+
+        // Apply filters
+        if (nodeFilter != null && !IsConstantTrue(nodeFilter.Body))
+        {
+            var oldAlias = context.CurrentAlias;
+            context.CurrentAlias = sourceAlias;
+            if (context.Where.Length > 0) context.Where.Append(" AND ");
+            ProcessWhereClause(nodeFilter.Body, context);
+            context.CurrentAlias = oldAlias;
+        }
+
+        if (relationshipFilter != null && !IsConstantTrue(relationshipFilter.Body))
+        {
+            var oldAlias = context.CurrentAlias;
+            context.CurrentAlias = relAlias;
+            if (context.Where.Length > 0) context.Where.Append(" AND ");
+
+            // For single relationships, apply filter directly; for variable length, use ALL
+            if (minDepth == 1 && maxDepth == 1)
+            {
+                ProcessWhereClause(relationshipFilter.Body, context);
+            }
+            else
+            {
+                context.Where.Append($"ALL(r IN {relAlias} WHERE ");
+                context.CurrentAlias = "r";
+                ProcessWhereClause(relationshipFilter.Body, context);
+                context.Where.Append(")");
+            }
+
+            context.CurrentAlias = oldAlias;
+        }
+
+        // Return the relationship alias instead of target alias
+        context.CurrentAlias = relAlias;
+        context.Return = relAlias;
     }
 
     private void ProcessTraversalPaths(MethodCallExpression methodCall, CypherBuildContext context)
@@ -1031,9 +1215,6 @@ internal class CypherExpressionBuilder
 
     public static async Task<object?> ExecuteQueryAsync(string cypher, IDictionary<string, object> parameters, Type elementType, Neo4jGraphProvider provider, CypherBuildContext? context = null, IGraphTransaction? transaction = null)
     {
-        Console.WriteLine($"DEBUG - Executing Cypher: {cypher}");
-        Console.WriteLine($"DEBUG - Parameters: {string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
-
         var (_, tx) = await provider.GetOrCreateTransaction(transaction);
         var cursor = await tx.RunAsync(cypher, parameters);
 
@@ -1048,11 +1229,9 @@ internal class CypherExpressionBuilder
 
         // Check if this is a path result based on context
         bool isPathResult = context?.IsPathResult == true;
-        Console.WriteLine($"DEBUG - IsPathResult: {isPathResult}");
 
         await foreach (var record in cursor)
         {
-            Console.WriteLine($"DEBUG - Record keys: {string.Join(", ", record.Keys)}");
             object? item = null;
 
             if (isPathResult)
@@ -1067,24 +1246,19 @@ internal class CypherExpressionBuilder
                 {
                     var key = record.Keys.First();
                     var value = record[key];
-                    Console.WriteLine($"DEBUG - Record value type: {value?.GetType().Name}, value: {value}");
 
                     if (value is global::Neo4j.Driver.INode node)
                     {
-                        Console.WriteLine($"DEBUG - Converting Neo4j node with labels: {string.Join(", ", node.Labels)}");
                         // Convert Neo4j node to the target entity type
                         item = ConvertNodeToEntity(node, elementType);
-                        Console.WriteLine($"DEBUG - Converted to: {item?.GetType().Name}");
                     }
                     else if (value is global::Neo4j.Driver.IRelationship rel)
                     {
-                        Console.WriteLine($"DEBUG - Converting Neo4j relationship: {rel.Type}");
                         // Convert Neo4j relationship to the target entity type
                         item = ConvertRelationshipToEntity(rel, elementType);
                     }
                     else
                     {
-                        Console.WriteLine($"DEBUG - Converting direct value");
                         // Direct value (e.g., for aggregations or simple projections)
                         item = ConvertValue(value, elementType);
                     }
@@ -1103,16 +1277,10 @@ internal class CypherExpressionBuilder
 
             if (item != null)
             {
-                Console.WriteLine($"DEBUG - Adding item to results: {item}");
                 items.Add(item);
-            }
-            else
-            {
-                Console.WriteLine($"DEBUG - Item was null, not adding to results");
             }
         }
 
-        Console.WriteLine($"DEBUG - Total items in result: {items.Count}");
         return items;
     }
 
@@ -1150,7 +1318,7 @@ internal class CypherExpressionBuilder
             {
                 if (relationship.Properties.TryGetValue(property.Name, out var value))
                 {
-                    var convertedValue = ConvertValue(value, property.PropertyType);
+                    var convertedValue = value.ConvertFromNeo4jValue(property.PropertyType);
                     property.SetValue(entity, convertedValue);
                 }
             }
@@ -1210,15 +1378,12 @@ internal class CypherExpressionBuilder
 
     private static object? ConvertPathResult(global::Neo4j.Driver.IRecord record, Type elementType)
     {
-        Console.WriteLine($"DEBUG - Converting path result with keys: {string.Join(", ", record.Keys)}");
-
         // Check if there's a direct path object in the result
         foreach (var key in record.Keys)
         {
             var value = record[key];
             if (value is global::Neo4j.Driver.IPath path)
             {
-                Console.WriteLine($"DEBUG - Found Neo4j path with {path.Nodes.Count} nodes and {path.Relationships.Count} relationships");
                 return ConvertNeo4jPathToGraphPath(path, elementType);
             }
         }
@@ -1252,13 +1417,11 @@ internal class CypherExpressionBuilder
 
             if (sourceKey != null && targetKey != null)
             {
-                Console.WriteLine($"DEBUG - Found path components: source={sourceKey}, target={targetKey}, relationship={relationshipKey}");
                 return ConvertPathComponentsToGraphPath(record, sourceKey, targetKey, relationshipKey, elementType);
             }
         }
 
         // Fallback: treat as regular single entity if no path structure detected
-        Console.WriteLine($"DEBUG - No path structure detected, treating as single entity");
         if (record.Keys.Count == 1)
         {
             var key = record.Keys.First();
@@ -1352,9 +1515,7 @@ internal class CypherExpressionBuilder
         }
         catch (Exception ex)
         {
-            // Log and return null on any conversion errors
-            Console.WriteLine($"Error converting path components: {ex.Message}");
-            return null;
+            throw new GraphException(ex.Message, ex);
         }
     }
 }
