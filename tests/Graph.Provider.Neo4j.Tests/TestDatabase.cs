@@ -57,7 +57,7 @@ public class TestDatabase
         {
             await using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
             var result = await session.RunAsync($"SHOW DATABASES YIELD name, currentStatus WHERE name = '{this.databaseName}' RETURN currentStatus");
-            var record = await result.SingleOrDefaultAsync();
+            var record = await result.SingleAsync();
             var status = record?["currentStatus"].As<string>();
             if (status == "online")
             {
