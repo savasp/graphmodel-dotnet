@@ -39,7 +39,8 @@ public class TestDatabase
     {
         using var session = driver.AsyncSession(builder => builder.WithDatabase(this.databaseName));
         await session.RunAsync("MATCH (n) DETACH DELETE n");
-        await session.RunAsync("CALL apoc.schema.assert({}, {})");
+        // Schema cleanup removed for now to avoid APOC dependency
+        // If needed, can be added back with proper APOC plugin configuration
     }
 
     public async ValueTask DisposeAsync()
@@ -50,24 +51,40 @@ public class TestDatabase
         }
     }
 
-    private async Task WaitForDatabaseOnline(int maxAttempts = 30, int delayMs = 1000)
+    private async Task WaitForDatabaseOnline(int maxAttempts = 30, int initialDelayMs = 100)
     {
         // First, wait for SHOW DATABASES to report online
+        int delayMs = initialDelayMs;
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
-            await using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
-            var result = await session.RunAsync($"SHOW DATABASES YIELD name, currentStatus WHERE name = '{this.databaseName}' RETURN currentStatus");
-            var record = await result.SingleAsync();
-            var status = record?["currentStatus"].As<string>();
-            if (status == "online")
+            try
             {
-                break;
+                await using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
+                var result = await session.RunAsync($"SHOW DATABASES YIELD name, currentStatus WHERE name = '{this.databaseName}' RETURN currentStatus");
+                
+                if (await result.FetchAsync())
+                {
+                    var record = result.Current;
+                    var status = record["currentStatus"].As<string>();
+                    if (status == "online")
+                    {
+                        break;
+                    }
+                }
+                await session.CloseAsync();
             }
-            await session.CloseAsync();
+            catch (Exception ex) when (ex.Message.Contains("not found") || ex.Message.Contains("does not exist") || ex.Message.Contains("empty"))
+            {
+                // Database not yet available or query returned no results
+            }
+            
+            // Use exponential backoff with a maximum delay of 2 seconds
             await Task.Delay(delayMs);
+            delayMs = Math.Min(delayMs * 2, 2000);
         }
 
         // Second, wait until the driver can actually connect to the database
+        delayMs = initialDelayMs; // Reset delay for second phase
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
             try
@@ -83,7 +100,10 @@ public class TestDatabase
             {
                 // Database not yet available for driver
             }
+            
+            // Use exponential backoff with a maximum delay of 2 seconds
             await Task.Delay(delayMs);
+            delayMs = Math.Min(delayMs * 2, 2000);
         }
         throw new Exception($"Database '{this.databaseName}' did not become available for driver connections in time.");
     }

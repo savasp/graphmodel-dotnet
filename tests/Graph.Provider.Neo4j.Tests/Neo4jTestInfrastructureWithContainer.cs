@@ -28,15 +28,16 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
     {
         // Initialize the Neo4j test container. There is one per process.
         container = new Neo4jBuilder()
-            .WithEnterpriseEdition(true)
+            .WithEnterpriseEdition(false) // Use community edition for faster startup
             .WithAutoRemove(true)
             .WithName("cvoya.neo4j.testing.shared")
             .WithCleanUp(true)
-            .WithImage("neo4j:2025-enterprise")
+            .WithImage("neo4j:5.25") // Use a more stable version
             .WithEnvironment("NEO4J_AUTH", "none")
-            .WithEnvironment("NEO4JLABS_PLUGINS", "[\"apoc\"]")
-            .WithEnvironment("NEO4J_dbms_security_procedures_unrestricted", "apoc.*")
-            .WithEnvironment("NEO4J_dbms_security_procedures_allowlist", "apoc.*")
+            // Remove APOC plugins to speed up startup - only add if actually needed by tests
+            // .WithEnvironment("NEO4JLABS_PLUGINS", "[\"apoc\"]")
+            // .WithEnvironment("NEO4J_dbms_security_procedures_unrestricted", "apoc.*")
+            // .WithEnvironment("NEO4J_dbms_security_procedures_allowlist", "apoc.*")
             .Build();
     }
 
