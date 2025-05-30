@@ -23,7 +23,6 @@ public class Person : Node
     public string Email { get; set; } = string.Empty;
     public int Age { get; set; }
     public string? City { get; set; }
-    public List<Knows> Knows { get; set; } = new List<Knows>();
 }
 
 

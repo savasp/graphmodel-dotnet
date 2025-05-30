@@ -14,6 +14,7 @@
 
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j;
+using Cvoya.Graph.Provider.Neo4j.Linq;
 using Neo4j.Driver;
 
 // Example 2: LINQ and Traversal
@@ -39,7 +40,7 @@ Console.WriteLine($"✓ Created database: {databaseName}");
 var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
 
 
-/*
+
 try
 {
     // ==== SETUP: Create a social network ====
@@ -59,11 +60,11 @@ try
     await graph.CreateNode(eve);
 
     // Create relationships
-    await graph.CreateRelationship(new Knows { Source = alice, Target = bob, Since = DateTime.UtcNow.AddYears(-5) });
-    await graph.CreateRelationship(new Knows { Source = alice, Target = charlie, Since = DateTime.UtcNow.AddYears(-3) });
-    await graph.CreateRelationship(new Knows { Source = bob, Target = diana, Since = DateTime.UtcNow.AddYears(-2) });
-    await graph.CreateRelationship(new Knows { Source = charlie, Target = eve, Since = DateTime.UtcNow.AddYears(-1) });
-    await graph.CreateRelationship(new Knows { Source = diana, Target = eve, Since = DateTime.UtcNow.AddMonths(-6) });
+    await graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow.AddYears(-5) });
+    await graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow.AddYears(-3) });
+    await graph.CreateRelationship(new Knows { SourceId = bob.Id, TargetId = diana.Id, Since = DateTime.UtcNow.AddYears(-2) });
+    await graph.CreateRelationship(new Knows { SourceId = charlie.Id, TargetId = eve.Id, Since = DateTime.UtcNow.AddYears(-1) });
+    await graph.CreateRelationship(new Knows { SourceId = diana.Id, TargetId = eve.Id, Since = DateTime.UtcNow.AddMonths(-6) });
 
     Console.WriteLine("✓ Created 5 people and their relationships\n");
 
@@ -98,71 +99,102 @@ try
     Console.WriteLine("\n3. Graph Traversal Examples...");
 
     // Depth 0: Just the node
-    var aliceNoDepth = await graph.GetNode<Person>(alice.Id, new GraphOperationOptions().WithDepth(0));
+    alice = await graph.GetNode<Person>(alice.Id);
     Console.WriteLine($"\nAlice with depth 0:");
-    Console.WriteLine($"  - Name: {aliceNoDepth.Name}");
-    Console.WriteLine($"  - Knows count: {aliceNoDepth.Knows.Count()} (no relationships loaded)");
+    Console.WriteLine($"  - Name: {alice.Name}");
 
     // Depth 1: Node with immediate relationships
-    var aliceDepth1 = await graph.GetNode<Person>(alice.Id, new GraphOperationOptions().WithDepth(1));
+    var aliceKnowsDepth1 = await graph.Nodes<Person>()
+        .Where(p => p.Id == alice.Id)
+        .TraversePath<Person, Knows, Person>()
+        .ToListAsync();
+
     Console.WriteLine($"\nAlice with depth 1:");
-    Console.WriteLine($"  - Name: {aliceDepth1.Name}");
-    Console.WriteLine($"  - Knows: {string.Join(", ", aliceDepth1.Knows.Select(k => k.Target?.Name ?? "Unknown"))}");
+    Console.WriteLine($"  - Name: {alice.Name}");
+    Console.WriteLine($"  - Knows: {string.Join(", ", aliceKnowsDepth1.Select(k => k.Target.Name ?? "Unknown"))}");
 
     // Depth 2: Two levels of relationships
-    var aliceDepth2 = await graph.GetNode<Person>(alice.Id, new GraphOperationOptions().WithDepth(2));
+    var aliceKnowsDepth2 = await graph.Nodes<Person>()
+        .Where(p => p.Id == alice.Id)
+        .TraversePath<Person, Knows, Person>()
+        .WithDepth(2)
+        .ToListAsync();
+
     Console.WriteLine($"\nAlice with depth 2:");
-    Console.WriteLine($"  - Name: {aliceDepth2.Name}");
-    foreach (var knows in aliceDepth2.Knows)
+    Console.WriteLine($"  - Name: {alice.Name}");
+    foreach (var knows in aliceKnowsDepth2)
     {
-        Console.WriteLine($"  - Knows: {knows.Target?.Name}");
-        if (knows.Target != null)
-        {
-            foreach (var secondLevel in knows.Target.Knows)
-            {
-                Console.WriteLine($"    - Who knows: {secondLevel.Target?.Name}");
-            }
-        }
+        Console.WriteLine($"  - Knows: {knows?.Target?.Name ?? "Unknown"}");
     }
 
     // ==== COMPLEX LINQ QUERIES ====
     Console.WriteLine("\n4. Complex LINQ Queries...");
 
     // Find people who know someone in San Francisco
-    var knowsSF = graph.Nodes<Person>(new GraphOperationOptions().WithDepth(1))
-        .Where(p => p.Knows.Any(k => k.Target != null && k.Target.City == "San Francisco"))
-        .ToList();
+    var peopleWhoKnowSomeoneInSF = await graph.Nodes<Person>()
+        .TraversePath<Person, Knows, Person>()
+        .Where(path => path.Target != null && path.Target.City == "San Francisco")
+        .Select(path => path.Source!)
+        .Distinct()
+        .ToListAsync();
 
     Console.WriteLine($"\nPeople who know someone in San Francisco:");
-    foreach (var person in knowsSF)
+    foreach (var person in peopleWhoKnowSomeoneInSF)
     {
-        var sfFriends = person.Knows
-            .Where(k => k.Target?.City == "San Francisco")
-            .Select(k => k.Target!.Name);
-        Console.WriteLine($"  - {person.Name} knows: {string.Join(", ", sfFriends)}");
+        Console.WriteLine($"  - {person.Name} (Age: {person.Age}, City: {person.City})");
     }
 
     // Find mutual connections
     Console.WriteLine("\n5. Finding mutual connections...");
 
-    var people = graph.Nodes<Person>(new GraphOperationOptions().WithDepth(2)).ToList();
-
-    foreach (var person1 in people)
-    {
-        foreach (var person2 in people.Where(p => p.Id != person1.Id))
+    // Get all people and their connections in one go
+    var peopleWithConnections = await graph.Nodes<Person>()
+        .TraversePath<Person, Knows, Person>()
+        .GroupBy(path => path.Source!.Id)
+        .Select(g => new
         {
-            var mutual = person1.Knows
-                .Select(k => k.Target?.Id)
-                .Intersect(person2.Knows.Select(k => k.Target?.Id))
-                .Where(id => id != null)
-                .ToList();
+            PersonId = g.Key,
+            KnowsIds = g.Select(path => path.Target!.Id).ToList()
+        })
+        .ToListAsync();
 
-            if (mutual.Any())
+    // Build a lookup dictionary
+    var connectionsLookup = peopleWithConnections.ToDictionary(x => x.PersonId, x => x.KnowsIds);
+
+    // Get all people for name lookup
+    var allPeople = await graph.Nodes<Person>().ToListAsync();
+    var peopleLookup = allPeople.ToDictionary(p => p.Id, p => p.Name);
+
+    var processedPairs = new HashSet<(string, string)>();
+
+    // Find mutual connections
+    foreach (var person1 in allPeople)
+    {
+        foreach (var person2 in allPeople.Where(p => p.Id != person1.Id))
+        {
+            // Create a normalized pair (smaller ID first) to avoid duplicates
+            var pair = string.Compare(person1.Id, person2.Id) < 0
+                ? (person1.Id, person2.Id)
+                : (person2.Id, person1.Id);
+
+            if (processedPairs.Contains(pair))
+                continue;
+
+            processedPairs.Add(pair);
+
+            if (connectionsLookup.TryGetValue(person1.Id, out var person1Knows) &&
+                connectionsLookup.TryGetValue(person2.Id, out var person2Knows))
             {
-                var mutualNames = people
-                    .Where(p => mutual.Contains(p.Id))
-                    .Select(p => p.Name);
-                Console.WriteLine($"  - {person1.Name} and {person2.Name} both know: {string.Join(", ", mutualNames)}");
+                var mutualIds = person1Knows.Intersect(person2Knows).ToList();
+
+                if (mutualIds.Any())
+                {
+                    var mutualNames = mutualIds
+                        .Where(id => peopleLookup.ContainsKey(id))
+                        .Select(id => peopleLookup[id]);
+
+                    Console.WriteLine($"  - {person1.Name} and {person2.Name} both know: {string.Join(", ", mutualNames)}");
+                }
             }
         }
     }
@@ -194,4 +226,3 @@ finally
     }
     await driver.DisposeAsync();
 }
-*/
