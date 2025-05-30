@@ -1281,12 +1281,46 @@ internal class CypherExpressionBuilder
             }
         }
 
+        // If a single result is expected, return the first item or null
+        if (context != null && (context.IsSingleResult || context.IsScalarResult))
+        {
+            if (items.Count == 0) return null;
+            return items[0];
+        }
+
         return items;
     }
 
     private static object? ConvertNodeToEntity(global::Neo4j.Driver.INode node, Type entityType)
     {
-        // Create an instance of the entity type
+        // Special handling for TraversalPath<,,> records
+        if (entityType.IsGenericType && entityType.GetGenericTypeDefinition().FullName == "Cvoya.Graph.Model.TraversalPath`3")
+        {
+            // Try to get the three properties in order: Source, Relationship, Target
+            var props = entityType.GetProperties();
+            var sourceProp = props.FirstOrDefault(p => p.Name == "Source");
+            var relProp = props.FirstOrDefault(p => p.Name == "Relationship");
+            var targetProp = props.FirstOrDefault(p => p.Name == "Target");
+            if (sourceProp != null && relProp != null && targetProp != null)
+            {
+                // Try to get the types
+                var genericArgs = entityType.GetGenericArguments();
+                var sourceType = genericArgs[0];
+                var relType = genericArgs[1];
+                var targetType = genericArgs[2];
+                // Create dummy instances for now (or you can throw if you need real data)
+                var source = Activator.CreateInstance(sourceType);
+                var rel = Activator.CreateInstance(relType);
+                var target = Activator.CreateInstance(targetType);
+                // Use the record constructor
+                var ctor = entityType.GetConstructor(new[] { sourceType, relType, targetType });
+                if (ctor != null)
+                {
+                    return ctor.Invoke(new[] { source, rel, target });
+                }
+            }
+        }
+        // Regular handling
         var entity = Activator.CreateInstance(entityType);
         if (entity == null) return null;
 

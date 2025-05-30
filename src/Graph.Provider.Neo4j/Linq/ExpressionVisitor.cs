@@ -51,6 +51,10 @@ internal class ExpressionVisitor(
     private bool _isLastOrDefaultQuery = false;
     private string _groupingKeyAlias = "";
     private string _groupingItemsAlias = "";
+    private bool _isTraversalPathQuery = false;
+    private string _sourceAlias = "n";
+    private string _relationshipAlias = "r";
+    private string _targetAlias = "t";
     private Expression? _projectionExpression;
     private LambdaExpression? _anyPredicate;
     private LambdaExpression? _allPredicate;
@@ -141,12 +145,19 @@ internal class ExpressionVisitor(
             case "Distinct":
                 VisitDistinct(node);
                 break;
+            case "Traverse":
+                VisitTraverse(node);
+                break;
+            case "TraversePath":
+                VisitTraversePath(node);
+                break;
             case "ToList":
             case "ToArray":
                 // Terminal operations - no special handling needed
                 break;
         }
     }
+
 
     private void VisitConstant(ConstantExpression node)
     {
@@ -886,6 +897,14 @@ internal class ExpressionVisitor(
                 query.AppendLine();
                 query.Append("RETURN allMatch");
             }
+            else if (_isTraversalPathQuery)
+            {
+                // For traversal path queries, return all three components
+                query.AppendLine();
+                query.Append($"RETURN ");
+                if (_isDistinct) query.Append("DISTINCT ");
+                query.Append($"{_sourceAlias}, {_relationshipAlias}, {_targetAlias}");
+            }
             else
             {
                 query.AppendLine();
@@ -1153,6 +1172,57 @@ internal class ExpressionVisitor(
 
     private object? ParseEntityRecord(IRecord record, Type elementType)
     {
+        // Check if this is a TraversalPath query
+        if (_isTraversalPathQuery && elementType.IsGenericType &&
+            elementType.GetGenericTypeDefinition() == typeof(TraversalPath<,,>))
+        {
+            var genericArgs = elementType.GetGenericArguments();
+            var sourceType = genericArgs[0];
+            var relationshipType = genericArgs[1];
+            var targetType = genericArgs[2];
+
+            // Get the three components from the record
+            object? source = null;
+            object? relationship = null;
+            object? target = null;
+
+            if (record.TryGetValue(_sourceAlias, out var sourceValue) && sourceValue is global::Neo4j.Driver.INode sourceNode)
+            {
+                var convertMethod = typeof(SerializationExtensions).GetMethod(nameof(SerializationExtensions.ConvertToGraphEntity))!;
+                var genericMethod = convertMethod.MakeGenericMethod(sourceType);
+                source = genericMethod.Invoke(null, new object[] { sourceNode });
+            }
+
+            if (record.TryGetValue(_relationshipAlias, out var relationshipValue) && relationshipValue is global::Neo4j.Driver.IRelationship neo4jRel)
+            {
+                var convertMethod = typeof(SerializationExtensions).GetMethod(nameof(SerializationExtensions.ConvertToGraphEntity))!;
+                var genericMethod = convertMethod.MakeGenericMethod(relationshipType);
+                relationship = genericMethod.Invoke(null, new object[] { neo4jRel });
+
+                // Set source and target IDs on the relationship
+                if (relationship is Model.IRelationship graphRel)
+                {
+                    if (source is Model.INode sourceEntity)
+                        graphRel.SourceId = sourceEntity.Id;
+                    if (target is Model.INode targetEntity)
+                        graphRel.TargetId = targetEntity.Id;
+                }
+            }
+
+            if (record.TryGetValue(_targetAlias, out var targetValue) && targetValue is global::Neo4j.Driver.INode targetNode)
+            {
+                var convertMethod = typeof(SerializationExtensions).GetMethod(nameof(SerializationExtensions.ConvertToGraphEntity))!;
+                var genericMethod = convertMethod.MakeGenericMethod(targetType);
+                target = genericMethod.Invoke(null, new object[] { targetNode });
+            }
+
+            // Create the TraversalPath instance
+            if (source != null && relationship != null && target != null)
+            {
+                var constructor = elementType.GetConstructor(new[] { sourceType, relationshipType, targetType });
+                return constructor?.Invoke(new[] { source, relationship, target });
+            }
+        }
         // Regular entity handling
         if (record.TryGetValue(_alias, out var nodeValue) && nodeValue is global::Neo4j.Driver.INode node)
         {
@@ -1247,5 +1317,55 @@ internal class ExpressionVisitor(
         }
 
         return value;
+    }
+
+    private void VisitTraverse(MethodCallExpression node)
+    {
+        // Extract the generic arguments: TSource, TRelationship, TTarget
+        var genericArgs = node.Method.GetGenericArguments();
+        var sourceType = genericArgs[0]; // TSource
+        var relationshipType = genericArgs[1]; // TRelationship
+        var targetType = genericArgs[2]; // TTarget
+
+        // Get labels
+        var relationshipLabel = Schema.Neo4jTypeManager.GetLabel(relationshipType);
+        var targetLabel = Schema.Neo4jTypeManager.GetLabel(targetType);
+
+        // Generate a new alias for the target
+        var newTargetAlias = $"t{_parameterIndex++}";
+
+        // Update the match clause to include the traversal
+        _matchClause.Append($"-[:{relationshipLabel}]->({newTargetAlias}:{targetLabel})");
+
+        // Update the current alias to point to the target
+        _alias = newTargetAlias;
+
+        // The element type is already set correctly by the provider when creating this query    }
+    }
+
+    private void VisitTraversePath(MethodCallExpression node)
+    {
+        // Extract the generic arguments: TSource, TRelationship, TTarget
+        var genericArgs = node.Method.GetGenericArguments();
+        var relationshipType = genericArgs[1]; // TRelationship
+        var targetType = genericArgs[2]; // TTarget
+
+        // Get labels
+        var relationshipLabel = Schema.Neo4jTypeManager.GetLabel(relationshipType);
+        var targetLabel = Schema.Neo4jTypeManager.GetLabel(targetType);
+
+        // Store the current alias as source
+        _sourceAlias = _alias;
+        _relationshipAlias = $"r{_parameterIndex++}";
+        _targetAlias = $"t{_parameterIndex++}";
+
+        // Update the match clause to include the traversal with relationship alias
+        _matchClause.Append($"-[{_relationshipAlias}:{relationshipLabel}]->({_targetAlias}:{targetLabel})");
+
+        // Mark this as a traversal path query
+        _isTraversalPathQuery = true;
+
+        // The element type (TraversalPath<TSource, TRelationship, TTarget>) 
+        // is already set correctly by the provider when creating this query
     }
 }

@@ -200,4 +200,62 @@ public static class GraphQueryableExtensions
 
         return (IGraphQueryable<IGrouping<TKey, T>>)source.Provider.CreateQuery<IGrouping<TKey, T>>(callExpression);
     }
+
+    /// <summary>
+    /// Start traversing from nodes through a specific relationship type
+    /// </summary>
+    public static IGraphQueryable<TTarget> Traverse<TRelationship, TTarget>(
+        this IGraphQueryable<INode> source)
+        where TRelationship : class, IRelationship
+        where TTarget : class, INode
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        // We need a custom method info for traverse since it's not a standard LINQ method
+        var traverseMethod = typeof(GraphQueryableExtensions)
+            .GetMethod(nameof(Traverse))!
+            .MakeGenericMethod(typeof(TRelationship), typeof(TTarget));
+
+        var callExpression = Expression.Call(null, traverseMethod, source.Expression);
+
+        return (IGraphQueryable<TTarget>)source.Provider.CreateQuery<TTarget>(callExpression);
+    }
+
+    /// <summary>
+    /// Start traversing from strongly-typed nodes through a specific relationship type
+    /// </summary>
+    public static IGraphQueryable<TTarget> Traverse<TSource, TRelationship, TTarget>(
+        this IGraphQueryable<TSource> source)
+        where TSource : class, INode
+        where TRelationship : class, IRelationship
+        where TTarget : class, INode
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        // Convert to INode first, then call the main Traverse method
+        var nodeSource = source as IGraphQueryable<INode> ?? source.Select(n => (INode)n);
+        return nodeSource.Traverse<TRelationship, TTarget>();
+    }
+
+    /// <summary>
+    /// Traverse and return the full path information
+    /// </summary>
+    public static IGraphQueryable<TraversalPath<TSource, TRelationship, TTarget>> TraversePath<TSource, TRelationship, TTarget>(
+        this IGraphQueryable<TSource> source)
+        where TSource : class, INode
+        where TRelationship : class, IRelationship
+        where TTarget : class, INode
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        // Create a method call expression for this traversal
+        var traversePathMethod = typeof(GraphQueryableExtensions)
+            .GetMethod(nameof(TraversePath))!
+            .MakeGenericMethod(typeof(TSource), typeof(TRelationship), typeof(TTarget));
+
+        var callExpression = Expression.Call(null, traversePathMethod, source.Expression);
+
+        return (IGraphQueryable<TraversalPath<TSource, TRelationship, TTarget>>)
+            source.Provider.CreateQuery<TraversalPath<TSource, TRelationship, TTarget>>(callExpression);
+    }
 }

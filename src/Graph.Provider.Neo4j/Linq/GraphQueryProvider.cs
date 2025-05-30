@@ -166,6 +166,12 @@ internal class GraphQueryProvider(
         var nonNullableParams = parameters.ToDictionary(kvp => kvp.Key, kvp => kvp.Value ?? (object)DBNull.Value);
         var result = CypherExpressionBuilder.ExecuteQuery(cypher, nonNullableParams, elementType, _provider, context, _transaction);
 
+        // --- UNWRAP HERE IF NEEDED ---
+        if (!isEnumerableResult && result is IList listResult && listResult.Count > 0)
+        {
+            return (TResult)listResult[0]!;
+        }
+
         return HandleResult<TResult>(result, resultType, elementType, isEnumerableResult);
     }
 
@@ -173,146 +179,56 @@ internal class GraphQueryProvider(
     {
         if (result == null)
         {
-            return default(TResult)!;
+            return default!;
         }
 
-        // First, try direct cast if possible
+        // If the result is already the correct type, just return it
         if (result is TResult directResult)
         {
             return directResult;
         }
 
-        // Handle scalar results (Count, Any, All, First, Single, etc.)
-        if (!isEnumerableResult || resultType == typeof(string))
+        // Handle numeric conversions for scalar results (Neo4j sometimes returns long for int, float for double, etc.)
+        if (!isEnumerableResult)
         {
-            // If result is a list and TResult is scalar, unwrap the first item (if any)
-            if (result is IList listResult && listResult.Count > 0 && !resultType.IsAssignableTo(typeof(IEnumerable)) && resultType != typeof(string))
-            {
-                var single = listResult[0];
-                // Handle numeric conversions
-                if (resultType == typeof(int) && single is long longValue)
-                    return (TResult)(object)Convert.ToInt32(longValue);
-                if (resultType == typeof(int?) && single is long longValue2)
-                    return (TResult)(object)Convert.ToInt32(longValue2);
-                if (resultType == typeof(double) && single is float floatValue)
-                    return (TResult)(object)Convert.ToDouble(floatValue);
-                if (resultType == typeof(double?) && single is float floatValue2)
-                    return (TResult)(object)Convert.ToDouble(floatValue2);
-                if (single != null && single.GetType() != resultType)
-                {
-                    try { return (TResult)Convert.ChangeType(single, resultType); } catch { }
-                }
-                return (TResult)single!;
-            }
+            if (resultType == typeof(int) && result is long longValue)
+                return (TResult)(object)Convert.ToInt32(longValue);
+            if (resultType == typeof(int?) && result is long longValue2)
+                return (TResult)(object)Convert.ToInt32(longValue2);
+            if (resultType == typeof(double) && result is float floatValue)
+                return (TResult)(object)Convert.ToDouble(floatValue);
+            if (resultType == typeof(double?) && result is float floatValue2)
+                return (TResult)(object)Convert.ToDouble(floatValue2);
 
-            // Special handling for List<int> vs int mismatch - this is the core issue
-            if (resultType.IsGenericType &&
-                resultType.GetGenericTypeDefinition() == typeof(List<>) &&
-                result is int intValue)
-            {
-                var listType = typeof(List<>).MakeGenericType(resultType.GetGenericArguments()[0]);
-                var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
-                list.Add(intValue);
-                return (TResult)list;
-            }
-
-            // Handle type conversions for scalar results
+            // Try general conversion if types don't match
             if (result.GetType() != resultType)
             {
-                // Special handling for numeric conversions
-                if (resultType == typeof(int) && result is long longValue)
-                {
-                    return (TResult)(object)Convert.ToInt32(longValue);
-                }
-                else if (resultType == typeof(int?) && result is long longValue2)
-                {
-                    return (TResult)(object)Convert.ToInt32(longValue2);
-                }
-                // Add handling for double/float conversions (for Average() operations)
-                else if (resultType == typeof(double) && result is float floatValue)
-                {
-                    return (TResult)(object)Convert.ToDouble(floatValue);
-                }
-                else if (resultType == typeof(double?) && result is float floatValue2)
-                {
-                    return (TResult)(object)Convert.ToDouble(floatValue2);
-                }
-
-                // Try general conversion
                 try
                 {
                     return (TResult)Convert.ChangeType(result, resultType);
                 }
-                catch (Exception ex)
+                catch
                 {
-                    // If conversion fails, try direct cast
+                    // Fallback to direct cast if conversion fails
                     return (TResult)result;
                 }
             }
-
-            // If we're expecting a scalar but got an enumerable, take the first element
-            if (result is IEnumerable enumerableRes && result is not string)
-            {
-                var enumerator = enumerableRes.GetEnumerator();
-                if (enumerator.MoveNext())
-                    return (TResult)enumerator.Current!;
-                return default!;
-            }
-
-            // Handle the case where TResult is a List<T> but result is a single value
-            if (resultType.IsGenericType &&
-                (resultType.GetGenericTypeDefinition() == typeof(List<>) ||
-                 resultType.GetGenericTypeDefinition() == typeof(IList<>) ||
-                 resultType.GetGenericTypeDefinition() == typeof(ICollection<>) ||
-                 resultType.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
-            {
-                // We have a scalar value but need to return a list
-                var listType = typeof(List<>).MakeGenericType(elementType);
-                var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
-                list.Add(result);
-                return (TResult)(object)list;
-            }
-
-            return (TResult)result!;
         }
-        else
-        {
-            // Handle enumerable results
-            if (result is System.Collections.IEnumerable enumerableResult && result is not string)
-            {
-                // If the result is already the correct type, return it
-                if (result.GetType() == resultType || resultType.IsAssignableFrom(result.GetType()))
-                {
-                    return (TResult)result;
-                }
 
-                // If we need to convert to array
-                if (resultType.IsArray)
-                {
-                    var list = (System.Collections.IList)result;
-                    var array = Array.CreateInstance(elementType, list.Count);
-                    list.CopyTo(array, 0);
-                    return (TResult)(object)array;
-                }
+        // For enumerable results, just return as is (should already be correct type)
+        return (TResult)result!;
+    }
 
-                // Otherwise return as is (it should be a List<T> which implements IEnumerable<T>)
-                return (TResult)result;
-            }
-            else if (result is not null)
-            {
-                // Wrap single value in a list
-                var listType = typeof(List<>).MakeGenericType(elementType);
-                var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
-                list.Add(result);
-                return (TResult)(object)list;
-            }
-            else
-            {
-                // Return empty list
-                var listType = typeof(List<>).MakeGenericType(elementType);
-                return (TResult)Activator.CreateInstance(listType)!;
-            }
-        }
+    // Helper to check if a type is a generic list or collection
+    private static bool IsGenericListOrCollectionType(Type type)
+    {
+        if (type.IsArray) return true;
+        if (!type.IsGenericType) return false;
+        var genericDef = type.GetGenericTypeDefinition();
+        return genericDef == typeof(List<>) ||
+               genericDef == typeof(IList<>) ||
+               genericDef == typeof(IEnumerable<>) ||
+               genericDef == typeof(ICollection<>);
     }
 
     private MethodCallExpression? GetLastSelect(Expression expression)

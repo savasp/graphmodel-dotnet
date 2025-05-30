@@ -38,8 +38,6 @@ Console.WriteLine($"✓ Created database: {databaseName}");
 // Create graph instance with Neo4j provider
 var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
 
-/*
-
 try
 {
     // ==== CREATE OPERATIONS ====
@@ -84,8 +82,8 @@ try
 
     var aliceWorksFor = new WorksFor
     {
-        Source = alice,
-        Target = techCorp,
+        SourceId = alice.Id,
+        TargetId = techCorp.Id,
         Position = "Senior Software Engineer",
         StartDate = new DateTime(2022, 3, 15),
         Salary = 95000
@@ -93,8 +91,8 @@ try
 
     var bobWorksFor = new WorksFor
     {
-        Source = bob,
-        Target = techCorp,
+        SourceId = bob.Id,
+        TargetId = techCorp.Id,
         Position = "Marketing Manager",
         StartDate = new DateTime(2021, 8, 1),
         Salary = 75000
@@ -138,11 +136,13 @@ try
     }
 
     // Find relationships
-    var workRelationships = graph.Relationships<WorksFor>(new GraphOperationOptions().WithDepth(1)).ToList();
-    Console.WriteLine($"\nFound {workRelationships.Count} work relationships:");
-    foreach (var rel in workRelationships)
+    var paths = graph.Nodes<Person>()
+        .TraversePath<Person, WorksFor, Company>()
+        .ToList();
+    Console.WriteLine($"\nFound {paths.Count} work relationships:");
+    foreach (var rel in paths)
     {
-        Console.WriteLine($"  - {rel.Source!.Name} works as {rel.Position} (Salary: ${rel.Salary:N0})");
+        Console.WriteLine($"  - {rel.Source.Name} works as {rel.Relationship.Position} and {rel.Target.Name} (Salary: ${rel.Relationship.Salary:N0})");
     }
 
     // ==== UPDATE OPERATIONS ====
@@ -157,7 +157,12 @@ try
     }
 
     // Update Bob's salary
-    var bobRelationship = workRelationships.FirstOrDefault(r => r.Source!.Name == "Bob Smith");
+    var bobRelationship = graph.Nodes<Person>()
+        .TraversePath<Person, WorksFor, Company>()
+        .Where(r => r.Source!.Name == "Bob Smith")
+        .Select(r => r.Relationship)
+        .FirstOrDefault();
+
     if (bobRelationship != null)
     {
         bobRelationship.Salary = 80000; // Update salary
@@ -175,16 +180,6 @@ try
     if (updatedAlice != null)
     {
         Console.WriteLine($"Alice's updated info: Age {updatedAlice.Age}, Department: {updatedAlice.Department}");
-    }
-
-    // We need to set depth to 1 so that .Source is populated
-    var updatedBobRel = graph.Relationships<WorksFor>(new GraphOperationOptions().WithDepth(1))
-        .Where(r => r.Source!.Name == "Bob Smith")
-        .FirstOrDefault();
-
-    if (updatedBobRel != null)
-    {
-        Console.WriteLine($"Bob's updated salary: ${updatedBobRel.Salary:N0}");
     }
 
     // ==== DELETE OPERATIONS ====
@@ -226,6 +221,7 @@ try
 catch (Exception ex)
 {
     Console.WriteLine($"Error: {ex.Message}");
+    Console.WriteLine(ex.StackTrace);
     Console.WriteLine("Make sure Neo4j is running on localhost:7687 with username 'neo4j' and password 'password'");
 }
 finally
@@ -237,4 +233,3 @@ finally
     }
     await driver.DisposeAsync();
 }
-*/
