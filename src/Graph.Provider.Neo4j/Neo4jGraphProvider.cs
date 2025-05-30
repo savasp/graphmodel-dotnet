@@ -62,11 +62,6 @@ public class Neo4jGraphProvider : IGraph
         string? databaseName = "neo4j",
         Microsoft.Extensions.Logging.ILogger? logger = null)
     {
-        ArgumentNullException.ThrowIfNull(uri);
-        ArgumentNullException.ThrowIfNull(username);
-        ArgumentNullException.ThrowIfNull(password);
-        ArgumentNullException.ThrowIfNull(databaseName);
-
         _logger = logger;
 
         uri ??= Environment.GetEnvironmentVariable("NEO4J_URI") ?? "bolt://localhost:7687";
