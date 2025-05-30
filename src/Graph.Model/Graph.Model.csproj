@@ -14,7 +14,7 @@
     <!-- Package Information -->
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Model</PackageId>
-        <Version>0.1.2</Version>
+        <Version>0.2.0</Version>
         <Authors>Savas Parastatidis</Authors>
         <Company>Cvoya</Company>
         <Description>A graph abstraction library with support for LINQ expressions.</Description>
@@ -30,14 +30,6 @@
     <!-- Include README in package -->
     <ItemGroup>
         <None Include="README.md" Pack="true" PackagePath="\" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
-        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0">
-            <PrivateAssets>all</PrivateAssets>
-        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-        </PackageReference>
     </ItemGroup>
 
     <PropertyGroup>

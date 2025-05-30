@@ -540,60 +540,42 @@ internal class CypherExpressionBuilder
         CypherBuildContext context,
         Neo4jGraphProvider provider)
     {
-        Console.WriteLine($"DEBUG: ProcessMethodCall called - Method: {methodCall.Method.Name}, DeclaringType: {methodCall.Method.DeclaringType?.FullName}");
-        Console.WriteLine($"DEBUG: MethodCall.Object: {methodCall.Object?.GetType().Name ?? "null"}");
-        Console.WriteLine($"DEBUG: Arguments count: {methodCall.Arguments.Count}");
-
         // Special handling for WithDepth - don't process the source as it should use existing context
         bool skipSourceProcessing = methodCall.Method.Name == "WithDepth" &&
                                    methodCall.Method.DeclaringType?.IsGenericType == true &&
                                    methodCall.Method.DeclaringType.GetGenericTypeDefinition() == typeof(IGraphQueryable<>);
 
-        if (!skipSourceProcessing)
+        // For instance methods, process the object (this) as the source
+        if (methodCall.Object != null)
         {
-            // For instance methods, process the object (this) as the source
-            if (methodCall.Object != null)
-            {
-                Console.WriteLine("DEBUG: Processing object as source");
-                ProcessExpression(methodCall.Object, GetSourceElementType(methodCall), context, provider);
-            }
-            // For static extension methods, process the first argument as the source
-            else if (methodCall.Arguments.Count > 0 && methodCall.Arguments[0] is Expression source)
-            {
-                Console.WriteLine("DEBUG: Processing first argument as source");
-                ProcessExpression(source, GetSourceElementType(methodCall), context, provider);
-            }
+            ProcessExpression(methodCall.Object, GetSourceElementType(methodCall), context, provider);
         }
-        else
+        // For static extension methods, process the first argument as the source
+        else if (methodCall.Arguments.Count > 0 && methodCall.Arguments[0] is Expression source)
         {
-            Console.WriteLine("DEBUG: Skipping source processing for WithDepth method");
+            ProcessExpression(source, GetSourceElementType(methodCall), context, provider);
         }
 
         // Handle graph-specific methods
         if (methodCall.Method.DeclaringType == typeof(GraphQueryExtensions))
         {
-            Console.WriteLine("DEBUG: Routing to ProcessGraphExtensionMethod");
             ProcessGraphExtensionMethod(methodCall, elementType, context, provider);
         }
         else if (methodCall.Method.DeclaringType?.FullName == "Cvoya.Graph.Model.GraphQueryableExtensions")
         {
-            Console.WriteLine("DEBUG: Routing to ProcessGraphQueryableExtensionMethod");
             ProcessGraphQueryableExtensionMethod(methodCall, elementType, context, provider);
         }
         else if (methodCall.Method.DeclaringType == typeof(Queryable))
         {
-            Console.WriteLine("DEBUG: Routing to ProcessStandardLinqMethod");
             ProcessStandardLinqMethod(methodCall, elementType, context, provider);
         }
         else if (IsGraphTraversalMethod(methodCall))
         {
-            Console.WriteLine("DEBUG: Routing to ProcessGraphTraversalMethod");
             ProcessGraphTraversalMethod(methodCall, elementType, context, provider);
         }
         else if (methodCall.Method.DeclaringType?.IsGenericType == true &&
                  methodCall.Method.DeclaringType.GetGenericTypeDefinition() == typeof(IGraphQueryable<>))
         {
-            Console.WriteLine("DEBUG: Routing to ProcessGraphQueryableMethod");
             ProcessGraphQueryableMethod(methodCall, elementType, context, provider);
         }
     }
@@ -623,16 +605,13 @@ internal class CypherExpressionBuilder
         CypherBuildContext context,
         Neo4jGraphProvider provider)
     {
-        Console.WriteLine($"DEBUG: ProcessGraphQueryableExtensionMethod called with method: {methodCall.Method.Name}");
 
         switch (methodCall.Method.Name)
         {
             case "TraversePath":
-                Console.WriteLine("DEBUG: Routing to ProcessTraversePath");
                 ProcessTraversePath(methodCall, elementType, context, provider);
                 break;
             case "Traverse":
-                Console.WriteLine("DEBUG: Routing to ProcessTraverse");
                 ProcessTraverse(methodCall, elementType, context, provider);
                 break;
             default:
@@ -646,12 +625,9 @@ internal class CypherExpressionBuilder
         CypherBuildContext context,
         Neo4jGraphProvider provider)
     {
-        Console.WriteLine($"DEBUG: ProcessGraphQueryableMethod called with method: {methodCall.Method.Name}");
-
         switch (methodCall.Method.Name)
         {
             case "WithDepth":
-                Console.WriteLine("DEBUG: Routing to ProcessWithDepth");
                 ProcessWithDepth(methodCall, elementType, context, provider);
                 break;
             default:
@@ -705,29 +681,21 @@ internal class CypherExpressionBuilder
         CypherBuildContext context,
         Neo4jGraphProvider provider)
     {
-        Console.WriteLine($"DEBUG: ProcessTraversePath called with method: {methodCall.Method.Name}");
-
         // Extract the generic arguments: TSource, TRelationship, TTarget
         var genericArgs = methodCall.Method.GetGenericArguments();
         var sourceType = genericArgs[0]; // TSource
         var relationshipType = genericArgs[1]; // TRelationship
         var targetType = genericArgs[2]; // TTarget
 
-        Console.WriteLine($"DEBUG: Generic args - Source: {sourceType.Name}, Relationship: {relationshipType.Name}, Target: {targetType.Name}");
-
         // Get labels
         var relationshipLabel = Neo4jTypeManager.GetLabel(relationshipType);
         var targetLabel = Neo4jTypeManager.GetLabel(targetType);
         var sourceLabel = Neo4jTypeManager.GetLabel(sourceType);
 
-        Console.WriteLine($"DEBUG: Labels - Source: {sourceLabel}, Relationship: {relationshipLabel}, Target: {targetLabel}");
-
         // Get current source alias and create new aliases
         var sourceAlias = context.CurrentAlias;
         var relationshipAlias = context.GetNextAlias("r");
         var targetAlias = context.GetNextAlias("t");
-
-        Console.WriteLine($"DEBUG: Aliases - Source: {sourceAlias}, Relationship: {relationshipAlias}, Target: {targetAlias}");
 
         // For TraversePath, we want to replace the existing match with a complete traversal pattern
         // Clear any existing MATCH content and build the complete pattern
@@ -747,34 +715,26 @@ internal class CypherExpressionBuilder
             {
                 relationshipPattern = $"[{relationshipAlias}:{relationshipLabel}*{depth}]";
             }
-            Console.WriteLine($"DEBUG: Using single depth {depth} for pattern: {relationshipPattern}");
         }
         else if (context.MinTraversalDepth.HasValue && context.MaxTraversalDepth.HasValue)
         {
             // Depth range specified
             relationshipPattern = $"[{relationshipAlias}:{relationshipLabel}*{context.MinTraversalDepth}..{context.MaxTraversalDepth}]";
-            Console.WriteLine($"DEBUG: Using depth range {context.MinTraversalDepth}..{context.MaxTraversalDepth} for pattern: {relationshipPattern}");
         }
         else
         {
             // Default to single hop
             relationshipPattern = $"[{relationshipAlias}:{relationshipLabel}]";
-            Console.WriteLine($"DEBUG: Using default single hop pattern: {relationshipPattern}");
         }
 
         var matchClause = $"({sourceAlias}:{sourceLabel})-{relationshipPattern}->({targetAlias}:{targetLabel})";
         context.Match.Append(matchClause);
-
-        Console.WriteLine($"DEBUG: Built complete MATCH clause: {matchClause}");
-        Console.WriteLine($"DEBUG: Full Match context: '{context.Match}'");
 
         // Update the current alias to the target for further operations
         context.CurrentAlias = targetAlias;
 
         // The return should be constructed as a TraversalPath object with Source, Relationship, Target
         context.Return = $"{{ Source: {sourceAlias}, Relationship: {relationshipAlias}, Target: {targetAlias} }}";
-
-        Console.WriteLine($"DEBUG: Return clause: {context.Return}");
 
         // Mark as path result for proper result handling
         context.IsPathResult = true;
