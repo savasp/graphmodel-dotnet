@@ -18,6 +18,7 @@ using System.Reflection;
 using System.Text;
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j.Schema;
+using Neo4j.Driver;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq;
 
@@ -126,7 +127,7 @@ internal class CypherExpressionBuilder
                             ? collectionProp.PropertyType.GetElementType()
                             : collectionProp.PropertyType.GetGenericArguments().FirstOrDefault();
 
-                        if (elementType != null && typeof(IRelationship).IsAssignableFrom(elementType))
+                        if (elementType != null && typeof(Cvoya.Graph.Model.IRelationship).IsAssignableFrom(elementType))
                         {
                             // Try to get the label from the relationship type
                             var labelMethod = typeof(Neo4jGraphProvider).GetMethod(
@@ -238,7 +239,7 @@ internal class CypherExpressionBuilder
                                     ? propType.GetElementType()
                                     : propType.GetGenericArguments().FirstOrDefault();
 
-                                if (elementType != null && typeof(IRelationship).IsAssignableFrom(elementType))
+                                if (elementType != null && typeof(Cvoya.Graph.Model.IRelationship).IsAssignableFrom(elementType))
                                 {
                                     // Try to get the label from the relationship type
                                     var labelMethod = typeof(Neo4jGraphProvider).GetMethod(
@@ -856,22 +857,35 @@ internal class CypherExpressionBuilder
 
     private void ProcessWhereClause(Expression expression, CypherBuildContext context)
     {
-        // Process WHERE clause expressions
-        // This would handle property access, comparisons, etc.
-        // Implementation would be similar to existing expression processing
-        throw new NotImplementedException("ProcessWhereClause implementation needed");
+        // Convert expression to Cypher WHERE clause syntax
+        var cypherCondition = BuildCypherExpression(expression, context.CurrentAlias);
+        context.Where.Append(cypherCondition);
     }
 
     private void ProcessSelectClause(LambdaExpression selector, CypherBuildContext context)
     {
-        // Process SELECT projections
-        throw new NotImplementedException("ProcessSelectClause implementation needed");
+        // For simple selectors like x => x, just return the current alias
+        if (selector.Body is ParameterExpression)
+        {
+            // Identity selector, keep current return
+            return;
+        }
+
+        // For projections, build the Cypher expression
+        var projection = BuildCypherExpression(selector.Body, context.CurrentAlias);
+        context.Return = projection;
     }
 
     private void ProcessOrderByClause(LambdaExpression selector, bool descending, CypherBuildContext context)
     {
-        // Process ORDER BY
-        throw new NotImplementedException("ProcessOrderByClause implementation needed");
+        var orderExpression = BuildCypherExpression(selector.Body, context.CurrentAlias);
+
+        if (context.OrderBy.Length > 0)
+            context.OrderBy.Append(", ");
+
+        context.OrderBy.Append(orderExpression);
+        if (descending)
+            context.OrderBy.Append(" DESC");
     }
 
     private static Type GetSourceElementType(MethodCallExpression methodCall)
@@ -948,6 +962,152 @@ internal class CypherExpressionBuilder
 
             default:
                 return BuildCypherExpression(expr, relVar);
+        }
+    }
+
+    public static object? ExecuteQuery(string cypher, IDictionary<string, object> parameters, Type elementType, Neo4jGraphProvider provider, IGraphTransaction? transaction = null)
+    {
+        return ExecuteQueryAsync(cypher, parameters, elementType, provider, transaction).GetAwaiter().GetResult();
+    }
+
+    public static async Task<object?> ExecuteQueryAsync(string cypher, IDictionary<string, object> parameters, Type elementType, Neo4jGraphProvider provider, IGraphTransaction? transaction = null)
+    {
+        Console.WriteLine($"DEBUG - Executing Cypher: {cypher}");
+        Console.WriteLine($"DEBUG - Parameters: {string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
+
+        var (_, tx) = await provider.GetOrCreateTransaction(transaction);
+        var cursor = await tx.RunAsync(cypher, parameters);
+
+        // Handle different result types
+        if (elementType.IsGenericType && elementType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+        {
+            elementType = elementType.GetGenericArguments()[0];
+        }
+
+        var listType = typeof(List<>).MakeGenericType(elementType);
+        var items = (System.Collections.IList)Activator.CreateInstance(listType)!;
+
+        await foreach (var record in cursor)
+        {
+            Console.WriteLine($"DEBUG - Record keys: {string.Join(", ", record.Keys)}");
+            object? item = null;
+
+            // Try to parse the result based on what's returned
+            if (record.Keys.Count == 1)
+            {
+                var key = record.Keys.First();
+                var value = record[key];
+                Console.WriteLine($"DEBUG - Record value type: {value?.GetType().Name}, value: {value}");
+
+                if (value is global::Neo4j.Driver.INode node)
+                {
+                    Console.WriteLine($"DEBUG - Converting Neo4j node with labels: {string.Join(", ", node.Labels)}");
+                    // Convert Neo4j node to the target entity type
+                    item = ConvertNodeToEntity(node, elementType);
+                    Console.WriteLine($"DEBUG - Converted to: {item?.GetType().Name}");
+                }
+                else if (value is global::Neo4j.Driver.IRelationship rel)
+                {
+                    Console.WriteLine($"DEBUG - Converting Neo4j relationship: {rel.Type}");
+                    // Convert Neo4j relationship to the target entity type
+                    item = ConvertRelationshipToEntity(rel, elementType);
+                }
+                else
+                {
+                    Console.WriteLine($"DEBUG - Converting direct value");
+                    // Direct value (e.g., for aggregations or simple projections)
+                    item = ConvertValue(value, elementType);
+                }
+            }
+            else
+            {
+                // Multiple columns - might be a projection or complex result
+                // For now, assume it's a node if the first key matches a pattern
+                var nodeKey = record.Keys.FirstOrDefault(k => k.StartsWith('n'));
+                if (nodeKey != null && record[nodeKey] is global::Neo4j.Driver.INode node)
+                {
+                    item = ConvertNodeToEntity(node, elementType);
+                }
+            }
+
+            if (item != null)
+            {
+                Console.WriteLine($"DEBUG - Adding item to results: {item}");
+                items.Add(item);
+            }
+            else
+            {
+                Console.WriteLine($"DEBUG - Item was null, not adding to results");
+            }
+        }
+
+        Console.WriteLine($"DEBUG - Total items in result: {items.Count}");
+        return items;
+    }
+
+    private static object? ConvertNodeToEntity(global::Neo4j.Driver.INode node, Type entityType)
+    {
+        // Create an instance of the entity type
+        var entity = Activator.CreateInstance(entityType);
+        if (entity == null) return null;
+
+        // Map properties from the Neo4j node to the entity
+        var properties = entityType.GetProperties();
+        foreach (var property in properties)
+        {
+            if (node.Properties.TryGetValue(property.Name, out var value))
+            {
+                var convertedValue = ConvertValue(value, property.PropertyType);
+                property.SetValue(entity, convertedValue);
+            }
+        }
+
+        return entity;
+    }
+
+    private static object? ConvertRelationshipToEntity(global::Neo4j.Driver.IRelationship relationship, Type entityType)
+    {
+        // Similar to node conversion but for relationships
+        var entity = Activator.CreateInstance(entityType);
+        if (entity == null) return null;
+
+        var properties = entityType.GetProperties();
+        foreach (var property in properties)
+        {
+            if (relationship.Properties.TryGetValue(property.Name, out var value))
+            {
+                var convertedValue = ConvertValue(value, property.PropertyType);
+                property.SetValue(entity, convertedValue);
+            }
+        }
+
+        return entity;
+    }
+
+    private static object? ConvertValue(object? value, Type targetType)
+    {
+        if (value == null) return null;
+
+        // Handle nullable types
+        if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(Nullable<>))
+        {
+            targetType = Nullable.GetUnderlyingType(targetType)!;
+        }
+
+        // Direct assignment if types match
+        if (targetType.IsAssignableFrom(value.GetType()))
+        {
+            return value;
+        }
+
+        // Convert common types
+        try
+        {
+            return Convert.ChangeType(value, targetType);
+        }
+        catch
+        {
+            return null;
         }
     }
 }

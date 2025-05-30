@@ -80,21 +80,31 @@ internal class GraphQueryProvider(
             throw new InvalidOperationException($"Could not find appropriate constructor for {queryableType.Name}");
         }
 
-        return (IQueryable<TElement>)constructor.Invoke(new object?[] {
+        var queryable = constructor.Invoke(new object?[] {
             this,          // provider
             expression,    // expression
             _transaction,  // transaction
             new GraphQueryContext() // context
         });
+
+        // Return the GraphQueryable which implements both IQueryable<T> and IGraphQueryable<T>
+        return (IQueryable<TElement>)queryable;
     }
 
     public object? Execute(Expression expression)
     {
         var elementType = GetElementTypeFromExpression(expression) ?? _elementType;
-        var visitor = new ExpressionVisitor(_provider, _rootType, elementType, _transaction);
-        var cypher = visitor.Translate(expression);
 
-        var result = visitor.ExecuteQuery(cypher, elementType);
+        // Use the new CypherExpressionBuilder which has complete traversal support
+        var (cypher, parameters) = CypherExpressionBuilder.BuildGraphQuery(expression, elementType, _provider);
+
+        // Debug output to see what the new builder generates
+        Console.WriteLine($"DEBUG - New CypherExpressionBuilder generated: {cypher}");
+        Console.WriteLine($"DEBUG - Parameters: {string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
+
+        // Execute the query using the new CypherExpressionBuilder execution method
+        var nonNullableParams = parameters.ToDictionary(kvp => kvp.Key, kvp => kvp.Value ?? (object)DBNull.Value);
+        var result = CypherExpressionBuilder.ExecuteQuery(cypher, nonNullableParams, elementType, _provider, _transaction);
 
         return result;
     }
@@ -137,16 +147,16 @@ internal class GraphQueryProvider(
 
         var lastSelect = GetLastSelect(expression);
 
-        var visitor = new ExpressionVisitor(_provider, _rootType, elementType, _transaction);
-        var cypher = visitor.Translate(expression);
+        // Use the new CypherExpressionBuilder which has complete traversal support
+        var (cypher, parameters) = CypherExpressionBuilder.BuildGraphQuery(expression, elementType, _provider);
 
-        var result = visitor.ExecuteQuery(cypher, elementType);
+        // Debug output to see what the new builder generates
+        Console.WriteLine($"DEBUG - New CypherExpressionBuilder generated: {cypher}");
+        Console.WriteLine($"DEBUG - Parameters: {string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
 
-        // Check if this was a grouping query
-        if (visitor.IsGroupingQuery)
-        {
-            return (TResult)result!;
-        }
+        // Execute the query using the new CypherExpressionBuilder execution method
+        var nonNullableParams = parameters.ToDictionary(kvp => kvp.Key, kvp => kvp.Value ?? (object)DBNull.Value);
+        var result = CypherExpressionBuilder.ExecuteQuery(cypher, nonNullableParams, elementType, _provider, _transaction);
 
         return HandleResult<TResult>(result, resultType, elementType, isEnumerableResult);
     }
