@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\Graph.Model\Graph.Model.csproj" />
+        <Analyzer Include="..\..\src\Graph.Model.Analyzers\bin\Debug\netstandard2.0\Cvoya.Graph.Model.Analyzers.dll" />
+    </ItemGroup>
+
+</Project>

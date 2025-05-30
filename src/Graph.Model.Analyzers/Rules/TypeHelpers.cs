@@ -43,7 +43,7 @@ public static class TypeHelpers
     /// Other supported simple type names.
     /// </summary>
     private static readonly ImmutableHashSet<string> SupportedSimpleTypes = ImmutableHashSet.Create(
-        "System.String", "System.Decimal", "System.Guid"
+        "System.Guid"
     );
 
     /// <summary>
@@ -77,11 +77,44 @@ public static class TypeHelpers
     {
         if (type == null) return false;
 
-        var typeName = type.ToDisplayString();
+        // Handle primitives and basic types via SpecialType enum
+        switch (type.SpecialType)
+        {
+            case SpecialType.System_Boolean:
+            case SpecialType.System_Byte:
+            case SpecialType.System_SByte:
+            case SpecialType.System_Char:
+            case SpecialType.System_Int16:
+            case SpecialType.System_UInt16:
+            case SpecialType.System_Int32:
+            case SpecialType.System_UInt32:
+            case SpecialType.System_Int64:
+            case SpecialType.System_UInt64:
+            case SpecialType.System_Single:
+            case SpecialType.System_Double:
+            case SpecialType.System_String:
+            case SpecialType.System_Decimal:
+            case SpecialType.System_DateTime:
+                return true;
+        }
 
-        // Check primitives
-        if (SupportedPrimitiveTypes.Contains(typeName))
+        // For cases where SpecialType might not catch everything, also check by name
+        var typeName = type.ToDisplayString();
+        
+        // Basic types that should always be supported
+        if (typeName == "string" || typeName == "System.String" ||
+            typeName == "int" || typeName == "System.Int32" ||
+            typeName == "bool" || typeName == "System.Boolean" ||
+            typeName == "double" || typeName == "System.Double" ||
+            typeName == "decimal" || typeName == "System.Decimal" ||
+            typeName == "float" || typeName == "System.Single" ||
+            typeName == "long" || typeName == "System.Int64" ||
+            typeName == "byte" || typeName == "System.Byte" ||
+            typeName == "char" || typeName == "System.Char" ||
+            typeName == "short" || typeName == "System.Int16")
+        {
             return true;
+        }
 
         // Check date/time types
         if (SupportedDateTimeTypes.Contains(typeName))
