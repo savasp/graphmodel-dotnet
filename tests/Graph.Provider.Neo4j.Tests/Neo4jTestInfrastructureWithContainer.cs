@@ -55,7 +55,7 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
 
         // Create the test database and provider. The container is set up to not use authentication.
         var connectionString = container.GetConnectionString().Replace("neo4j", "bolt");
-        this.testDatabase = new TestDatabase(connectionString);
+        this.testDatabase = new TestDatabase(connectionString, useSharedDatabase: true);
         await this.testDatabase.Setup();
         this.provider = new Neo4jGraphProvider(connectionString, username: null, password: null, this.testDatabase.DatabaseName);
     }

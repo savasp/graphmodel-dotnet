@@ -28,7 +28,7 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
         var connectionString = Environment.GetEnvironmentVariable("NEO4J_CONNECTION_STRING") ?? Endpoint;
         var password = Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "password";
         var username = Environment.GetEnvironmentVariable("NEO4J_USERNAME") ?? "neo4j";
-        testDatabase = new TestDatabase(connectionString, username, password);
+        testDatabase = new TestDatabase(connectionString, username, password, useSharedDatabase: true);
         await testDatabase.Setup();
         provider = new Neo4jGraphProvider(connectionString, username, password, testDatabase.DatabaseName);
     }

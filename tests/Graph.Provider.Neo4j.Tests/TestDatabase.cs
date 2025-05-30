@@ -16,11 +16,17 @@ using Neo4j.Driver;
 
 public class TestDatabase
 {
-    private readonly string databaseName = "GraphModelTests" + Guid.NewGuid().ToString("N");
+    private readonly string databaseName;
     private readonly IDriver driver;
+    private readonly bool useSharedDatabase;
 
-    public TestDatabase(string endpoint, string? username = null, string? password = null)
+    public TestDatabase(string endpoint, string? username = null, string? password = null, bool useSharedDatabase = true)
     {
+        this.useSharedDatabase = useSharedDatabase;
+        this.databaseName = useSharedDatabase 
+            ? "GraphModelTestsShared"  // Use a fixed database name for sharing
+            : "GraphModelTests" + Guid.NewGuid().ToString("N"); // Unique per instance
+            
         this.driver = username != null && password != null
             ? GraphDatabase.Driver(endpoint, AuthTokens.Basic(username, password))
             : GraphDatabase.Driver(endpoint);
@@ -30,9 +36,37 @@ public class TestDatabase
 
     public async Task Setup()
     {
-        using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
-        await session.RunAsync($"CREATE OR REPLACE DATABASE {this.databaseName}");
-        await WaitForDatabaseOnline();
+        if (useSharedDatabase)
+        {
+            // For shared database, try to use existing one or create if needed
+            await EnsureSharedDatabaseExists();
+        }
+        else
+        {
+            // Original behavior for non-shared databases
+            using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
+            await session.RunAsync($"CREATE OR REPLACE DATABASE {this.databaseName}");
+            await WaitForDatabaseOnline();
+        }
+    }
+
+    private async Task EnsureSharedDatabaseExists()
+    {
+        try
+        {
+            // Try to connect to the shared database first
+            await using var session = driver.AsyncSession(builder => builder.WithDatabase(this.databaseName));
+            await session.RunAsync("RETURN 1");
+            // If we get here, database exists and is accessible
+            return;
+        }
+        catch (Neo4jException ex) when (ex.Message.Contains("not found") || ex.Message.Contains("does not exist"))
+        {
+            // Database doesn't exist, create it
+            using var systemSession = driver.AsyncSession(builder => builder.WithDatabase("system"));
+            await systemSession.RunAsync($"CREATE DATABASE {this.databaseName} IF NOT EXISTS");
+            await WaitForDatabaseOnline();
+        }
     }
 
     public async Task Reset()
@@ -45,10 +79,13 @@ public class TestDatabase
 
     public async ValueTask DisposeAsync()
     {
-        using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
+        if (!useSharedDatabase)
         {
+            // Only drop database if it's not shared
+            using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
             await session.RunAsync($"DROP DATABASE {this.databaseName}");
         }
+        // For shared databases, we don't drop them to allow reuse
     }
 
     private async Task WaitForDatabaseOnline(int maxAttempts = 30, int initialDelayMs = 100)
