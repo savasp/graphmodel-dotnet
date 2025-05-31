@@ -31,3 +31,5 @@ public class Knows : Relationship
 {
     public DateTime Since { get; set; }
 }
+
+public record PersonConnections(string PersonId, List<string> KnowsIds);

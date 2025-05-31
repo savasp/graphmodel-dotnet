@@ -43,7 +43,16 @@ public static class GraphQueryableExtensions
         var callExpression = Expression.Call(null, whereMethod, source.Expression, Expression.Quote(predicate));
 
         // Use the provider to create a new query
-        return (IGraphQueryable<T>)source.Provider.CreateQuery<T>(callExpression);
+        var newQuery = source.Provider.CreateQuery<T>(callExpression);
+
+        // Check if the result is actually a GraphQueryable implementation
+        if (newQuery is IGraphQueryable<T> graphQueryable)
+        {
+            return graphQueryable;
+        }
+
+        // If not, this means the provider didn't return a GraphQueryable - this is a bug
+        throw new InvalidOperationException($"Provider {source.Provider.GetType().Name} did not return an IGraphQueryable<T> implementation");
     }
 
     /// <summary>
@@ -253,7 +262,20 @@ public static class GraphQueryableExtensions
             .GetMethod(nameof(TraversePath))!
             .MakeGenericMethod(typeof(TSource), typeof(TRelationship), typeof(TTarget));
 
-        var callExpression = Expression.Call(null, traversePathMethod, source.Expression);
+        // Handle the case where source.Expression might be typed as IQueryable<T> instead of IGraphQueryable<T>
+        // This can happen when standard LINQ methods are called before this method
+        Expression sourceExpression = source.Expression;
+
+        // If the expression type is IQueryable<T>, we need to wrap it to indicate it should be treated as IGraphQueryable<T>
+        if (sourceExpression.Type.IsGenericType &&
+            sourceExpression.Type.GetGenericTypeDefinition() == typeof(IQueryable<>) &&
+            sourceExpression.Type != typeof(IGraphQueryable<TSource>))
+        {
+            // Create a cast expression to IGraphQueryable<TSource>
+            sourceExpression = Expression.Convert(sourceExpression, typeof(IGraphQueryable<TSource>));
+        }
+
+        var callExpression = Expression.Call(null, traversePathMethod, sourceExpression);
 
         return (IGraphQueryable<TraversalPath<TSource, TRelationship, TTarget>>)
             source.Provider.CreateQuery<TraversalPath<TSource, TRelationship, TTarget>>(callExpression);

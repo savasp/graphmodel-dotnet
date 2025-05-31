@@ -15,6 +15,7 @@
 using System.Collections;
 using System.Reflection;
 using Cvoya.Graph.Model;
+using Cvoya.Graph.Provider.Neo4j.Conversion;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Provider.Neo4j;
@@ -64,21 +65,6 @@ internal static class SerializationExtensions
         return result;
     }
 
-    public static Dictionary<string, object?> ConvertToDomainTypeProperties<T>() where T : new()
-    {
-        var obj = new T();
-        var (simpleProperties, _) = GetSimpleAndComplexProperties(obj);
-
-        var result = new Dictionary<string, object?>();
-        foreach (var kvp in simpleProperties)
-        {
-            var name = kvp.Key.GetCustomAttribute<PropertyAttribute>()?.Label ?? kvp.Key.Name;
-            result[name] = ConvertFromNeo4jValue(kvp.Value, simpleProperties[kvp.Key]!.GetType());
-        }
-
-        return result;
-    }
-
     public static object? ConvertToNeo4jValue(this object? value) => value switch
     {
         null => null,
@@ -115,12 +101,18 @@ internal static class SerializationExtensions
                 var value = p.Value;
 
                 if (value is null)
+                {
                     continue;
+                }
 
                 if (property.PropertyType.IsPrimitiveOrSimple())
+                {
                     property.SetValue(obj, ConvertFromNeo4jValue(value, property.PropertyType));
+                }
                 else
+                {
                     continue;
+                }
             }
         }
 
@@ -128,18 +120,9 @@ internal static class SerializationExtensions
         if (entity is global::Neo4j.Driver.INode node)
         {
             var idProperty = properties.FirstOrDefault(p => p.Name == "Id");
-            if (idProperty != null && idProperty.PropertyType == typeof(string))
+            if (idProperty != null && idProperty.PropertyType == typeof(string) && node.Properties.ContainsKey("Id"))
             {
-                // First try to get the Id from the node properties
-                if (node.Properties.ContainsKey("Id"))
-                {
-                    idProperty.SetValue(obj, node.Properties["Id"].As<string>());
-                }
-                else
-                {
-                    // Fall back to ElementId if no Id property exists
-                    idProperty.SetValue(obj, node.ElementId);
-                }
+                idProperty.SetValue(obj, node.Properties["Id"].As<string>());
             }
         }
         else if (entity is global::Neo4j.Driver.IRelationship relationship)
@@ -162,96 +145,60 @@ internal static class SerializationExtensions
             // Don't set SourceId and TargetId here - they will be set by the query
             // that includes the source and target nodes
         }
+        else
+        {
+            throw new InvalidOperationException($"Entity type: {entity.GetType().Name}.");
+        }
         return obj;
     }
 
+    private static readonly Neo4jEntityConverter _converter = new(null);
+
     public static object? ConvertFromNeo4jValue(this object? value, Type targetType)
     {
-        if (value is null)
-            return null;
-
-        if (targetType.IsInstanceOfType(value))
-            return value;
-
-        // Always hydrate node/relationship types as entities
-        if (typeof(Cvoya.Graph.Model.IRelationship).IsAssignableFrom(targetType))
+        // Special handling for node/relationship types that need ConvertToGraphEntity
+        if (value is not null)
         {
-            if (value is global::Neo4j.Driver.IRelationship rel)
+            if (typeof(Model.IRelationship).IsAssignableFrom(targetType) && value is Model.IRelationship rel)
             {
                 var method = typeof(SerializationExtensions).GetMethod(nameof(ConvertToGraphEntity), BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic);
                 var generic = method!.MakeGenericMethod(targetType);
-                return generic.Invoke(null, new object[] { rel });
+                return generic.Invoke(null, [rel]);
             }
-            throw new InvalidOperationException($"Cannot convert value of type {value?.GetType().Name} to relationship type {targetType.Name}. Use ConvertToGraphEntity.");
-        }
-        if (typeof(Cvoya.Graph.Model.INode).IsAssignableFrom(targetType))
-        {
-            if (value is global::Neo4j.Driver.INode node)
+
+            if (typeof(Model.INode).IsAssignableFrom(targetType) && value is Model.INode node)
             {
                 var method = typeof(SerializationExtensions).GetMethod(nameof(ConvertToGraphEntity), BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic);
                 var generic = method!.MakeGenericMethod(targetType);
-                return generic.Invoke(null, new object[] { node });
+                return generic.Invoke(null, [node]);
             }
-            throw new InvalidOperationException($"Cannot convert value of type {value?.GetType().Name} to node type {targetType.Name}. Use ConvertToGraphEntity.");
-        }
 
-        // Handle Neo4j INode to POCO mapping
-        if (value is global::Neo4j.Driver.INode neo4jNode && targetType.IsClass && targetType != typeof(string))
-        {
-            var nodeDict = neo4jNode.Properties.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-            return ConvertFromNeo4jValue(nodeDict, targetType);
-        }
-
-        // Handle dictionary-to-object mapping for POCOs
-        if (value is IDictionary<string, object> dict && targetType.IsClass && targetType != typeof(string))
-        {
-            var obj = Activator.CreateInstance(targetType);
-            var properties = targetType.GetProperties();
-            foreach (var prop in properties)
+            // Handle Neo4j INode to POCO mapping
+            if (value is global::Neo4j.Driver.INode neo4jNode && targetType.IsClass && targetType != typeof(string))
             {
-                if (dict.TryGetValue(prop.Name, out var propValue) && propValue != null)
+                var nodeDict = neo4jNode.Properties.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                return ConvertFromNeo4jValue(nodeDict, targetType);
+            }
+
+            // Handle dictionary-to-object mapping for POCOs
+            if (value is IDictionary<string, object> dict && targetType.IsClass && targetType != typeof(string))
+            {
+                var obj = Activator.CreateInstance(targetType);
+                var properties = targetType.GetProperties();
+                foreach (var prop in properties)
                 {
-                    if (prop.PropertyType.IsPrimitiveOrSimple())
-                        prop.SetValue(obj, ConvertFromNeo4jValue(propValue, prop.PropertyType));
-                    // Optionally: handle nested objects/collections here if needed
+                    if (dict.TryGetValue(prop.Name, out var propValue) && propValue != null)
+                    {
+                        if (prop.PropertyType.IsPrimitiveOrSimple())
+                            prop.SetValue(obj, ConvertFromNeo4jValue(propValue, prop.PropertyType));
+                    }
                 }
+                return obj;
             }
-            return obj;
         }
 
-        // For all other types, proceed as before
-        return targetType switch
-        {
-            Type t when t == typeof(DateTime) => value switch
-            {
-                ZonedDateTime zdt => zdt.ToDateTimeOffset().DateTime,
-                LocalDateTime ldt => ldt.ToDateTime(),
-                LocalDate ld => ld.ToDateTime(),
-                _ => Convert.ChangeType(value, targetType)
-            },
-            Type t when t == typeof(DateTimeOffset) && value is ZonedDateTime zdt2 => zdt2.ToDateTimeOffset(),
-            Type t when t == typeof(TimeOnly) && value is LocalTime lt2 => TimeOnly.FromTimeSpan(lt2.ToTimeSpan()),
-            Type t when t == typeof(DateOnly) && value is LocalDate ld2 => DateOnly.FromDateTime(ld2.ToDateTime()),
-            Type t when t.IsEnum && value is string enumString => Enum.Parse(targetType, enumString),
-            Type t when t == typeof(Model.Point) && value is global::Neo4j.Driver.Point point => new Model.Point(point.X, point.Y, point.Z),
-            Type t when t == typeof(int) && value is long l => (int)l,
-            Type t when t == typeof(long) && value is int i => (long)i,
-            Type t when t == typeof(float) && value is double d => (float)d,
-            Type t when t == typeof(float) && value is int i3 => (float)i3,
-            Type t when t == typeof(float) && value is long l3 => (float)l3,
-            Type t when t == typeof(float) && value is decimal dec => (float)dec,
-            Type t when t == typeof(double) && value is float f => (double)f,
-            Type t when t == typeof(double) && value is int i4 => (double)i4,
-            Type t when t == typeof(double) && value is long l4 => (double)l4,
-            Type t when t == typeof(double) && value is decimal dec2 => (double)dec2,
-            Type t when t == typeof(decimal) && value is double d2 => (decimal)d2,
-            Type t when t == typeof(decimal) && value is float f2 => (decimal)f2,
-            Type t when t == typeof(decimal) && value is int i2 => (decimal)i2,
-            Type t when t == typeof(decimal) && value is long l2 => (decimal)l2,
-            Type t when t == typeof(string) && value is byte[] bytes => System.Text.Encoding.UTF8.GetString(bytes),
-            _ =>
-                throw new InvalidCastException($"Cannot convert value of type {value.GetType().FullName} to {targetType.FullName}. Value: {value}")
-        };
+        // Delegate all other conversions to the converter
+        return _converter.ConvertFromNeo4jValue(value, targetType);
     }
 
     public static bool IsRelationshipType(this Type type) =>

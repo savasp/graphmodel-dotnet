@@ -14,6 +14,7 @@
 
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j;
+using Cvoya.Graph.Provider.Neo4j.Linq;
 using Neo4j.Driver;
 
 // Example 3: Transaction Management
@@ -37,7 +38,7 @@ Console.WriteLine($"✓ Created database: {databaseName}");
 // Create graph instance with Neo4j provider
 var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
 
-/*
+
 try
 {
     // ==== SETUP: Create initial data ====
@@ -51,8 +52,8 @@ try
     await graph.CreateNode(alice);
     await graph.CreateNode(bob);
 
-    await graph.CreateRelationship(new BankAccount { Source = alice, Target = bank });
-    await graph.CreateRelationship(new BankAccount { Source = bob, Target = bank });
+    await graph.CreateRelationship(new BankAccount { SourceId = alice.Id, TargetId = bank.Id });
+    await graph.CreateRelationship(new BankAccount { SourceId = bob.Id, TargetId = bank.Id });
 
     Console.WriteLine($"✓ Created bank: {bank.Name}");
     Console.WriteLine($"✓ Created account for {alice.Owner}: ${alice.Balance}");
@@ -82,8 +83,8 @@ try
             // Record transfer
             var transfer = new Transfer
             {
-                Source = aliceAccount,
-                Target = bobAccount,
+                SourceId = aliceAccount.Id,
+                TargetId = bobAccount.Id,
                 Amount = transferAmount,
                 Timestamp = DateTime.UtcNow,
                 Description = "Payment for services"
@@ -163,7 +164,7 @@ try
                 Balance = 0
             };
             await graph.CreateNode(charlie, transaction: transaction);
-            await graph.CreateRelationship(new BankAccount { Source = charlie, Target = bank }, transaction: transaction);
+            await graph.CreateRelationship(new BankAccount { SourceId = charlie.Id, TargetId = bank.Id }, transaction: transaction);
 
             // Transfer from multiple sources to Charlie
             var aliceAccount = await graph.GetNode<Account>(alice.Id, transaction: transaction);
@@ -183,8 +184,8 @@ try
             // Record transfers
             await graph.CreateRelationship(new Transfer
             {
-                Source = aliceAccount,
-                Target = charlie,
+                SourceId = aliceAccount.Id,
+                TargetId = charlie.Id,
                 Amount = aliceContribution,
                 Timestamp = DateTime.UtcNow,
                 Description = "Welcome gift"
@@ -192,8 +193,8 @@ try
 
             await graph.CreateRelationship(new Transfer
             {
-                Source = bobAccount,
-                Target = charlie,
+                SourceId = bobAccount.Id,
+                TargetId = charlie.Id,
                 Amount = bobContribution,
                 Timestamp = DateTime.UtcNow,
                 Description = "Welcome gift"
@@ -213,12 +214,16 @@ try
     // ==== TRANSACTION HISTORY ====
     Console.WriteLine("\n5. Transaction history...");
 
-    var transfers = graph.Relationships<Transfer>(new GraphOperationOptions().WithDepth(1)).ToList();
+    var transfers = await graph.Nodes<Account>()
+        .TraversePath<Account, Transfer, Account>()
+        .ToListAsync();
+
     Console.WriteLine($"Total transfers: {transfers.Count}");
-    foreach (var transfer in transfers.OrderBy(t => t.Timestamp))
+    foreach (var rel in transfers.OrderBy(t => t.Relationship.Timestamp))
     {
-        Console.WriteLine($"  - {transfer.Source?.Owner} → {transfer.Target?.Owner}: ${transfer.Amount} ({transfer.Description})");
+        Console.WriteLine($"  - {rel.Source.Owner} → {rel.Target.Owner}: ${rel.Relationship.Amount} ({rel.Relationship.Description}) at {rel.Relationship.Timestamp}");
     }
+    Console.WriteLine("\n=== Transaction History Complete ===");
 
     Console.WriteLine("\n=== Example 3 Complete ===");
     Console.WriteLine("This example demonstrated:");
@@ -244,9 +249,7 @@ finally
     await graph.DisposeAsync();
     await using (var session = driver.AsyncSession())
     {
-        await session.RunAsync($"DROP DATABASE {databaseName}");
+        //        await session.RunAsync($"DROP DATABASE {databaseName}");
     }
     await driver.DisposeAsync();
 }
-
-*/

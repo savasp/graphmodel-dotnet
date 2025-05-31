@@ -86,7 +86,6 @@ try
     // Age range query
     var youngPeople = graph.Nodes<Person>()
         .Where(p => p.Age >= 28 && p.Age <= 32)
-        .Select(p => new { p.Name, p.Age })
         .ToList();
 
     Console.WriteLine($"\nPeople aged 28-32 ({youngPeople.Count}):");
@@ -147,16 +146,21 @@ try
     // Find mutual connections
     Console.WriteLine("\n5. Finding mutual connections...");
 
-    // Get all people and their connections in one go
-    var peopleWithConnections = await graph.Nodes<Person>()
+    // Get all people and their connections
+    // We need to work around the LINQ provider limitations
+    var allPaths = await graph.Nodes<Person>()
         .TraversePath<Person, Knows, Person>()
-        .GroupBy(path => path.Source!.Id)
-        .Select(g => new
-        {
-            PersonId = g.Key,
-            KnowsIds = g.Select(path => path.Target!.Id).ToList()
-        })
         .ToListAsync();
+
+    // Group by source person in memory
+    var peopleWithConnections = allPaths
+        .Where(path => path.Source != null && path.Target != null)
+        .GroupBy(path => path.Source!.Id)
+        .Select(g => new PersonConnections(
+            g.Key,
+            g.Select(path => path.Target!.Id).ToList()
+        ))
+        .ToList();
 
     // Build a lookup dictionary
     var connectionsLookup = peopleWithConnections.ToDictionary(x => x.PersonId, x => x.KnowsIds);

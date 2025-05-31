@@ -86,6 +86,21 @@ internal class CypherBuildContext
     public int Limit { get; set; }
 
     /// <summary>
+    /// Traversal depth for path queries (single depth)
+    /// </summary>
+    public int? TraversalDepth { get; set; }
+
+    /// <summary>
+    /// Minimum traversal depth for path queries (range depth)
+    /// </summary>
+    public int? MinTraversalDepth { get; set; }
+
+    /// <summary>
+    /// Maximum traversal depth for path queries (range depth)
+    /// </summary>
+    public int? MaxTraversalDepth { get; set; }
+
+    /// <summary>
     /// Generates the next unique alias for nodes or relationships
     /// </summary>
     /// <param name="prefix">Prefix for the alias (e.g., "n" for nodes, "r" for relationships)</param>

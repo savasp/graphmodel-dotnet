@@ -119,104 +119,92 @@ internal class Neo4jEntityConverter
         if (value.GetType() == targetType)
             return value;
 
-        // String
-        if (targetType == typeof(string))
-            return value.ToString();
-
-        // Numbers
-        if (targetType == typeof(int))
-            return Convert.ToInt32(value);
-        if (targetType == typeof(long))
-            return Convert.ToInt64(value);
-        if (targetType == typeof(double))
-            return Convert.ToDouble(value);
-        if (targetType == typeof(float))
-            return Convert.ToSingle(value);
-        if (targetType == typeof(decimal))
-            return Convert.ToDecimal(value);
-
-        // Boolean
-        if (targetType == typeof(bool))
-            return Convert.ToBoolean(value);
-
-        // DateTime
-        if (targetType == typeof(DateTime))
+        // For all other types, use pattern matching
+        return (targetType, value) switch
         {
-            if (value is ZonedDateTime zdt)
-                return zdt.ToDateTimeOffset().DateTime;
-            if (value is LocalDateTime ldt)
-                return ldt.ToDateTime();
-            if (value is LocalDate ld)
-                return ld.ToDateTime();
-            return Convert.ToDateTime(value);
-        }
+            // String
+            (Type t, _) when t == typeof(string) => value.ToString(),
 
-        // DateTimeOffset
-        if (targetType == typeof(DateTimeOffset))
-        {
-            if (value is ZonedDateTime zdt)
-                return zdt.ToDateTimeOffset();
-            if (value is LocalDateTime ldt)
-                return new DateTimeOffset(ldt.ToDateTime());
-            return new DateTimeOffset(Convert.ToDateTime(value));
-        }
+            // Numbers with all possible conversions
+            (Type t, _) when t == typeof(int) => Convert.ToInt32(value),
+            (Type t, _) when t == typeof(long) => Convert.ToInt64(value),
+            (Type t, _) when t == typeof(double) => Convert.ToDouble(value),
+            (Type t, _) when t == typeof(float) => Convert.ToSingle(value),
 
-        // TimeOnly
-        if (targetType == typeof(TimeOnly) && value is LocalTime lt)
-        {
-            return TimeOnly.FromTimeSpan(lt.ToTimeSpan());
-        }
-
-        // DateOnly
-        if (targetType == typeof(DateOnly) && value is LocalDate ld2)
-        {
-            return DateOnly.FromDateTime(ld2.ToDateTime());
-        }
-
-        // Guid
-        if (targetType == typeof(Guid))
-        {
-            return Guid.Parse(value.ToString()!);
-        }
-
-        // Enums
-        if (targetType.IsEnum)
-        {
-            if (value is string strValue)
-                return Enum.Parse(targetType, strValue);
-            return Enum.ToObject(targetType, value);
-        }
-
-        // Arrays and Lists
-        if (targetType.IsArray)
-        {
-            var elementType = targetType.GetElementType();
-            if (value is IList neo4jList && elementType is not null)
+            // Decimal - handle all numeric types explicitly
+            (Type t, _) when t == typeof(decimal) => value switch
             {
-                var array = Array.CreateInstance(elementType, neo4jList.Count);
-                for (int i = 0; i < neo4jList.Count; i++)
-                {
-                    array.SetValue(ConvertFromNeo4jValue(neo4jList[i], elementType), i);
-                }
-                return array;
-            }
-        }
+                double d => (decimal)d,
+                float f => (decimal)f,
+                int i => (decimal)i,
+                long l => (decimal)l,
+                string s when decimal.TryParse(s, out var parsed) => parsed,
+                _ => Convert.ToDecimal(value)
+            },
 
-        if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(List<>))
+            // Boolean
+            (Type t, _) when t == typeof(bool) => Convert.ToBoolean(value),
+
+            // DateTime conversions
+            (Type t, ZonedDateTime zdt) when t == typeof(DateTime) => zdt.ToDateTimeOffset().DateTime,
+            (Type t, LocalDateTime ldt) when t == typeof(DateTime) => ldt.ToDateTime(),
+            (Type t, LocalDate ld) when t == typeof(DateTime) => ld.ToDateTime(),
+            (Type t, _) when t == typeof(DateTime) => Convert.ToDateTime(value),
+
+            // DateTimeOffset
+            (Type t, ZonedDateTime zdt) when t == typeof(DateTimeOffset) => zdt.ToDateTimeOffset(),
+            (Type t, LocalDateTime ldt) when t == typeof(DateTimeOffset) => new DateTimeOffset(ldt.ToDateTime()),
+            (Type t, _) when t == typeof(DateTimeOffset) => new DateTimeOffset(Convert.ToDateTime(value)),
+
+            // TimeOnly
+            (Type t, LocalTime lt) when t == typeof(TimeOnly) => TimeOnly.FromTimeSpan(lt.ToTimeSpan()),
+
+            // DateOnly
+            (Type t, LocalDate ld) when t == typeof(DateOnly) => DateOnly.FromDateTime(ld.ToDateTime()),
+
+            // Guid
+            (Type t, _) when t == typeof(Guid) => Guid.Parse(value.ToString()!),
+
+            // Enums
+            (Type t, string strValue) when t.IsEnum => Enum.Parse(targetType, strValue),
+            (Type t, _) when t.IsEnum => Enum.ToObject(targetType, value),
+
+            // Point
+            (Type t, global::Neo4j.Driver.Point point) when t == typeof(Model.Point) => new Model.Point(point.X, point.Y, point.Z),
+
+            // Arrays
+            (Type t, IList neo4jList) when t.IsArray => ConvertToArray(neo4jList, t.GetElementType()!),
+
+            // Generic Lists
+            (Type t, IList neo4jList) when t.IsGenericType && t.GetGenericTypeDefinition() == typeof(List<>) =>
+                ConvertToList(neo4jList, t),
+
+            // Default case
+            _ => throw new NotSupportedException($"Cannot convert Neo4j value of type {value.GetType()} to {targetType}")
+        };
+    }
+
+    private Array ConvertToArray(IList neo4jList, Type elementType)
+    {
+        var array = Array.CreateInstance(elementType, neo4jList.Count);
+        for (int i = 0; i < neo4jList.Count; i++)
         {
-            var elementType = targetType.GetGenericArguments()[0];
-            if (value is IList neo4jList)
-            {
-                var list = Activator.CreateInstance(targetType) as IList;
-                foreach (var item in neo4jList)
-                {
-                    list?.Add(ConvertFromNeo4jValue(item, elementType));
-                }
-                return list;
-            }
+            array.SetValue(ConvertFromNeo4jValue(neo4jList[i], elementType), i);
+        }
+        return array;
+    }
+
+    private object ConvertToList(IList neo4jList, Type listType)
+    {
+        var elementType = listType.GetGenericArguments()[0];
+        var list = Activator.CreateInstance(listType) as IList ?? throw new InvalidOperationException($"Failed to create instance of {listType}");
+
+        foreach (var item in neo4jList)
+        {
+            list.Add(ConvertFromNeo4jValue(item, elementType));
         }
 
-        throw new NotSupportedException($"Cannot convert Neo4j value of type {value.GetType()} to {targetType}");
+        return list;
     }
 
     /// <summary>
