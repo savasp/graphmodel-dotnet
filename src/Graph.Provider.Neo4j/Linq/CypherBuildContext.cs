@@ -41,6 +41,11 @@ internal class CypherBuildContext
     public Type? RootType { get; set; }
 
     /// <summary>
+    /// The query root type (Node or Relationship)
+    /// </summary>
+    public GraphQueryContext.QueryRootType? QueryRootType { get; set; }
+
+    /// <summary>
     /// Parameters for the query
     /// </summary>
     public Dictionary<string, object?> Parameters { get; } = new();

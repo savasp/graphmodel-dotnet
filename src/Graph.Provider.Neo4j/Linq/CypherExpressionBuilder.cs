@@ -478,10 +478,20 @@ internal class CypherExpressionBuilder
     public static (string cypher, Dictionary<string, object?> parameters, CypherBuildContext context) BuildGraphQuery(
             Expression expression,
             Type elementType,
-            Neo4jGraphProvider provider)
+            Neo4jGraphProvider provider,
+            GraphQueryContext? queryContext = null)
     {
         var builder = new CypherExpressionBuilder();
         var context = new CypherBuildContext();
+
+        // Set context information from queryContext if available
+        if (queryContext != null)
+        {
+            context.QueryRootType = queryContext.RootType;
+        }
+
+        // Set the root type from the element type
+        context.RootType = elementType;
 
         // Detect aggregate/scalar operations
         if (expression is MethodCallExpression methodCall)
@@ -520,10 +530,32 @@ internal class CypherExpressionBuilder
                 break;
             case ConstantExpression constant when constant.Type.IsGenericType &&
                 constant.Type.GetGenericTypeDefinition() == typeof(GraphQueryable<>):
-                // Root queryable
+                // Root queryable - extract context from the queryable instance
                 context.CurrentAlias = "n";
                 context.RootType = elementType;
-                context.Match.Append($"({context.CurrentAlias}:{Neo4jTypeManager.GetLabel(elementType)})");
+
+                // Try to extract the GraphQueryContext from the queryable instance
+                if (constant.Value != null)
+                {
+                    var contextProperty = constant.Type.GetProperty("Context");
+                    if (contextProperty?.GetValue(constant.Value) is GraphQueryContext queryContext)
+                    {
+                        context.QueryRootType = queryContext.RootType;
+                    }
+                }
+
+                // Generate different patterns based on query root type
+                var label = Neo4jTypeManager.GetLabel(elementType);
+                if (context.QueryRootType == GraphQueryContext.QueryRootType.Relationship)
+                {
+                    // For relationship queries, generate: ()-[r:type]->()
+                    context.Match.Append($"()-[{context.CurrentAlias}:{label}]->()");
+                }
+                else
+                {
+                    // For node queries (default), generate: (n:type)
+                    context.Match.Append($"({context.CurrentAlias}:{label})");
+                }
                 break;
             case ConstantExpression constant:
                 // Handle basic constant expressions (like integers, strings) - these are typically method parameters
@@ -1251,7 +1283,18 @@ internal class CypherExpressionBuilder
             if (context.RootType != null)
             {
                 var label = Neo4jTypeManager.GetLabel(context.RootType);
-                query.Append("MATCH ").AppendLine($"({context.CurrentAlias}:{label})");
+
+                // Generate different patterns based on query root type
+                if (context.QueryRootType == GraphQueryContext.QueryRootType.Relationship)
+                {
+                    // For relationship queries, generate: MATCH ()-[r:type]->()
+                    query.Append("MATCH ").AppendLine($"()-[{context.CurrentAlias}:{label}]->()");
+                }
+                else
+                {
+                    // For node queries (default), generate: MATCH (n:type)
+                    query.Append("MATCH ").AppendLine($"({context.CurrentAlias}:{label})");
+                }
             }
             else
             {

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Linq.Expressions;
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j.Conversion;
 using Cvoya.Graph.Provider.Neo4j.Entities;
@@ -123,7 +124,9 @@ public class Neo4jGraphProvider : IGraph
             _logger?.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
 
             var queryProvider = new GraphQueryProvider(this, _logger, transaction, typeof(N));
-            return new GraphQueryable<N>(queryProvider, transaction);
+
+            var context = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Node };
+            return new GraphQueryable<N>(queryProvider, transaction, context);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
@@ -144,7 +147,9 @@ public class Neo4jGraphProvider : IGraph
             _logger?.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
 
             var queryProvider = new GraphQueryProvider(this, _logger, transaction, typeof(R));
-            return new GraphQueryable<R>(queryProvider, transaction);
+
+            var context = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Relationship };
+            return new GraphQueryable<R>(queryProvider, transaction, context);
         }
         catch (Exception ex) when (ex is not GraphException)
         {

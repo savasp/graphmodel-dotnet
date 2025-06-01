@@ -16,7 +16,7 @@ using Cvoya.Graph.Model;
 
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
-public class RetrievalTraversalTestsBase : Model.Tests.NodeTraversalTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
+public class RetrievalTraversalTestsBase : Model.Tests.RetrievalTraversalTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
 {
     private readonly TestInfrastructureFixture fixture;
 

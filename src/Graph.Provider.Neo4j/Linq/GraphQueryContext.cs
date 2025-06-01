@@ -21,6 +21,12 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq;
 /// </summary>
 internal class GraphQueryContext : IGraphQueryContext
 {
+    public enum QueryRootType
+    {
+        Node,
+        Relationship,
+    }
+
     public Guid QueryId { get; } = Guid.NewGuid();
     public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
     public IReadOnlyList<string> Hints { get; init; } = Array.Empty<string>();
@@ -29,6 +35,7 @@ internal class GraphQueryContext : IGraphQueryContext
     public bool ProfilingEnabled { get; init; }
     public bool CascadeDeleteEnabled { get; init; }
     public GraphMetadataTypes MetadataTypes { get; init; } = GraphMetadataTypes.None;
+    public QueryRootType RootType { get; init; } = QueryRootType.Node;
 
     public GraphQueryContext WithHints(IReadOnlyList<string> hints)
     {

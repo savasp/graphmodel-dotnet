@@ -20,17 +20,17 @@ namespace Cvoya.Graph.Provider.Neo4j.Linq;
 
 internal class GraphQueryable<T> : IGraphQueryable<T>, IOrderedQueryable<T> where T : class
 {
-    private readonly IGraphQueryContext _context;
+    private readonly GraphQueryContext _context;
 
-    public GraphQueryable(GraphQueryProvider provider, IGraphTransaction? transaction = null)
+    public GraphQueryable(GraphQueryProvider provider, IGraphTransaction? transaction = null, GraphQueryContext? context = null)
     {
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
         Expression = Expression.Constant(this);
         Transaction = transaction;
-        _context = new GraphQueryContext();
+        _context = context ?? new GraphQueryContext();
     }
 
-    internal GraphQueryable(GraphQueryProvider provider, Expression expression, IGraphTransaction? transaction = null, IGraphQueryContext? context = null)
+    internal GraphQueryable(GraphQueryProvider provider, Expression expression, IGraphTransaction? transaction = null, GraphQueryContext? context = null)
     {
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
         Expression = expression ?? throw new ArgumentNullException(nameof(expression));
@@ -59,7 +59,7 @@ internal class GraphQueryable<T> : IGraphQueryable<T>, IOrderedQueryable<T> wher
         // For now, we'll store this in the expression for the query provider to handle
         var methodInfo = typeof(IGraphQueryable<T>).GetMethod(nameof(WithDepth), [typeof(int)])!;
         var newExpression = Expression.Call(Expression, methodInfo, Expression.Constant(depth));
-        return new GraphQueryable<T>((GraphQueryProvider)Provider, newExpression, Transaction, Context);
+        return new GraphQueryable<T>((GraphQueryProvider)Provider, newExpression, Transaction, _context);
     }
 
     public IGraphQueryable<T> WithDepth(int minDepth, int maxDepth)
@@ -68,12 +68,12 @@ internal class GraphQueryable<T> : IGraphQueryable<T>, IOrderedQueryable<T> wher
         // For now, we'll store this in the expression for the query provider to handle
         var methodInfo = typeof(IGraphQueryable<T>).GetMethod(nameof(WithDepth), [typeof(int), typeof(int)])!;
         var newExpression = Expression.Call(Expression, methodInfo, Expression.Constant(minDepth), Expression.Constant(maxDepth));
-        return new GraphQueryable<T>((GraphQueryProvider)Provider, newExpression, Transaction, Context);
+        return new GraphQueryable<T>((GraphQueryProvider)Provider, newExpression, Transaction, _context);
     }
 
     public IGraphQueryable<T> InTransaction(IGraphTransaction transaction)
     {
-        return new GraphQueryable<T>((GraphQueryProvider)Provider, Expression, transaction, Context);
+        return new GraphQueryable<T>((GraphQueryProvider)Provider, Expression, transaction, _context);
     }
 
     public IGraphQueryable<T> WithHint(string hint)

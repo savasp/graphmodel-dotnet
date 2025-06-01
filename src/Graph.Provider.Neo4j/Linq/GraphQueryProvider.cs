@@ -72,7 +72,7 @@ internal class GraphQueryProvider(
         var constructor = queryableType.GetConstructor(
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
             null,
-            new[] { typeof(GraphQueryProvider), typeof(Expression), typeof(IGraphTransaction), typeof(IGraphQueryContext) },
+            new[] { typeof(GraphQueryProvider), typeof(Expression), typeof(IGraphTransaction), typeof(GraphQueryContext) },
             null);
 
         if (constructor == null)

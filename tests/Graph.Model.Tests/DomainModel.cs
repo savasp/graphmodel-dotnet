@@ -35,6 +35,17 @@ public class Address : INode
 [Relationship("KNOWS")]
 public class Knows : IRelationship
 {
+    public Knows() { }
+    public Knows(string sourceId, string targetId)
+    {
+        this.SourceId = sourceId;
+        this.TargetId = targetId;
+    }
+    public Knows(INode source, INode target)
+    {
+        this.SourceId = source.Id;
+        this.TargetId = target.Id;
+    }
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string SourceId { get; set; } = string.Empty;
     public string TargetId { get; set; } = string.Empty;
