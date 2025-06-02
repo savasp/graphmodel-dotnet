@@ -68,6 +68,11 @@ internal class CypherExpressionBuilder
     {
         switch (expr)
         {
+            case ParameterExpression pe:
+                // For parameter expressions, return the variable name
+                // This handles cases like 'g' in GroupBy expressions
+                return varName;
+
             case MemberExpression me:
                 // Handle DateTime static properties
                 if (me.Type == typeof(DateTime) && me.Member is PropertyInfo propertyInfo && propertyInfo.DeclaringType == typeof(DateTime))
@@ -411,6 +416,22 @@ internal class CypherExpressionBuilder
                     _ => throw new NotSupportedException($"Unary operator {ue.NodeType} is not supported")
                 };
 
+            case NewExpression ne:
+                // Handle anonymous type creation: new { Name = p.FirstName, Age = p.Age }
+                // Convert to Cypher map: { Name: n.FirstName, Age: n.Age }
+                if (ne.Members != null && ne.Arguments.Count == ne.Members.Count)
+                {
+                    var properties = new List<string>();
+                    for (int i = 0; i < ne.Members.Count; i++)
+                    {
+                        var memberName = ne.Members[i].Name;
+                        var valueExpression = BuildCypherExpression(ne.Arguments[i], varName);
+                        properties.Add($"{memberName}: {valueExpression}");
+                    }
+                    return $"{{ {string.Join(", ", properties)} }}";
+                }
+                throw new NotSupportedException($"NewExpression without member initialization is not supported");
+
             default:
                 throw new NotSupportedException($"Expression type {expr.GetType().Name} is not supported in projections");
         }
@@ -506,6 +527,20 @@ internal class CypherExpressionBuilder
 
         // Process the expression tree
         builder.ProcessExpression(expression, elementType, context, provider);
+
+        // If we have a client-side projection, we need to use the source entity type for Cypher
+        // and let the projection be applied on the client side
+        var actualElementType = elementType;
+        if (context.ClientSideProjection != null)
+        {
+            // Find the source entity type by walking up the expression tree
+            var sourceEntityType = FindSourceEntityType(expression);
+            if (sourceEntityType != null)
+            {
+                actualElementType = sourceEntityType;
+                context.RootType = actualElementType;
+            }
+        }
 
         // Build the final Cypher query
         var cypher = builder.BuildCypherQuery(context);
@@ -914,6 +949,10 @@ internal class CypherExpressionBuilder
                 context.IsCountQuery = true;
                 break;
 
+            case "GroupBy":
+                ProcessGroupByClause(methodCall, context);
+                break;
+
             case "Average":
                 if (methodCall.Arguments.Count > 1)
                 {
@@ -1308,6 +1347,12 @@ internal class CypherExpressionBuilder
             query.Append("WHERE ").AppendLine(context.Where.ToString());
         }
 
+        // WITH clause for grouping and aggregations
+        if (!string.IsNullOrEmpty(context.With))
+        {
+            query.AppendLine(context.With);
+        }
+
         // RETURN clause
         query.Append("RETURN ");
         if (context.IsDistinct)
@@ -1332,7 +1377,8 @@ internal class CypherExpressionBuilder
             query.AppendLine($"LIMIT {context.Limit}");
         }
 
-        return query.ToString();
+        var finalQuery = query.ToString();
+        return finalQuery;
     }
 
     private void ProcessWhereClause(Expression expression, CypherBuildContext context)
@@ -1351,9 +1397,281 @@ internal class CypherExpressionBuilder
             return;
         }
 
-        // For projections, build the Cypher expression
+        // Special handling for GroupBy + Select patterns
+        if (context.IsGroupByQuery)
+        {
+            // This is a Select after GroupBy - handle aggregations
+            ProcessGroupBySelectClause(selector, context);
+            return;
+        }
+
+        // Check if this is a complex projection that needs client-side processing
+        if (RequiresClientSideProjection(selector.Body))
+        {
+            // For complex projections (like anonymous types), we'll return the raw nodes
+            // and apply the projection on the client side during result processing
+            context.ClientSideProjection = selector;
+            // Keep the default return (the current alias) for now
+            return;
+        }
+
+        // For simple projections, build the Cypher expression
         var projection = BuildCypherExpression(selector.Body, context.CurrentAlias);
         context.Return = projection;
+    }
+
+    private void ProcessGroupBySelectClause(LambdaExpression selector, CypherBuildContext context)
+    {
+        // For GroupBy + Select, we need to build WITH and aggregation clauses
+        // e.g., .GroupBy(p => p.FirstName).Select(g => new { Name = g.Key, Count = g.Count() })
+        // should generate: WITH p.FirstName as name, COUNT(p) as count RETURN { Name: name, Count: count }
+        
+        if (selector.Body is NewExpression newExpr)
+        {
+            // Handle anonymous type projections like new { Name = g.Key, Count = g.Count() }
+            var withClauseItems = new List<string>();
+            var returnProjections = new List<string>();
+            
+            for (int i = 0; i < newExpr.Arguments.Count; i++)
+            {
+                var argument = newExpr.Arguments[i];
+                var memberName = newExpr.Members?[i].Name ?? $"Field{i}";
+                var aliasName = memberName.ToLower();
+                
+                if (IsGroupingKeyAccess(argument))
+                {
+                    // g.Key -> use the GroupBy key expression
+                    withClauseItems.Add($"{context.GroupByKey} as {aliasName}");
+                    returnProjections.Add($"{memberName}: {aliasName}");
+                }
+                else if (IsGroupingAggregation(argument, out var aggregationType))
+                {
+                    // g.Count(), g.Sum(x => x.Property), etc.
+                    var aggregationExpr = BuildGroupingAggregation(argument, aggregationType, context);
+                    withClauseItems.Add($"{aggregationExpr} as {aliasName}");
+                    returnProjections.Add($"{memberName}: {aliasName}");
+                }
+                else
+                {
+                    // Other expressions - for now, these should be client-side
+                    context.ClientSideProjection = selector;
+                    return;
+                }
+            }
+            
+            // Build the WITH clause for grouping
+            context.With = $"WITH {string.Join(", ", withClauseItems)}";
+            
+            // Build the final RETURN clause
+            context.Return = $"{{ {string.Join(", ", returnProjections)} }}";
+        }
+        else
+        {
+            // For non-anonymous types, fall back to client-side projection
+            context.ClientSideProjection = selector;
+        }
+    }
+
+    private static bool IsGroupingKeyAccess(Expression expression)
+    {
+        // Check if this is accessing g.Key from IGrouping<TKey, TElement>
+        return expression is MemberExpression memberExpr && 
+               memberExpr.Member.Name == "Key" &&
+               memberExpr.Member.DeclaringType?.IsGenericType == true &&
+               memberExpr.Member.DeclaringType.GetGenericTypeDefinition() == typeof(IGrouping<,>);
+    }
+
+    private static bool IsGroupingAggregation(Expression expression, out string aggregationType)
+    {
+        aggregationType = "";
+        
+        if (expression is MethodCallExpression methodCall)
+        {
+            // Check if this is calling an aggregation method on IGrouping
+            if (methodCall.Object?.Type.IsGenericType == true &&
+                methodCall.Object.Type.GetGenericTypeDefinition() == typeof(IGrouping<,>))
+            {
+                aggregationType = methodCall.Method.Name;
+                return aggregationType is "Count" or "Sum" or "Average" or "Min" or "Max";
+            }
+        }
+        
+        return false;
+    }
+
+    private string BuildGroupingAggregation(Expression expression, string aggregationType, CypherBuildContext context)
+    {
+        if (expression is MethodCallExpression methodCall)
+        {
+            switch (aggregationType)
+            {
+                case "Count":
+                    return $"COUNT({context.CurrentAlias})";
+                case "Sum":
+                    if (methodCall.Arguments.Count > 0)
+                    {
+                        var sumSelector = ExtractLambdaFromQuote(methodCall.Arguments[0]);
+                        if (sumSelector != null)
+                        {
+                            var property = BuildCypherExpression(sumSelector.Body, context.CurrentAlias);
+                            return $"SUM({property})";
+                        }
+                    }
+                    break;
+                case "Average":
+                    if (methodCall.Arguments.Count > 0)
+                    {
+                        var avgSelector = ExtractLambdaFromQuote(methodCall.Arguments[0]);
+                        if (avgSelector != null)
+                        {
+                            var property = BuildCypherExpression(avgSelector.Body, context.CurrentAlias);
+                            return $"AVG({property})";
+                        }
+                    }
+                    break;
+                case "Min":
+                    if (methodCall.Arguments.Count > 0)
+                    {
+                        var minSelector = ExtractLambdaFromQuote(methodCall.Arguments[0]);
+                        if (minSelector != null)
+                        {
+                            var property = BuildCypherExpression(minSelector.Body, context.CurrentAlias);
+                            return $"MIN({property})";
+                        }
+                    }
+                    break;
+                case "Max":
+                    if (methodCall.Arguments.Count > 0)
+                    {
+                        var maxSelector = ExtractLambdaFromQuote(methodCall.Arguments[0]);
+                        if (maxSelector != null)
+                        {
+                            var property = BuildCypherExpression(maxSelector.Body, context.CurrentAlias);
+                            return $"MAX({property})";
+                        }
+                    }
+                    break;
+            }
+        }
+        
+        return $"COUNT({context.CurrentAlias})"; // fallback
+    }
+
+    private string BuildAggregationsFromProjections(NewExpression newExpr, CypherBuildContext context)
+    {
+        var aggregations = new List<string>();
+        
+        for (int i = 0; i < newExpr.Arguments.Count; i++)
+        {
+            var argument = newExpr.Arguments[i];
+            
+            if (IsGroupingAggregation(argument, out var aggregationType))
+            {
+                var aggregationExpr = BuildGroupingAggregation(argument, aggregationType, context);
+                var memberName = newExpr.Members?[i].Name ?? $"agg{i}";
+                aggregations.Add($"{aggregationExpr} as {memberName.ToLower()}");
+            }
+        }
+        
+        return aggregations.Count > 0 ? string.Join(", ", aggregations) : $"COUNT({context.CurrentAlias}) as count";
+    }
+
+    private static bool RequiresClientSideProjection(Expression expression)
+    {
+        // Anonymous type constructors (new { ... }) - check if all arguments can be handled server-side
+        if (expression is NewExpression newExpr)
+        {
+            // Check if all arguments can be handled server-side
+            return newExpr.Arguments.Any(arg => RequiresClientSideProjection(arg));
+        }
+
+        // Member init expressions (new SomeType { Prop = value }) require client-side projection  
+        if (expression is MemberInitExpression)
+        {
+            return true;
+        }
+
+        // Binary expressions (like string concatenation, arithmetic) can often be handled server-side
+        if (expression is BinaryExpression binaryExpr)
+        {
+            // Check if both operands can be handled server-side
+            return RequiresClientSideProjection(binaryExpr.Left) || RequiresClientSideProjection(binaryExpr.Right);
+        }
+
+        // Simple member access (p.Name) can be handled server-side
+        if (expression is MemberExpression me)
+        {
+            // DateTime static properties can be handled server-side
+            if (me.Type == typeof(DateTime) && me.Member is PropertyInfo propertyInfo && propertyInfo.DeclaringType == typeof(DateTime))
+            {
+                return false; // DateTime.Now, DateTime.Today, etc. can be handled server-side
+            }
+            
+            // Simple property access can be handled server-side
+            return false;
+        }
+
+        // Simple constants can be handled server-side
+        if (expression is ConstantExpression)
+        {
+            return false;
+        }
+
+        // Method calls might be handled server-side (string methods, math methods, etc.)
+        if (expression is MethodCallExpression methodCall)
+        {
+            // Check if the method can be mapped to Cypher
+            if (CanMapMethodToCypher(methodCall))
+            {
+                // Check if all arguments can be handled server-side
+                var allArgumentsServerSide = methodCall.Arguments.All(arg => !RequiresClientSideProjection(arg));
+                var objectServerSide = methodCall.Object == null || !RequiresClientSideProjection(methodCall.Object);
+                return !(allArgumentsServerSide && objectServerSide);
+            }
+            return true; // Unknown methods require client-side
+        }
+
+        // For other complex expressions, default to client-side for safety
+        return true;
+    }
+
+    private static bool CanMapMethodToCypher(MethodCallExpression methodCall)
+    {
+        // String methods that can be mapped to Cypher
+        if (methodCall.Method.DeclaringType == typeof(string))
+        {
+            return methodCall.Method.Name switch
+            {
+                "ToUpper" or "ToLower" or "Trim" or "Substring" or "Replace" or 
+                "StartsWith" or "EndsWith" or "Contains" => true,
+                _ => false
+            };
+        }
+
+        // Math methods that can be mapped to Cypher
+        if (methodCall.Method.DeclaringType == typeof(Math))
+        {
+            return methodCall.Method.Name switch
+            {
+                "Abs" or "Ceiling" or "Floor" or "Round" or "Sqrt" or
+                "Sin" or "Cos" or "Tan" or "Log" or "Log10" or "Exp" or
+                "Pow" or "Max" or "Min" => true,
+                _ => false
+            };
+        }
+
+        // DateTime methods that can be mapped to Cypher
+        if (methodCall.Method.DeclaringType == typeof(DateTime))
+        {
+            return methodCall.Method.Name switch
+            {
+                "AddYears" or "AddMonths" or "AddDays" or "AddHours" or
+                "AddMinutes" or "AddSeconds" or "AddMilliseconds" => true,
+                _ => false
+            };
+        }
+
+        return false;
     }
 
     private void ProcessOrderByClause(LambdaExpression selector, bool descending, CypherBuildContext context)
@@ -1366,6 +1684,25 @@ internal class CypherExpressionBuilder
         context.OrderBy.Append(orderExpression);
         if (descending)
             context.OrderBy.Append(" DESC");
+    }
+
+    private void ProcessGroupByClause(MethodCallExpression methodCall, CypherBuildContext context)
+    {
+        var keySelector = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+        if (keySelector != null)
+        {
+            // For GroupBy operations, we need to set up aggregation context
+            // The key expression will be used in WITH clause
+            var keyExpression = BuildCypherExpression(keySelector.Body, context.CurrentAlias);
+            
+            // Mark that we have a GroupBy operation
+            context.IsGroupByQuery = true;
+            context.GroupByKey = keyExpression;
+            context.GroupByKeySelector = keySelector;
+            
+            // For now, we don't change the return immediately as it depends on what follows
+            // The subsequent Select clause will determine the final projection
+        }
     }
 
     private static Type GetSourceElementType(MethodCallExpression methodCall)
@@ -1461,7 +1798,19 @@ internal class CypherExpressionBuilder
             elementType = elementType.GetGenericArguments()[0];
         }
 
-        var listType = typeof(List<>).MakeGenericType(elementType);
+        // If we have client-side projection, we need to fetch the original entity type instead of the projected type
+        Type actualEntityType = elementType;
+        if (context?.ClientSideProjection != null)
+        {
+            // For client-side projection, find the source entity type from the lambda parameter
+            var sourceEntityType = FindSourceEntityType(context.ClientSideProjection);
+            if (sourceEntityType != null)
+            {
+                actualEntityType = sourceEntityType;
+            }
+        }
+
+        var listType = typeof(List<>).MakeGenericType(actualEntityType);
         var items = (System.Collections.IList)Activator.CreateInstance(listType)!;
 
         // Check if this is a path result based on context
@@ -1474,7 +1823,7 @@ internal class CypherExpressionBuilder
             if (isPathResult)
             {
                 // Handle path results - these typically have multiple columns or a path object
-                item = ConvertPathResult(record, elementType);
+                item = ConvertPathResult(record, actualEntityType);
             }
             else
             {
@@ -1487,17 +1836,17 @@ internal class CypherExpressionBuilder
                     if (value is global::Neo4j.Driver.INode node)
                     {
                         // Convert Neo4j node to the target entity type
-                        item = ConvertNodeToEntity(node, elementType);
+                        item = ConvertNodeToEntity(node, actualEntityType);
                     }
                     else if (value is global::Neo4j.Driver.IRelationship rel)
                     {
                         // Convert Neo4j relationship to the target entity type
-                        item = ConvertRelationshipToEntity(rel, elementType);
+                        item = ConvertRelationshipToEntity(rel, actualEntityType);
                     }
                     else
                     {
                         // Direct value (e.g., for aggregations or simple projections)
-                        item = ConvertValue(value, elementType);
+                        item = ConvertValue(value, actualEntityType);
                     }
                 }
                 else
@@ -1507,7 +1856,7 @@ internal class CypherExpressionBuilder
                     var nodeKey = record.Keys.FirstOrDefault(k => k.StartsWith('n'));
                     if (nodeKey != null && record[nodeKey] is global::Neo4j.Driver.INode node)
                     {
-                        item = ConvertNodeToEntity(node, elementType);
+                        item = ConvertNodeToEntity(node, actualEntityType);
                     }
                 }
             }
@@ -1518,6 +1867,12 @@ internal class CypherExpressionBuilder
             }
         }
 
+        // Apply client-side projection if needed
+        if (context?.ClientSideProjection != null)
+        {
+            items = ApplyClientSideProjection(items, context.ClientSideProjection, actualEntityType);
+        }
+
         // If a single result is expected, return the first item or null
         if (context != null && (context.IsSingleResult || context.IsScalarResult))
         {
@@ -1526,6 +1881,80 @@ internal class CypherExpressionBuilder
         }
 
         return items;
+    }
+
+    private static System.Collections.IList ApplyClientSideProjection(System.Collections.IList sourceItems, LambdaExpression projection, Type elementType)
+    {
+        // Compile the projection expression
+        var compiledProjection = projection.Compile();
+        
+        // Get the result type from the projection
+        var resultType = projection.ReturnType;
+        var resultListType = typeof(List<>).MakeGenericType(resultType);
+        var resultItems = (System.Collections.IList)Activator.CreateInstance(resultListType)!;
+
+        // Apply projection to each item
+        foreach (var item in sourceItems)
+        {
+            if (item != null)
+            {
+                var projectedItem = compiledProjection.DynamicInvoke(item);
+                if (projectedItem != null)
+                {
+                    resultItems.Add(projectedItem);
+                }
+            }
+        }
+
+        return resultItems;
+    }
+
+    private static Type? FindSourceEntityType(LambdaExpression lambdaExpression)
+    {
+        // For lambda expressions, get the type of the first parameter
+        if (lambdaExpression.Parameters.Count > 0)
+        {
+            return lambdaExpression.Parameters[0].Type;
+        }
+        return null;
+    }
+
+    private static Type? FindSourceEntityType(Expression expression)
+    {
+        // Walk up the expression tree to find the source entity type
+        switch (expression)
+        {
+            case MethodCallExpression methodCall:
+                // For Select operations, get the source type from the first argument
+                if (methodCall.Method.Name == "Select" && methodCall.Arguments.Count >= 1)
+                {
+                    return FindSourceEntityType(methodCall.Arguments[0]);
+                }
+                // For other methods, check the source (first argument for static methods, Object for instance methods)
+                if (methodCall.Object != null)
+                {
+                    return FindSourceEntityType(methodCall.Object);
+                }
+                if (methodCall.Arguments.Count > 0)
+                {
+                    return FindSourceEntityType(methodCall.Arguments[0]);
+                }
+                break;
+
+            case ConstantExpression constant:
+                // Check if this is a GraphQueryable<T>
+                if (constant.Type.IsGenericType && 
+                    constant.Type.GetGenericTypeDefinition() == typeof(GraphQueryable<>))
+                {
+                    return constant.Type.GetGenericArguments()[0];
+                }
+                break;
+
+            case UnaryExpression unary:
+                return FindSourceEntityType(unary.Operand);
+        }
+
+        return null;
     }
 
     private static object? ConvertNodeToEntity(global::Neo4j.Driver.INode node, Type entityType)
@@ -1636,6 +2065,12 @@ internal class CypherExpressionBuilder
             return value;
         }
 
+        // Handle Neo4j maps to anonymous types
+        if (targetType.IsAnonymousType() && value is IDictionary<string, object> dict)
+        {
+            return CreateAnonymousTypeInstance(dict, targetType);
+        }
+
         // Convert common types
         try
         {
@@ -1643,6 +2078,38 @@ internal class CypherExpressionBuilder
         }
         catch
         {
+            return null;
+        }
+    }
+
+    private static object? CreateAnonymousTypeInstance(IDictionary<string, object> dict, Type targetType)
+    {
+        try
+        {
+            // Get the constructor of the anonymous type
+            var constructors = targetType.GetConstructors();
+            if (constructors.Length == 0) return null;
+
+            var constructor = constructors[0];
+            var parameters = constructor.GetParameters();
+            var args = new object?[parameters.Length];
+
+            // Map dictionary values to constructor parameters
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                var paramName = parameters[i].Name!;
+                if (dict.TryGetValue(paramName, out var value))
+                {
+                    // Convert the value to the parameter type
+                    args[i] = SerializationExtensions.ConvertFromNeo4jValue(value, parameters[i].ParameterType);
+                }
+            }
+
+            return constructor.Invoke(args);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to create anonymous type instance: {ex.Message}");
             return null;
         }
     }

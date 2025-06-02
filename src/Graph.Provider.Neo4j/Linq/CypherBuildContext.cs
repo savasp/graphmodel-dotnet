@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Text;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq;
@@ -24,6 +25,11 @@ internal class CypherBuildContext
     /// The ORDER BY clause content being built
     /// </summary>
     public StringBuilder OrderBy { get; } = new();
+
+    /// <summary>
+    /// The WITH clause content for aggregations and grouping operations
+    /// </summary>
+    public string? With { get; set; }
 
     /// <summary>
     /// The current node/entity alias being used
@@ -81,6 +87,11 @@ internal class CypherBuildContext
     public bool IsScalarResult { get; set; }
 
     /// <summary>
+    /// Client-side projection expression for complex projections that can't be handled in Cypher
+    /// </summary>
+    public LambdaExpression? ClientSideProjection { get; set; }
+
+    /// <summary>
     /// Number of records to skip (SKIP clause)
     /// </summary>
     public int Skip { get; set; }
@@ -104,6 +115,21 @@ internal class CypherBuildContext
     /// Maximum traversal depth for path queries (range depth)
     /// </summary>
     public int? MaxTraversalDepth { get; set; }
+
+    /// <summary>
+    /// Whether this query has a GroupBy operation
+    /// </summary>
+    public bool IsGroupByQuery { get; set; }
+
+    /// <summary>
+    /// The grouping key expression for GroupBy operations
+    /// </summary>
+    public string? GroupByKey { get; set; }
+
+    /// <summary>
+    /// The original key selector lambda for GroupBy operations
+    /// </summary>
+    public LambdaExpression? GroupByKeySelector { get; set; }
 
     /// <summary>
     /// Generates the next unique alias for nodes or relationships
