@@ -13,11 +13,13 @@ After analyzing the current implementation in the `savasp/refactor` branch, I st
 #### Why Extension is Better Than Separation
 
 1. **Maintains LINQ Ecosystem Compatibility**
+
    - Existing LINQ operators (Where, Select, OrderBy, etc.) continue to work seamlessly
    - Third-party LINQ extensions remain compatible
    - Developer muscle memory and existing knowledge transfer directly
 
 2. **Preserves Expression Tree Benefits**
+
    - Query optimization through expression analysis remains possible
    - Provider pattern continues to work for query translation
    - Composite queries can be optimized as a whole unit
@@ -33,7 +35,7 @@ Looking at the current implementation:
 
 ```csharp
 // Current: IGraph interface returns IQueryable<T>
-IQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null) 
+IQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
     where N : class, INode, new();
 
 IQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
@@ -41,6 +43,7 @@ IQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTr
 ```
 
 The current approach already demonstrates that `IQueryable<T>` works well as a foundation. The issues are:
+
 - Graph-specific options are passed as parameters rather than being fluently chainable
 - Graph operations require separate extension methods that don't compose well
 - Type safety is lost when transitioning between standard LINQ and graph operations
@@ -53,24 +56,24 @@ public interface IGraphQueryable<T> : IQueryable<T>
     // Core graph metadata
     GraphOperationOptions Options { get; }
     IGraphTransaction? Transaction { get; }
-    
+
     // Fluent configuration
     IGraphQueryable<T> WithOptions(GraphOperationOptions options);
     IGraphQueryable<T> WithDepth(int depth);
     IGraphQueryable<T> WithDepth(int minDepth, int maxDepth);
     IGraphQueryable<T> InTransaction(IGraphTransaction transaction);
-    
+
     // Graph-specific operations that return IGraphQueryable for chaining
     IGraphQueryable<TTarget> TraverseTo<TTarget>() where TTarget : class, INode, new();
     IGraphQueryable<T> ConnectedBy<TRelationship>() where TRelationship : class, IRelationship, new();
-    
+
     // Performance hints
     IGraphQueryable<T> UseIndex(string indexName);
     IGraphQueryable<T> Hint(string hint);
-    
+
     // Advanced graph operations
     IGraphPattern<T> Match(string cypherPattern);
-    IGraphPath<T> ShortestPathTo<TTarget>(Expression<Func<TTarget, bool>> targetFilter) 
+    IGraphPath<T> ShortestPathTo<TTarget>(Expression<Func<TTarget, bool>> targetFilter)
         where TTarget : class, INode, new();
 }
 ```
@@ -78,18 +81,20 @@ public interface IGraphQueryable<T> : IQueryable<T>
 #### Implementation Strategy
 
 1. **Update IGraph Interface:**
+
    ```csharp
    public interface IGraph : IAsyncDisposable
    {
-       IGraphQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null) 
+       IGraphQueryable<N> Nodes<N>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
            where N : class, INode, new();
-       
+
        IGraphQueryable<R> Relationships<R>(GraphOperationOptions options = default, IGraphTransaction? transaction = null)
            where R : class, IRelationship, new();
    }
    ```
 
 2. **Provide Implicit Conversion:**
+
    ```csharp
    public static implicit operator Queryable<T>(IGraphQueryable<T> graphQueryable)
    {
@@ -113,7 +118,7 @@ public interface IGraphQueryable<T> : IQueryable<T>
 ```csharp
 public interface ITypedGraphTraversal<TSource, TRelationship, TTarget>
     where TSource : class, INode, new()
-    where TRelationship : class, IRelationship, new() 
+    where TRelationship : class, IRelationship, new()
     where TTarget : class, INode, new()
 {
     IGraphQueryable<TTarget> Where(Expression<Func<TTarget, bool>> predicate);
@@ -141,7 +146,7 @@ var result = graph.Nodes<Person>()
 
 #### 3. Enhance Performance Optimization Infrastructure
 
-**Current Analysis:** The current `Neo4jExpressionVisitor` does basic LINQ-to-Cypher translation but lacks sophisticated optimization.
+**Current Analysis:** The current `CypherExpressionBuilder` does basic LINQ-to-Cypher translation but lacks sophisticated optimization.
 
 **Recommendation:** Implement a query optimization pipeline:
 
@@ -192,12 +197,12 @@ public interface IGraphQueryValidator
 ```csharp
 public static class AsyncGraphQueryExtensions
 {
-    public static async Task<List<T>> ToListAsync<T>(this IGraphQueryable<T> source, 
+    public static async Task<List<T>> ToListAsync<T>(this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default);
-    
-    public static async Task<T> FirstAsync<T>(this IGraphQueryable<T> source, 
+
+    public static async Task<T> FirstAsync<T>(this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default);
-    
+
     public static IAsyncEnumerable<T> AsAsyncEnumerable<T>(this IGraphQueryable<T> source);
 }
 ```
@@ -234,7 +239,7 @@ public static class GraphPatterns
 {
     public static IGraphPattern<T> Node<T>() where T : class, INode, new();
     public static IGraphPattern<R> Relationship<R>() where R : class, IRelationship, new();
-    
+
     // Usage:
     var pattern = GraphPatterns.Node<Person>()
         .ConnectedTo(GraphPatterns.Node<Company>())
@@ -258,7 +263,7 @@ public interface IGraphProviderCapabilities
     bool SupportsFullTextSearch { get; }
     bool SupportsPatternMatching { get; }
     Version MaxSupportedVersion { get; }
-    
+
     ISet<Type> SupportedAggregations { get; }
     ISet<Type> SupportedProjections { get; }
 }
@@ -309,7 +314,7 @@ public interface IGraphQueryDiagnostics
 /// <code>
 /// // Basic node query
 /// var people = graph.Nodes&lt;Person&gt;().Where(p =&gt; p.Age &gt; 25);
-/// 
+///
 /// // Graph traversal
 /// var friendsOfFriends = graph.Nodes&lt;Person&gt;()
 ///     .Where(p =&gt; p.Name == "Alice")

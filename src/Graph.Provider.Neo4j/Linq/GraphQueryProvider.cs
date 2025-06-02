@@ -419,32 +419,14 @@ internal class GraphQueryProvider(
     public async Task<object?> ExecuteAsync(Expression expression)
     {
         var elementType = GetElementTypeFromExpression(expression) ?? _elementType;
-        var visitor = new ExpressionVisitor(_provider, _rootType, elementType, _transaction);
-        var cypher = visitor.Translate(expression);
 
-        var result = await visitor.ExecuteQueryAsync(cypher, elementType);
+        // Use the new CypherExpressionBuilder which has complete traversal support
+        var (cypher, parameters, context) = CypherExpressionBuilder.BuildGraphQuery(expression, elementType, _provider);
+
+        // Execute the query using the new CypherExpressionBuilder execution method
+        var nonNullableParams = parameters.ToDictionary(kvp => kvp.Key, kvp => kvp.Value ?? (object)DBNull.Value);
+        var result = await CypherExpressionBuilder.ExecuteQueryAsync(cypher, nonNullableParams, elementType, _provider, context, _transaction);
 
         return result;
-    }        /*
-        public async Task<TResult> ExecuteAsync<TResult>(Expression expression)
-        {
-            // Use the new graph query builder
-            var (cypher, parameters, context) = CypherExpressionBuilder.BuildGraphQuery(
-                expression,
-                typeof(TResult),
-                _provider);
-
-            // Log the generated query for debugging
-            System.Diagnostics.Debug.WriteLine($"Generated Cypher: {cypher}");
-
-            var visitor = new Neo4jExpressionVisitor(_provider, _rootType, elementType, _transaction);
-            var cypher = visitor.Translate(expression);
-
-            // Execute the query
-            await foreach (var result in visitor.ExecuteQueryAsync(cypher, elementType))
-            {
-                yield return result;
-            }
-        }
-        */
+    }
 }

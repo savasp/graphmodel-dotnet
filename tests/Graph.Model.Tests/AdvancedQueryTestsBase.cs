@@ -712,7 +712,7 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         [Fact(Skip = "Subqueries not yet implemented - requires Cypher CALL { } syntax support")]
         public Task CanQueryWithSubqueries()
         {
-            // TODO: Implement when Neo4jExpressionVisitor supports generating CALL { } blocks
+            // TODO: Implement when CypherExpressionBuilder supports generating CALL { } blocks
             // for complex nested queries that would benefit from subquery execution.
             //
             // Examples of queries that should generate subqueries:
