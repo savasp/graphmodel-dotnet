@@ -93,6 +93,82 @@ public abstract class AdvancedQueryTestsBase : ITestBase
     }
 
     [Fact]
+    public async Task CanProjectWithAllSupportedFunctions()
+    {
+        // Arrange
+        var person = new Person
+        {
+            FirstName = "John",
+            LastName = "Doe",
+            Age = 30,
+            Bio = "Software Engineer"
+        };
+        await this.Graph.CreateNode(person);
+
+        // Act - test all supported functions in a single projection
+        var projected = this.Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "John")
+            .Select(p => new
+            {
+                // String functions
+                Upper = p.FirstName.ToUpper(),
+                Lower = p.LastName.ToLower(),
+                Trimmed = p.Bio.Trim(),
+                Substring = p.Bio.Substring(0, 8),
+                Replaced = p.FirstName.Replace("o", "0"),
+                StartsWith = p.FirstName.StartsWith("J"),
+                EndsWith = p.LastName.EndsWith("oe"),
+                Contains = p.Bio.Contains("Engineer"),
+                Length = p.Bio.Length,
+
+                // Math functions
+                AbsAge = Math.Abs(p.Age - 25),
+                Ceiling = Math.Ceiling((double)p.Age / 7),
+                Floor = Math.Floor((double)p.Age / 7),
+                Round = Math.Round((double)p.Age / 7),
+                Sqrt = Math.Sqrt(p.Age),
+                Power = Math.Pow(2, 3),
+
+                // DateTime functions
+                Now = DateTime.Now,
+                Today = DateTime.Today,
+                UtcNow = DateTime.UtcNow,
+                Year = DateTime.Now.Year,
+                Month = DateTime.Now.Month,
+                Day = DateTime.Now.Day
+            })
+            .ToList();
+
+        // Assert
+        Assert.Single(projected);
+        var result = projected[0];
+
+        // String function results
+        Assert.Equal("JOHN", result.Upper);
+        Assert.Equal("doe", result.Lower);
+        Assert.Equal("Software Engineer", result.Trimmed);
+        Assert.Equal("Software", result.Substring);
+        Assert.Equal("J0hn", result.Replaced);
+        Assert.True(result.StartsWith);
+        Assert.True(result.EndsWith);
+        Assert.True(result.Contains);
+        Assert.Equal(17, result.Length);
+
+        // Math function results
+        Assert.Equal(5, result.AbsAge);
+        Assert.Equal(5.0, result.Ceiling);
+        Assert.Equal(4.0, result.Floor);
+        Assert.Equal(4.0, result.Round);
+        Assert.Equal(Math.Sqrt(30), result.Sqrt);
+        Assert.Equal(8.0, result.Power);
+
+        // DateTime results (just check they're reasonable)
+        Assert.True(result.Year >= 2020);
+        Assert.True(result.Month >= 1 && result.Month <= 12);
+        Assert.True(result.Day >= 1 && result.Day <= 31);
+    }
+
+    [Fact]
     public async Task CanNavigateRelationshipsInMemory()
     {
         var alice = new Person { FirstName = "Alice", LastName = "Smith" };

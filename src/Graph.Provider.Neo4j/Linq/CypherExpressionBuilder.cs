@@ -274,13 +274,31 @@ internal class CypherExpressionBuilder
                         return $"[{itemVar2} IN {collection} | {projection2}]";
                     }
                 }
-                else if (mce.Method.DeclaringType == typeof(Enumerable) && mce.Method.Name == "Count")
+                else if (mce.Method.DeclaringType == typeof(Enumerable))
                 {
-                    // Enumerable.Count(collection) -> size(collection)
-                    if (mce.Arguments.Count >= 1)
+                    // LINQ collection methods
+                    switch (mce.Method.Name)
                     {
-                        var collection = BuildCypherExpression(mce.Arguments[0], varName);
-                        return $"size({collection})";
+                        case "First" when mce.Arguments.Count >= 1:
+                            var collection = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"head({collection})";
+                        case "Last" when mce.Arguments.Count >= 1:
+                            var collection2 = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"last({collection2})";
+                        case "Count" when mce.Arguments.Count >= 1:
+                            var collection3 = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"size({collection3})";
+                        case "Take" when mce.Arguments.Count >= 2:
+                            var collection4 = BuildCypherExpression(mce.Arguments[0], varName);
+                            var count = BuildCypherExpression(mce.Arguments[1], varName);
+                            return $"head({collection4}, {count})";
+                        case "Skip" when mce.Arguments.Count >= 2:
+                            var collection5 = BuildCypherExpression(mce.Arguments[0], varName);
+                            var count2 = BuildCypherExpression(mce.Arguments[1], varName);
+                            return $"tail({collection5}, {count2})";
+                        case "Reverse" when mce.Arguments.Count >= 1:
+                            var collection6 = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"reverse({collection6})";
                     }
                 }
                 else if (mce.Method.DeclaringType == typeof(string))
@@ -294,6 +312,10 @@ internal class CypherExpressionBuilder
                             return $"toLower({target})";
                         case "Trim":
                             return $"trim({target})";
+                        case "TrimStart":
+                            return $"ltrim({target})";
+                        case "TrimEnd":
+                            return $"rtrim({target})";
                         case "Substring" when mce.Arguments.Count == 1:
                             var start = BuildCypherExpression(mce.Arguments[0], varName);
                             return $"substring({target}, {start})";
@@ -314,50 +336,52 @@ internal class CypherExpressionBuilder
                         case "Contains":
                             var substring = BuildCypherExpression(mce.Arguments[0], varName);
                             return $"{target} CONTAINS {substring}";
+                        case "Split" when mce.Arguments.Count >= 1:
+                            var delimiter = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"split({target}, {delimiter})";
+                        case "ToString":
+                            return $"toString({target})";
                     }
                 }
                 else if (mce.Method.DeclaringType == typeof(Math))
                 {
-                    // Math functions
+                    // Math functions with improved handling
                     switch (mce.Method.Name)
                     {
                         case "Abs":
                             var val = BuildCypherExpression(mce.Arguments[0], varName);
                             return $"abs({val})";
-                        case "Ceiling":
+                        case "Acos":
                             var val2 = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"ceil({val2})";
-                        case "Floor":
+                            return $"acos({val2})";
+                        case "Asin":
                             var val3 = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"floor({val3})";
-                        case "Round" when mce.Arguments.Count == 1:
+                            return $"asin({val3})";
+                        case "Atan":
                             var val4 = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"round({val4})";
-                        case "Sqrt":
+                            return $"atan({val4})";
+                        case "Atan2":
+                            var y = BuildCypherExpression(mce.Arguments[0], varName);
+                            var x = BuildCypherExpression(mce.Arguments[1], varName);
+                            return $"atan2({y}, {x})";
+                        case "Ceiling":
                             var val5 = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"sqrt({val5})";
-                        case "Sin":
-                            var val6 = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"sin({val6})";
+                            return $"ceil({val5})";
                         case "Cos":
+                            var val6 = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"cos({val6})";
+                        case "Exp":
                             var val7 = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"cos({val7})";
-                        case "Tan":
+                            return $"exp({val7})";
+                        case "Floor":
                             var val8 = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"tan({val8})";
+                            return $"floor({val8})";
                         case "Log" when mce.Arguments.Count == 1:
                             var val9 = BuildCypherExpression(mce.Arguments[0], varName);
                             return $"log({val9})";
                         case "Log10":
                             var val10 = BuildCypherExpression(mce.Arguments[0], varName);
                             return $"log10({val10})";
-                        case "Exp":
-                            var val11 = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"exp({val11})";
-                        case "Pow":
-                            var base1 = BuildCypherExpression(mce.Arguments[0], varName);
-                            var exp1 = BuildCypherExpression(mce.Arguments[1], varName);
-                            return $"({base1} ^ {exp1})";
                         case "Max" when mce.Arguments.Count == 2:
                             var v1 = BuildCypherExpression(mce.Arguments[0], varName);
                             var v2 = BuildCypherExpression(mce.Arguments[1], varName);
@@ -366,38 +390,70 @@ internal class CypherExpressionBuilder
                             var v3 = BuildCypherExpression(mce.Arguments[0], varName);
                             var v4 = BuildCypherExpression(mce.Arguments[1], varName);
                             return $"CASE WHEN {v3} < {v4} THEN {v3} ELSE {v4} END";
+                        case "Pow":
+                            var base1 = BuildCypherExpression(mce.Arguments[0], varName);
+                            var exp1 = BuildCypherExpression(mce.Arguments[1], varName);
+                            return $"({base1} ^ {exp1})";
+                        case "Round" when mce.Arguments.Count == 1:
+                            var val11 = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"round({val11})";
+                        case "Round" when mce.Arguments.Count == 2:
+                            var val12 = BuildCypherExpression(mce.Arguments[0], varName);
+                            var precision = BuildCypherExpression(mce.Arguments[1], varName);
+                            return $"round({val12}, {precision})";
+                        case "Sign":
+                            var val13 = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"sign({val13})";
+                        case "Sin":
+                            var val14 = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"sin({val14})";
+                        case "Sqrt":
+                            var val15 = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"sqrt({val15})";
+                        case "Tan":
+                            var val16 = BuildCypherExpression(mce.Arguments[0], varName);
+                            return $"tan({val16})";
                     }
                 }
                 else if (mce.Method.DeclaringType == typeof(DateTime))
                 {
-                    // DateTime functions
+                    // DateTime functions - use native Neo4j duration functions
                     var target = BuildCypherExpression(mce.Object!, varName);
                     switch (mce.Method.Name)
                     {
                         case "AddYears":
                             var years = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"datetime({{epochMillis: {target}.epochMillis + ({years} * 365 * 24 * 60 * 60 * 1000)}})";
+                            return $"datetime({target} + duration({{years: {years}}}))";
                         case "AddMonths":
                             var months = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"datetime({{epochMillis: {target}.epochMillis + ({months} * 30 * 24 * 60 * 60 * 1000)}})";
+                            return $"datetime({target} + duration({{months: {months}}}))";
                         case "AddDays":
                             var days = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"datetime({{epochMillis: {target}.epochMillis + ({days} * 24 * 60 * 60 * 1000)}})";
+                            return $"datetime({target} + duration({{days: {days}}}))";
                         case "AddHours":
                             var hours = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"datetime({{epochMillis: {target}.epochMillis + ({hours} * 60 * 60 * 1000)}})";
+                            return $"datetime({target} + duration({{hours: {hours}}}))";
                         case "AddMinutes":
                             var minutes = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"datetime({{epochMillis: {target}.epochMillis + ({minutes} * 60 * 1000)}})";
+                            return $"datetime({target} + duration({{minutes: {minutes}}}))";
                         case "AddSeconds":
                             var seconds = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"datetime({{epochMillis: {target}.epochMillis + ({seconds} * 1000)}})";
+                            return $"datetime({target} + duration({{seconds: {seconds}}}))";
                         case "AddMilliseconds":
                             var milliseconds = BuildCypherExpression(mce.Arguments[0], varName);
-                            return $"datetime({{epochMillis: {target}.epochMillis + {milliseconds}}})";
+                            return $"datetime({target} + duration({{milliseconds: {milliseconds}}}))";
+                        case "ToString":
+                            // Format datetime as string - use default ISO format
+                            return $"toString({target})";
                     }
                 }
-                throw new NotSupportedException($"Method {mce.Method.Name} is not supported in projections");
+                else if (mce.Method.Name == "ToString" && mce.Object != null)
+                {
+                    // Generic ToString() on any object
+                    var obj = BuildCypherExpression(mce.Object, varName);
+                    return $"toString({obj})";
+                }
+                throw new NotSupportedException($"Method {mce.Method.Name} on type {mce.Method.DeclaringType?.Name} is not supported in projections");
 
             case ConditionalExpression cond:
                 // Ternary operator -> CASE WHEN
@@ -1425,19 +1481,19 @@ internal class CypherExpressionBuilder
         // For GroupBy + Select, we need to build WITH and aggregation clauses
         // e.g., .GroupBy(p => p.FirstName).Select(g => new { Name = g.Key, Count = g.Count() })
         // should generate: WITH p.FirstName as name, COUNT(p) as count RETURN { Name: name, Count: count }
-        
+
         if (selector.Body is NewExpression newExpr)
         {
             // Handle anonymous type projections like new { Name = g.Key, Count = g.Count() }
             var withClauseItems = new List<string>();
             var returnProjections = new List<string>();
-            
+
             for (int i = 0; i < newExpr.Arguments.Count; i++)
             {
                 var argument = newExpr.Arguments[i];
                 var memberName = newExpr.Members?[i].Name ?? $"Field{i}";
                 var aliasName = memberName.ToLower();
-                
+
                 if (IsGroupingKeyAccess(argument))
                 {
                     // g.Key -> use the GroupBy key expression
@@ -1458,10 +1514,10 @@ internal class CypherExpressionBuilder
                     return;
                 }
             }
-            
+
             // Build the WITH clause for grouping
             context.With = $"WITH {string.Join(", ", withClauseItems)}";
-            
+
             // Build the final RETURN clause
             context.Return = $"{{ {string.Join(", ", returnProjections)} }}";
         }
@@ -1475,7 +1531,7 @@ internal class CypherExpressionBuilder
     private static bool IsGroupingKeyAccess(Expression expression)
     {
         // Check if this is accessing g.Key from IGrouping<TKey, TElement>
-        return expression is MemberExpression memberExpr && 
+        return expression is MemberExpression memberExpr &&
                memberExpr.Member.Name == "Key" &&
                memberExpr.Member.DeclaringType?.IsGenericType == true &&
                memberExpr.Member.DeclaringType.GetGenericTypeDefinition() == typeof(IGrouping<,>);
@@ -1484,7 +1540,7 @@ internal class CypherExpressionBuilder
     private static bool IsGroupingAggregation(Expression expression, out string aggregationType)
     {
         aggregationType = "";
-        
+
         if (expression is MethodCallExpression methodCall)
         {
             // Check if this is calling an aggregation method on IGrouping
@@ -1495,7 +1551,7 @@ internal class CypherExpressionBuilder
                 return aggregationType is "Count" or "Sum" or "Average" or "Min" or "Max";
             }
         }
-        
+
         return false;
     }
 
@@ -1553,18 +1609,18 @@ internal class CypherExpressionBuilder
                     break;
             }
         }
-        
+
         return $"COUNT({context.CurrentAlias})"; // fallback
     }
 
     private string BuildAggregationsFromProjections(NewExpression newExpr, CypherBuildContext context)
     {
         var aggregations = new List<string>();
-        
+
         for (int i = 0; i < newExpr.Arguments.Count; i++)
         {
             var argument = newExpr.Arguments[i];
-            
+
             if (IsGroupingAggregation(argument, out var aggregationType))
             {
                 var aggregationExpr = BuildGroupingAggregation(argument, aggregationType, context);
@@ -1572,7 +1628,7 @@ internal class CypherExpressionBuilder
                 aggregations.Add($"{aggregationExpr} as {memberName.ToLower()}");
             }
         }
-        
+
         return aggregations.Count > 0 ? string.Join(", ", aggregations) : $"COUNT({context.CurrentAlias}) as count";
     }
 
@@ -1606,7 +1662,7 @@ internal class CypherExpressionBuilder
             {
                 return false; // DateTime.Now, DateTime.Today, etc. can be handled server-side
             }
-            
+
             // Simple property access can be handled server-side
             return false;
         }
@@ -1642,8 +1698,9 @@ internal class CypherExpressionBuilder
         {
             return methodCall.Method.Name switch
             {
-                "ToUpper" or "ToLower" or "Trim" or "Substring" or "Replace" or 
-                "StartsWith" or "EndsWith" or "Contains" => true,
+                "ToUpper" or "ToLower" or "Trim" or "TrimStart" or "TrimEnd" or
+                "Substring" or "Replace" or "StartsWith" or "EndsWith" or
+                "Contains" or "Split" or "ToString" => true,
                 _ => false
             };
         }
@@ -1653,9 +1710,10 @@ internal class CypherExpressionBuilder
         {
             return methodCall.Method.Name switch
             {
-                "Abs" or "Ceiling" or "Floor" or "Round" or "Sqrt" or
-                "Sin" or "Cos" or "Tan" or "Log" or "Log10" or "Exp" or
-                "Pow" or "Max" or "Min" => true,
+                "Abs" or "Acos" or "Asin" or "Atan" or "Atan2" or
+                "Ceiling" or "Cos" or "Exp" or "Floor" or "Log" or "Log10" or
+                "Max" or "Min" or "Pow" or "Round" or "Sign" or "Sin" or
+                "Sqrt" or "Tan" => true,
                 _ => false
             };
         }
@@ -1666,7 +1724,20 @@ internal class CypherExpressionBuilder
             return methodCall.Method.Name switch
             {
                 "AddYears" or "AddMonths" or "AddDays" or "AddHours" or
-                "AddMinutes" or "AddSeconds" or "AddMilliseconds" => true,
+                "AddMinutes" or "AddSeconds" or "AddMilliseconds" or
+                "ToString" => true,
+                _ => false
+            };
+        }
+
+        // Collection methods
+        if (methodCall.Method.DeclaringType == typeof(Enumerable) ||
+            (methodCall.Method.DeclaringType?.IsGenericType == true &&
+             methodCall.Method.DeclaringType.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
+        {
+            return methodCall.Method.Name switch
+            {
+                "First" or "Last" or "Count" or "Take" or "Skip" => true,
                 _ => false
             };
         }
@@ -1694,12 +1765,12 @@ internal class CypherExpressionBuilder
             // For GroupBy operations, we need to set up aggregation context
             // The key expression will be used in WITH clause
             var keyExpression = BuildCypherExpression(keySelector.Body, context.CurrentAlias);
-            
+
             // Mark that we have a GroupBy operation
             context.IsGroupByQuery = true;
             context.GroupByKey = keyExpression;
             context.GroupByKeySelector = keySelector;
-            
+
             // For now, we don't change the return immediately as it depends on what follows
             // The subsequent Select clause will determine the final projection
         }
@@ -1887,7 +1958,7 @@ internal class CypherExpressionBuilder
     {
         // Compile the projection expression
         var compiledProjection = projection.Compile();
-        
+
         // Get the result type from the projection
         var resultType = projection.ReturnType;
         var resultListType = typeof(List<>).MakeGenericType(resultType);
@@ -1943,7 +2014,7 @@ internal class CypherExpressionBuilder
 
             case ConstantExpression constant:
                 // Check if this is a GraphQueryable<T>
-                if (constant.Type.IsGenericType && 
+                if (constant.Type.IsGenericType &&
                     constant.Type.GetGenericTypeDefinition() == typeof(GraphQueryable<>))
                 {
                     return constant.Type.GetGenericArguments()[0];
