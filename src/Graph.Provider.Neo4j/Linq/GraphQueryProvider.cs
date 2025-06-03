@@ -57,37 +57,53 @@ internal class GraphQueryProvider(
 
     public IQueryable<TElement> CreateQuery<TElement>(Expression expression)
     {
-        // We need to handle the case where TElement might not be a class
-        // Use reflection to create the appropriate GraphQueryable<T> instance
         var elementType = typeof(TElement);
-        if (!elementType.IsClass && !elementType.IsInterface)
+
+        // Only use ServerSideQueryable for temporal and numeric value types that get converted to Cypher functions
+        // String projections should stay in the graph domain since they're projections of graph data
+        if (elementType == typeof(DateTime) ||
+            elementType == typeof(DateTimeOffset) ||
+            elementType.IsPrimitive ||
+            elementType.IsEnum ||
+            elementType == typeof(Guid) ||
+            elementType == typeof(decimal))
         {
-            throw new InvalidOperationException($"Type {elementType.Name} must be a reference type to be used in graph queries");
+            return new ServerSideQueryable<TElement>(this, expression, _transaction);
         }
 
-        // Use reflection to create GraphQueryable<TElement> since we can't guarantee TElement : class constraint
+        // Everything else (including strings, anonymous types, and entity types) gets GraphQueryable treatment
         var queryableType = typeof(GraphQueryable<>).MakeGenericType(elementType);
 
-        // Get the internal constructor that takes 4 parameters
         var constructor = queryableType.GetConstructor(
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
             null,
-            new[] { typeof(GraphQueryProvider), typeof(Expression), typeof(IGraphTransaction), typeof(GraphQueryContext) },
+            [typeof(GraphQueryProvider), typeof(Expression), typeof(IGraphTransaction), typeof(GraphQueryContext)],
             null);
+
+        if (constructor == null)
+        {
+            // Try alternative constructor signatures
+            constructor = queryableType.GetConstructor(
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+                null,
+                [typeof(GraphQueryProvider), typeof(Expression), typeof(IGraphTransaction)],
+                null);
+        }
 
         if (constructor == null)
         {
             throw new InvalidOperationException($"Could not find appropriate constructor for {queryableType.Name}");
         }
 
-        var queryable = constructor.Invoke(new object?[] {
-            this,          // provider
-            expression,    // expression
-            _transaction,  // transaction
-            new GraphQueryContext() // context
-        });
+        var parameters = constructor.GetParameters();
+        object?[] args = parameters.Length switch
+        {
+            3 => [this, expression, _transaction],
+            4 => [this, expression, _transaction, new GraphQueryContext()],
+            _ => throw new InvalidOperationException($"Unexpected constructor parameter count: {parameters.Length}")
+        };
 
-        // Return the GraphQueryable which implements both IQueryable<T> and IGraphQueryable<T>
+        var queryable = constructor.Invoke(args);
         return (IQueryable<TElement>)queryable;
     }
 

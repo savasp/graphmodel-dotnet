@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 namespace Cvoya.Graph.Model;
 
 /// <summary>
@@ -24,6 +25,25 @@ public record TraversalPath<TSource, TRelationship, TTarget>(
     TSource Source,
     TRelationship Relationship,
     TTarget Target
-) where TSource : class, INode
-  where TRelationship : class, IRelationship
-  where TTarget : class, INode;
+) : IGraphPath<TSource, TRelationship, TTarget>
+    where TSource : class, INode, new()
+    where TRelationship : class, IRelationship, new()
+    where TTarget : class, INode, new()
+{
+    /// <summary>
+    /// Gets the length of the path (number of hops). For single-hop paths, this is always 1.
+    /// </summary>
+    public int Length => 1;
+
+    /// <summary>
+    /// Gets the weight of the path. For single-hop paths, this could be based on relationship properties.
+    /// </summary>
+    public double? Weight => null; // Could be implemented based on relationship properties if needed
+
+    /// <summary>
+    /// Gets metadata about the path.
+    /// </summary>
+    public IGraphPathMetadata Metadata => new SimpleGraphPathMetadata(Length, Weight);
+}
+
+

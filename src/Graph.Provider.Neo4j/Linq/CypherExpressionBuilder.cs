@@ -18,7 +18,6 @@ using System.Reflection;
 using System.Text;
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j.Schema;
-using Neo4j.Driver;
 
 namespace Cvoya.Graph.Provider.Neo4j.Linq;
 
@@ -74,6 +73,32 @@ internal class CypherExpressionBuilder
                 return varName;
 
             case MemberExpression me:
+                // Handle DateTime static properties first
+                if (DateTimeExpressionHandler.TryHandleDateTimeExpression(me, out string cypherExpression))
+                {
+                    return cypherExpression;
+                }
+
+                // Handle TraversalPath property access for WHERE clauses
+                if (me.Expression is MemberExpression parentMe &&
+                    parentMe.Expression is ParameterExpression paramExpr &&
+                    paramExpr.Type.IsGenericType &&
+                    paramExpr.Type.GetGenericTypeDefinition().FullName == "Cvoya.Graph.Model.TraversalPath`3")
+                {
+                    // This is accessing properties like path.Target.Age or path.Source.Name
+                    var pathProperty = parentMe.Member.Name; // "Target", "Source", "Relationship"
+                    var entityProperty = me.Member.Name; // "Age", "Name", etc.
+
+                    return pathProperty switch
+                    {
+                        "Source" => $"n.{entityProperty}",      // Source maps to 'n'
+                        "Target" => $"t2.{entityProperty}",     // Target maps to 't2'
+                        "Relationship" => $"r1.{entityProperty}", // Relationship maps to 'r1'
+                        _ => $"{varName}.{me.Member.Name}"
+                    };
+                }
+
+                // Handle closure access first
                 if (IsClosureAccess(me))
                 {
                     // Evaluate the closure value
@@ -170,10 +195,10 @@ internal class CypherExpressionBuilder
                     // Simple property access
                     return $"{varName}.{me.Member.Name}";
                 }
-                else if (me.Expression is MemberExpression parentMe)
+                else if (me.Expression is MemberExpression pm)
                 {
                     // Nested property access (e.g., p.Address.City)
-                    var parent = BuildCypherExpression(parentMe, varName);
+                    var parent = BuildCypherExpression(pm, varName);
                     return $"{parent}.{me.Member.Name}";
                 }
                 return $"{varName}.{me.Member.Name}";
@@ -204,6 +229,12 @@ internal class CypherExpressionBuilder
                 return FormatValueForCypher(ce.Value);
 
             case MethodCallExpression mce:
+                // Handle DateTime method calls first
+                if (DateTimeExpressionHandler.TryHandleDateTimeMethod(mce, out string cypherExpr))
+                {
+                    return cypherExpr;
+                }
+
                 // Handle collection methods
                 if (mce.Method.Name == "Count" && mce.Object != null)
                 {
@@ -578,6 +609,10 @@ internal class CypherExpressionBuilder
         var builder = new CypherExpressionBuilder();
         var context = new CypherBuildContext();
 
+        // Preprocess to detect Last operations
+        context.IsLastOperation = DetectLastOperation(expression);
+        Console.WriteLine($"BuildGraphQuery - Detected Last operation: {context.IsLastOperation}");
+
         // Set context information from queryContext if available
         if (queryContext != null)
         {
@@ -619,6 +654,30 @@ internal class CypherExpressionBuilder
         var cypher = builder.BuildCypherQuery(context);
 
         return (cypher, context.Parameters, context);
+    }
+
+    private static bool DetectLastOperation(Expression expression)
+    {
+        if (expression is MethodCallExpression methodCall)
+        {
+            if (methodCall.Method.Name is "Last" or "LastOrDefault")
+            {
+                return true;
+            }
+
+            // Check the source expression recursively
+            if (methodCall.Object != null)
+            {
+                return DetectLastOperation(methodCall.Object);
+            }
+
+            if (methodCall.Arguments.Count > 0)
+            {
+                return DetectLastOperation(methodCall.Arguments[0]);
+            }
+        }
+
+        return false;
     }
 
     private void ProcessExpression(
@@ -753,9 +812,11 @@ internal class CypherExpressionBuilder
             case "TraversePath":
                 ProcessTraversePath(methodCall, elementType, context, provider);
                 break;
-            case "Traverse":
-                ProcessTraverse(methodCall, elementType, context, provider);
-                break;
+            // TODO: Check if this is needed. ProcessTraverse was removed because it
+            // was just throwing a NotImplementedException.
+            //case "Traverse":
+            //    ProcessTraverse(methodCall, elementType, context, provider);
+            //    break;
             default:
                 throw new NotSupportedException($"Graph queryable method {methodCall.Method.Name} is not supported");
         }
@@ -818,10 +879,10 @@ internal class CypherExpressionBuilder
     }
 
     private void ProcessTraversePath(
-        MethodCallExpression methodCall,
-        Type elementType,
-        CypherBuildContext context,
-        Neo4jGraphProvider provider)
+     MethodCallExpression methodCall,
+     Type elementType,
+     CypherBuildContext context,
+     Neo4jGraphProvider provider)
     {
         // Extract the generic arguments: TSource, TRelationship, TTarget
         var genericArgs = methodCall.Method.GetGenericArguments();
@@ -875,21 +936,11 @@ internal class CypherExpressionBuilder
         // Update the current alias to the target for further operations
         context.CurrentAlias = targetAlias;
 
-        // The return should be constructed as a TraversalPath object with Source, Relationship, Target
-        context.Return = $"{{ Source: {sourceAlias}, Relationship: {relationshipAlias}, Target: {targetAlias} }}";
+        // Return separate columns instead of a map
+        context.Return = $"{sourceAlias} AS source, {relationshipAlias} AS relationship, {targetAlias} AS target";
 
         // Mark as path result for proper result handling
         context.IsPathResult = true;
-    }
-
-    private void ProcessTraverse(
-        MethodCallExpression methodCall,
-        Type elementType,
-        CypherBuildContext context,
-        Neo4jGraphProvider provider)
-    {
-        // For now, just handle basic traversal - can be expanded later
-        throw new NotSupportedException("Traverse method is not yet implemented");
     }
 
     private void ProcessConnectedBy(MethodCallExpression methodCall, CypherBuildContext context)
@@ -1111,6 +1162,50 @@ internal class CypherExpressionBuilder
                 context.IsBooleanQuery = true;
                 break;
 
+            case "All":
+                if (methodCall.Arguments.Count > 1)
+                {
+                    var allPredicate = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+                    if (allPredicate != null)
+                    {
+                        // All(predicate) - check no items violate the predicate
+                        var predicateCondition = BuildCypherExpression(allPredicate.Body, context.CurrentAlias, context);
+
+                        // Add a negated predicate to WHERE to find violating items
+                        if (context.Where.Length > 0) context.Where.Append(" AND ");
+                        context.Where.Append($"NOT ({predicateCondition})");
+
+                        // If we find any violating items, All() should return false
+                        // So we return: COUNT(violating items) = 0
+                        context.Return = $"COUNT({context.CurrentAlias}) = 0";
+                    }
+                }
+                else
+                {
+                    // All() without predicate
+                    context.Return = $"COUNT({context.CurrentAlias}) > 0";
+                }
+                context.IsBooleanQuery = true;
+                break;
+
+            case "Last":
+            case "LastOrDefault":
+                context.Limit = 1;
+                context.IsLastOperation = true; // Flag to reverse ORDER BY direction
+
+                if (methodCall.Arguments.Count > 1)
+                {
+                    var lastPredicate = ExtractLambdaFromQuote(methodCall.Arguments[1]);
+                    if (lastPredicate != null)
+                    {
+                        if (context.Where.Length > 0) context.Where.Append(" AND ");
+                        ProcessWhereClause(lastPredicate.Body, context);
+                    }
+                }
+                context.IsSingleResult = true;
+                Console.WriteLine($"Set IsSingleResult = true for {methodCall.Method.Name}");
+                break;
+
             case "First":
             case "FirstOrDefault":
             case "Single":
@@ -1126,6 +1221,7 @@ internal class CypherExpressionBuilder
                     }
                 }
                 context.IsSingleResult = true;
+                Console.WriteLine($"Set IsSingleResult = true for {methodCall.Method.Name}");
                 break;
         }
     }
@@ -1500,10 +1596,299 @@ internal class CypherExpressionBuilder
         context.Return = projection;
     }
 
+    private void ProcessTraversalPathGroupBySelect(LambdaExpression selector, CypherBuildContext context)
+    {
+        // Clear IsPathResult since we're projecting to a map result
+        context.IsPathResult = false;
+
+        if (selector.Body is NewExpression newExpr)
+        {
+            var returnProjections = new List<string>();
+
+            Console.WriteLine($"ProcessTraversalPathGroupBySelect - Processing {newExpr.Arguments.Count} arguments");
+            Console.WriteLine($"Members: {string.Join(", ", newExpr.Members?.Select(m => m.Name) ?? new[] { "null" })}");
+
+            for (int i = 0; i < newExpr.Arguments.Count; i++)
+            {
+                var argument = newExpr.Arguments[i];
+                var memberName = newExpr.Members?[i].Name ?? $"Field{i}";
+
+                Console.WriteLine($"Processing member {memberName}, argument type: {argument.GetType().Name}");
+                Console.WriteLine($"  Full expression: {argument}");
+
+                bool handled = false;
+
+                if (IsGroupingKeyAccess(argument))
+                {
+                    // g.Key -> the grouped node
+                    returnProjections.Add($"{memberName}: {context.GroupByKey ?? "n"}");
+                    handled = true;
+                    Console.WriteLine($"  Handled as Key access");
+                }
+                else if (argument is MemberExpression me && me.Expression is MemberExpression keyAccess &&
+                         keyAccess.Member.Name == "Key")
+                {
+                    // g.Key.SomeProperty -> access property of the grouped key
+                    var propertyName = me.Member.Name;
+                    returnProjections.Add($"{memberName}: {context.GroupByKey ?? "n"}.{propertyName}");
+                    handled = true;
+                    Console.WriteLine($"  Handled as Key.Property access");
+                }
+                else if (IsGroupingAggregation(argument, out var aggregationType))
+                {
+                    Console.WriteLine($"  Detected aggregation type: {aggregationType}");
+                    switch (aggregationType)
+                    {
+                        case "Count":
+                            returnProjections.Add($"{memberName}: size(paths)");
+                            handled = true;
+                            break;
+                        case "Select":
+                            // Handle g.Select(k => k.Target.FirstName)
+                            if (argument is MethodCallExpression mce && mce.Arguments.Count > 0)
+                            {
+                                var selectLambda = ExtractLambdaFromQuote(mce.Arguments[0]);
+                                if (selectLambda != null)
+                                {
+                                    // Build list comprehension for the selection
+                                    var listExpr = BuildTraversalPathListComprehension(selectLambda, context);
+                                    returnProjections.Add($"{memberName}: {listExpr}");
+                                    handled = true;
+                                }
+                            }
+                            break;
+                    }
+                }
+
+                if (!handled && argument is MethodCallExpression methodCall)
+                {
+                    Console.WriteLine($"  Checking method call: {methodCall.Method.Name}");
+
+                    // Check if this is group.Select(k => k.Target.FirstName).ToList()
+                    if (methodCall.Method.Name == "ToList" && methodCall.Arguments.Count == 1)
+                    {
+                        // Get the Select call that's being converted to a list
+                        if (methodCall.Arguments[0] is MethodCallExpression selectCall &&
+                            selectCall.Method.Name == "Select")
+                        {
+                            Console.WriteLine($"    Found Select().ToList() pattern");
+                            Console.WriteLine($"    Select method is static: {selectCall.Method.IsStatic}");
+                            Console.WriteLine($"    Select arguments count: {selectCall.Arguments.Count}");
+
+                            // For extension method Select, it's a static method with 2 args
+                            LambdaExpression? selectLambda = null;
+                            bool isGroupingSource = false;
+
+                            if (selectCall.Method.IsStatic && selectCall.Arguments.Count == 2)
+                            {
+                                // Static extension method: Enumerable.Select(source, lambda)
+                                var sourceType = selectCall.Arguments[0].Type;
+                                isGroupingSource = sourceType.IsGenericType &&
+                                                 sourceType.GetGenericTypeDefinition() == typeof(IGrouping<,>);
+                                selectLambda = ExtractLambdaFromQuote(selectCall.Arguments[1]);
+                            }
+                            else if (!selectCall.Method.IsStatic && selectCall.Arguments.Count == 1)
+                            {
+                                // Instance method: source.Select(lambda)
+                                var sourceType = selectCall.Object?.Type;
+                                isGroupingSource = sourceType?.IsGenericType == true &&
+                                                 sourceType.GetGenericTypeDefinition() == typeof(IGrouping<,>);
+                                selectLambda = ExtractLambdaFromQuote(selectCall.Arguments[0]);
+                            }
+
+                            if (isGroupingSource && selectLambda != null)
+                            {
+                                Console.WriteLine($"    Confirmed grouping source and extracted lambda");
+                                var listExpr = BuildTraversalPathListComprehension(selectLambda, context);
+                                returnProjections.Add($"{memberName}: {listExpr}");
+                                handled = true;
+                                Console.WriteLine($"    Added projection: {memberName}: {listExpr}");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"    Failed to process: isGroupingSource={isGroupingSource}, lambda={selectLambda}");
+                            }
+                        }
+                    }
+                }
+
+                // Fallback: try to build a general Cypher expression
+                if (!handled)
+                {
+                    Console.WriteLine($"  Member {memberName} was not handled by specific cases, trying fallback");
+                    try
+                    {
+                        var cypherExpr = BuildCypherExpression(argument, context.GroupByKey ?? context.CurrentAlias, context);
+                        returnProjections.Add($"{memberName}: {cypherExpr}");
+                        Console.WriteLine($"  Fallback succeeded: {memberName}: {cypherExpr}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"  Fallback failed: {ex.Message}");
+                    }
+                }
+            }
+
+            // Update the RETURN clause
+            context.Return = $"{{ {string.Join(", ", returnProjections)} }}";
+            Console.WriteLine($"Final RETURN clause: {context.Return}");
+        }
+    }
+
+    private bool IsGroupParameter(Expression expression, LambdaExpression selector)
+    {
+        // Check if this expression is the group parameter (e.g., 'g' in g => new { ... })
+        return expression is ParameterExpression param &&
+               selector.Parameters.Contains(param) &&
+               param.Type.IsGenericType &&
+               param.Type.GetGenericTypeDefinition() == typeof(IGrouping<,>);
+    }
+
+    private string BuildTraversalPathListComprehension(LambdaExpression lambda, CypherBuildContext context)
+    {
+        // The lambda parameter (e.g., 'i') needs to be mapped to the list comprehension variable
+        var lambdaParam = lambda.Parameters.FirstOrDefault()?.Name; // Handle null case safely
+        if (string.IsNullOrEmpty(lambdaParam))
+        {
+            throw new InvalidOperationException("Lambda expression must have at least one parameter");
+        }
+
+        var listComprehensionVar = "p"; // This is what we use in the Cypher
+
+        // Create a context for variable substitution
+        var originalAlias = context.CurrentAlias;
+
+        // Process the lambda body with variable mapping
+        var projectionBody = BuildCypherExpressionWithVariableMapping(lambda.Body, lambdaParam, listComprehensionVar, context);
+
+        // Restore original alias
+        context.CurrentAlias = originalAlias;
+
+        return $"[{listComprehensionVar} IN paths | {projectionBody}]";
+    }
+
+    private string BuildCypherExpressionWithVariableMapping(Expression expression, string fromParam, string toVar, CypherBuildContext context)
+    {
+        switch (expression)
+        {
+            case NewExpression newExpr:
+                // Handle anonymous type creation: new { FriendName = i.Target.FirstName, ... }
+                var members = new List<string>();
+
+                for (int i = 0; i < newExpr.Arguments.Count; i++)
+                {
+                    var memberName = newExpr.Members?[i]?.Name ?? $"Item{i + 1}";
+                    var memberExpr = BuildCypherExpressionWithVariableMapping(newExpr.Arguments[i], fromParam, toVar, context);
+                    members.Add($"{memberName}: {memberExpr}");
+                }
+
+                return "{ " + string.Join(", ", members) + " }";
+
+            case MemberExpression memberExpr:
+                return BuildMemberExpressionWithMapping(memberExpr, fromParam, toVar, context);
+
+            case BinaryExpression binaryExpr:
+                var leftExpr = BuildCypherExpressionWithVariableMapping(binaryExpr.Left, fromParam, toVar, context);
+                var rightExpr = BuildCypherExpressionWithVariableMapping(binaryExpr.Right, fromParam, toVar, context);
+                var op = GetCypherOperator(binaryExpr.NodeType);
+                return $"({leftExpr} {op} {rightExpr})";
+
+            case ParameterExpression paramExpr when paramExpr.Name == fromParam:
+                return toVar;
+
+            case ConstantExpression constantExpr:
+                // Handle constants directly
+                return FormatValueForCypher(constantExpr.Value);
+
+            default:
+                // For other expressions, use the regular builder but with current context
+                return BuildCypherExpression(expression, context.CurrentAlias, context);
+        }
+    }
+
+    private string BuildMemberExpressionWithMapping(MemberExpression memberExpr, string fromParam, string toVar, CypherBuildContext context)
+    {
+        if (memberExpr.Expression is MemberExpression nestedMember)
+        {
+            // Handle cases like i.Target.FirstName or i.Relationship.Since
+            if (nestedMember.Expression is ParameterExpression paramExpr && paramExpr.Name == fromParam)
+            {
+                // Convert i.Target.FirstName to p.target.FirstName
+                // Convert i.Relationship.Since to p.relationship.Since
+                var nestedProperty = nestedMember.Member.Name.ToLowerInvariant(); // Target -> target, Relationship -> relationship
+                var finalProperty = memberExpr.Member.Name; // FirstName, Since, etc.
+                return $"{toVar}.{nestedProperty}.{finalProperty}";
+            }
+        }
+        else if (memberExpr.Expression is ParameterExpression directParam && directParam.Name == fromParam)
+        {
+            // Handle direct parameter access like i.SomeProperty
+            var property = memberExpr.Member.Name.ToLowerInvariant();
+            return $"{toVar}.{property}";
+        }
+        else if (memberExpr.Expression is BinaryExpression binaryExpr)
+        {
+            // Handle cases like (DateTime.UtcNow - i.Relationship.Since).Days
+            if (memberExpr.Member.Name == "Days" &&
+                binaryExpr.NodeType == ExpressionType.Subtract &&
+                binaryExpr.Left.Type == typeof(DateTime))
+            {
+                var left = BuildCypherExpressionWithVariableMapping(binaryExpr.Left, fromParam, toVar, context);
+                var right = BuildCypherExpressionWithVariableMapping(binaryExpr.Right, fromParam, toVar, context);
+
+                // Use Neo4j's duration.between() function for datetime arithmetic
+                return $"duration.between({right}, {left}).days";
+            }
+        }
+        else if (memberExpr.Expression == null && memberExpr.Member.DeclaringType == typeof(DateTime))
+        {
+            // Handle DateTime.UtcNow
+            return memberExpr.Member.Name switch
+            {
+                "UtcNow" => "datetime()",           // UTC time - correct
+                "Now" => "localdatetime()",         // Local time - this was the bug!
+                "Today" => "date()",                // Date only - this should also be added
+                _ => BuildCypherExpression(memberExpr, context.CurrentAlias, context)
+            };
+        }
+
+        // Fallback to regular expression building
+        return BuildCypherExpression(memberExpr, context.CurrentAlias, context);
+    }
+
+    private string GetCypherOperator(ExpressionType nodeType)
+    {
+        return nodeType switch
+        {
+            ExpressionType.Add => "+",
+            ExpressionType.Subtract => "-",
+            ExpressionType.Multiply => "*",
+            ExpressionType.Divide => "/",
+            ExpressionType.Equal => "=",
+            ExpressionType.NotEqual => "<>",
+            ExpressionType.LessThan => "<",
+            ExpressionType.GreaterThan => ">",
+            ExpressionType.LessThanOrEqual => "<=",
+            ExpressionType.GreaterThanOrEqual => ">=",
+            _ => throw new NotSupportedException($"Operator {nodeType} not supported")
+        };
+    }
+
     private void ProcessGroupBySelectClause(LambdaExpression selector, CypherBuildContext context)
     {
         Console.WriteLine($"ProcessGroupBySelectClause called");
         Console.WriteLine($"GroupByKey: '{context.GroupByKey}'");
+        Console.WriteLine($"IsTraversalPathGroupBy: {context.IsTraversalPathGroupBy}");
+
+        // Clear IsPathResult since we're now projecting to a different shape
+        context.IsPathResult = false;
+
+        if (context.IsTraversalPathGroupBy)
+        {
+            // Special handling for TraversalPath grouping
+            ProcessTraversalPathGroupBySelect(selector, context);
+            return;
+        }
 
         // For GroupBy + Select, we need to build WITH and aggregation clauses
         // e.g., .GroupBy(p => p.FirstName).Select(g => new { Name = g.Key, Count = g.Count() })
@@ -1813,6 +2198,13 @@ internal class CypherExpressionBuilder
             context.OrderBy.Append(", ");
 
         context.OrderBy.Append(orderExpression);
+
+        // For Last operations, flip the order direction to get the last item efficiently
+        if (context.IsLastOperation)
+        {
+            descending = !descending;
+        }
+
         if (descending)
             context.OrderBy.Append(" DESC");
     }
@@ -1823,22 +2215,61 @@ internal class CypherExpressionBuilder
         keySelector = ExtractLambdaFromQuote(methodCall.Arguments[1]);
         if (keySelector != null)
         {
-            // For GroupBy operations, we need to set up aggregation context
-            // The key expression will be used in WITH clause
-            var keyExpression = BuildCypherExpression(keySelector.Body, context.CurrentAlias);
+            // Check if we're grouping TraversalPath results
+            var sourceType = GetSourceElementType(methodCall);
+            if (sourceType.IsGenericType &&
+                sourceType.GetGenericTypeDefinition().FullName == "Cvoya.Graph.Model.TraversalPath`3")
+            {
+                // Special handling for grouping TraversalPath results
+                ProcessTraversalPathGroupBy(keySelector, context);
+            }
+            else
+            {
+                // Regular GroupBy handling
+                var keyExpression = BuildCypherExpression(keySelector.Body, context.CurrentAlias);
 
-            // Mark that we have a GroupBy operation
-            context.IsGroupByQuery = true;
-            context.GroupByKey = keyExpression;
-            context.GroupByKeySelector = keySelector;
-
-            // For now, we don't change the return immediately as it depends on what follows
-            // The subsequent Select clause will determine the final projection
+                context.IsGroupByQuery = true;
+                context.GroupByKey = keyExpression;
+                context.GroupByKeySelector = keySelector;
+            }
         }
         else
         {
             throw new InvalidOperationException("Failed to extract key selector from GroupBy expression");
         }
+    }
+
+    private void ProcessTraversalPathGroupBy(LambdaExpression keySelector, CypherBuildContext context)
+    {
+        // For TraversalPath grouping, we need to modify the query structure
+        // If grouping by path.Source, we want to collect all the paths for each source
+
+        if (keySelector.Body is MemberExpression memberExpr && memberExpr.Member.Name == "Source")
+        {
+            // We're grouping by the source node
+            // Modify the query to use WITH clause for grouping
+            context.IsGroupByQuery = true;
+            context.IsTraversalPathGroupBy = true;
+
+            // The key is the source node - use the actual alias from the query
+            context.GroupByKey = "n"; // This is the alias used in TraversePath queries
+            context.GroupByKeySelector = keySelector;
+
+            // Set up the WITH clause to collect paths using the actual aliases
+            context.With = "WITH n, collect({relationship: r1, target: t2}) as paths";
+        }
+        else if (keySelector.Body is MemberExpression memberExpr2 && memberExpr2.Member.Name == "Target")
+        {
+            // Grouping by target
+            context.IsGroupByQuery = true;
+            context.IsTraversalPathGroupBy = true;
+
+            context.GroupByKey = "t2"; // Target alias
+            context.GroupByKeySelector = keySelector;
+
+            context.With = "WITH t2, collect({source: n, relationship: r1}) as paths";
+        }
+        // Add more cases as needed
     }
 
     private static Type GetSourceElementType(MethodCallExpression methodCall)
@@ -1939,6 +2370,7 @@ internal class CypherExpressionBuilder
 
         Console.WriteLine($"ExecuteQueryAsync - elementType: {elementType}, actualEntityType: {actualEntityType}");
         Console.WriteLine($"Cypher: {cypher}");
+        Console.WriteLine($"IsGroupByQuery: {context?.IsGroupByQuery}, IsPathResult: {context?.IsPathResult}");
 
         if (context?.ClientSideProjection != null)
         {
@@ -1950,20 +2382,58 @@ internal class CypherExpressionBuilder
             }
         }
 
+        // For path results where we expect IGraphPath, we'll create TraversalPath instances
+        // Since TraversalPath implements IGraphPath, this will work seamlessly
+        Type conversionType = actualEntityType;
+        if (context?.IsPathResult == true && actualEntityType.IsGenericType &&
+            actualEntityType.GetGenericTypeDefinition().FullName == "Cvoya.Graph.Model.IGraphPath`3")
+        {
+            // Create TraversalPath instances (which implement IGraphPath)
+            var genericArgs = actualEntityType.GetGenericArguments();
+            conversionType = typeof(TraversalPath<,,>).MakeGenericType(genericArgs);
+        }
+
+        // Create list with the expected interface type for proper compatibility
         var listType = typeof(List<>).MakeGenericType(actualEntityType);
         var items = (System.Collections.IList)Activator.CreateInstance(listType)!;
 
         // Check if this is a path result based on context
         bool isPathResult = context?.IsPathResult == true;
 
+        // Check if this is a GroupBy query - we'll get map results
+        bool isGroupByResult = context?.IsGroupByQuery == true;
+
         await foreach (var record in cursor)
         {
+            Console.WriteLine($"Processing record with {record.Keys.Count} keys: {string.Join(", ", record.Keys)}");
+
             object? item = null;
 
             if (isPathResult)
             {
-                // Handle path results - these typically have multiple columns or a path object
-                item = ConvertPathResult(record, actualEntityType);
+                // Handle path results - create TraversalPath instances that implement IGraphPath
+                item = ConvertPathResult(record, conversionType);
+                Console.WriteLine($"Path result conversion: {(item != null ? "success" : "failed")}");
+            }
+            else if (isGroupByResult && record.Keys.Count == 1)
+            {
+                // Handle GroupBy results - these come back as maps
+                var key = record.Keys.First();
+                var value = record[key];
+
+                Console.WriteLine($"GroupBy result - key: {key}, value type: {value?.GetType().Name}");
+
+                if (value is IDictionary<string, object> map)
+                {
+                    Console.WriteLine($"Map contents: {string.Join(", ", map.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+                    // For GroupBy results, we need to create the anonymous type from the map
+                    item = CreateAnonymousTypeInstance(map, actualEntityType);
+                    Console.WriteLine($"Anonymous type creation: {(item != null ? "success" : "failed")}");
+                }
+                else
+                {
+                    Console.WriteLine($"Value is not a map, it's: {value?.GetType().Name}");
+                }
             }
             else
             {
@@ -2004,8 +2474,15 @@ internal class CypherExpressionBuilder
             if (item != null)
             {
                 items.Add(item);
+                Console.WriteLine($"Added item to results: {item}");
+            }
+            else
+            {
+                Console.WriteLine("Item was null, not added to results");
             }
         }
+
+        Console.WriteLine($"Total items: {items.Count}");
 
         // Apply client-side projection if needed
         if (context?.ClientSideProjection != null)
@@ -2014,9 +2491,14 @@ internal class CypherExpressionBuilder
         }
 
         // If a single result is expected, return the first item or null
-        if (context != null && (context.IsSingleResult || context.IsScalarResult))
+        if (context != null && (context.IsSingleResult || context.IsScalarResult || context.IsBooleanQuery))
         {
-            if (items.Count == 0) return null;
+            if (items.Count == 0)
+            {
+                Console.WriteLine("Returning null - no items found");
+                return null;
+            }
+            Console.WriteLine($"Returning single result: {items[0]}");
             return items[0];
         }
 
@@ -2205,6 +2687,90 @@ internal class CypherExpressionBuilder
             return value;
         }
 
+        // Handle Neo4j temporal types to DateTime conversion
+        if (targetType == typeof(DateTime))
+        {
+            var valueType = value.GetType();
+            if (valueType.FullName?.StartsWith("Neo4j.Driver") == true)
+            {
+                // Handle ZonedDateTime from Neo4j (from datetime() function)
+                if (valueType.Name == "ZonedDateTime")
+                {
+                    // For ZonedDateTime, preserve the UTC time - don't convert to local
+                    var toDateTimeOffsetMethod = valueType.GetMethod("ToDateTimeOffset");
+                    if (toDateTimeOffsetMethod != null)
+                    {
+                        var dateTimeOffset = (DateTimeOffset)toDateTimeOffsetMethod.Invoke(value, null)!;
+                        return dateTimeOffset.UtcDateTime; // Return the UTC DateTime
+                    }
+
+                    // Fallback: try to get the DateTime property (might be in local time)
+                    var dateTimeProperty = valueType.GetProperty("DateTime");
+                    if (dateTimeProperty != null)
+                    {
+                        return dateTimeProperty.GetValue(value);
+                    }
+
+                    // Last resort: string parsing
+                    var toStringMethod = valueType.GetMethod("ToString", Type.EmptyTypes);
+                    if (toStringMethod != null)
+                    {
+                        var sv = toStringMethod.Invoke(value, null) as string;
+                        if (DateTime.TryParse(sv, out var parsedDateTime))
+                        {
+                            return parsedDateTime;
+                        }
+                    }
+                }
+
+                // Handle LocalDateTime from Neo4j (from localdatetime() function)
+                if (valueType.Name == "LocalDateTime")
+                {
+                    var toDateTimeMethod = valueType.GetMethod("ToDateTime");
+                    if (toDateTimeMethod != null)
+                    {
+                        return toDateTimeMethod.Invoke(value, null);
+                    }
+                }
+
+                // Handle Date from Neo4j (from date() function)
+                if (valueType.Name == "Date")
+                {
+                    var toDateTimeMethod = valueType.GetMethod("ToDateTime");
+                    if (toDateTimeMethod != null)
+                    {
+                        return toDateTimeMethod.Invoke(value, null);
+                    }
+                }
+            }
+
+            // Handle string to DateTime conversion
+            if (value is string stringValue && DateTime.TryParse(stringValue, out var dateTime))
+            {
+                return dateTime;
+            }
+        }
+
+        // Handle DateTimeOffset conversion
+        if (targetType == typeof(DateTimeOffset))
+        {
+            var valueType = value.GetType();
+            if (valueType.FullName?.StartsWith("Neo4j.Driver") == true && valueType.Name == "ZonedDateTime")
+            {
+                var toDateTimeOffsetMethod = valueType.GetMethod("ToDateTimeOffset");
+                if (toDateTimeOffsetMethod != null)
+                {
+                    return toDateTimeOffsetMethod.Invoke(value, null);
+                }
+            }
+        }
+
+        // Handle integer types properly (Neo4j often returns Int64 for integers)
+        if (targetType == typeof(int) && value is long longValue)
+        {
+            return (int)longValue;
+        }
+
         // Handle Neo4j maps to anonymous types
         if (targetType.IsAnonymousType() && value is IDictionary<string, object> dict)
         {
@@ -2216,9 +2782,9 @@ internal class CypherExpressionBuilder
         {
             return Convert.ChangeType(value, targetType);
         }
-        catch
+        catch (Exception ex)
         {
-            return null;
+            throw new GraphException($"Failed to convert {value.GetType().Name} to {targetType.Name}: {ex.Message}", ex);
         }
     }
 
@@ -2238,162 +2804,231 @@ internal class CypherExpressionBuilder
             for (int i = 0; i < parameters.Length; i++)
             {
                 var paramName = parameters[i].Name!;
+                var paramType = parameters[i].ParameterType;
+
                 if (dict.TryGetValue(paramName, out var value))
                 {
-                    // Convert the value to the parameter type
-                    args[i] = SerializationExtensions.ConvertFromNeo4jValue(value, parameters[i].ParameterType);
+                    // Handle List<T> types (like FriendDetails)
+                    if (paramType.IsGenericType && paramType.GetGenericTypeDefinition() == typeof(List<>))
+                    {
+                        var elementType = paramType.GetGenericArguments()[0];
+
+                        if (value is IList sourceList)
+                        {
+                            var typedListType = typeof(List<>).MakeGenericType(elementType);
+                            var typedList = (IList)Activator.CreateInstance(typedListType)!;
+
+                            foreach (var item in sourceList)
+                            {
+                                object? convertedItem = null;
+
+                                // Handle nested anonymous types
+                                if (elementType.IsAnonymousType() && item is IDictionary<string, object> itemDict)
+                                {
+                                    convertedItem = CreateAnonymousTypeInstance(itemDict, elementType);
+                                }
+                                else
+                                {
+                                    convertedItem = ConvertValue(item, elementType);
+                                }
+
+                                if (convertedItem != null)
+                                {
+                                    typedList.Add(convertedItem);
+                                }
+                            }
+
+                            args[i] = typedList;
+                        }
+                        else
+                        {
+                            // Create empty list if value isn't a list
+                            args[i] = Activator.CreateInstance(paramType);
+                        }
+                    }
+                    else
+                    {
+                        // Regular property - just convert the value
+                        args[i] = ConvertValue(value, paramType);
+                    }
+                }
+                else
+                {
+                    // Parameter not found in dictionary - provide default value
+                    args[i] = paramType.IsValueType ? Activator.CreateInstance(paramType) : null;
                 }
             }
 
+            // Create the instance
             return constructor.Invoke(args);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Failed to create anonymous type instance: {ex.Message}");
+            // Return null on any conversion errors - fail gracefully
             return null;
         }
     }
 
     private static object? ConvertPathResult(global::Neo4j.Driver.IRecord record, Type elementType)
     {
-        // Check if there's a direct path object in the result
-        foreach (var key in record.Keys)
+        Console.WriteLine($"ConvertPathResult - elementType: {elementType.FullName}");
+        Console.WriteLine($"Record keys: {string.Join(", ", record.Keys)}");
+
+        // Check if we have the expected three columns with aliases: source, relationship, target
+        if (record.Keys.Count == 3 &&
+            record.Keys.Contains("source") &&
+            record.Keys.Contains("relationship") &&
+            record.Keys.Contains("target"))
         {
-            var value = record[key];
-            if (value is global::Neo4j.Driver.IPath path)
+            Console.WriteLine("Using explicit source/relationship/target columns");
+            return ConvertPathColumnsToTraversalPath(record, elementType, "source", "relationship", "target");
+        }
+
+        // Check if we have three columns that look like path components (node, rel, node pattern)
+        if (record.Keys.Count == 3)
+        {
+            var keys = record.Keys.ToList();
+            Console.WriteLine($"Analyzing 3-column pattern: {string.Join(", ", keys)}");
+
+            // Try to identify the pattern: should be node, relationship, node
+            string? sourceKey = null;
+            string? relationshipKey = null;
+            string? targetKey = null;
+
+            for (int i = 0; i < keys.Count; i++)
             {
-                return ConvertNeo4jPathToGraphPath(path, elementType);
+                var key = keys[i];
+                var value = record[key];
+                Console.WriteLine($"  Key '{key}': {value?.GetType().Name} - {value}");
+
+                if (value is global::Neo4j.Driver.INode && sourceKey == null)
+                {
+                    sourceKey = key;
+                    Console.WriteLine($"    Identified as source key");
+                }
+                else if (value is global::Neo4j.Driver.IRelationship relationshipValue)
+                {
+                    relationshipKey = key;
+                    Console.WriteLine($"    Identified as relationship key");
+                }
+                else if (value is IList relationshipList && relationshipList.Count > 0 && relationshipList[0] is global::Neo4j.Driver.IRelationship)
+                {
+                    relationshipKey = key;
+                    Console.WriteLine($"    Identified as relationship list key with {relationshipList.Count} items");
+                }
+                else if (value is global::Neo4j.Driver.INode && sourceKey != null && relationshipKey != null)
+                {
+                    targetKey = key;
+                    Console.WriteLine($"    Identified as target key");
+                }
+            }
+
+            Console.WriteLine($"Key identification result: source='{sourceKey}', relationship='{relationshipKey}', target='{targetKey}'");
+
+            // If we found all three components, convert the path
+            if (sourceKey != null && relationshipKey != null && targetKey != null)
+            {
+                Console.WriteLine("All keys identified, proceeding with conversion");
+                return ConvertPathColumnsToTraversalPath(record, elementType, sourceKey, relationshipKey, targetKey);
+            }
+            else
+            {
+                Console.WriteLine("Failed to identify all required keys");
             }
         }
 
-        // Check for multiple columns that represent a path structure
-        // Common patterns: source, relationship, target OR start, end, path OR n, r1, n2
-        if (record.Keys.Count >= 3)
-        {
-            // Look for source/start node - often the first node variable
-            var sourceKey = record.Keys.FirstOrDefault(k =>
-                k.Equals("source", StringComparison.OrdinalIgnoreCase) ||
-                k.Equals("start", StringComparison.OrdinalIgnoreCase) ||
-                k.Equals("from", StringComparison.OrdinalIgnoreCase) ||
-                k.Equals("n", StringComparison.OrdinalIgnoreCase) ||  // First node is often just "n"
-                (k.StartsWith('n') && !k.Contains('2') && !k.Contains('3'))); // n, n0, n1 but not n2, n3
-
-            // Look for target/end node - often the second or later node variable
-            var targetKey = record.Keys.FirstOrDefault(k =>
-                k != sourceKey && ( // Make sure it's not the same as source
-                k.Equals("target", StringComparison.OrdinalIgnoreCase) ||
-                k.Equals("end", StringComparison.OrdinalIgnoreCase) ||
-                k.Equals("to", StringComparison.OrdinalIgnoreCase) ||
-                k.Equals("n2", StringComparison.OrdinalIgnoreCase) ||
-                (k.StartsWith('n') && (k.Contains('2') || k.Contains('3') || k.Contains('1'))))); // n1, n2, n3
-
-            // Look for relationship
-            var relationshipKey = record.Keys.FirstOrDefault(k =>
-                k.Equals("relationship", StringComparison.OrdinalIgnoreCase) ||
-                k.Equals("rel", StringComparison.OrdinalIgnoreCase) ||
-                k.StartsWith('r'));
-
-            if (sourceKey != null && targetKey != null)
-            {
-                return ConvertPathComponentsToGraphPath(record, sourceKey, targetKey, relationshipKey, elementType);
-            }
-        }
-
-        // Fallback: treat as regular single entity if no path structure detected
-        if (record.Keys.Count == 1)
-        {
-            var key = record.Keys.First();
-            var value = record[key];
-
-            if (value is global::Neo4j.Driver.INode node)
-            {
-                return ConvertNodeToEntity(node, elementType);
-            }
-            else if (value is global::Neo4j.Driver.IRelationship rel)
-            {
-                return ConvertRelationshipToEntity(rel, elementType);
-            }
-        }
-
+        Console.WriteLine("No matching pattern found for path conversion");
         return null;
     }
 
-    private static object? ConvertNeo4jPathToGraphPath(global::Neo4j.Driver.IPath neo4jPath, Type elementType)
-    {
-        // TODO: Implement conversion from Neo4j IPath to our GraphPath types
-        // For now, return the first node if the element type is a node type
-        if (neo4jPath.Nodes.Any())
-        {
-            var firstNode = neo4jPath.Nodes.First();
-            return ConvertNodeToEntity(firstNode, elementType);
-        }
-
-        return null;
-    }
-
-    private static object? ConvertPathComponentsToGraphPath(global::Neo4j.Driver.IRecord record, string sourceKey, string targetKey, string? relationshipKey, Type elementType)
+    private static object? ConvertPathColumnsToTraversalPath(global::Neo4j.Driver.IRecord record, Type elementType, string sourceKey, string relationshipKey, string targetKey)
     {
         try
         {
-            // Check if we can extract the generic arguments from the element type
-            if (!elementType.IsGenericType || elementType.GetGenericTypeDefinition() != typeof(IGraphPath<,,>))
+            // Handle both TraversalPath and IGraphPath
+            Type? pathInterface = null;
+
+            if (elementType.IsGenericType && elementType.GetGenericTypeDefinition().FullName == "Cvoya.Graph.Model.TraversalPath`3")
             {
-                // Fallback to source node if not a path type
-                if (record[sourceKey] is global::Neo4j.Driver.INode sourceNode)
+                pathInterface = elementType;
+            }
+            else if (elementType.IsGenericType && elementType.GetGenericTypeDefinition().FullName == "Cvoya.Graph.Model.IGraphPath`3")
+            {
+                // For IGraphPath, we need to find the concrete implementation
+                // For now, let's assume TraversalPath implements IGraphPath
+                var ga = elementType.GetGenericArguments();
+                var traversalPathType = typeof(TraversalPath<,,>).MakeGenericType(ga);
+                pathInterface = traversalPathType;
+            }
+
+            if (pathInterface == null)
+            {
+                Console.WriteLine($"Unknown path type: {elementType}");
+                return null;
+            }
+
+            var genericArgs = pathInterface.GetGenericArguments();
+            var sourceType = genericArgs[0];
+            var relationshipType = genericArgs[1];
+            var targetType = genericArgs[2];
+
+            // Convert source node
+            if (!(record[sourceKey] is global::Neo4j.Driver.INode sourceNode))
+            {
+                Console.WriteLine($"Source key '{sourceKey}' is not a node");
+                return null;
+            }
+            var source = ConvertNodeToEntity(sourceNode, sourceType);
+
+            // Convert target node
+            if (!(record[targetKey] is global::Neo4j.Driver.INode targetNode))
+            {
+                Console.WriteLine($"Target key '{targetKey}' is not a node");
+                return null;
+            }
+            var target = ConvertNodeToEntity(targetNode, targetType);
+
+            // Handle relationship - could be single relationship or array for multi-hop
+            object? relationship = null;
+            var relationshipValue = record[relationshipKey];
+
+            if (relationshipValue is global::Neo4j.Driver.IRelationship singleRel)
+            {
+                // Single relationship
+                relationship = ConvertRelationshipToEntity(singleRel, relationshipType);
+            }
+            else if (relationshipValue is IList relationshipList && relationshipList.Count > 0)
+            {
+                // Multi-hop relationships - take the first one for now
+                // TODO: This might need more sophisticated handling depending on requirements
+                if (relationshipList[0] is global::Neo4j.Driver.IRelationship firstRel)
                 {
-                    return ConvertNodeToEntity(sourceNode, elementType);
-                }
-                return null;
-            }
-
-            var genericArgs = elementType.GetGenericArguments();
-            var sourceType = genericArgs[0];  // TSource
-            var relationshipType = genericArgs[1];  // TRel
-            var targetType = genericArgs[2];  // TTarget
-
-            // Convert the source node
-            if (!(record[sourceKey] is global::Neo4j.Driver.INode sourceNodeValue))
-            {
-                return null;
-            }
-            var sourceEntity = ConvertNodeToEntity(sourceNodeValue, sourceType);
-            if (sourceEntity == null) return null;
-
-            // Convert the target node
-            if (!(record[targetKey] is global::Neo4j.Driver.INode targetNodeValue))
-            {
-                return null;
-            }
-            var targetEntity = ConvertNodeToEntity(targetNodeValue, targetType);
-            if (targetEntity == null) return null;
-
-            // Convert the relationship (if present)
-            object? relationshipEntity = null;
-            if (!string.IsNullOrEmpty(relationshipKey) && record[relationshipKey] is global::Neo4j.Driver.IRelationship relationshipValue)
-            {
-                relationshipEntity = ConvertRelationshipToEntity(relationshipValue, relationshipType);
-            }
-
-            // If no relationship, create a basic one
-            if (relationshipEntity == null)
-            {
-                relationshipEntity = Activator.CreateInstance(relationshipType);
-                if (relationshipEntity is Cvoya.Graph.Model.IRelationship rel)
-                {
-                    rel.SourceId = (sourceEntity as Cvoya.Graph.Model.IEntity)?.Id ?? "";
-                    rel.TargetId = (targetEntity as Cvoya.Graph.Model.IEntity)?.Id ?? "";
+                    relationship = ConvertRelationshipToEntity(firstRel, relationshipType);
                 }
             }
 
-            // Create SimpleGraphPath instance using reflection
-            var simpleGraphPathType = typeof(SimpleGraphPath<,,>).MakeGenericType(sourceType, relationshipType, targetType);
-            var pathInstance = Activator.CreateInstance(simpleGraphPathType, sourceEntity, relationshipEntity, targetEntity);
+            if (relationship == null)
+            {
+                Console.WriteLine($"Failed to convert relationship from key '{relationshipKey}'");
+                return null;
+            }
 
-            return pathInstance;
+            // Create the path instance
+            var ctor = pathInterface.GetConstructor(new[] { sourceType, relationshipType, targetType });
+            if (ctor != null && source != null && target != null)
+            {
+                var result = ctor.Invoke(new[] { source, relationship, target });
+                Console.WriteLine($"Successfully created path instance: {result}");
+                return result;
+            }
+
+            Console.WriteLine("Failed to find constructor or null components");
+            return null;
         }
         catch (Exception ex)
         {
-            throw new GraphException(ex.Message, ex);
+            Console.WriteLine($"Failed to convert path columns to path: {ex.Message}");
+            return null;
         }
     }
 

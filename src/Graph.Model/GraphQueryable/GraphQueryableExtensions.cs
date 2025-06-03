@@ -251,9 +251,9 @@ public static class GraphQueryableExtensions
     /// </summary>
     public static IGraphQueryable<TraversalPath<TSource, TRelationship, TTarget>> TraversePath<TSource, TRelationship, TTarget>(
         this IGraphQueryable<TSource> source)
-        where TSource : class, INode
-        where TRelationship : class, IRelationship
-        where TTarget : class, INode
+        where TSource : class, INode, new()
+        where TRelationship : class, IRelationship, new()
+        where TTarget : class, INode, new()
     {
         ArgumentNullException.ThrowIfNull(source);
 

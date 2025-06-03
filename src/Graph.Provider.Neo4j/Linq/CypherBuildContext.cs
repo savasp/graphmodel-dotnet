@@ -47,6 +47,11 @@ internal class CypherBuildContext
     public Type? RootType { get; set; }
 
     /// <summary>
+    /// Whether this is the last operation in the query
+    /// </summary>
+    public bool IsLastOperation { get; set; }
+
+    /// <summary>
     /// The query root type (Node or Relationship)
     /// </summary>
     public GraphQueryContext.QueryRootType? QueryRootType { get; set; }
@@ -75,6 +80,11 @@ internal class CypherBuildContext
     /// Whether this should return a single result
     /// </summary>
     public bool IsSingleResult { get; set; }
+
+    /// <summary>
+    /// Whether this is a traversal path query (e.g., MATCH p = (n)-[r*1..3]->(m))
+    /// </summary>
+    public bool IsTraversalPathGroupBy { get; set; }
 
     /// <summary>
     /// Whether this returns path results
