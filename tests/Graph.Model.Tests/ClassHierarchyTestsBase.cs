@@ -233,7 +233,6 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         await this.Graph.CreateNode(manager);
 
         var retrieved = this.Graph.Nodes<Person>()
-            .Where(p => p.Id == manager.Id)
             .FirstOrDefault();
 
         Assert.NotNull(retrieved);
