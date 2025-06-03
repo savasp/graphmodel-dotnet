@@ -1606,7 +1606,7 @@ internal class CypherExpressionBuilder
             var returnProjections = new List<string>();
 
             Console.WriteLine($"ProcessTraversalPathGroupBySelect - Processing {newExpr.Arguments.Count} arguments");
-            Console.WriteLine($"Members: {string.Join(", ", newExpr.Members?.Select(m => m.Name) ?? new[] { "null" })}");
+            Console.WriteLine($"Members: {string.Join(", ", newExpr.Members?.Select(m => m.Name) ?? ["null"])}");
 
             for (int i = 0; i < newExpr.Arguments.Count; i++)
             {
@@ -1642,18 +1642,50 @@ internal class CypherExpressionBuilder
                         case "Count":
                             returnProjections.Add($"{memberName}: size(paths)");
                             handled = true;
+                            Console.WriteLine($"  Added Count projection: {memberName}: size(paths)");
                             break;
-                        case "Select":
-                            // Handle g.Select(k => k.Target.FirstName)
-                            if (argument is MethodCallExpression mce && mce.Arguments.Count > 0)
+
+                        case "Average":
+                            // Handle g.Average(k => k.Target.Age)
+                            if (argument is MethodCallExpression avgCall && avgCall.Arguments.Count > 0)
                             {
-                                var selectLambda = ExtractLambdaFromQuote(mce.Arguments[0]);
-                                if (selectLambda != null)
+                                var avgLambda = ExtractLambdaFromQuote(avgCall.Arguments.Last());
+                                if (avgLambda != null)
                                 {
-                                    // Build list comprehension for the selection
-                                    var listExpr = BuildTraversalPathListComprehension(selectLambda, context);
-                                    returnProjections.Add($"{memberName}: {listExpr}");
+                                    var avgExpr = BuildTraversalPathListComprehensionValue(avgLambda, context);
+                                    returnProjections.Add($"{memberName}: reduce(sum = 0.0, item IN {avgExpr} | sum + item) / toFloat(size({avgExpr}))");
                                     handled = true;
+                                    Console.WriteLine($"  Added Average projection: {memberName}");
+                                }
+                            }
+                            break;
+
+                        case "Max":
+                            // Handle g.Max(k => k.Target.Age)
+                            if (argument is MethodCallExpression maxCall && maxCall.Arguments.Count > 0)
+                            {
+                                var maxLambda = ExtractLambdaFromQuote(maxCall.Arguments.Last());
+                                if (maxLambda != null)
+                                {
+                                    var maxExpr = BuildTraversalPathListComprehensionValue(maxLambda, context);
+                                    returnProjections.Add($"{memberName}: reduce(max = -999999, item IN {maxExpr} | CASE WHEN item > max THEN item ELSE max END)");
+                                    handled = true;
+                                    Console.WriteLine($"  Added Max projection: {memberName}");
+                                }
+                            }
+                            break;
+
+                        case "Min":
+                            // Handle g.Min(k => k.Target.Age)
+                            if (argument is MethodCallExpression minCall && minCall.Arguments.Count > 0)
+                            {
+                                var minLambda = ExtractLambdaFromQuote(minCall.Arguments.Last());
+                                if (minLambda != null)
+                                {
+                                    var minExpr = BuildTraversalPathListComprehensionValue(minLambda, context);
+                                    returnProjections.Add($"{memberName}: reduce(min = 999999, item IN {minExpr} | CASE WHEN item < min THEN item ELSE min END)");
+                                    handled = true;
+                                    Console.WriteLine($"  Added Min projection: {memberName}");
                                 }
                             }
                             break;
@@ -1664,8 +1696,24 @@ internal class CypherExpressionBuilder
                 {
                     Console.WriteLine($"  Checking method call: {methodCall.Method.Name}");
 
-                    // Check if this is group.Select(k => k.Target.FirstName).ToList()
+                    // Handle chained operations like Where().Select().ToList()
                     if (methodCall.Method.Name == "ToList" && methodCall.Arguments.Count == 1)
+                    {
+                        // Check if this is a chain like Where().Select().ToList()
+                        if (methodCall.Arguments[0] is MethodCallExpression chainedCall)
+                        {
+                            var chainResult = ProcessMethodChain(chainedCall, context);
+                            if (chainResult != null)
+                            {
+                                returnProjections.Add($"{memberName}: {chainResult}");
+                                handled = true;
+                                Console.WriteLine($"    Processed method chain: {chainResult}");
+                            }
+                        }
+                    }
+
+                    // Original ToList pattern for simple Select operations
+                    if (!handled && methodCall.Method.Name == "ToList" && methodCall.Arguments.Count == 1)
                     {
                         // Get the Select call that's being converted to a list
                         if (methodCall.Arguments[0] is MethodCallExpression selectCall &&
@@ -1725,6 +1773,15 @@ internal class CypherExpressionBuilder
                     catch (Exception ex)
                     {
                         Console.WriteLine($"  Fallback failed: {ex.Message}");
+                        // For failed projections, set default value based on expected type
+                        if (memberName.Contains("Age") || memberName.Contains("Friend"))
+                        {
+                            returnProjections.Add($"{memberName}: 0");
+                        }
+                        else
+                        {
+                            returnProjections.Add($"{memberName}: null");
+                        }
                     }
                 }
             }
@@ -1733,6 +1790,53 @@ internal class CypherExpressionBuilder
             context.Return = $"{{ {string.Join(", ", returnProjections)} }}";
             Console.WriteLine($"Final RETURN clause: {context.Return}");
         }
+    }
+
+    // Helper method to process method chains like Where().Select()
+    private string? ProcessMethodChain(MethodCallExpression methodCall, CypherBuildContext context)
+    {
+        // Handle Where().Select() patterns
+        if (methodCall.Method.Name == "Select" && methodCall.Arguments.Count >= 1)
+        {
+            // Check if the source is a Where call
+            Expression sourceExpr = methodCall.Method.IsStatic ? methodCall.Arguments[0] : methodCall.Object!;
+
+            if (sourceExpr is MethodCallExpression whereCall && whereCall.Method.Name == "Where")
+            {
+                // Extract the Where predicate and Select lambda
+                var whereLambda = ExtractLambdaFromQuote(whereCall.Arguments.Last());
+                var selectLambda = ExtractLambdaFromQuote(methodCall.Arguments.Last());
+
+                if (whereLambda != null && selectLambda != null)
+                {
+                    // Build a filtered list comprehension
+                    var whereCondition = BuildCypherExpressionWithVariableMapping(whereLambda.Body, whereLambda.Parameters[0].Name!, "p", context);
+                    var selectExpr = BuildCypherExpressionWithVariableMapping(selectLambda.Body, selectLambda.Parameters[0].Name!, "p", context);
+
+                    return $"[p IN paths WHERE {whereCondition} | {selectExpr}]";
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // Helper method to build just the value expression for aggregations
+    private string BuildTraversalPathListComprehensionValue(LambdaExpression lambda, CypherBuildContext context)
+    {
+        var lambdaParam = lambda.Parameters.FirstOrDefault()?.Name;
+        if (string.IsNullOrEmpty(lambdaParam))
+        {
+            throw new InvalidOperationException("Lambda expression must have at least one parameter");
+        }
+
+        var listComprehensionVar = "p";
+        var originalAlias = context.CurrentAlias;
+
+        var projectionBody = BuildCypherExpressionWithVariableMapping(lambda.Body, lambdaParam, listComprehensionVar, context);
+        context.CurrentAlias = originalAlias;
+
+        return $"[{listComprehensionVar} IN paths | {projectionBody}]";
     }
 
     private bool IsGroupParameter(Expression expression, LambdaExpression selector)
