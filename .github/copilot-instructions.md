@@ -20,6 +20,7 @@ The code is organized as follows:
 - `src/`: Contains the main source code.
   - `src/Graph.Model`: Project for the graph model abstraction.
   - `src/Graph.Provider.Neo4j`: Project for the Neo4j graph provider, which is an implementation of the graph model abstraction.
+  - `src/Graph.Model.Analyzers`: Contains Roslyn analyzers for the graph model abstraction.
 - `tests/Graph.Model.Tests`: Tests on top of the abstraction layer. These tests cannot be run without a providers. It is expected that provider-specific tests will inherit these tests. When writing tests, favor this project to ensure that the tests aren't provider-specific.
 - `tests/Graph.Provider.Neo4j.Tests`: Tests for the Neo4j provider. Most of the tests inherit from the tests in `tests/Graph.Model.Tests`. It may also contain provider-specific tests.
 - `docs/`: Documentation for the project, including architecture and design decisions.
