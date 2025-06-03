@@ -88,23 +88,36 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     public async Task<T> GetRelationship<T>(string id, IAsyncTransaction tx)
         where T : class, Cvoya.Graph.Model.IRelationship, new()
     {
-        var label = Neo4jTypeManager.GetLabel(typeof(T));
-        var cypher = $"MATCH ()-[r:{label}]->() WHERE r.{nameof(Model.IRelationship.Id)} = $id RETURN r";
+        // First, find the relationship by ID without type restriction
+        var findRelCypher = $"MATCH ()-[r]->() WHERE r.{nameof(Model.IRelationship.Id)} = $id RETURN r, type(r) as relType";
+        var findResult = await tx.RunAsync(findRelCypher, new { id });
+        var findRecords = await findResult.ToListAsync();
 
-        var result = await tx.RunAsync(cypher, new { id });
-        var records = await result.ToListAsync();
-
-        if (records.Count == 0)
+        if (findRecords.Count == 0)
         {
             var ex = new KeyNotFoundException($"Relationship with ID '{id}' not found");
             throw new GraphException(ex.Message, ex);
         }
 
-        var relationship = new T();
+        var foundRelationship = findRecords[0]["r"].As<global::Neo4j.Driver.IRelationship>();
+        var relationshipType = findRecords[0]["relType"].As<string>();
 
-        relationship = await EntityConverter.DeserializeRelationship<T>(records[0]["r"].As<global::Neo4j.Driver.IRelationship>());
+        // Find the actual type that matches the relationship type and is assignable to T
+        Type actualType;
+        try
+        {
+            actualType = Neo4jTypeManager.GetTypeForLabel(relationshipType, typeof(T));
+        }
+        catch (GraphException)
+        {
+            // If no specific type matches, fallback to the requested type T
+            actualType = typeof(T);
+        }
 
-        return relationship;
+        // Deserialize using the actual type and cast to T
+        var relationship = await EntityConverter.DeserializeObjectFromNeo4jEntity(actualType, foundRelationship);
+
+        return (T)relationship;
     }
 
     /// <summary>

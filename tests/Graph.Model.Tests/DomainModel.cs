@@ -59,6 +59,15 @@ public class Knows : IRelationship
     public DateTime Since { get; set; }
 }
 
+[Relationship("WORKS_REALLY_WELL_WITH")]
+public class KnowsWell : Knows
+{
+    public KnowsWell() { }
+    public KnowsWell(string sourceId, string targetId) : base(sourceId, targetId) { }
+    public KnowsWell(INode source, INode target) : base(source, target) { }
+    public string HowWell { get; set; } = string.Empty;
+}
+
 [Relationship("LIVES_AT")]
 public class LivesAt : IRelationship
 {

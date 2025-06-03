@@ -89,10 +89,44 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     public async Task<T> GetNode<T>(string id, IAsyncTransaction tx)
     where T : class, Cvoya.Graph.Model.INode, new()
     {
-        var label = Neo4jTypeManager.GetLabel(typeof(T));
+        // First, find the node by ID without label restriction
+        var findNodeCypher = $"MATCH (n) WHERE n.{nameof(Model.INode.Id)} = $id RETURN n, labels(n) as labels";
+        var findResult = await tx.RunAsync(findNodeCypher, new { id });
+        var findRecords = await findResult.ToListAsync();
 
+        if (findRecords.Count == 0)
+        {
+            var ex = new KeyNotFoundException($"Node with ID '{id}' not found");
+            throw new GraphException(ex.Message, ex);
+        }
+
+        var foundNode = findRecords[0]["n"].As<global::Neo4j.Driver.INode>();
+        var nodeLabels = findRecords[0]["labels"].As<IList<string>>();
+
+        // Find the most specific type that matches one of the node's labels and is assignable to T
+        Type actualType = typeof(T);
+        foreach (var label in nodeLabels)
+        {
+            try
+            {
+                var candidateType = Neo4jTypeManager.GetTypeForLabel(label, typeof(T));
+                // Use the most specific type (the one that's furthest down the inheritance hierarchy)
+                if (candidateType.IsAssignableTo(actualType))
+                {
+                    actualType = candidateType;
+                }
+            }
+            catch (GraphException)
+            {
+                // This label doesn't correspond to a type assignable to T, skip it
+                continue;
+            }
+        }
+
+        // Now perform the traversal query using the actual type's label
+        var actualLabel = Neo4jTypeManager.GetLabel(actualType);
         var cypher = $@"
-            MATCH path = (n:{label} {{ {nameof(Model.INode.Id)}: '{id}'}})-[*0..]-(target)
+            MATCH path = (n:{actualLabel} {{ {nameof(Model.INode.Id)}: '{id}'}})-[*0..]-(target)
             WHERE ALL(rel IN relationships(path) WHERE
                 type(rel) STARTS WITH '{Helpers.PropertyRelationshipTypeNamePrefix}' AND 
                 type(rel) ENDS WITH '{Helpers.PropertyRelationshipTypeNameSuffix}')
@@ -140,7 +174,7 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
 
         var firstRecord = objectTracker.Values.FirstOrDefault()
             ?? throw new GraphException($"Node with ID '{id}' not found");
-        firstRecord.NewObject = await EntityConverter.DeserializeNode<T>(firstRecord.Neo4jNode);
+        firstRecord.NewObject = await EntityConverter.DeserializeObjectFromNeo4jEntity(actualType, firstRecord.Neo4jNode);
 
         // Now, traverse the graph, creating objects along the way and tracking them with the objectTracker.
 

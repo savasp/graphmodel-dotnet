@@ -100,4 +100,121 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.Equal(manager.Department, ((Manager)retrieved).Department);
         Assert.Equal(manager.TeamSize, ((Manager)retrieved).TeamSize);
     }
+
+    [Fact]
+    public async Task CanCreateAndRetrieveRelationshipViaBaseType()
+    {
+        var person1 = new Person
+        {
+            FirstName = "Alice",
+            LastName = "Johnson",
+            Age = 28
+        };
+        var person2 = new Person
+        {
+            FirstName = "Bob",
+            LastName = "Smith",
+            Age = 32
+        };
+        await this.Graph.CreateNode(person1);
+        await this.Graph.CreateNode(person2);
+        var knowsWell = new KnowsWell(person1, person2)
+        {
+            IsBidirectional = true,
+            Since = DateTime.UtcNow,
+            HowWell = "Very well"
+        };
+
+        await this.Graph.CreateRelationship(knowsWell);
+
+        var retrieved = await this.Graph.GetRelationship<Knows>(knowsWell.Id);
+
+        Assert.NotNull(retrieved);
+        Assert.IsType<KnowsWell>(retrieved);
+        Assert.Equal(knowsWell.Id, retrieved.Id);
+        Assert.Equal(knowsWell.SourceId, retrieved.SourceId);
+        Assert.Equal(knowsWell.TargetId, retrieved.TargetId);
+        Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
+        Assert.Equal(knowsWell.Since, retrieved.Since);
+        Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
+    }
+
+    [Fact]
+    public async Task CanCreateRelationshipViaBaseTypeAndRetrieveItViaDerivedType()
+    {
+        var person1 = new Person
+        {
+            FirstName = "Alice",
+            LastName = "Johnson",
+            Age = 28
+        };
+        var person2 = new Person
+        {
+            FirstName = "Bob",
+            LastName = "Smith",
+            Age = 32
+        };
+        await this.Graph.CreateNode(person1);
+        await this.Graph.CreateNode(person2);
+        var knowsWell = new KnowsWell(person1, person2)
+        {
+            IsBidirectional = true,
+            Since = DateTime.UtcNow,
+            HowWell = "Very well"
+        };
+
+        Knows knows = knowsWell; // Implicit conversion to base type
+
+        await this.Graph.CreateRelationship(knows);
+
+        var retrieved = await this.Graph.GetRelationship<KnowsWell>(knowsWell.Id);
+
+        Assert.NotNull(retrieved);
+        Assert.IsType<KnowsWell>(retrieved);
+        Assert.Equal(knowsWell.Id, retrieved.Id);
+        Assert.Equal(knowsWell.SourceId, retrieved.SourceId);
+        Assert.Equal(knowsWell.TargetId, retrieved.TargetId);
+        Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
+        Assert.Equal(knowsWell.Since, retrieved.Since);
+        Assert.Equal(knowsWell.HowWell, retrieved.HowWell);
+    }
+
+    [Fact]
+    public async Task CanCreateRelationshipViaBaseTypeAndRetrieveItViaBaseType()
+    {
+        var person1 = new Person
+        {
+            FirstName = "Alice",
+            LastName = "Johnson",
+            Age = 28
+        };
+        var person2 = new Person
+        {
+            FirstName = "Bob",
+            LastName = "Smith",
+            Age = 32
+        };
+        await this.Graph.CreateNode(person1);
+        await this.Graph.CreateNode(person2);
+        var knowsWell = new KnowsWell(person1, person2)
+        {
+            IsBidirectional = true,
+            Since = DateTime.UtcNow,
+            HowWell = "Very well"
+        };
+
+        Knows knows = knowsWell; // Implicit conversion to base type
+        await this.Graph.CreateRelationship(knows);
+
+        var retrieved = await this.Graph.GetRelationship<Knows>(knows.Id);
+
+        Assert.NotNull(retrieved);
+        Assert.IsType<KnowsWell>(retrieved);
+        Assert.Equal(knowsWell.Id, retrieved.Id);
+        Assert.Equal(knowsWell.SourceId, retrieved.SourceId);
+        Assert.Equal(knowsWell.TargetId, retrieved.TargetId);
+        Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
+        Assert.Equal(knowsWell.Since, retrieved.Since);
+        Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
+    }
 }

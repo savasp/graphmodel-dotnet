@@ -16,11 +16,11 @@ using Cvoya.Graph.Model;
 
 namespace Cvoya.Graph.Provider.Neo4j.Tests;
 
-public class ClassHierarchyTestsBase : Model.Tests.ClassHierarchyTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
+public class ClassHierarchyTests : Model.Tests.ClassHierarchyTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
 {
     private readonly TestInfrastructureFixture fixture;
 
-    public ClassHierarchyTestsBase(TestInfrastructureFixture fixture)
+    public ClassHierarchyTests(TestInfrastructureFixture fixture)
     {
         this.fixture = fixture;
     }
