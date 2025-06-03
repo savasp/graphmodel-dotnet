@@ -25,4 +25,5 @@ The code is organized as follows:
 - `tests/Graph.Provider.Neo4j.Tests`: Tests for the Neo4j provider. Most of the tests inherit from the tests in `tests/Graph.Model.Tests`. It may also contain provider-specific tests.
 - `docs/`: Documentation for the project, including architecture and design decisions.
 - `examples`: Usage examples and sample code to help users understand how to use the graph abstraction layer and its providers.
+- `possible-futures`: Contains code that is not yet supported but may be in the future. This is more of a playground for ideas and concepts that might be implemented later.
 
