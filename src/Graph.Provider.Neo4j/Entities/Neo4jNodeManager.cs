@@ -111,7 +111,8 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
             {
                 var candidateType = Neo4jTypeManager.GetTypeForLabel(label, typeof(T));
                 // Use the most specific type (the one that's furthest down the inheritance hierarchy)
-                if (candidateType.IsAssignableTo(actualType))
+                // If candidateType is more specific than actualType, use it
+                if (actualType.IsAssignableFrom(candidateType))
                 {
                     actualType = candidateType;
                 }

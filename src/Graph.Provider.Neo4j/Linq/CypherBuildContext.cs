@@ -47,6 +47,11 @@ internal class CypherBuildContext
     public Type? RootType { get; set; }
 
     /// <summary>
+    /// Labels for inheritance support when querying base types
+    /// </summary>
+    public List<string>? InheritanceLabels { get; set; }
+
+    /// <summary>
     /// Whether this is the last operation in the query
     /// </summary>
     public bool IsLastOperation { get; set; }

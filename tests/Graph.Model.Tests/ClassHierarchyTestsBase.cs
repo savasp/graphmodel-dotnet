@@ -217,4 +217,73 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }
+
+    [Fact]
+    public async Task CanQueryNodeUsingBaseType()
+    {
+        var manager = new Manager
+        {
+            FirstName = "Jane",
+            LastName = "Smith",
+            Age = 35,
+            Department = "Marketing",
+            TeamSize = 5
+        };
+
+        await this.Graph.CreateNode(manager);
+
+        var retrieved = this.Graph.Nodes<Person>()
+            .Where(p => p.Id == manager.Id)
+            .FirstOrDefault();
+
+        Assert.NotNull(retrieved);
+        Assert.IsType<Manager>(retrieved);
+        Assert.Equal(manager.Id, retrieved.Id);
+        Assert.Equal(manager.FirstName, retrieved.FirstName);
+        Assert.Equal(manager.LastName, retrieved.LastName);
+        Assert.Equal(manager.Age, retrieved.Age);
+        Assert.Equal(manager.Department, ((Manager)retrieved).Department);
+        Assert.Equal(manager.TeamSize, ((Manager)retrieved).TeamSize);
+    }
+
+    [Fact]
+    public async Task CanQueryRelationshipUsingBaseType()
+    {
+        var person1 = new Person
+        {
+            FirstName = "Alice",
+            LastName = "Johnson",
+            Age = 28
+        };
+        var person2 = new Person
+        {
+            FirstName = "Bob",
+            LastName = "Smith",
+            Age = 32
+        };
+
+        var knowsWell = new KnowsWell(person1, person2)
+        {
+            IsBidirectional = true,
+            Since = DateTime.UtcNow,
+            HowWell = "Very well"
+        };
+
+        await this.Graph.CreateNode(person1);
+        await this.Graph.CreateNode(person2);
+        await this.Graph.CreateRelationship(knowsWell);
+
+        var retrieved = this.Graph.Relationships<Knows>()
+            .FirstOrDefault();
+
+        Assert.NotNull(retrieved);
+        Assert.IsType<KnowsWell>(retrieved);
+        Assert.Equal(knowsWell.Id, retrieved.Id);
+        Assert.Equal(knowsWell.SourceId, retrieved.SourceId);
+        Assert.Equal(knowsWell.TargetId, retrieved.TargetId);
+        Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
+        Assert.Equal(knowsWell.Since, retrieved.Since);
+        Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
+    }
+
 }

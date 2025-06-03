@@ -711,16 +711,45 @@ internal class CypherExpressionBuilder
                 }
 
                 // Generate different patterns based on query root type
-                var label = Neo4jTypeManager.GetLabel(elementType);
                 if (context.QueryRootType == GraphQueryContext.QueryRootType.Relationship)
                 {
-                    // For relationship queries, generate: ()-[r:type]->()
-                    context.Match.Append($"()-[{context.CurrentAlias}:{label}]->()");
+                    // For relationship queries, need inheritance support too
+                    var labels = Neo4jTypeManager.GetLabelsForAssignableTypes(elementType).ToList();
+
+                    if (labels.Count == 1)
+                    {
+                        // Single label case: ()-[r:type]->()
+                        context.Match.Append($"()-[{context.CurrentAlias}:{labels.First()}]->()");
+                    }
+                    else
+                    {
+                        // Multiple labels case: Generate pattern without label restriction
+                        // The WHERE clause will be added later in BuildCypherQuery for inheritance
+                        context.Match.Append($"()-[{context.CurrentAlias}]->()");
+
+                        // Store the labels for later use in WHERE clause
+                        context.InheritanceLabels = labels;
+                    }
                 }
                 else
                 {
-                    // For node queries (default), generate: (n:type)
-                    context.Match.Append($"({context.CurrentAlias}:{label})");
+                    // For node queries (default), need inheritance support
+                    var labels = Neo4jTypeManager.GetLabelsForAssignableTypes(elementType).ToList();
+
+                    if (labels.Count == 1)
+                    {
+                        // Single label case: (n:type)
+                        context.Match.Append($"({context.CurrentAlias}:{labels.First()})");
+                    }
+                    else
+                    {
+                        // Multiple labels case: Generate pattern without label restriction
+                        // The WHERE clause will be added later in BuildCypherQuery for inheritance
+                        context.Match.Append($"({context.CurrentAlias})");
+
+                        // Store the labels for later use in WHERE clause
+                        context.InheritanceLabels = labels;
+                    }
                 }
                 break;
             case ConstantExpression constant:
@@ -1499,8 +1528,23 @@ internal class CypherExpressionBuilder
                 }
                 else
                 {
-                    // For node queries (default), generate: MATCH (n:type)
-                    query.Append("MATCH ").AppendLine($"({context.CurrentAlias}:{label})");
+                    // For node queries (default), generate inheritance-aware MATCH
+                    var labels = Neo4jTypeManager.GetLabelsForAssignableTypes(context.RootType).ToList();
+
+                    if (labels.Count == 1)
+                    {
+                        // Single label case: MATCH (n:type)
+                        query.Append("MATCH ").AppendLine($"({context.CurrentAlias}:{labels.First()})");
+                    }
+                    else
+                    {
+                        // Multiple labels case: MATCH (n) WHERE n:type1 OR n:type2 OR ...
+                        query.Append("MATCH ").Append($"({context.CurrentAlias})").AppendLine();
+                        query.Append("WHERE ");
+
+                        var labelConditions = labels.Select(l => $"{context.CurrentAlias}:{l}");
+                        query.AppendLine(string.Join(" OR ", labelConditions));
+                    }
                 }
             }
             else
@@ -1509,10 +1553,26 @@ internal class CypherExpressionBuilder
             }
         }
 
-        // WHERE clause
+        // WHERE clause - handle inheritance labels and existing WHERE conditions
+        var whereConditions = new List<string>();
+
+        // Add inheritance label conditions if they exist
+        if (context.InheritanceLabels != null && context.InheritanceLabels.Count > 1)
+        {
+            var labelConditions = context.InheritanceLabels.Select(l => $"{context.CurrentAlias}:{l}");
+            whereConditions.Add($"({string.Join(" OR ", labelConditions)})");
+        }
+
+        // Add existing WHERE conditions
         if (context.Where.Length > 0)
         {
-            query.Append("WHERE ").AppendLine(context.Where.ToString());
+            whereConditions.Add(context.Where.ToString());
+        }
+
+        // Combine all WHERE conditions
+        if (whereConditions.Count > 0)
+        {
+            query.Append("WHERE ").AppendLine(string.Join(" AND ", whereConditions));
         }
 
         // WITH clause for grouping and aggregations
@@ -2637,12 +2697,33 @@ internal class CypherExpressionBuilder
                 }
             }
         }
+
+        // Determine the actual type from the node's labels (inheritance support)
+        Type actualType = entityType;
+        foreach (var label in node.Labels)
+        {
+            try
+            {
+                var candidateType = Neo4jTypeManager.GetTypeForLabel(label, entityType);
+                // Use the most specific type (the one that's furthest down the inheritance hierarchy)
+                if (actualType.IsAssignableFrom(candidateType))
+                {
+                    actualType = candidateType;
+                }
+            }
+            catch (GraphException)
+            {
+                // This label doesn't correspond to a type assignable to entityType, skip it
+                continue;
+            }
+        }
+
         // Regular handling
-        var entity = Activator.CreateInstance(entityType);
+        var entity = Activator.CreateInstance(actualType);
         if (entity == null) return null;
 
         // Map properties from the Neo4j node to the entity
-        var properties = entityType.GetProperties();
+        var properties = actualType.GetProperties();
         foreach (var property in properties)
         {
             if (node.Properties.TryGetValue(property.Name, out var value))
@@ -2659,12 +2740,24 @@ internal class CypherExpressionBuilder
     {
         try
         {
-            // Create an instance of the entity type
-            var entity = Activator.CreateInstance(entityType);
+            // Determine the actual type from the relationship's type (inheritance support)
+            Type actualType = entityType;
+            try
+            {
+                actualType = Neo4jTypeManager.GetTypeForLabel(relationship.Type, entityType);
+            }
+            catch (GraphException)
+            {
+                // If no specific type matches, fallback to the requested type
+                actualType = entityType;
+            }
+
+            // Create an instance of the actual type
+            var entity = Activator.CreateInstance(actualType);
             if (entity == null) return null;
 
             // Map properties from the Neo4j relationship to the entity
-            var properties = entityType.GetProperties();
+            var properties = actualType.GetProperties();
             foreach (var property in properties)
             {
                 if (relationship.Properties.TryGetValue(property.Name, out var value))

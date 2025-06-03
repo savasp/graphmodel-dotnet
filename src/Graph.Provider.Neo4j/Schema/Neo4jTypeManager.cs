@@ -72,6 +72,30 @@ internal static class Neo4jTypeManager
     }
 
     /// <summary>
+    /// Gets all Neo4j labels for types that are assignable to the specified base type.
+    /// This includes the base type itself and all derived types.
+    /// </summary>
+    /// <param name="baseType">The base type to find assignable types for</param>
+    /// <returns>A collection of labels for all types assignable to the base type</returns>
+    public static IEnumerable<string> GetLabelsForAssignableTypes(Type baseType)
+    {
+        // Find all types that are assignable to the base type
+        var assignableTypes = AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(a =>
+            {
+                try { return a.GetTypes(); }
+                catch { return Array.Empty<Type>(); }
+            })
+            .Where(t => baseType.IsAssignableFrom(t) && !t.IsAbstract && !t.IsInterface)
+            .ToList();
+
+        // Get labels for all assignable types
+        var labels = assignableTypes.Select(GetLabel).Distinct().ToList();
+
+        return labels;
+    }
+
+    /// <summary>
     /// Finds the .NET type for a given Neo4j label that is assignable to the specified base type.
     /// </summary>
     /// <param name="label">The Neo4j label</param>
@@ -87,9 +111,9 @@ internal static class Neo4jTypeManager
         }
 
         var match = AppDomain.CurrentDomain.GetAssemblies()
-            .SelectMany(a => 
+            .SelectMany(a =>
             {
-                try { return a.GetTypes(); } 
+                try { return a.GetTypes(); }
                 catch { return Array.Empty<Type>(); }
             })
             .Where(t => baseType.IsAssignableFrom(t) && !t.IsAbstract && !t.IsInterface)
