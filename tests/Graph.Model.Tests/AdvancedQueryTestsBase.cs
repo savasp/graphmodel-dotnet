@@ -963,12 +963,8 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         var allKnowsRelationships = this.Graph.Relationships<Knows>().ToList();
         Assert.Equal(2, allKnowsRelationships.Count); // This should pass if relationships are created
 
-        Console.WriteLine($"Alice Id: {alice.Id}");
-        Console.WriteLine($"Bob Id: {bob.Id}");
-        Console.WriteLine($"Charlie Id: {charlie.Id}");
         foreach (var relationship in allKnowsRelationships)
         {
-            Console.WriteLine($"Relationship from {relationship.SourceId} to {relationship.TargetId} since {relationship.Since}");
             Assert.NotNull(relationship.SourceId);
             Assert.NotNull(relationship.TargetId);
         }
@@ -1007,13 +1003,6 @@ public abstract class AdvancedQueryTestsBase : ITestBase
 
         Assert.NotEmpty(paths); // Ensure we have paths
 
-        // Debug: Let's see what paths we got
-        Console.WriteLine($"Total paths found: {paths.Count}");
-        foreach (var path in paths)
-        {
-            Console.WriteLine($"Path: {path.Source.FirstName} -> {path.Target.FirstName}");
-        }
-
         Assert.Equal(2, paths.Count); // Alice knows Bob and Charlie
         Assert.Contains(paths, p => p.Source.FirstName == "Alice" && p.Target.FirstName == "Bob");
         Assert.Contains(paths, p => p.Source.FirstName == "Alice" && p.Target.FirstName == "Charlie");
@@ -1023,13 +1012,6 @@ public abstract class AdvancedQueryTestsBase : ITestBase
             .Where(p => p.FirstName == "Alice")
             .TraversePath<Person, Knows, Person>()
             .ToList();
-
-        // Debug: Let's see what filtered paths we got
-        Console.WriteLine($"Filtered paths found: {filteredPaths.Count}");
-        foreach (var path in filteredPaths)
-        {
-            Console.WriteLine($"Filtered path: {path.Source.FirstName} -> {path.Target.FirstName}");
-        }
 
         Assert.Equal(2, filteredPaths.Count);
 

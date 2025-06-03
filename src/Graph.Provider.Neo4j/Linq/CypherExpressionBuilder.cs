@@ -611,7 +611,6 @@ internal class CypherExpressionBuilder
 
         // Preprocess to detect Last operations
         context.IsLastOperation = DetectLastOperation(expression);
-        Console.WriteLine($"BuildGraphQuery - Detected Last operation: {context.IsLastOperation}");
 
         // Set context information from queryContext if available
         if (queryContext != null)
@@ -1203,7 +1202,6 @@ internal class CypherExpressionBuilder
                     }
                 }
                 context.IsSingleResult = true;
-                Console.WriteLine($"Set IsSingleResult = true for {methodCall.Method.Name}");
                 break;
 
             case "First":
@@ -1221,7 +1219,6 @@ internal class CypherExpressionBuilder
                     }
                 }
                 context.IsSingleResult = true;
-                Console.WriteLine($"Set IsSingleResult = true for {methodCall.Method.Name}");
                 break;
         }
     }
@@ -1521,7 +1518,6 @@ internal class CypherExpressionBuilder
         // WITH clause for grouping and aggregations
         if (!string.IsNullOrEmpty(context.With))
         {
-            Console.WriteLine($"BuildCypherQuery - Adding WITH clause: {context.With}");
             query.AppendLine(context.With);
         }
 
@@ -1532,7 +1528,6 @@ internal class CypherExpressionBuilder
             query.Append("DISTINCT ");
         }
         query.AppendLine(context.Return ?? context.CurrentAlias);
-        Console.WriteLine($"BuildCypherQuery - RETURN clause: {context.Return ?? context.CurrentAlias}");
 
         // ORDER BY clause
         if (context.OrderBy.Length > 0)
@@ -1551,7 +1546,6 @@ internal class CypherExpressionBuilder
         }
 
         var finalQuery = query.ToString();
-        Console.WriteLine($"BuildCypherQuery - Final query: {finalQuery}");
         return finalQuery;
     }
 
@@ -1564,8 +1558,6 @@ internal class CypherExpressionBuilder
 
     private void ProcessSelectClause(LambdaExpression selector, CypherBuildContext context)
     {
-        Console.WriteLine($"ProcessSelectClause - IsGroupByQuery: {context.IsGroupByQuery}");
-
         // For simple selectors like x => x, just return the current alias
         if (selector.Body is ParameterExpression)
         {
@@ -1605,16 +1597,10 @@ internal class CypherExpressionBuilder
         {
             var returnProjections = new List<string>();
 
-            Console.WriteLine($"ProcessTraversalPathGroupBySelect - Processing {newExpr.Arguments.Count} arguments");
-            Console.WriteLine($"Members: {string.Join(", ", newExpr.Members?.Select(m => m.Name) ?? ["null"])}");
-
             for (int i = 0; i < newExpr.Arguments.Count; i++)
             {
                 var argument = newExpr.Arguments[i];
                 var memberName = newExpr.Members?[i].Name ?? $"Field{i}";
-
-                Console.WriteLine($"Processing member {memberName}, argument type: {argument.GetType().Name}");
-                Console.WriteLine($"  Full expression: {argument}");
 
                 bool handled = false;
 
@@ -1623,7 +1609,6 @@ internal class CypherExpressionBuilder
                     // g.Key -> the grouped node
                     returnProjections.Add($"{memberName}: {context.GroupByKey ?? "n"}");
                     handled = true;
-                    Console.WriteLine($"  Handled as Key access");
                 }
                 else if (argument is MemberExpression me && me.Expression is MemberExpression keyAccess &&
                          keyAccess.Member.Name == "Key")
@@ -1632,17 +1617,14 @@ internal class CypherExpressionBuilder
                     var propertyName = me.Member.Name;
                     returnProjections.Add($"{memberName}: {context.GroupByKey ?? "n"}.{propertyName}");
                     handled = true;
-                    Console.WriteLine($"  Handled as Key.Property access");
                 }
                 else if (IsGroupingAggregation(argument, out var aggregationType))
                 {
-                    Console.WriteLine($"  Detected aggregation type: {aggregationType}");
                     switch (aggregationType)
                     {
                         case "Count":
                             returnProjections.Add($"{memberName}: size(paths)");
                             handled = true;
-                            Console.WriteLine($"  Added Count projection: {memberName}: size(paths)");
                             break;
 
                         case "Average":
@@ -1655,7 +1637,6 @@ internal class CypherExpressionBuilder
                                     var avgExpr = BuildTraversalPathListComprehensionValue(avgLambda, context);
                                     returnProjections.Add($"{memberName}: reduce(sum = 0.0, item IN {avgExpr} | sum + item) / toFloat(size({avgExpr}))");
                                     handled = true;
-                                    Console.WriteLine($"  Added Average projection: {memberName}");
                                 }
                             }
                             break;
@@ -1670,7 +1651,6 @@ internal class CypherExpressionBuilder
                                     var maxExpr = BuildTraversalPathListComprehensionValue(maxLambda, context);
                                     returnProjections.Add($"{memberName}: reduce(max = -999999, item IN {maxExpr} | CASE WHEN item > max THEN item ELSE max END)");
                                     handled = true;
-                                    Console.WriteLine($"  Added Max projection: {memberName}");
                                 }
                             }
                             break;
@@ -1685,7 +1665,6 @@ internal class CypherExpressionBuilder
                                     var minExpr = BuildTraversalPathListComprehensionValue(minLambda, context);
                                     returnProjections.Add($"{memberName}: reduce(min = 999999, item IN {minExpr} | CASE WHEN item < min THEN item ELSE min END)");
                                     handled = true;
-                                    Console.WriteLine($"  Added Min projection: {memberName}");
                                 }
                             }
                             break;
@@ -1694,8 +1673,6 @@ internal class CypherExpressionBuilder
 
                 if (!handled && argument is MethodCallExpression methodCall)
                 {
-                    Console.WriteLine($"  Checking method call: {methodCall.Method.Name}");
-
                     // Handle chained operations like Where().Select().ToList()
                     if (methodCall.Method.Name == "ToList" && methodCall.Arguments.Count == 1)
                     {
@@ -1707,7 +1684,6 @@ internal class CypherExpressionBuilder
                             {
                                 returnProjections.Add($"{memberName}: {chainResult}");
                                 handled = true;
-                                Console.WriteLine($"    Processed method chain: {chainResult}");
                             }
                         }
                     }
@@ -1719,10 +1695,6 @@ internal class CypherExpressionBuilder
                         if (methodCall.Arguments[0] is MethodCallExpression selectCall &&
                             selectCall.Method.Name == "Select")
                         {
-                            Console.WriteLine($"    Found Select().ToList() pattern");
-                            Console.WriteLine($"    Select method is static: {selectCall.Method.IsStatic}");
-                            Console.WriteLine($"    Select arguments count: {selectCall.Arguments.Count}");
-
                             // For extension method Select, it's a static method with 2 args
                             LambdaExpression? selectLambda = null;
                             bool isGroupingSource = false;
@@ -1746,15 +1718,9 @@ internal class CypherExpressionBuilder
 
                             if (isGroupingSource && selectLambda != null)
                             {
-                                Console.WriteLine($"    Confirmed grouping source and extracted lambda");
                                 var listExpr = BuildTraversalPathListComprehension(selectLambda, context);
                                 returnProjections.Add($"{memberName}: {listExpr}");
                                 handled = true;
-                                Console.WriteLine($"    Added projection: {memberName}: {listExpr}");
-                            }
-                            else
-                            {
-                                Console.WriteLine($"    Failed to process: isGroupingSource={isGroupingSource}, lambda={selectLambda}");
                             }
                         }
                     }
@@ -1763,16 +1729,15 @@ internal class CypherExpressionBuilder
                 // Fallback: try to build a general Cypher expression
                 if (!handled)
                 {
-                    Console.WriteLine($"  Member {memberName} was not handled by specific cases, trying fallback");
                     try
                     {
                         var cypherExpr = BuildCypherExpression(argument, context.GroupByKey ?? context.CurrentAlias, context);
                         returnProjections.Add($"{memberName}: {cypherExpr}");
-                        Console.WriteLine($"  Fallback succeeded: {memberName}: {cypherExpr}");
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                        Console.WriteLine($"  Fallback failed: {ex.Message}");
+                        // TODO: Check if this the right thing to do!
+
                         // For failed projections, set default value based on expected type
                         if (memberName.Contains("Age") || memberName.Contains("Friend"))
                         {
@@ -1788,7 +1753,6 @@ internal class CypherExpressionBuilder
 
             // Update the RETURN clause
             context.Return = $"{{ {string.Join(", ", returnProjections)} }}";
-            Console.WriteLine($"Final RETURN clause: {context.Return}");
         }
     }
 
@@ -1980,10 +1944,6 @@ internal class CypherExpressionBuilder
 
     private void ProcessGroupBySelectClause(LambdaExpression selector, CypherBuildContext context)
     {
-        Console.WriteLine($"ProcessGroupBySelectClause called");
-        Console.WriteLine($"GroupByKey: '{context.GroupByKey}'");
-        Console.WriteLine($"IsTraversalPathGroupBy: {context.IsTraversalPathGroupBy}");
-
         // Clear IsPathResult since we're now projecting to a different shape
         context.IsPathResult = false;
 
@@ -2000,8 +1960,6 @@ internal class CypherExpressionBuilder
 
         if (selector.Body is NewExpression newExpr)
         {
-            Console.WriteLine($"Processing NewExpression with {newExpr.Arguments.Count} arguments");
-
             // Handle anonymous type projections like new { Name = g.Key, Count = g.Count() }
             var withClauseItems = new List<string>();
             var returnProjections = new List<string>();
@@ -2012,19 +1970,14 @@ internal class CypherExpressionBuilder
                 var memberName = newExpr.Members?[i].Name ?? $"Field{i}";
                 var aliasName = memberName.ToLower();
 
-                Console.WriteLine($"Processing argument {i}: {argument.GetType().Name}, member: {memberName}");
-                Console.WriteLine($"  Expression: {argument}");
-
                 if (IsGroupingKeyAccess(argument))
                 {
-                    Console.WriteLine($"  - Is Key access");
                     // g.Key -> use the GroupBy key expression
                     withClauseItems.Add($"{context.GroupByKey} as {aliasName}");
                     returnProjections.Add($"{memberName}: {aliasName}");
                 }
                 else if (IsGroupingAggregation(argument, out var aggregationType))
                 {
-                    Console.WriteLine($"  - Is aggregation: {aggregationType}");
                     // g.Count(), g.Sum(x => x.Property), etc.
                     var aggregationExpr = BuildGroupingAggregation(argument, aggregationType, context);
                     withClauseItems.Add($"{aggregationExpr} as {aliasName}");
@@ -2032,7 +1985,6 @@ internal class CypherExpressionBuilder
                 }
                 else
                 {
-                    Console.WriteLine($"  - Unknown expression type, falling back to client-side");
                     // Other expressions - for now, these should be client-side
                     context.ClientSideProjection = selector;
                     return;
@@ -2041,15 +1993,12 @@ internal class CypherExpressionBuilder
 
             // Build the WITH clause for grouping
             context.With = $"WITH {string.Join(", ", withClauseItems)}";
-            Console.WriteLine($"Setting WITH clause: {context.With}");
 
             // Build the final RETURN clause
             context.Return = $"{{ {string.Join(", ", returnProjections)} }}";
-            Console.WriteLine($"Setting RETURN clause: {context.Return}");
         }
         else
         {
-            Console.WriteLine($"Not a NewExpression, selector body type: {selector.Body.GetType().Name}");
             // For non-anonymous types, fall back to client-side projection
             context.ClientSideProjection = selector;
         }
@@ -2472,10 +2421,6 @@ internal class CypherExpressionBuilder
         // If we have client-side projection, we need to fetch the original entity type instead of the projected type
         Type actualEntityType = elementType;
 
-        Console.WriteLine($"ExecuteQueryAsync - elementType: {elementType}, actualEntityType: {actualEntityType}");
-        Console.WriteLine($"Cypher: {cypher}");
-        Console.WriteLine($"IsGroupByQuery: {context?.IsGroupByQuery}, IsPathResult: {context?.IsPathResult}");
-
         if (context?.ClientSideProjection != null)
         {
             // For client-side projection, find the source entity type from the lambda parameter
@@ -2509,15 +2454,12 @@ internal class CypherExpressionBuilder
 
         await foreach (var record in cursor)
         {
-            Console.WriteLine($"Processing record with {record.Keys.Count} keys: {string.Join(", ", record.Keys)}");
-
             object? item = null;
 
             if (isPathResult)
             {
                 // Handle path results - create TraversalPath instances that implement IGraphPath
                 item = ConvertPathResult(record, conversionType);
-                Console.WriteLine($"Path result conversion: {(item != null ? "success" : "failed")}");
             }
             else if (isGroupByResult && record.Keys.Count == 1)
             {
@@ -2525,18 +2467,10 @@ internal class CypherExpressionBuilder
                 var key = record.Keys.First();
                 var value = record[key];
 
-                Console.WriteLine($"GroupBy result - key: {key}, value type: {value?.GetType().Name}");
-
                 if (value is IDictionary<string, object> map)
                 {
-                    Console.WriteLine($"Map contents: {string.Join(", ", map.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
                     // For GroupBy results, we need to create the anonymous type from the map
                     item = CreateAnonymousTypeInstance(map, actualEntityType);
-                    Console.WriteLine($"Anonymous type creation: {(item != null ? "success" : "failed")}");
-                }
-                else
-                {
-                    Console.WriteLine($"Value is not a map, it's: {value?.GetType().Name}");
                 }
             }
             else
@@ -2578,15 +2512,8 @@ internal class CypherExpressionBuilder
             if (item != null)
             {
                 items.Add(item);
-                Console.WriteLine($"Added item to results: {item}");
-            }
-            else
-            {
-                Console.WriteLine("Item was null, not added to results");
             }
         }
-
-        Console.WriteLine($"Total items: {items.Count}");
 
         // Apply client-side projection if needed
         if (context?.ClientSideProjection != null)
@@ -2599,10 +2526,8 @@ internal class CypherExpressionBuilder
         {
             if (items.Count == 0)
             {
-                Console.WriteLine("Returning null - no items found");
                 return null;
             }
-            Console.WriteLine($"Returning single result: {items[0]}");
             return items[0];
         }
 
@@ -2975,16 +2900,12 @@ internal class CypherExpressionBuilder
 
     private static object? ConvertPathResult(global::Neo4j.Driver.IRecord record, Type elementType)
     {
-        Console.WriteLine($"ConvertPathResult - elementType: {elementType.FullName}");
-        Console.WriteLine($"Record keys: {string.Join(", ", record.Keys)}");
-
         // Check if we have the expected three columns with aliases: source, relationship, target
         if (record.Keys.Count == 3 &&
             record.Keys.Contains("source") &&
             record.Keys.Contains("relationship") &&
             record.Keys.Contains("target"))
         {
-            Console.WriteLine("Using explicit source/relationship/target columns");
             return ConvertPathColumnsToTraversalPath(record, elementType, "source", "relationship", "target");
         }
 
@@ -2992,7 +2913,6 @@ internal class CypherExpressionBuilder
         if (record.Keys.Count == 3)
         {
             var keys = record.Keys.ToList();
-            Console.WriteLine($"Analyzing 3-column pattern: {string.Join(", ", keys)}");
 
             // Try to identify the pattern: should be node, relationship, node
             string? sourceKey = null;
@@ -3003,45 +2923,32 @@ internal class CypherExpressionBuilder
             {
                 var key = keys[i];
                 var value = record[key];
-                Console.WriteLine($"  Key '{key}': {value?.GetType().Name} - {value}");
 
                 if (value is global::Neo4j.Driver.INode && sourceKey == null)
                 {
                     sourceKey = key;
-                    Console.WriteLine($"    Identified as source key");
                 }
                 else if (value is global::Neo4j.Driver.IRelationship relationshipValue)
                 {
                     relationshipKey = key;
-                    Console.WriteLine($"    Identified as relationship key");
                 }
                 else if (value is IList relationshipList && relationshipList.Count > 0 && relationshipList[0] is global::Neo4j.Driver.IRelationship)
                 {
                     relationshipKey = key;
-                    Console.WriteLine($"    Identified as relationship list key with {relationshipList.Count} items");
                 }
                 else if (value is global::Neo4j.Driver.INode && sourceKey != null && relationshipKey != null)
                 {
                     targetKey = key;
-                    Console.WriteLine($"    Identified as target key");
                 }
             }
-
-            Console.WriteLine($"Key identification result: source='{sourceKey}', relationship='{relationshipKey}', target='{targetKey}'");
 
             // If we found all three components, convert the path
             if (sourceKey != null && relationshipKey != null && targetKey != null)
             {
-                Console.WriteLine("All keys identified, proceeding with conversion");
                 return ConvertPathColumnsToTraversalPath(record, elementType, sourceKey, relationshipKey, targetKey);
-            }
-            else
-            {
-                Console.WriteLine("Failed to identify all required keys");
             }
         }
 
-        Console.WriteLine("No matching pattern found for path conversion");
         return null;
     }
 
@@ -3067,7 +2974,6 @@ internal class CypherExpressionBuilder
 
             if (pathInterface == null)
             {
-                Console.WriteLine($"Unknown path type: {elementType}");
                 return null;
             }
 
@@ -3079,7 +2985,6 @@ internal class CypherExpressionBuilder
             // Convert source node
             if (!(record[sourceKey] is global::Neo4j.Driver.INode sourceNode))
             {
-                Console.WriteLine($"Source key '{sourceKey}' is not a node");
                 return null;
             }
             var source = ConvertNodeToEntity(sourceNode, sourceType);
@@ -3087,7 +2992,6 @@ internal class CypherExpressionBuilder
             // Convert target node
             if (!(record[targetKey] is global::Neo4j.Driver.INode targetNode))
             {
-                Console.WriteLine($"Target key '{targetKey}' is not a node");
                 return null;
             }
             var target = ConvertNodeToEntity(targetNode, targetType);
@@ -3113,7 +3017,6 @@ internal class CypherExpressionBuilder
 
             if (relationship == null)
             {
-                Console.WriteLine($"Failed to convert relationship from key '{relationshipKey}'");
                 return null;
             }
 
@@ -3122,17 +3025,14 @@ internal class CypherExpressionBuilder
             if (ctor != null && source != null && target != null)
             {
                 var result = ctor.Invoke(new[] { source, relationship, target });
-                Console.WriteLine($"Successfully created path instance: {result}");
                 return result;
             }
 
-            Console.WriteLine("Failed to find constructor or null components");
             return null;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to convert path columns to path: {ex.Message}");
-            return null;
+            throw new GraphException(ex.Message, ex);
         }
     }
 
