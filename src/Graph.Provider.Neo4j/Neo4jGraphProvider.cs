@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Linq.Expressions;
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Provider.Neo4j.Conversion;
 using Cvoya.Graph.Provider.Neo4j.Entities;
@@ -110,6 +109,19 @@ public class Neo4jGraphProvider : IGraph
 
         _logger?.LogInformation("Neo4jGraphProvider initialized with existing driver for database '{Database}'", databaseName);
     }
+
+    #region Neo4j-specific methods
+
+    /// <summary>
+    /// Creates the database if it does not already exist.
+    /// </summary>
+    public async Task CreateDatabaseIfNotExists()
+    {
+        using var session = _driver.AsyncSession(o => o.WithDatabase("system"));
+        await session.RunAsync($"CREATE DATABASE `{_databaseName}` IF NOT EXISTS");
+    }
+
+    #endregion
 
     #region IGraph Implementation
 
