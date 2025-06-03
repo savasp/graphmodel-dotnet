@@ -1,9 +1,11 @@
-# Roslyn Analyzer for `Graph.Model`
+## Release 0.2
 
-## Release 1.0.0
+### New Rules
 
-- GM001: Only classes can implement INode/IRelationship
-- GM002: Must have parameterless constructor
-- GM003: Properties must have public getters and setters
-- GM004: Unsupported property type
-- GM005: Invalid complex type property (INode only)
+| Rule ID | Category | Severity | Notes                                          |
+| ------- | -------- | -------- | ---------------------------------------------- |
+| GM001   | Usage    | Error    | GM001_AnalyzerName, [Documentation](README.md) |
+| GM002   | Usage    | Error    | GM002_AnalyzerName, [Documentation](README.md) |
+| GM003   | Usage    | Error    | GM003_AnalyzerName, [Documentation](README.md) |
+| GM004   | Usage    | Error    | GM004_AnalyzerName, [Documentation](README.md) |
+| GM005   | Usage    | Error    | GM005_AnalyzerName, [Documentation](README.md) |
