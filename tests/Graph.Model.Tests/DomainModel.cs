@@ -25,6 +25,12 @@ public class Person : INode
     public string Bio { get; set; } = string.Empty;
 }
 
+public class Manager : Person
+{
+    public string Department { get; set; } = string.Empty;
+    public int TeamSize { get; set; } = 0;
+}
+
 public class Address : INode
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
