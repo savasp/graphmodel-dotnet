@@ -64,7 +64,7 @@ internal class CypherExpressionBuilder
         return null;
     }
 
-    public static string BuildCypherExpression(Expression expr, string varName)
+    public static string BuildCypherExpression(Expression expr, string varName, CypherBuildContext? context = null)
     {
         switch (expr)
         {
@@ -74,6 +74,23 @@ internal class CypherExpressionBuilder
                 return varName;
 
             case MemberExpression me:
+                if (IsClosureAccess(me))
+                {
+                    // Evaluate the closure value
+                    var value = EvaluateMemberExpression(me);
+                    // If we have a context, use it to store parameters
+                    if (context != null)
+                    {
+                        var paramName = AddParameter(value, context);
+                        return $"${paramName}";
+                    }
+                    else
+                    {
+                        // Fallback: inline the value directly when no context is available
+                        return FormatValueForCypher(value);
+                    }
+                }
+
                 // Handle DateTime static properties
                 if (me.Type == typeof(DateTime) && me.Member is PropertyInfo propertyInfo && propertyInfo.DeclaringType == typeof(DateTime))
                 {
@@ -1445,7 +1462,7 @@ internal class CypherExpressionBuilder
     private void ProcessWhereClause(Expression expression, CypherBuildContext context)
     {
         // Convert expression to Cypher WHERE clause syntax
-        var cypherCondition = BuildCypherExpression(expression, context.CurrentAlias);
+        var cypherCondition = BuildCypherExpression(expression, context.CurrentAlias, context);
         context.Where.Append(cypherCondition);
     }
 
@@ -1479,7 +1496,7 @@ internal class CypherExpressionBuilder
         }
 
         // For simple projections, build the Cypher expression
-        var projection = BuildCypherExpression(selector.Body, context.CurrentAlias);
+        var projection = BuildCypherExpression(selector.Body, context.CurrentAlias, context);
         context.Return = projection;
     }
 
@@ -1790,7 +1807,7 @@ internal class CypherExpressionBuilder
 
     private void ProcessOrderByClause(LambdaExpression selector, bool descending, CypherBuildContext context)
     {
-        var orderExpression = BuildCypherExpression(selector.Body, context.CurrentAlias);
+        var orderExpression = BuildCypherExpression(selector.Body, context.CurrentAlias, context);
 
         if (context.OrderBy.Length > 0)
             context.OrderBy.Append(", ");
@@ -2378,5 +2395,34 @@ internal class CypherExpressionBuilder
         {
             throw new GraphException(ex.Message, ex);
         }
+    }
+
+    private static bool IsClosureAccess(MemberExpression memberExpr)
+    {
+        // Walk up the expression tree to find the root
+        Expression current = memberExpr;
+        while (current is MemberExpression member && member.Expression != null)
+        {
+            current = member.Expression;
+        }
+
+        // If the root is a ConstantExpression, it's a closure
+        return current is ConstantExpression;
+    }
+
+    private static object? EvaluateMemberExpression(MemberExpression memberExpr)
+    {
+        // Convert to object and compile to get the value
+        var objectMember = Expression.Convert(memberExpr, typeof(object));
+        var getterLambda = Expression.Lambda<Func<object?>>(objectMember);
+        var getter = getterLambda.Compile();
+        return getter();
+    }
+
+    private static string AddParameter(object? value, CypherBuildContext context)
+    {
+        var paramName = $"p{context.Parameters.Count}";
+        context.Parameters[paramName] = value;
+        return paramName;
     }
 }

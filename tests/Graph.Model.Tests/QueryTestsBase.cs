@@ -118,4 +118,31 @@ public abstract class QueryTestsBase : ITestBase
         var count = this.Graph.Nodes<Person>().Count();
         Assert.True(count >= 2);
     }
+
+    [Fact]
+    public async Task CanQueryWithLocalScopeVariableCapture()
+    {
+        var p1 = new Person { FirstName = "A" };
+        await this.Graph.CreateNode(p1);
+
+        var localName = "A";
+
+        var a = this.Graph.Nodes<Person>().Where(p => p.FirstName == localName).FirstOrDefault();
+        Assert.NotNull(a);
+        Assert.Equal(localName, a.FirstName);
+    }
+
+    [Fact]
+    public async Task CanQueryWithLocalScopeObjectCapture()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNode(p2);
+
+        var a = this.Graph.Nodes<Person>().Where(p => p.FirstName == p1.FirstName).FirstOrDefault();
+        Assert.NotNull(a);
+        Assert.Equal(p1.FirstName, a.FirstName);
+    }
+
 }
