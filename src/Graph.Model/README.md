@@ -122,7 +122,7 @@ The library provides `IGraphQueryable<T>` which extends standard LINQ with graph
 
 ### Operation Options
 
-`GraphOperationOptions` provides fine-grained control over graph operations including cascade delete behavior and other provider-specific settings.
+`GraphOperationOptions` provides fine-grained control over graph operations, particularly for cascade delete behavior and other provider-specific settings. These options are primarily used internally by providers and for configuring deletion behavior.
 
 ## Documentation
 
