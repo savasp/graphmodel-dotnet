@@ -13,7 +13,7 @@ dotnet add package Cvoya.Graph.Model
 You'll also need a graph provider implementation, such as:
 
 ```bash
-dotnet add package Cvoya.Graph.Provider.Neo4j
+dotnet add package Cvoya.Graph.Model.Neo4j
 ```
 
 ## Basic Concepts

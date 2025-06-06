@@ -12,131 +12,157 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Linq.Expressions;
+
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Enhanced queryable interface for graph operations that extends IQueryable&lt;T&gt; 
-/// with graph-specific functionality while maintaining full LINQ compatibility.
+/// Represents a queryable graph data source that supports LINQ operations.
+/// This interface extends IQueryable&lt;T&gt; with graph-specific functionality.
 /// </summary>
-/// <typeparam name="T">The type of elements in the query</typeparam>
-public interface IGraphQueryable<T> : IQueryable<T> where T : class
+/// <typeparam name="T">The type of elements in the graph queryable</typeparam>
+public interface IGraphQueryable<T> : IQueryable<T>
 {
     /// <summary>
-    /// Gets the transaction context for this query, if any
+    /// Gets the graph instance associated with this queryable
     /// </summary>
-    IGraphTransaction? Transaction { get; }
+    IGraph Graph { get; }
 
     /// <summary>
-    /// Gets metadata about the query execution context
+    /// Gets the graph query provider that handles graph-specific operations
     /// </summary>
-    IGraphQueryContext Context { get; }
+    new IGraphQueryProvider Provider { get; }
 
     /// <summary>
-    /// Applies a specific traversal depth to this query
+    /// Asynchronously executes the query and returns the results as a list.
     /// </summary>
-    /// <param name="depth">The maximum traversal depth</param>
-    /// <returns>A new query with the specified depth</returns>
-    IGraphQueryable<T> WithDepth(int depth);
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains a list of elements of type T.</returns>
+    Task<List<T>> ToListAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Applies a range of traversal depths to this query
+    /// Asynchronously executes the query and returns the first element of the sequence, or a default value if no element is found.
     /// </summary>
-    /// <param name="minDepth">The minimum traversal depth</param>
-    /// <param name="maxDepth">The maximum traversal depth</param>
-    /// <returns>A new query with the specified depth range</returns>
-    IGraphQueryable<T> WithDepth(int minDepth, int maxDepth);
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the first element of the sequence, or a default value if no element is found.</returns>
+    Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Executes this query within a specific transaction context
+    /// Asynchronously executes the query and returns the first element of the sequence.
     /// </summary>
-    /// <param name="transaction">The transaction to use</param>
-    /// <returns>A new query bound to the specified transaction</returns>
-    IGraphQueryable<T> InTransaction(IGraphTransaction transaction);
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the first element of the sequence.</returns>
+    Task<T> FirstAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Provides query optimization hints to the underlying provider
+    /// Asynchronously checks if any elements in the sequence satisfy the specified condition.
     /// </summary>
-    /// <param name="hint">The optimization hint</param>
-    /// <returns>A new query with the specified hint</returns>
-    IGraphQueryable<T> WithHint(string hint);
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains true if any elements satisfy the condition; otherwise, false.</returns>
+    Task<bool> AnyAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Provides multiple query optimization hints to the underlying provider
+    /// Asynchronously counts the number of elements in the sequence.
     /// </summary>
-    /// <param name="hints">The optimization hints</param>
-    /// <returns>A new query with the specified hints</returns>
-    IGraphQueryable<T> WithHints(params string[] hints);
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the number of elements in the sequence.</returns>
+    Task<int> CountAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Suggests using a specific index for this query
+    /// Asynchronously checks if the sequence is empty.
     /// </summary>
-    /// <param name="indexName">The name of the index to use</param>
-    /// <returns>A new query with the index hint</returns>
-    IGraphQueryable<T> UseIndex(string indexName);
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains true if the sequence is empty; otherwise, false.</returns>
+    async Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)
+        => !await AnyAsync(cancellationToken);
 
     /// <summary>
-    /// Initiates a graph traversal from this query
+    /// Asynchronously executes the query and returns a single element of the sequence, or a default value if no element is found.
+    /// If more than one element is found, an exception is thrown.
     /// </summary>
-    /// <typeparam name="TSource">The type of source nodes</typeparam>
-    /// <typeparam name="TRel">The type of relationship to traverse</typeparam>
-    /// <returns>A traversal builder for the specified relationship type</returns>
-    IGraphTraversal<TSource, TRel> Traverse<TSource, TRel>()
-        where TSource : class, INode, new()
-        where TRel : class, IRelationship, new();
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the single element of the sequence, or a default value if no element is found.</returns>
+    async Task<T?> SingleOrDefaultAsync(CancellationToken cancellationToken = default)
+    {
+        var list = await ToListAsync(cancellationToken);
+        return list.Count == 1 ? list[0] : default;
+    }
 
     /// <summary>
-    /// Initiates graph pattern matching from this query
+    /// Asynchronously executes the query and returns the single element of the sequence.
+    /// If more than one element or no elements are found, an exception is thrown.
     /// </summary>
-    /// <param name="pattern">The pattern to match</param>
-    /// <returns>A pattern matcher for complex graph patterns</returns>
-    IGraphPattern<TEntity> Match<TEntity>(string pattern) where TEntity : class, IEntity, new();
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the single element of the sequence.</returns>
+    Task<T> SingleAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates a graph query builder for complex multi-step queries
+    /// Asynchronously executes the query and returns the last element of the sequence.
     /// </summary>
-    /// <returns>A fluent query builder</returns>
-    IGraphQueryBuilder<TEntity> Query<TEntity>() where TEntity : class, IEntity, new();
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the last element of the sequence.</returns>
+    Task<T> LastAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Enables query result caching for this query
+    /// Asynchronously executes the query and returns the last element of the sequence, or a default value if no element is found.
     /// </summary>
-    /// <param name="duration">How long to cache results</param>
-    /// <returns>A new query with caching enabled</returns>
-    IGraphQueryable<T> Cached(TimeSpan duration);
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the last element of the sequence, or a default value if no element is found.</returns>
+    Task<T?> LastOrDefaultAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Enables query result caching with a custom cache key
+    /// Asynchronously determines whether all elements in the sequence satisfy a condition.
     /// </summary>
-    /// <param name="cacheKey">The cache key to use</param>
-    /// <param name="duration">How long to cache results</param>
-    /// <returns>A new query with caching enabled</returns>
-    IGraphQueryable<T> Cached(string cacheKey, TimeSpan duration);
+    /// <param name="predicate">A function to test each element for a condition.</param>
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains true if all elements satisfy the condition; otherwise, false.</returns>
+    Task<bool> AllAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Includes additional graph metadata in the query results
+    /// Asynchronously computes the count of elements in the sequence that satisfy a condition.
     /// </summary>
-    /// <param name="metadata">The types of metadata to include</param>
-    /// <returns>A new query that includes the specified metadata</returns>
-    IGraphQueryable<T> IncludeMetadata(GraphMetadataTypes metadata);
+    /// <param name="predicate">A function to test each element for a condition.</param>
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the count of elements that satisfy the condition.</returns>
+    Task<int> CountAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Sets query execution timeout
+    /// Asynchronously determines whether any element in the sequence satisfies a condition.
     /// </summary>
-    /// <param name="timeout">The maximum execution time</param>
-    /// <returns>A new query with the specified timeout</returns>
-    IGraphQueryable<T> WithTimeout(TimeSpan timeout);
+    /// <param name="predicate">A function to test each element for a condition.</param>
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains true if any element satisfies the condition; otherwise, false.</returns>
+    Task<bool> AnyAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Enables profiling and performance monitoring for this query
+    /// Asynchronously returns the maximum value in the sequence.
     /// </summary>
-    /// <returns>A new query with profiling enabled</returns>
-    IGraphQueryable<T> WithProfiling();
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the maximum value in the sequence.</returns>
+    Task<T?> MaxAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Enables cascade delete behavior for this query
+    /// Asynchronously returns the maximum value in the sequence based on a selector function.
     /// </summary>
-    /// <returns>A new query with cascade delete enabled</returns>
-    IGraphQueryable<T> WithCascadeDelete();
+    /// <typeparam name="TResult">The type of the result.</typeparam>
+    /// <param name="selector">A function to extract the value from each element.</param>
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the maximum value in the sequence.</returns>
+    Task<TResult?> MaxAsync<TResult>(Expression<Func<T, TResult>> selector, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Asynchronously returns the minimum value in the sequence.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the minimum value in the sequence.</returns>
+    Task<T?> MinAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Asynchronously returns the minimum value in the sequence based on a selector function.
+    /// </summary>
+    /// <typeparam name="TResult">The type of the result.</typeparam>
+    /// <param name="selector">A function to extract the value from each element.</param>
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the minimum value in the sequence.</returns>
+    Task<TResult?> MinAsync<TResult>(Expression<Func<T, TResult>> selector, CancellationToken cancellationToken = default);
 }
-
-

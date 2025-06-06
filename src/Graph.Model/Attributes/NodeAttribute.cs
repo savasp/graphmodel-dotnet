@@ -32,7 +32,7 @@ namespace Cvoya.Graph.Model;
 /// }
 /// </code>
 /// </example>
-[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = true, Inherited = false)]
 public class NodeAttribute(string label) : Attribute
 {
     /// <summary>

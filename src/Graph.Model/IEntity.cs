@@ -21,11 +21,11 @@ namespace Cvoya.Graph.Model;
 public interface IEntity
 {
     /// <summary>
-    /// Gets or sets the unique identifier of the entity.
+    /// Gets the unique identifier of the entity.
     /// This property is used to uniquely identify and reference the entity within the graph system.
     /// </summary>
     /// <remarks>
     /// Identifiers should be immutable once the entity has been persisted to ensure referential integrity.
     /// </remarks>
-    string Id { get; set; }
+    string Id { get; }
 }

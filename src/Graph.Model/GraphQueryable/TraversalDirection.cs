@@ -27,8 +27,4 @@ public enum TraversalDirection
 
     /// <summary>Follow relationships in both directions</summary>
     Both,
-
-    /// <summary>Use the natural direction of the relationship</summary>
-    Natural
 }
-

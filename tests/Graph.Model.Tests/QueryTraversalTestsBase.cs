@@ -639,7 +639,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Traverse with max depth 3 to potentially encounter the cycle
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows>()
+            .Traverse<Knows, Person>()
             .WithDepth(3)
             .To<Person>()
             .Distinct() // Use Distinct to avoid duplicates from cycles

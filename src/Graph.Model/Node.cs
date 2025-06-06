@@ -22,7 +22,7 @@ namespace Cvoya.Graph.Model;
 /// Use this class as a base class for your domain models to get automatic ID generation
 /// and basic node functionality.
 /// </remarks>
-public abstract class Node : INode
+public abstract record Node : INode
 {
     /// <summary>
     /// Gets or sets the unique identifier of this node.
@@ -31,5 +31,5 @@ public abstract class Node : INode
     /// <remarks>
     /// The default format used is the "N" format (32 digits without hyphens).
     /// </remarks>
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Id { get; private set; } = Guid.NewGuid().ToString("N");
 }

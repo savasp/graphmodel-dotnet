@@ -24,8 +24,8 @@ namespace Cvoya.Graph.Model;
 /// to the actual source and target node objects, facilitating more type-safe graph traversal.
 /// </remarks>
 public interface IRelationship<S, T> : IRelationship
-    where S : INode
-    where T : INode
+    where S : class, INode, new()
+    where T : class, INode, new()
 {
     /// <summary>
     /// Gets or sets the source node of the relationship.
@@ -34,7 +34,7 @@ public interface IRelationship<S, T> : IRelationship
     /// When set, this also updates the <see cref="IRelationship.SourceId"/> property.
     /// May be null if the relationship is not fully loaded.
     /// </remarks>
-    S? Source { get; set; }
+    S Source { get; set; }
 
     /// <summary>
     /// Gets or sets the target node of the relationship.
@@ -43,5 +43,5 @@ public interface IRelationship<S, T> : IRelationship
     /// When set, this also updates the <see cref="IRelationship.TargetId"/> property.
     /// May be null if the relationship is not fully loaded.
     /// </remarks>
-    T? Target { get; set; }
+    T Target { get; set; }
 }

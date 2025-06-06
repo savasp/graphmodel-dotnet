@@ -18,38 +18,15 @@ namespace Cvoya.Graph.Model;
 /// Base class for graph relationships that provides a default implementation of the IRelationship interface.
 /// This serves as a foundation for creating domain-specific relationship entities.
 /// </summary>
+/// <param name="SourceId">The ID of the source node in the relationship.</param>
+/// <param name="TargetId">The ID of the target node in the relationship.</param>
+/// <param name="IsBidirectional">Indicates whether the relationship is bidirectional.</param>
 /// <remarks>
 /// Use this class as a base class for your domain-specific relationship models to get automatic ID generation
 /// and basic relationship functionality.
 /// </remarks>
-[Relationship("GENERIC")]
-public abstract class Relationship : IRelationship
+public abstract record Relationship(string SourceId, string TargetId, bool IsBidirectional = false) : IRelationship
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="Relationship"/> class with specified directionality.
-    /// </summary>
-    /// <param name="sourceId">The ID of the source node in the relationship.</param>
-    /// <param name="targetId">The ID of the target node in the relationship.</param>
-    /// <param name="isBidirectional">Indicates whether the relationship is bidirectional.</param>
-    /// <remarks>
-    /// Set isBidirectional to true if the relationship can be traversed in both directions.
-    /// </remarks>
-    public Relationship(string? sourceId = null, string? targetId = null, bool isBidirectional = false)
-    {
-        SourceId = sourceId ?? string.Empty;
-        TargetId = targetId ?? string.Empty;
-        IsBidirectional = isBidirectional;
-    }
-
     /// <inheritdoc/>
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
-
-    /// <inheritdoc/>
-    public string SourceId { get; set; } = string.Empty;
-
-    /// <inheritdoc/>
-    public string TargetId { get; set; } = string.Empty;
-
-    /// <inheritdoc/>
-    public bool IsBidirectional { get; set; }
+    public string Id { get; } = Guid.NewGuid().ToString("N");
 }

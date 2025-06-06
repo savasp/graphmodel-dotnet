@@ -988,13 +988,12 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         Assert.NotNull(simpleProjection.Name);
         Assert.Equal("Alice", simpleProjection.Name);
 
-        var relationships = this.Graph.Nodes<Person>()
-            .Traverse<Person, Knows>()
-            .Relationships()
+        var people = this.Graph.Nodes<Person>()
+            .Traverse<Knows, Person>()
             .ToList();
 
-        Assert.NotEmpty(relationships); // Ensure we have relationships
-        Assert.Equal(2, relationships.Count); // Alice knows Bob and Charlie
+        Assert.NotEmpty(people); // Ensure we have people
+        Assert.Equal(3, people.Count); // Alice, Bob, Charlie
 
         // Get the paths using TraversePath
         var paths = this.Graph.Nodes<Person>()

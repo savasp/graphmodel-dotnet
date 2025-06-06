@@ -38,7 +38,7 @@ GraphModel enables developers to model, query, and manipulate graph data in .NET
 2. **(Optional) Install a graph provider (e.g., Neo4j):**
 
    ```bash
-   dotnet add package Cvoya.Graph.Provider.Neo4j
+   dotnet add package Cvoya.Graph.Model.Neo4j
    ```
 
 3. **(Recommended) Install compile-time analyzers:**

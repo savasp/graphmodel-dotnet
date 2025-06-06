@@ -36,7 +36,7 @@ namespace Cvoya.Graph.Model;
 /// }
 /// </code>
 /// </example>
-[AttributeUsage(AttributeTargets.Property)]
+[AttributeUsage(AttributeTargets.Property, Inherited = false, AllowMultiple = false)]
 public class PropertyAttribute(string? label = null) : Attribute
 {
     /// <summary>
@@ -51,7 +51,7 @@ public class PropertyAttribute(string? label = null) : Attribute
     /// </summary>
     /// <value>True if the property should be ignored, otherwise false.</value>
     public bool Ignore { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether this property should be indexed in the graph database.
     /// </summary>

@@ -30,7 +30,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when the query fails</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
-        where N : class, INode, new();
+        where N : INode;
 
     /// <summary>
     /// Gets a queryable interface to relationships in the graph with options for node loading
@@ -42,7 +42,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when the query fails</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
-        where R : class, IRelationship, new();
+        where R : IRelationship;
 
     /// <summary>
     /// Gets a node by ID with options for relationship loading
@@ -56,7 +56,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when the node cannot be retrieved or there is another issue</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task<N> GetNode<N>(string id, IGraphTransaction? transaction = null)
-        where N : class, INode, new();
+        where N : INode;
 
     /// <summary>
     /// Gets multiple nodes by their IDs with options for relationship loading
@@ -70,7 +70,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when the node cannot be retrieved or there is another issue</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task<IEnumerable<N>> GetNodes<N>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
-        where N : class, INode, new();
+        where N : INode;
 
     /// <summary>
     /// Gets a relationship by ID with options for node loading
@@ -84,7 +84,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when the relationship cannot be retrieved or there is another issue</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task<R> GetRelationship<R>(string id, IGraphTransaction? transaction = null)
-        where R : class, IRelationship, new();
+        where R : IRelationship;
 
     /// <summary>
     /// Gets multiple relationships by their IDs with options for node loading
@@ -98,7 +98,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when any of the relationships cannot be retrieved or there is another issue</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task<IEnumerable<R>> GetRelationships<R>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
-        where R : class, IRelationship, new();
+        where R : IRelationship;
 
     /// <summary>
     /// Creates a new node in the graph with options for relationship handling
@@ -110,7 +110,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when the node cannot be created or there is another issue</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task CreateNode<N>(N node, IGraphTransaction? transaction = null)
-        where N : class, INode, new();
+        where N : INode;
 
     /// <summary>
     /// Creates a new relationship in the graph with options for node handling
@@ -122,7 +122,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when the relationship cannot be created or there is another issue</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task CreateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
-        where R : class, IRelationship, new();
+        where R : IRelationship;
 
     /// <summary>
     /// Updates an existing node in the graph with options for relationship handling
@@ -134,7 +134,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when the update cannot be performed or there is another issue</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task UpdateNode<N>(N node, IGraphTransaction? transaction = null)
-        where N : class, INode, new();
+        where N : INode;
 
     /// <summary>
     /// Updates an existing relationship in the graph with options for node handling
@@ -146,7 +146,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when the relationship cannot be updated or there is another issue</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task UpdateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
-        where R : class, IRelationship, new();
+        where R : IRelationship;
 
     /// <summary>
     /// Begins a new transaction

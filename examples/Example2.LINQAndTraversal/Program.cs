@@ -13,8 +13,8 @@
 // limitations under the License.
 
 using Cvoya.Graph.Model;
-using Cvoya.Graph.Provider.Neo4j;
-using Cvoya.Graph.Provider.Neo4j.Linq;
+using Cvoya.Graph.Model.Neo4j;
+using Cvoya.Graph.Model.Neo4j.Linq;
 using Neo4j.Driver;
 
 // Example 2: LINQ and Traversal

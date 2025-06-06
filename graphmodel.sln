@@ -5,7 +5,7 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Graph.Provider.Neo4j.Tests", "tests\Graph.Provider.Neo4j.Tests\Graph.Provider.Neo4j.Tests.csproj", "{3CBDE189-994B-49CF-AD88-13686CC6BC20}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Graph.Model.Neo4j.Tests", "tests\Graph.Model.Neo4j.Tests\Graph.Model.Neo4j.Tests.csproj", "{3CBDE189-994B-49CF-AD88-13686CC6BC20}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Graph.Model.Tests", "tests\Graph.Model.Tests\Graph.Model.Tests.csproj", "{DC4530BF-B0D9-44CC-88FB-85607A090D58}"
 EndProject
@@ -21,7 +21,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Example3.TransactionManagem
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Example2.LINQAndTraversal", "examples\Example2.LINQAndTraversal\Example2.LINQAndTraversal.csproj", "{FEEA5336-EC21-43D2-BAAB-0F4B7BCDB6E8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Graph.Provider.Neo4j", "src\Graph.Provider.Neo4j\Graph.Provider.Neo4j.csproj", "{FB5A4637-854C-420D-86DC-7354A944C534}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Graph.Model.Neo4j", "src\Graph.Model.Neo4j\Graph.Model.Neo4j.csproj", "{FB5A4637-854C-420D-86DC-7354A944C534}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Graph.Model", "src\Graph.Model\Graph.Model.csproj", "{082C15F9-A6CC-4141-9832-AAA796C6F5B3}"
 EndProject

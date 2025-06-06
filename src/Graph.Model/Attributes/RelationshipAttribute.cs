@@ -37,7 +37,7 @@ namespace Cvoya.Graph.Model;
 /// }
 /// </code>
 /// </example>
-[AttributeUsage(AttributeTargets.Class)]
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, Inherited = false, AllowMultiple = false)]
 public class RelationshipAttribute(string label) : Attribute
 {
     /// <summary>
@@ -45,7 +45,7 @@ public class RelationshipAttribute(string label) : Attribute
     /// </summary>
     /// <value>The relationship label used for graph storage.</value>
     public string Label { get; } = label ?? throw new ArgumentNullException(nameof(label));
-    
+
     /// <summary>
     /// Gets or sets the direction of the relationship. 
     /// This can be used by graph providers to control relationship directionality.
@@ -62,12 +62,12 @@ public enum RelationshipDirection
     /// Relationship direction from source to target (->)
     /// </summary>
     Outgoing,
-    
+
     /// <summary>
     /// Relationship direction from target to source (&lt;-)
     /// </summary>
     Incoming,
-    
+
     /// <summary>
     /// Relationship is bidirectional (&lt;->)
     /// </summary>

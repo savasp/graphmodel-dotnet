@@ -1,0 +1,105 @@
+// Copyright 2025 Savas Parastatidis
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+using System.Linq.Expressions;
+
+namespace Cvoya.Graph.Model;
+
+/// <summary>
+/// Defines a queryable for traversing graph relationships from a source node type, through a relationship type, to a target node type.
+/// Enables fluent traversal, relationship and node filtering, and full LINQ compatibility.
+/// </summary>
+/// <typeparam name="TSource">The type of the source node.</typeparam>
+/// <typeparam name="TRel">The type of the relationship being traversed.</typeparam>
+/// <typeparam name="TTarget">The type of the target node.</typeparam>
+public interface IGraphTraversalQueryable<TSource, TRel, TTarget> : IGraphQueryable<TTarget>
+    where TSource : INode
+    where TRel : IRelationship
+    where TTarget : INode
+{
+    /// <summary>
+    /// Specifies the direction of traversal for the relationship (outgoing, incoming, or both).
+    /// </summary>
+    /// <param name="direction">The direction to traverse the relationship.</param>
+    /// <returns>A new traversal queryable with the specified direction.</returns>
+    IGraphTraversalQueryable<TSource, TRel, TTarget> InDirection(TraversalDirection direction);
+
+    /// <summary>
+    /// Adds a predicate to filter the relationships being traversed.
+    /// </summary>
+    /// <param name="predicate">A lambda expression to filter relationships.</param>
+    /// <returns>A new traversal queryable with the relationship filter applied.</returns>
+    IGraphTraversalQueryable<TSource, TRel, TTarget> WhereRelationship(Expression<Func<TRel, bool>> predicate);
+
+    /// <summary>
+    /// Limits the traversal to a fixed maximum depth (number of hops).
+    /// </summary>
+    /// <param name="maxDepth">The maximum depth to traverse.</param>
+    /// <returns>A new traversal queryable with the specified maximum depth.</returns>
+    IGraphTraversalQueryable<TSource, TRel, TTarget> WithDepth(int maxDepth);
+
+    /// <summary>
+    /// Limits the traversal to a range of depths (inclusive).
+    /// </summary>
+    /// <param name="minDepth">The minimum depth to traverse.</param>
+    /// <param name="maxDepth">The maximum depth to traverse.</param>
+    /// <returns>A new traversal queryable with the specified depth range.</returns>
+    IGraphTraversalQueryable<TSource, TRel, TTarget> WithDepth(int minDepth, int maxDepth);
+
+    /// <summary>
+    /// Applies advanced traversal options (e.g., uniqueness, evaluation).
+    /// </summary>
+    /// <param name="options">The traversal options to apply.</param>
+    /// <returns>A new traversal queryable with the options applied.</returns>
+    IGraphTraversalQueryable<TSource, TRel, TTarget> WithOptions(TraversalOptions options);
+
+    /// <summary>
+    /// Continues traversal with another relationship type and target node type.
+    /// Enables chaining of multi-hop traversals in a fluent manner.
+    /// </summary>
+    /// <typeparam name="TNextRel">The type of the next relationship to traverse.</typeparam>
+    /// <typeparam name="TNextTarget">The type of the next target node.</typeparam>
+    /// <returns>A traversal queryable representing the next hop.</returns>
+    IGraphTraversalQueryable<TSource, TNextRel, TNextTarget> ThenTraverse<TNextRel, TNextTarget>()
+        where TNextRel : class, IRelationship, new()
+        where TNextTarget : class, INode, new();
+
+    /// <summary>
+    /// Returns a queryable over the relationships traversed, instead of the target nodes.
+    /// </summary>
+    /// <returns>An <see cref="IGraphQueryable{TRel}"/> over the traversed relationships.</returns>
+    IGraphQueryable<TRel> Relationships();
+
+    /// <summary>
+    /// Projects the traversal to a different node type.
+    /// </summary>
+    /// <typeparam name="TNewTarget">The type of the new target node.</typeparam>
+    /// <returns>A queryable for the new target nodes.</returns>
+    IGraphQueryable<TNewTarget> To<TNewTarget>() where TNewTarget : class, INode, new();
+
+    /// <summary>
+    /// Adds a predicate to filter based on the entire traversal path (source node, relationship, and target node).
+    /// </summary>
+    /// <param name="predicate">A lambda expression to filter the traversal path.</param>
+    /// <returns>A new traversal queryable with the path filter applied.</returns>
+    IGraphTraversalQueryable<TSource, TRel, TTarget> WherePath(Expression<Func<TSource, TRel, TTarget, bool>> predicate);
+
+    /// <summary>
+    /// Asynchronously executes the query and returns the results as a list.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains a list of elements of type TTarget.</returns>
+    async Task<List<TRel>> RelationshipsAsync(CancellationToken cancellationToken = default)
+        => await Relationships().ToListAsync(cancellationToken);
+}
