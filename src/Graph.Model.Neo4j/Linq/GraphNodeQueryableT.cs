@@ -13,12 +13,16 @@
 // limitations under the License.
 
 using System.Linq.Expressions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cvoya.Graph.Model.Neo4j.Linq;
 
 internal class GraphNodeQueryable<T> : GraphQueryable<T>, IGraphNodeQueryable<T>
     where T : INode
 {
+    private readonly ILogger _logger;
+
     internal GraphNodeQueryable(
         GraphQueryProvider provider,
         GraphContext graphContext,
@@ -27,6 +31,8 @@ internal class GraphNodeQueryable<T> : GraphQueryable<T>, IGraphNodeQueryable<T>
         GraphTransaction? transaction = null) :
         base(provider, graphContext, queryContext, expression, transaction)
     {
+        _logger = graphContext.LoggerFactory?.CreateLogger<GraphNodeQueryable<T>>()
+                  ?? NullLogger<GraphNodeQueryable<T>>.Instance;
     }
 
     public string? Label => Labels.GetLabelFromType(typeof(T));

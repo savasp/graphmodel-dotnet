@@ -13,12 +13,16 @@
 // limitations under the License.
 
 using System.Linq.Expressions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cvoya.Graph.Model.Neo4j.Linq;
 
 internal class GraphRelationshipQueryable<TRel> : GraphQueryable<TRel>, IGraphRelationshipQueryable<TRel>
     where TRel : IRelationship
 {
+    private readonly ILogger? logger;
+
     internal GraphRelationshipQueryable(
         GraphQueryProvider provider,
         GraphContext graphContext,
@@ -27,7 +31,10 @@ internal class GraphRelationshipQueryable<TRel> : GraphQueryable<TRel>, IGraphRe
         GraphTransaction? transaction = null) :
         base(provider, graphContext, queryContext, expression, transaction)
     {
+        logger = graphContext.LoggerFactory?.CreateLogger<GraphRelationshipQueryable<TRel>>() ?? NullLogger<GraphRelationshipQueryable<TRel>>.Instance;
     }
+
+    public string RelationshipType => Labels.GetLabelFromType(typeof(TRel));
 
     public IGraphTraversalQueryable<TSource, TRel, TTarget> Traverse<TSource, TTarget>()
         where TSource : INode

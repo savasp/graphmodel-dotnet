@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Model.Neo4j;
@@ -21,11 +23,15 @@ namespace Cvoya.Graph.Model.Neo4j;
 /// </summary>
 internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
 {
+    private readonly Microsoft.Extensions.Logging.ILogger _logger;
+
     /// <summary>
     /// Initializes a new instance of the Neo4jRelationshipManager class.
     /// </summary>
     public Neo4jRelationshipManager(GraphContext context) : base(context)
     {
+        _logger = context.LoggerFactory?.CreateLogger<Neo4jRelationshipManager>()
+                  ?? NullLogger<Neo4jRelationshipManager>.Instance;
     }
 
     /// <summary>

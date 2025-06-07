@@ -13,6 +13,8 @@
 // limitations under the License.
 
 using System.Linq.Expressions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cvoya.Graph.Model.Neo4j.Linq;
 
@@ -28,6 +30,7 @@ internal class GraphTraversalQueryable<TSource, TRel, TTarget> :
     private readonly int? _minDepth;
     private readonly int? _maxDepth;
     private readonly TraversalOptions? _options;
+    private readonly ILogger _logger;
 
     internal GraphTraversalQueryable(
         GraphQueryProvider provider,
@@ -47,6 +50,8 @@ internal class GraphTraversalQueryable<TSource, TRel, TTarget> :
         _minDepth = minDepth;
         _maxDepth = maxDepth;
         _options = options;
+        _logger = graphContext.LoggerFactory?.CreateLogger<GraphTraversalQueryable<TSource, TRel, TTarget>>()
+                  ?? NullLogger<GraphTraversalQueryable<TSource, TRel, TTarget>>.Instance;
     }
 
     public IGraphTraversalQueryable<TSource, TRel, TTarget> InDirection(TraversalDirection direction)

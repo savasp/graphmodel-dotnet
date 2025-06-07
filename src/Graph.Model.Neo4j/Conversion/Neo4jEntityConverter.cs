@@ -218,7 +218,7 @@ internal class Neo4jEntityConverter
 
     private void PopulateEntityFromNeo4j(object obj, global::Neo4j.Driver.IEntity neo4jEntity)
     {
-        var (simpleProperties, _) = Helpers.GetSimpleAndComplexProperties(obj);
+        var (simpleProperties, _) = Utils.GetSimpleAndComplexProperties(obj);
 
         foreach (var property in simpleProperties)
         {

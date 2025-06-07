@@ -53,18 +53,6 @@ internal abstract class Neo4jEntityManagerBase
     }
 
     /// <summary>
-    /// Logs a message with the provided action if a logger is available.
-    /// </summary>
-    /// <param name="logAction">The action to execute with the logger</param>
-    protected void Log(Action<Microsoft.Extensions.Logging.ILogger> logAction)
-    {
-        if (GraphContext.LoggerFactory != null)
-        {
-            logAction(GraphContext.LoggerFactory);
-        }
-    }
-
-    /// <summary>
     /// Checks if a node exists with the specified ID.
     /// </summary>
     /// <param name="nodeId">The ID of the node to check</param>

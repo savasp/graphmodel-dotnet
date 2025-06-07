@@ -14,11 +14,15 @@
 
 using System.Collections;
 using System.Linq.Expressions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cvoya.Graph.Model.Neo4j.Linq;
 
 internal class GraphQueryable<T> : GraphQueryable, IGraphQueryable<T>, IOrderedQueryable<T>
 {
+    private readonly ILogger _logger;
+
     internal GraphQueryable(
         GraphQueryProvider provider,
         GraphContext graphContext,
@@ -27,6 +31,7 @@ internal class GraphQueryable<T> : GraphQueryable, IGraphQueryable<T>, IOrderedQ
         GraphTransaction? transaction = null) :
         base(typeof(T), provider, graphContext, queryContext, expression, transaction)
     {
+        _logger = graphContext.LoggerFactory?.CreateLogger<GraphQueryable<T>>() ?? NullLogger<GraphQueryable<T>>.Instance;
     }
 
     IGraph IGraphQueryable<T>.Graph => GraphContext.Graph;

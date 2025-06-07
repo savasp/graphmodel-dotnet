@@ -14,6 +14,8 @@
 
 using System.Collections;
 using System.Reflection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Model.Neo4j;
@@ -23,6 +25,8 @@ namespace Cvoya.Graph.Model.Neo4j;
 /// </summary>
 internal class Neo4jNodeManager : Neo4jEntityManagerBase
 {
+    private readonly Microsoft.Extensions.Logging.ILogger<Neo4jNodeManager> _logger;
+
     private class ObjectTrackingInfo
     {
         public required global::Neo4j.Driver.INode Neo4jNode { get; set; }
@@ -35,6 +39,8 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     /// </summary>
     public Neo4jNodeManager(GraphContext context) : base(context)
     {
+        _logger = context.LoggerFactory?.CreateLogger<Neo4jNodeManager>()
+            ?? NullLogger<Neo4jNodeManager>.Instance;
     }
 
     /// <summary>
@@ -170,8 +176,13 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
 
         await TraverseGraphForComplexProperties(objectTracker, firstRecord);
 
-        return firstRecord.NewObject as T ??
-            throw new GraphException($"Node with ID '{id}' could not be constructed");
+        if (firstRecord.NewObject is T nodeObject)
+        {
+            // If the object is of the correct type, return it
+            return nodeObject;
+        }
+
+        throw new GraphException($"Node with ID '{id}' could not be constructed");
     }
 
     /// <summary>

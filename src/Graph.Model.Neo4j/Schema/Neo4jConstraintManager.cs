@@ -14,7 +14,7 @@
 
 using System.Reflection;
 using Microsoft.Extensions.Logging;
-using Neo4j.Driver;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cvoya.Graph.Model.Neo4j;
 
@@ -27,10 +27,12 @@ internal class Neo4jConstraintManager
     private readonly object _constraintLock = new();
     private bool _constraintsLoaded = false;
     private readonly GraphContext _context;
+    private readonly ILogger? _logger;
 
     public Neo4jConstraintManager(GraphContext context)
     {
         _context = context;
+        _logger = context.LoggerFactory?.CreateLogger<Neo4jConstraintManager>() ?? NullLogger<Neo4jConstraintManager>.Instance;
     }
 
     /// <summary>
@@ -113,7 +115,7 @@ internal class Neo4jConstraintManager
         }
         catch (Exception ex)
         {
-            _context.LoggerFactory?.LogError(ex, "Failed to load existing constraints from Neo4j.");
+            _logger?.LogError(ex, "Failed to load existing constraints from Neo4j.");
             throw new GraphException("Failed to load existing constraints from Neo4j.", ex);
         }
     }
