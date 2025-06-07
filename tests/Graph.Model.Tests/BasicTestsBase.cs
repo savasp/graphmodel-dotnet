@@ -173,14 +173,14 @@ public abstract class BasicTestsBase : ITestBase
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetNode<Person>(person.Id));
     }
 
-    public class PersonWithCycle : Node
+    public record PersonWithCycle : Node
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
         public Foo Foo { get; set; } = new();
     }
 
-    public class Foo
+    public record Foo
     {
         public Foo? Bar { get; set; } = null;
     }
@@ -197,7 +197,7 @@ public abstract class BasicTestsBase : ITestBase
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
     }
 
-    public class PersonWithGenericCollectionOfPrimitiveProperty : Node
+    public record PersonWithGenericCollectionOfPrimitiveProperty : Node
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
@@ -217,7 +217,7 @@ public abstract class BasicTestsBase : ITestBase
         Assert.All(fetched.GenericProperty, item => Assert.Contains(item, person.GenericProperty));
     }
 
-    public class PersonWithGenericDictionaryProperty : Node
+    public record PersonWithGenericDictionaryProperty : Node
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
@@ -246,7 +246,7 @@ public abstract class BasicTestsBase : ITestBase
         Assert.NotNull(queryable);
     }
 
-    public class PersonWithINodeProperty : Node
+    public record PersonWithINodeProperty : Node
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
@@ -260,7 +260,7 @@ public abstract class BasicTestsBase : ITestBase
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
     }
 
-    public class PersonWithINodePropertyInComplexProperty : Node
+    public record PersonWithINodePropertyInComplexProperty : Node
     {
         public class FooComplexType
         {
@@ -287,7 +287,7 @@ public abstract class BasicTestsBase : ITestBase
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
     }
 
-    public class PersonWithIRelationshipPropertyInComplexProperty : Node
+    public record PersonWithIRelationshipPropertyInComplexProperty : Node
     {
         public class FooComplexType
         {
@@ -314,7 +314,7 @@ public abstract class BasicTestsBase : ITestBase
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
     }
 
-    public class PersonWithListIRelationshipPropertyInComplexProperty : Node
+    public record PersonWithListIRelationshipPropertyInComplexProperty : Node
     {
         public class FooComplexType
         {
@@ -341,7 +341,7 @@ public abstract class BasicTestsBase : ITestBase
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
     }
 
-    public class PersonWithListINodeProperty : Node
+    public record PersonWithListINodeProperty : Node
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
@@ -357,7 +357,7 @@ public abstract class BasicTestsBase : ITestBase
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNode(person));
     }
 
-    public class PersonWithIRelationshipProperty : Node
+    public record PersonWithIRelationshipProperty : Node
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;

@@ -109,7 +109,7 @@ public static class GraphQueryablePaginationExtensions
         var skip = (pageNumber - 1) * pageSize;
 
         // Use ToListAsync directly from the source to avoid casting issues
-        var items = await source.GraphSkip(skip).GraphTake(pageSize).ToListAsync(cancellationToken);
+        var items = await source.Skip(skip).Take(pageSize).ToListAsync(cancellationToken);
 
         return new GraphPage<T>
         {
@@ -150,7 +150,7 @@ public static class GraphQueryablePaginationExtensions
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(count);
-        return await source.GraphSkip(count).ToListAsync(cancellationToken);
+        return await source.Skip(count).ToListAsync(cancellationToken);
     }
 
     /// <summary>
@@ -167,7 +167,7 @@ public static class GraphQueryablePaginationExtensions
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(count);
-        return await source.GraphTake(count).ToListAsync(cancellationToken);
+        return await source.Take(count).ToListAsync(cancellationToken);
     }
 
     /// <summary>

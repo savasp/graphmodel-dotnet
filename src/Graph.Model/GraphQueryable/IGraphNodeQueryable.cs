@@ -43,4 +43,26 @@ public interface IGraphNodeQueryable<TNode> : IGraphQueryable<TNode>
     /// <returns>An <see cref="IGraphRelationshipQueryable{TRel}"/> for querying relationships of the specified type.</returns>
     IGraphRelationshipQueryable<TRel> Relationships<TRel>()
         where TRel : IRelationship;
+
+    /// <summary>
+    /// Gets an <see cref="IGraphTraversalQueryable{TNode, TRel, TTarget}"/> for traversing relationships of a specific type to a target node type.
+    /// This method allows for fluent traversal and filtering of relationships and nodes in a graph context.
+    /// </summary>
+    /// <typeparam name="TRel">The type of the relationship being traversed, which must be an <see cref="IRelationship"/>-derived type.</typeparam>
+    /// <typeparam name="TTarget">The type of the target node, which must be an <see cref="INode"/>-derived type.</typeparam>
+    /// <returns>An <see cref="IGraphTraversalQueryable{TNode, TRel, TTarget}"/> for fluent traversal and filtering.</returns>
+    IGraphTraversalQueryable<TNode, TRel, TTarget> Relationships<TRel, TTarget>()
+        where TRel : IRelationship
+        where TTarget : INode;
+
+    /// <summary>
+    /// Gets an <see cref="IGraphQueryable{T}"/> where T is <see cref="IGraphPathSegment{TNode, TRel, TTarget}"/> for traversing path segments of a specific relationship type to a target node type.
+    /// This method allows for fluent traversal and filtering of relationships and nodes in a graph context, specifically focusing on the path segments connected to this node.
+    /// </summary>
+    /// <typeparam name="TRel">The type of the relationship being traversed, which must be an <see cref="IRelationship"/>-derived type.</typeparam>
+    /// <typeparam name="TTarget">The type of the target node, which must be an <see cref="INode"/>-derived type.</typeparam>
+    /// <returns>An <see cref="IGraphQueryable{T}"/> where T is <see cref="IGraphPathSegment{TNode, TRel, TTarget}"/> for querying path segments of the specified relationship type.</returns>
+    IGraphQueryable<IGraphPathSegment<TNode, TRel, TTarget>> PathSegments<TRel, TTarget>()
+        where TRel : IRelationship
+        where TTarget : INode;
 }

@@ -95,15 +95,13 @@ public class PersonWithComplexProperties : INode
     public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
 }
 
-public class KnowsWithComplexProperty : Relationship
+public record KnowsWithComplexProperty(PersonWithComplexProperty p1, PersonWithComplexProperty p2) : Relationship(p1.Id, p2.Id)
 {
-    public KnowsWithComplexProperty() { }
-    public KnowsWithComplexProperty(PersonWithComplexProperty p1, PersonWithComplexProperty p2) : base(p1.Id, p2.Id) { }
     public DateTime Since { get; set; }
     public Address MetAt { get; set; } = new Address();
 }
 
-public class Class1 : Node
+public record Class1 : Node
 {
     public string Property1 { get; set; } = string.Empty;
     public string Property2 { get; set; } = string.Empty;
@@ -111,7 +109,7 @@ public class Class1 : Node
     public ComplexClassB? B { get; set; } = null;
 }
 
-public class Class2 : Node
+public record Class2 : Node
 {
     public string Property1 { get; set; } = string.Empty;
     public string Property2 { get; set; } = string.Empty;

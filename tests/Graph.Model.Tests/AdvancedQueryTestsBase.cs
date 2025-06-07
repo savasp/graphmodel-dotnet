@@ -518,17 +518,17 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         // Act: Get all friends with their details
         var friendsPattern = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .TraversePath<Person, Knows, Person>()
-            .GroupBy(ks => ks.Source)
+            .PathSegments<Knows, Person>()
+            .GroupBy(p => p.StartNode)
             .Select(group => new
             {
                 PersonName = group.Key.FirstName,
-                FriendDetails = group.Select(i => new
+                FriendDetails = group.Select(p => new
                 {
-                    FriendName = i.Target.FirstName,
-                    FriendAge = i.Target.Age,
-                    KnownSince = i.Relationship.Since,
-                    DaysKnown = (DateTime.UtcNow - i.Relationship.Since).Days
+                    FriendName = p.EndNode.FirstName,
+                    FriendAge = p.EndNode.Age,
+                    KnownSince = p.Relationship.Since,
+                    DaysKnown = (DateTime.UtcNow - p.Relationship.Since).Days
                 }).ToList()
             })
             .FirstOrDefault();
@@ -559,13 +559,13 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         // Act: Get only young friends (under 30)
         var youngFriendsPattern = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .TraversePath<Person, Knows, Person>()
-            .Where(path => path.Target.Age < 30)
-            .GroupBy(ks => ks.Source)
+            .PathSegments<Knows, Person>()
+            .Where(path => path.EndNode.Age < 30)
+            .GroupBy(ks => ks.StartNode)
             .Select(group => new
             {
                 PersonName = group.Key.FirstName,
-                YoungFriends = group.Select(g => g.Target.FirstName).ToList(),
+                YoungFriends = group.Select(g => g.EndNode.FirstName).ToList(),
                 YoungFriendCount = group.Count()
             })
             .FirstOrDefault();
@@ -596,15 +596,15 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         // Act: Aggregate friend data
         var friendAggregation = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .TraversePath<Person, Knows, Person>()
-            .GroupBy(ks => ks.Source)
+            .PathSegments<Knows, Person>()
+            .GroupBy(ks => ks.StartNode)
             .Select(group => new
             {
                 PersonName = group.Key.FirstName,
                 FriendCount = group.Count(),
-                AverageFriendAge = group.Average(k => k.Target.Age),
-                OldestFriend = group.Max(k => k.Target.Age),
-                YoungestFriend = group.Min(k => k.Target.Age)
+                AverageFriendAge = group.Average(k => k.EndNode.Age),
+                OldestFriend = group.Max(k => k.EndNode.Age),
+                YoungestFriend = group.Min(k => k.EndNode.Age)
             })
             .FirstOrDefault();
 
@@ -636,14 +636,14 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         // Act: Get recent friendships (within last 12 days)
         var recentFriendships = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .TraversePath<Person, Knows, Person>()
-            .GroupBy(ks => ks.Source)
+            .PathSegments<Knows, Person>()
+            .GroupBy(ks => ks.StartNode)
             .Select(group => new
             {
                 PersonName = group.Key.FirstName,
                 RecentFriends = group
                     .Where(k => k.Relationship.Since > DateTime.UtcNow.AddDays(-12))
-                    .Select(k => k.Target.FirstName)
+                    .Select(k => k.EndNode.FirstName)
                     .ToList()
             })
             .FirstOrDefault();
@@ -673,17 +673,17 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         // Act: Get friends ordered by age
         var orderedFriendsPattern = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .TraversePath<Person, Knows, Person>()
-            .GroupBy(ks => ks.Source)
+            .PathSegments<Knows, Person>()
+            .GroupBy(ks => ks.StartNode)
             .Select(group => new
             {
                 PersonName = group.Key.FirstName,
                 FriendsByAge = group
-                    .OrderBy(k => k.Target.Age)
+                    .OrderBy(k => k.EndNode.Age)
                     .Select(k => new
                     {
-                        Name = k.Target.FirstName,
-                        Age = k.Target.Age
+                        Name = k.EndNode.FirstName,
+                        Age = k.EndNode.Age
                     })
                     .ToList()
             })
@@ -722,18 +722,18 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         // Act: Group friends by age category
         var ageGroupedPattern = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .TraversePath<Person, Knows, Person>()
-            .GroupBy(ks => ks.Source)
+            .PathSegments<Knows, Person>()
+            .GroupBy(ks => ks.StartNode)
             .Select(group => new
             {
                 PersonName = group.Key.FirstName,
                 AgeGroups = group
-                    .GroupBy(k => k.Target.Age >= 30 ? "Senior" : "Junior")
+                    .GroupBy(k => k.EndNode.Age >= 30 ? "Senior" : "Junior")
                     .Select(g => new
                     {
                         Group = g.Key,
                         Count = g.Count(),
-                        Names = g.Select(k => k.Target.FirstName).ToList()
+                        Names = g.Select(k => k.EndNode.FirstName).ToList()
                     })
                     .ToList()
             })
@@ -997,19 +997,19 @@ public abstract class AdvancedQueryTestsBase : ITestBase
 
         // Get the paths using TraversePath
         var paths = this.Graph.Nodes<Person>()
-            .TraversePath<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .ToList();
 
         Assert.NotEmpty(paths); // Ensure we have paths
 
         Assert.Equal(2, paths.Count); // Alice knows Bob and Charlie
-        Assert.Contains(paths, p => p.Source.FirstName == "Alice" && p.Target.FirstName == "Bob");
-        Assert.Contains(paths, p => p.Source.FirstName == "Alice" && p.Target.FirstName == "Charlie");
+        Assert.Contains(paths, p => p.FirstName == "Bob");
+        Assert.Contains(paths, p => p.FirstName == "Charlie");
 
         // Now get the paths with TraversePath and a Where clause
         var filteredPaths = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .TraversePath<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .ToList();
 
         Assert.Equal(2, filteredPaths.Count);
@@ -1017,13 +1017,13 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         // Group the paths in memory instead of in the query
         var projectedAlice = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .TraversePath<Person, Knows, Person>()
-            .GroupBy(path => path.Source)
+            .Relationships<Knows, Person>()
+            .GroupBy(path => path)
             .Select(group => new
             {
                 Name = group.Key.FirstName,
                 FriendCount = group.Count(),
-                FriendNames = group.Select(k => k.Target.FirstName).ToList()
+                FriendNames = group.Select(p => p.FirstName).ToList()
             })
             .FirstOrDefault();
 

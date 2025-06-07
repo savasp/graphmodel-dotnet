@@ -29,7 +29,7 @@ public interface IGraph : IAsyncDisposable
     /// <returns>A queryable interface to the nodes</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
-    IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
+    IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
         where N : INode;
 
     /// <summary>
@@ -41,7 +41,7 @@ public interface IGraph : IAsyncDisposable
     /// <returns>A queryable interface to the relationships</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
-    IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
+    IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
         where R : IRelationship;
 
     /// <summary>
