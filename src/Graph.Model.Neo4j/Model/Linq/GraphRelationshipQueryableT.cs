@@ -33,6 +33,19 @@ internal class GraphRelationshipQueryable<TRel> : GraphQueryable<TRel>, IGraphRe
         where TSource : INode
         where TTarget : INode
     {
-        throw new NotImplementedException();
+        var traverseMethod = typeof(IGraphRelationshipQueryable<TRel>)
+            .GetMethod(nameof(Traverse))!
+            .MakeGenericMethod(typeof(TSource), typeof(TTarget));
+
+        var traversalExpression = Expression.Call(
+            Expression,
+            traverseMethod);
+
+        return Provider.CreateTraversalQuery<TSource, TRel, TTarget>(traversalExpression);
+    }
+
+    public IGraphRelationshipQueryable<TRel> WithTransaction(GraphTransaction transaction)
+    {
+        return new GraphRelationshipQueryable<TRel>(Provider, GraphContext, QueryContext, Expression, transaction);
     }
 }

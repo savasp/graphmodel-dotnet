@@ -33,36 +33,20 @@ internal class GraphNodeQueryable<T> : GraphQueryable<T>, IGraphNodeQueryable<T>
         where TRel : IRelationship
         where TTarget : INode
     {
-        throw new NotImplementedException();
+        return Provider.CreatePathSegmentQuery<T, TRel, TTarget>(Expression);
     }
 
     public IGraphRelationshipQueryable<TRel> Relationships<TRel>() where TRel : IRelationship
     {
-        throw new NotImplementedException();
-    }
-
-    public IGraphTraversalQueryable<T, TRel, TTarget> Relationships<TRel, TTarget>()
-        where TRel : IRelationship
-        where TTarget : INode
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<T> SingleAsync(CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<List<T>> ToListAsync(CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
+        return Provider.CreateRelationshipQuery<TRel>(Expression);
     }
 
     public IGraphTraversalQueryable<T, TRel, TTarget> Traverse<TRel, TTarget>()
         where TRel : IRelationship
         where TTarget : INode
     {
-        throw new NotImplementedException();
+        // Create the traversal query through the provider
+        return Provider.CreateTraversalQuery<T, TRel, TTarget>(Expression);
     }
 
     public IGraphNodeQueryable<T> WithTransaction(GraphTransaction transaction)

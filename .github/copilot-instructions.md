@@ -1,16 +1,16 @@
 Answer all questions in the style of a friendly colleague, using informal language.
 
-Use C#13 and C#14 features wherever possible.
-
 If you need to explain something, keep it simple and straightforward. Use examples if they help clarify things.
 
-When writing code, make sure it's clean and easy to read. Use meaningful variable names and keep your code organized. Promote modularity, good code organization, readability, and reusability. Break down complex problems into smaller, manageable pieces.
-
-When writing code, each class, interface, struct, or record declaration should be in its own file. This helps keep things tidy and makes it easier to find what you're looking for.
-
-If you need to use comments, keep them concise and relevant. They should help explain the "why" behind your code, not just the "what".
-
-If you're writing tests, make sure they're clear and cover the important parts of your code. Use descriptive names for your test methods.
+When writing code:
+- use C#13, C#14, and .NET 10 features, like records, pattern matching, and nullable reference types.
+- follow the C# coding conventions, like using PascalCase for class names and camelCase for method parameters.
+- Use meaningful variable names and keep your code organized.
+- Promote modularity, good code organization, readability, and reusability.
+- Break down complex problems into smaller, manageable pieces.
+- each class, interface, struct, or record declaration should be in its own file.
+- If you need to use comments, keep them concise and relevant. They should help explain the "why" behind your code, not just the "what".
+- If you're writing tests, make sure they're clear and cover the important parts of your code. Use descriptive names for your test methods.
 
 The repository is for a C# project using .NET 10, so focus on C# best practices. Use the latest features and libraries where appropriate.
 
@@ -26,4 +26,3 @@ The code is organized as follows:
 - `docs/`: Documentation for the project, including architecture and design decisions.
 - `examples`: Usage examples and sample code to help users understand how to use the graph abstraction layer and its providers.
 - `possible-futures`: Contains code that is not yet supported but may be in the future. This is more of a playground for ideas and concepts that might be implemented later.
-

@@ -16,63 +16,127 @@ using System.Linq.Expressions;
 
 namespace Cvoya.Graph.Model.Neo4j.Linq;
 
-internal class GraphTraversalQueryable<T, TRel, TTarget> :
+internal class GraphTraversalQueryable<TSource, TRel, TTarget> :
     GraphQueryable<TTarget>,
-    IGraphTraversalQueryable<T, TRel, TTarget>
-    where T : INode
+    IGraphTraversalQueryable<TSource, TRel, TTarget>
+    where TSource : INode
     where TRel : IRelationship
     where TTarget : INode
 {
+    private readonly Expression _sourceExpression;
+    private readonly TraversalDirection _direction = TraversalDirection.Outgoing;
+    private readonly int? _minDepth;
+    private readonly int? _maxDepth;
+    private readonly TraversalOptions? _options;
+
     internal GraphTraversalQueryable(
         GraphQueryProvider provider,
         GraphContext graphContext,
         GraphQueryContext queryContext,
-        Expression? traversalExpression = null,
-        Expression? sourceExpression = null,
-        GraphTransaction? transaction = null) :
-        base(provider, graphContext, queryContext, sourceExpression, transaction)
+        Expression traversalExpression,
+        Expression sourceExpression,
+        GraphTransaction? transaction = null,
+        TraversalDirection direction = TraversalDirection.Outgoing,
+        int? minDepth = null,
+        int? maxDepth = null,
+        TraversalOptions? options = null) :
+        base(provider, graphContext, queryContext, traversalExpression, transaction)
     {
+        _sourceExpression = sourceExpression ?? throw new ArgumentNullException(nameof(sourceExpression));
+        _direction = direction;
+        _minDepth = minDepth;
+        _maxDepth = maxDepth;
+        _options = options;
     }
 
-    IGraph IGraphQueryable<TTarget>.Graph => Graph;
-
-    IGraphQueryProvider IGraphQueryable<TTarget>.Provider => Provider;
-
-    public IGraphQueryable<TRel> Relationships()
+    public IGraphTraversalQueryable<TSource, TRel, TTarget> InDirection(TraversalDirection direction)
     {
-        throw new NotImplementedException();
+        return new GraphTraversalQueryable<TSource, TRel, TTarget>(
+            Provider, GraphContext, QueryContext, Expression, _sourceExpression,
+            Transaction, direction, _minDepth, _maxDepth, _options);
     }
 
-    public IGraphTraversalQueryable<T, TRel, TTarget> WithDepth(int maxDepth)
+    public IGraphTraversalQueryable<TSource, TRel, TTarget> WithDepth(int maxDepth)
     {
-        throw new NotImplementedException();
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxDepth);
+
+        return new GraphTraversalQueryable<TSource, TRel, TTarget>(
+            Provider, GraphContext, QueryContext, Expression, _sourceExpression,
+            Transaction, _direction, 1, maxDepth, _options);
     }
 
-    public IGraphTraversalQueryable<T, TRel, TTarget> WithDepth(int minDepth, int maxDepth)
+    public IGraphTraversalQueryable<TSource, TRel, TTarget> WithDepth(int minDepth, int maxDepth)
     {
-        throw new NotImplementedException();
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(minDepth);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxDepth);
+        if (minDepth > maxDepth)
+            throw new ArgumentException("Minimum depth cannot be greater than maximum depth");
+
+        return new GraphTraversalQueryable<TSource, TRel, TTarget>(
+            Provider, GraphContext, QueryContext, Expression, _sourceExpression,
+            Transaction, _direction, minDepth, maxDepth, _options);
     }
 
-    public IGraphTraversalQueryable<T, TRel, TTarget> WithOptions(TraversalOptions options)
+    public IGraphTraversalQueryable<TSource, TRel, TTarget> WithOptions(TraversalOptions options)
     {
-        throw new NotImplementedException();
+        ArgumentNullException.ThrowIfNull(options);
+
+        return new GraphTraversalQueryable<TSource, TRel, TTarget>(
+            Provider, GraphContext, QueryContext, Expression, _sourceExpression,
+            Transaction, _direction, _minDepth, _maxDepth, options);
     }
 
-    public IGraphTraversalQueryable<T, TNextRel, TNextTarget> ThenTraverse<TNextRel, TNextTarget>()
+    public IGraphTraversalQueryable<TSource, TNextRel, TNextTarget> ThenTraverse<TNextRel, TNextTarget>()
         where TNextRel : IRelationship
         where TNextTarget : INode
     {
-        throw new NotImplementedException();
+        // Create an expression for chaining traversals
+        var thenTraverseMethod = typeof(IGraphTraversalQueryable<TSource, TRel, TTarget>)
+            .GetMethod(nameof(ThenTraverse))!
+            .MakeGenericMethod(typeof(TNextRel), typeof(TNextTarget));
+
+        var chainedExpression = Expression.Call(
+            Expression,
+            thenTraverseMethod);
+
+        // The source stays the same, but we're now traversing through a different relationship
+        return new GraphTraversalQueryable<TSource, TNextRel, TNextTarget>(
+            Provider, GraphContext, QueryContext, chainedExpression, _sourceExpression, Transaction);
     }
 
-    public IGraphQueryable<TNewTarget> To<TNewTarget>()
-        where TNewTarget : INode
+    public IGraphQueryable<TRel> Relationships()
     {
-        throw new NotImplementedException();
+        // Create an expression that represents getting relationships from this traversal
+        var relationshipsMethod = typeof(IGraphTraversalQueryable<TSource, TRel, TTarget>)
+            .GetMethod(nameof(Relationships))!;
+
+        var relationshipsExpression = Expression.Call(
+            Expression,
+            relationshipsMethod);
+
+        return new GraphQueryable<TRel>(
+            Provider, GraphContext, QueryContext, relationshipsExpression, Transaction);
     }
 
-    public IGraphTraversalQueryable<T, TRel, TTarget> InDirection(TraversalDirection direction)
+    public IGraphQueryable<TNewTarget> To<TNewTarget>() where TNewTarget : INode
     {
-        throw new NotImplementedException();
+        // Create an expression for projecting to a different node type
+        var toMethod = typeof(IGraphTraversalQueryable<TSource, TRel, TTarget>)
+            .GetMethod(nameof(To))!
+            .MakeGenericMethod(typeof(TNewTarget));
+
+        var projectionExpression = Expression.Call(
+            Expression,
+            toMethod);
+
+        return new GraphQueryable<TNewTarget>(
+            Provider, GraphContext, QueryContext, projectionExpression, Transaction);
     }
+
+    // Internal properties for the provider to access traversal configuration
+    internal TraversalDirection Direction => _direction;
+    internal int? MinDepth => _minDepth;
+    internal int? MaxDepth => _maxDepth;
+    internal TraversalOptions? Options => _options;
+    internal Expression SourceExpression => _sourceExpression;
 }
