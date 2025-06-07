@@ -12,15 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model;
+namespace Cvoya.Graph.Model.Neo4j.Cypher;
 
-/// <summary>
-/// Non-generic base interface for relationship queryables.
-/// </summary>
-public interface IGraphRelationshipQueryable : IGraphQueryable
-{
-    /// <summary>
-    /// Gets the relationship type filter, if any.
-    /// </summary>
-    string? RelationshipType { get; }
-}
+internal record CypherQueryResult(string Cypher, Dictionary<string, object> Parameters);

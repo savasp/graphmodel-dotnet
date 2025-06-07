@@ -139,7 +139,7 @@ internal class GraphQueryable
         Transaction = transaction;
     }
 
-    public Neo4jGraph Graph => GraphContext.Graph;
+    public Graph Graph => GraphContext.Graph;
     public Type ElementType { get; }
     public GraphQueryProvider Provider { get; }
     public Expression Expression { get; }

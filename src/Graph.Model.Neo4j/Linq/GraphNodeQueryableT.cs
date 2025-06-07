@@ -29,6 +29,8 @@ internal class GraphNodeQueryable<T> : GraphQueryable<T>, IGraphNodeQueryable<T>
     {
     }
 
+    public string? Label => Labels.GetLabelFromType(typeof(T));
+
     public IGraphQueryable<IGraphPathSegment<T, TRel, TTarget>> PathSegments<TRel, TTarget>()
         where TRel : IRelationship
         where TTarget : INode

@@ -15,6 +15,7 @@
 using System.Collections;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Model.Neo4j;
@@ -29,7 +30,7 @@ internal class Neo4jEntityConverter
 
     public Neo4jEntityConverter(GraphContext graphContext)
     {
-        _logger = graphContext.Logger;
+        _logger = graphContext.LoggerFactory?.CreateLogger<Graph>() ?? NullLogger<Graph>.Instance;
     }
 
     /// <summary>
@@ -39,7 +40,7 @@ internal class Neo4jEntityConverter
     /// <param name="neo4jEntity">The Neo4j entity</param>
     /// <returns>A new instance of the Node type populated with values from the Neo4j entity</returns>
     public Task<T> DeserializeNode<T>(global::Neo4j.Driver.IEntity neo4jEntity)
-        where T : class, Model.INode, new()
+        where T : INode
     {
         return CreateEntityWithSimpleProperties<T>(neo4jEntity);
     }
@@ -66,7 +67,7 @@ internal class Neo4jEntityConverter
     /// <typeparam name="T">The type of the relationship</typeparam>
     /// <returns>A new instance of the relationship type populated with values from the Neo4j relationship</returns>
     public Task<T> DeserializeRelationship<T>(global::Neo4j.Driver.IEntity neo4jEntity)
-        where T : class, Model.IRelationship, new()
+        where T : IRelationship
     {
         return CreateEntityWithSimpleProperties<T>(neo4jEntity);
     }
@@ -206,7 +207,7 @@ internal class Neo4jEntityConverter
     /// Creates a new entity from a Neo4j entity
     /// </summary>
     private Task<T> CreateEntityWithSimpleProperties<T>(global::Neo4j.Driver.IEntity neo4jEntity)
-        where T : class, Model.IEntity, new()
+        where T : IEntity
     {
         var obj = new T();
 

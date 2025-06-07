@@ -76,7 +76,7 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     /// <returns>The node instance</returns>
     /// <exception cref="GraphException">Thrown if the node is not found</exception>
     public async Task<T> GetNode<T>(string id, IAsyncTransaction tx)
-    where T : class, INode, new()
+    where T : INode
     {
         // First, find the node by ID without label restriction
         var findNodeCypher = $"MATCH (n) WHERE n.{nameof(Model.INode.Id)} = $id RETURN n, labels(n) as labels";
@@ -182,7 +182,7 @@ internal class Neo4jNodeManager : Neo4jEntityManagerBase
     /// <returns>The node instance</returns>
     /// <exception cref="GraphException">Thrown if the node is not found</exception>
     public async Task<IEnumerable<T>> GetNodes<T>(IEnumerable<string> ids, IAsyncTransaction tx)
-        where T : class, Cvoya.Graph.Model.INode, new()
+        where T : INode
     {
         // TODO: Implement a more efficient way to get multiple nodes
 

@@ -23,12 +23,14 @@ internal class GraphQueryContext
     {
         Node,
         Relationship,
+        Path,
+        Custom
     }
 
-    public Guid QueryId { get; } = Guid.NewGuid();
-    public QueryRootType RootType { get; init; } = QueryRootType.Node;
-
-    public int CurrentDepth { get; set; } = 0;
-
-    public GraphTransaction? Transaction { get; init; }
+    public QueryRootType RootType { get; set; }
+    public GraphTransaction? Transaction { get; set; }
+    public bool IsScalarResult { get; set; }
+    public bool IsProjection { get; set; }
+    public Type? ProjectionType { get; set; }
+    public Dictionary<string, object>? Parameters { get; set; }
 }

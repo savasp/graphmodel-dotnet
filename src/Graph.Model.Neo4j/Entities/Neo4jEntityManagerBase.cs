@@ -58,9 +58,9 @@ internal abstract class Neo4jEntityManagerBase
     /// <param name="logAction">The action to execute with the logger</param>
     protected void Log(Action<Microsoft.Extensions.Logging.ILogger> logAction)
     {
-        if (GraphContext.Logger != null)
+        if (GraphContext.LoggerFactory != null)
         {
-            logAction(GraphContext.Logger);
+            logAction(GraphContext.LoggerFactory);
         }
     }
 

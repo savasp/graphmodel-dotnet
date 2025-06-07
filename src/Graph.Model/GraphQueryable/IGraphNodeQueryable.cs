@@ -15,43 +15,12 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents a queryable graph data source that supports LINQ operations over nodes.
-/// This interface extends IGraphQueryable&lt;T&gt; with additional functionality specific to graph nodes.
-/// It allows for traversing relationships and querying nodes in a graph context.
-/// This interface is designed to be used with graph databases and provides methods for traversing relationships
+/// Non-generic base interface for node queryables.
 /// </summary>
-/// <typeparam name="TNode">An <see cref="INode"/>-derived type.</typeparam>
-public interface IGraphNodeQueryable<TNode> : IGraphQueryable<TNode>
-    where TNode : INode
+public interface IGraphNodeQueryable : IGraphQueryable
 {
     /// <summary>
-    /// Starts traversing from nodes through a relationship type to a target type.
-    /// This method allows for fluent traversal and filtering of relationships and nodes in a graph context.
-    /// It enables the construction of complex queries that traverse relationships between nodes.
+    /// Gets the label filter applied to this node query, if any.
     /// </summary>
-    /// <typeparam name="TRel">The type of the relationship being traversed, which must be an <see cref="IRelationship"/>-derived type.</typeparam>
-    /// <typeparam name="TTarget">The type of the target node, which must be an <see cref="INode"/>-derived type.</typeparam>
-    /// <returns>An <see cref="IGraphTraversalQueryable{TNode, TRel, TTarget}"/> for fluent traversal and filtering.</returns>
-    IGraphTraversalQueryable<TNode, TRel, TTarget> Traverse<TRel, TTarget>()
-        where TRel : IRelationship
-        where TTarget : INode;
-
-    /// <summary>
-    /// Gets an <see cref="IGraphRelationshipQueryable{TRel}"/> for querying relationships of a specific type that connect this node.
-    /// </summary>
-    /// <typeparam name="TRel">The type of the relationship being queried, which must be an <see cref="IRelationship"/>-derived type.</typeparam>
-    /// <returns>An <see cref="IGraphRelationshipQueryable{TRel}"/> for querying relationships of the specified type.</returns>
-    IGraphRelationshipQueryable<TRel> Relationships<TRel>()
-        where TRel : IRelationship;
-
-    /// <summary>
-    /// Gets an <see cref="IGraphQueryable{T}"/> where T is <see cref="IGraphPathSegment{TNode, TRel, TTarget}"/> for traversing path segments of a specific relationship type to a target node type.
-    /// This method allows for fluent traversal and filtering of relationships and nodes in a graph context, specifically focusing on the path segments connected to this node.
-    /// </summary>
-    /// <typeparam name="TRel">The type of the relationship being traversed, which must be an <see cref="IRelationship"/>-derived type.</typeparam>
-    /// <typeparam name="TTarget">The type of the target node, which must be an <see cref="INode"/>-derived type.</typeparam>
-    /// <returns>An <see cref="IGraphQueryable{T}"/> where T is <see cref="IGraphPathSegment{TNode, TRel, TTarget}"/> for querying path segments of the specified relationship type.</returns>
-    IGraphQueryable<IGraphPathSegment<TNode, TRel, TTarget>> PathSegments<TRel, TTarget>()
-        where TRel : IRelationship
-        where TTarget : INode;
+    string? Label { get; }
 }

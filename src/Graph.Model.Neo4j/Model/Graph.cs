@@ -22,39 +22,39 @@ namespace Cvoya.Graph.Model.Neo4j;
 /// <summary>
 /// Neo4j implementation of the IGraph interface using a modular design with IGraphQueryable support.
 /// </summary>
-internal class Neo4jGraph : IGraph
+internal class Graph : IGraph
 {
     private readonly Microsoft.Extensions.Logging.ILogger? _logger;
     private readonly GraphQueryProvider _graphQueryProvider;
     private readonly GraphContext _graphContext;
 
-    public Neo4jGraph(IDriver driver, string databaseName, Microsoft.Extensions.Logging.ILogger? logger = null)
+    public Graph(IDriver driver, string databaseName, ILoggerFactory? loggerFactory = null)
     {
         ArgumentNullException.ThrowIfNull(driver);
         ArgumentNullException.ThrowIfNull(databaseName);
-        _logger = logger ?? NullLogger<Neo4jGraph>.Instance;
+        _logger = loggerFactory?.CreateLogger<Graph>() ?? NullLogger<Graph>.Instance;
 
         _graphContext = new GraphContext(
             this,
             driver,
             databaseName,
-            _logger);
+            loggerFactory);
 
         _graphQueryProvider = new GraphQueryProvider(_graphContext);
 
-        _logger?.LogInformation("Neo4jGraph initialized for database '{0}'", databaseName);
+        _logger?.LogInformation("Graph initialized for database '{0}'", databaseName);
     }
 
     /// <inheritdoc />
-    public IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
-        where N : class, INode, new()
+    public IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
+        where N : INode
     {
         try
         {
             _logger?.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
 
             var queryContext = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Node };
-            return new GraphQueryable<N>(_graphQueryProvider, _graphContext, queryContext);
+            return new GraphNodeQueryable<N>(_graphQueryProvider, _graphContext, queryContext);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
@@ -65,15 +65,15 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
-        where R : class, IRelationship, new()
+    public IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
+        where R : IRelationship
     {
         try
         {
             _logger?.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
 
             var queryContext = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Relationship };
-            return new GraphQueryable<R>(_graphQueryProvider, _graphContext, queryContext);
+            return new GraphRelationshipQueryable<R>(_graphQueryProvider, _graphContext, queryContext);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
@@ -85,7 +85,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task<N> GetNode<N>(string id, IGraphTransaction? transaction = null)
-        where N : class, INode, new()
+        where N : INode
     {
         ArgumentNullException.ThrowIfNull(id);
 
@@ -111,7 +111,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task<IEnumerable<N>> GetNodes<N>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
-        where N : class, INode, new()
+        where N : INode
     {
         ArgumentNullException.ThrowIfNull(ids);
 
@@ -140,7 +140,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task<R> GetRelationship<R>(string id, IGraphTransaction? transaction = null)
-        where R : class, IRelationship, new()
+        where R : IRelationship
     {
         ArgumentNullException.ThrowIfNull(id);
 
@@ -166,7 +166,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task<IEnumerable<R>> GetRelationships<R>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
-        where R : class, IRelationship, new()
+        where R : IRelationship
     {
         ArgumentNullException.ThrowIfNull(ids);
 
@@ -193,7 +193,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task CreateNode<N>(N node, IGraphTransaction? transaction = null)
-        where N : class, INode, new()
+        where N : INode
     {
         ArgumentNullException.ThrowIfNull(node);
 
@@ -220,7 +220,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task CreateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
-        where R : class, IRelationship, new()
+        where R : IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
@@ -251,7 +251,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task UpdateNode<N>(N node, IGraphTransaction? transaction = null)
-        where N : class, INode, new()
+        where N : INode
     {
         ArgumentNullException.ThrowIfNull(node);
 
@@ -282,7 +282,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task UpdateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
-        where R : class, IRelationship, new()
+        where R : IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
 

@@ -25,7 +25,7 @@ internal class Neo4jGraphStore : IAsyncDisposable
     private readonly IDriver _driver;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="Neo4jGraph"/> class.
+    /// Initializes a new instance of the <see cref="Neo4j.Graph"/> class.
     /// </summary>
     /// <param name="uri">The URI of the Neo4j database.</param>
     /// <param name="username">The username for authentication.</param>
@@ -53,7 +53,7 @@ internal class Neo4jGraphStore : IAsyncDisposable
 
         // Create the Neo4j driver
         _driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
-        Graph = new Neo4jGraph(_driver, databaseName, logger);
+        Graph = new Graph(_driver, databaseName, logger);
     }
 
     /// <summary>
@@ -61,7 +61,7 @@ internal class Neo4jGraphStore : IAsyncDisposable
     /// </summary>
     /// <param name="driver">The Neo4j driver instance.</param>
     /// <param name="databaseName">The name of the database.</param>
-    /// <param name="logger">The logger instance.</param>
+    /// <param name="loggerFactory">The logger factory instance.</param>
     /// <remarks>
     /// The environment variable NEO4J_DATABASE can be used to specify the database name.
     /// If not provided, it defaults to "neo4j".
@@ -69,12 +69,12 @@ internal class Neo4jGraphStore : IAsyncDisposable
     public Neo4jGraphStore(
         IDriver driver,
         string databaseName = "neo4j",
-        Microsoft.Extensions.Logging.ILogger? logger = null)
+        Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
     {
         ArgumentNullException.ThrowIfNull(driver, nameof(driver));
         databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
         _driver = driver;
-        Graph = new Neo4jGraph(driver, databaseName, logger);
+        Graph = new Graph(driver, databaseName, loggerFactory);
     }
 
     /// <inheritdoc />

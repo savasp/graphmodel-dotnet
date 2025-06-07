@@ -14,6 +14,7 @@
 
 using System.Linq.Expressions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cvoya.Graph.Model.Neo4j.Linq;
 
@@ -31,7 +32,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _cypherEngine = new CypherEngine(_context);
-        _logger = _context.Logger;
+        _logger = context.LoggerFactory?.CreateLogger<GraphQueryProvider>() ?? NullLogger<GraphQueryProvider>.Instance;
 
         _logger.LogInformation("GraphQueryProvider initialized for database '{DatabaseName}'", _context.DatabaseName);
     }

@@ -13,14 +13,15 @@
 // limitations under the License.
 
 using global::Neo4j.Driver;
+using Microsoft.Extensions.Logging;
 
 namespace Cvoya.Graph.Model.Neo4j;
 
 internal record GraphContext(
-    Neo4jGraph Graph,
+    Graph Graph,
     IDriver Driver,
     string DatabaseName,
-    Microsoft.Extensions.Logging.ILogger Logger
+    ILoggerFactory? LoggerFactory
 )
 {
     private Neo4jConstraintManager? _constraintManager;

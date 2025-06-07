@@ -113,7 +113,7 @@ internal class Neo4jConstraintManager
         }
         catch (Exception ex)
         {
-            _context.Logger?.LogError(ex, "Failed to load existing constraints from Neo4j.");
+            _context.LoggerFactory?.LogError(ex, "Failed to load existing constraints from Neo4j.");
             throw new GraphException("Failed to load existing constraints from Neo4j.", ex);
         }
     }

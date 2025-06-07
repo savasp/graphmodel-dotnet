@@ -33,7 +33,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// </summary>
     /// <param name="relationship">The relationship to create</param>
     /// <param name="tx">The transaction to use</param>
-    public async Task CreateRelationship(Cvoya.Graph.Model.IRelationship relationship, IAsyncTransaction tx)
+    public async Task CreateRelationship(IRelationship relationship, IAsyncTransaction tx)
     {
         var type = relationship.GetType();
         var label = Labels.GetLabelFromType(type);
@@ -58,7 +58,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// </summary>
     /// <param name="relationship">The relationship to update</param>
     /// <param name="tx">The transaction to use</param>
-    public async Task UpdateRelationship(Cvoya.Graph.Model.IRelationship relationship, IAsyncTransaction tx)
+    public async Task UpdateRelationship(IRelationship relationship, IAsyncTransaction tx)
     {
         var (simpleProps, _) = GetSimpleAndComplexProperties(relationship);
 
@@ -77,7 +77,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// <returns>The relationship instance</returns>
     /// <exception cref="GraphException">Thrown if the relationship is not found</exception>
     public async Task<T> GetRelationship<T>(string id, IAsyncTransaction tx)
-        where T : class, Cvoya.Graph.Model.IRelationship, new()
+        where T : IRelationship
     {
         // First, find the relationship by ID without type restriction
         var findRelCypher = $"MATCH ()-[r]->() WHERE r.{nameof(Model.IRelationship.Id)} = $id RETURN r, type(r) as relType";
@@ -118,7 +118,7 @@ internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
     /// <param name="tx">The transaction to use</param>
     /// <returns>A collection of relationships</returns>
     public async Task<IEnumerable<T>> GetRelationships<T>(IEnumerable<string> ids, IAsyncTransaction tx)
-        where T : class, Cvoya.Graph.Model.IRelationship, new()
+        where T : IRelationship
     {
         if (!ids.Any())
         {
