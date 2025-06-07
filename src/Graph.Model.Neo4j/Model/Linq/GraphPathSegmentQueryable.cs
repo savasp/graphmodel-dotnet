@@ -12,23 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Linq.Expressions;
+
 namespace Cvoya.Graph.Model.Neo4j.Linq;
 
-/// <summary>
-/// Neo4j implementation of graph query execution context
-/// </summary>
-internal class GraphQueryContext
+internal class GraphPathSegmentQueryable<T> : GraphQueryable<T>, IGraphPathSegmentQueryable<T>
 {
-    public enum QueryRootType
+    public GraphPathSegmentQueryable(
+        GraphQueryProvider provider,
+        GraphContext graphContext,
+        GraphQueryContext queryContext,
+        Expression? expression = null,
+        GraphTransaction? transaction = null) :
+        base(provider, graphContext, queryContext, expression, transaction)
     {
-        Node,
-        Relationship,
     }
-
-    public Guid QueryId { get; } = Guid.NewGuid();
-    public QueryRootType RootType { get; init; } = QueryRootType.Node;
-
-    public int CurrentDepth { get; set; } = 0;
-
-    public GraphTransaction? Transaction { get; init; }
 }

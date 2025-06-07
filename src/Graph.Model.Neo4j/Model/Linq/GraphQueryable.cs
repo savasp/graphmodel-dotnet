@@ -17,7 +17,7 @@ using System.Linq.Expressions;
 
 namespace Cvoya.Graph.Model.Neo4j.Linq;
 
-internal class GraphQueryable<T> : GraphQueryable, IGraphQueryable<T>, IOrderedQueryable<T> where T : class
+internal class GraphQueryable<T> : GraphQueryable, IGraphQueryable<T>, IOrderedQueryable<T>
 {
     internal GraphQueryable(
         GraphQueryProvider provider,
@@ -35,10 +35,85 @@ internal class GraphQueryable<T> : GraphQueryable, IGraphQueryable<T>, IOrderedQ
 
     IQueryProvider IQueryable.Provider => Provider;
 
+    public Task<bool> AllAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<bool> AnyAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<bool> AnyAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<int> CountAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<int> CountAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<T> FirstAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
     public IEnumerator<T> GetEnumerator()
     {
         var result = Provider.Execute<IEnumerable<T>>(Expression);
         return result.GetEnumerator();
+    }
+
+    public Task<T> LastAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<T?> LastOrDefaultAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<T?> MaxAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<TResult?> MaxAsync<TResult>(Expression<Func<T, TResult>> selector, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<T?> MinAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<TResult?> MinAsync<TResult>(Expression<Func<T, TResult>> selector, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<T> SingleAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<List<T>> ToListAsync(CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

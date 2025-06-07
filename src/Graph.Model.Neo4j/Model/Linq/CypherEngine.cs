@@ -26,12 +26,15 @@ internal class CypherEngine
         _context = context ?? throw new ArgumentNullException(nameof(context));
     }
 
-    public Task<T> ExecuteAsync<T>(string cypher, GraphQueryContext queryContext, GraphTransaction? transaction)
+    public Task<T> ExecuteAsync<T>(string cypher, GraphQueryContext queryContext, CancellationToken cancellationToken = default)
     {
+        // This method should execute the provided Cypher query and return the result.
+        // The implementation is not provided here, but it would typically involve
+        // using the Neo4j driver to run the query against the database.
         throw new NotImplementedException();
     }
 
-    public Task<string> ExpressionToCypherVisitor(Expression expression, GraphQueryContext queryContext)
+    public Task<string> ExpressionToCypherVisitor(Expression expression, GraphQueryContext queryContext, CancellationToken cancellationToken = default)
     {
         // This method should convert the expression tree to a Cypher query string.
         // The implementation is not provided here, but it would typically involve
