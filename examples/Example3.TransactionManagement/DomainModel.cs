@@ -17,7 +17,7 @@ using Cvoya.Graph.Model;
 // ==== DOMAIN MODEL ====
 
 [Node("Account")]
-public class Account : Node
+public record Account : Node
 {
     public string AccountNumber { get; set; } = string.Empty;
     public string Owner { get; set; } = string.Empty;
@@ -25,19 +25,21 @@ public class Account : Node
 }
 
 [Node("Bank")]
-public class Bank : Node
+public record Bank : Node
 {
     public string Name { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
 }
 
 [Relationship("HAS_ACCOUNT")]
-public class BankAccount : Relationship
+public record BankAccount(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
+    public DateTime OpenedOn { get; set; } = DateTime.UtcNow;
+    public string AccountType { get; set; } = string.Empty;
 }
 
 [Relationship("TRANSFER")]
-public class Transfer : Relationship
+public record Transfer(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public decimal Amount { get; set; } = 0m;
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;

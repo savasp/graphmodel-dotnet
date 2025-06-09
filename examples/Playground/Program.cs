@@ -32,7 +32,8 @@ await using (var session = driver.AsyncSession())
     await Task.Delay(1000);
 }
 
-var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var graph = store.Graph;
 
 /*
 var person = new Person

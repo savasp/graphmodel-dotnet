@@ -17,7 +17,7 @@ using Cvoya.Graph.Model;
 // ==== DOMAIN MODEL ====
 
 [Node("User")]
-public class User : Node
+public record User : Node
 {
     public string Username { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
@@ -26,61 +26,53 @@ public class User : Node
 }
 
 [Relationship("FOLLOWS")]
-public class Follows : Relationship
+public record Follows(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public DateTime Since { get; set; }
 }
 
 [Relationship("LIKED_BY")]
-public class LikedBy : Relationship
-{
-}
+public record LikedBy(string sourceId, string targetId) : Relationship(sourceId, targetId);
 
 [Relationship("POSTED")]
-public class Posted : Relationship
-{
-}
+public record Posted(string sourceId, string targetId) : Relationship(sourceId, targetId);
 
 [Relationship("LIKES")]
-public class Likes : Relationship
+public record Likes(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public DateTime LikedAt { get; set; }
 }
 
 [Node("Comment")]
-public class Comment : Node
+public record Comment : Node
 {
     public string Content { get; set; } = string.Empty;
     public DateTime CommentedAt { get; set; }
 }
 
 [Relationship("REPLY_TO")]
-public class ReplyTo : Relationship
-{
-}
+public record ReplyTo(string sourceId, string targetId) : Relationship(sourceId, targetId);
 
 [Relationship("COMMENTED_ON")]
-public class CommentedOn : Relationship
-{
-}
+public record CommentedOn(string sourceId, string targetId) : Relationship(sourceId, targetId);
 
 [Relationship("WROTE")]
-public class Wrote : Relationship
+public record Wrote(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public DateTime WrittenAt { get; set; }
 }
 
 [Relationship("AUTHORED_BY")]
-public class Author : Relationship
+public record Author(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public DateTime PublishedDate { get; set; }
     public int Likes { get; set; }
 }
 
 [Node("Post")]
-public class Post : Node
+public record Post : Node
 {
-    public Author Author { get; set; } = new Author();
+    public required Author Author { get; init; }
     public DateTime PostedAt { get; set; }
     public string Content { get; set; } = string.Empty;
 }

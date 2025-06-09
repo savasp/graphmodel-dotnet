@@ -19,9 +19,9 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
     private const string Endpoint = "bolt://localhost:7687";
 
     private TestDatabase? testDatabase;
-    private Neo4jGraphProvider? provider;
+    private Neo4jGraphStore? provider;
 
-    public Neo4jGraphProvider GraphProvider => provider ?? throw new InvalidOperationException("Graph provider is not initialized.");
+    public Neo4jGraphStore GraphStore => provider ?? throw new InvalidOperationException("Graph store is not initialized.");
 
     public async Task Setup()
     {
@@ -30,7 +30,7 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
         var username = Environment.GetEnvironmentVariable("NEO4J_USERNAME") ?? "neo4j";
         testDatabase = new TestDatabase(connectionString, username, password);
         await testDatabase.Setup();
-        provider = new Neo4jGraphProvider(connectionString, username, password, testDatabase.DatabaseName);
+        provider = new Neo4jGraphStore(connectionString, username, password, testDatabase.DatabaseName);
     }
 
     public async Task ResetDatabase()

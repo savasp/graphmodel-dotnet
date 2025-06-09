@@ -21,7 +21,7 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
 {
     private static Neo4jContainer container;
 
-    private Neo4jGraphProvider? provider;
+    private Neo4jGraphStore? store;
     private TestDatabase? testDatabase;
 
     static Neo4jTestInfrastructureWithContainer()
@@ -40,7 +40,7 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
             .Build();
     }
 
-    public Neo4jGraphProvider GraphProvider => provider ?? throw new InvalidOperationException("Graph provider is not initialized.");
+    public Neo4jGraphStore GraphStore => store ?? throw new InvalidOperationException("Graph store is not initialized.");
 
     public async Task Setup()
     {
@@ -56,7 +56,7 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
         var connectionString = container.GetConnectionString().Replace("neo4j", "bolt");
         this.testDatabase = new TestDatabase(connectionString);
         await this.testDatabase.Setup();
-        this.provider = new Neo4jGraphProvider(connectionString, username: null, password: null, this.testDatabase.DatabaseName);
+        this.store = new Neo4jGraphStore(connectionString, username: null, password: null, this.testDatabase.DatabaseName);
     }
 
     private async Task<string> EnsureReady()
@@ -79,10 +79,10 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
 
     public async ValueTask DisposeAsync()
     {
-        if (provider != null)
+        if (store != null)
         {
-            await provider.DisposeAsync();
-            provider = null;
+            await store.DisposeAsync();
+            store = null;
         }
 
         if (testDatabase != null)

@@ -17,7 +17,7 @@ using Cvoya.Graph.Model;
 // ==== DOMAIN MODEL ====
 
 [Node("Person")]
-public class Person : Node
+public record Person : Node
 {
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
@@ -27,7 +27,7 @@ public class Person : Node
 
 
 [Relationship("KNOWS")]
-public class Knows : Relationship
+public record Knows(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public DateTime Since { get; set; }
 }

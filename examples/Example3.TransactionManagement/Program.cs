@@ -36,7 +36,8 @@ Console.WriteLine($"✓ Created database: {databaseName}");
 
 // We start with the Neo4j Graph Provider here
 // Create graph instance with Neo4j provider
-var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var graph = store.Graph;
 
 
 try
@@ -48,12 +49,12 @@ try
     var alice = new Account { AccountNumber = "ACC-001", Owner = "Alice", Balance = 1000 };
     var bob = new Account { AccountNumber = "ACC-002", Owner = "Bob", Balance = 500 };
 
-    await graph.CreateNode(bank);
-    await graph.CreateNode(alice);
-    await graph.CreateNode(bob);
+    await graph.CreateNodeAsync(bank);
+    await graph.CreateNodeAsync(alice);
+    await graph.CreateNodeAsync(bob);
 
-    await graph.CreateRelationship(new BankAccount { SourceId = alice.Id, TargetId = bank.Id });
-    await graph.CreateRelationship(new BankAccount { SourceId = bob.Id, TargetId = bank.Id });
+    await graph.CreateRelationshipAsync(new BankAccount(alice.Id, bank.Id));
+    await graph.CreateRelationshipAsync(new BankAccount(bob.Id, bank.Id));
 
     Console.WriteLine($"✓ Created bank: {bank.Name}");
     Console.WriteLine($"✓ Created account for {alice.Owner}: ${alice.Balance}");
@@ -62,13 +63,13 @@ try
     // ==== SUCCESSFUL TRANSACTION ====
     Console.WriteLine("2. Successful money transfer...");
 
-    using (var transaction = await graph.BeginTransaction())
+    using (var transaction = await graph.GetTransactionAsync())
     {
         try
         {
             // Get fresh copies within transaction
-            var aliceAccount = await graph.GetNode<Account>(alice.Id, transaction: transaction);
-            var bobAccount = await graph.GetNode<Account>(bob.Id, transaction: transaction);
+            var aliceAccount = await graph.GetNodeAsync<Account>(alice.Id, transaction: transaction);
+            var bobAccount = await graph.GetNodeAsync<Account>(bob.Id, transaction: transaction);
 
             var transferAmount = 200m;
             Console.WriteLine($"Transferring ${transferAmount} from Alice to Bob...");
@@ -77,19 +78,17 @@ try
             aliceAccount.Balance -= transferAmount;
             bobAccount.Balance += transferAmount;
 
-            await graph.UpdateNode(aliceAccount, transaction: transaction);
-            await graph.UpdateNode(bobAccount, transaction: transaction);
+            await graph.UpdateNodeAsync(aliceAccount, transaction: transaction);
+            await graph.UpdateNodeAsync(bobAccount, transaction: transaction);
 
             // Record transfer
-            var transfer = new Transfer
+            var transfer = new Transfer(aliceAccount.Id, bobAccount.Id)
             {
-                SourceId = aliceAccount.Id,
-                TargetId = bobAccount.Id,
                 Amount = transferAmount,
                 Timestamp = DateTime.UtcNow,
                 Description = "Payment for services"
             };
-            await graph.CreateRelationship(transfer, transaction: transaction);
+            await graph.CreateRelationshipAsync(transfer, transaction: transaction);
 
             // Commit transaction
             await transaction.Commit();
@@ -103,20 +102,20 @@ try
     }
 
     // Verify balances after successful transaction
-    var aliceAfter = await graph.GetNode<Account>(alice.Id);
-    var bobAfter = await graph.GetNode<Account>(bob.Id);
+    var aliceAfter = await graph.GetNodeAsync<Account>(alice.Id);
+    var bobAfter = await graph.GetNodeAsync<Account>(bob.Id);
     Console.WriteLine($"✓ Alice's balance: ${aliceAfter.Balance} (was $1000)");
     Console.WriteLine($"✓ Bob's balance: ${bobAfter.Balance} (was $500)\n");
 
     // ==== FAILED TRANSACTION (ROLLBACK) ====
     Console.WriteLine("3. Failed transaction with rollback...");
 
-    using (var transaction = await graph.BeginTransaction())
+    using (var transaction = await graph.GetTransactionAsync())
     {
         try
         {
-            var aliceAccount = await graph.GetNode<Account>(alice.Id, transaction: transaction);
-            var bobAccount = await graph.GetNode<Account>(bob.Id, transaction: transaction);
+            var aliceAccount = await graph.GetNodeAsync<Account>(alice.Id, transaction: transaction);
+            var bobAccount = await graph.GetNodeAsync<Account>(bob.Id, transaction: transaction);
 
             var transferAmount = 1000m; // More than Alice has
             Console.WriteLine($"Attempting to transfer ${transferAmount} from Alice to Bob...");
@@ -131,8 +130,8 @@ try
             aliceAccount.Balance -= transferAmount;
             bobAccount.Balance += transferAmount;
 
-            await graph.UpdateNode(aliceAccount, transaction: transaction);
-            await graph.UpdateNode(bobAccount, transaction: transaction);
+            await graph.UpdateNodeAsync(aliceAccount, transaction: transaction);
+            await graph.UpdateNodeAsync(bobAccount, transaction: transaction);
             await transaction.Commit();
         }
         catch (Exception ex)
@@ -144,15 +143,15 @@ try
     }
 
     // Verify balances remain unchanged after rollback
-    var aliceAfterFailed = await graph.GetNode<Account>(alice.Id);
-    var bobAfterFailed = await graph.GetNode<Account>(bob.Id);
+    var aliceAfterFailed = await graph.GetNodeAsync<Account>(alice.Id);
+    var bobAfterFailed = await graph.GetNodeAsync<Account>(bob.Id);
     Console.WriteLine($"✓ Alice's balance: ${aliceAfterFailed.Balance} (unchanged)");
     Console.WriteLine($"✓ Bob's balance: ${bobAfterFailed.Balance} (unchanged)\n");
 
     // ==== COMPLEX TRANSACTION ====
     Console.WriteLine("4. Complex transaction with multiple operations...");
 
-    using (var transaction = await graph.BeginTransaction())
+    using (var transaction = await graph.GetTransactionAsync())
     {
         try
         {
@@ -163,12 +162,12 @@ try
                 Owner = "Charlie",
                 Balance = 0
             };
-            await graph.CreateNode(charlie, transaction: transaction);
-            await graph.CreateRelationship(new BankAccount { SourceId = charlie.Id, TargetId = bank.Id }, transaction: transaction);
+            await graph.CreateNodeAsync(charlie, transaction: transaction);
+            await graph.CreateRelationshipAsync(new BankAccount(charlie.Id, bank.Id), transaction: transaction);
 
             // Transfer from multiple sources to Charlie
-            var aliceAccount = await graph.GetNode<Account>(alice.Id, transaction: transaction);
-            var bobAccount = await graph.GetNode<Account>(bob.Id, transaction: transaction);
+            var aliceAccount = await graph.GetNodeAsync<Account>(alice.Id, transaction: transaction);
+            var bobAccount = await graph.GetNodeAsync<Account>(bob.Id, transaction: transaction);
 
             var aliceContribution = 50m;
             var bobContribution = 50m;
@@ -177,24 +176,20 @@ try
             bobAccount.Balance -= bobContribution;
             charlie.Balance = aliceContribution + bobContribution;
 
-            await graph.UpdateNode(aliceAccount, transaction: transaction);
-            await graph.UpdateNode(bobAccount, transaction: transaction);
-            await graph.UpdateNode(charlie, transaction: transaction);
+            await graph.UpdateNodeAsync(aliceAccount, transaction: transaction);
+            await graph.UpdateNodeAsync(bobAccount, transaction: transaction);
+            await graph.UpdateNodeAsync(charlie, transaction: transaction);
 
             // Record transfers
-            await graph.CreateRelationship(new Transfer
+            await graph.CreateRelationshipAsync(new Transfer(aliceAccount.Id, charlie.Id)
             {
-                SourceId = aliceAccount.Id,
-                TargetId = charlie.Id,
                 Amount = aliceContribution,
                 Timestamp = DateTime.UtcNow,
                 Description = "Welcome gift"
             }, transaction: transaction);
 
-            await graph.CreateRelationship(new Transfer
+            await graph.CreateRelationshipAsync(new Transfer(bobAccount.Id, charlie.Id)
             {
-                SourceId = bobAccount.Id,
-                TargetId = charlie.Id,
                 Amount = bobContribution,
                 Timestamp = DateTime.UtcNow,
                 Description = "Welcome gift"
@@ -215,13 +210,13 @@ try
     Console.WriteLine("\n5. Transaction history...");
 
     var transfers = await graph.Nodes<Account>()
-        .TraversePath<Account, Transfer, Account>()
+        .PathSegments<Transfer, Account>()
         .ToListAsync();
 
     Console.WriteLine($"Total transfers: {transfers.Count}");
     foreach (var rel in transfers.OrderBy(t => t.Relationship.Timestamp))
     {
-        Console.WriteLine($"  - {rel.Source.Owner} → {rel.Target.Owner}: ${rel.Relationship.Amount} ({rel.Relationship.Description}) at {rel.Relationship.Timestamp}");
+        Console.WriteLine($"  - {rel.StartNode.Owner} → {rel.EndNode.Owner}: ${rel.Relationship.Amount} ({rel.Relationship.Description}) at {rel.Relationship.Timestamp}");
     }
     Console.WriteLine("\n=== Transaction History Complete ===");
 

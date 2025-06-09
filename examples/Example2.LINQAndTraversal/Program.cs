@@ -37,7 +37,8 @@ Console.WriteLine($"✓ Created database: {databaseName}");
 // We start with the Neo4j Graph Provider here
 
 // Create graph instance with Neo4j provider
-var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var graph = store.Graph;
 
 
 
@@ -53,18 +54,18 @@ try
     var diana = new Person { Name = "Diana", Age = 32, City = "San Francisco" };
     var eve = new Person { Name = "Eve", Age = 29, City = "New York" };
 
-    await graph.CreateNode(alice);
-    await graph.CreateNode(bob);
-    await graph.CreateNode(charlie);
-    await graph.CreateNode(diana);
-    await graph.CreateNode(eve);
+    await graph.CreateNodeAsync(alice);
+    await graph.CreateNodeAsync(bob);
+    await graph.CreateNodeAsync(charlie);
+    await graph.CreateNodeAsync(diana);
+    await graph.CreateNodeAsync(eve);
 
     // Create relationships
-    await graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow.AddYears(-5) });
-    await graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow.AddYears(-3) });
-    await graph.CreateRelationship(new Knows { SourceId = bob.Id, TargetId = diana.Id, Since = DateTime.UtcNow.AddYears(-2) });
-    await graph.CreateRelationship(new Knows { SourceId = charlie.Id, TargetId = eve.Id, Since = DateTime.UtcNow.AddYears(-1) });
-    await graph.CreateRelationship(new Knows { SourceId = diana.Id, TargetId = eve.Id, Since = DateTime.UtcNow.AddMonths(-6) });
+    await graph.CreateRelationshipAsync(new Knows(alice.Id, bob.Id) { Since = DateTime.UtcNow.AddYears(-5) });
+    await graph.CreateRelationshipAsync(new Knows(alice.Id, charlie.Id) { Since = DateTime.UtcNow.AddYears(-3) });
+    await graph.CreateRelationshipAsync(new Knows(bob.Id, diana.Id) { Since = DateTime.UtcNow.AddYears(-2) });
+    await graph.CreateRelationshipAsync(new Knows(charlie.Id, eve.Id) { Since = DateTime.UtcNow.AddYears(-1) });
+    await graph.CreateRelationshipAsync(new Knows(diana.Id, eve.Id) { Since = DateTime.UtcNow.AddMonths(-6) });
 
     Console.WriteLine("✓ Created 5 people and their relationships\n");
 
@@ -98,24 +99,24 @@ try
     Console.WriteLine("\n3. Graph Traversal Examples...");
 
     // Depth 0: Just the node
-    alice = await graph.GetNode<Person>(alice.Id);
+    alice = await graph.GetNodeAsync<Person>(alice.Id);
     Console.WriteLine($"\nAlice with depth 0:");
     Console.WriteLine($"  - Name: {alice.Name}");
 
     // Depth 1: Node with immediate relationships
     var aliceKnowsDepth1 = await graph.Nodes<Person>()
         .Where(p => p.Id == alice.Id)
-        .TraversePath<Person, Knows, Person>()
+        .Traverse<Knows, Person>()
         .ToListAsync();
 
     Console.WriteLine($"\nAlice with depth 1:");
     Console.WriteLine($"  - Name: {alice.Name}");
-    Console.WriteLine($"  - Knows: {string.Join(", ", aliceKnowsDepth1.Select(k => k.Target.Name ?? "Unknown"))}");
+    Console.WriteLine($"  - Knows: {string.Join(", ", aliceKnowsDepth1.Select(k => k.Name))}");
 
     // Depth 2: Two levels of relationships
     var aliceKnowsDepth2 = await graph.Nodes<Person>()
         .Where(p => p.Id == alice.Id)
-        .TraversePath<Person, Knows, Person>()
+        .Traverse<Knows, Person>()
         .WithDepth(2)
         .ToListAsync();
 
@@ -123,7 +124,7 @@ try
     Console.WriteLine($"  - Name: {alice.Name}");
     foreach (var knows in aliceKnowsDepth2)
     {
-        Console.WriteLine($"  - Knows: {knows?.Target?.Name ?? "Unknown"}");
+        Console.WriteLine($"  - Knows: {knows.Name}");
     }
 
     // ==== COMPLEX LINQ QUERIES ====
@@ -131,9 +132,9 @@ try
 
     // Find people who know someone in San Francisco
     var peopleWhoKnowSomeoneInSF = await graph.Nodes<Person>()
-        .TraversePath<Person, Knows, Person>()
-        .Where(path => path.Target != null && path.Target.City == "San Francisco")
-        .Select(path => path.Source!)
+        .PathSegments<Knows, Person>()
+        .Where(p => p.EndNode.City == "San Francisco")
+        .Select(p => p.StartNode)
         .Distinct()
         .ToListAsync();
 
@@ -143,64 +144,119 @@ try
         Console.WriteLine($"  - {person.Name} (Age: {person.Age}, City: {person.City})");
     }
 
-    // Find mutual connections
+    // ==== FINDING MUTUAL CONNECTIONS ====
     Console.WriteLine("\n5. Finding mutual connections...");
 
-    // Get all people and their connections
-    // We need to work around the LINQ provider limitations
-    var allPaths = await graph.Nodes<Person>()
-        .TraversePath<Person, Knows, Person>()
-        .ToListAsync();
-
-    // Group by source person in memory
-    var peopleWithConnections = allPaths
-        .Where(path => path.Source != null && path.Target != null)
-        .GroupBy(path => path.Source!.Id)
-        .Select(g => new PersonConnections(
-            g.Key,
-            g.Select(path => path.Target!.Id).ToList()
-        ))
-        .ToList();
-
-    // Build a lookup dictionary
-    var connectionsLookup = peopleWithConnections.ToDictionary(x => x.PersonId, x => x.KnowsIds);
-
-    // Get all people for name lookup
+    // Method 1: Using PathSegments to find mutual connections more efficiently
     var allPeople = await graph.Nodes<Person>().ToListAsync();
-    var peopleLookup = allPeople.ToDictionary(p => p.Id, p => p.Name);
 
-    var processedPairs = new HashSet<(string, string)>();
+    // For each pair of people, find their mutual connections
+    var mutualConnections = new List<(Person person1, Person person2, List<Person> mutual)>();
 
-    // Find mutual connections
     foreach (var person1 in allPeople)
     {
-        foreach (var person2 in allPeople.Where(p => p.Id != person1.Id))
+        foreach (var person2 in allPeople.Where(p => p.Id != person1.Id && string.Compare(p.Id, person1.Id) > 0))
         {
-            // Create a normalized pair (smaller ID first) to avoid duplicates
-            var pair = string.Compare(person1.Id, person2.Id) < 0
-                ? (person1.Id, person2.Id)
-                : (person2.Id, person1.Id);
+            // Get people that person1 knows
+            var person1Knows = await graph.Nodes<Person>()
+                .Where(p => p.Id == person1.Id)
+                .Traverse<Knows, Person>()
+                .ToListAsync();
 
-            if (processedPairs.Contains(pair))
-                continue;
+            // Get people that person2 knows
+            var person2Knows = await graph.Nodes<Person>()
+                .Where(p => p.Id == person2.Id)
+                .Traverse<Knows, Person>()
+                .ToListAsync();
 
-            processedPairs.Add(pair);
+            // Find mutual connections
+            var mutual = person1Knows
+                .Where(p1k => person2Knows.Any(p2k => p2k.Id == p1k.Id))
+                .ToList();
 
-            if (connectionsLookup.TryGetValue(person1.Id, out var person1Knows) &&
-                connectionsLookup.TryGetValue(person2.Id, out var person2Knows))
+            if (mutual.Any())
             {
-                var mutualIds = person1Knows.Intersect(person2Knows).ToList();
+                mutualConnections.Add((person1, person2, mutual));
+            }
+        }
+    }
 
-                if (mutualIds.Any())
+    // Display results
+    Console.WriteLine($"\nMutual connections found:");
+    foreach (var (person1, person2, mutual) in mutualConnections)
+    {
+        var mutualNames = string.Join(", ", mutual.Select(m => m.Name));
+        Console.WriteLine($"  - {person1.Name} and {person2.Name} both know: {mutualNames}");
+    }
+
+    // Method 2: More efficient approach using a single query per person pair
+    Console.WriteLine("\n\nAlternative approach - Finding mutual connections for specific pairs:");
+
+    // Let's find mutual connections between Alice and Bob specifically
+
+    // Get Alice's connections
+    var aliceConnections = await graph.Nodes<Person>()
+        .Where(p => p.Id == alice.Id)
+        .Traverse<Knows, Person>()
+        .Select(p => p.Id)
+        .ToListAsync();
+
+    // Find Bob's connections that are also in Alice's connections
+    var mutualBetweenAliceAndBob = await graph.Nodes<Person>()
+        .Where(p => p.Id == bob.Id)
+        .Traverse<Knows, Person>()
+        .Where(p => aliceConnections.Contains(p.Id))
+        .ToListAsync();
+
+    if (mutualBetweenAliceAndBob.Any())
+    {
+        Console.WriteLine($"  - Alice and Bob both know: {string.Join(", ", mutualBetweenAliceAndBob.Select(m => m.Name))}");
+    }
+    else
+    {
+        Console.WriteLine($"  - Alice and Bob have no mutual connections");
+    }
+
+    // Method 3: Using PathSegments for more complex analysis
+    Console.WriteLine("\n\nFinding people with the most mutual connections:");
+
+    // Get all connections as path segments
+    var allConnections = await graph.Nodes<Person>()
+        .PathSegments<Knows, Person>()
+        .ToListAsync();
+
+    // Group by person to get their connections
+    var connectionsByPerson = allConnections
+        .GroupBy(path => path.StartNode.Id)
+        .ToDictionary(
+            g => g.Key,
+            g => g.Select(path => path.EndNode.Id).ToHashSet()
+        );
+
+    // Calculate mutual connection counts for each pair
+    var mutualCounts = new List<(string person1, string person2, int count)>();
+
+    foreach (var person1 in allPeople)
+    {
+        foreach (var person2 in allPeople.Where(p => string.Compare(p.Id, person1.Id) > 0))
+        {
+            if (connectionsByPerson.TryGetValue(person1.Id, out var p1Connections) &&
+                connectionsByPerson.TryGetValue(person2.Id, out var p2Connections))
+            {
+                var mutualCount = p1Connections.Intersect(p2Connections).Count();
+                if (mutualCount > 0)
                 {
-                    var mutualNames = mutualIds
-                        .Where(id => peopleLookup.ContainsKey(id))
-                        .Select(id => peopleLookup[id]);
-
-                    Console.WriteLine($"  - {person1.Name} and {person2.Name} both know: {string.Join(", ", mutualNames)}");
+                    mutualCounts.Add((person1.Name, person2.Name, mutualCount));
                 }
             }
         }
+    }
+
+    // Show the pair with the most mutual connections
+    var topPair = mutualCounts.OrderByDescending(mc => mc.count).FirstOrDefault();
+    if (topPair != default)
+    {
+        Console.WriteLine($"  - {topPair.person1} and {topPair.person2} have the most mutual connections: {topPair.count}");
     }
 
     Console.WriteLine("\n=== Example 2 Complete ===");

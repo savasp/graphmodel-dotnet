@@ -35,7 +35,8 @@ Console.WriteLine($"✓ Created database: {databaseName}");
 // We start with the Neo4j Graph Provider here
 
 // Create graph instance with Neo4j provider
-var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var graph = store.Graph;
 
 // TODO: Some of the functionality in this example is isn't implemented properly.
 /*

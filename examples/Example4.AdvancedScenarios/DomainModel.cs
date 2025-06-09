@@ -17,7 +17,7 @@ using Cvoya.Graph.Model;
 // ==== DOMAIN MODEL ====
 
 [Node("Blog")]
-public class Blog : Node
+public record Blog : Node
 {
     public string Title { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
@@ -26,7 +26,7 @@ public class Blog : Node
 }
 
 [Node("Content")]
-public class Content : Node
+public record Content : Node
 {
     public string Title { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
@@ -36,15 +36,12 @@ public class Content : Node
 }
 
 [Relationship("CONTAINS")]
-public class ContainedIn : Relationship
+public record ContainedIn(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
 {
-    public ContainedIn() : base(isBidirectional: true)
-    {
-    }
 }
 
 [Node("Article")]
-public class Article : Content
+public record Article : Content
 {
     public DateTime PublishedDate { get; set; }
     public int WordCount { get; set; }
@@ -52,53 +49,43 @@ public class Article : Content
 }
 
 [Node("Video")]
-public class Video : Content
+public record Video : Content
 {
     public int Duration { get; set; }
     public int Views { get; set; }
 }
 
 [Relationship("CONTAINS")]
-public class Contains : Relationship
+public record Contains(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
 {
-    public Contains() : base(isBidirectional: true)
-    {
-    }
 }
 
 [Relationship("REFERENCES")]
-public class References : Relationship
+public record References(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
 {
     public string Context { get; set; } = string.Empty;
 }
 
 [Node("Tag")]
-public class Tag : Node
+public record Tag : Node
 {
     public string Name { get; set; } = string.Empty;
 }
 
 [Relationship("REFERENCE")]
-public class Reference : Relationship
+public record Reference(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
 {
-    public Reference() : base(isBidirectional: true)
-    {
-    }
     public string Context { get; set; } = string.Empty;
 }
 
 [Relationship("TAGGED_WITH")]
-public class TaggedContent : Relationship
+public record TaggedContent(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
 {
-    public TaggedContent() : base(isBidirectional: true)
-    {
-    }
+    public string TagName { get; set; } = string.Empty;
 }
 
 [Relationship("TAGGED_WITH")]
-public class TaggedWith : Relationship
+public record TaggedWith(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
 {
-    public TaggedWith() : base(isBidirectional: true)
-    {
-    }
+    public string TagName { get; set; } = string.Empty;
 }
