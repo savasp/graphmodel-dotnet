@@ -14,6 +14,7 @@
 
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j;
+using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
 
 // Example 1: Basic CRUD Operations
@@ -35,8 +36,13 @@ Console.WriteLine($"✓ Created database: {databaseName}");
 
 // We start with the Neo4j Graph Provider here
 
-// Create graph instance with Neo4j provider
-var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+// Create graph instance
+var loggerFactory = LoggerFactory.Create(builder =>
+{
+    builder.AddConsole();
+});
+
+var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, loggerFactory);
 var graph = store.Graph;
 
 try

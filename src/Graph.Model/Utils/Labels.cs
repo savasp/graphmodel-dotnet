@@ -51,7 +51,7 @@ public static class Labels
     /// <exception cref="GraphException">Thrown when the type doesn't have a valid name</exception>
     public static string GetLabelFromType(Type type)
     {
-        var label = TypeToLabelCache[type];
+        TypeToLabelCache.TryGetValue(type, out var label);
 
         if (label is not null)
         {
@@ -90,7 +90,7 @@ public static class Labels
     {
         ArgumentNullException.ThrowIfNull(propertyInfo.DeclaringType);
 
-        var label = PropertyToLabelCache[propertyInfo];
+        PropertyToLabelCache.TryGetValue(propertyInfo, out var label);
 
         if (label is not null)
         {
@@ -121,7 +121,8 @@ public static class Labels
     {
         ArgumentNullException.ThrowIfNull(label);
 
-        var type = LabelToTypeCache[label];
+        LabelToTypeCache.TryGetValue(label, out var type);
+
         if (type is not null)
         {
             return type;
@@ -163,7 +164,8 @@ public static class Labels
     {
         ArgumentNullException.ThrowIfNull(label);
 
-        var propertyInfo = LabelToPropertyCache[(enclosingType, label)];
+        LabelToPropertyCache.TryGetValue((enclosingType, label), out var propertyInfo);
+
         if (propertyInfo is not null)
         {
             return propertyInfo;
@@ -216,7 +218,8 @@ public static class Labels
 
         var cacheKey = (targetType, label);
 
-        var cachedType = MostDerivedTypeCache[cacheKey];
+        MostDerivedTypeCache.TryGetValue(cacheKey, out var cachedType);
+
         if (cachedType is not null)
         {
             return cachedType;
