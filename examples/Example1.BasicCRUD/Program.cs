@@ -39,7 +39,7 @@ Console.WriteLine($"✓ Created database: {databaseName}");
 // Create graph instance
 var loggerFactory = LoggerFactory.Create(builder =>
 {
-    builder.AddConsole();
+    builder.AddConsole().SetMinimumLevel(LogLevel.Debug);
 });
 
 var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, loggerFactory);
@@ -233,7 +233,7 @@ finally
     await graph.DisposeAsync();
     await using (var session = driver.AsyncSession())
     {
-        await session.RunAsync($"DROP DATABASE {databaseName}");
+        //await session.RunAsync($"DROP DATABASE {databaseName}");
     }
     await driver.DisposeAsync();
 }

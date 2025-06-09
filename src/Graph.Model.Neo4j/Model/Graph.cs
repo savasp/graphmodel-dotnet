@@ -62,7 +62,7 @@ internal class Graph : IGraph
             // Use the provider to create the query properly
             var query = _graphQueryProvider.CreateNodeQuery<N>(expression);
 
-            var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction).Result;
+            var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true).Result;
             return query.WithTransaction(neo4jTx);
         }
         catch (Exception ex) when (ex is not GraphException)
@@ -89,7 +89,7 @@ internal class Graph : IGraph
             // Use the provider to create the query properly
             var query = _graphQueryProvider.CreateRelationshipQuery<R>(expression);
 
-            var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction).Result;
+            var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true).Result;
             return query.WithTransaction(neo4jTx);
         }
         catch (Exception ex) when (ex is not GraphException)

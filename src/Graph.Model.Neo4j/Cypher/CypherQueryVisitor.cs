@@ -71,14 +71,19 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     protected override Expression VisitConstant(ConstantExpression node)
     {
+        logger?.LogDebug("Processing constant expression of type: {Type}", node.Type);
+
         if (node.Value is IGraphQueryable queryable)
         {
-            var currentScope = _scopes.Peek();
-            _builder.AddMatch(currentScope.Alias, GetLabelFromQueryable(queryable));
-            queryContext.RootType = DetermineRootType(queryable);
+            logger?.LogDebug("Found IGraphQueryable: {QueryableType}", queryable.GetType().Name);
 
-            // Capture the entity type for complex property detection
             _entityType = queryable.ElementType;
+
+            var label = Labels.GetLabelFromType(_entityType);
+            logger?.LogDebug("Using label: {Label} for type: {Type}", label, _entityType.Name);
+
+            // Build the MATCH clause with the label
+            _builder.AddMatch(_scopes.Peek().Alias, label);
         }
 
         return base.VisitConstant(node);
@@ -86,6 +91,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     private Expression HandleWhere(MethodCallExpression node)
     {
+        logger?.LogDebug("Processing where clause for method: {Method}", node.Method.Name);
+
         Visit(node.Arguments[0]);
 
         if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
@@ -99,6 +106,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     private Expression HandleSelect(MethodCallExpression node)
     {
+        logger?.LogDebug("Processing select clause for method: {Method}", node.Method.Name);
+
         Visit(node.Arguments[0]);
 
         if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
@@ -115,6 +124,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     private Expression HandleOrderBy(MethodCallExpression node)
     {
+        logger?.LogDebug("Processing order by clause for method: {Method}", node.Method.Name);
+
         Visit(node.Arguments[0]);
 
         if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
@@ -128,6 +139,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     private Expression HandleThenBy(MethodCallExpression node)
     {
+        logger?.LogDebug("Processing then by clause for method: {Method}", node.Method.Name);
+
         Visit(node.Arguments[0]);
 
         if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
@@ -141,6 +154,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     private Expression HandleTake(MethodCallExpression node)
     {
+        logger?.LogDebug("Processing take clause for method: {Method}", node.Method.Name);
+
         Visit(node.Arguments[0]);
 
         if (node.Arguments[1] is ConstantExpression { Value: int limit })
@@ -153,6 +168,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     private Expression HandleSkip(MethodCallExpression node)
     {
+        logger?.LogDebug("Processing skip clause for method: {Method}", node.Method.Name);
+
         Visit(node.Arguments[0]);
 
         if (node.Arguments[1] is ConstantExpression { Value: int skip })
@@ -165,6 +182,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     private Expression HandleFirst(MethodCallExpression node)
     {
+        logger?.LogDebug("Processing first clause for method: {Method}", node.Method.Name);
+
         Visit(node.Arguments[0]);
         _builder.SetLimit(1);
         queryContext.IsScalarResult = true;
@@ -173,6 +192,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     private Expression HandleSingle(MethodCallExpression node)
     {
+        logger?.LogDebug("Processing single clause for method: {Method}", node.Method.Name);
+
         Visit(node.Arguments[0]);
         _builder.SetLimit(2); // Get 2 to check for multiple results
         queryContext.IsScalarResult = true;
@@ -181,6 +202,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     private Expression HandleCount(MethodCallExpression node)
     {
+        logger?.LogDebug("Processing count clause for method: {Method}", node.Method.Name);
+
         Visit(node.Arguments[0]);
         _builder.SetAggregation("count", _scopes.Peek().Alias);
         queryContext.IsScalarResult = true;
@@ -189,6 +212,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     private Expression HandleAny(MethodCallExpression node)
     {
+        logger?.LogDebug("Processing any clause for method: {Method}", node.Method.Name);
+
         Visit(node.Arguments[0]);
 
         if (node.Arguments.Count > 1)
@@ -209,6 +234,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
     private Expression HandleInclude(MethodCallExpression node)
     {
+        logger?.LogDebug("Processing include clause for method: {Method}", node.Method.Name);
+
         Visit(node.Arguments[0]);
 
         if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
@@ -218,12 +245,6 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
         }
 
         return node;
-    }
-
-    private static string? GetLabelFromQueryable(IGraphQueryable queryable)
-    {
-        // TODO: Extract label from queryable metadata
-        return null;
     }
 
     private static GraphQueryContext.QueryRootType DetermineRootType(IGraphQueryable queryable) =>
@@ -251,8 +272,8 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
         }
 
         // Continue visiting the source expression
-        return transactionExpression.Source is not null
-            ? Visit(transactionExpression.Source)
+        return transactionExpression.InnerExpression is not null
+            ? Visit(transactionExpression.InnerExpression)
             : transactionExpression;
     }
 }

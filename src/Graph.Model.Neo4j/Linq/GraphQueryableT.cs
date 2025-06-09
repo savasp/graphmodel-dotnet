@@ -40,85 +40,210 @@ internal class GraphQueryable<T> : GraphQueryable, IGraphQueryable<T>, IOrderedQ
 
     IQueryProvider IQueryable.Provider => Provider;
 
-    public Task<bool> AllAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    public async Task<bool> AnyAsync(CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        _logger.LogDebug("Executing AnyAsync query");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Any),
+            [typeof(T)],
+            Expression);
+
+        return await Provider.ExecuteAsync<bool>(expression, cancellationToken);
     }
 
-    public Task<bool> AnyAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> AnyAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        ArgumentNullException.ThrowIfNull(predicate);
+        _logger.LogDebug("Executing AnyAsync query with predicate");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Any),
+            [typeof(T)],
+            Expression,
+            Expression.Quote(predicate));
+
+        return await Provider.ExecuteAsync<bool>(expression, cancellationToken);
     }
 
-    public Task<bool> AnyAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    public async Task<int> CountAsync(CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        _logger.LogDebug("Executing CountAsync query");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Count),
+            [typeof(T)],
+            Expression);
+
+        return await Provider.ExecuteAsync<int>(expression, cancellationToken);
     }
 
-    public Task<int> CountAsync(CancellationToken cancellationToken = default)
+    public async Task<int> CountAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        ArgumentNullException.ThrowIfNull(predicate);
+        _logger.LogDebug("Executing CountAsync query with predicate");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Count),
+            [typeof(T)],
+            Expression,
+            Expression.Quote(predicate));
+
+        return await Provider.ExecuteAsync<int>(expression, cancellationToken);
     }
 
-    public Task<int> CountAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    public async Task<T> FirstAsync(CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        _logger.LogDebug("Executing FirstAsync query");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.First),
+            [typeof(T)],
+            Expression);
+
+        return await Provider.ExecuteAsync<T>(expression, cancellationToken);
     }
 
-    public Task<T> FirstAsync(CancellationToken cancellationToken = default)
+    public async Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        _logger.LogDebug("Executing FirstOrDefaultAsync query");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.FirstOrDefault),
+            [typeof(T)],
+            Expression);
+
+        return await Provider.ExecuteAsync<T?>(expression, cancellationToken);
     }
 
-    public Task<T?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
+    public async Task<T> LastAsync(CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        _logger.LogDebug("Executing LastAsync query");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Last),
+            [typeof(T)],
+            Expression);
+
+        return await Provider.ExecuteAsync<T>(expression, cancellationToken);
+    }
+
+    public async Task<T?> LastOrDefaultAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("Executing LastOrDefaultAsync query");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.LastOrDefault),
+            [typeof(T)],
+            Expression);
+
+        return await Provider.ExecuteAsync<T?>(expression, cancellationToken);
+    }
+
+    public async Task<T> SingleAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("Executing SingleAsync query");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Single),
+            [typeof(T)],
+            Expression);
+
+        return await Provider.ExecuteAsync<T>(expression, cancellationToken);
+    }
+
+    public async Task<List<T>> ToListAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("Executing ToListAsync query");
+
+        var result = await Provider.ExecuteAsync<IEnumerable<T>>(Expression, cancellationToken);
+        return result.ToList();
+    }
+
+    public async Task<bool> AllAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        _logger.LogDebug("Executing AllAsync query with predicate");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.All),
+            [typeof(T)],
+            Expression,
+            Expression.Quote(predicate));
+
+        return await Provider.ExecuteAsync<bool>(expression, cancellationToken);
+    }
+
+    public async Task<T?> MaxAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("Executing MaxAsync query");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Max),
+            [typeof(T)],
+            Expression);
+
+        return await Provider.ExecuteAsync<T?>(expression, cancellationToken);
+    }
+
+    public async Task<TResult?> MaxAsync<TResult>(Expression<Func<T, TResult>> selector, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(selector);
+        _logger.LogDebug("Executing MaxAsync query with selector");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Max),
+            [typeof(T), typeof(TResult)],
+            Expression,
+            Expression.Quote(selector));
+
+        return await Provider.ExecuteAsync<TResult?>(expression, cancellationToken);
+    }
+
+    public async Task<T?> MinAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("Executing MinAsync query");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Min),
+            [typeof(T)],
+            Expression);
+
+        return await Provider.ExecuteAsync<T?>(expression, cancellationToken);
+    }
+
+    public async Task<TResult?> MinAsync<TResult>(Expression<Func<T, TResult>> selector, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(selector);
+        _logger.LogDebug("Executing MinAsync query with selector");
+
+        var expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Min),
+            [typeof(T), typeof(TResult)],
+            Expression,
+            Expression.Quote(selector));
+
+        return await Provider.ExecuteAsync<TResult?>(expression, cancellationToken);
     }
 
     public IEnumerator<T> GetEnumerator()
     {
         var result = Provider.Execute<IEnumerable<T>>(Expression);
         return result.GetEnumerator();
-    }
-
-    public Task<T> LastAsync(CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<T?> LastOrDefaultAsync(CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<T?> MaxAsync(CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<TResult?> MaxAsync<TResult>(Expression<Func<T, TResult>> selector, CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<T?> MinAsync(CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<TResult?> MinAsync<TResult>(Expression<Func<T, TResult>> selector, CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<T> SingleAsync(CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<List<T>> ToListAsync(CancellationToken cancellationToken = default)
-    {
-        throw new NotImplementedException();
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

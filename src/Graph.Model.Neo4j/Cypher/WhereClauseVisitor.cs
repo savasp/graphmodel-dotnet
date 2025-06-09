@@ -20,12 +20,30 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder) 
 {
     private readonly Stack<string> _expressions = new();
 
+    public void ProcessWhereClause(LambdaExpression lambda)
+    {
+        Visit(lambda.Body);
+
+        if (_expressions.Count == 1)
+        {
+            builder.AddWhere(_expressions.Pop());
+        }
+        else if (_expressions.Count > 1)
+        {
+            throw new InvalidOperationException($"Where clause processing left {_expressions.Count} expressions on stack");
+        }
+    }
+
     protected override Expression VisitBinary(BinaryExpression node)
     {
         Visit(node.Left);
+        if (_expressions.Count == 0)
+            throw new InvalidOperationException($"Left side of {node.NodeType} produced no value");
         var left = _expressions.Pop();
 
         Visit(node.Right);
+        if (_expressions.Count == 0)
+            throw new InvalidOperationException($"Right side of {node.NodeType} produced no value");
         var right = _expressions.Pop();
 
         var expression = node.NodeType switch
@@ -47,8 +65,27 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder) 
 
     protected override Expression VisitMember(MemberExpression node)
     {
-        var path = BuildPropertyPath(node);
-        _expressions.Push(path);
+        // Check if this is a parameter access (like p.Name)
+        if (node.Expression is ParameterExpression)
+        {
+            _expressions.Push($"{scope.Alias}.{node.Member.Name}");
+        }
+        else
+        {
+            // For other member access, try to evaluate it as a constant
+            var value = EvaluateMemberExpression(node);
+
+            if (value is null)
+            {
+                _expressions.Push("null");
+            }
+            else
+            {
+                var paramName = builder.AddParameter(value);
+                _expressions.Push(paramName);
+            }
+        }
+
         return node;
     }
 
@@ -95,30 +132,6 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder) 
         return base.VisitUnary(node);
     }
 
-    public override Expression? Visit(Expression? node)
-    {
-        var result = base.Visit(node);
-
-        if (_expressions.Count > 0 && node == result)
-        {
-            builder.AddWhere(_expressions.Pop());
-        }
-
-        return result;
-    }
-
-    private string BuildPropertyPath(MemberExpression node)
-    {
-        var parts = new Stack<string>();
-
-        for (var current = node; current is not null; current = current.Expression as MemberExpression)
-        {
-            parts.Push(current.Member.Name);
-        }
-
-        return $"{scope.Alias}.{string.Join(".", parts)}";
-    }
-
     private string HandleStringMethod(MethodCallExpression node, string cypherOperator)
     {
         Visit(node.Object!);
@@ -142,5 +155,15 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder) 
         Visit(node.Object!);
         var target = _expressions.Pop();
         return $"toUpper({target})";
+    }
+
+    private static object? EvaluateMemberExpression(MemberExpression node)
+    {
+        // This evaluates member expressions that aren't parameter-based
+        // For example, if someone uses a captured variable in the lambda
+        var objectMember = Expression.Convert(node, typeof(object));
+        var getterLambda = Expression.Lambda<Func<object?>>(objectMember);
+        var getter = getterLambda.Compile();
+        return getter();
     }
 }

@@ -20,12 +20,25 @@ namespace Cvoya.Graph.Model.Neo4j.Serialization;
 /// <summary>
 /// Base class for generated entity serializers with shared conversion logic
 /// </summary>
-internal abstract class EntitySerializerBase
+public abstract class EntitySerializerBase
 {
+    /// <summary>
+    /// Gets the type of the entity this serializer handles
+    /// </summary>
     public abstract Type EntityType { get; }
 
-    public abstract Task<object> DeserializeAsync(global::Neo4j.Driver.IEntity entity);
+    /// <summary>
+    /// Deserializes a Neo4j entity into a .NET object
+    /// </summary>
+    /// <param name="entity">The Neo4j entity to deserialize</param>
+    /// <returns>A task that represents the asynchronous operation, containing the deserialized .NET object</returns>
+    public abstract object Deserialize(global::Neo4j.Driver.IEntity entity);
 
+    /// <summary>
+    /// Serializes a .NET object into a Neo4j entity representation
+    /// </summary>
+    /// <param name="entity">The .NET object to serialize</param>
+    /// <returns>A dictionary representing the serialized entity</returns>
     public abstract Dictionary<string, object?> Serialize(object entity);
 
     /// <summary>
@@ -42,8 +55,8 @@ internal abstract class EntitySerializerBase
         decimal d => (double)d,
         float f => (double)f,
         Model.Point point => new global::Neo4j.Driver.Point(4326, point.X, point.Y, point.Z),
-        System.Collections.IDictionary dict => ConvertDictionary(dict),
-        System.Collections.IEnumerable collection when value is not string => ConvertCollection(collection),
+        IDictionary dict => ConvertDictionary(dict),
+        IEnumerable collection when value is not string => ConvertCollection(collection),
         Enum e => e.ToString(),
         _ => value
     };
@@ -51,7 +64,7 @@ internal abstract class EntitySerializerBase
     /// <summary>
     /// Converts a Neo4j value to the specified .NET type
     /// </summary>
-    protected static object? ConvertFromNeo4jValue(object? value, Type targetType)
+    public static object? ConvertFromNeo4jValue(object? value, Type targetType)
     {
         if (value is null)
         {

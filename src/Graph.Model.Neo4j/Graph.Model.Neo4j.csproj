@@ -45,16 +45,13 @@
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Cvoya.Graph.Model.Neo4j.Tests</_Parameter1>
         </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Cvoya.Graph.Model.Neo4j.Serialization.CodeGen</_Parameter1>
-        </AssemblyAttribute>
     </ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="Neo4j.Driver" Version="5.28.1" />
         <PackageReference Include="NLog.Extensions.Logging" Version="5.4.0" />
         <ProjectReference Include="../Graph.Model/Graph.Model.csproj" />
-        <ProjectReference Include="../Graph.Model.Neo4j.Serialization.CodeGen/Graph.Model.Neo4j.Serialization.CodeGen.csproj" />
+        <ProjectReference Include="../Graph.Model.Neo4j.Serialization.CodeGen/Graph.Model.Neo4j.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
 </Project>

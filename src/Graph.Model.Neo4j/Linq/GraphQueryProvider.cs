@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System.Linq.Expressions;
+using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Cypher;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -25,21 +26,27 @@ namespace Cvoya.Graph.Model.Neo4j.Linq;
 /// </summary>
 internal sealed class GraphQueryProvider : IGraphQueryProvider
 {
-    private readonly GraphContext _context;
+    private readonly GraphContext _graphContext;
     private readonly CypherEngine _cypherEngine;
     private readonly ILogger _logger;
 
+    private static readonly MethodInfo CreateNodeQueryMethod = typeof(GraphQueryProvider)
+        .GetMethod(nameof(CreateNodeQuery), BindingFlags.Public | BindingFlags.Instance)!;
+
+    private static readonly MethodInfo CreateRelationshipQueryMethod = typeof(GraphQueryProvider)
+        .GetMethod(nameof(CreateRelationshipQuery), BindingFlags.Public | BindingFlags.Instance)!;
+
     public GraphQueryProvider(GraphContext context)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
-        _cypherEngine = new CypherEngine(_context);
+        _graphContext = context ?? throw new ArgumentNullException(nameof(context));
+        _cypherEngine = new CypherEngine(_graphContext);
         _logger = context.LoggerFactory?.CreateLogger<GraphQueryProvider>() ?? NullLogger<GraphQueryProvider>.Instance;
 
-        _logger.LogInformation("GraphQueryProvider initialized for database '{DatabaseName}'", _context.DatabaseName);
+        _logger.LogInformation("GraphQueryProvider initialized for database '{DatabaseName}'", _graphContext.DatabaseName);
     }
 
     /// <inheritdoc/>
-    public IGraph Graph => _context.Graph;
+    public IGraph Graph => _graphContext.Graph;
 
     /// <inheritdoc/>
     public IQueryable<TElement> CreateQuery<TElement>(Expression expression)
@@ -57,32 +64,18 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
             _logger.LogDebug("Creating node query for type {NodeType}", typeof(TElement).Name);
 
             // Use reflection since TElement isn't constrained
-            var graphNodeQueryableType = typeof(GraphNodeQueryable<>).MakeGenericType(typeof(TElement));
-            return (IQueryable<TElement>)Activator.CreateInstance(
-                graphNodeQueryableType,
-                this,
-                _context,
-                queryContext,
-                expression)!;
+            return (IQueryable<TElement>)CreateNodeQueryMethod.MakeGenericMethod(typeof(TElement)).Invoke(this, [expression])!;
         }
 
         // Determine the type of queryable to create based on the element type
-        if (typeof(INode).IsAssignableFrom(typeof(TElement)))
+        if (typeof(IRelationship).IsAssignableFrom(typeof(TElement)))
         {
-            _logger.LogDebug("Creating node query for type {NodeType}", typeof(TElement).Name);
-
-            // Use reflection since TElement isn't constrained
-            var graphRelQueryableType = typeof(GraphRelationshipQueryable<>).MakeGenericType(typeof(TElement));
-            return (IQueryable<TElement>)Activator.CreateInstance(
-                graphRelQueryableType,
-                this,
-                _context,
-                queryContext,
-                expression)!;
+            _logger.LogDebug("Creating relationship query for type {RelType}", typeof(TElement).Name);
+            return (IQueryable<TElement>)CreateRelationshipQueryMethod.MakeGenericMethod(typeof(TElement)).Invoke(this, [expression])!;
         }
 
         _logger.LogDebug("Creating generic query for type {ElementType}", typeof(TElement).Name);
-        return new GraphQueryable<TElement>(this, _context, queryContext, expression);
+        return new GraphQueryable<TElement>(this, _graphContext, queryContext, expression);
     }
 
     /// <inheritdoc/>
@@ -113,7 +106,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
             typeof(TNode).Name, expression);
 
         var queryContext = ExtractQueryContext(expression);
-        return new GraphNodeQueryable<TNode>(this, _context, queryContext, expression);
+        return new GraphNodeQueryable<TNode>(this, _graphContext, queryContext, expression);
     }
 
     /// <inheritdoc/>
@@ -126,7 +119,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
             typeof(TRel).Name, expression);
 
         var queryContext = ExtractQueryContext(expression);
-        return new GraphRelationshipQueryable<TRel>(this, _context, queryContext, expression);
+        return new GraphRelationshipQueryable<TRel>(this, _graphContext, queryContext, expression);
     }
 
     /// <inheritdoc/>
@@ -155,7 +148,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
             traverseMethod);
 
         return new GraphTraversalQueryable<TSource, TRelationship, TTarget>(
-            this, _context, queryContext, traversalExpression, sourceExpression);
+            this, _graphContext, queryContext, traversalExpression, sourceExpression);
     }
 
     /// <inheritdoc/>
@@ -184,7 +177,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
 
         // Use the generic GraphQueryable<T> since we're returning IGraphQueryable<IGraphPathSegment<...>>
         return new GraphQueryable<IGraphPathSegment<TSource, TRel, TTarget>>(
-            this, _context, queryContext, pathSegmentExpression);
+            this, _graphContext, queryContext, pathSegmentExpression);
     }
 
     public TResult Execute<TResult>(Expression expression)
@@ -244,7 +237,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
             queryContext.Transaction = transaction;
 
             _logger.LogDebug("Translating expression to Cypher");
-            var cypherQuery = await _cypherEngine.ExpressionToCypherVisitor(expression, queryContext, cancellationToken);
+            var cypherQuery = _cypherEngine.ExpressionToCypherVisitor(expression, queryContext);
 
             var result = await _cypherEngine.ExecuteAsync<TResult>(
                 cypherQuery,
@@ -387,7 +380,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
 
         // Use TransactionHelpers.GetOrCreateTransactionAsync if it exists
         var newTransaction = await TransactionHelpers.GetOrCreateTransactionAsync(
-            _context,
+            _graphContext,
             transaction: null);
 
         return (newTransaction, shouldDisposeTransaction: true);

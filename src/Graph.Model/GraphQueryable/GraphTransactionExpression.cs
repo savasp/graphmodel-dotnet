@@ -17,76 +17,69 @@ using System.Linq.Expressions;
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents a transaction attachment in the expression tree.
+/// Expression that wraps another expression with transaction context.
 /// </summary>
 public sealed class GraphTransactionExpression : Expression
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="GraphTransactionExpression"/> class.
     /// </summary>
-    /// <param name="source">The source expression to which the transaction is attached.</param>
-    /// <param name="transaction">The transaction to associate with the source expression.</param>
-    public GraphTransactionExpression(Expression source, IGraphTransaction transaction)
+    /// <param name="innerExpression">The inner expression to wrap.</param>
+    /// <param name="transaction">The transaction to associate with this expression.</param>
+    public GraphTransactionExpression(Expression innerExpression, IGraphTransaction transaction)
     {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(transaction);
-
-        Source = source;
-        Transaction = transaction;
+        InnerExpression = innerExpression ?? throw new ArgumentNullException(nameof(innerExpression));
+        Transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
     }
 
     /// <summary>
-    /// Gets the source expression that this transaction is attached to.
+    /// Gets the inner expression that this transaction expression wraps.
     /// </summary>
-    public Expression Source { get; }
+    public Expression InnerExpression { get; }
 
     /// <summary>
     /// Gets the transaction associated with this expression.
     /// </summary>
     public IGraphTransaction Transaction { get; }
 
-    /// <summary>
-    /// Gets the node type as Extension since this is a custom expression type.
-    /// </summary>
+    /// <inheritdoc />
     public override ExpressionType NodeType => ExpressionType.Extension;
+    /// <inheritdoc />
+    public override Type Type => InnerExpression.Type;
+    /// <inheritdoc />
+    public override bool CanReduce => true;
 
-    /// <summary>
-    /// Gets the type of the expression, which matches the source expression's type.
-    /// </summary>
-    public override Type Type => Source.Type;
+    /// <inheritdoc />
+    public override Expression Reduce() => InnerExpression;
 
-    /// <summary>
-    /// Accepts a visitor for this expression. Since this is a custom expression type,
-    /// most visitors won't know how to handle it and will just return this expression unchanged.
-    /// Providers that understand this expression type can check for it explicitly.
-    /// </summary>
-    /// <param name="visitor">The visitor to accept.</param>
-    /// <returns>This expression, potentially modified by the visitor.</returns>
+    /// <inheritdoc />
     protected override Expression Accept(ExpressionVisitor visitor)
     {
-        // Let the visitor decide what to do with this expression
-        // Most visitors will just return it unchanged
-        return visitor.Visit(this);
-    }
+        // This is the key - we need to let the visitor visit our inner expression
+        // and create a new instance if it changed
+        var visitedInner = visitor.Visit(InnerExpression);
 
-    /// <summary>
-    /// Visits the children of this expression, allowing for modifications to the source expression.
-    /// If the source expression is modified, a new <see cref="GraphTransactionExpression"/> is returned with the updated source.
-    /// If no modifications are made, the current instance is returned.
-    /// </summary>
-    /// <param name="visitor">The visitor to use for visiting child expressions.</param>
-    /// <returns>
-    /// A new <see cref="GraphTransactionExpression"/> with the updated source if modifications were made,
-    /// or the current instance if no modifications were necessary.
-    /// </returns>
-    protected override Expression VisitChildren(ExpressionVisitor visitor)
-    {
-        var newSource = visitor.Visit(Source);
-        if (newSource != Source)
+        if (visitedInner != InnerExpression)
         {
-            return new GraphTransactionExpression(newSource, Transaction);
+            return new GraphTransactionExpression(visitedInner, Transaction);
         }
 
         return this;
+    }
+
+    /// <inheritdoc />
+    protected override Expression VisitChildren(ExpressionVisitor visitor)
+    {
+        // Same as Accept - visit the inner expression
+        var newInner = visitor.Visit(InnerExpression);
+        return newInner != InnerExpression ? new GraphTransactionExpression(newInner, Transaction) : this;
+    }
+
+    /// <inheritdoc />
+    public override string ToString()
+    {
+        // Don't call InnerExpression.ToString() directly to avoid recursion
+        // Just return a simple representation
+        return $"WithTransaction({InnerExpression.NodeType})";
     }
 }

@@ -111,7 +111,7 @@ internal class GraphEntitySerializer(GraphContext context)
         var relatedNodes = record["relatedNodes"].As<List<object>>();
 
         // Try to use generated serializer first for the main entity
-        var entity = await CreateEntityAsync(targetType, neo4jNode);
+        var entity = CreateEntity(targetType, neo4jNode);
 
         // Ensure we can cast to the requested type
         if (entity is not T typedEntity)
@@ -125,11 +125,10 @@ internal class GraphEntitySerializer(GraphContext context)
         return typedEntity;
     }
 
-    public async Task<object> DeserializeNodeFromNeo4jNodeAsync(
+    public object DeserializeNodeFromNeo4jNode(
             global::Neo4j.Driver.INode neo4jNode,
             Type targetType,
-            bool useMostDerivedType = true,
-            CancellationToken cancellationToken = default)
+            bool useMostDerivedType = true)
     {
         ArgumentNullException.ThrowIfNull(neo4jNode);
         ArgumentNullException.ThrowIfNull(targetType);
@@ -155,11 +154,11 @@ internal class GraphEntitySerializer(GraphContext context)
             }
         }
 
-        // Use the existing CreateEntityAsync method to avoid duplication
-        return await CreateEntityAsync(targetType, neo4jNode);
+        // Use the existing CreateEntity method to avoid duplication
+        return CreateEntity(targetType, neo4jNode);
     }
 
-    public Task<RelationshipSerializationResult> SerializeRelationshipAsync(IRelationship relationship, CancellationToken cancellationToken = default)
+    public RelationshipSerializationResult SerializeRelationship(IRelationship relationship)
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
@@ -188,13 +187,13 @@ internal class GraphEntitySerializer(GraphContext context)
             }
         }
 
-        return Task.FromResult(new RelationshipSerializationResult
+        return new RelationshipSerializationResult
         {
             Properties = props,
             Type = relType,
             SourceId = relationship.SourceId,
             TargetId = relationship.TargetId
-        });
+        };
     }
 
     public async Task<T> DeserializeRelationshipAsync<T>(
@@ -236,6 +235,21 @@ internal class GraphEntitySerializer(GraphContext context)
 
         PopulateSimpleProperties(entity, neo4jRel);
         return typedEntity;
+    }
+
+    public object? ConvertScalarFromNeo4jValue(
+        object? value,
+        Type targetType)
+    {
+        ArgumentNullException.ThrowIfNull(targetType);
+
+        if (value is null)
+        {
+            return null;
+        }
+
+        // Use the value converter to convert simple types
+        return _valueConverter.ConvertFromNeo4j(value, targetType);
     }
 
     private void PopulateSimpleProperties(object entity, global::Neo4j.Driver.IEntity neo4jEntity)
@@ -558,13 +572,13 @@ internal class GraphEntitySerializer(GraphContext context)
         return props;
     }
 
-    private async Task<object> CreateEntityAsync(Type targetType, global::Neo4j.Driver.INode neo4jNode)
+    private object CreateEntity(Type targetType, global::Neo4j.Driver.INode neo4jNode)
     {
         // First try generated serializer
         var serializer = EntitySerializerRegistry.GetSerializer(targetType);
         if (serializer != null)
         {
-            return await serializer.DeserializeAsync(neo4jNode);
+            return serializer.Deserialize(neo4jNode);
         }
 
         // Fallback to factory creation - use CreateInstance instead of Create

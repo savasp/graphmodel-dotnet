@@ -17,7 +17,7 @@ namespace Cvoya.Graph.Model.Neo4j.Serialization;
 /// <summary>
 /// Registry for entity serializers
 /// </summary>
-internal static class EntitySerializerRegistry
+public static class EntitySerializerRegistry
 {
     private static readonly Dictionary<Type, EntitySerializerBase> _serializers = new();
 

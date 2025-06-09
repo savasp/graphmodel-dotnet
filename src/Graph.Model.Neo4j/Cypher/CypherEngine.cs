@@ -38,21 +38,18 @@ internal class CypherEngine(GraphContext context)
 
         _logger?.LogDebug("Executing Cypher query: {Query}", cypher);
 
-        return await transaction.Session.ExecuteReadAsync(async tx =>
-        {
-            var result = await tx.RunAsync(cypher, queryContext.Parameters);
+        var result = await transaction.Transaction.RunAsync(cypher, queryContext.Parameters);
 
-            // Handle different result types based on query context
-            return queryContext switch
-            {
-                { IsScalarResult: true } => await HandleScalarResultAsync<T>(result, cancellationToken),
-                { IsProjection: true } => await HandleProjectionResultAsync<T>(result, queryContext, cancellationToken),
-                _ => await HandleEntityResultAsync<T>(result, queryContext, cancellationToken)
-            };
-        });
+        // Handle different result types based on query context
+        return queryContext switch
+        {
+            { IsScalarResult: true } => await HandleScalarResultAsync<T>(result, cancellationToken),
+            { IsProjection: true } => await HandleProjectionResultAsync<T>(result, queryContext, cancellationToken),
+            _ => await HandleEntityResultAsync<T>(result, queryContext, cancellationToken)
+        };
     }
 
-    public Task<string> ExpressionToCypherVisitor(
+    public string ExpressionToCypherVisitor(
         Expression expression,
         GraphQueryContext queryContext,
         CancellationToken cancellationToken = default)
@@ -72,7 +69,7 @@ internal class CypherEngine(GraphContext context)
 
             _logger?.LogDebug("Generated Cypher: {Cypher}", result.Cypher);
 
-            return Task.FromResult(result.Cypher);
+            return result.Cypher;
         }
         catch (Exception ex)
         {
@@ -86,8 +83,24 @@ internal class CypherEngine(GraphContext context)
         var record = await result.SingleAsync();
         var value = record.Values.First().Value;
 
-        // Convert Neo4j value to requested type
-        return (T)Convert.ChangeType(value, typeof(T));
+        // Handle null values
+        if (value == null)
+        {
+            return default!;
+        }
+
+        // Use the serializer to convert Neo4j values to .NET types
+        var convertedValue = _serializer.ConvertScalarFromNeo4jValue(value, typeof(T));
+
+        if (convertedValue is T typedValue)
+        {
+            return typedValue;
+        }
+
+        // If the serializer couldn't handle it, we are in trouble...
+        throw new InvalidOperationException(
+            $"Cannot convert Neo4j value '{value}' to type {typeof(T)}. " +
+            "Ensure the serializer can handle this type or use a different query context.");
     }
 
     private async Task<T> HandleProjectionResultAsync<T>(
@@ -120,11 +133,10 @@ internal class CypherEngine(GraphContext context)
 
             foreach (var record in records)
             {
-                var entity = await DeserializeEntityFromRecordAsync(
+                var entity = DeserializeEntityFromRecord(
                     record,
                     elementType,
-                    queryContext,
-                    cancellationToken);
+                    queryContext);
                 results.Add(entity);
             }
 
@@ -140,11 +152,10 @@ internal class CypherEngine(GraphContext context)
                 return default!;
             }
 
-            return (T)await DeserializeEntityFromRecordAsync(
+            return (T)DeserializeEntityFromRecord(
                 record,
                 typeof(T),
-                queryContext,
-                cancellationToken);
+                queryContext);
         }
     }
 
@@ -205,38 +216,34 @@ internal class CypherEngine(GraphContext context)
         throw new NotSupportedException($"Cannot convert results to collection type {typeof(T)}");
     }
 
-    private async Task<object> DeserializeNodeWithComplexPropertiesAsync(
+    private object DeserializeNodeWithComplexPropertiesAsync(
         global::Neo4j.Driver.INode node,
         List<object> relatedNodes,
         Type requestedType,
-        GraphQueryContext queryContext,
-        CancellationToken cancellationToken)
+        GraphQueryContext queryContext)
     {
         // This is similar to what the serializer does, but we already have the data
         // so we can deserialize directly without another query
 
         // First create the main entity
-        var entity = await _serializer.DeserializeNodeFromNeo4jNodeAsync(
+        var entity = _serializer.DeserializeNodeFromNeo4jNode(
             node,
             requestedType,
-            queryContext.UseMostDerivedType,
-            cancellationToken);
+            queryContext.UseMostDerivedType);
 
         // Then populate its complex properties using the related nodes
-        await PopulateComplexPropertiesFromResults(
+        PopulateComplexPropertiesFromResults(
             entity,
             relatedNodes,
-            queryContext,
-            cancellationToken);
+            queryContext);
 
         return entity;
     }
 
-    private async Task PopulateComplexPropertiesFromResults(
+    private void PopulateComplexPropertiesFromResults(
             object entity,
             List<object> relatedNodes,
-            GraphQueryContext queryContext,
-            CancellationToken cancellationToken)
+            GraphQueryContext queryContext)
     {
         // Similar logic to the serializer's PopulateComplexPropertiesAsync
         // but we work with the data we already have from the query
@@ -259,11 +266,10 @@ internal class CypherEngine(GraphContext context)
                 complexPropsByRelType[propName] = [];
 
             // Deserialize the complex property node - use the correct method!
-            var complexEntity = await _serializer.DeserializeNodeFromNeo4jNodeAsync(
+            var complexEntity = _serializer.DeserializeNodeFromNeo4jNode(
                 neo4jNode,
                 typeof(INode), // We'll let the serializer figure out the actual type
-                queryContext.UseMostDerivedType,
-                cancellationToken);
+                queryContext.UseMostDerivedType);
 
             complexPropsByRelType[propName].Add(complexEntity);
         }
@@ -310,11 +316,10 @@ internal class CypherEngine(GraphContext context)
         return list;
     }
 
-    private async Task<object> DeserializeEntityFromRecordAsync(
+    private object DeserializeEntityFromRecord(
            IRecord record,
            Type requestedType,
-           GraphQueryContext queryContext,
-           CancellationToken cancellationToken)
+           GraphQueryContext queryContext)
     {
         // Check what's in the record and route to the appropriate deserialization method
 
@@ -322,11 +327,10 @@ internal class CypherEngine(GraphContext context)
         if (record.Values.Count == 1 && record.Values.First().Value is global::Neo4j.Driver.INode node)
         {
             // Use DeserializeNodeFromNeo4jNodeAsync instead of DeserializeNodeAsync
-            return await _serializer.DeserializeNodeFromNeo4jNodeAsync(
+            return _serializer.DeserializeNodeFromNeo4jNode(
                 node,
                 requestedType,
-                queryContext.UseMostDerivedType,
-                cancellationToken);
+                queryContext.UseMostDerivedType);
         }
 
         // Complex case: node with related nodes (for complex properties)
@@ -334,12 +338,11 @@ internal class CypherEngine(GraphContext context)
         {
             if (record.Values.FirstOrDefault(v => v.Value is global::Neo4j.Driver.INode).Value is global::Neo4j.Driver.INode mainNode && record.Values.FirstOrDefault(v => v.Value is List<object>).Value is List<object> relatedNodes)
             {
-                return await DeserializeNodeWithComplexPropertiesAsync(
+                return DeserializeNodeWithComplexPropertiesAsync(
                     mainNode,
                     relatedNodes,
                     requestedType,
-                    queryContext,
-                    cancellationToken);
+                    queryContext);
             }
         }
 

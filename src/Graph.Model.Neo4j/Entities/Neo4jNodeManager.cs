@@ -70,6 +70,8 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // Build the Cypher query
             var cypher = $"CREATE (n:{result.Label} $props) RETURN n";
 
+            _logger?.LogDebug("Cypher query for creating node: {Cypher}", cypher);
+
             // Create the main node
             var nodeResult = await transaction.Transaction.RunAsync(cypher, new { props = result.SimpleProperties });
             var record = await nodeResult.SingleAsync();
@@ -217,6 +219,8 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 : $@"MATCH (parent {{Id: $parentId}})
                 CREATE (parent)-[:{complexProp.RelationshipType}]->(complex:{labels} $props)
                 RETURN complex";
+
+            _logger?.LogDebug("Cypher query for creating complex property: {Cypher}", cypher);
 
             var result = await tx.RunAsync(cypher, new
             {

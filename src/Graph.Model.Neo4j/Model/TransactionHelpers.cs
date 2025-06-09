@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j;
 
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 
 internal static class TransactionHelpers
@@ -23,7 +24,7 @@ internal static class TransactionHelpers
         IGraphTransaction? transaction,
         Func<GraphTransaction, Task<T>> function,
         string errorMessage,
-        ILogger? logger = null)
+        Microsoft.Extensions.Logging.ILogger? logger = null)
     {
         var tx = await GetOrCreateTransactionAsync(graphContext, transaction);
         try
@@ -63,12 +64,14 @@ internal static class TransactionHelpers
 
     public static async Task<GraphTransaction> GetOrCreateTransactionAsync(
         GraphContext graphContext,
-        IGraphTransaction? transaction = null)
+        IGraphTransaction? transaction = null,
+        bool isReadOnly = false)
     {
         if (transaction is null)
         {
-            var session = graphContext.Driver.AsyncSession(
-                builder => builder.WithDatabase(graphContext.DatabaseName));
+            var session = graphContext.Driver.AsyncSession(builder => builder
+                .WithDatabase(graphContext.DatabaseName)
+                .WithDefaultAccessMode(isReadOnly ? AccessMode.Read : AccessMode.Write));
             var tx = await session.BeginTransactionAsync();
             return new GraphTransaction(session, tx);
         }

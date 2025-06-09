@@ -69,7 +69,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         try
         {
             // Serialize the relationship
-            var result = await _serializer.SerializeRelationshipAsync(relationship, cancellationToken);
+            var result = _serializer.SerializeRelationship(relationship);
 
             // Build the Cypher query
             var cypher = $@"
@@ -78,14 +78,15 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 CREATE (source)-[r:{result.Type} $props]->(target)
                 RETURN r";
 
-            var relResult = await transaction.Transaction.RunAsync(cypher, new
+            _logger?.LogDebug("Cypher query: {CypherQuery}", cypher);
+            _logger?.LogDebug("Parameters: SourceId={SourceId}, TargetId={TargetId}, Properties={Properties}",
+                result.SourceId, result.TargetId, result.Properties);
+            await transaction.Transaction.RunAsync(cypher, new
             {
                 sourceId = result.SourceId,
                 targetId = result.TargetId,
                 props = result.Properties
             });
-
-            var record = await relResult.SingleAsync();
 
             _logger?.LogInformation("Created relationship of type {RelationshipType} with ID {RelationshipId}",
                 typeof(TRelationship).Name, relationship.Id);
@@ -122,7 +123,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             }
 
             // Serialize the relationship
-            var result = await _serializer.SerializeRelationshipAsync(relationship, cancellationToken);
+            var result = _serializer.SerializeRelationship(relationship);
 
             var cypher = "MATCH ()-[r {Id: $relId}]->() SET r = $props RETURN r";
             var relResult = await transaction.Transaction.RunAsync(cypher, new { relId = relationship.Id, props = result.Properties });
