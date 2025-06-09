@@ -20,7 +20,7 @@ namespace Cvoya.Graph.Model.Neo4j;
 /// <summary>
 /// Represents a Neo4j graph.
 /// </summary>
-internal class Neo4jGraphStore : IAsyncDisposable
+public class Neo4jGraphStore : IAsyncDisposable
 {
     private readonly IDriver _driver;
 
@@ -31,7 +31,7 @@ internal class Neo4jGraphStore : IAsyncDisposable
     /// <param name="username">The username for authentication.</param>
     /// <param name="password">The password for authentication.</param>
     /// <param name="databaseName">The name of the database.</param>
-    /// <param name="logger">The logger instance.</param>
+    /// <param name="loggerFactory">The logger factory instance.</param>
     /// <remarks>
     /// The environment variables used for configuration, if not provided, are:
     /// - NEO4J_URI: The URI of the Neo4j database. Default: "bolt://localhost:7687".
@@ -44,7 +44,7 @@ internal class Neo4jGraphStore : IAsyncDisposable
         string? username,
         string? password,
         string? databaseName = "neo4j",
-        Microsoft.Extensions.Logging.ILogger? logger = null)
+        Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
     {
         uri ??= Environment.GetEnvironmentVariable("NEO4J_URI") ?? "bolt://localhost:7687";
         username ??= Environment.GetEnvironmentVariable("NEO4J_USER") ?? "neo4j";
@@ -53,7 +53,7 @@ internal class Neo4jGraphStore : IAsyncDisposable
 
         // Create the Neo4j driver
         _driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
-        Graph = new Graph(_driver, databaseName, logger);
+        Graph = new Graph(_driver, databaseName, loggerFactory);
     }
 
     /// <summary>
@@ -80,12 +80,24 @@ internal class Neo4jGraphStore : IAsyncDisposable
     /// <inheritdoc />
     public IGraph Graph { get; }
 
-    public static async Task CreateDatabaseIfNotExists(IDriver driver, string databaseName)
+    /// <summary>
+    /// Creates a new database if it does not already exist.
+    /// </summary>
+    /// <param name="driver">The Neo4j driver instance.</param>
+    /// <param name="databaseName">The name of the database to create.</param>
+    /// <remarks>
+    /// This method uses the "system" database to execute the command to create a new database.
+    /// It checks if the database already exists and only creates it if it does not.
+    /// </remarks>
+    public static async Task CreateDatabaseIfNotExistsAsync(IDriver driver, string databaseName)
     {
         using var session = driver.AsyncSession(o => o.WithDatabase("system"));
         await session.RunAsync($"CREATE DATABASE `{databaseName}` IF NOT EXISTS");
     }
 
+    /// <summary>
+    /// Disposes the Neo4j graph store and its resources asynchronously.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         await Graph.DisposeAsync();

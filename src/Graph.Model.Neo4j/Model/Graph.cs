@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -46,15 +47,23 @@ internal class Graph : IGraph
     }
 
     /// <inheritdoc />
-    public IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
+    public IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where N : INode
     {
         try
         {
             _logger?.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
 
-            var queryContext = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Node };
-            return new GraphNodeQueryable<N>(_graphQueryProvider, _graphContext, queryContext);
+            // Create the expression for the queryable
+            var graphQueryContext = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Node };
+
+            var expression = Expression.Constant(new GraphNodeQueryable<N>(_graphQueryProvider, _graphContext, graphQueryContext, null));
+
+            // Use the provider to create the query properly
+            var query = _graphQueryProvider.CreateNodeQuery<N>(expression);
+
+            var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction).Result;
+            return query.WithTransaction(neo4jTx);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
@@ -65,15 +74,23 @@ internal class Graph : IGraph
     }
 
     /// <inheritdoc />
-    public IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
+    public IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : IRelationship
     {
         try
         {
             _logger?.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
 
-            var queryContext = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Relationship };
-            return new GraphRelationshipQueryable<R>(_graphQueryProvider, _graphContext, queryContext);
+            // Create the expression for the queryable
+            var graphQueryContext = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Relationship };
+
+            var expression = Expression.Constant(new GraphRelationshipQueryable<R>(_graphQueryProvider, _graphContext, graphQueryContext, null));
+
+            // Use the provider to create the query properly
+            var query = _graphQueryProvider.CreateRelationshipQuery<R>(expression);
+
+            var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction).Result;
+            return query.WithTransaction(neo4jTx);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
@@ -84,7 +101,7 @@ internal class Graph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<N> GetNode<N>(string id, IGraphTransaction? transaction = null)
+    public async Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where N : INode
     {
         ArgumentNullException.ThrowIfNull(id);
@@ -93,10 +110,17 @@ internal class Graph : IGraph
         {
             _logger?.LogDebug("Getting node {NodeId} of type {NodeType}", id, typeof(N).Name);
 
-            var result = await ExecuteInTransaction(
-                transaction,
-                tx => _graphContext.NodeManager.GetNode<N>(id, tx),
-                $"Failed to get node {id} of type {typeof(N).Name}");
+            var result = await TransactionHelpers.ExecuteInTransactionAsync(
+                graphContext: _graphContext,
+                transaction: transaction,
+                tx => _graphContext.NodeManager.GetNodeAsync<N>(id, tx, cancellationToken),
+                $"Failed to get node {id} of type {typeof(N).Name}",
+                _logger);
+
+            if (result is null)
+            {
+                throw new KeyNotFoundException($"Node with ID '{id}' not found.");
+            }
 
             _logger?.LogDebug("Successfully retrieved node {NodeId}", id);
             return result;
@@ -110,36 +134,7 @@ internal class Graph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<IEnumerable<N>> GetNodes<N>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
-        where N : INode
-    {
-        ArgumentNullException.ThrowIfNull(ids);
-
-        try
-        {
-            var idList = ids.ToList();
-            _logger?.LogDebug("Getting {Count} nodes of type {NodeType}", idList.Count, typeof(N).Name);
-
-            var tasks = ExecuteInTransaction(
-                transaction,
-                tx => _graphContext.NodeManager.GetNodes<N>(idList, tx),
-                $"Failed to get nodes of type {typeof(N).Name}");
-
-            var result = await tasks;
-
-            _logger?.LogDebug("Successfully retrieved {Count} nodes", result.Count());
-            return result;
-        }
-        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException)
-        {
-            var message = $"Failed to get nodes of type {typeof(N).Name}";
-            _logger?.LogError(ex, message);
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<R> GetRelationship<R>(string id, IGraphTransaction? transaction = null)
+    public async Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : IRelationship
     {
         ArgumentNullException.ThrowIfNull(id);
@@ -148,10 +143,17 @@ internal class Graph : IGraph
         {
             _logger?.LogDebug("Getting relationship {RelationshipId} of type {RelationshipType}", id, typeof(R).Name);
 
-            var result = await ExecuteInTransaction(
-                transaction,
-                tx => _graphContext.RelationshipManager.GetRelationship<R>(id, tx),
-                $"Failed to get relationship {id} of type {typeof(R).Name}");
+            var result = await TransactionHelpers.ExecuteInTransactionAsync(
+                graphContext: _graphContext,
+                transaction: transaction,
+                tx => _graphContext.RelationshipManager.GetRelationshipAsync<R>(id, tx, cancellationToken),
+                $"Failed to get relationship {id} of type {typeof(R).Name}",
+                _logger);
+
+            if (result is null)
+            {
+                throw new KeyNotFoundException($"Relationship with ID '{id}' not found.");
+            }
 
             _logger?.LogDebug("Successfully retrieved relationship {RelationshipId}", id);
             return result;
@@ -165,34 +167,7 @@ internal class Graph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<IEnumerable<R>> GetRelationships<R>(IEnumerable<string> ids, IGraphTransaction? transaction = null)
-        where R : IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(ids);
-
-        try
-        {
-            var idList = ids.ToList();
-            _logger?.LogDebug("Getting {Count} relationships of type {RelationshipType}", idList.Count, typeof(R).Name);
-
-            var result = await ExecuteInTransaction(
-                transaction,
-                tx => _graphContext.RelationshipManager.GetRelationships<R>(idList, tx),
-                $"Failed to get relationships of type {typeof(R).Name}");
-
-            _logger?.LogDebug("Successfully retrieved {Count} relationships", result.Count());
-            return result;
-        }
-        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException)
-        {
-            var message = $"Failed to get relationships of type {typeof(R).Name}";
-            _logger?.LogError(ex, message);
-            throw new GraphException(message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task CreateNode<N>(N node, IGraphTransaction? transaction = null)
+    public async Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where N : INode
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -203,9 +178,10 @@ internal class Graph : IGraph
         {
             _logger?.LogDebug("Creating node of type {NodeType}", typeof(N).Name);
 
-            await ExecuteInTransaction(
-                transaction,
-                tx => _graphContext.NodeManager.CreateNode(node, tx),
+            await TransactionHelpers.ExecuteInTransactionAsync(
+                graphContext: _graphContext,
+                transaction: transaction,
+                tx => _graphContext.NodeManager.CreateNodeAsync(node, tx, cancellationToken),
                 $"Failed to create node of type {typeof(N).Name}");
 
             _logger?.LogDebug("Successfully created node {NodeId}", node.Id);
@@ -219,7 +195,7 @@ internal class Graph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task CreateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
+    public async Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
@@ -230,11 +206,12 @@ internal class Graph : IGraph
         {
             _logger?.LogDebug("Creating relationship of type {RelationshipType}", typeof(R).Name);
 
-            await ExecuteInTransaction(
+            await TransactionHelpers.ExecuteInTransactionAsync(
+                _graphContext,
                 transaction,
                 async tx =>
                 {
-                    await _graphContext.RelationshipManager.CreateRelationship(relationship, tx);
+                    await _graphContext.RelationshipManager.CreateRelationshipAsync(relationship, tx);
                     return true;
                 },
                 $"Failed to create relationship of type {typeof(R).Name}");
@@ -250,7 +227,7 @@ internal class Graph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task UpdateNode<N>(N node, IGraphTransaction? transaction = null)
+    public async Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where N : INode
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -261,11 +238,12 @@ internal class Graph : IGraph
         {
             _logger?.LogDebug("Updating node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
 
-            await ExecuteInTransaction(
+            await TransactionHelpers.ExecuteInTransactionAsync(
+                _graphContext,
                 transaction,
                 async tx =>
                 {
-                    await _graphContext.NodeManager.UpdateNode(node, tx);
+                    await _graphContext.NodeManager.UpdateNodeAsync(node, tx);
                     return true;
                 },
             $"Failed to update node {node.Id} of type {typeof(N).Name}");
@@ -281,7 +259,7 @@ internal class Graph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task UpdateRelationship<R>(R relationship, IGraphTransaction? transaction = null)
+    public async Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
@@ -292,11 +270,12 @@ internal class Graph : IGraph
         {
             _logger?.LogDebug("Updating relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
 
-            await ExecuteInTransaction(
+            await TransactionHelpers.ExecuteInTransactionAsync(
+                _graphContext,
                 transaction,
                 async tx =>
                 {
-                    await _graphContext.RelationshipManager.UpdateRelationship(relationship, tx);
+                    await _graphContext.RelationshipManager.UpdateRelationshipAsync(relationship, tx);
                     return true;
                 },
             $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}");
@@ -312,7 +291,7 @@ internal class Graph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<IGraphTransaction> BeginTransaction()
+    public async Task<IGraphTransaction> GetTransactionAsync()
     {
         try
         {
@@ -334,7 +313,7 @@ internal class Graph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task DeleteNode(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null)
+    public async Task DeleteNodeAsync(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(id);
 
@@ -342,11 +321,12 @@ internal class Graph : IGraph
         {
             _logger?.LogDebug("Deleting node {NodeId}", id);
 
-            await ExecuteInTransaction(
+            await TransactionHelpers.ExecuteInTransactionAsync(
+                _graphContext,
                 transaction,
                 async tx =>
                 {
-                    await _graphContext.NodeManager.DeleteNode(id, cascadeDelete, tx);
+                    await _graphContext.NodeManager.DeleteNodeAsync(id, tx, cascadeDelete, cancellationToken);
                     return true;
                 },
                 $"Failed to delete node {id}");
@@ -362,7 +342,7 @@ internal class Graph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task DeleteRelationship(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null)
+    public async Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(id);
 
@@ -370,14 +350,16 @@ internal class Graph : IGraph
         {
             _logger?.LogDebug("Deleting relationship {RelationshipId}", id);
 
-            await ExecuteInTransaction(
+            await TransactionHelpers.ExecuteInTransactionAsync(
+                _graphContext,
                 transaction,
                 async tx =>
                 {
-                    await _graphContext.RelationshipManager.DeleteRelationship(id, cascadeDelete, tx);
+                    await _graphContext.RelationshipManager.DeleteRelationshipAsync(id, tx, cancellationToken);
                     return true;
                 },
-                $"Failed to delete relationship {id}");
+                $"Failed to delete relationship {id}",
+                _logger);
 
             _logger?.LogDebug("Successfully deleted relationship {RelationshipId}", id);
         }
@@ -394,48 +376,5 @@ internal class Graph : IGraph
     public ValueTask DisposeAsync()
     {
         return ValueTask.CompletedTask;
-    }
-
-    private async Task<T> ExecuteInTransaction<T>(
-        IGraphTransaction? transaction,
-        Func<global::Neo4j.Driver.IAsyncTransaction, Task<T>> function,
-    string errorMessage)
-    {
-        var (session, tx) = await TransactionHelpers.GetOrCreateTransaction(
-            _graphContext.Driver,
-            _graphContext.DatabaseName, transaction);
-        try
-        {
-            var result = await function(tx);
-
-            if (transaction == null)
-            {
-                await tx.CommitAsync();
-            }
-
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, errorMessage);
-            if (transaction == null)
-            {
-                await tx.RollbackAsync();
-            }
-
-            while (ex is GraphException && ex.InnerException != null)
-            {
-                ex = ex.InnerException;
-            }
-
-            throw new GraphException(errorMessage, ex);
-        }
-        finally
-        {
-            if (transaction == null)
-            {
-                await session.CloseAsync();
-            }
-        }
     }
 }

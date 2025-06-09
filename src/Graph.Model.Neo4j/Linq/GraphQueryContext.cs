@@ -33,4 +33,10 @@ internal class GraphQueryContext
     public bool IsProjection { get; set; }
     public Type? ProjectionType { get; set; }
     public Dictionary<string, object>? Parameters { get; set; }
+
+    /// <summary>
+    /// Whether to use the most derived type when deserializing entities.
+    /// Default is true for polymorphic behavior.
+    /// </summary>
+    public bool UseMostDerivedType { get; set; } = true;
 }

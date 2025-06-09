@@ -53,6 +53,11 @@ internal class GraphTransaction : IGraphTransaction
     internal IAsyncSession Session => _session;
 
     /// <summary>
+    /// Gets the underlying Neo4j transaction.
+    /// </summary>
+    internal IAsyncTransaction Transaction => _transaction ?? throw new InvalidOperationException("Transaction is not active.");
+
+    /// <summary>
     /// Commits the transaction.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown if the transaction is not active</exception>
@@ -84,7 +89,7 @@ internal class GraphTransaction : IGraphTransaction
     /// Gets the underlying Neo4j transaction.
     /// </summary>
     /// <returns>The Neo4j transaction or null if not active</returns>
-    internal IAsyncTransaction? GetTransaction() => _transaction;
+    internal IAsyncTransaction? GetNeo4jTransaction() => _transaction;
 
     /// <summary>
     /// Disposes the transaction asynchronously.

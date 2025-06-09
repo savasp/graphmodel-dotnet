@@ -14,6 +14,7 @@
 
 using System.Collections;
 using System.Linq.Expressions;
+using System.Reflection.Metadata.Ecma335;
 
 namespace Cvoya.Graph.Model;
 
@@ -33,6 +34,8 @@ internal sealed class GraphRelationshipQueryableWrapper<TRel>(
     public Type ElementType => queryable.ElementType;
     public Expression Expression => queryable.Expression;
     IQueryProvider IQueryable.Provider => Provider;
+
+    public string? RelationshipType => Labels.GetLabelFromType(typeof(TRel));
 
     // IEnumerable members
     public IEnumerator<TRel> GetEnumerator() => queryable.GetEnumerator();

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Model.Neo4j.Cypher;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -186,7 +187,6 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
             this, _context, queryContext, pathSegmentExpression);
     }
 
-    /// <inheritdoc/>
     public TResult Execute<TResult>(Expression expression)
     {
         ArgumentNullException.ThrowIfNull(expression);
@@ -195,6 +195,8 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
 
         try
         {
+            // For synchronous execution, we'll still use the async path internally
+            // This ensures consistent transaction handling
             return ExecuteAsync<TResult>(expression, CancellationToken.None)
                 .GetAwaiter()
                 .GetResult();
@@ -225,23 +227,28 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
 
     /// <inheritdoc/>
     public async Task<TResult> ExecuteAsync<TResult>(
-        Expression expression,
-        CancellationToken cancellationToken = default)
+            Expression expression,
+            CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(expression);
 
         _logger.LogDebug("Executing async query for result type {ResultType}: {Expression}",
             typeof(TResult).Name, expression);
 
+        var (transaction, shouldDisposeTransaction) = await ExtractTransactionFromExpression(expression, cancellationToken);
+
         try
         {
             var queryContext = ExtractQueryContext(expression);
+
+            queryContext.Transaction = transaction;
 
             _logger.LogDebug("Translating expression to Cypher");
             var cypherQuery = await _cypherEngine.ExpressionToCypherVisitor(expression, queryContext, cancellationToken);
 
             var result = await _cypherEngine.ExecuteAsync<TResult>(
                 cypherQuery,
+                transaction,
                 queryContext,
                 cancellationToken);
 
@@ -254,6 +261,14 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         {
             _logger.LogError(ex, "Error executing async query for type {ResultType}", typeof(TResult).Name);
             throw;
+        }
+        finally
+        {
+            if (shouldDisposeTransaction && transaction != null)
+            {
+                _logger.LogDebug("Disposing transaction created for query execution");
+                await transaction.DisposeAsync();
+            }
         }
     }
 
@@ -342,5 +357,147 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
                  i.GetGenericTypeDefinition() == typeof(IGraphQueryable<>)));
 
         return queryableInterface?.GetGenericArguments()[0];
+    }
+
+    // Remove the IAsyncTransaction version and keep only this one:
+
+    private async Task<(GraphTransaction transaction, bool shouldDisposeTransaction)> ExtractTransactionFromExpression(
+        Expression expression,
+        CancellationToken cancellationToken)
+    {
+        var transactions = new HashSet<GraphTransaction>();
+        ExtractTransactionsFromExpressionTree(expression, transactions);
+
+        if (transactions.Count > 1)
+        {
+            _logger.LogError("Multiple transactions found in expression tree. Count: {Count}", transactions.Count);
+            throw new InvalidOperationException(
+                $"Multiple transactions ({transactions.Count}) found in query expression. Only one transaction is allowed per query.");
+        }
+
+        if (transactions.Count == 1)
+        {
+            var transaction = transactions.First();
+            _logger.LogDebug("Found transaction in expression tree: {TransactionId}", transaction.GetHashCode());
+            return (transaction, shouldDisposeTransaction: false);
+        }
+
+        // No transaction in expression tree - use TransactionHelpers to create a read-only one
+        _logger.LogDebug("No transaction found in expression tree, creating read-only transaction");
+
+        // Use TransactionHelpers.GetOrCreateTransactionAsync if it exists
+        var newTransaction = await TransactionHelpers.GetOrCreateTransactionAsync(
+            _context,
+            transaction: null);
+
+        return (newTransaction, shouldDisposeTransaction: true);
+    }
+
+    private void ExtractTransactionsFromExpressionTree(Expression expression, HashSet<GraphTransaction> transactions)
+    {
+        switch (expression)
+        {
+            case MethodCallExpression mce when mce.Method.Name == "WithTransaction":
+                // The transaction should be in the first argument
+                if (mce.Arguments.Count > 0)
+                {
+                    // Handle both constant and member expressions
+                    var transactionValue = GetValueFromExpression(mce.Arguments[0]);
+                    if (transactionValue is GraphTransaction transaction)
+                    {
+                        transactions.Add(transaction);
+                    }
+                }
+                // Continue walking the tree with remaining arguments
+                foreach (var arg in mce.Arguments.Skip(1))
+                {
+                    ExtractTransactionsFromExpressionTree(arg, transactions);
+                }
+                // Also check the object if it's an instance method
+                if (mce.Object != null)
+                {
+                    ExtractTransactionsFromExpressionTree(mce.Object, transactions);
+                }
+                break;
+
+            case MethodCallExpression mce:
+                // Check all arguments
+                foreach (var arg in mce.Arguments)
+                {
+                    ExtractTransactionsFromExpressionTree(arg, transactions);
+                }
+                if (mce.Object != null)
+                {
+                    ExtractTransactionsFromExpressionTree(mce.Object, transactions);
+                }
+                break;
+
+            case BinaryExpression be:
+                ExtractTransactionsFromExpressionTree(be.Left, transactions);
+                ExtractTransactionsFromExpressionTree(be.Right, transactions);
+                break;
+
+            case UnaryExpression ue when ue.Operand != null:
+                ExtractTransactionsFromExpressionTree(ue.Operand, transactions);
+                break;
+
+            case LambdaExpression le:
+                ExtractTransactionsFromExpressionTree(le.Body, transactions);
+                break;
+
+            case MemberExpression me when me.Expression != null:
+                ExtractTransactionsFromExpressionTree(me.Expression, transactions);
+                break;
+
+            case NewExpression ne:
+                // Check constructor arguments
+                foreach (var arg in ne.Arguments)
+                {
+                    ExtractTransactionsFromExpressionTree(arg, transactions);
+                }
+                break;
+
+            case InvocationExpression ie:
+                ExtractTransactionsFromExpressionTree(ie.Expression, transactions);
+                foreach (var arg in ie.Arguments)
+                {
+                    ExtractTransactionsFromExpressionTree(arg, transactions);
+                }
+                break;
+
+            case ConditionalExpression ce:
+                ExtractTransactionsFromExpressionTree(ce.Test, transactions);
+                ExtractTransactionsFromExpressionTree(ce.IfTrue, transactions);
+                ExtractTransactionsFromExpressionTree(ce.IfFalse, transactions);
+                break;
+
+            case ConstantExpression { Value: GraphQueryable queryable }:
+                // Check if the queryable has a transaction in its context
+                if (queryable.QueryContext.Transaction != null)
+                {
+                    transactions.Add(queryable.QueryContext.Transaction);
+                }
+                break;
+        }
+    }
+
+    // Helper method to extract values from expressions (handles constants, fields, properties)
+    private static object? GetValueFromExpression(Expression expression)
+    {
+        return expression switch
+        {
+            ConstantExpression ce => ce.Value,
+            MemberExpression me => GetMemberValue(me),
+            _ => null
+        };
+    }
+
+    private static object? GetMemberValue(MemberExpression memberExpression)
+    {
+        // Get the object that contains the member
+        var objectMember = Expression.Convert(memberExpression, typeof(object));
+        var getterLambda = Expression.Lambda<Func<object>>(objectMember);
+        var getter = getterLambda.Compile();
+        return getter();
     }
 }

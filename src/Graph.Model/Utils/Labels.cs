@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Collections.Concurrent;
 using System.Reflection;
 
 namespace Cvoya.Graph.Model;
@@ -21,11 +22,11 @@ namespace Cvoya.Graph.Model;
 /// </summary>
 public static class Labels
 {
-    private static readonly Dictionary<Type, string> LabelCache = [];
-    private static readonly Dictionary<PropertyInfo, string> PropertyCache = [];
-    private static readonly Dictionary<string, Type> TypeCache = [];
-    private static readonly Dictionary<string, PropertyInfo> PropertyTypeCache = [];
-    private static readonly object CacheLock = new();
+    private static readonly ConcurrentDictionary<string, Type> LabelToTypeCache = new();
+    private static readonly ConcurrentDictionary<Type, string> TypeToLabelCache = new();
+    private static readonly ConcurrentDictionary<PropertyInfo, string> PropertyToLabelCache = new();
+    private static readonly ConcurrentDictionary<(Type, string), PropertyInfo> LabelToPropertyCache = new();
+    private static readonly ConcurrentDictionary<(Type targetType, string label), Type?> MostDerivedTypeCache = new();
 
     /// <summary>
     /// Gets the label associated with an object. It returns the label of the object's actual type,
@@ -50,7 +51,7 @@ public static class Labels
     /// <exception cref="GraphException">Thrown when the type doesn't have a valid name</exception>
     public static string GetLabelFromType(Type type)
     {
-        var label = GetFromCache(type);
+        var label = TypeToLabelCache[type];
 
         if (label is not null)
         {
@@ -74,7 +75,8 @@ public static class Labels
         // Fall back to the type name with backticks removed
         label ??= type.Name.Replace("`", "") ?? throw new GraphException($"Type '{type}' does not have a valid name.");
 
-        PutInCache(type, label);
+        TypeToLabelCache[type] = label;
+        LabelToTypeCache[label] = type;
         return label;
     }
 
@@ -86,7 +88,9 @@ public static class Labels
     /// <exception cref="GraphException">Thrown when the property doesn't have a valid name</exception>
     public static string GetLabelFromProperty(PropertyInfo propertyInfo)
     {
-        var label = GetFromCache(propertyInfo);
+        ArgumentNullException.ThrowIfNull(propertyInfo.DeclaringType);
+
+        var label = PropertyToLabelCache[propertyInfo];
 
         if (label is not null)
         {
@@ -102,30 +106,9 @@ public static class Labels
         // Fall back to the property name with backticks removed
         label ??= propertyInfo.Name.Replace("`", "") ?? throw new GraphException($"Property '{propertyInfo}' does not have a valid name.");
 
-        PutInCache(propertyInfo, label);
+        PropertyToLabelCache[propertyInfo] = label;
+        LabelToPropertyCache[(propertyInfo.DeclaringType, label)] = propertyInfo;
         return label;
-    }
-
-    /// <summary>
-    /// Gets all labels for types that are assignable to the specified base type.
-    /// This includes the base type itself and all derived types.
-    /// The types cannot be interfaces or abstract classes.
-    /// </summary>
-    /// <param name="baseType">The base type to find assignable types for</param>
-    /// <returns>A collection of labels for all types assignable to the base type.
-    /// There is no predefined order in the collection of labels.</returns>
-    public static IEnumerable<string> GetLabelsForAssignableTypes(Type baseType)
-    {
-        // Find all types that are assignable to the base type
-        var assignableTypes = AppDomain.CurrentDomain.GetAssemblies()
-            .SelectMany(a =>
-            {
-                try { return a.GetTypes(); }
-                catch { return []; }
-            })
-            .Where(t => baseType.IsAssignableFrom(t) && !t.IsAbstract && !t.IsInterface);
-
-        return assignableTypes.Select(GetLabelFromType).Distinct();
     }
 
     /// <summary>
@@ -138,7 +121,7 @@ public static class Labels
     {
         ArgumentNullException.ThrowIfNull(label);
 
-        var type = GetFromCacheLabelToType(label);
+        var type = LabelToTypeCache[label];
         if (type is not null)
         {
             return type;
@@ -154,7 +137,8 @@ public static class Labels
                     var nodeAttr = t.GetCustomAttribute<NodeAttribute>(inherit: false);
                     if (nodeAttr?.Label == label)
                     {
-                        PutInCache(label, t);
+                        LabelToTypeCache[label] = t;
+                        TypeToLabelCache[t] = label;
                         return t;
                     }
                 }
@@ -172,13 +156,14 @@ public static class Labels
     /// Finds the .NET property for a given label.
     /// </summary>
     /// <param name="label">The label</param>
+    /// <param name="enclosingType">The type that contains the property</param>
     /// <returns>The .NET property associated with that label.</returns>
     /// <exception cref="GraphException">If no .NET property was found for the given label.</exception>
-    public static PropertyInfo GetPropertyFromLabel(string label)
+    public static PropertyInfo GetPropertyFromLabel(string label, Type enclosingType)
     {
         ArgumentNullException.ThrowIfNull(label);
 
-        var propertyInfo = GetFromCacheLabelToProperty(label);
+        var propertyInfo = LabelToPropertyCache[(enclosingType, label)];
         if (propertyInfo is not null)
         {
             return propertyInfo;
@@ -196,7 +181,8 @@ public static class Labels
                         var propertyAttr = prop.GetCustomAttribute<PropertyAttribute>(inherit: false);
                         if (propertyAttr?.Label == label)
                         {
-                            PutInCache(label, prop);
+                            LabelToPropertyCache[(t, label)] = prop;
+                            PropertyToLabelCache[prop] = label;
                             return prop;
                         }
                     }
@@ -211,67 +197,52 @@ public static class Labels
         throw new GraphException($"No property found for label '{label}'.");
     }
 
-    private static void PutInCache(Type type, string label)
+    /// <summary>
+    /// Finds the most derived type that matches the given label and is assignable to the target type.
+    /// </summary>
+    /// <param name="targetType">The base type that the result must be assignable to (cannot be an interface)</param>
+    /// <param name="label">The label to match</param>
+    /// <returns>The type that matches the label and is assignable to targetType, 
+    /// or null if no matching type is found</returns>
+    public static Type? GetMostDerivedType(Type targetType, string label)
     {
-        lock (CacheLock)
-        {
-            LabelCache[type] = label;
-        }
-    }
+        ArgumentNullException.ThrowIfNull(targetType);
+        ArgumentNullException.ThrowIfNull(label);
 
-    private static void PutInCache(PropertyInfo propertyInfo, string label)
-    {
-        lock (CacheLock)
+        if (targetType.IsInterface)
         {
-            PropertyCache[propertyInfo] = label;
+            throw new ArgumentException("Target type cannot be an interface", nameof(targetType));
         }
-    }
 
-    private static void PutInCache(string label, Type type)
-    {
-        lock (CacheLock)
+        var cacheKey = (targetType, label);
+
+        var cachedType = MostDerivedTypeCache[cacheKey];
+        if (cachedType is not null)
         {
-            TypeCache[label] = type;
+            return cachedType;
         }
-    }
 
-    private static void PutInCache(string label, PropertyInfo propertyInfo)
-    {
-        lock (CacheLock)
+        try
         {
-            PropertyTypeCache[label] = propertyInfo;
+            // First try to get the type directly from the label (this uses caching internally)
+            var typeFromLabel = GetTypeFromLabel(label);
+
+            // Check if this type is assignable to our target type
+            if (targetType.IsAssignableFrom(typeFromLabel))
+            {
+                MostDerivedTypeCache[cacheKey] = typeFromLabel;
+                return typeFromLabel;
+            }
+
+            // Not assignable, cache null result
+            MostDerivedTypeCache[cacheKey] = null;
+            return null;
         }
-    }
-
-    private static string? GetFromCache(Type type)
-    {
-        lock (CacheLock)
+        catch (GraphException)
         {
-            return LabelCache.TryGetValue(type, out var label) ? label : null;
-        }
-    }
-
-    private static string? GetFromCache(PropertyInfo propertyInfo)
-    {
-        lock (CacheLock)
-        {
-            return PropertyCache.TryGetValue(propertyInfo, out var label) ? label : null;
-        }
-    }
-
-    private static Type? GetFromCacheLabelToType(string label)
-    {
-        lock (CacheLock)
-        {
-            return TypeCache.TryGetValue(label, out var type) ? type : null;
-        }
-    }
-
-    private static PropertyInfo? GetFromCacheLabelToProperty(string label)
-    {
-        lock (CacheLock)
-        {
-            return PropertyTypeCache.TryGetValue(label, out var property) ? property : null;
+            // No type found for this label, cache null result
+            MostDerivedTypeCache[cacheKey] = null;
+            return null;
         }
     }
 }

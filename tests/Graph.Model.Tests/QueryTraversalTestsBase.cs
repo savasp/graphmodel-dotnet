@@ -28,21 +28,20 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
         var aliceKnowsBob = new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow.AddYears(-2) };
         var aliceKnowsCharlie = new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow.AddYears(-1) };
 
-        await Graph.CreateRelationship(aliceKnowsBob);
-        await Graph.CreateRelationship(aliceKnowsCharlie);
+        await Graph.CreateRelationshipAsync(aliceKnowsBob);
+        await Graph.CreateRelationshipAsync(aliceKnowsCharlie);
 
         // Act: Traverse from Alice to people she knows
         var knownPeople = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
-            .To<Person>()
             .ToList();
 
         // Assert
@@ -59,22 +58,21 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
         var aliceKnowsBob = new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow };
         var bobKnowsCharlie = new Knows { SourceId = bob.Id, TargetId = charlie.Id, Since = DateTime.UtcNow };
 
-        await Graph.CreateRelationship(aliceKnowsBob);
-        await Graph.CreateRelationship(bobKnowsCharlie);
+        await Graph.CreateRelationshipAsync(aliceKnowsBob);
+        await Graph.CreateRelationshipAsync(bobKnowsCharlie);
 
         // Act & Assert: Depth 1 - should only get Bob
         var depth1Results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
             .WithDepth(1)
-            .To<Person>()
             .ToList();
 
         Assert.Single(depth1Results);
@@ -85,7 +83,6 @@ public abstract class QueryTraversalTestsBase : ITestBase
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
             .WithDepth(2)
-            .To<Person>()
             .ToList();
 
         Assert.Equal(2, depth2Results.Count);
@@ -102,21 +99,20 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var charlie = new Person { FirstName = "Charlie", LastName = "C" };
         var david = new Person { FirstName = "David", LastName = "D" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
-        await Graph.CreateNode(david);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
+        await Graph.CreateNodeAsync(david);
 
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = bob.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = charlie.Id, TargetId = david.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = bob.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = charlie.Id, TargetId = david.Id, Since = DateTime.UtcNow });
 
         // Act: Traverse with depth range 2-3 (should get Charlie and David, but not Bob)
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
             .WithDepth(2, 3)
-            .To<Person>()
             .ToList();
 
         // Assert
@@ -138,19 +134,18 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = charlie.Id, TargetId = alice.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = charlie.Id, TargetId = alice.Id, Since = DateTime.UtcNow });
 
         // Act: Traverse outgoing from Alice (should only get Bob)
         var outgoingResults = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
             .InDirection(TraversalDirection.Outgoing)
-            .To<Person>()
             .ToList();
 
         // Assert
@@ -166,19 +161,18 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = charlie.Id, TargetId = alice.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = charlie.Id, TargetId = alice.Id, Since = DateTime.UtcNow });
 
         // Act: Traverse incoming to Alice (should only get Charlie)
         var incomingResults = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
             .InDirection(TraversalDirection.Incoming)
-            .To<Person>()
             .ToList();
 
         // Assert
@@ -194,19 +188,18 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = charlie.Id, TargetId = alice.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = charlie.Id, TargetId = alice.Id, Since = DateTime.UtcNow });
 
         // Act: Traverse in both directions from Alice (should get both Bob and Charlie)
         var bothDirectionsResults = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
             .InDirection(TraversalDirection.Both)
-            .To<Person>()
             .ToList();
 
         // Assert
@@ -227,22 +220,22 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
         var recentKnows = new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow.AddMonths(-1) };
         var oldKnows = new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow.AddYears(-5) };
 
-        await Graph.CreateRelationship(recentKnows);
-        await Graph.CreateRelationship(oldKnows);
+        await Graph.CreateRelationshipAsync(recentKnows);
+        await Graph.CreateRelationshipAsync(oldKnows);
 
         // Act: Find people Alice has known for less than a year
         var recentFriends = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
-            .WhereRelationship(k => k.Since > DateTime.UtcNow.AddYears(-1))
-            .To<Person>()
+            .PathSegments<Knows, Person>()
+            .Where(k => k.Relationship.Since > DateTime.UtcNow.AddYears(-1))
+            .Select(p => p.EndNode)
             .ToList();
 
         // Assert
@@ -258,18 +251,17 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones", Age = 30 };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown", Age = 40 };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
 
         // Act: Find people Alice knows who are over 35
         var olderFriends = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
-            .To<Person>()
             .Where(p => p.Age > 35)
             .ToList();
 
@@ -290,18 +282,17 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
         var address1 = new Address { Street = "123 Main St", City = "Seattle" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(address1);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(address1);
 
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new LivesAt { SourceId = alice.Id, TargetId = address1.Id, MovedInDate = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new LivesAt { SourceId = alice.Id, TargetId = address1.Id, MovedInDate = DateTime.UtcNow });
 
         // Test traversing Knows relationships
         var knownPeople = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
-            .To<Person>()
             .ToList();
 
         Assert.Single(knownPeople);
@@ -311,7 +302,6 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var addresses = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<LivesAt, Address>()
-            .To<Address>()
             .ToList();
 
         Assert.Single(addresses);
@@ -330,21 +320,21 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
         var recentKnows = new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow.AddMonths(-1) };
         var oldKnows = new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow.AddYears(-5) };
 
-        await Graph.CreateRelationship(recentKnows);
-        await Graph.CreateRelationship(oldKnows);
+        await Graph.CreateRelationshipAsync(recentKnows);
+        await Graph.CreateRelationshipAsync(oldKnows);
 
         // Act: Get the relationships themselves
         var relationships = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
-            .Relationships()
+            .PathSegments<Knows, Person>()
+            .Select(p => p.Relationship)
             .ToList();
 
         // Assert
@@ -361,22 +351,22 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
         var recentKnows = new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow.AddMonths(-1) };
         var oldKnows = new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow.AddYears(-5) };
 
-        await Graph.CreateRelationship(recentKnows);
-        await Graph.CreateRelationship(oldKnows);
+        await Graph.CreateRelationshipAsync(recentKnows);
+        await Graph.CreateRelationshipAsync(oldKnows);
 
         // Act: Get only recent relationships
         var recentRelationships = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
-            .WhereRelationship(k => k.Since > DateTime.UtcNow.AddYears(-1))
-            .Relationships()
+            .PathSegments<Knows, Person>()
+            .Where(k => k.Relationship.Since > DateTime.UtcNow.AddYears(-1))
+            .Select(p => p.Relationship)
             .ToList();
 
         // Assert
@@ -396,11 +386,11 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var alice = new Person { FirstName = "Alice", LastName = "Smith" };
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
 
         var knows = new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow };
-        await Graph.CreateRelationship(knows);
+        await Graph.CreateRelationshipAsync(knows);
 
         // Act: Get paths from Alice to other people
         var paths = Graph.Nodes<Person>()
@@ -425,12 +415,12 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = bob.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = bob.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
 
         // Act: Get 2-hop paths from Alice
         var paths = Graph.Nodes<Person>()
@@ -458,20 +448,19 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown", Age = 35 };
         var diana = new Person { FirstName = "Diana", LastName = "White", Age = 28 };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
-        await Graph.CreateNode(diana);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
+        await Graph.CreateNodeAsync(diana);
 
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = diana.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = diana.Id, Since = DateTime.UtcNow });
 
         // Act: Find people Alice knows who are over 30, ordered by age
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
-            .To<Person>()
             .Where(p => p.Age > 30)
             .OrderBy(p => p.Age)
             .ToList();
@@ -491,20 +480,19 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown", Age = 35 };
         var diana = new Person { FirstName = "Diana", LastName = "White", Age = 28 };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
-        await Graph.CreateNode(diana);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
+        await Graph.CreateNodeAsync(diana);
 
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = diana.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = diana.Id, Since = DateTime.UtcNow });
 
         // Act: Count people Alice knows
         var friendCount = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
-            .To<Person>()
             .Count();
 
         // Assert
@@ -514,7 +502,6 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var averageAge = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
-            .To<Person>()
             .Average(p => p.Age);
 
         // Assert
@@ -529,20 +516,20 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones", Age = 30, Bio = "Developer" };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown", Age = 35, Bio = "Manager" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow.AddYears(-2) });
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow.AddMonths(-6) });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow.AddYears(-2) });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = charlie.Id, Since = DateTime.UtcNow.AddMonths(-6) });
 
         // Act: Find people Alice has known for over a year who are developers or engineers
         var techFriends = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
-            .WhereRelationship(k => k.Since < DateTime.UtcNow.AddYears(-1))
-            .To<Person>()
-            .Where(p => p.Bio.Contains("Developer") || p.Bio.Contains("Engineer"))
+            .PathSegments<Knows, Person>()
+            .Where(k => k.Relationship.Since < DateTime.UtcNow.AddYears(-1))
+            .Where(p => p.EndNode.Bio.Contains("Developer") || p.EndNode.Bio.Contains("Engineer"))
+            .Select(p => p.EndNode)
             .ToList();
 
         // Assert
@@ -559,13 +546,12 @@ public abstract class QueryTraversalTestsBase : ITestBase
     {
         // Setup: Alice with no connections
         var alice = new Person { FirstName = "Alice", LastName = "Smith" };
-        await Graph.CreateNode(alice);
+        await Graph.CreateNodeAsync(alice);
 
         // Act: Try to traverse from Alice
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
-            .To<Person>()
             .ToList();
 
         // Assert
@@ -579,7 +565,6 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "NonExistent")
             .Traverse<Knows, Person>()
-            .To<Person>()
             .ToList();
 
         // Assert
@@ -595,7 +580,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
     {
         // Setup: Create Alice connected to many people
         var alice = new Person { FirstName = "Alice", LastName = "Smith" };
-        await Graph.CreateNode(alice);
+        await Graph.CreateNodeAsync(alice);
 
         var friends = new List<Person>();
         const int friendCount = 50; // Reduced for test performance
@@ -604,15 +589,14 @@ public abstract class QueryTraversalTestsBase : ITestBase
         {
             var friend = new Person { FirstName = $"Friend{i}", LastName = "Test" };
             friends.Add(friend);
-            await Graph.CreateNode(friend);
-            await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = friend.Id, Since = DateTime.UtcNow });
+            await Graph.CreateNodeAsync(friend);
+            await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = friend.Id, Since = DateTime.UtcNow });
         }
 
         // Act: Traverse to all friends
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
-            .To<Person>()
             .ToList();
 
         // Assert
@@ -628,20 +612,19 @@ public abstract class QueryTraversalTestsBase : ITestBase
         var bob = new Person { FirstName = "Bob", LastName = "Jones" };
         var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
 
-        await Graph.CreateNode(alice);
-        await Graph.CreateNode(bob);
-        await Graph.CreateNode(charlie);
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
 
-        await Graph.CreateRelationship(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = bob.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
-        await Graph.CreateRelationship(new Knows { SourceId = charlie.Id, TargetId = alice.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = bob.Id, TargetId = charlie.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { SourceId = charlie.Id, TargetId = alice.Id, Since = DateTime.UtcNow });
 
         // Act: Traverse with max depth 3 to potentially encounter the cycle
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
             .WithDepth(3)
-            .To<Person>()
             .Distinct() // Use Distinct to avoid duplicates from cycles
             .ToList();
 

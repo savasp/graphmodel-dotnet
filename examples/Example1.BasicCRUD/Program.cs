@@ -36,7 +36,8 @@ Console.WriteLine($"✓ Created database: {databaseName}");
 // We start with the Neo4j Graph Provider here
 
 // Create graph instance with Neo4j provider
-var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var graph = store.Graph;
 
 try
 {
@@ -69,9 +70,9 @@ try
     };
 
     // Save nodes to graph
-    await graph.CreateNode(techCorp);
-    await graph.CreateNode(alice);
-    await graph.CreateNode(bob);
+    await graph.CreateNodeAsync(techCorp);
+    await graph.CreateNodeAsync(alice);
+    await graph.CreateNodeAsync(bob);
 
     Console.WriteLine($"✓ Created company: {techCorp.Name}");
     Console.WriteLine($"✓ Created employee: {alice.Name}");
@@ -80,26 +81,22 @@ try
     // Create relationships
     Console.WriteLine("2. Creating relationships...");
 
-    var aliceWorksFor = new WorksFor
+    var aliceWorksFor = new WorksFor(alice.Id, techCorp.Id, isBidirectional: false)
     {
-        SourceId = alice.Id,
-        TargetId = techCorp.Id,
         Position = "Senior Software Engineer",
         StartDate = new DateTime(2022, 3, 15),
         Salary = 95000
     };
 
-    var bobWorksFor = new WorksFor
+    var bobWorksFor = new WorksFor(bob.Id, techCorp.Id, isBidirectional: false)
     {
-        SourceId = bob.Id,
-        TargetId = techCorp.Id,
         Position = "Marketing Manager",
         StartDate = new DateTime(2021, 8, 1),
         Salary = 75000
     };
 
-    await graph.CreateRelationship(aliceWorksFor);
-    await graph.CreateRelationship(bobWorksFor);
+    await graph.CreateRelationshipAsync(aliceWorksFor);
+    await graph.CreateRelationshipAsync(bobWorksFor);
 
     Console.WriteLine($"✓ Created relationship: {alice.Name} works for {techCorp.Name}");
     Console.WriteLine($"✓ Created relationship: {bob.Name} works for {techCorp.Name}\n");
@@ -137,12 +134,12 @@ try
 
     // Find relationships
     var paths = graph.Nodes<Person>()
-        .TraversePath<Person, WorksFor, Company>()
+        .PathSegments<WorksFor, Company>()
         .ToList();
     Console.WriteLine($"\nFound {paths.Count} work relationships:");
-    foreach (var rel in paths)
+    foreach (var path in paths)
     {
-        Console.WriteLine($"  - {rel.Source.Name} works as {rel.Relationship.Position} and {rel.Target.Name} (Salary: ${rel.Relationship.Salary:N0})");
+        Console.WriteLine($"  - {path.StartNode.Name} works as {path.Relationship.Position} and {path.EndNode.Name} (Salary: ${path.Relationship.Salary:N0})");
     }
 
     // ==== UPDATE OPERATIONS ====
@@ -151,22 +148,23 @@ try
     // Update Alice's age and department
     if (foundAlice != null)
     {
-        var newAlice = new Person { Id = foundAlice.Id, Name = foundAlice.Name, Age = 31, Department = "Engineering" };
-        await graph.UpdateNode(newAlice);
-        Console.WriteLine($"✓ Updated Alice's age to {newAlice.Age} and department to {newAlice.Department}");
+        foundAlice.Age = 31; // Update age
+        foundAlice.Department = "Engineering"; // Update department
+        await graph.UpdateNodeAsync(foundAlice);
+        Console.WriteLine($"✓ Updated Alice's age to {foundAlice.Age} and department to {foundAlice.Department}");
     }
 
     // Update Bob's salary
     var bobRelationship = graph.Nodes<Person>()
-        .TraversePath<Person, WorksFor, Company>()
-        .Where(r => r.Source!.Name == "Bob Smith")
+        .PathSegments<WorksFor, Company>()
+        .Where(r => r.StartNode.Name == "Bob Smith")
         .Select(r => r.Relationship)
         .FirstOrDefault();
 
     if (bobRelationship != null)
     {
         bobRelationship.Salary = 80000; // Update salary
-        await graph.UpdateRelationship(bobRelationship);
+        await graph.UpdateRelationshipAsync(bobRelationship);
         Console.WriteLine($"✓ Updated Bob's salary to ${bobRelationship.Salary:N0}");
     }
 
@@ -194,11 +192,11 @@ try
         Department = "Temp"
     };
 
-    await graph.CreateNode(tempPerson);
+    await graph.CreateNodeAsync(tempPerson);
     Console.WriteLine($"✓ Created temporary employee: {tempPerson.Name}");
 
     // Delete the temporary person
-    await graph.DeleteNode(tempPerson.Id);
+    await graph.DeleteNodeAsync(tempPerson.Id);
     Console.WriteLine($"✓ Deleted temporary employee: {tempPerson.Name}");
 
     // Verify deletion

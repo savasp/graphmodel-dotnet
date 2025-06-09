@@ -56,9 +56,4 @@ internal class GraphNodeQueryable<T> : GraphQueryable<T>, IGraphNodeQueryable<T>
         // Create the traversal query through the provider
         return Provider.CreateTraversalQuery<T, TRel, TTarget>(Expression);
     }
-
-    public IGraphNodeQueryable<T> WithTransaction(GraphTransaction transaction)
-    {
-        return new GraphNodeQueryable<T>(Provider, GraphContext, QueryContext, Expression, transaction);
-    }
 }

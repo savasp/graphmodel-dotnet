@@ -12,42 +12,73 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model;
-
 namespace Cvoya.Graph.Model.Neo4j;
 
-using SessionTransaction = (global::Neo4j.Driver.IAsyncSession, global::Neo4j.Driver.IAsyncTransaction);
+using Microsoft.Extensions.Logging;
 
 internal static class TransactionHelpers
 {
-    /// <summary>
-    /// Gets or creates a Neo4j transaction.
-    /// </summary>
-    /// <param name="driver">The Neo4j driver</param>
-    /// <param name="databaseName">The name of the database</param>
-    /// <param name="transaction">Optional existing transaction</param>
-    /// <returns>A tuple containing the session and transaction</returns>
-    /// <exception cref="InvalidOperationException">Thrown when the transaction is not active or not a Neo4j transaction</exception>
-    public static async Task<SessionTransaction> GetOrCreateTransaction(
-        global::Neo4j.Driver.IDriver driver,
-        string databaseName,
-        IGraphTransaction? transaction)
+    public static async Task<T> ExecuteInTransactionAsync<T>(
+        GraphContext graphContext,
+        IGraphTransaction? transaction,
+        Func<GraphTransaction, Task<T>> function,
+        string errorMessage,
+        ILogger? logger = null)
     {
-        if (transaction is GraphTransaction neo4jTx && neo4jTx.IsActive)
+        var tx = await GetOrCreateTransactionAsync(graphContext, transaction);
+        try
         {
-            var tx = neo4jTx.GetTransaction() ?? throw new InvalidOperationException("Transaction is not active.");
-            return (neo4jTx.Session, tx);
+            var result = await function(tx);
+
+            if (transaction == null)
+            {
+                await tx.Commit();
+            }
+
+            return result;
         }
-        else if (transaction is null)
+        catch (Exception ex)
         {
-            var session = driver.AsyncSession(
-                builder => builder.WithDatabase(databaseName));
+            logger?.LogError(ex, errorMessage);
+            if (transaction == null)
+            {
+                await tx.Rollback();
+            }
+
+            while (ex is GraphException && ex.InnerException != null)
+            {
+                ex = ex.InnerException;
+            }
+
+            throw new GraphException(errorMessage, ex);
+        }
+        finally
+        {
+            if (transaction == null)
+            {
+                await tx.DisposeAsync();
+            }
+        }
+    }
+
+    public static async Task<GraphTransaction> GetOrCreateTransactionAsync(
+        GraphContext graphContext,
+        IGraphTransaction? transaction = null)
+    {
+        if (transaction is null)
+        {
+            var session = graphContext.Driver.AsyncSession(
+                builder => builder.WithDatabase(graphContext.DatabaseName));
             var tx = await session.BeginTransactionAsync();
-            return (session, tx);
+            return new GraphTransaction(session, tx);
         }
-        else
+
+        if (transaction is not GraphTransaction graphTransaction)
         {
-            throw new InvalidOperationException("Transaction is not active or not a Neo4j transaction.");
+            throw new InvalidOperationException(
+                "The given transaction is not a valid Neo4j transaction. You need to use Neo4jStore.Graph.BeginTransaction() to create a transaction.");
         }
+
+        return graphTransaction;
     }
 }

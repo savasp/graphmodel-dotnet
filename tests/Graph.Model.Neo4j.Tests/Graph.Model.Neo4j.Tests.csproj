@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Graph.Provider.Neo4j/Graph.Provider.Neo4j.csproj" />
+    <ProjectReference Include="../../src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj" />
     <ProjectReference Include="../Graph.Model.Tests/Graph.Model.Tests.csproj" />
   </ItemGroup>
 

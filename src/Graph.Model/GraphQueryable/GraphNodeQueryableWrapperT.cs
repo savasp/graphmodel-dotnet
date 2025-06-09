@@ -34,6 +34,8 @@ internal sealed class GraphNodeQueryableWrapper<T>(
     public Expression Expression => queryable.Expression;
     IQueryProvider IQueryable.Provider => Provider;
 
+    public string? Label => Labels.GetLabelFromType(typeof(T));
+
     // IEnumerable members
     public IEnumerator<T> GetEnumerator() => queryable.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)queryable).GetEnumerator();

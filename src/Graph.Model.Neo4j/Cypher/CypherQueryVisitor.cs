@@ -22,8 +22,31 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 {
     private readonly CypherQueryBuilder _builder = new();
     private readonly Stack<QueryScope> _scopes = new([new QueryScope("n")]);
+    private Type? _entityType;
 
-    public CypherQueryResult Build() => _builder.Build();
+    public CypherQueryResult Build()
+    {
+        // Check if we're dealing with entity types that might have complex properties
+        if (_entityType != null && !queryContext.IsProjection && !queryContext.IsScalarResult)
+        {
+            if (ComplexPropertyHelper.HasComplexProperties(_entityType))
+            {
+                _builder.EnableComplexPropertyLoading();
+            }
+        }
+
+        return _builder.Build();
+    }
+
+    public override Expression? Visit(Expression? node)
+    {
+        return node switch
+        {
+            // Handle our custom transaction expression
+            GraphTransactionExpression txExpr => VisitTransaction(txExpr),
+            _ => base.Visit(node)
+        };
+    }
 
     protected override Expression VisitMethodCall(MethodCallExpression node)
     {
@@ -53,6 +76,9 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
             var currentScope = _scopes.Peek();
             _builder.AddMatch(currentScope.Alias, GetLabelFromQueryable(queryable));
             queryContext.RootType = DetermineRootType(queryable);
+
+            // Capture the entity type for complex property detection
+            _entityType = queryable.ElementType;
         }
 
         return base.VisitConstant(node);
@@ -208,4 +234,25 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
             IGraphTraversalQueryable => GraphQueryContext.QueryRootType.Path,
             _ => GraphQueryContext.QueryRootType.Custom
         };
+
+    private Expression? VisitTransaction(GraphTransactionExpression transactionExpression)
+    {
+        logger?.LogDebug("Processing transaction attachment");
+
+        // Store the transaction in the query context
+        if (transactionExpression.Transaction is GraphTransaction neo4jTx)
+        {
+            queryContext.Transaction = neo4jTx;
+        }
+        else
+        {
+            throw new NotSupportedException(
+                $"Transaction type {transactionExpression.Transaction.GetType()} is not supported by Neo4j provider");
+        }
+
+        // Continue visiting the source expression
+        return transactionExpression.Source is not null
+            ? Visit(transactionExpression.Source)
+            : transactionExpression;
+    }
 }

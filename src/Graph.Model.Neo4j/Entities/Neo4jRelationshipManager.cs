@@ -12,167 +12,168 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Runtime.CompilerServices;
+using Cvoya.Graph.Model.Neo4j.Serialization;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Model.Neo4j;
 
 /// <summary>
-/// Manages Neo4j relationship operations.
+///  All methods assume that there is already a transaction in progress.
 /// </summary>
-internal class Neo4jRelationshipManager : Neo4jEntityManagerBase
+/// <param name="context"></param>
+internal sealed class Neo4jRelationshipManager(GraphContext context)
 {
-    private readonly Microsoft.Extensions.Logging.ILogger _logger;
+    private readonly ILogger<Neo4jRelationshipManager>? _logger = context.LoggerFactory?.CreateLogger<Neo4jRelationshipManager>();
+    private readonly GraphEntitySerializer _serializer = new GraphEntitySerializer(context);
 
-    /// <summary>
-    /// Initializes a new instance of the Neo4jRelationshipManager class.
-    /// </summary>
-    public Neo4jRelationshipManager(GraphContext context) : base(context)
+    public async Task<TRelationship?> GetRelationshipAsync<TRelationship>(
+        string relationshipId,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default)
+        where TRelationship : IRelationship
     {
-        _logger = context.LoggerFactory?.CreateLogger<Neo4jRelationshipManager>()
-                  ?? NullLogger<Neo4jRelationshipManager>.Instance;
-    }
+        ArgumentException.ThrowIfNullOrEmpty(relationshipId);
 
-    /// <summary>
-    /// Creates a relationship between two nodes in Neo4j.
-    /// </summary>
-    /// <param name="relationship">The relationship to create</param>
-    /// <param name="tx">The transaction to use</param>
-    public async Task CreateRelationship(IRelationship relationship, IAsyncTransaction tx)
-    {
-        var type = relationship.GetType();
-        var label = Labels.GetLabelFromType(type);
-        var (simpleProps, _) = GetSimpleAndComplexProperties(relationship);
+        _logger?.LogDebug("Getting relationship of type {RelationshipType} with ID {RelationshipId}", typeof(TRelationship).Name, relationshipId);
 
-        var cypher = $"""
-            MATCH (a), (b) 
-            WHERE a.{nameof(Model.INode.Id)} = '{relationship.SourceId}' 
-                AND b.{nameof(Model.INode.Id)} = '{relationship.TargetId}'
-            CREATE (a)-[r:{label} $props]->(b)
-            RETURN elementId(r) AS relId
-            """;
-
-        await tx.RunAsync(cypher, new
-        {
-            props = ConvertPropertiesToNeo4j(simpleProps),
-        });
-    }
-
-    /// <summary>
-    /// Updates a relationship with the given data.
-    /// </summary>
-    /// <param name="relationship">The relationship to update</param>
-    /// <param name="tx">The transaction to use</param>
-    public async Task UpdateRelationship(IRelationship relationship, IAsyncTransaction tx)
-    {
-        var (simpleProps, _) = GetSimpleAndComplexProperties(relationship);
-
-        var cypher = $"MATCH ()-[r]->() WHERE r.{nameof(Model.IRelationship.Id)} = '{relationship.Id}' SET r += $props";
-        await tx.RunAsync(cypher, new
-        {
-            props = ConvertPropertiesToNeo4j(simpleProps),
-        });
-    }
-
-    /// <summary>
-    /// Gets a relationship by its ID and type.
-    /// </summary>
-    /// <param name="id">The ID of the relationship</param>
-    /// <param name="tx">The transaction to use</param>
-    /// <returns>The relationship instance</returns>
-    /// <exception cref="GraphException">Thrown if the relationship is not found</exception>
-    public async Task<T> GetRelationship<T>(string id, IAsyncTransaction tx)
-        where T : IRelationship
-    {
-        // First, find the relationship by ID without type restriction
-        var findRelCypher = $"MATCH ()-[r]->() WHERE r.{nameof(Model.IRelationship.Id)} = $id RETURN r, type(r) as relType";
-        var findResult = await tx.RunAsync(findRelCypher, new { id });
-        var findRecords = await findResult.ToListAsync();
-
-        if (findRecords.Count == 0)
-        {
-            var ex = new KeyNotFoundException($"Relationship with ID '{id}' not found");
-            throw new GraphException(ex.Message, ex);
-        }
-
-        var foundRelationship = findRecords[0]["r"].As<global::Neo4j.Driver.IRelationship>();
-        var relationshipType = findRecords[0]["relType"].As<string>();
-
-        // Find the actual type that matches the relationship type and is assignable to T
-        Type actualType;
         try
         {
-            actualType = Labels.GetTypeFromLabel(relationshipType);
+            // Use LINQ with the relationship queryable
+            var query = context.Graph.Relationships<TRelationship>()
+                .Where(r => r.Id == relationshipId);
+
+            query = query.WithTransaction(transaction);
+
+            return await query.FirstOrDefaultAsync(cancellationToken);
         }
-        catch (GraphException)
+        catch (Exception ex)
         {
-            // If no specific type matches, fallback to the requested type T
-            actualType = typeof(T);
+            _logger?.LogError(ex, "Error retrieving relationship {RelationshipId} of type {RelationshipType}", relationshipId, typeof(TRelationship).Name);
+            throw new GraphException($"Failed to retrieve relationship: {ex.Message}", ex);
         }
-
-        // Deserialize using the actual type and cast to T
-        var relationship = await GraphContext.EntityConverter.DeserializeObjectFromNeo4jEntity(actualType, foundRelationship);
-
-        return (T)relationship;
     }
 
-    /// <summary>
-    /// Gets multiple relationships by their IDs.
-    /// </summary>
-    /// <param name="ids">The IDs of the relationships</param>
-    /// <param name="tx">The transaction to use</param>
-    /// <returns>A collection of relationships</returns>
-    public async Task<IEnumerable<T>> GetRelationships<T>(IEnumerable<string> ids, IAsyncTransaction tx)
-        where T : IRelationship
+    public async Task CreateRelationshipAsync<TRelationship>(
+        TRelationship relationship,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default)
+        where TRelationship : IRelationship
     {
-        if (!ids.Any())
+        ArgumentNullException.ThrowIfNull(relationship);
+
+        _logger?.LogDebug("Creating relationship of type {RelationshipType} from {SourceId} to {TargetId}",
+            typeof(TRelationship).Name, relationship.SourceId, relationship.TargetId);
+
+        try
         {
-            return [];
+            // Serialize the relationship
+            var result = await _serializer.SerializeRelationshipAsync(relationship, cancellationToken);
+
+            // Build the Cypher query
+            var cypher = $@"
+                MATCH (source {{Id: $sourceId}})
+                MATCH (target {{Id: $targetId}})
+                CREATE (source)-[r:{result.Type} $props]->(target)
+                RETURN r";
+
+            var relResult = await transaction.Transaction.RunAsync(cypher, new
+            {
+                sourceId = result.SourceId,
+                targetId = result.TargetId,
+                props = result.Properties
+            });
+
+            var record = await relResult.SingleAsync();
+
+            _logger?.LogInformation("Created relationship of type {RelationshipType} with ID {RelationshipId}",
+                typeof(TRelationship).Name, relationship.Id);
         }
-
-        var label = Labels.GetLabelFromType(typeof(T));
-
-        // Create a parameterized query to get all nodes in one go
-        var cypher = $@"
-            MATCH ()-[r:{label}]->()
-            WHERE r.{nameof(Model.IRelationship.Id)} IN $ids
-            RETURN r";
-        var cursor = await tx.RunAsync(cypher, new { ids });
-        var records = await cursor.ToListAsync();
-
-        // Track which IDs were found
-        var foundIds = new HashSet<string>();
-
-        var result = new List<T>();
-
-        foreach (var record in records.Select(r => r["r"]))
+        catch (Exception ex)
         {
-            var neo4jRelationship = record.As<global::Neo4j.Driver.IRelationship>();
-            var relationship = await GraphContext.EntityConverter.DeserializeRelationship<T>(neo4jRelationship);
-            result.Add(relationship);
-            foundIds.Add(relationship.Id);
+            _logger?.LogError(ex, "Error creating relationship of type {RelationshipType}", typeof(TRelationship).Name);
+            throw new GraphException($"Failed to create relationship: {ex.Message}", ex);
         }
-
-        // Check for missing nodes
-        var missingIds = ids.Except(foundIds).ToList();
-        if (missingIds.Count != 0)
-        {
-            throw new KeyNotFoundException($"Node(s) with ID(s) '{string.Join("', '", missingIds)}' not found");
-        }
-
-        return result;
     }
 
-    /// <summary>
-    /// Deletes a relationship by its ID.
-    /// </summary>
-    /// <param name="relationshipId">The ID of the relationship to delete</param>
-    /// <param name="cascadeDelete">Whether to cascade delete related entities</param>
-    /// <param name="tx">The transaction to use</param>
-    public async Task DeleteRelationship(string relationshipId, bool cascadeDelete, IAsyncTransaction tx)
+    public async Task<bool> UpdateRelationshipAsync<TRelationship>(
+        TRelationship relationship,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default)
+        where TRelationship : IRelationship
     {
-        var cypher = $"MATCH ()-[r]->() WHERE r.{nameof(Model.IRelationship.Id)} = $relationshipId DELETE r";
-        await tx.RunAsync(cypher, new { relationshipId });
+        ArgumentNullException.ThrowIfNull(relationship);
+
+        _logger?.LogDebug("Updating relationship of type {RelationshipType} with ID {RelationshipId}",
+            typeof(TRelationship).Name, relationship.Id);
+
+        try
+        {
+            // Check if relationship exists using LINQ
+            var exists = await context.Graph.Relationships<TRelationship>()
+                .Where(r => r.Id == relationship.Id)
+                .AnyAsync(cancellationToken);
+
+            if (!exists)
+            {
+                _logger?.LogWarning("Relationship {RelationshipId} not found for update", relationship.Id);
+                return false;
+            }
+
+            // Serialize the relationship
+            var result = await _serializer.SerializeRelationshipAsync(relationship, cancellationToken);
+
+            var cypher = "MATCH ()-[r {Id: $relId}]->() SET r = $props RETURN r";
+            var relResult = await transaction.Transaction.RunAsync(cypher, new { relId = relationship.Id, props = result.Properties });
+            await relResult.ConsumeAsync();
+
+            _logger?.LogInformation("Updated relationship of type {RelationshipType} with ID {RelationshipId}",
+                typeof(TRelationship).Name, relationship.Id);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error updating relationship {RelationshipId} of type {RelationshipType}",
+                relationship.Id, typeof(TRelationship).Name);
+            throw new GraphException($"Failed to update relationship: {ex.Message}", ex);
+        }
+    }
+
+    public async Task<bool> DeleteRelationshipAsync(
+        string relationshipId,
+        GraphTransaction transaction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(relationshipId);
+
+        _logger?.LogDebug("Deleting relationship with ID {RelationshipId}",
+            relationshipId);
+
+        try
+        {
+            var cypher = "MATCH ()-[r {Id: $relId}]->() DELETE r";
+            var result = await transaction.Transaction.RunAsync(cypher, new { relId = relationshipId });
+
+            _logger?.LogInformation("Deleted relationship with ID {RelationshipId}",
+                relationshipId);
+
+            // Check if the relationship was deleted
+            var record = await result.SingleAsync();
+            var wasDeleted = record["wasDeleted"].As<bool>();
+
+            if (!wasDeleted)
+            {
+                _logger?.LogWarning("Relationship with ID {RelationshipId} not found for deletion", relationshipId);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error deleting relationship with ID {RelationshipId}",
+                relationshipId);
+            throw new GraphException($"Failed to delete relationship: {ex.Message}", ex);
+        }
     }
 }

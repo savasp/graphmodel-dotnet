@@ -24,9 +24,9 @@ public abstract class QueryTestsBase : ITestBase
         var p1 = new Person { FirstName = "Alice", LastName = "Smith" };
         var p2 = new Person { FirstName = "Bob", LastName = "Smith" };
         var p3 = new Person { FirstName = "Charlie", LastName = "Jones" };
-        await this.Graph.CreateNode(p1);
-        await this.Graph.CreateNode(p2);
-        await this.Graph.CreateNode(p3);
+        await this.Graph.CreateNodeAsync(p1);
+        await this.Graph.CreateNodeAsync(p2);
+        await this.Graph.CreateNodeAsync(p3);
 
         var smiths = this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
@@ -41,8 +41,8 @@ public abstract class QueryTestsBase : ITestBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.Graph.CreateNode(p1);
-        await this.Graph.CreateNode(p2);
+        await this.Graph.CreateNodeAsync(p1);
+        await this.Graph.CreateNodeAsync(p2);
 
         var all = this.Graph.Nodes<Person>().ToList();
         Assert.True(all.Count >= 2);
@@ -56,9 +56,9 @@ public abstract class QueryTestsBase : ITestBase
         var p1 = new Person { FirstName = "Charlie", LastName = "Smith" };
         var p2 = new Person { FirstName = "Alice", LastName = "Smith" };
         var p3 = new Person { FirstName = "Bob", LastName = "Jones" };
-        await this.Graph.CreateNode(p1);
-        await this.Graph.CreateNode(p2);
-        await this.Graph.CreateNode(p3);
+        await this.Graph.CreateNodeAsync(p1);
+        await this.Graph.CreateNodeAsync(p2);
+        await this.Graph.CreateNodeAsync(p3);
 
         var smithsOrdered = this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
@@ -75,9 +75,9 @@ public abstract class QueryTestsBase : ITestBase
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
         var p3 = new Person { FirstName = "C" };
-        await this.Graph.CreateNode(p1);
-        await this.Graph.CreateNode(p2);
-        await this.Graph.CreateNode(p3);
+        await this.Graph.CreateNodeAsync(p1);
+        await this.Graph.CreateNodeAsync(p2);
+        await this.Graph.CreateNodeAsync(p3);
 
         var taken = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Take(2).ToList();
         Assert.Equal(2, taken.Count);
@@ -94,8 +94,8 @@ public abstract class QueryTestsBase : ITestBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.Graph.CreateNode(p1);
-        await this.Graph.CreateNode(p2);
+        await this.Graph.CreateNodeAsync(p1);
+        await this.Graph.CreateNodeAsync(p2);
 
         var first = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).First();
         Assert.Equal("A", first.FirstName);
@@ -109,8 +109,8 @@ public abstract class QueryTestsBase : ITestBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.Graph.CreateNode(p1);
-        await this.Graph.CreateNode(p2);
+        await this.Graph.CreateNodeAsync(p1);
+        await this.Graph.CreateNodeAsync(p2);
 
         var anyA = this.Graph.Nodes<Person>().Any(p => p.FirstName == "A");
         Assert.True(anyA);
@@ -123,7 +123,7 @@ public abstract class QueryTestsBase : ITestBase
     public async Task CanQueryWithLocalScopeVariableCapture()
     {
         var p1 = new Person { FirstName = "A" };
-        await this.Graph.CreateNode(p1);
+        await this.Graph.CreateNodeAsync(p1);
 
         var localName = "A";
 
@@ -137,8 +137,8 @@ public abstract class QueryTestsBase : ITestBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.Graph.CreateNode(p1);
-        await this.Graph.CreateNode(p2);
+        await this.Graph.CreateNodeAsync(p1);
+        await this.Graph.CreateNodeAsync(p2);
 
         var a = this.Graph.Nodes<Person>().Where(p => p.FirstName == p1.FirstName).FirstOrDefault();
         Assert.NotNull(a);

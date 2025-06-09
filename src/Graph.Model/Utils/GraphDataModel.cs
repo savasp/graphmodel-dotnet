@@ -253,6 +253,19 @@ public static class GraphDataModel
         };
 
     /// <summary>
+    /// Checks if a type is a collection of complex types. See <see cref="IsComplex(Type)"/> for what is considered a complex type.
+    /// </summary>
+    public static bool IsCollectionOfComplex(Type type) =>
+        type != typeof(string)
+        && typeof(IEnumerable).IsAssignableFrom(type)
+        && type switch
+        {
+            { IsArray: true } => IsComplex(type.GetElementType()!),
+            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } arg && IsComplex(arg),
+            _ => false
+        };
+
+    /// <summary>
     /// Checks if an object has reference cycles (true cycles, not just shared references).
     /// </summary>
     /// <param name="obj">The object to check</param>
@@ -325,10 +338,14 @@ public static class GraphDataModel
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             if (IsSimple(prop.PropertyType) || IsCollectionOfSimple(prop.PropertyType))
+            {
                 continue;
+            }
 
             if (IsComplex(prop.PropertyType, depth - 1))
+            {
                 return true;
+            }
         }
 
         return false;

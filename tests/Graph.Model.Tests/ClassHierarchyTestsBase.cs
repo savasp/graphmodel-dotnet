@@ -30,9 +30,9 @@ public abstract class ClassHierarchyTestsBase : ITestBase
             TeamSize = 10
         };
 
-        await this.Graph.CreateNode(manager);
+        await this.Graph.CreateNodeAsync(manager);
 
-        var retrieved = await this.Graph.GetNode<Person>(manager.Id);
+        var retrieved = await this.Graph.GetNodeAsync<Person>(manager.Id);
 
         // Even though we are retrieving as Person, we should still get the full Manager object
         Assert.NotNull(retrieved);
@@ -59,9 +59,9 @@ public abstract class ClassHierarchyTestsBase : ITestBase
 
         Person person = manager; // Implicit conversion to base type
 
-        await this.Graph.CreateNode(person);
+        await this.Graph.CreateNodeAsync(person);
 
-        var retrieved = await this.Graph.GetNode<Manager>(person.Id);
+        var retrieved = await this.Graph.GetNodeAsync<Manager>(person.Id);
 
         Assert.NotNull(retrieved);
         Assert.IsType<Manager>(retrieved);
@@ -87,9 +87,9 @@ public abstract class ClassHierarchyTestsBase : ITestBase
 
         Person person = manager; // Implicit conversion to base type
 
-        await this.Graph.CreateNode(person);
+        await this.Graph.CreateNodeAsync(person);
 
-        var retrieved = await this.Graph.GetNode<Person>(person.Id);
+        var retrieved = await this.Graph.GetNodeAsync<Person>(person.Id);
 
         Assert.NotNull(retrieved);
         Assert.IsType<Manager>(retrieved);
@@ -116,8 +116,8 @@ public abstract class ClassHierarchyTestsBase : ITestBase
             LastName = "Smith",
             Age = 32
         };
-        await this.Graph.CreateNode(person1);
-        await this.Graph.CreateNode(person2);
+        await this.Graph.CreateNodeAsync(person1);
+        await this.Graph.CreateNodeAsync(person2);
         var knowsWell = new KnowsWell(person1, person2)
         {
             IsBidirectional = true,
@@ -125,9 +125,9 @@ public abstract class ClassHierarchyTestsBase : ITestBase
             HowWell = "Very well"
         };
 
-        await this.Graph.CreateRelationship(knowsWell);
+        await this.Graph.CreateRelationshipAsync(knowsWell);
 
-        var retrieved = await this.Graph.GetRelationship<Knows>(knowsWell.Id);
+        var retrieved = await this.Graph.GetRelationshipAsync<Knows>(knowsWell.Id);
 
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
@@ -154,8 +154,8 @@ public abstract class ClassHierarchyTestsBase : ITestBase
             LastName = "Smith",
             Age = 32
         };
-        await this.Graph.CreateNode(person1);
-        await this.Graph.CreateNode(person2);
+        await this.Graph.CreateNodeAsync(person1);
+        await this.Graph.CreateNodeAsync(person2);
         var knowsWell = new KnowsWell(person1, person2)
         {
             IsBidirectional = true,
@@ -165,9 +165,9 @@ public abstract class ClassHierarchyTestsBase : ITestBase
 
         Knows knows = knowsWell; // Implicit conversion to base type
 
-        await this.Graph.CreateRelationship(knows);
+        await this.Graph.CreateRelationshipAsync(knows);
 
-        var retrieved = await this.Graph.GetRelationship<KnowsWell>(knowsWell.Id);
+        var retrieved = await this.Graph.GetRelationshipAsync<KnowsWell>(knowsWell.Id);
 
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
@@ -194,8 +194,8 @@ public abstract class ClassHierarchyTestsBase : ITestBase
             LastName = "Smith",
             Age = 32
         };
-        await this.Graph.CreateNode(person1);
-        await this.Graph.CreateNode(person2);
+        await this.Graph.CreateNodeAsync(person1);
+        await this.Graph.CreateNodeAsync(person2);
         var knowsWell = new KnowsWell(person1, person2)
         {
             IsBidirectional = true,
@@ -204,9 +204,9 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         };
 
         Knows knows = knowsWell; // Implicit conversion to base type
-        await this.Graph.CreateRelationship(knows);
+        await this.Graph.CreateRelationshipAsync(knows);
 
-        var retrieved = await this.Graph.GetRelationship<Knows>(knows.Id);
+        var retrieved = await this.Graph.GetRelationshipAsync<Knows>(knows.Id);
 
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
@@ -230,7 +230,7 @@ public abstract class ClassHierarchyTestsBase : ITestBase
             TeamSize = 5
         };
 
-        await this.Graph.CreateNode(manager);
+        await this.Graph.CreateNodeAsync(manager);
 
         var retrieved = this.Graph.Nodes<Person>()
             .FirstOrDefault();
@@ -268,9 +268,9 @@ public abstract class ClassHierarchyTestsBase : ITestBase
             HowWell = "Very well"
         };
 
-        await this.Graph.CreateNode(person1);
-        await this.Graph.CreateNode(person2);
-        await this.Graph.CreateRelationship(knowsWell);
+        await this.Graph.CreateNodeAsync(person1);
+        await this.Graph.CreateNodeAsync(person2);
+        await this.Graph.CreateRelationshipAsync(knowsWell);
 
         var retrieved = this.Graph.Relationships<Knows>()
             .FirstOrDefault();

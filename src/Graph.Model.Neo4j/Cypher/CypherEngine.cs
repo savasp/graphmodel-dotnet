@@ -12,36 +12,50 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Collections;
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Cypher;
+using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Linq;
+using Cvoya.Graph.Model.Neo4j.Serialization;
 using Microsoft.Extensions.Logging;
+using Neo4j.Driver;
 
-namespace Cvoya.Graph.Model.Neo4j;
+namespace Cvoya.Graph.Model.Neo4j.Cypher;
 
-internal class CypherEngine
+internal class CypherEngine(GraphContext context)
 {
-    private readonly GraphContext _context;
-    private readonly ILogger<CypherEngine>? _logger;
+    private readonly ILogger<CypherEngine>? _logger = context.LoggerFactory?.CreateLogger<CypherEngine>();
+    private readonly GraphEntitySerializer _serializer = new GraphEntitySerializer(context);
 
-    public CypherEngine(GraphContext context)
-    {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
-        _logger = _context.LoggerFactory?.CreateLogger<CypherEngine>();
-    }
-
-    public async Task<T> ExecuteAsync<T>(string cypher, GraphQueryContext queryContext, CancellationToken cancellationToken = default)
+    public async Task<T> ExecuteAsync<T>(
+        string cypher,
+        GraphTransaction transaction,
+        GraphQueryContext queryContext,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(cypher);
         ArgumentNullException.ThrowIfNull(queryContext);
 
         _logger?.LogDebug("Executing Cypher query: {Query}", cypher);
 
-        // TODO: Implement execution logic
-        throw new NotImplementedException("Execution logic coming soon!");
+        return await transaction.Session.ExecuteReadAsync(async tx =>
+        {
+            var result = await tx.RunAsync(cypher, queryContext.Parameters);
+
+            // Handle different result types based on query context
+            return queryContext switch
+            {
+                { IsScalarResult: true } => await HandleScalarResultAsync<T>(result, cancellationToken),
+                { IsProjection: true } => await HandleProjectionResultAsync<T>(result, queryContext, cancellationToken),
+                _ => await HandleEntityResultAsync<T>(result, queryContext, cancellationToken)
+            };
+        });
     }
 
-    public Task<string> ExpressionToCypherVisitor(Expression expression, GraphQueryContext queryContext, CancellationToken cancellationToken = default)
+    public Task<string> ExpressionToCypherVisitor(
+        Expression expression,
+        GraphQueryContext queryContext,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(expression);
         ArgumentNullException.ThrowIfNull(queryContext);
@@ -65,5 +79,281 @@ internal class CypherEngine
             _logger?.LogError(ex, "Failed to convert expression to Cypher");
             throw new InvalidOperationException($"Failed to convert expression to Cypher: {ex.Message}", ex);
         }
+    }
+
+    private async Task<T> HandleScalarResultAsync<T>(IResultCursor result, CancellationToken cancellationToken)
+    {
+        var record = await result.SingleAsync();
+        var value = record.Values.First().Value;
+
+        // Convert Neo4j value to requested type
+        return (T)Convert.ChangeType(value, typeof(T));
+    }
+
+    private async Task<T> HandleProjectionResultAsync<T>(
+        IResultCursor result,
+        GraphQueryContext queryContext,
+        CancellationToken cancellationToken)
+    {
+        // For projections, we need to handle anonymous types and custom DTOs
+        var records = await result.ToListAsync();
+
+        // TODO: Implement projection handling based on queryContext.ProjectionType
+        throw new NotImplementedException("Projection handling coming soon!");
+    }
+
+    private async Task<T> HandleEntityResultAsync<T>(
+        IResultCursor result,
+        GraphQueryContext queryContext,
+        CancellationToken cancellationToken)
+    {
+        var records = await result.ToListAsync();
+
+        if (typeof(IEnumerable).IsAssignableFrom(typeof(T)) && typeof(T) != typeof(string))
+        {
+            // Handle collection results
+            var elementType = typeof(T).IsArray
+                ? typeof(T).GetElementType()!
+                : typeof(T).GetGenericArguments().FirstOrDefault() ?? typeof(object);
+
+            var results = new List<object>();
+
+            foreach (var record in records)
+            {
+                var entity = await DeserializeEntityFromRecordAsync(
+                    record,
+                    elementType,
+                    queryContext,
+                    cancellationToken);
+                results.Add(entity);
+            }
+
+            // Convert to appropriate collection type
+            return ConvertToCollectionType<T>(results, elementType);
+        }
+        else
+        {
+            // Handle single entity result
+            var record = records.FirstOrDefault();
+            if (record == null)
+            {
+                return default!;
+            }
+
+            return (T)await DeserializeEntityFromRecordAsync(
+                record,
+                typeof(T),
+                queryContext,
+                cancellationToken);
+        }
+    }
+
+    private static T ConvertToCollectionType<T>(List<object> items, Type elementType)
+    {
+        // Handle arrays
+        if (typeof(T).IsArray)
+        {
+            var array = Array.CreateInstance(elementType, items.Count);
+            for (int i = 0; i < items.Count; i++)
+            {
+                array.SetValue(items[i], i);
+            }
+            return (T)(object)array;
+        }
+
+        // Handle List<T>
+        if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(List<>))
+        {
+            var listType = typeof(List<>).MakeGenericType(elementType);
+            var list = (IList)Activator.CreateInstance(listType)!;
+            foreach (var item in items)
+            {
+                list.Add(item);
+            }
+            return (T)list;
+        }
+
+        // Handle IEnumerable<T>, ICollection<T>, etc.
+        if (typeof(T).IsGenericType)
+        {
+            // Default to List<T> for interfaces
+            var listType = typeof(List<>).MakeGenericType(elementType);
+            var list = (IList)Activator.CreateInstance(listType)!;
+            foreach (var item in items)
+            {
+                list.Add(item);
+            }
+
+            // If T is directly assignable from List<T>, return it
+            if (typeof(T).IsAssignableFrom(listType))
+            {
+                return (T)list;
+            }
+
+            // Try to create an instance of T using the list as constructor parameter
+            try
+            {
+                return (T)Activator.CreateInstance(typeof(T), list)!;
+            }
+            catch
+            {
+                // If that fails, just return the list and hope for the best
+                return (T)list;
+            }
+        }
+
+        throw new NotSupportedException($"Cannot convert results to collection type {typeof(T)}");
+    }
+
+    private async Task<object> DeserializeNodeWithComplexPropertiesAsync(
+        global::Neo4j.Driver.INode node,
+        List<object> relatedNodes,
+        Type requestedType,
+        GraphQueryContext queryContext,
+        CancellationToken cancellationToken)
+    {
+        // This is similar to what the serializer does, but we already have the data
+        // so we can deserialize directly without another query
+
+        // First create the main entity
+        var entity = await _serializer.DeserializeNodeFromNeo4jNodeAsync(
+            node,
+            requestedType,
+            queryContext.UseMostDerivedType,
+            cancellationToken);
+
+        // Then populate its complex properties using the related nodes
+        await PopulateComplexPropertiesFromResults(
+            entity,
+            relatedNodes,
+            queryContext,
+            cancellationToken);
+
+        return entity;
+    }
+
+    private async Task PopulateComplexPropertiesFromResults(
+            object entity,
+            List<object> relatedNodes,
+            GraphQueryContext queryContext,
+            CancellationToken cancellationToken)
+    {
+        // Similar logic to the serializer's PopulateComplexPropertiesAsync
+        // but we work with the data we already have from the query
+
+        var type = entity.GetType();
+        var complexPropsByRelType = new Dictionary<string, List<object>>();
+
+        foreach (var relatedNode in relatedNodes)
+        {
+            if (relatedNode is not IDictionary<string, object> dict) continue;
+
+            var neo4jNode = dict["Node"] as global::Neo4j.Driver.INode;
+            var relType = dict["RelType"] as string;
+
+            if (neo4jNode == null || relType == null) continue;
+
+            var propName = GraphDataModel.RelationshipTypeNameToPropertyName(relType);
+
+            if (!complexPropsByRelType.ContainsKey(propName))
+                complexPropsByRelType[propName] = [];
+
+            // Deserialize the complex property node - use the correct method!
+            var complexEntity = await _serializer.DeserializeNodeFromNeo4jNodeAsync(
+                neo4jNode,
+                typeof(INode), // We'll let the serializer figure out the actual type
+                queryContext.UseMostDerivedType,
+                cancellationToken);
+
+            complexPropsByRelType[propName].Add(complexEntity);
+        }
+
+        // Set the properties on the entity
+        foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (!prop.CanWrite || !complexPropsByRelType.ContainsKey(prop.Name)) continue;
+
+            var values = complexPropsByRelType[prop.Name];
+
+            if (GraphDataModel.IsComplex(prop.PropertyType))
+            {
+                prop.SetValue(entity, values.FirstOrDefault());
+            }
+            else if (GraphDataModel.IsCollectionOfComplex(prop.PropertyType))
+            {
+                var collection = CreateCollection(prop.PropertyType, values);
+                prop.SetValue(entity, collection);
+            }
+        }
+    }
+
+    private static object CreateCollection(Type collectionType, IEnumerable<object> items)
+    {
+        if (collectionType.IsArray)
+        {
+            var elementType = collectionType.GetElementType()!;
+            var array = Array.CreateInstance(elementType, items.Count());
+            var index = 0;
+            foreach (var item in items)
+            {
+                array.SetValue(item, index++);
+            }
+            return array;
+        }
+
+        var listType = typeof(List<>).MakeGenericType(collectionType.GetGenericArguments()[0]);
+        var list = (IList)Activator.CreateInstance(listType)!;
+        foreach (var item in items)
+        {
+            list.Add(item);
+        }
+        return list;
+    }
+
+    private async Task<object> DeserializeEntityFromRecordAsync(
+           IRecord record,
+           Type requestedType,
+           GraphQueryContext queryContext,
+           CancellationToken cancellationToken)
+    {
+        // Check what's in the record and route to the appropriate deserialization method
+
+        // Simple case: single node
+        if (record.Values.Count == 1 && record.Values.First().Value is global::Neo4j.Driver.INode node)
+        {
+            // Use DeserializeNodeFromNeo4jNodeAsync instead of DeserializeNodeAsync
+            return await _serializer.DeserializeNodeFromNeo4jNodeAsync(
+                node,
+                requestedType,
+                queryContext.UseMostDerivedType,
+                cancellationToken);
+        }
+
+        // Complex case: node with related nodes (for complex properties)
+        if (record.Values.Count == 2)
+        {
+            if (record.Values.FirstOrDefault(v => v.Value is global::Neo4j.Driver.INode).Value is global::Neo4j.Driver.INode mainNode && record.Values.FirstOrDefault(v => v.Value is List<object>).Value is List<object> relatedNodes)
+            {
+                return await DeserializeNodeWithComplexPropertiesAsync(
+                    mainNode,
+                    relatedNodes,
+                    requestedType,
+                    queryContext,
+                    cancellationToken);
+            }
+        }
+
+        // Handle other cases like relationships, projections, etc.
+        throw new NotSupportedException($"Cannot deserialize record with {record.Values.Count} values to type {requestedType}");
+    }
+}
+
+// Extension method to help with collection casting
+internal static class CollectionExtensions
+{
+    public static IEnumerable<T> Cast<T>(this IEnumerable<object> source, Type elementType)
+    {
+        var castMethod = typeof(Enumerable).GetMethod(nameof(Enumerable.Cast))!.MakeGenericMethod(elementType);
+        return (IEnumerable<T>)castMethod.Invoke(null, [source])!;
     }
 }

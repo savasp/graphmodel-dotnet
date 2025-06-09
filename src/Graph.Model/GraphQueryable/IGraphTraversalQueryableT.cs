@@ -65,17 +65,4 @@ public interface IGraphTraversalQueryable<TSource, TRel, TTarget> : IGraphQuerya
     IGraphTraversalQueryable<TSource, TNextRel, TNextTarget> ThenTraverse<TNextRel, TNextTarget>()
         where TNextRel : IRelationship
         where TNextTarget : INode;
-
-    /// <summary>
-    /// Returns a queryable over the relationships traversed, instead of the target nodes.
-    /// </summary>
-    /// <returns>An <see cref="IGraphQueryable{TRel}"/> over the traversed relationships.</returns>
-    IGraphQueryable<TRel> Relationships();
-
-    /// <summary>
-    /// Projects the traversal to a different node type.
-    /// </summary>
-    /// <typeparam name="TNewTarget">The type of the new target node.</typeparam>
-    /// <returns>A queryable for the new target nodes.</returns>
-    IGraphQueryable<TNewTarget> To<TNewTarget>() where TNewTarget : INode;
 }
