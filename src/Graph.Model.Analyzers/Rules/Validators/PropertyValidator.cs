@@ -67,6 +67,15 @@ internal class PropertyValidator : ITypeValidator
                     }
                 }
 
+                // GM007: Check complex properties only contain simple properties (INode only)
+                if (isNodeImplementation)
+                {
+                    foreach (var diagnostic in ValidateComplexPropertyOnlyContainsSimpleProperties(property))
+                    {
+                        yield return diagnostic;
+                    }
+                }
+
                 // GM005/GM006: Validate property types based on INode vs IRelationship
                 if (isNodeImplementation)
                 {
@@ -124,6 +133,22 @@ internal class PropertyValidator : ITypeValidator
             {
                 yield return Diagnostic.Create(
                     DiagnosticDescriptors.ComplexPropertyCannotHaveNodeOrRelationshipProperties,
+                    GetPropertyTypeLocation(property) ?? property.Locations.FirstOrDefault(),
+                    property.Name,
+                    property.Type.ToDisplayString());
+            }
+        }
+    }
+
+    private IEnumerable<Diagnostic> ValidateComplexPropertyOnlyContainsSimpleProperties(IPropertySymbol property)
+    {
+        // GM007: Complex properties can only contain simple properties
+        if (_typeChecker.IsComplex(property.Type))
+        {
+            if (HasComplexNestedProperties(property.Type))
+            {
+                yield return Diagnostic.Create(
+                    DiagnosticDescriptors.ComplexPropertyCanOnlyContainSimpleProperties,
                     GetPropertyTypeLocation(property) ?? property.Locations.FirstOrDefault(),
                     property.Name,
                     property.Type.ToDisplayString());
@@ -205,6 +230,47 @@ internal class PropertyValidator : ITypeValidator
                 // Recursively check complex properties
                 if (_typeChecker.IsComplex(prop.Type) && HasInvalidNestedProperties(prop.Type))
                     return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool HasComplexNestedProperties(ITypeSymbol type)
+    {
+        // Check for collections of complex types
+        if (type is IArrayTypeSymbol { Rank: 1 } arrayType)
+            return HasComplexNestedProperties(arrayType.ElementType);
+
+        if (type is INamedTypeSymbol { IsGenericType: true } genericType)
+        {
+            var elementType = genericType.TypeArguments.FirstOrDefault();
+            return elementType != null && HasComplexNestedProperties(elementType);
+        }
+
+        // For class types, check all properties recursively
+        if (type.TypeKind == TypeKind.Class)
+        {
+            var properties = type.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(p => p.DeclaredAccessibility == Accessibility.Public);
+
+            foreach (var prop in properties)
+            {
+                // If any property is complex, it's invalid for GM007
+                if (_typeChecker.IsComplex(prop.Type))
+                    return true;
+
+                // For collections, check element type
+                if (prop.Type is IArrayTypeSymbol { Rank: 1 } propArrayType && _typeChecker.IsComplex(propArrayType.ElementType))
+                    return true;
+
+                if (prop.Type is INamedTypeSymbol { IsGenericType: true } propGenericType)
+                {
+                    var elementType = propGenericType.TypeArguments.FirstOrDefault();
+                    if (elementType != null && _typeChecker.IsComplex(elementType))
+                        return true;
+                }
             }
         }
 

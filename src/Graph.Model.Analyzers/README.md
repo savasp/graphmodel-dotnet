@@ -267,6 +267,52 @@ public class WorksAt : IRelationship
 }
 ```
 
+### GM007: Complex properties can only contain simple properties
+
+**Error**: Complex properties of `INode` instances can only contain simple properties, not other complex properties.
+
+**Reason**: To prevent overly complex nested structures that could impact performance and make the data model difficult to manage. Complex properties should contain only simple, serializable data.
+
+**Example Violation**:
+```csharp
+// ❌ This will trigger GM007
+public class Person : INode
+{
+    public string Id { get; set; }
+    public CompanyInfo Company { get; set; }    // Complex property containing other complex properties
+}
+
+public class CompanyInfo
+{
+    public string Name { get; set; }
+    public Address HeadOffice { get; set; }     // Complex property within complex property - not allowed
+}
+
+public class Address
+{
+    public string Street { get; set; }
+    public string City { get; set; }
+}
+```
+
+**Fix**:
+```csharp
+// ✅ Flatten the structure or use only simple properties in complex types
+public class Person : INode
+{
+    public string Id { get; set; }
+    public CompanyInfo Company { get; set; }    // Complex property with only simple properties
+}
+
+public class CompanyInfo
+{
+    public string Name { get; set; }
+    public string HeadOfficeStreet { get; set; }    // Simple properties only
+    public string HeadOfficeCity { get; set; }
+    public List<string> Departments { get; set; }   // Collections of simple types allowed
+}
+```
+
 ## Usage
 
 The analyzers run automatically during compilation. You don't need to configure anything - just install the package and build your project.

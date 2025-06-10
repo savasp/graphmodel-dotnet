@@ -80,4 +80,14 @@ public static class DiagnosticDescriptors
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: "Properties of IRelationship implementations must be simple types or collections of simple types.");
+
+    // GM007: Complex properties can only contain simple properties
+    public static readonly DiagnosticDescriptor ComplexPropertyCanOnlyContainSimpleProperties = new(
+        id: "GM007",
+        title: "Complex properties can only contain simple properties",
+        messageFormat: "Property '{0}' of complex type '{1}' contains complex properties, which is not allowed. Complex properties can only contain simple properties",
+        category: "Graph.Model",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "Complex properties of INode implementations can only contain simple properties, not other complex properties.");
 }
