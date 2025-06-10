@@ -17,7 +17,7 @@ using Xunit;
 namespace Cvoya.Graph.Model.Analyzers.Tests;
 
 /// <summary>
-/// Tests for the GM007 diagnostic rule: Complex properties can only contain simple properties.
+/// Tests for the GM007 diagnostic rule: Complex properties can only contain simple properties or collections of simple properties.
 /// </summary>
 public class GM007_ComplexPropertyOnlySimplePropertiesTests
 {

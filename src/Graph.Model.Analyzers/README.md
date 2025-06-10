@@ -267,11 +267,11 @@ public class WorksAt : IRelationship
 }
 ```
 
-### GM007: Complex properties can only contain simple properties
+### GM007: Complex properties can only contain simple properties or collections of simple properties
 
-**Error**: Complex properties of `INode` instances can only contain simple properties, not other complex properties.
+**Error**: Complex properties of `INode` instances can only contain simple properties or collections of simple properties, not other complex properties.
 
-**Reason**: To prevent overly complex nested structures that could impact performance and make the data model difficult to manage. Complex properties should contain only simple, serializable data.
+**Reason**: To prevent overly complex nested structures that could impact performance and make the data model difficult to manage. Complex properties should contain only simple, serializable data or collections thereof.
 
 **Example Violation**:
 ```csharp

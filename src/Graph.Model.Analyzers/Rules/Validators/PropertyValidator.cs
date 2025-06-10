@@ -67,7 +67,7 @@ internal class PropertyValidator : ITypeValidator
                     }
                 }
 
-                // GM007: Check complex properties only contain simple properties (INode only)
+                // GM007: Check complex properties only contain simple properties or collections of simple properties (INode only)
                 if (isNodeImplementation)
                 {
                     foreach (var diagnostic in ValidateComplexPropertyOnlyContainsSimpleProperties(property))
@@ -142,7 +142,7 @@ internal class PropertyValidator : ITypeValidator
 
     private IEnumerable<Diagnostic> ValidateComplexPropertyOnlyContainsSimpleProperties(IPropertySymbol property)
     {
-        // GM007: Complex properties can only contain simple properties
+        // GM007: Complex properties can only contain simple properties or collections of simple properties
         if (_typeChecker.IsComplex(property.Type))
         {
             if (HasComplexNestedProperties(property.Type))
@@ -257,7 +257,7 @@ internal class PropertyValidator : ITypeValidator
 
             foreach (var prop in properties)
             {
-                // If any property is complex, it's invalid for GM007
+                // If any property is complex (not a collection), it's invalid for GM007
                 if (_typeChecker.IsComplex(prop.Type))
                     return true;
 
