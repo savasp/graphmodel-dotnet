@@ -17,12 +17,12 @@ using Xunit;
 namespace Cvoya.Graph.Model.Analyzers.Tests;
 
 /// <summary>
-/// Tests for the GM003 diagnostic rule: Property must have public getter and setter.
+/// Tests for the GM003 diagnostic rule: Property cannot be INode or IRelationship.
 /// </summary>
-public class GM003_PropertyMustHavePublicAccessorsTests
+public class GM003_PropertyCannotBeNodeOrRelationshipTests
 {
     [Fact]
-    public async Task PropertyWithPublicGetterAndSetter_DoesNotReportError()
+    public async Task PropertyWithSimpleType_DoesNotReportError()
     {
         var test = @"
 using Cvoya.Graph.Model;
@@ -31,13 +31,14 @@ public class MyNode : INode
 {
     public string Id { get; set; }
     public string Name { get; set; }
+    public int Age { get; set; }
 }";
 
         await Verify.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
-    public async Task PropertyWithPrivateGetter_ReportsError()
+    public async Task PropertyWithComplexType_DoesNotReportError()
     {
         var test = @"
 using Cvoya.Graph.Model;
@@ -45,18 +46,20 @@ using Cvoya.Graph.Model;
 public class MyNode : INode
 {
     public string Id { get; set; }
-    public string Name { private get; set; }
+    public Address Address { get; set; }
+}
+
+public class Address
+{
+    public string Street { get; set; }
+    public string City { get; set; }
 }";
 
-        var expected = Verify.Diagnostic("GM003")
-            .WithSpan(7, 19, 7, 23)
-            .WithArguments("Name", "MyNode");
-
-        await Verify.VerifyAnalyzerAsync(test, expected);
+        await Verify.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
-    public async Task PropertyWithPrivateSetter_ReportsError()
+    public async Task PropertyWithINodeType_ReportsError()
     {
         var test = @"
 using Cvoya.Graph.Model;
@@ -64,18 +67,18 @@ using Cvoya.Graph.Model;
 public class MyNode : INode
 {
     public string Id { get; set; }
-    public string Name { get; private set; }
+    public MyNode Parent { get; set; }
 }";
 
         var expected = Verify.Diagnostic("GM003")
-            .WithSpan(7, 19, 7, 23)
-            .WithArguments("Name", "MyNode");
+            .WithSpan(7, 19, 7, 25)
+            .WithArguments("Parent", "MyNode");
 
         await Verify.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
-    public async Task PropertyWithInternalGetter_ReportsError()
+    public async Task PropertyWithIRelationshipType_ReportsError()
     {
         var test = @"
 using Cvoya.Graph.Model;
@@ -83,18 +86,46 @@ using Cvoya.Graph.Model;
 public class MyNode : INode
 {
     public string Id { get; set; }
-    public string Name { internal get; set; }
+    public MyRelationship Connection { get; set; }
+}
+
+public class MyRelationship : IRelationship
+{
+    public string Id { get; set; }
+    public string SourceId { get; set; }
+    public string TargetId { get; set; }
+    public bool IsBidirectional { get; set; }
 }";
 
         var expected = Verify.Diagnostic("GM003")
-            .WithSpan(7, 19, 7, 23)
-            .WithArguments("Name", "MyNode");
+            .WithSpan(7, 27, 7, 37)
+            .WithArguments("Connection", "MyRelationship");
 
         await Verify.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
-    public async Task PropertyWithInternalSetter_ReportsError()
+    public async Task PropertyWithListOfINode_ReportsError()
+    {
+        var test = @"
+using Cvoya.Graph.Model;
+using System.Collections.Generic;
+
+public class MyNode : INode
+{
+    public string Id { get; set; }
+    public List<MyNode> Children { get; set; }
+}";
+
+        var expected = Verify.Diagnostic("GM003")
+            .WithSpan(8, 25, 8, 33)
+            .WithArguments("Children", "List<MyNode>");
+
+        await Verify.VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task PropertyWithArrayOfIRelationship_ReportsError()
     {
         var test = @"
 using Cvoya.Graph.Model;
@@ -102,56 +133,26 @@ using Cvoya.Graph.Model;
 public class MyNode : INode
 {
     public string Id { get; set; }
-    public string Name { get; internal set; }
-}";
+    public MyRelationship[] Connections { get; set; }
+}
 
-        var expected = Verify.Diagnostic("GM003")
-            .WithSpan(7, 19, 7, 23)
-            .WithArguments("Name", "MyNode");
-
-        await Verify.VerifyAnalyzerAsync(test, expected);
-    }
-
-    [Fact]
-    public async Task PropertyWithGetterOnly_ReportsError()
-    {
-        var test = @"
-using Cvoya.Graph.Model;
-
-public class MyNode : INode
+public class MyRelationship : IRelationship
 {
     public string Id { get; set; }
-    public string Name { get; }
+    public string SourceId { get; set; }
+    public string TargetId { get; set; }
+    public bool IsBidirectional { get; set; }
 }";
 
         var expected = Verify.Diagnostic("GM003")
-            .WithSpan(7, 19, 7, 23)
-            .WithArguments("Name", "MyNode");
+            .WithSpan(7, 29, 7, 40)
+            .WithArguments("Connections", "MyRelationship[]");
 
         await Verify.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
-    public async Task PropertyWithSetterOnly_ReportsError()
-    {
-        var test = @"
-using Cvoya.Graph.Model;
-
-public class MyNode : INode
-{
-    public string Id { get; set; }
-    public string Name { set; }
-}";
-
-        var expected = Verify.Diagnostic("GM003")
-            .WithSpan(7, 19, 7, 23)
-            .WithArguments("Name", "MyNode");
-
-        await Verify.VerifyAnalyzerAsync(test, expected);
-    }
-
-    [Fact]
-    public async Task RelationshipPropertyAccessors_ReportsError()
+    public async Task RelationshipWithINodeProperty_ReportsError()
     {
         var test = @"
 using Cvoya.Graph.Model;
@@ -159,56 +160,49 @@ using Cvoya.Graph.Model;
 public class MyRelationship : IRelationship
 {
     public string Id { get; set; }
-    public string SourceId { get; private set; }
+    public string SourceId { get; set; }
     public string TargetId { get; set; }
     public bool IsBidirectional { get; set; }
+    public MyNode Source { get; set; }
+}
+
+public class MyNode : INode
+{
+    public string Id { get; set; }
 }";
 
         var expected = Verify.Diagnostic("GM003")
-            .WithSpan(7, 19, 7, 27)
-            .WithArguments("SourceId", "MyRelationship");
+            .WithSpan(10, 19, 10, 25)
+            .WithArguments("Source", "MyNode");
 
         await Verify.VerifyAnalyzerAsync(test, expected);
     }
 
     [Fact]
-    public async Task PropertyWithExplicitBackingField_StillNeedsPublicAccessors()
+    public async Task PropertyWithListOfSimpleType_DoesNotReportError()
     {
         var test = @"
 using Cvoya.Graph.Model;
+using System.Collections.Generic;
 
 public class MyNode : INode
 {
-    private string _name;
-    
     public string Id { get; set; }
-    
-    public string Name 
-    { 
-        get => _name; 
-        private set => _name = value; 
-    }
+    public List<string> Tags { get; set; }
+    public int[] Numbers { get; set; }
 }";
 
-        var expected = Verify.Diagnostic("GM003")
-            .WithSpan(10, 19, 10, 23)
-            .WithArguments("Name", "MyNode");
-
-        await Verify.VerifyAnalyzerAsync(test, expected);
+        await Verify.VerifyAnalyzerAsync(test);
     }
 
     [Fact]
-    public async Task IndexerProperty_DoesNotReportError()
+    public async Task ClassNotImplementingGraphInterfaces_DoesNotReportError()
     {
         var test = @"
-using Cvoya.Graph.Model;
-
-public class MyNode : INode
+public class MyClass
 {
-    public string Id { get; set; }
-    
-    // Indexers should be ignored by the analyzer
-    public string this[int index] { get => ""test""; set { } }
+    public MyClass Parent { get; set; }
+    public MyClass[] Children { get; set; }
 }";
 
         await Verify.VerifyAnalyzerAsync(test);

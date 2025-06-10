@@ -17,51 +17,12 @@ using Xunit;
 namespace Cvoya.Graph.Model.Analyzers.Tests;
 
 /// <summary>
-/// Tests for the GM001 diagnostic rule: Only classes can implement INode or IRelationship.
+/// Tests for the GM001 diagnostic rule: Must have parameterless constructor or property-initializing constructor.
 /// </summary>
-public class GM001_OnlyClassesCanImplementTests
+public class GM001_ConstructorTests
 {
     [Fact]
-    public async Task StructImplementingINode_ReportsError()
-    {
-        var test = @"
-using Cvoya.Graph.Model;
-
-public struct MyNode : INode
-{
-    public string Id { get; set; }
-}";
-
-        var expected = Verify.Diagnostic("GM001")
-            .WithSpan(4, 15, 4, 21)
-            .WithArguments("MyNode", "INode");
-
-        await Verify.VerifyAnalyzerAsync(test, expected);
-    }
-
-    [Fact]
-    public async Task StructImplementingIRelationship_ReportsError()
-    {
-        var test = @"
-using Cvoya.Graph.Model;
-
-public struct MyRelationship : IRelationship
-{
-    public string Id { get; set; }
-    public string SourceId { get; set; }
-    public string TargetId { get; set; }
-    public bool IsBidirectional { get; set; }
-}";
-
-        var expected = Verify.Diagnostic("GM001")
-            .WithSpan(4, 15, 4, 29)
-            .WithArguments("MyRelationship", "IRelationship");
-
-        await Verify.VerifyAnalyzerAsync(test, expected);
-    }
-
-    [Fact]
-    public async Task ClassImplementingINode_DoesNotReportError()
+    public async Task ClassWithParameterlessConstructor_DoesNotReportError()
     {
         var test = @"
 using Cvoya.Graph.Model;
@@ -76,7 +37,83 @@ public class MyNode : INode
     }
 
     [Fact]
-    public async Task ClassImplementingIRelationship_DoesNotReportError()
+    public async Task ClassWithoutExplicitConstructor_DoesNotReportError()
+    {
+        var test = @"
+using Cvoya.Graph.Model;
+
+public class MyNode : INode
+{
+    public string Id { get; set; }
+}";
+
+        await Verify.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task StructWithParameterizedConstructor_DoesNotReportError()
+    {
+        var test = @"
+using Cvoya.Graph.Model;
+
+public struct MyNode : INode
+{
+    public string Id { get; set; }
+    
+    public MyNode(string id)
+    {
+        Id = id;
+    }
+}";
+
+        await Verify.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ClassWithParameterizedConstructorAndProperties_DoesNotReportError()
+    {
+        var test = @"
+using Cvoya.Graph.Model;
+
+public class MyNode : INode
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    
+    public MyNode(string name)
+    {
+        Id = System.Guid.NewGuid().ToString();
+        Name = name;
+    }
+}";
+
+        await Verify.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ClassWithBothParameterlessAndParameterizedConstructors_DoesNotReportError()
+    {
+        var test = @"
+using Cvoya.Graph.Model;
+
+public class MyNode : INode
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    
+    public MyNode() { }
+    
+    public MyNode(string name) : this()
+    {
+        Name = name;
+    }
+}";
+
+        await Verify.VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RelationshipWithParameterlessConstructor_DoesNotReportError()
     {
         var test = @"
 using Cvoya.Graph.Model;
@@ -109,12 +146,17 @@ public record MyNode : INode
     }
 
     [Fact]
-    public async Task StructNotImplementingInterfaces_DoesNotReportError()
+    public async Task TypeNotImplementingGraphInterfaces_DoesNotReportError()
     {
         var test = @"
-public struct MyStruct
+public class MyClass
 {
-    public string Value { get; set; }
+    public MyClass(string value)
+    {
+        Value = value;
+    }
+    
+    public string Value { get; private set; }
 }";
 
         await Verify.VerifyAnalyzerAsync(test);
