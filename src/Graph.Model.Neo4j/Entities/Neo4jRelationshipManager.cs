@@ -153,7 +153,12 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
         try
         {
-            var cypher = "MATCH ()-[r {Id: $relId}]->() DELETE r";
+            var cypher = @"
+                MATCH ()-[r {Id: $relId}]->()
+                WITH COUNT(r) AS count, r
+                DELETE r
+                RETURN count > 0 AS wasDeleted";
+
             var result = await transaction.Transaction.RunAsync(cypher, new { relId = relationshipId });
 
             _logger?.LogInformation("Deleted relationship with ID {RelationshipId}",

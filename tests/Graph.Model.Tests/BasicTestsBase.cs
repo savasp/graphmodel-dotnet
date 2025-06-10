@@ -93,7 +93,7 @@ public abstract class BasicTestsBase : ITestBase
         var person = new Person { FirstName = "ToDelete" };
         await this.Graph.CreateNodeAsync(person);
         await this.Graph.DeleteNodeAsync(person.Id);
-        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetNodeAsync<Person>(person.Id));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => this.Graph.GetNodeAsync<Person>(person.Id));
     }
 
     [Fact]
@@ -108,7 +108,7 @@ public abstract class BasicTestsBase : ITestBase
 
         await this.Graph.CreateRelationshipAsync(knows);
         await this.Graph.DeleteRelationshipAsync(knows.Id);
-        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetRelationshipAsync<Knows>(knows.Id));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => this.Graph.GetRelationshipAsync<Knows>(knows.Id));
     }
 
     [Fact]

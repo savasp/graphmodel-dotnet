@@ -46,12 +46,7 @@ internal static class TransactionHelpers
                 await tx.Rollback();
             }
 
-            while (ex is GraphException && ex.InnerException != null)
-            {
-                ex = ex.InnerException;
-            }
-
-            throw new GraphException(errorMessage, ex);
+            throw;
         }
         finally
         {
