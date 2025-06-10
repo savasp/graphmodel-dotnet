@@ -65,21 +65,29 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             GraphDataModel.EnsureNoReferenceCycle(node);
 
             // Serialize the node
-            var result = await _serializer.SerializeNodeAsync(node, cancellationToken);
+            var serializedNode = await _serializer.SerializeNodeAsync(node, cancellationToken);
 
             // Build the Cypher query
-            var cypher = $"CREATE (n:{result.Label} $props) RETURN n";
+            var cypher = $"CREATE (n:{serializedNode.Label} $props) RETURN n";
 
             _logger?.LogDebug("Cypher query for creating node: {Cypher}", cypher);
 
             // Create the main node
-            var nodeResult = await transaction.Transaction.RunAsync(cypher, new { props = result.SimpleProperties });
-            var record = await nodeResult.SingleAsync();
+            var nodeResult = await transaction.Transaction.RunAsync(cypher, new { props = serializedNode.SimpleProperties });
+
+            var nodeCreated = await nodeResult.CountAsync(cancellationToken) != 0;
+            var complexPropertiesCreated = true;
 
             // Create complex properties if any
-            if (result.ComplexProperties.Count > 0)
+            if (serializedNode.ComplexProperties.Count > 0)
             {
-                await CreateComplexPropertiesAsync(transaction.Transaction, node.Id, result.ComplexProperties, cancellationToken);
+                complexPropertiesCreated = await CreateComplexPropertiesAsync(transaction.Transaction, node.Id, serializedNode.ComplexProperties, cancellationToken);
+            }
+
+            if (!nodeCreated || !complexPropertiesCreated)
+            {
+                _logger?.LogWarning("Node of type {NodeType} with ID {NodeId} was not created", typeof(TNode).Name, node.Id);
+                throw new GraphException($"Failed to create node of type {typeof(TNode).Name} with ID {node.Id}");
             }
 
             _logger?.LogInformation("Created node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
@@ -107,27 +115,28 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(node);
 
-            // Check if node exists using LINQ
-            var exists = await context.Graph.Nodes<TNode>()
-                .Where(n => n.Id == node.Id)
-                .AnyAsync(cancellationToken);
-
-            if (!exists)
-            {
-                _logger?.LogWarning("Node {NodeId} not found for update", node.Id);
-                return false;
-            }
-
             // Serialize the node
-            var result = await _serializer.SerializeNodeAsync(node, cancellationToken);
+            var serializedNode = await _serializer.SerializeNodeAsync(node, cancellationToken);
 
             // Update the node properties
             var cypher = "MATCH (n {Id: $nodeId}) SET n = $props RETURN n";
-            var nodeResult = await transaction.Transaction.RunAsync(cypher, new { nodeId = node.Id, props = result.SimpleProperties });
-            await nodeResult.ConsumeAsync();
+            var result = await transaction.Transaction.RunAsync(cypher, new { nodeId = node.Id, props = serializedNode.SimpleProperties });
+
+            var updated = await result.CountAsync(cancellationToken) == 0;
+            if (updated)
+            {
+                _logger?.LogWarning("Node with ID {NodeId} not found for update", node.Id);
+                throw new KeyNotFoundException($"Node with ID {node.Id} not found for update");
+            }
 
             // Update complex properties (delete old ones and create new ones)
-            await UpdateComplexPropertiesAsync(transaction.Transaction, node.Id, result.ComplexProperties, cancellationToken);
+            updated &= await UpdateComplexPropertiesAsync(transaction.Transaction, node.Id, serializedNode.ComplexProperties, cancellationToken);
+
+            if (!updated)
+            {
+                _logger?.LogWarning("No complex properties were updated for node with ID {NodeId}", node.Id);
+                throw new GraphException($"Failed to update the node's complex properties of type {typeof(TNode).Name} with ID {node.Id}");
+            }
 
             _logger?.LogInformation("Updated node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
             return true;
@@ -175,31 +184,33 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             });
 
             // Check if the node was deleted
-            var record = await result.SingleAsync();
+            var record = await result.SingleAsync(cancellationToken);
             var wasDeleted = record["wasDeleted"].As<bool>();
 
             if (!wasDeleted)
             {
-                _logger?.LogWarning("Node with ID {NodeId} not found for deletion", nodeId);
-                return false;
+                _logger?.LogWarning($"Node with ID {nodeId} not found for deletion");
+                throw new KeyNotFoundException($"Node with ID {nodeId} not found for deletion");
             }
 
-            _logger?.LogInformation("Deleted node with ID {NodeId}", nodeId);
+            _logger?.LogInformation($"Deleted node with ID {nodeId}");
             return true;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error deleting node with ID: {NodeId}", nodeId);
+            _logger?.LogError(ex, $"Error deleting node with ID: {nodeId}");
             throw new GraphException($"Failed to delete node: {ex.Message}", ex);
         }
     }
 
-    private async Task CreateComplexPropertiesAsync(
+    private async Task<bool> CreateComplexPropertiesAsync(
         IAsyncTransaction tx,
         string parentId,
         List<ComplexPropertyInfo> complexProperties,
         CancellationToken cancellationToken)
     {
+        var allCreated = true;
+
         foreach (var complexProp in complexProperties)
         {
             // Create the complex property node
@@ -220,7 +231,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 CREATE (parent)-[:{complexProp.RelationshipType}]->(complex:{labels} $props)
                 RETURN complex";
 
-            _logger?.LogDebug("Cypher query for creating complex property: {Cypher}", cypher);
+            _logger?.LogDebug($"Cypher query for creating complex property: {cypher}");
 
             var result = await tx.RunAsync(cypher, new
             {
@@ -229,21 +240,23 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 relProps
             });
 
-            await result.ConsumeAsync();
+            allCreated &= await result.CountAsync(cancellationToken) != 0;
 
             // Recursively create nested complex properties if any
-            if (complexProp.SerializedNode.ComplexProperties.Count > 0)
+            if (allCreated && complexProp.SerializedNode.ComplexProperties.Count > 0)
             {
                 // We need the ID from the created node
                 var nodeId = complexProp.SerializedNode.SimpleProperties["Id"]?.ToString()
                     ?? throw new GraphException("Complex property node must have an Id");
 
-                await CreateComplexPropertiesAsync(tx, nodeId, complexProp.SerializedNode.ComplexProperties, cancellationToken);
+                allCreated &= await CreateComplexPropertiesAsync(tx, nodeId, complexProp.SerializedNode.ComplexProperties, cancellationToken);
             }
         }
+
+        return allCreated;
     }
 
-    private async Task UpdateComplexPropertiesAsync(
+    private async Task<bool> UpdateComplexPropertiesAsync(
         IAsyncTransaction tx,
         string parentId,
         List<ComplexPropertyInfo> complexProperties,
@@ -253,15 +266,25 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         var deleteCypher = @"
             MATCH (n {Id: $parentId})-[r]->(complex)
             WHERE type(r) STARTS WITH $propertyPrefix
-            DETACH DELETE complex";
+            DETACH DELETE complex
+            DELETE r
+            RETURN COUNT(r) AS deletedCount";
 
-        await tx.RunAsync(deleteCypher, new
+        var result = await tx.RunAsync(deleteCypher, new
         {
             parentId,
             propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix
         });
 
+        var deletedCount = (await result.FirstAsync(cancellationToken))["deletedCount"].As<int>();
+
+        _logger?.LogDebug("Deleted {DeletedCount} complex property relationships for parent ID {ParentId}", deletedCount, parentId);
+
+        var updatedComplexProperties = deletedCount > 0;
+
         // Then create the new ones
-        await CreateComplexPropertiesAsync(tx, parentId, complexProperties, cancellationToken);
+        updatedComplexProperties &= await CreateComplexPropertiesAsync(tx, parentId, complexProperties, cancellationToken);
+
+        return updatedComplexProperties;
     }
 }

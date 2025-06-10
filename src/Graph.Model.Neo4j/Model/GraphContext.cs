@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model.Neo4j.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 

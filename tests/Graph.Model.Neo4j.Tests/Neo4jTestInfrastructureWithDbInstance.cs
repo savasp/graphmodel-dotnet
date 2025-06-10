@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Microsoft.Extensions.Logging;
+using Microsoft.VisualStudio.TestPlatform.ObjectModel.Client;
+
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
 internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
@@ -30,7 +33,14 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
         var username = Environment.GetEnvironmentVariable("NEO4J_USERNAME") ?? "neo4j";
         testDatabase = new TestDatabase(connectionString, username, password);
         await testDatabase.Setup();
-        provider = new Neo4jGraphStore(connectionString, username, password, testDatabase.DatabaseName);
+
+        var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder.AddConsole();
+            builder.SetMinimumLevel(LogLevel.Debug);
+            builder.AddConsole().SetMinimumLevel(LogLevel.Debug);
+        });
+        provider = new Neo4jGraphStore(connectionString, username, password, testDatabase.DatabaseName, loggerFactory);
     }
 
     public async Task ResetDatabase()

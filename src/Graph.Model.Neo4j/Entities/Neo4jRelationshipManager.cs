@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Runtime.CompilerServices;
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
@@ -68,25 +67,34 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
         try
         {
+            // Validate no reference cycles
+            GraphDataModel.EnsureNoReferenceCycle(relationship);
+
             // Serialize the relationship
-            var result = _serializer.SerializeRelationship(relationship);
+            var serializedRelationship = _serializer.SerializeRelationship(relationship);
 
             // Build the Cypher query
             var cypher = $@"
                 MATCH (source {{Id: $sourceId}})
                 MATCH (target {{Id: $targetId}})
-                CREATE (source)-[r:{result.Type} $props]->(target)
+                CREATE (source)-[r:{serializedRelationship.Type} $props]->(target)
                 RETURN r";
 
             _logger?.LogDebug("Cypher query: {CypherQuery}", cypher);
             _logger?.LogDebug("Parameters: SourceId={SourceId}, TargetId={TargetId}, Properties={Properties}",
-                result.SourceId, result.TargetId, result.Properties);
-            await transaction.Transaction.RunAsync(cypher, new
+                serializedRelationship.SourceId, serializedRelationship.TargetId, serializedRelationship.Properties);
+            var result = await transaction.Transaction.RunAsync(cypher, new
             {
-                sourceId = result.SourceId,
-                targetId = result.TargetId,
-                props = result.Properties
+                sourceId = serializedRelationship.SourceId,
+                targetId = serializedRelationship.TargetId,
+                props = serializedRelationship.Properties
             });
+
+            if (await result.CountAsync(cancellationToken) == 0)
+            {
+                _logger?.LogWarning($"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}");
+                throw new GraphException($"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}");
+            }
 
             _logger?.LogInformation("Created relationship of type {RelationshipType} with ID {RelationshipId}",
                 typeof(TRelationship).Name, relationship.Id);
@@ -111,32 +119,28 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
         try
         {
-            // Check if relationship exists using LINQ
-            var exists = await context.Graph.Relationships<TRelationship>()
-                .Where(r => r.Id == relationship.Id)
-                .AnyAsync(cancellationToken);
-
-            if (!exists)
-            {
-                _logger?.LogWarning("Relationship {RelationshipId} not found for update", relationship.Id);
-                return false;
-            }
+            // Validate no reference cycles
+            GraphDataModel.EnsureNoReferenceCycle(relationship);
 
             // Serialize the relationship
             var result = _serializer.SerializeRelationship(relationship);
 
             var cypher = "MATCH ()-[r {Id: $relId}]->() SET r = $props RETURN r";
             var relResult = await transaction.Transaction.RunAsync(cypher, new { relId = relationship.Id, props = result.Properties });
-            await relResult.ConsumeAsync();
+            var count = await relResult.CountAsync(cancellationToken);
 
-            _logger?.LogInformation("Updated relationship of type {RelationshipType} with ID {RelationshipId}",
-                typeof(TRelationship).Name, relationship.Id);
+            if (count == 0)
+            {
+                _logger?.LogWarning($"Relationship with ID {relationship.Id} not found for update");
+                throw new KeyNotFoundException($"Relationship with ID {relationship.Id} not found for update.");
+            }
+
+            _logger?.LogInformation($"Updated relationship of type {typeof(TRelationship).Name} with ID {relationship.Id}");
             return true;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error updating relationship {RelationshipId} of type {RelationshipType}",
-                relationship.Id, typeof(TRelationship).Name);
+            _logger?.LogError(ex, $"Error updating relationship {relationship.Id} of type {typeof(TRelationship).Name}");
             throw new GraphException($"Failed to update relationship: {ex.Message}", ex);
         }
     }
@@ -148,8 +152,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     {
         ArgumentException.ThrowIfNullOrEmpty(relationshipId);
 
-        _logger?.LogDebug("Deleting relationship with ID {RelationshipId}",
-            relationshipId);
+        _logger?.LogDebug($"Deleting relationship with ID {relationshipId}");
 
         try
         {
@@ -161,24 +164,22 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             var result = await transaction.Transaction.RunAsync(cypher, new { relId = relationshipId });
 
-            _logger?.LogInformation("Deleted relationship with ID {RelationshipId}",
-                relationshipId);
+            _logger?.LogInformation($"Deleted relationship with ID {relationshipId}");
 
             // Check if the relationship was deleted
-            var record = await result.SingleAsync();
+            var record = await result.SingleAsync(cancellationToken);
             var wasDeleted = record["wasDeleted"].As<bool>();
 
             if (!wasDeleted)
             {
-                _logger?.LogWarning("Relationship with ID {RelationshipId} not found for deletion", relationshipId);
-                return false;
+                _logger?.LogWarning($"Relationship with ID {relationshipId} not found for deletion");
+                throw new KeyNotFoundException($"Relationship with ID {relationshipId} not found for deletion.");
             }
             return true;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error deleting relationship with ID {RelationshipId}",
-                relationshipId);
+            _logger?.LogError(ex, $"Error deleting relationship with ID {relationshipId}");
             throw new GraphException($"Failed to delete relationship: {ex.Message}", ex);
         }
     }
