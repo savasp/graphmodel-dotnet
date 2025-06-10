@@ -191,8 +191,8 @@ internal class GraphEntitySerializer(GraphContext context)
         {
             Properties = props,
             Type = relType,
-            SourceId = relationship.SourceId,
-            TargetId = relationship.TargetId
+            SourceId = relationship.StartNodeId,
+            TargetId = relationship.EndNodeId
         };
     }
 
@@ -250,6 +250,22 @@ internal class GraphEntitySerializer(GraphContext context)
 
         // Use the value converter to convert simple types
         return _valueConverter.ConvertFromNeo4j(value, targetType);
+    }
+
+    public object DeserializeRelationshipFromNeo4jRelationship(
+        global::Neo4j.Driver.IRelationship neo4jRelationship,
+        Type targetType)
+    {
+        ArgumentNullException.ThrowIfNull(neo4jRelationship);
+        ArgumentNullException.ThrowIfNull(targetType);
+
+        // Create the relationship instance
+        var entity = _entityFactory.CreateInstance(targetType, neo4jRelationship);
+
+        // Populate simple properties from the Neo4j relationship
+        PopulateSimpleProperties(entity, neo4jRelationship);
+
+        return entity;
     }
 
     private void PopulateSimpleProperties(object entity, global::Neo4j.Driver.IEntity neo4jEntity)

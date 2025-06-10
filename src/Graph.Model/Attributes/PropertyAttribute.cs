@@ -17,7 +17,6 @@ namespace Cvoya.Graph.Model;
 /// <summary>
 /// Attribute to customize aspects of entity properties in the graph.
 /// </summary>
-/// <param name="label">Optional custom label for the property in the graph.</param>
 /// <remarks>
 /// Use this attribute on properties of classes implementing IEntity to control 
 /// how they are represented in the graph storage system.
@@ -36,25 +35,18 @@ namespace Cvoya.Graph.Model;
 /// }
 /// </code>
 /// </example>
-[AttributeUsage(AttributeTargets.Property, Inherited = false, AllowMultiple = false)]
-public class PropertyAttribute(string? label = null) : Attribute
+[AttributeUsage(AttributeTargets.Property, Inherited = true, AllowMultiple = false)]
+public class PropertyAttribute() : Attribute
 {
     /// <summary>
-    /// Gets the label to use for the property in the graph.
-    /// If null, the property name is used as-is.
+    /// Gets or sets the label to use for the property in the graph. If null, the property name is used as-is.
     /// </summary>
     /// <value>The custom property name used for graph storage, or null to use the actual property name.</value>
-    public string? Label { get; } = label;
+    public string? Label { get; set; } = null;
 
     /// <summary>
     /// Gets or sets whether to ignore this property when serializing to the graph.
     /// </summary>
     /// <value>True if the property should be ignored, otherwise false.</value>
-    public bool Ignore { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether this property should be indexed in the graph database.
-    /// </summary>
-    /// <value>True if the property should be indexed, otherwise false.</value>
-    public bool Index { get; set; }
+    public bool Ignore { get; set; } = false;
 }

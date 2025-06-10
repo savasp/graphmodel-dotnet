@@ -17,7 +17,6 @@ namespace Cvoya.Graph.Model;
 /// <summary>
 /// Attribute to specify custom labels for graph nodes.
 /// </summary>
-/// <param name="label">The label to apply to the node. Cannot be null.</param>
 /// <remarks>
 /// Use this attribute on classes implementing INode to define how the node
 /// should be labeled in the graph storage system.
@@ -32,12 +31,12 @@ namespace Cvoya.Graph.Model;
 /// }
 /// </code>
 /// </example>
-[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = true, Inherited = false)]
-public class NodeAttribute(string label) : Attribute
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false, Inherited = true)]
+public class NodeAttribute() : Attribute
 {
     /// <summary>
-    /// Gets the label to apply to the node.
+    /// Gets or sets the label to apply to the node. If null, the name of the class is used as the label.
     /// </summary>
     /// <value>The node label used for graph storage.</value>
-    public string Label { get; } = label ?? throw new ArgumentNullException(nameof(label));
+    public string Label { get; set; } = null!;
 }

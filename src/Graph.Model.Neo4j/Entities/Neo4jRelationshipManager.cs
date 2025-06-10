@@ -64,7 +64,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         ArgumentNullException.ThrowIfNull(relationship);
 
         _logger?.LogDebug("Creating relationship of type {RelationshipType} from {SourceId} to {TargetId}",
-            typeof(TRelationship).Name, relationship.SourceId, relationship.TargetId);
+            typeof(TRelationship).Name, relationship.StartNodeId, relationship.EndNodeId);
 
         try
         {

@@ -18,14 +18,16 @@ using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Linq;
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Model.Neo4j.Cypher;
 
-internal class CypherEngine(GraphContext context)
+internal class CypherEngine(GraphContext graphContext)
 {
-    private readonly ILogger<CypherEngine>? _logger = context.LoggerFactory?.CreateLogger<CypherEngine>();
-    private readonly GraphEntitySerializer _serializer = new GraphEntitySerializer(context);
+    private readonly ILogger<CypherEngine>? _logger =
+        graphContext.LoggerFactory?.CreateLogger<CypherEngine>() ?? NullLogger<CypherEngine>.Instance;
+    private readonly GraphEntitySerializer _serializer = new GraphEntitySerializer(graphContext);
 
     public async Task<T> ExecuteAsync<T>(
         string cypher,
@@ -37,8 +39,12 @@ internal class CypherEngine(GraphContext context)
         ArgumentNullException.ThrowIfNull(queryContext);
 
         _logger?.LogDebug("Executing Cypher query: {Query}", cypher);
+        _logger?.LogDebug("With parameters: {Parameters}",
+            string.Join(", ", queryContext.Parameters?.Select(p => $"{p.Key}={p.Value}") ?? []));
 
-        var result = await transaction.Transaction.RunAsync(cypher, queryContext.Parameters);
+        // Use the parameters from the query context
+        var parameters = queryContext.Parameters ?? new Dictionary<string, object>();
+        var result = await transaction.Transaction.RunAsync(cypher, parameters);
 
         // Handle different result types based on query context
         return queryContext switch
@@ -51,23 +57,29 @@ internal class CypherEngine(GraphContext context)
 
     public string ExpressionToCypherVisitor(
         Expression expression,
-        GraphQueryContext queryContext,
-        CancellationToken cancellationToken = default)
+        GraphQueryContext queryContext)
     {
         ArgumentNullException.ThrowIfNull(expression);
         ArgumentNullException.ThrowIfNull(queryContext);
 
         _logger?.LogDebug("Converting expression to Cypher: {ExpressionType}", expression.NodeType);
+        _logger?.LogDebug("Initial query context - IsScalar: {IsScalar}, ResultType: {ResultType}",
+            queryContext.IsScalarResult, queryContext.ResultType?.Name);
 
         try
         {
-            var visitor = new CypherQueryVisitor(queryContext, _logger);
+            var visitor = new CypherQueryVisitor(queryContext, graphContext.LoggerFactory);
             visitor.Visit(expression);
 
             var result = visitor.Build();
+
+            // IMPORTANT: Copy the parameters from the builder to the query context
             queryContext.Parameters = result.Parameters;
 
+            _logger?.LogDebug("After visitor - IsScalar: {IsScalar}, ResultType: {ResultType}",
+                queryContext.IsScalarResult, queryContext.ResultType?.Name);
             _logger?.LogDebug("Generated Cypher: {Cypher}", result.Cypher);
+            _logger?.LogDebug("Parameters: {Parameters}", string.Join(", ", result.Parameters.Select(p => $"{p.Key}={p.Value}")));
 
             return result.Cypher;
         }
@@ -108,11 +120,160 @@ internal class CypherEngine(GraphContext context)
         GraphQueryContext queryContext,
         CancellationToken cancellationToken)
     {
-        // For projections, we need to handle anonymous types and custom DTOs
-        var records = await result.ToListAsync();
+        var records = await result.ToListAsync(cancellationToken);
 
-        // TODO: Implement projection handling based on queryContext.ProjectionType
-        throw new NotImplementedException("Projection handling coming soon!");
+        // Check if we're dealing with IEnumerable<IGraphPathSegment<,,>>
+        if (typeof(T).IsGenericType && typeof(IEnumerable).IsAssignableFrom(typeof(T)))
+        {
+            var elementType = typeof(T).GetGenericArguments()[0];
+            if (elementType.IsGenericType && elementType.GetGenericTypeDefinition() == typeof(IGraphPathSegment<,,>))
+            {
+                var genericArgs = elementType.GetGenericArguments();
+                var sourceType = genericArgs[0];
+                var relType = genericArgs[1];
+                var targetType = genericArgs[2];
+
+                // Create the concrete implementation type
+                var concreteType = typeof(GraphPathSegment<,,>).MakeGenericType(sourceType, relType, targetType);
+                var listType = typeof(List<>).MakeGenericType(elementType);
+                var list = Activator.CreateInstance(listType) as IList ?? throw new InvalidOperationException();
+
+                foreach (var record in records)
+                {
+                    // We expect 3 values: source node, relationship, target node
+                    if (record.Values.Count >= 3)
+                    {
+                        var sourceNode = _serializer.DeserializeNodeFromNeo4jNode(
+                            record[0].As<global::Neo4j.Driver.INode>(),
+                            sourceType,
+                            queryContext.UseMostDerivedType);
+
+                        var relationship = _serializer.DeserializeRelationshipFromNeo4jRelationship(
+                            record[1].As<global::Neo4j.Driver.IRelationship>(),
+                            relType);
+
+                        var targetNode = _serializer.DeserializeNodeFromNeo4jNode(
+                            record[2].As<global::Neo4j.Driver.INode>(),
+                            targetType,
+                            queryContext.UseMostDerivedType);
+
+                        var pathSegment = Activator.CreateInstance(
+                            concreteType,
+                            sourceNode,
+                            relationship,
+                            targetNode);
+
+                        list.Add(pathSegment);
+                    }
+                }
+
+                return (T)list;
+            }
+        }
+
+        // Handle single entity projections (like Select(r => r.Relationship).FirstOrDefault())
+        if (!typeof(IEnumerable).IsAssignableFrom(typeof(T)) || typeof(T) == typeof(string))
+        {
+            var record = records.FirstOrDefault();
+            if (record == null)
+            {
+                return default!;
+            }
+
+            // If we have multiple values (n, r, t) but want just one part
+            // This happens with queries like .Select(r => r.Relationship)
+            if (record.Values.Count == 3 &&
+                record[0] is global::Neo4j.Driver.INode &&
+                record[1] is global::Neo4j.Driver.IRelationship rel &&
+                record[2] is global::Neo4j.Driver.INode)
+            {
+                // We're selecting just the relationship
+                if (typeof(IRelationship).IsAssignableFrom(typeof(T)))
+                {
+                    return (T)_serializer.DeserializeRelationshipFromNeo4jRelationship(rel, typeof(T));
+                }
+            }
+
+            // Handle other single value projections
+            if (record.Values.Count == 1)
+            {
+                var value = record.Values.First().Value;
+
+                if (value is global::Neo4j.Driver.INode node && typeof(INode).IsAssignableFrom(typeof(T)))
+                {
+                    return (T)_serializer.DeserializeNodeFromNeo4jNode(
+                        node,
+                        typeof(T),
+                        queryContext.UseMostDerivedType);
+                }
+
+                if (value is global::Neo4j.Driver.IRelationship relationship && typeof(IRelationship).IsAssignableFrom(typeof(T)))
+                {
+                    return (T)_serializer.DeserializeRelationshipFromNeo4jRelationship(
+                        relationship,
+                        typeof(T));
+                }
+
+                // Handle scalar projections
+                var convertedValue = _serializer.ConvertScalarFromNeo4jValue(value, typeof(T));
+                return convertedValue is T typedValue ? typedValue : default!;
+            }
+        }
+
+        // Handle collection projections
+        if (typeof(IEnumerable).IsAssignableFrom(typeof(T)) && typeof(T) != typeof(string))
+        {
+            var elementType = typeof(T).IsArray
+                ? typeof(T).GetElementType()!
+                : typeof(T).GetGenericArguments().FirstOrDefault() ?? typeof(object);
+
+            var results = new List<object>();
+
+            foreach (var record in records)
+            {
+                // Similar logic as above but for collections
+                if (record.Values.Count == 3 &&
+                    record[1] is global::Neo4j.Driver.IRelationship rel &&
+                    typeof(IRelationship).IsAssignableFrom(elementType))
+                {
+                    var entity = _serializer.DeserializeRelationshipFromNeo4jRelationship(rel, elementType);
+                    results.Add(entity);
+                }
+                else if (record.Values.Count == 1)
+                {
+                    var value = record.Values.First().Value;
+                    object? entity = null;
+
+                    if (value is global::Neo4j.Driver.INode node)
+                    {
+                        entity = _serializer.DeserializeNodeFromNeo4jNode(
+                            node,
+                            elementType,
+                            queryContext.UseMostDerivedType);
+                    }
+                    else if (value is global::Neo4j.Driver.IRelationship relationship)
+                    {
+                        entity = _serializer.DeserializeRelationshipFromNeo4jRelationship(
+                            relationship,
+                            elementType);
+                    }
+                    else
+                    {
+                        entity = _serializer.ConvertScalarFromNeo4jValue(value, elementType);
+                    }
+
+                    if (entity != null)
+                    {
+                        results.Add(entity);
+                    }
+                }
+            }
+
+            return ConvertToCollectionType<T>(results, elementType);
+        }
+
+        // If we get here, we don't know how to handle this projection
+        throw new NotImplementedException($"Projection handling for type {typeof(T)} with {records.FirstOrDefault()?.Values.Count ?? 0} values not implemented yet!");
     }
 
     private async Task<T> HandleEntityResultAsync<T>(
@@ -120,7 +281,7 @@ internal class CypherEngine(GraphContext context)
         GraphQueryContext queryContext,
         CancellationToken cancellationToken)
     {
-        var records = await result.ToListAsync();
+        var records = await result.ToListAsync(cancellationToken);
 
         if (typeof(IEnumerable).IsAssignableFrom(typeof(T)) && typeof(T) != typeof(string))
         {

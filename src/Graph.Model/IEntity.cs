@@ -27,5 +27,5 @@ public interface IEntity
     /// <remarks>
     /// Identifiers should be immutable once the entity has been persisted to ensure referential integrity.
     /// </remarks>
-    string Id { get; }
+    string Id { get; init; }
 }

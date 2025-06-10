@@ -31,7 +31,7 @@ public interface IRelationship<S, T> : IRelationship
     /// Gets or sets the source node of the relationship.
     /// </summary>
     /// <remarks>
-    /// When set, this also updates the <see cref="IRelationship.SourceId"/> property.
+    /// When set, this also updates the <see cref="IRelationship.StartNodeId"/> property.
     /// May be null if the relationship is not fully loaded.
     /// </remarks>
     S Source { get; set; }
@@ -40,7 +40,7 @@ public interface IRelationship<S, T> : IRelationship
     /// Gets or sets the target node of the relationship.
     /// </summary>
     /// <remarks>
-    /// When set, this also updates the <see cref="IRelationship.TargetId"/> property.
+    /// When set, this also updates the <see cref="IRelationship.EndNodeId"/> property.
     /// May be null if the relationship is not fully loaded.
     /// </remarks>
     T Target { get; set; }

@@ -28,9 +28,22 @@ internal class CypherQueryBuilder
     private int? _limit;
     private string? _aggregation;
     private bool _isExistsQuery;
+    private bool _isNotExistsQuery;
     private bool _includeComplexProperties;
     private string? _mainNodeAlias;
     private int _parameterCounter;
+
+    public bool HasExplicitReturn => _returnClauses.Count > 0 || _aggregation != null || _isExistsQuery || _isNotExistsQuery;
+
+    public void SetExistsQuery()
+    {
+        _isExistsQuery = true;
+    }
+
+    public void SetNotExistsQuery()
+    {
+        _isNotExistsQuery = true;
+    }
 
     public void AddMatch(string alias, string? label = null, string? pattern = null)
     {
@@ -59,6 +72,11 @@ internal class CypherQueryBuilder
         _includeComplexProperties = true;
     }
 
+    public void ClearMatches()
+    {
+        _matchClauses.Clear();
+    }
+
     public void AddWhere(string condition)
     {
         _whereClauses.Add(condition);
@@ -78,7 +96,6 @@ internal class CypherQueryBuilder
     public void SetSkip(int skip) => _skip = skip;
     public void SetLimit(int limit) => _limit = limit;
     public void SetAggregation(string function, string expression) => _aggregation = $"{function}({expression})";
-    public void SetExistsQuery() => _isExistsQuery = true;
 
     public string AddParameter(object value)
     {
@@ -89,6 +106,17 @@ internal class CypherQueryBuilder
 
     public CypherQueryResult Build()
     {
+        // Handle special query types first
+        if (_isExistsQuery)
+        {
+            return BuildExistsQuery();
+        }
+
+        if (_isNotExistsQuery)
+        {
+            return BuildNotExistsQuery();
+        }
+
         // If we need complex properties, we need to modify the query structure
         if (_includeComplexProperties && !string.IsNullOrEmpty(_mainNodeAlias))
         {
@@ -96,6 +124,58 @@ internal class CypherQueryBuilder
         }
 
         return BuildSimpleQuery();
+    }
+
+    private CypherQueryResult BuildExistsQuery()
+    {
+        var query = new StringBuilder();
+
+        // MATCH clause
+        if (_matchClauses.Count > 0)
+        {
+            query.Append("MATCH ");
+            query.AppendJoin(", ", _matchClauses);
+            query.AppendLine();
+        }
+
+        // WHERE clause
+        if (_whereClauses.Count > 0)
+        {
+            query.Append("WHERE ");
+            query.AppendJoin(" AND ", _whereClauses);
+            query.AppendLine();
+        }
+
+        // For EXISTS queries, return true if any matching nodes exist
+        query.AppendLine($"RETURN COUNT({_mainNodeAlias ?? "n"}) > 0 AS exists");
+
+        return new CypherQueryResult(query.ToString().Trim(), new Dictionary<string, object>(_parameters));
+    }
+
+    private CypherQueryResult BuildNotExistsQuery()
+    {
+        var query = new StringBuilder();
+
+        // MATCH clause
+        if (_matchClauses.Count > 0)
+        {
+            query.Append("MATCH ");
+            query.AppendJoin(", ", _matchClauses);
+            query.AppendLine();
+        }
+
+        // WHERE clause - for ALL queries, this will contain the negated predicate
+        if (_whereClauses.Count > 0)
+        {
+            query.Append("WHERE ");
+            query.AppendJoin(" AND ", _whereClauses);
+            query.AppendLine();
+        }
+
+        // For NOT EXISTS queries (used by All), return true if no matching nodes exist
+        query.AppendLine($"RETURN COUNT({_mainNodeAlias ?? "n"}) = 0 AS all");
+
+        return new CypherQueryResult(query.ToString().Trim(), new Dictionary<string, object>(_parameters));
     }
 
     private CypherQueryResult BuildSimpleQuery()
@@ -123,10 +203,6 @@ internal class CypherQueryBuilder
         if (_aggregation != null)
         {
             query.Append(_aggregation);
-        }
-        else if (_isExistsQuery)
-        {
-            query.Append(_matchClauses.Count > 0 ? "count(n) > 0" : "false");
         }
         else if (_returnClauses.Count > 0)
         {
@@ -206,13 +282,13 @@ internal class CypherQueryBuilder
         // Now match the complex properties
         query.AppendLine($"OPTIONAL MATCH path = ({_mainNodeAlias})-[*0..]-(target)");
         query.AppendLine($"WHERE ALL(r IN relationships(path) WHERE type(r) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')");
-        query.AppendLine("WITH n, relationships(path) AS rels, nodes(path) AS nodes");
+        query.AppendLine($"WITH {_mainNodeAlias}, relationships(path) AS rels, nodes(path) AS nodes");
         query.AppendLine("WHERE size(nodes) = size(rels) + 1");
-        query.AppendLine("WITH n,");
+        query.AppendLine($"WITH {_mainNodeAlias},");
         query.AppendLine("     [i IN range(0, size(rels)-1) |");
         query.AppendLine("        {Node: nodes[i+1], RelType: type(rels[i]), Direction: CASE WHEN startNode(rels[i]) = nodes[i] THEN 'OUT' ELSE 'IN' END}");
         query.AppendLine("     ] AS relatedNodes");
-        query.AppendLine("RETURN n, relatedNodes");
+        query.AppendLine($"RETURN {_mainNodeAlias}, relatedNodes");
 
         return new CypherQueryResult(query.ToString().Trim(), new Dictionary<string, object>(_parameters));
     }

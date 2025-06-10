@@ -15,21 +15,22 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Base class for graph nodes that provides a default implementation of the INode interface.
-/// This serves as a foundation for creating domain-specific node entities.
+/// Defines the direction of a relationship in the graph.
 /// </summary>
-/// <remarks>
-/// Use this class as a base class for your domain models to get automatic ID generation
-/// and basic node functionality.
-/// </remarks>
-public abstract record Node : INode
+public enum RelationshipDirection
 {
     /// <summary>
-    /// Gets or sets the unique identifier of this node.
-    /// Automatically initialized with a new GUID string when a node is created.
+    /// Relationship direction from source to target (-&gt;)
     /// </summary>
-    /// <remarks>
-    /// The default format used is the "N" format (32 digits without hyphens).
-    /// </remarks>
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+    Outgoing,
+
+    /// <summary>
+    /// Relationship direction from target to source (&lt;-)
+    /// </summary>
+    Incoming,
+
+    /// <summary>
+    /// Relationship is bidirectional (&lt;-&gt;)
+    /// </summary>
+    Bidirectional
 }

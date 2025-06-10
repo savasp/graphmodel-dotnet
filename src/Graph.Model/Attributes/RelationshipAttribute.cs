@@ -17,59 +17,29 @@ namespace Cvoya.Graph.Model;
 /// <summary>
 /// Attribute to customize aspects of a relationship in the graph.
 /// </summary>
-/// <param name="label">The label to apply to the relationship. Cannot be null.</param>
 /// <remarks>
 /// Use this attribute on classes implementing IRelationship to define how the relationship
 /// should be labeled in the graph storage system.
 /// </remarks>
 /// <example>
 /// <code>
-/// [Relationship("FOLLOWS")]
+/// [Relationship(Label = "FOLLOWS")]
 /// public class Follows : IRelationship&lt;Person, Person&gt;
 /// {
 ///     public string Id { get; set; } = Guid.NewGuid().ToString();
-///     public string SourceId { get; set; } = string.Empty;
-///     public string TargetId { get; set; } = string.Empty;
-///     public bool IsBidirectional { get; set; }
-///     public Person? Source { get; set; }
-///     public Person? Target { get; set; }
+///     public string StartNodeId { get; set; } = string.Empty;
+///     public string EndNodeId { get; set; } = string.Empty;
+///     public bool Direction { get; set; }
 ///     public DateTime Since { get; set; }
 /// }
 /// </code>
 /// </example>
-[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, Inherited = false, AllowMultiple = false)]
-public class RelationshipAttribute(string label) : Attribute
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, Inherited = true, AllowMultiple = false)]
+public class RelationshipAttribute() : Attribute
 {
     /// <summary>
-    /// Gets the label to apply to the relationship.
+    /// Gets or sets the label to apply to the relationship. If null, the name of the class is used.
     /// </summary>
     /// <value>The relationship label used for graph storage.</value>
-    public string Label { get; } = label ?? throw new ArgumentNullException(nameof(label));
-
-    /// <summary>
-    /// Gets or sets the direction of the relationship. 
-    /// This can be used by graph providers to control relationship directionality.
-    /// </summary>
-    public RelationshipDirection Direction { get; set; } = RelationshipDirection.Outgoing;
-}
-
-/// <summary>
-/// Defines the direction of a relationship in the graph.
-/// </summary>
-public enum RelationshipDirection
-{
-    /// <summary>
-    /// Relationship direction from source to target (->)
-    /// </summary>
-    Outgoing,
-
-    /// <summary>
-    /// Relationship direction from target to source (&lt;-)
-    /// </summary>
-    Incoming,
-
-    /// <summary>
-    /// Relationship is bidirectional (&lt;->)
-    /// </summary>
-    Bidirectional
+    public string? Label { get; set; } = null;
 }

@@ -172,7 +172,7 @@ public static class GraphDataModel
     {
         EnforceGraphConstraintsForEntity(relationship);
 
-        if (string.IsNullOrEmpty(relationship.SourceId) || string.IsNullOrEmpty(relationship.TargetId))
+        if (string.IsNullOrEmpty(relationship.StartNodeId) || string.IsNullOrEmpty(relationship.EndNodeId))
         {
             var ex = new ArgumentException("Relationship source and target IDs cannot be null or empty");
             throw new GraphException(ex.Message, ex);

@@ -18,15 +18,15 @@ namespace Cvoya.Graph.Model;
 /// Base class for graph relationships that provides a default implementation of the IRelationship interface.
 /// This serves as a foundation for creating domain-specific relationship entities.
 /// </summary>
-/// <param name="SourceId">The ID of the source node in the relationship.</param>
-/// <param name="TargetId">The ID of the target node in the relationship.</param>
-/// <param name="IsBidirectional">Indicates whether the relationship is bidirectional.</param>
+/// <param name="StartNodeId">The ID of the start node in the relationship.</param>
+/// <param name="EndNodeId">The ID of the end node in the relationship.</param>
+/// <param name="Direction">The direction of the relationship, defaulting to <see cref="RelationshipDirection.Outgoing"/>.</param>
 /// <remarks>
 /// Use this class as a base class for your domain-specific relationship models to get automatic ID generation
 /// and basic relationship functionality.
 /// </remarks>
-public abstract record Relationship(string SourceId, string TargetId, bool IsBidirectional = false) : IRelationship
+public abstract record Relationship(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : IRelationship
 {
     /// <inheritdoc/>
-    public string Id { get; } = Guid.NewGuid().ToString("N");
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
 }

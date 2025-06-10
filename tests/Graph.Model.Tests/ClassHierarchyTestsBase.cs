@@ -132,8 +132,8 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
         Assert.Equal(knowsWell.Id, retrieved.Id);
-        Assert.Equal(knowsWell.SourceId, retrieved.SourceId);
-        Assert.Equal(knowsWell.TargetId, retrieved.TargetId);
+        Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
+        Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
         Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
@@ -172,8 +172,8 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
         Assert.Equal(knowsWell.Id, retrieved.Id);
-        Assert.Equal(knowsWell.SourceId, retrieved.SourceId);
-        Assert.Equal(knowsWell.TargetId, retrieved.TargetId);
+        Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
+        Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
         Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, retrieved.HowWell);
@@ -211,8 +211,8 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
         Assert.Equal(knowsWell.Id, retrieved.Id);
-        Assert.Equal(knowsWell.SourceId, retrieved.SourceId);
-        Assert.Equal(knowsWell.TargetId, retrieved.TargetId);
+        Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
+        Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
         Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
@@ -278,8 +278,8 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.NotNull(retrieved);
         Assert.IsType<KnowsWell>(retrieved);
         Assert.Equal(knowsWell.Id, retrieved.Id);
-        Assert.Equal(knowsWell.SourceId, retrieved.SourceId);
-        Assert.Equal(knowsWell.TargetId, retrieved.TargetId);
+        Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
+        Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
         Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);

@@ -196,7 +196,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error executing query synchronously");
+            _logger?.LogError(ex, "Error executing query synchronously");
             throw;
         }
     }
@@ -235,6 +235,15 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
             var queryContext = ExtractQueryContext(expression);
 
             queryContext.Transaction = transaction;
+
+            // IMPORTANT: Set the result type and determine query type
+            queryContext.ResultType = typeof(TResult);
+            queryContext.DetermineQueryType();
+
+            _logger.LogDebug("Query context - IsScalar: {IsScalar}, IsProjection: {IsProjection}, ResultType: {ResultType}",
+                queryContext.IsScalarResult,
+                queryContext.IsProjection,
+                queryContext.ResultType?.Name ?? "null");
 
             _logger.LogDebug("Translating expression to Cypher");
             var cypherQuery = _cypherEngine.ExpressionToCypherVisitor(expression, queryContext);

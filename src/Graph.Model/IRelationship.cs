@@ -24,27 +24,29 @@ namespace Cvoya.Graph.Model;
 public interface IRelationship : IEntity
 {
     /// <summary>
-    /// Gets whether this relationship is bidirectional.
+    /// Gets the direction of this relationship.
     /// </summary>
     /// <remarks>
-    /// When true, the relationship can be traversed in both directions.
-    /// When false, the relationship is directed from source to target.
+    /// The direction determines how the relationship can be traversed.
     /// </remarks>
-    bool IsBidirectional { get; }
+    [Property(Ignore = true)]
+    RelationshipDirection Direction { get; init; }
 
     /// <summary>
-    /// Gets the ID of the source node in this relationship.
+    /// Gets the ID of the start node in this relationship.
     /// </summary>
     /// <remarks>
     /// This is the ID of the node from which the relationship originates.
     /// </remarks>
-    string SourceId { get; }
+    [Property(Ignore = true)]
+    string StartNodeId { get; init; }
 
     /// <summary>
-    /// Gets the ID of the target node in this relationship.
+    /// Gets the ID of the end node in this relationship.
     /// </summary>
     /// <remarks>
     /// This is the ID of the node to which the relationship points.
     /// </remarks>
-    string TargetId { get; }
+    [Property(Ignore = true)]
+    string EndNodeId { get; init; }
 }

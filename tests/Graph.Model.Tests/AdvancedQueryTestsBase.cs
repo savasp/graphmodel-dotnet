@@ -177,8 +177,8 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(bob);
         var charlie = new Person { FirstName = "Charlie", LastName = "Jones" };
         await this.Graph.CreateNodeAsync(charlie);
-        var knows1 = new Knows { SourceId = alice.Id, TargetId = bob.Id, Since = DateTime.UtcNow };
-        var knows2 = new Knows { SourceId = bob.Id, TargetId = charlie.Id, Since = DateTime.UtcNow };
+        var knows1 = new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow };
+        var knows2 = new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow };
         await this.Graph.CreateRelationshipAsync(knows1);
         await this.Graph.CreateRelationshipAsync(knows2);
 
@@ -187,16 +187,16 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         var rels = await this.Graph.Relationships<Knows>().ToListAsync();
 
         // Find all people Bob knows (outgoing)
-        var bobsFriends = rels.Where(r => r.SourceId == bob.Id)
-                              .Select(r => people.FirstOrDefault(p => p.Id == r.TargetId))
+        var bobsFriends = rels.Where(r => r.StartNodeId == bob.Id)
+                              .Select(r => people.FirstOrDefault(p => p.Id == r.EndNodeId))
                               .Where(p => p != null)
                               .ToList();
         Assert.Single(bobsFriends);
         Assert.Equal("Charlie", bobsFriends[0]!.FirstName);
 
         // Find all people who know Bob (incoming)
-        var knowsBob = rels.Where(r => r.TargetId == bob.Id)
-                           .Select(r => people.FirstOrDefault(p => p.Id == r.SourceId))
+        var knowsBob = rels.Where(r => r.EndNodeId == bob.Id)
+                           .Select(r => people.FirstOrDefault(p => p.Id == r.StartNodeId))
                            .Where(p => p != null)
                            .ToList();
         Assert.Single(knowsBob);
@@ -219,8 +219,8 @@ public abstract class AdvancedQueryTestsBase : ITestBase
 
         // Join: Find all (person, friend) pairs
         var pairs = (from p in people
-                     join k in rels on p.Id equals k.SourceId
-                     join f in people on k.TargetId equals f.Id
+                     join k in rels on p.Id equals k.StartNodeId
+                     join f in people on k.EndNodeId equals f.Id
                      select new { Person = p, Friend = f }).ToList();
         Assert.Single(pairs);
         Assert.Equal("Alice", pairs[0].Person.FirstName);
@@ -299,11 +299,11 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         var knows = new Knows(alice, bob) { Since = DateTime.UtcNow };
         await this.Graph.CreateRelationshipAsync(knows);
 
-        var rels = this.Graph.Relationships<Knows>().Where(r => r.SourceId == alice.Id).Select(r => r.Since).ToList();
+        var rels = this.Graph.Relationships<Knows>().Where(r => r.StartNodeId == alice.Id).Select(r => r.Since).ToList();
         Assert.Single(rels);
         Assert.True(rels[0] > DateTime.MinValue);
 
-        rels = this.Graph.Relationships<Knows>().Where(r => alice.Id == r.SourceId).Select(r => r.Since).ToList();
+        rels = this.Graph.Relationships<Knows>().Where(r => alice.Id == r.StartNodeId).Select(r => r.Since).ToList();
         Assert.Single(rels);
         Assert.True(rels[0] > DateTime.MinValue);
     }
@@ -897,11 +897,11 @@ public abstract class AdvancedQueryTestsBase : ITestBase
 
         // Test 1: Simple relationship query - who does Alice know?
         var aliceKnows = this.Graph.Relationships<Knows>()
-            .Where(k => k.SourceId == alice.Id)
+            .Where(k => k.StartNodeId == alice.Id)
             .ToList();
 
         Assert.Single(aliceKnows);
-        Assert.Equal(bob.Id, aliceKnows[0].TargetId);
+        Assert.Equal(bob.Id, aliceKnows[0].EndNodeId);
 
         // Test 2: Get all people and relationships, then navigate in memory
         var allPeople = this.Graph.Nodes<Person>().ToList();
@@ -909,8 +909,8 @@ public abstract class AdvancedQueryTestsBase : ITestBase
 
         // Find Bob's friends in memory
         var bobsFriends = allKnows
-            .Where(k => k.SourceId == bob.Id)
-            .Join(allPeople, k => k.TargetId, p => p.Id, (k, p) => p)
+            .Where(k => k.StartNodeId == bob.Id)
+            .Join(allPeople, k => k.EndNodeId, p => p.Id, (k, p) => p)
             .ToList();
 
         Assert.Single(bobsFriends);
@@ -918,10 +918,10 @@ public abstract class AdvancedQueryTestsBase : ITestBase
 
         // Test 3: Find friends of friends using in-memory navigation
         var alicesFriendsOfFriends = allKnows
-            .Where(k => k.SourceId == alice.Id)
+            .Where(k => k.StartNodeId == alice.Id)
             .SelectMany(k1 => allKnows
-                .Where(k2 => k2.SourceId == k1.TargetId)
-                .Select(k2 => allPeople.First(p => p.Id == k2.TargetId)))
+                .Where(k2 => k2.StartNodeId == k1.EndNodeId)
+                .Select(k2 => allPeople.First(p => p.Id == k2.EndNodeId)))
             .ToList();
 
         Assert.Single(alicesFriendsOfFriends);
@@ -965,13 +965,13 @@ public abstract class AdvancedQueryTestsBase : ITestBase
 
         foreach (var relationship in allKnowsRelationships)
         {
-            Assert.NotNull(relationship.SourceId);
-            Assert.NotNull(relationship.TargetId);
+            Assert.NotNull(relationship.StartNodeId);
+            Assert.NotNull(relationship.EndNodeId);
         }
 
         // Check if we can find relationships by source ID
         var aliceRelationships = this.Graph.Relationships<Knows>()
-            .Where(k => k.SourceId == alice.Id)
+            .Where(k => k.StartNodeId == alice.Id)
             .ToList();
         Assert.Equal(2, aliceRelationships.Count); // This should also pass
 
@@ -1055,11 +1055,11 @@ public abstract class AdvancedQueryTestsBase : ITestBase
 
         // Build a connection map
         var connectionMap = relationships
-            .GroupBy(r => r.SourceId)
+            .GroupBy(r => r.StartNodeId)
             .Select(g => new
             {
                 PersonName = people[g.Key].FirstName,
-                Connections = g.Select(r => people[r.TargetId].FirstName).ToList()
+                Connections = g.Select(r => people[r.EndNodeId].FirstName).ToList()
             })
             .ToList();
 
@@ -1099,9 +1099,9 @@ public abstract class AdvancedQueryTestsBase : ITestBase
             .Select(p => new
             {
                 Name = p.FirstName,
-                OutgoingCount = allRelationships.Count(k => k.SourceId == p.Id),
-                IncomingCount = allRelationships.Count(k => k.TargetId == p.Id),
-                TotalConnections = allRelationships.Count(k => k.SourceId == p.Id || k.TargetId == p.Id)
+                OutgoingCount = allRelationships.Count(k => k.StartNodeId == p.Id),
+                IncomingCount = allRelationships.Count(k => k.EndNodeId == p.Id),
+                TotalConnections = allRelationships.Count(k => k.StartNodeId == p.Id || k.EndNodeId == p.Id)
             })
             .OrderByDescending(s => s.OutgoingCount)
             .ToList();

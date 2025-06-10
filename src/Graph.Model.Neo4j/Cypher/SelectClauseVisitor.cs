@@ -35,6 +35,33 @@ internal class SelectClauseVisitor(QueryScope scope, CypherQueryBuilder builder)
     private readonly Stack<(string Expression, string? Alias)> _projections = new();
     private string? _currentMemberName;
 
+    public string GetPropertyName(Expression expression)
+    {
+        // Clear any existing state
+        _projections.Clear();
+        _currentMemberName = null;
+
+        // Visit the expression to extract the property path
+        Visit(expression);
+
+        if (_projections.Count == 0)
+        {
+            throw new InvalidOperationException("Could not extract property name from expression");
+        }
+
+        // Get the property path from the projection
+        var (propertyPath, _) = _projections.Pop();
+
+        // Remove the alias prefix (e.g., "n.Age" -> "Age")
+        var parts = propertyPath.Split('.');
+        if (parts.Length > 1 && parts[0] == scope.Alias)
+        {
+            return string.Join(".", parts.Skip(1));
+        }
+
+        return propertyPath;
+    }
+
     protected override Expression VisitNew(NewExpression node)
     {
         // Handle anonymous type projections like: .Select(x => new { x.Name, x.Age })
@@ -154,13 +181,32 @@ internal class SelectClauseVisitor(QueryScope scope, CypherQueryBuilder builder)
     private string BuildPropertyPath(MemberExpression node)
     {
         var parts = new Stack<string>();
+        var current = node;
 
-        for (var current = node; current is not null; current = current.Expression as MemberExpression)
+        // Walk up the expression tree to build the property path
+        while (current != null)
         {
             parts.Push(current.Member.Name);
+            current = current.Expression as MemberExpression;
         }
 
-        return $"{scope.Alias}.{string.Join(".", parts)}";
+        // Check if the root is a parameter expression to add the alias
+        if (node.Expression is ParameterExpression ||
+            (node.Expression is MemberExpression memberExpr && GetRootExpression(memberExpr) is ParameterExpression))
+        {
+            return $"{scope.Alias}.{string.Join(".", parts)}";
+        }
+
+        return string.Join(".", parts);
+    }
+
+    private static Expression? GetRootExpression(Expression? expression)
+    {
+        while (expression is MemberExpression member)
+        {
+            expression = member.Expression;
+        }
+        return expression;
     }
 
     private string HandleAggregateFunction(MethodCallExpression node, string function)

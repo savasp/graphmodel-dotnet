@@ -17,15 +17,30 @@ namespace Cvoya.Graph.Model.Neo4j.Cypher;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Linq;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
-internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logger = null) : ExpressionVisitor
+internal class CypherQueryVisitor : ExpressionVisitor
 {
     private readonly CypherQueryBuilder _builder = new();
     private readonly Stack<QueryScope> _scopes = new([new QueryScope("n")]);
     private Type? _entityType;
+    private readonly ILogger<CypherQueryVisitor>? logger;
+    private readonly GraphQueryContext queryContext;
+
+    public CypherQueryVisitor(GraphQueryContext queryContext, ILoggerFactory? loggerFactory = null)
+    {
+        this.queryContext = queryContext ?? throw new ArgumentNullException(nameof(queryContext));
+        logger = loggerFactory?.CreateLogger<CypherQueryVisitor>() ?? NullLogger<CypherQueryVisitor>.Instance;
+    }
 
     public CypherQueryResult Build()
     {
+        // If we're expecting a boolean result but haven't set up the query for that, fix it
+        if (queryContext.IsScalarResult && queryContext.ResultType == typeof(bool) && !_builder.HasExplicitReturn)
+        {
+            _builder.SetExistsQuery();
+        }
+
         // Check if we're dealing with entity types that might have complex properties
         if (_entityType != null && !queryContext.IsProjection && !queryContext.IsScalarResult)
         {
@@ -62,9 +77,15 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
             "Skip" => HandleSkip(node),
             "First" or "FirstOrDefault" => HandleFirst(node),
             "Single" or "SingleOrDefault" => HandleSingle(node),
-            "Count" => HandleCount(node),
+            "Count" or "LongCount" => HandleCount(node),
             "Any" => HandleAny(node),
+            "All" => HandleAll(node),
+            "Sum" => HandleSum(node),
+            "Average" => HandleAverage(node),
+            "Min" => HandleMin(node),
+            "Max" => HandleMax(node),
             "Include" => HandleInclude(node),
+            "PathSegments" => HandlePathSegments(node),
             _ => base.VisitMethodCall(node)
         };
     }
@@ -89,16 +110,229 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
         return base.VisitConstant(node);
     }
 
-    private Expression HandleWhere(MethodCallExpression node)
+    private Expression HandlePathSegments(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing where clause for method: {Method}", node.Method.Name);
+        logger?.LogDebug("Processing PathSegments for method: {Method}", node.Method.Name);
+
+        // PathSegments is a generic method, so we need to get the types
+        if (node.Method.IsGenericMethodDefinition || node.Method.IsGenericMethod)
+        {
+            var genericArgs = node.Method.GetGenericArguments();
+            logger?.LogDebug("Generic args count: {Count}", genericArgs.Length);
+
+            if (genericArgs.Length == 2)
+            {
+                var relationshipType = genericArgs[0];
+                var targetNodeType = genericArgs[1];
+                logger?.LogDebug("Relationship type: {RelType}, Target type: {TargetType}",
+                    relationshipType.Name, targetNodeType.Name);
+
+                // Get the source type from the expression
+                // For extension methods, the instance is in node.Object
+                Expression? sourceExpression = node.Object;
+
+                // If node.Object is null, it might be a static method call with the source as first argument
+                if (sourceExpression == null && node.Arguments.Count > 0)
+                {
+                    sourceExpression = node.Arguments[0];
+                }
+
+                logger?.LogDebug("Source expression type: {Type}, Expression node type: {NodeType}, Is null: {IsNull}",
+                    sourceExpression?.Type.Name, sourceExpression?.NodeType, sourceExpression == null);
+
+                if (sourceExpression != null)
+                {
+                    // First, let's visit the source expression to set up the initial match
+                    Visit(sourceExpression);
+
+                    // Now _entityType should be set from visiting the source
+                    if (_entityType != null)
+                    {
+                        // Get labels
+                        var sourceLabel = Labels.GetLabelFromType(_entityType);
+                        var relLabel = Labels.GetLabelFromType(relationshipType);
+                        var targetLabel = Labels.GetLabelFromType(targetNodeType);
+
+                        logger?.LogDebug("Creating path pattern: {Source} -[{RelType}]-> {Target}",
+                            sourceLabel, relLabel, targetLabel);
+
+                        // Clear any existing match and add the path pattern
+                        // Since we've already visited the source, we need to replace the simple node match
+                        _builder.ClearMatches(); // Add this method to CypherQueryBuilder
+
+                        // Add the match with the source node and the path extension
+                        _builder.AddMatch("n", sourceLabel, $"-[r:{relLabel}]->(t:{targetLabel})");
+                        logger?.LogDebug("Added match clause");
+
+                        // Return all three elements
+                        _builder.AddReturn("n");
+                        _builder.AddReturn("r");
+                        _builder.AddReturn("t");
+                        logger?.LogDebug("Added return clauses");
+
+                        // Mark this as a projection query
+                        queryContext.IsProjection = true;
+                        queryContext.ProjectionType = node.Type;
+                        logger?.LogDebug("Set projection context");
+                    }
+                    else
+                    {
+                        logger?.LogWarning("Entity type not set after visiting source expression");
+                    }
+                }
+                else
+                {
+                    logger?.LogWarning("Source expression is null");
+                }
+            }
+            else
+            {
+                logger?.LogWarning("Expected 2 generic arguments but got {Count}", genericArgs.Length);
+            }
+        }
+        else
+        {
+            logger?.LogWarning("Method is not generic");
+        }
+
+        return node;
+    }
+
+    private Expression HandleAll(MethodCallExpression node)
+    {
+        logger?.LogDebug("Processing all clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
         if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
         {
+            // All(predicate) means: NOT EXISTS (WHERE NOT predicate)
+            // So we need to find any record where the predicate is false
+            var negatedBody = Expression.Not(lambda.Body);
+            var negatedLambda = Expression.Lambda(negatedBody, lambda.Parameters);
+
             var whereVisitor = new WhereClauseVisitor(_scopes.Peek(), _builder);
-            whereVisitor.Visit(lambda.Body);
+            whereVisitor.ProcessWhereClause(negatedLambda);
+
+            _builder.SetNotExistsQuery();
+        }
+
+        queryContext.IsScalarResult = true;
+        return node;
+    }
+
+    private Expression HandleSum(MethodCallExpression node)
+    {
+        logger?.LogDebug("Processing sum clause for method: {Method}", node.Method.Name);
+
+        Visit(node.Arguments[0]);
+
+        if (node.Arguments.Count > 1 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        {
+            // Sum with selector
+            var selectVisitor = new SelectClauseVisitor(_scopes.Peek(), _builder);
+            var propertyName = selectVisitor.GetPropertyName(lambda.Body);
+            _builder.SetAggregation("sum", $"{_scopes.Peek().Alias}.{propertyName}");
+        }
+        else
+        {
+            // Sum without selector - for collections of numbers
+            _builder.SetAggregation("sum", _scopes.Peek().Alias);
+        }
+
+        queryContext.IsScalarResult = true;
+        return node;
+    }
+
+    private Expression HandleAverage(MethodCallExpression node)
+    {
+        logger?.LogDebug("Processing average clause for method: {Method}", node.Method.Name);
+
+        Visit(node.Arguments[0]);
+
+        if (node.Arguments.Count > 1 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        {
+            // Average with selector
+            var selectVisitor = new SelectClauseVisitor(_scopes.Peek(), _builder);
+            var propertyName = selectVisitor.GetPropertyName(lambda.Body);
+            _builder.SetAggregation("avg", $"{_scopes.Peek().Alias}.{propertyName}");
+        }
+        else
+        {
+            // Average without selector
+            _builder.SetAggregation("avg", _scopes.Peek().Alias);
+        }
+
+        queryContext.IsScalarResult = true;
+        return node;
+    }
+
+    private Expression HandleMin(MethodCallExpression node)
+    {
+        logger?.LogDebug("Processing min clause for method: {Method}", node.Method.Name);
+
+        Visit(node.Arguments[0]);
+
+        if (node.Arguments.Count > 1 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        {
+            // Min with selector
+            var selectVisitor = new SelectClauseVisitor(_scopes.Peek(), _builder);
+            var propertyName = selectVisitor.GetPropertyName(lambda.Body);
+            _builder.SetAggregation("min", $"{_scopes.Peek().Alias}.{propertyName}");
+        }
+        else
+        {
+            // Min without selector - returns the minimum entity based on some default comparison
+            _builder.SetAggregation("min", _scopes.Peek().Alias);
+        }
+
+        queryContext.IsScalarResult = true;
+        return node;
+    }
+
+    private Expression HandleMax(MethodCallExpression node)
+    {
+        logger?.LogDebug("Processing max clause for method: {Method}", node.Method.Name);
+
+        Visit(node.Arguments[0]);
+
+        if (node.Arguments.Count > 1 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        {
+            // Max with selector
+            var selectVisitor = new SelectClauseVisitor(_scopes.Peek(), _builder);
+            var propertyName = selectVisitor.GetPropertyName(lambda.Body);
+            _builder.SetAggregation("max", $"{_scopes.Peek().Alias}.{propertyName}");
+        }
+        else
+        {
+            // Max without selector
+            _builder.SetAggregation("max", _scopes.Peek().Alias);
+        }
+
+        queryContext.IsScalarResult = true;
+        return node;
+    }
+
+    private Expression HandleWhere(MethodCallExpression node)
+    {
+        logger?.LogDebug("Processing where clause for method: {Method}", node.Method.Name);
+
+        // First, visit the source expression (the queryable we're filtering)
+        Visit(node.Arguments[0]);
+
+        // Then process the lambda expression for the WHERE clause
+        if (node.Arguments.Count > 1 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        {
+            logger?.LogDebug("Processing WHERE lambda with parameter: {Parameter}", lambda.Parameters[0].Name);
+
+            var whereVisitor = new WhereClauseVisitor(_scopes.Peek(), _builder);
+            whereVisitor.ProcessWhereClause(lambda);
+
+            logger?.LogDebug("WHERE clause processed successfully");
+        }
+        else
+        {
+            logger?.LogWarning("WHERE method call missing lambda expression");
         }
 
         return node;
@@ -186,7 +420,6 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
         Visit(node.Arguments[0]);
         _builder.SetLimit(1);
-        queryContext.IsScalarResult = true;
         return node;
     }
 
@@ -196,7 +429,6 @@ internal class CypherQueryVisitor(GraphQueryContext queryContext, ILogger? logge
 
         Visit(node.Arguments[0]);
         _builder.SetLimit(2); // Get 2 to check for multiple results
-        queryContext.IsScalarResult = true;
         return node;
     }
 

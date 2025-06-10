@@ -87,14 +87,14 @@ try
     // Create relationships
     Console.WriteLine("2. Creating relationships...");
 
-    var aliceWorksFor = new WorksFor(alice.Id, techCorp.Id, isBidirectional: false)
+    var aliceWorksFor = new WorksFor(alice.Id, techCorp.Id)
     {
         Position = "Senior Software Engineer",
         StartDate = new DateTime(2022, 3, 15),
         Salary = 95000
     };
 
-    var bobWorksFor = new WorksFor(bob.Id, techCorp.Id, isBidirectional: false)
+    var bobWorksFor = new WorksFor(bob.Id, techCorp.Id)
     {
         Position = "Marketing Manager",
         StartDate = new DateTime(2021, 8, 1),

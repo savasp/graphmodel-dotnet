@@ -44,17 +44,17 @@ public class Knows : IRelationship
     public Knows() { }
     public Knows(string sourceId, string targetId)
     {
-        this.SourceId = sourceId;
-        this.TargetId = targetId;
+        this.StartNodeId = sourceId;
+        this.EndNodeId = targetId;
     }
     public Knows(INode source, INode target)
     {
-        this.SourceId = source.Id;
-        this.TargetId = target.Id;
+        this.StartNodeId = source.Id;
+        this.EndNodeId = target.Id;
     }
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string SourceId { get; set; } = string.Empty;
-    public string TargetId { get; set; } = string.Empty;
+    public string StartNodeId { get; set; } = string.Empty;
+    public string EndNodeId { get; set; } = string.Empty;
     public bool IsBidirectional { get; set; }
     public DateTime Since { get; set; }
 }
@@ -72,8 +72,8 @@ public class KnowsWell : Knows
 public class LivesAt : IRelationship
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string SourceId { get; set; } = string.Empty;
-    public string TargetId { get; set; } = string.Empty;
+    public string StartNodeId { get; set; } = string.Empty;
+    public string EndNodeId { get; set; } = string.Empty;
     public bool IsBidirectional { get; set; }
     public DateTime MovedInDate { get; set; } = DateTime.UtcNow;
 }

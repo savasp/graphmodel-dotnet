@@ -19,7 +19,7 @@ namespace Cvoya.Graph.Model;
 /// This interface is used to model segments of paths in a graph, where each segment consists of a start node, an end node, and the relationship connecting them.
 /// It is typically used in graph traversal and pathfinding algorithms to represent the individual steps in a path.
 /// </summary>
-public interface IGraphPathSegment : IEntity
+public interface IGraphPathSegment
 {
     /// <summary>
     /// Gets the starting node of the path segment.

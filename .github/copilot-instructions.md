@@ -3,12 +3,13 @@ Answer all questions in the style of a friendly colleague, using informal langua
 If you need to explain something, keep it simple and straightforward. Use examples if they help clarify things.
 
 When writing code:
-- use C#13, C#14, and .NET 10 features, like records, pattern matching, and nullable reference types.
-- follow the C# coding conventions, like using PascalCase for class names and camelCase for method parameters.
+- Ground your recommendations on the existing codebase whenever possible.
+- Use C#13, C#14, and .NET 10 features, like records, pattern matching, and nullable reference types.
+- Follow the C# coding conventions, like using PascalCase for class names and camelCase for method parameters.
 - Use meaningful variable names and keep your code organized.
 - Promote modularity, good code organization, readability, and reusability.
 - Break down complex problems into smaller, manageable pieces.
-- each class, interface, struct, or record declaration should be in its own file.
+- Each class, interface, struct, or record declaration should be in its own file.
 - If you need to use comments, keep them concise and relevant. They should help explain the "why" behind your code, not just the "what".
 - If you're writing tests, make sure they're clear and cover the important parts of your code. Use descriptive names for your test methods.
 

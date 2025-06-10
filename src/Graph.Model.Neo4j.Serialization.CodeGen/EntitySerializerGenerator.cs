@@ -111,41 +111,57 @@ public class EntitySerializerGenerator : IIncrementalGenerator
         sb.AppendLine("    public override object Deserialize(global::Neo4j.Driver.IEntity entity)");
         sb.AppendLine("    {");
 
-        // Get all properties
-        var properties = type.GetMembers()
-            .OfType<IPropertySymbol>()
-            .Where(p => !p.IsStatic && p.DeclaredAccessibility == Accessibility.Public)
+        // Get all properties that we can deserialize
+        var allProperties = GetAllProperties(type)
+            .Where(p => !SerializationShouldSkipProperty(p, type, sb))
             .ToList();
 
-        var initOnlyProperties = properties.Where(p => p.SetMethod?.IsInitOnly == true).ToList();
-        var regularProperties = properties.Where(p => p.SetMethod != null && !p.SetMethod.IsInitOnly && p.SetMethod.DeclaredAccessibility == Accessibility.Public).ToList();
+        // Core properties that must be set (even if readonly)
+        var corePropertyNames = new HashSet<string> { "Id", "StartNodeId", "EndNodeId", "Direction" };
 
-        // Find the best constructor
+        // Separate properties by type
+        var coreProperties = allProperties.Where(p => corePropertyNames.Contains(p.Name)).ToList();
+        var regularProperties = allProperties.Where(p => !corePropertyNames.Contains(p.Name)).ToList();
+
+        // Properties that can only be set via constructor or init
+        var constructorOnlyProperties = allProperties
+            .Where(p => p.SetMethod == null || p.SetMethod.IsInitOnly)
+            .ToList();
+
+        // Properties that can be set after construction
+        var settableProperties = allProperties
+            .Where(p => p.SetMethod != null &&
+                       !p.SetMethod.IsInitOnly &&
+                       p.SetMethod.DeclaredAccessibility == Accessibility.Public)
+            .ToList();
+
+        // Find all public constructors
         var constructors = type.Constructors
             .Where(c => !c.IsStatic && c.DeclaredAccessibility == Accessibility.Public)
             .OrderBy(c => c.Parameters.Length)
             .ToList();
 
-        var parameterlessConstructor = constructors.FirstOrDefault(c => c.Parameters.Length == 0);
+        // We need constructor if we have any readonly/init-only properties
+        var needsConstructor = constructorOnlyProperties.Any() || type.IsRecord;
 
-        if (parameterlessConstructor != null && !initOnlyProperties.Any())
+        if (!needsConstructor && constructors.Any(c => c.Parameters.Length == 0))
         {
-            // Simple case - parameterless constructor and no init-only properties
+            // Simple case - parameterless constructor and all properties are settable
             sb.AppendLine($"        var result = new {type.ToDisplayString()}();");
-            GeneratePropertySetters(sb, type, "result", "entity");
+            GeneratePropertySetters(sb, settableProperties, "result", "entity");
         }
         else if (constructors.Any())
         {
-            // Find a constructor that can handle our init-only properties
-            var bestConstructor = FindBestConstructor(constructors, initOnlyProperties, properties);
+            // Find the best constructor that can set the most properties (especially core ones)
+            var bestConstructor = FindBestConstructor(constructors, allProperties, coreProperties);
             if (bestConstructor != null)
             {
-                GenerateConstructorBasedDeserialization(sb, type, bestConstructor, properties);
+                GenerateConstructorBasedDeserialization(sb, type, bestConstructor, allProperties);
             }
             else
             {
                 // Fall back to first public constructor
-                GenerateConstructorBasedDeserialization(sb, type, constructors.First(), properties);
+                GenerateConstructorBasedDeserialization(sb, type, constructors.First(), allProperties);
             }
         }
         else
@@ -158,80 +174,93 @@ public class EntitySerializerGenerator : IIncrementalGenerator
     }
 
     private static IMethodSymbol? FindBestConstructor(
-    List<IMethodSymbol> constructors,
-    List<IPropertySymbol> initOnlyProperties,
-    List<IPropertySymbol> allProperties)
+        List<IMethodSymbol> constructors,
+        List<IPropertySymbol> allProperties,
+        List<IPropertySymbol> coreProperties)
     {
-        // Try to find a constructor that matches our init-only properties
-        foreach (var ctor in constructors)
+        // Score each constructor
+        var constructorScores = constructors.Select(ctor =>
         {
-            var matchedParams = 0;
-            foreach (var param in ctor.Parameters)
+            var matchingProps = ctor.Parameters
+                .Select(param => allProperties.FirstOrDefault(prop =>
+                    string.Equals(prop.Name, param.Name, StringComparison.OrdinalIgnoreCase)))
+                .Where(p => p != null)
+                .ToList();
+
+            var coreMatches = matchingProps.Count(p => coreProperties.Contains(p!));
+            var regularMatches = matchingProps.Count - coreMatches;
+
+            return new
             {
-                var matchingProp = allProperties.FirstOrDefault(p =>
-                    string.Equals(p.Name, param.Name, StringComparison.OrdinalIgnoreCase));
+                Constructor = ctor,
+                CoreMatches = coreMatches,
+                RegularMatches = regularMatches,
+                TotalMatches = matchingProps.Count,
+                ExtraParams = ctor.Parameters.Length - matchingProps.Count
+            };
+        }).ToList();
 
-                if (matchingProp != null && initOnlyProperties.Contains(matchingProp))
-                {
-                    matchedParams++;
-                }
-            }
-
-            // Perfect match - constructor can set all init-only properties
-            if (matchedParams == initOnlyProperties.Count)
-            {
-                return ctor;
-            }
-        }
-
-        // No perfect match, return constructor with most parameters that match properties
-        return constructors
-            .OrderByDescending(c => c.Parameters.Count(p =>
-                allProperties.Any(prop => string.Equals(prop.Name, p.Name, StringComparison.OrdinalIgnoreCase))))
-            .ThenBy(c => c.Parameters.Length)
+        // Prefer constructors that:
+        // 1. Can set the most core properties (Id, StartNodeId, etc.)
+        // 2. Can set the most total properties
+        // 3. Have the fewest extra parameters
+        return constructorScores
+            .OrderByDescending(x => x.CoreMatches)
+            .ThenByDescending(x => x.TotalMatches)
+            .ThenBy(x => x.ExtraParams)
+            .Select(x => x.Constructor)
             .FirstOrDefault();
     }
 
-    private static void GenerateConstructorBasedDeserialization(StringBuilder sb, INamedTypeSymbol type, IMethodSymbol constructor, List<IPropertySymbol> allProperties)
+    private static void GenerateConstructorBasedDeserialization(
+        StringBuilder sb,
+        INamedTypeSymbol type,
+        IMethodSymbol constructor,
+        List<IPropertySymbol> allProperties)
     {
-        // Check if any constructor parameters are required (non-nullable)
-        var hasRequiredParams = constructor.Parameters.Any(p => p.Type.NullableAnnotation != NullableAnnotation.Annotated);
+        // Get core properties that aren't handled by constructor
+        var corePropertyNames = new HashSet<string> { "Id", "StartNodeId", "EndNodeId", "Direction" };
+        var constructorParamNames = new HashSet<string>(
+            constructor.Parameters.Select(p => p.Name),
+            StringComparer.OrdinalIgnoreCase);
 
-        if (hasRequiredParams)
-        {
-            sb.AppendLine("        // Extract required constructor parameters");
-        }
+        var unhandledCoreProperties = allProperties
+            .Where(p => corePropertyNames.Contains(p.Name) && !constructorParamNames.Contains(p.Name))
+            .ToList();
 
-        // Extract values for constructor parameters
+        // Generate parameter extraction for constructor params
         foreach (var param in constructor.Parameters)
         {
             var matchingProperty = allProperties.FirstOrDefault(p =>
                 string.Equals(p.Name, param.Name, StringComparison.OrdinalIgnoreCase));
 
-            var propertyName = matchingProperty?.Name ?? GetPropertyNameFromParameter(param);
+            var propertyName = matchingProperty != null ? GetPropertyName(matchingProperty) : GetPropertyNameFromParameter(param);
             var paramType = param.Type.ToDisplayString();
             var isNullable = param.Type.NullableAnnotation == NullableAnnotation.Annotated;
-            var isReferenceType = param.Type.IsReferenceType;
 
-            if (!isNullable && isReferenceType)
+            // Try to get the value from the entity
+            sb.AppendLine($"        // Extracting value for parameter '{param.Name}'");
+
+            if (!isNullable && param.Type.IsReferenceType)
             {
-                // For non-nullable reference types, we need to ensure we have a value
-                sb.AppendLine($"        string? {param.Name} = null;");
+                // Non-nullable reference type - we need a value or throw
+                sb.AppendLine($"        string? {param.Name}Temp = null;");
                 sb.AppendLine($"        if (TryGetProperty(entity, \"{propertyName}\", out var {param.Name}Value))");
                 sb.AppendLine("        {");
-                sb.AppendLine($"            {param.Name} = ({paramType}?)ConvertFromNeo4jValue({param.Name}Value, typeof({paramType})) ?? throw new InvalidOperationException(\"Required property '{propertyName}' is missing from entity\");");
+                sb.AppendLine($"            {param.Name}Temp = ({paramType}?)ConvertFromNeo4jValue({param.Name}Value, typeof({paramType}));");
                 sb.AppendLine("        }");
+                sb.AppendLine($"        var {param.Name} = {param.Name}Temp ?? throw new InvalidOperationException(\"Required property '{propertyName}' is missing or null\");");
             }
             else
             {
-                // Handle nullable types and value types as before
+                // Nullable or value type
                 if (isNullable)
                 {
                     sb.AppendLine($"        {paramType} {param.Name} = default;");
                 }
                 else
                 {
-                    sb.AppendLine($"        var {param.Name} = default({paramType})!;");
+                    sb.AppendLine($"        var {param.Name} = default({paramType});");
                 }
 
                 sb.AppendLine($"        if (TryGetProperty(entity, \"{propertyName}\", out var {param.Name}Value))");
@@ -250,32 +279,84 @@ public class EntitySerializerGenerator : IIncrementalGenerator
             }
         }
 
-        // Call constructor - use the null-forgiving operator for parameters we've validated
-        sb.Append($"        var result = new {type.ToDisplayString()}(");
-        var paramList = constructor.Parameters.Select(p =>
+        // Before calling constructor, extract values for unhandled core properties
+        var corePropsWithInitSetters = new List<IPropertySymbol>();
+
+        foreach (var coreProp in unhandledCoreProperties)
         {
-            if (p.Type.NullableAnnotation != NullableAnnotation.Annotated && p.Type.IsReferenceType)
-                return $"{p.Name}!"; // We've already validated this isn't null
-            return p.Name;
-        });
-        sb.Append(string.Join(", ", paramList));
-        sb.AppendLine(");");
+            var propName = GetPropertyName(coreProp);
+            var propType = coreProp.Type.ToDisplayString();
 
-        // Set remaining settable properties that weren't in the constructor
-        var constructorParamNames = new HashSet<string>(
-            constructor.Parameters.Select(p => p.Name.ToLower()),
-            StringComparer.OrdinalIgnoreCase);
+            sb.AppendLine($"        // Extracting core property '{coreProp.Name}' not in constructor");
 
-        var settableProperties = allProperties
+            if (coreProp.Type.IsReferenceType && coreProp.Type.NullableAnnotation != NullableAnnotation.Annotated)
+            {
+                // Non-nullable reference type
+                sb.AppendLine($"        string? {coreProp.Name}Temp = null;");
+                sb.AppendLine($"        if (TryGetProperty(entity, \"{propName}\", out var {coreProp.Name}Value))");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            {coreProp.Name}Temp = ({propType}?)ConvertFromNeo4jValue({coreProp.Name}Value, typeof({propType}));");
+                sb.AppendLine("        }");
+            }
+            else
+            {
+                sb.AppendLine($"        {propType} {coreProp.Name}Temp = default;");
+                sb.AppendLine($"        if (TryGetProperty(entity, \"{propName}\", out var {coreProp.Name}Value))");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            {coreProp.Name}Temp = ({propType})ConvertFromNeo4jValue({coreProp.Name}Value, typeof({propType}))!;");
+                sb.AppendLine("        }");
+            }
+
+            // Track props with init setters for later
+            if (coreProp.SetMethod?.IsInitOnly == true)
+            {
+                corePropsWithInitSetters.Add(coreProp);
+            }
+        }
+
+        // Call constructor with object initializer syntax if we have init-only properties
+        sb.Append($"        var result = new {type.ToDisplayString()}(");
+        sb.Append(string.Join(", ", constructor.Parameters.Select(p => p.Name)));
+        sb.Append(")");
+
+        // Add object initializer for init-only properties
+        if (corePropsWithInitSetters.Any())
+        {
+            sb.AppendLine();
+            sb.AppendLine("        {");
+            foreach (var coreProp in corePropsWithInitSetters)
+            {
+                if (coreProp.Type.IsReferenceType && coreProp.Type.NullableAnnotation != NullableAnnotation.Annotated)
+                {
+                    // Add null-forgiving operator since we know it won't be null in practice
+                    // or it would have thrown during extraction
+                    sb.AppendLine($"            {coreProp.Name} = {coreProp.Name}Temp!,");
+                }
+                else
+                {
+                    sb.AppendLine($"            {coreProp.Name} = {coreProp.Name}Temp,");
+                }
+            }
+            sb.AppendLine("        };");
+        }
+        else
+        {
+            sb.AppendLine(";");
+        }
+
+        // Set any remaining properties that weren't handled by the constructor
+        var remainingSettableProperties = allProperties
             .Where(p => p.SetMethod != null &&
                        !p.SetMethod.IsInitOnly &&
                        p.SetMethod.DeclaredAccessibility == Accessibility.Public &&
-                       !constructorParamNames.Contains(p.Name.ToLower()))
+                       !constructorParamNames.Contains(p.Name))
             .ToList();
 
-        if (settableProperties.Any())
+        if (remainingSettableProperties.Any())
         {
-            GeneratePropertySetters(sb, settableProperties, "result", "entity");
+            sb.AppendLine();
+            sb.AppendLine("        // Set remaining properties not handled by constructor");
+            GeneratePropertySetters(sb, remainingSettableProperties, "result", "entity");
         }
     }
 
@@ -287,14 +368,12 @@ public class EntitySerializerGenerator : IIncrementalGenerator
         sb.AppendLine("        var properties = new Dictionary<string, object?>();");
         sb.AppendLine();
 
-        var properties = type.GetMembers()
-            .OfType<IPropertySymbol>()
-            .Where(p => !p.IsStatic && p.DeclaredAccessibility == Accessibility.Public && p.GetMethod != null);
+        var properties = GetAllProperties(type);
 
         foreach (var property in properties)
         {
             // Skip properties that shouldn't be serialized - pass the type now
-            if (ShouldSkipProperty(property, type))
+            if (SerializationShouldSkipProperty(property, type, sb))
                 continue;
 
             var propertyName = GetPropertyName(property);
@@ -361,57 +440,58 @@ public class EntitySerializerGenerator : IIncrementalGenerator
         }
     }
 
-    private static bool ShouldSkipProperty(IPropertySymbol property, INamedTypeSymbol type)
+    private static bool SerializationShouldSkipProperty(IPropertySymbol property, INamedTypeSymbol type, StringBuilder? sb = null)
     {
-        // Check if this is a node or relationship
-        var isNode = type.AllInterfaces.Any(i =>
-            i.Name == "INode" &&
-            i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
+        sb?.AppendLine($"        // Checking property: '{property.Name}' of type '{property.Type.ToDisplayString()}'");
 
-        var isRelationship = type.AllInterfaces.Any(i =>
-            i.Name == "IRelationship" &&
-            i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
+        // Never skip these core properties - they're essential for graph entities
+        var coreProperties = new[] { "Id", "StartNodeId", "EndNodeId", "Direction" };
+        if (coreProperties.Contains(property.Name))
+        {
+            sb?.AppendLine($"        // Property '{property.Name}' is a core graph property - never skip.");
+            return false;
+        }
 
-        // For relationships, skip StartNodeId and EndNodeId (they're handled by the relationship itself)
-        if (isRelationship && (property.Name == "StartNodeId" || property.Name == "EndNodeId"))
+        // Skip static properties
+        if (property.IsStatic)
+        {
+            sb?.AppendLine($"        // Property '{property.Name}' is static, skipping.");
             return true;
+        }
 
-        // Don't skip Id for nodes - we need it!
-        // But for relationships, the Id might be handled differently by Neo4j
+        // Check if property has [Property(Ignore = true)]
+        var propertyAttribute = property.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute" &&
+                                 a.AttributeClass?.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
+
+        if (propertyAttribute != null)
+        {
+            var ignoreArg = propertyAttribute.NamedArguments
+                .FirstOrDefault(na => na.Key == "Ignore");
+
+            if (ignoreArg.Value.Value is bool ignore && ignore)
+            {
+                sb?.AppendLine($"        // Property '{property.Name}' has [Property(Ignore = true)].");
+                return true;
+            }
+        }
+
+        // For serialization, we need a getter
+        if (property.GetMethod == null || property.DeclaredAccessibility != Accessibility.Public)
+        {
+            sb?.AppendLine($"        // Property '{property.Name}' has no public getter.");
+            return true;
+        }
 
         // Skip navigation properties (complex types that aren't simple values)
         if (!Cvoya.Graph.Model.Neo4j.Serialization.CodeGen.GraphDataModel.IsSimple(property.Type) &&
             !Cvoya.Graph.Model.Neo4j.Serialization.CodeGen.GraphDataModel.IsCollectionOfSimple(property.Type))
+        {
+            sb?.AppendLine($"        // Property '{property.Name}' is a complex type.");
             return true;
+        }
 
         return false;
-    }
-
-    private static void GeneratePropertySetters(StringBuilder sb, INamedTypeSymbol type, string variableName, string entityVar)
-    {
-        var properties = type.GetMembers()
-            .OfType<IPropertySymbol>()
-            .Where(p => !p.IsStatic && p.DeclaredAccessibility == Accessibility.Public && !p.IsReadOnly);
-
-        foreach (var property in properties)
-        {
-            var propertyName = GetPropertyName(property);
-            var typeName = property.Type.ToDisplayString();
-
-            sb.AppendLine($"        if (TryGetProperty({entityVar}, \"{propertyName}\", out var {property.Name.ToLower()}Value))");
-            sb.AppendLine("        {");
-
-            if (property.Type.NullableAnnotation == NullableAnnotation.Annotated)
-            {
-                sb.AppendLine($"            {variableName}.{property.Name} = {property.Name.ToLower()}Value == null ? null : ({typeName})ConvertFromNeo4jValue({property.Name.ToLower()}Value, typeof({property.Type.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString()}));");
-            }
-            else
-            {
-                sb.AppendLine($"            {variableName}.{property.Name} = ({typeName})ConvertFromNeo4jValue({property.Name.ToLower()}Value, typeof({typeName}))!;");
-            }
-
-            sb.AppendLine("        }");
-        }
     }
 
     private static void GenerateRegistrationModule(SourceProductionContext context, ImmutableArray<INamedTypeSymbol?> types)
@@ -471,5 +551,20 @@ public class EntitySerializerGenerator : IIncrementalGenerator
         }
 
         return namespaceName + ".Generated";
+    }
+
+    private static IEnumerable<IPropertySymbol> GetAllProperties(INamedTypeSymbol type)
+    {
+        for (var t = type; t != null; t = t.BaseType)
+        {
+            var props = t.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(p => !p.IsStatic && p.DeclaredAccessibility == Accessibility.Public && p.GetMethod != null);
+
+            foreach (var prop in props)
+            {
+                yield return prop;
+            }
+        }
     }
 }

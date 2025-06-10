@@ -16,7 +16,7 @@ using Cvoya.Graph.Model;
 
 // ==== DOMAIN MODEL ====
 
-[Node("Person")]
+[Node(Label = "Person")]
 public record Person : Node
 {
     public string Name { get; set; } = string.Empty;
@@ -25,7 +25,7 @@ public record Person : Node
     public string? Department { get; set; }
 }
 
-[Node("Company")]
+[Node(Label = "Company")]
 public record Company : Node
 {
     public string Name { get; set; } = string.Empty;
@@ -33,9 +33,9 @@ public record Company : Node
     public DateTime Founded { get; set; }
 }
 
-[Relationship("WORKS_FOR")]
-public record WorksFor(string SourceId, string TargetId, bool isBidirectional) :
-    Relationship(SourceId, TargetId, isBidirectional)
+[Relationship(Label = "WORKS_FOR")]
+public record WorksFor(string StartNodeId, string EndNodeId) :
+    Relationship(StartNodeId, EndNodeId)
 {
     public string Position { get; set; } = string.Empty;
     public DateTime StartDate { get; set; }

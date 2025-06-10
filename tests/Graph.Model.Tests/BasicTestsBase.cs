@@ -63,13 +63,13 @@ public abstract class BasicTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(p2);
 
         var dateTime = DateTime.UtcNow;
-        var knows = new Knows { SourceId = p1.Id, TargetId = p2.Id, Since = dateTime };
+        var knows = new Knows { StartNodeId = p1.Id, EndNodeId = p2.Id, Since = dateTime };
 
         await this.Graph.CreateRelationshipAsync(knows);
 
         var fetched = await this.Graph.GetRelationshipAsync<Knows>(knows.Id);
-        Assert.Equal(p1.Id, fetched.SourceId);
-        Assert.Equal(p2.Id, fetched.TargetId);
+        Assert.Equal(p1.Id, fetched.StartNodeId);
+        Assert.Equal(p2.Id, fetched.EndNodeId);
         Assert.Equal(dateTime, fetched.Since);
     }
 
@@ -104,7 +104,7 @@ public abstract class BasicTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(p1);
         await this.Graph.CreateNodeAsync(p2);
 
-        var knows = new Knows { SourceId = p1.Id, TargetId = p2.Id, Since = DateTime.UtcNow };
+        var knows = new Knows { StartNodeId = p1.Id, EndNodeId = p2.Id, Since = DateTime.UtcNow };
 
         await this.Graph.CreateRelationshipAsync(knows);
         await this.Graph.DeleteRelationshipAsync(knows.Id);
@@ -134,12 +134,12 @@ public abstract class BasicTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(p1);
         await this.Graph.CreateNodeAsync(p2);
         await this.Graph.CreateNodeAsync(p3);
-        var knows1 = new Knows { SourceId = p1.Id, TargetId = p2.Id, Since = DateTime.UtcNow };
-        var knows2 = new Knows { SourceId = p2.Id, TargetId = p3.Id, Since = DateTime.UtcNow };
+        var knows1 = new Knows { StartNodeId = p1.Id, EndNodeId = p2.Id, Since = DateTime.UtcNow };
+        var knows2 = new Knows { StartNodeId = p2.Id, EndNodeId = p3.Id, Since = DateTime.UtcNow };
         await this.Graph.CreateRelationshipAsync(knows1);
         await this.Graph.CreateRelationshipAsync(knows2);
         var rels = await this.Graph.Relationships<Knows>()
-            .Where(r => r.SourceId == p1.Id || r.TargetId == p2.Id)
+            .Where(r => r.StartNodeId == p1.Id || r.EndNodeId == p2.Id)
             .ToListAsync();
         Assert.Equal(2, ((ICollection<Knows>)rels).Count);
         Assert.Contains(rels, r => r.Id == knows1.Id);
@@ -154,14 +154,14 @@ public abstract class BasicTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(p1);
         await this.Graph.CreateNodeAsync(p2);
 
-        var knows = new Knows { SourceId = p1.Id, TargetId = p2.Id, Since = DateTime.UtcNow };
+        var knows = new Knows { StartNodeId = p1.Id, EndNodeId = p2.Id, Since = DateTime.UtcNow };
         await this.Graph.CreateRelationshipAsync(knows);
         knows.Since = DateTime.UtcNow.AddYears(-1);
         await this.Graph.UpdateRelationshipAsync(knows);
         var updated = await this.Graph.GetRelationshipAsync<Knows>(knows.Id);
         Assert.Equal(knows.Id, updated.Id);
-        Assert.Equal(p1.Id, updated.SourceId);
-        Assert.Equal(p2.Id, updated.TargetId);
+        Assert.Equal(p1.Id, updated.StartNodeId);
+        Assert.Equal(p2.Id, updated.EndNodeId);
         Assert.Equal(knows.Since, updated.Since);
     }
 
@@ -310,7 +310,7 @@ public abstract class BasicTestsBase : ITestBase
             LastName = "B",
             Foo = new()
             {
-                Knows = new Knows { SourceId = "1", TargetId = "2", Since = DateTime.UtcNow }
+                Knows = new Knows { StartNodeId = "1", EndNodeId = "2", Since = DateTime.UtcNow }
             }
         };
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNodeAsync(person));
@@ -337,7 +337,7 @@ public abstract class BasicTestsBase : ITestBase
             LastName = "B",
             Foo = new()
             {
-                Knows = [new Knows { SourceId = "1", TargetId = "2", Since = DateTime.UtcNow }]
+                Knows = [new Knows { StartNodeId = "1", EndNodeId = "2", Since = DateTime.UtcNow }]
             }
         };
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNodeAsync(person));
