@@ -21,53 +21,63 @@ namespace Cvoya.Graph.Model.Analyzers;
 /// </summary>
 public static class DiagnosticDescriptors
 {
-    // GM001: Only classes can implement INode/IRelationship
-    public static readonly DiagnosticDescriptor OnlyClassesCanImplement = new(
+    // GM001: Must have parameterless constructor or property-initializing constructor
+    public static readonly DiagnosticDescriptor MustHaveParameterlessConstructorOrPropertyInitializer = new(
         id: "GM001",
-        title: "Structs cannot implement INode or IRelationship",
-        messageFormat: "Struct '{0}' cannot implement {1}. Only classes are supported.",
+        title: "Missing parameterless constructor or property-initializing constructor",
+        messageFormat: "Type '{0}' must have a parameterless constructor or a constructor that initializes all properties",
         category: "Graph.Model",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "INode and IRelationship can only be implemented by classes, not structs.");
+        description: "Types implementing INode or IRelationship must have parameterless constructors or constructors that initialize properties.");
 
-    // GM002: Must have parameterless constructor
-    public static readonly DiagnosticDescriptor MustHaveParameterlessConstructor = new(
+    // GM002: Must have public getters and setters or initializers
+    public static readonly DiagnosticDescriptor PropertyMustHavePublicAccessors = new(
         id: "GM002",
-        title: "Missing parameterless constructor",
-        messageFormat: "Type '{0}' must have a parameterless constructor (public or internal)",
+        title: "Property must have public getter and setter or initializer",
+        messageFormat: "Property '{0}' must have public getter and either public setter or public initializer",
         category: "Graph.Model",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Types implementing INode or IRelationship must have a parameterless constructor.");
+        description: "Properties in INode and IRelationship implementations must have public getters and either public setters or public property initializers.");
 
-    // GM003: Properties must have public getters and setters
-    public static readonly DiagnosticDescriptor PropertyMustHavePublicGetterAndSetter = new(
+    // GM003: Properties cannot be INode or IRelationship
+    public static readonly DiagnosticDescriptor PropertyCannotBeNodeOrRelationship = new(
         id: "GM003",
-        title: "Property must have public getter and setter",
-        messageFormat: "Property '{0}' must have public getter and setter",
+        title: "Property cannot be INode or IRelationship",
+        messageFormat: "Property '{0}' cannot be of type '{1}' or collection thereof. INode and IRelationship types are not allowed as properties",
         category: "Graph.Model",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "All properties in INode and IRelationship implementations must have public getters and setters.");
+        description: "Properties of types implementing INode or IRelationship cannot be INode or IRelationship or collections of them.");
 
-    // GM004: Unsupported property type
-    public static readonly DiagnosticDescriptor UnsupportedPropertyType = new(
+    // GM004: Complex properties cannot have INode or IRelationship properties (recursive)
+    public static readonly DiagnosticDescriptor ComplexPropertyCannotHaveNodeOrRelationshipProperties = new(
         id: "GM004",
-        title: "Unsupported property type",
-        messageFormat: "Property '{0}' has unsupported type '{1}'",
+        title: "Complex property contains invalid nested properties",
+        messageFormat: "Property '{0}' of complex type '{1}' contains properties that are INode or IRelationship types, which is not allowed",
         category: "Graph.Model",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Properties can only be of supported types (primitives, string, date/time, Point, collections).");
+        description: "Properties of complex properties of types implementing INode cannot be INode or IRelationship or collections of them. This rule is applied recursively.");
 
-    // GM005: Invalid complex type property (INode only)
-    public static readonly DiagnosticDescriptor InvalidComplexTypeProperty = new(
+    // GM005: Invalid property type for INode implementation
+    public static readonly DiagnosticDescriptor InvalidPropertyTypeForNode = new(
         id: "GM005",
-        title: "Invalid complex type property",
-        messageFormat: "Property '{0}' of type '{1}' is not a valid complex type for INode implementations",
+        title: "Invalid property type for INode implementation",
+        messageFormat: "Property '{0}' of type '{1}' is not valid for INode implementations. Must be simple, complex, or collections thereof",
         category: "Graph.Model",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Complex type properties in INode implementations must be classes with parameterless constructors and only simple properties.");
+        description: "Properties of INode implementations must be simple types, complex types, collections of simple types, or collections of complex types, applied recursively.");
+
+    // GM006: Invalid property type for IRelationship implementation
+    public static readonly DiagnosticDescriptor InvalidPropertyTypeForRelationship = new(
+        id: "GM006",
+        title: "Invalid property type for IRelationship implementation",
+        messageFormat: "Property '{0}' of type '{1}' is not valid for IRelationship implementations. Must be simple or collections of simple types",
+        category: "Graph.Model",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "Properties of IRelationship implementations must be simple types or collections of simple types.");
 }

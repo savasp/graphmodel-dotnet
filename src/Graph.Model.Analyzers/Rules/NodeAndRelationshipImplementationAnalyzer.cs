@@ -27,18 +27,18 @@ public class NodeAndRelationshipImplementationAnalyzer : DiagnosticAnalyzer
 {
     private static readonly ImmutableArray<ITypeValidator> Validators =
     [
-        new StructImplementationValidator(),
-        new ParameterlessConstructorValidator(),
+        new ConstructorValidator(),
         new PropertyValidator()
     ];
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
     [
-        DiagnosticDescriptors.OnlyClassesCanImplement,
-        DiagnosticDescriptors.MustHaveParameterlessConstructor,
-        DiagnosticDescriptors.PropertyMustHavePublicGetterAndSetter,
-        DiagnosticDescriptors.UnsupportedPropertyType,
-        DiagnosticDescriptors.InvalidComplexTypeProperty
+        DiagnosticDescriptors.MustHaveParameterlessConstructorOrPropertyInitializer,
+        DiagnosticDescriptors.PropertyMustHavePublicAccessors,
+        DiagnosticDescriptors.PropertyCannotBeNodeOrRelationship,
+        DiagnosticDescriptors.ComplexPropertyCannotHaveNodeOrRelationshipProperties,
+        DiagnosticDescriptors.InvalidPropertyTypeForNode,
+        DiagnosticDescriptors.InvalidPropertyTypeForRelationship
     ];
 
     public override void Initialize(AnalysisContext context)
