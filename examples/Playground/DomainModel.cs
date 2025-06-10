@@ -16,7 +16,7 @@ using Cvoya.Graph.Model;
 
 // ==== DOMAIN MODEL ====
 
-[Node("Person")]
+[Node(Label = "Person")]
 public record Person : Node
 {
     public string Name { get; set; } = string.Empty;
@@ -24,14 +24,14 @@ public record Person : Node
     public int Age { get; set; }
 }
 
-[Node("Department")]
+[Node(Label = "Department")]
 public record Department : Node
 {
     public string Name { get; set; } = string.Empty;
     public string Location { get; set; } = string.Empty;
 }
 
-[Node("Company")]
+[Node(Label = "Company")]
 public record Company : Node
 {
     public string Name { get; set; } = string.Empty;
@@ -39,14 +39,14 @@ public record Company : Node
     public DateTime Founded { get; set; }
 }
 
-[Relationship("WORKS_AT")]
+[Relationship(Label = "WORKS_AT")]
 public record WorksAt(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public DateTime StartDate { get; set; }
     public decimal Salary { get; set; }
 }
 
-[Relationship("PART_OF")]
+[Relationship(Label = "PART_OF")]
 public record PartOf(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public DateTime Since { get; set; }

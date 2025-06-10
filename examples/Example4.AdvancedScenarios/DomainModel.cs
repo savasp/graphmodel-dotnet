@@ -16,7 +16,7 @@ using Cvoya.Graph.Model;
 
 // ==== DOMAIN MODEL ====
 
-[Node("Blog")]
+[Node(Label = "Blog")]
 public record Blog : Node
 {
     public string Title { get; set; } = string.Empty;
@@ -25,7 +25,7 @@ public record Blog : Node
     public string Category { get; set; } = string.Empty;
 }
 
-[Node("Content")]
+[Node(Label = "Content")]
 public record Content : Node
 {
     public string Title { get; set; } = string.Empty;
@@ -35,12 +35,12 @@ public record Content : Node
     public List<TaggedWith> Tags { get; set; } = new List<TaggedWith>();
 }
 
-[Relationship("CONTAINS")]
-public record ContainedIn(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
+[Relationship(Label = "CONTAINS")]
+public record ContainedIn(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
 {
 }
 
-[Node("Article")]
+[Node(Label = "Article")]
 public record Article : Content
 {
     public DateTime PublishedDate { get; set; }
@@ -48,44 +48,44 @@ public record Article : Content
     public List<Reference> References { get; set; } = new List<Reference>();
 }
 
-[Node("Video")]
+[Node(Label = "Video")]
 public record Video : Content
 {
     public int Duration { get; set; }
     public int Views { get; set; }
 }
 
-[Relationship("CONTAINS")]
-public record Contains(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
+[Relationship(Label = "CONTAINS")]
+public record Contains(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
 {
 }
 
-[Relationship("REFERENCES")]
-public record References(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
+[Relationship(Label = "REFERENCES")]
+public record References(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
 {
     public string Context { get; set; } = string.Empty;
 }
 
-[Node("Tag")]
+[Node(Label = "Tag")]
 public record Tag : Node
 {
     public string Name { get; set; } = string.Empty;
 }
 
-[Relationship("REFERENCE")]
-public record Reference(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
+[Relationship(Label = "REFERENCE")]
+public record Reference(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
 {
     public string Context { get; set; } = string.Empty;
 }
 
-[Relationship("TAGGED_WITH")]
-public record TaggedContent(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
+[Relationship(Label = "TAGGED_WITH")]
+public record TaggedContent(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
 {
     public string TagName { get; set; } = string.Empty;
 }
 
-[Relationship("TAGGED_WITH")]
-public record TaggedWith(string sourceId, string targetId) : Relationship(sourceId, targetId, IsBidirectional: true)
+[Relationship(Label = "TAGGED_WITH")]
+public record TaggedWith(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
 {
     public string TagName { get; set; } = string.Empty;
 }

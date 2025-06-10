@@ -120,7 +120,7 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(person2);
         var knowsWell = new KnowsWell(person1, person2)
         {
-            IsBidirectional = true,
+            Direction = RelationshipDirection.Bidirectional,
             Since = DateTime.UtcNow,
             HowWell = "Very well"
         };
@@ -134,7 +134,7 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.Equal(knowsWell.Id, retrieved.Id);
         Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
         Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
-        Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
+        Assert.Equal(knowsWell.Direction, retrieved.Direction);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }
@@ -158,7 +158,7 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(person2);
         var knowsWell = new KnowsWell(person1, person2)
         {
-            IsBidirectional = true,
+            Direction = RelationshipDirection.Bidirectional,
             Since = DateTime.UtcNow,
             HowWell = "Very well"
         };
@@ -174,7 +174,7 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.Equal(knowsWell.Id, retrieved.Id);
         Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
         Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
-        Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
+        Assert.Equal(knowsWell.Direction, retrieved.Direction);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, retrieved.HowWell);
     }
@@ -198,7 +198,7 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(person2);
         var knowsWell = new KnowsWell(person1, person2)
         {
-            IsBidirectional = true,
+            Direction = RelationshipDirection.Bidirectional,
             Since = DateTime.UtcNow,
             HowWell = "Very well"
         };
@@ -213,7 +213,7 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.Equal(knowsWell.Id, retrieved.Id);
         Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
         Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
-        Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
+        Assert.Equal(knowsWell.Direction, retrieved.Direction);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }
@@ -263,7 +263,7 @@ public abstract class ClassHierarchyTestsBase : ITestBase
 
         var knowsWell = new KnowsWell(person1, person2)
         {
-            IsBidirectional = true,
+            Direction = RelationshipDirection.Bidirectional,
             Since = DateTime.UtcNow,
             HowWell = "Very well"
         };
@@ -280,7 +280,7 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.Equal(knowsWell.Id, retrieved.Id);
         Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
         Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
-        Assert.Equal(knowsWell.IsBidirectional, retrieved.IsBidirectional);
+        Assert.Equal(knowsWell.Direction, retrieved.Direction);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }

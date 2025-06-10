@@ -16,7 +16,7 @@ using Cvoya.Graph.Model;
 
 // ==== DOMAIN MODEL ====
 
-[Node("User")]
+[Node(Label = "User")]
 public record User : Node
 {
     public string Username { get; set; } = string.Empty;
@@ -25,51 +25,51 @@ public record User : Node
     public string? Bio { get; set; } = string.Empty;
 }
 
-[Relationship("FOLLOWS")]
+[Relationship(Label = "FOLLOWS")]
 public record Follows(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public DateTime Since { get; set; }
 }
 
-[Relationship("LIKED_BY")]
+[Relationship(Label = "LIKED_BY")]
 public record LikedBy(string sourceId, string targetId) : Relationship(sourceId, targetId);
 
-[Relationship("POSTED")]
+[Relationship(Label = "POSTED")]
 public record Posted(string sourceId, string targetId) : Relationship(sourceId, targetId);
 
-[Relationship("LIKES")]
+[Relationship(Label = "LIKES")]
 public record Likes(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public DateTime LikedAt { get; set; }
 }
 
-[Node("Comment")]
+[Node(Label = "Comment")]
 public record Comment : Node
 {
     public string Content { get; set; } = string.Empty;
     public DateTime CommentedAt { get; set; }
 }
 
-[Relationship("REPLY_TO")]
+[Relationship(Label = "REPLY_TO")]
 public record ReplyTo(string sourceId, string targetId) : Relationship(sourceId, targetId);
 
-[Relationship("COMMENTED_ON")]
+[Relationship(Label = "COMMENTED_ON")]
 public record CommentedOn(string sourceId, string targetId) : Relationship(sourceId, targetId);
 
-[Relationship("WROTE")]
+[Relationship(Label = "WROTE")]
 public record Wrote(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public DateTime WrittenAt { get; set; }
 }
 
-[Relationship("AUTHORED_BY")]
+[Relationship(Label = "AUTHORED_BY")]
 public record Author(string sourceId, string targetId) : Relationship(sourceId, targetId)
 {
     public DateTime PublishedDate { get; set; }
     public int Likes { get; set; }
 }
 
-[Node("Post")]
+[Node(Label = "Post")]
 public record Post : Node
 {
     public required Author Author { get; init; }

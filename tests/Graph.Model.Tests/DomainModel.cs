@@ -17,7 +17,7 @@ namespace Cvoya.Graph.Model.Tests;
 // Example domain models
 public class Person : INode
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public int Age { get; set; } = 30;
@@ -33,12 +33,12 @@ public class Manager : Person
 
 public class Address : INode
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public string Street { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
 }
 
-[Relationship("KNOWS")]
+[Relationship(Label = "KNOWS")]
 public class Knows : IRelationship
 {
     public Knows() { }
@@ -52,14 +52,14 @@ public class Knows : IRelationship
         this.StartNodeId = source.Id;
         this.EndNodeId = target.Id;
     }
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string StartNodeId { get; set; } = string.Empty;
-    public string EndNodeId { get; set; } = string.Empty;
-    public bool IsBidirectional { get; set; }
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+    public string StartNodeId { get; init; } = string.Empty;
+    public string EndNodeId { get; init; } = string.Empty;
+    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
     public DateTime Since { get; set; }
 }
 
-[Relationship("WORKS_REALLY_WELL_WITH")]
+[Relationship(Label = "WORKS_REALLY_WELL_WITH")]
 public class KnowsWell : Knows
 {
     public KnowsWell() { }
@@ -68,13 +68,13 @@ public class KnowsWell : Knows
     public string HowWell { get; set; } = string.Empty;
 }
 
-[Relationship("LIVES_AT")]
+[Relationship(Label = "LIVES_AT")]
 public class LivesAt : IRelationship
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string StartNodeId { get; set; } = string.Empty;
-    public string EndNodeId { get; set; } = string.Empty;
-    public bool IsBidirectional { get; set; }
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+    public string StartNodeId { get; init; } = string.Empty;
+    public string EndNodeId { get; init; } = string.Empty;
+    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
     public DateTime MovedInDate { get; set; } = DateTime.UtcNow;
 }
 
@@ -85,7 +85,7 @@ public class PersonWithComplexProperty : Person
 
 public class PersonWithComplexProperties : INode
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public int Age { get; set; } = 30;
