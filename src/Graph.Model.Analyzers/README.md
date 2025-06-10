@@ -24,48 +24,23 @@ The analyzers are automatically enabled when you install the package and will ru
 
 ## Diagnostic Rules
 
-### GM001: Only classes can implement INode or IRelationship
+### GM001: Missing parameterless constructor or property-initializing constructor
 
-**Error**: Structs cannot implement `INode` or `IRelationship` interfaces.
+**Error**: Types implementing `INode` or `IRelationship` must have a parameterless constructor or a constructor that initializes all properties.
 
-**Reason**: Graph providers require reference types for proper entity tracking and relationship management.
+**Reason**: Graph providers need to instantiate entities during deserialization and query operations, either through parameterless constructors or constructors that properly initialize all necessary properties.
 
 **Example Violation**:
 ```csharp
 // ❌ This will trigger GM001
-public struct PersonStruct : INode  
-{
-    public string Id { get; set; }
-}
-```
-
-**Fix**:
-```csharp
-// ✅ Use a class instead
-public class Person : INode  
-{
-    public string Id { get; set; }
-}
-```
-
-### GM002: Missing parameterless constructor
-
-**Error**: Types implementing `INode` or `IRelationship` must have a parameterless constructor.
-
-**Reason**: Graph providers need to instantiate entities during deserialization and query operations.
-
-**Example Violation**:
-```csharp
-// ❌ This will trigger GM002
 public class Person : INode
 {
     public string Id { get; set; }
-    public string Name { get; }
+    public string Name { get; set; }
     
-    public Person(string name) // Only constructor with parameters
+    public Person(string name, string id, string extraParam) // Only constructor with no property initialization guarantee
     {
-        Name = name;
-        Id = Guid.NewGuid().ToString();
+        // Properties might not be fully initialized
     }
 }
 ```
@@ -85,28 +60,41 @@ public class Person : INode
         Name = name;
     }
 }
+
+// ✅ Or ensure constructor initializes properties
+public struct PersonStruct : INode // Structs are now allowed!
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    
+    public PersonStruct(string name)
+    {
+        Id = Guid.NewGuid().ToString();
+        Name = name;
+    }
+}
 ```
 
-### GM003: Property must have public getter and setter
+### GM002: Property must have public getter and setter or initializer
 
-**Error**: All properties in `INode` and `IRelationship` implementations must have public getters and setters.
+**Error**: Properties in `INode` and `IRelationship` implementations must have public getters and either public setters or public initializers.
 
-**Reason**: Graph providers need to read and write all properties during serialization and deserialization operations.
+**Reason**: Graph providers need to read and write properties during serialization and deserialization operations. Public initializers (`init`) are now supported as an alternative to setters.
 
 **Example Violation**:
 ```csharp
-// ❌ This will trigger GM003
+// ❌ This will trigger GM002
 public class Person : INode
 {
     public string Id { get; set; }
-    public string Name { get; private set; } // Private setter
+    public string Name { get; private set; } // Private setter without init
     private string Email { get; set; }       // Private property
 }
 ```
 
 **Fix**:
 ```csharp
-// ✅ Make all properties publicly accessible
+// ✅ Use public setters
 public class Person : INode
 {
     public string Id { get; set; }
@@ -114,36 +102,109 @@ public class Person : INode
     public string Email { get; set; }
 }
 
-// ✅ Or use [Property(Ignore = true)] for computed properties
+// ✅ Or use public initializers
 public class Person : INode
 {
-    public string Id { get; set; }
-    public string FirstName { get; set; }
-    public string LastName { get; set; }
-    
-    [Property(Ignore = true)]
-    public string FullName => $"{FirstName} {LastName}"; // Read-only computed property
+    public string Id { get; init; }
+    public string Name { get; init; }
+    public string Email { get; init; }
 }
 ```
 
-### GM004: Unsupported property type
+### GM003: Property cannot be INode or IRelationship
 
-**Error**: Properties can only be of supported types.
+**Error**: Properties of types implementing `INode` or `IRelationship` cannot be `INode` or `IRelationship` types or collections of them.
 
-**Reason**: Graph databases have limitations on the types they can store directly. Complex types need special handling.
+**Reason**: Graph databases model relationships explicitly, not as properties containing other nodes or relationships. This prevents circular references and ensures proper relationship management.
 
-**Supported Types**:
-- Primitive types (`int`, `long`, `double`, `bool`, etc.)
-- `string`
-- Date/time types (`DateTime`, `DateTimeOffset`, `DateOnly`, `TimeOnly`)
-- `Point` (spatial data)
-- Collections of supported types (`List<T>`, `T[]`, etc.)
-- Nullable versions of supported types
-- Valid complex types (for `INode` only - see GM005)
+**Example Violation**:
+```csharp
+// ❌ This will trigger GM003
+public class Person : INode
+{
+    public string Id { get; set; }
+    public Person? Parent { get; set; }           // Another INode
+    public List<Person> Children { get; set; }    // Collection of INode
+    public FrienshipRel[] Friends { get; set; }   // Array of IRelationship
+}
+
+public class FrienshipRel : IRelationship
+{
+    public string Id { get; set; }
+}
+```
+
+**Fix**:
+```csharp
+// ✅ Use simple properties or complex types
+public class Person : INode
+{
+    public string Id { get; set; }
+    public string ParentId { get; set; }         // Reference by ID
+    public List<string> ChildrenIds { get; set; } // Collection of IDs
+    public Address Address { get; set; }          // Complex type (allowed)
+}
+
+public class Address
+{
+    public string Street { get; set; }
+    public string City { get; set; }
+}
+```
+
+### GM004: Complex property contains invalid nested properties
+
+**Error**: Properties of complex types used in `INode` implementations cannot contain `INode` or `IRelationship` types or collections of them (applied recursively).
+
+**Reason**: This rule ensures that complex types don't indirectly introduce node or relationship references through their nested properties.
 
 **Example Violation**:
 ```csharp
 // ❌ This will trigger GM004
+public class Person : INode
+{
+    public string Id { get; set; }
+    public ContactInfo Contact { get; set; } // Complex type with invalid nested properties
+}
+
+public class ContactInfo
+{
+    public string Email { get; set; }
+    public Person EmergencyContact { get; set; } // INode in nested property - invalid!
+}
+```
+
+**Fix**:
+```csharp
+// ✅ Keep complex types simple
+public class Person : INode
+{
+    public string Id { get; set; }
+    public ContactInfo Contact { get; set; }
+}
+
+public class ContactInfo
+{
+    public string Email { get; set; }
+    public string EmergencyContactId { get; set; } // Reference by ID instead
+}
+```
+
+### GM005: Invalid property type for INode implementation
+
+**Error**: Properties of `INode` implementations must be simple types, complex types, or collections of simple/complex types (applied recursively).
+
+**Reason**: `INode` implementations can have both simple and complex properties, but all must conform to the graph data model constraints.
+
+**Supported for INode**:
+- Simple types (primitives, string, date/time, Point, etc.)
+- Complex types (classes with parameterless constructors and only simple properties)
+- Collections of simple types
+- Collections of complex types
+
+**Example Violation**:
+```csharp
+// ❌ This will trigger GM005
 public class Person : INode
 {
     public string Id { get; set; }
@@ -154,77 +215,55 @@ public class Person : INode
 
 **Fix**:
 ```csharp
-// ✅ Use supported types or ignore unsupported properties
+// ✅ Use supported types
 public class Person : INode
 {
     public string Id { get; set; }
-    public string MetadataJson { get; set; }  // Store as JSON string
-    
-    [Property(Ignore = true)]
-    public Dictionary<string, object> Metadata // Computed property
-    {
-        get => JsonSerializer.Deserialize<Dictionary<string, object>>(MetadataJson);
-        set => MetadataJson = JsonSerializer.Serialize(value);
-    }
-    
-    [Property(Ignore = true)]
-    public Stream ProfileImage { get; set; } // Not persisted to graph
+    public string MetadataJson { get; set; }    // Simple type
+    public Address Address { get; set; }        // Complex type
+    public List<string> Tags { get; set; }      // Collection of simple
+    public List<PhoneNumber> Phones { get; set; } // Collection of complex
+}
+
+public class PhoneNumber
+{
+    public string Number { get; set; }
+    public string Type { get; set; }
 }
 ```
 
-### GM005: Invalid complex type property
+### GM006: Invalid property type for IRelationship implementation
 
-**Error**: Complex type properties in `INode` implementations must be classes with parameterless constructors and only simple properties.
+**Error**: Properties of `IRelationship` implementations must be simple types or collections of simple types only.
 
-**Reason**: Graph providers serialize complex types as separate entities or property relationships, requiring specific constraints.
+**Reason**: Relationships should be lightweight and contain only simple data. Complex types are not allowed in relationships to keep them focused and efficient.
 
-**Valid Complex Types for INode**:
-- Must be a class (not struct)
-- Must have a parameterless constructor
-- All properties must be of simple supported types
-- Cannot have nested complex types
+**Supported for IRelationship**:
+- Simple types only (primitives, string, date/time, Point, etc.)
+- Collections of simple types
 
 **Example Violation**:
 ```csharp
-// ❌ This will trigger GM005
-public class Person : INode
+// ❌ This will trigger GM006
+public class WorksAt : IRelationship
 {
     public string Id { get; set; }
-    public Address Address { get; set; } // Invalid complex type
-}
-
-public class Address
-{
-    public string Street { get; private set; } // Private setter - invalid
-    public Location Location { get; set; }     // Nested complex type - invalid
-    
-    public Address(string street) { Street = street; } // No parameterless constructor
+    public DateTime StartDate { get; set; }
+    public Address OfficeLocation { get; set; }    // Complex type - not allowed in relationships
+    public List<Person> Managers { get; set; }     // Collection of INode - not allowed
 }
 ```
 
 **Fix**:
 ```csharp
-// ✅ Make complex type conform to requirements
-public class Person : INode
+// ✅ Use only simple types
+public class WorksAt : IRelationship
 {
     public string Id { get; set; }
-    public Address Address { get; set; }
-}
-
-public class Address
-{
-    public string Street { get; set; }    // Public getter/setter
-    public double Latitude { get; set; }  // Simple types only
-    public double Longitude { get; set; }
-    
-    public Address() { } // Parameterless constructor
-    
-    public Address(string street, double lat, double lng) : this()
-    {
-        Street = street;
-        Latitude = lat;
-        Longitude = lng;
-    }
+    public DateTime StartDate { get; set; }
+    public string Department { get; set; }         // Simple type
+    public List<string> Skills { get; set; }       // Collection of simple types
+    public double Salary { get; set; }             // Simple type
 }
 ```
 
@@ -257,12 +296,13 @@ Or in your project file:
 
 ## Best Practices
 
-1. **Always use classes** for `INode` and `IRelationship` implementations
-2. **Provide parameterless constructors** - they can be public or internal
-3. **Use public properties** with both getters and setters
-4. **Leverage `[Property(Ignore = true)]`** for computed or non-persisted properties
-5. **Keep complex types simple** - avoid deep nesting and circular references
-6. **Consider JSON serialization** for complex data that doesn't need querying
+1. **Use classes or structs** - Both are now supported for `INode` and `IRelationship` implementations
+2. **Provide proper constructors** - Ensure parameterless constructors or property-initializing constructors
+3. **Use public properties** with getters and setters/initializers
+4. **Avoid node/relationship properties** - Don't use `INode` or `IRelationship` types as properties
+5. **Keep relationships simple** - Use only simple types in `IRelationship` implementations
+6. **Leverage complex types for nodes** - `INode` can have complex properties if they follow the rules
+7. **Consider JSON serialization** for complex data that doesn't need querying
 
 ## Requirements
 
