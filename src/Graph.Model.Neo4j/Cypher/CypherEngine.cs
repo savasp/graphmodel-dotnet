@@ -478,37 +478,155 @@ internal class CypherEngine(GraphContext graphContext)
     }
 
     private object DeserializeEntityFromRecord(
-           IRecord record,
-           Type requestedType,
-           GraphQueryContext queryContext)
+        IRecord record,
+        Type requestedType,
+        GraphQueryContext queryContext)
     {
-        // Check what's in the record and route to the appropriate deserialization method
-
-        // Simple case: single node
-        if (record.Values.Count == 1 && record.Values.First().Value is global::Neo4j.Driver.INode node)
+        // If we have exactly one value, handle it based on its type
+        if (record.Values.Count == 1)
         {
-            // Use DeserializeNodeFromNeo4jNodeAsync instead of DeserializeNodeAsync
-            return _serializer.DeserializeNodeFromNeo4jNode(
-                node,
-                requestedType,
-                queryContext.UseMostDerivedType);
+            var value = record.Values.First().Value;
+            return DeserializeSingleValue(value, requestedType, queryContext);
         }
 
-        // Complex case: node with related nodes (for complex properties)
+        // For multiple values, we need to understand the pattern
         if (record.Values.Count == 2)
         {
-            if (record.Values.FirstOrDefault(v => v.Value is global::Neo4j.Driver.INode).Value is global::Neo4j.Driver.INode mainNode && record.Values.FirstOrDefault(v => v.Value is List<object>).Value is List<object> relatedNodes)
+            // Check for node + related nodes pattern (complex properties)
+            if (TryDeserializeNodeWithComplexProperties(record, requestedType, queryContext, out var result))
             {
-                return DeserializeNodeWithComplexPropertiesAsync(
-                    mainNode,
-                    relatedNodes,
-                    requestedType,
-                    queryContext);
+                return result!;
             }
         }
 
-        // Handle other cases like relationships, projections, etc.
-        throw new NotSupportedException($"Cannot deserialize record with {record.Values.Count} values to type {requestedType}");
+        if (record.Values.Count == 3)
+        {
+            // Check for path pattern (source-relationship-target)
+            if (TryDeserializePathPattern(record, requestedType, queryContext, out var result))
+            {
+                return result!;
+            }
+        }
+
+        // If we can't handle it, provide a helpful error message
+        var valueTypes = string.Join(", ", record.Values.Select(v => v.Value?.GetType().Name ?? "null"));
+        throw new NotSupportedException(
+            $"Cannot deserialize record with {record.Values.Count} values to type {requestedType}. " +
+            $"Record contains: {valueTypes}");
+    }
+
+    private object DeserializeSingleValue(object? value, Type requestedType, GraphQueryContext queryContext)
+{
+    if (value == null)
+    {
+        return null!;
+    }
+
+    // Handle Neo4j entities
+    if (value is global::Neo4j.Driver.INode node)
+    {
+        return _serializer.DeserializeNodeFromNeo4jNode(
+            node,
+            requestedType,
+            queryContext.UseMostDerivedType);
+    }
+
+    if (value is global::Neo4j.Driver.IRelationship relationship)
+    {
+        return _serializer.DeserializeRelationshipFromNeo4jRelationship(
+            relationship,
+            requestedType);
+    }
+
+    // Handle scalar values - use the serializer's method which now uses EntitySerializerBase
+    var converted = _serializer.ConvertScalarFromNeo4jValue(value, requestedType);
+    if (converted == null && !IsNullableType(requestedType))
+    {
+        throw new NotSupportedException($"Cannot convert value of type {value.GetType()} to non-nullable type {requestedType}");
+    }
+    return converted ?? throw new NotSupportedException($"Cannot convert value of type {value.GetType()} to {requestedType}");
+}
+
+private static bool IsNullableType(Type type)
+{
+    return !type.IsValueType || Nullable.GetUnderlyingType(type) != null;
+}
+
+    private bool TryDeserializeNodeWithComplexProperties(
+        IRecord record,
+        Type requestedType,
+        GraphQueryContext queryContext,
+        out object? result)
+    {
+        result = null;
+
+        // Look for the pattern: INode + List<object>
+        var nodeValue = record.Values.FirstOrDefault(v => v.Value is global::Neo4j.Driver.INode);
+        var relatedNodesValue = record.Values.FirstOrDefault(v => v.Value is List<object>);
+
+        if (nodeValue.Value is global::Neo4j.Driver.INode mainNode &&
+            relatedNodesValue.Value is List<object> relatedNodes)
+        {
+            result = DeserializeNodeWithComplexPropertiesAsync(
+                mainNode,
+                relatedNodes,
+                requestedType,
+                queryContext);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryDeserializePathPattern(
+        IRecord record,
+        Type requestedType,
+        GraphQueryContext queryContext,
+        out object? result)
+    {
+        result = null;
+
+        // Check if it's a path pattern: node-relationship-node
+        if (record[0] is global::Neo4j.Driver.INode sourceNode &&
+            record[1] is global::Neo4j.Driver.IRelationship rel &&
+            record[2] is global::Neo4j.Driver.INode targetNode)
+        {
+            // Determine what to return based on the requested type
+            if (typeof(IRelationship).IsAssignableFrom(requestedType))
+            {
+                result = _serializer.DeserializeRelationshipFromNeo4jRelationship(rel, requestedType);
+                return true;
+            }
+
+            if (typeof(INode).IsAssignableFrom(requestedType))
+            {
+                // This is still a bit arbitrary - might need more context
+                // Consider adding metadata to the query context to indicate which node to return
+                result = _serializer.DeserializeNodeFromNeo4jNode(
+                    sourceNode,
+                    requestedType,
+                    queryContext.UseMostDerivedType);
+                return true;
+            }
+
+            // If requestedType is IGraphPathSegment<,,>, handle that here
+            if (requestedType.IsGenericType &&
+                requestedType.GetGenericTypeDefinition() == typeof(IGraphPathSegment<,,>))
+            {
+                // Create the path segment
+                var genericArgs = requestedType.GetGenericArguments();
+                var concreteType = typeof(GraphPathSegment<,,>).MakeGenericType(genericArgs);
+
+                var source = _serializer.DeserializeNodeFromNeo4jNode(sourceNode, genericArgs[0], queryContext.UseMostDerivedType);
+                var relationship = _serializer.DeserializeRelationshipFromNeo4jRelationship(rel, genericArgs[1]);
+                var target = _serializer.DeserializeNodeFromNeo4jNode(targetNode, genericArgs[2], queryContext.UseMostDerivedType);
+
+                result = Activator.CreateInstance(concreteType, source, relationship, target);
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 

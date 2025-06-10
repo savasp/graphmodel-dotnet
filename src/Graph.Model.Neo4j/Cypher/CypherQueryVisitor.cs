@@ -92,22 +92,58 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     protected override Expression VisitConstant(ConstantExpression node)
     {
-        logger?.LogDebug("Processing constant expression of type: {Type}", node.Type);
+        logger?.LogDebug("Processing constant expression of type: {Type}", node.Type.Name);
 
-        if (node.Value is IGraphQueryable queryable)
+        // Check for different types of queryables
+        if (node.Value is IGraphNodeQueryable nodeQueryable)
         {
-            logger?.LogDebug("Found IGraphQueryable: {QueryableType}", queryable.GetType().Name);
+            logger?.LogDebug("Found IGraphNodeQueryable: {QueryableType}", nodeQueryable.GetType().Name);
 
-            _entityType = queryable.ElementType;
+            var elementType = nodeQueryable.ElementType;
+            _entityType = elementType;
 
-            var label = Labels.GetLabelFromType(_entityType);
-            logger?.LogDebug("Using label: {Label} for type: {Type}", label, _entityType.Name);
+            var label = Labels.GetLabelFromType(elementType);
+            logger?.LogDebug("Using label: {Label} for type: {Type}", label, elementType.Name);
+            _builder.AddMatch("n", label);
 
-            // Build the MATCH clause with the label
-            _builder.AddMatch(_scopes.Peek().Alias, label);
+            // Node queries use 'n' as the alias
+            _scopes.Clear();
+            _scopes.Push(new QueryScope("n"));
+        }
+        else if (node.Value is IGraphRelationshipQueryable relationshipQueryable)
+        {
+            logger?.LogDebug("Found IGraphRelationshipQueryable: {QueryableType}", relationshipQueryable.GetType().Name);
+
+            var elementType = relationshipQueryable.ElementType;
+            _entityType = elementType;
+
+            var relationshipType = Labels.GetLabelFromType(elementType);
+            logger?.LogDebug("Using relationship type: {Type} for type: {Type}", relationshipType, elementType.Name);
+
+            // Fix: Use the new method
+            _builder.AddRelationshipMatch(relationshipType);
+
+            // Add default return for the relationship
+            _builder.AddReturn("r");
+
+            // Relationship queries use 'r' as the alias
+            _scopes.Clear();
+            _scopes.Push(new QueryScope("r"));
+        }
+        else if (node.Value is IGraphTraversalQueryable traversalQueryable)
+        {
+            // Handle traversal queries if needed
+            logger?.LogDebug("Found IGraphTraversalQueryable: {QueryableType}", traversalQueryable.GetType().Name);
+            // TODO: Implement traversal handling
+        }
+        else if (node.Value is IGraphQueryable graphQueryable)
+        {
+            // Fallback for any other queryable types
+            logger?.LogDebug("Found generic IGraphQueryable: {QueryableType}", graphQueryable.GetType().Name);
+            // This shouldn't really happen, but log it if it does
         }
 
-        return base.VisitConstant(node);
+        return node;
     }
 
     private Expression HandlePathSegments(MethodCallExpression node)

@@ -22,7 +22,6 @@ namespace Cvoya.Graph.Model.Neo4j.Serialization;
 internal class GraphEntitySerializer(GraphContext context)
 {
     private readonly ILogger<GraphEntitySerializer>? _logger = context.LoggerFactory?.CreateLogger<GraphEntitySerializer>();
-    private readonly ValueConverter _valueConverter = new ValueConverter();
     private readonly EntityFactory _entityFactory = new EntityFactory(context.LoggerFactory?.CreateLogger<EntityFactory>());
 
     public async Task<NodeSerializationResult> SerializeNodeAsync(INode node, CancellationToken cancellationToken = default)
@@ -158,7 +157,7 @@ internal class GraphEntitySerializer(GraphContext context)
         return CreateEntity(targetType, neo4jNode);
     }
 
-    public RelationshipSerializationResult SerializeRelationship(IRelationship relationship)
+public RelationshipSerializationResult SerializeRelationship(IRelationship relationship)
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
@@ -179,7 +178,7 @@ internal class GraphEntitySerializer(GraphContext context)
             // Relationships can only have simple properties
             if (GraphDataModel.IsSimple(propType) || GraphDataModel.IsCollectionOfSimple(propType))
             {
-                props[prop.Name] = _valueConverter.ConvertToNeo4j(value);
+                props[prop.Name] = EntitySerializerBase.ConvertToNeo4jValue(value);
             }
             else
             {
@@ -237,9 +236,7 @@ internal class GraphEntitySerializer(GraphContext context)
         return typedEntity;
     }
 
-    public object? ConvertScalarFromNeo4jValue(
-        object? value,
-        Type targetType)
+public object? ConvertScalarFromNeo4jValue(object? value, Type targetType)
     {
         ArgumentNullException.ThrowIfNull(targetType);
 
@@ -248,8 +245,23 @@ internal class GraphEntitySerializer(GraphContext context)
             return null;
         }
 
-        // Use the value converter to convert simple types
-        return _valueConverter.ConvertFromNeo4j(value, targetType);
+        // Use EntitySerializerBase for all conversions
+        try
+        {
+            return EntitySerializerBase.ConvertFromNeo4jValue(value, targetType);
+        }
+        catch (ArgumentNullException)
+        {
+            // EntitySerializerBase throws ArgumentNullException for null values
+            // but we already checked for null above, so this shouldn't happen
+            return null;
+        }
+        catch (NotSupportedException ex)
+        {
+            _logger?.LogWarning(ex, "Cannot convert Neo4j value of type {ValueType} to {TargetType}", 
+                value.GetType().Name, targetType.Name);
+            throw;
+        }
     }
 
     public object DeserializeRelationshipFromNeo4jRelationship(
@@ -268,7 +280,7 @@ internal class GraphEntitySerializer(GraphContext context)
         return entity;
     }
 
-    private void PopulateSimpleProperties(object entity, global::Neo4j.Driver.IEntity neo4jEntity)
+private void PopulateSimpleProperties(object entity, global::Neo4j.Driver.IEntity neo4jEntity)
     {
         var type = entity.GetType();
 
@@ -278,8 +290,21 @@ internal class GraphEntitySerializer(GraphContext context)
 
             if (neo4jEntity.Properties.TryGetValue(prop.Name, out var value))
             {
-                var convertedValue = _valueConverter.ConvertFromNeo4j(value, prop.PropertyType);
-                prop.SetValue(entity, convertedValue);
+                try
+                {
+                    var convertedValue = EntitySerializerBase.ConvertFromNeo4jValue(value, prop.PropertyType);
+                    prop.SetValue(entity, convertedValue);
+                }
+                catch (ArgumentNullException)
+                {
+                    // EntitySerializerBase throws for null, but TryGetValue shouldn't return null
+                    // If it does, just skip this property
+                }
+                catch (NotSupportedException ex)
+                {
+                    _logger?.LogWarning(ex, "Cannot set property {PropertyName} on type {TypeName}", 
+                        prop.Name, type.Name);
+                }
             }
         }
     }
@@ -384,7 +409,7 @@ internal class GraphEntitySerializer(GraphContext context)
         }
     }
 
-    private Task<object?> DeserializeComplexPropertyAsync(
+private Task<object?> DeserializeComplexPropertyAsync(
         global::Neo4j.Driver.INode neo4jNode,
         Type targetType,
         bool useMostDerivedType,
@@ -414,8 +439,20 @@ internal class GraphEntitySerializer(GraphContext context)
         {
             if (neo4jNode.Properties.TryGetValue(prop.Name, out var value))
             {
-                var convertedValue = _valueConverter.ConvertFromNeo4j(value, prop.PropertyType);
-                prop.SetValue(instance, convertedValue);
+                try
+                {
+                    var convertedValue = EntitySerializerBase.ConvertFromNeo4jValue(value, prop.PropertyType);
+                    prop.SetValue(instance, convertedValue);
+                }
+                catch (ArgumentNullException)
+                {
+                    // Skip null values
+                }
+                catch (NotSupportedException ex)
+                {
+                    _logger?.LogWarning(ex, "Cannot set property {PropertyName} on complex type {TypeName}", 
+                        prop.Name, targetType.Name);
+                }
             }
         }
 
@@ -565,22 +602,28 @@ internal class GraphEntitySerializer(GraphContext context)
         return Task.FromResult(complexProps);
     }
 
-    private Dictionary<string, object?> ExtractSimplePropertiesFromObject(object obj)
+private Dictionary<string, object?> ExtractSimplePropertiesFromObject(object obj)
     {
         var props = new Dictionary<string, object?>();
         var type = obj.GetType();
 
-        // Only extract simple properties - complex properties are handled separately
         foreach (var prop in GraphDataModel.GetSimpleProperties(type))
         {
             var value = prop.GetValue(obj);
             if (value != null)
             {
-                // Convert to Neo4j-compatible value
-                var convertedValue = _valueConverter.ConvertToNeo4j(value);
-                if (convertedValue != null)
+                // Use EntitySerializerBase.ConvertToNeo4jValue
+                try
                 {
-                    props[prop.Name] = convertedValue;
+                    var convertedValue = EntitySerializerBase.ConvertToNeo4jValue(value);
+                    if (convertedValue != null)
+                    {
+                        props[prop.Name] = convertedValue;
+                    }
+                }
+                catch (ArgumentNullException)
+                {
+                    // Skip null values
                 }
             }
         }
@@ -588,7 +631,7 @@ internal class GraphEntitySerializer(GraphContext context)
         return props;
     }
 
-    private object CreateEntity(Type targetType, global::Neo4j.Driver.INode neo4jNode)
+private object CreateEntity(Type targetType, global::Neo4j.Driver.INode neo4jNode)
     {
         // First try generated serializer
         var serializer = EntitySerializerRegistry.GetSerializer(targetType);
@@ -597,7 +640,7 @@ internal class GraphEntitySerializer(GraphContext context)
             return serializer.Deserialize(neo4jNode);
         }
 
-        // Fallback to factory creation - use CreateInstance instead of Create
+        // Fallback to factory creation
         var entity = _entityFactory.CreateInstance(targetType, neo4jNode);
 
         // Populate simple properties from the Neo4j node
@@ -605,8 +648,20 @@ internal class GraphEntitySerializer(GraphContext context)
         {
             if (neo4jNode.Properties.TryGetValue(prop.Name, out var value))
             {
-                var convertedValue = _valueConverter.ConvertFromNeo4j(value, prop.PropertyType);
-                prop.SetValue(entity, convertedValue);
+                try
+                {
+                    var convertedValue = EntitySerializerBase.ConvertFromNeo4jValue(value, prop.PropertyType);
+                    prop.SetValue(entity, convertedValue);
+                }
+                catch (ArgumentNullException)
+                {
+                    // Skip null values
+                }
+                catch (NotSupportedException ex)
+                {
+                    _logger?.LogWarning(ex, "Cannot set property {PropertyName} on type {TypeName}", 
+                        prop.Name, targetType.Name);
+                }
             }
         }
 

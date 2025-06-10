@@ -122,20 +122,26 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var cypher = "MATCH (n {Id: $nodeId}) SET n = $props RETURN n";
             var result = await transaction.Transaction.RunAsync(cypher, new { nodeId = node.Id, props = serializedNode.SimpleProperties });
 
-            var updated = await result.CountAsync(cancellationToken) == 0;
-            if (updated)
+            var updated = await result.CountAsync(cancellationToken) != 0;
+            if (!updated)
             {
                 _logger?.LogWarning("Node with ID {NodeId} not found for update", node.Id);
                 throw new KeyNotFoundException($"Node with ID {node.Id} not found for update");
             }
 
             // Update complex properties (delete old ones and create new ones)
-            updated &= await UpdateComplexPropertiesAsync(transaction.Transaction, node.Id, serializedNode.ComplexProperties, cancellationToken);
+            var complexPropertiesUpdated = await UpdateComplexPropertiesAsync(transaction.Transaction, node.Id, serializedNode.ComplexProperties, cancellationToken);
 
-            if (!updated)
+            if (!complexPropertiesUpdated && serializedNode.ComplexProperties.Count > 0)
             {
                 _logger?.LogWarning("No complex properties were updated for node with ID {NodeId}", node.Id);
                 throw new GraphException($"Failed to update the node's complex properties of type {typeof(TNode).Name} with ID {node.Id}");
+            }
+
+            if (!updated && !complexPropertiesUpdated)
+            {
+                _logger?.LogWarning("Node of type {NodeType} with ID {NodeId} was not updated", typeof(TNode).Name, node.Id);
+                throw new GraphException($"Failed to update node of type {typeof(TNode).Name} with ID {node.Id}");
             }
 
             _logger?.LogInformation("Updated node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
@@ -280,10 +286,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
         _logger?.LogDebug("Deleted {DeletedCount} complex property relationships for parent ID {ParentId}", deletedCount, parentId);
 
-        var updatedComplexProperties = deletedCount > 0;
-
-        // Then create the new ones
-        updatedComplexProperties &= await CreateComplexPropertiesAsync(tx, parentId, complexProperties, cancellationToken);
+        var updatedComplexProperties = complexProperties.Count == 0 || await CreateComplexPropertiesAsync(tx, parentId, complexProperties, cancellationToken);
 
         return updatedComplexProperties;
     }

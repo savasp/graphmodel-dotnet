@@ -14,14 +14,28 @@
 
 #pragma warning disable CS8605
 
+// Copyright 2025 Savas Parastatidis
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma warning disable CS8605
+
 using Cvoya.Graph.Model.Neo4j.Serialization;
 
 namespace Cvoya.Graph.Model.Neo4j.Tests
 {
     public class NumericSerializationTests
     {
-        private readonly ValueConverter valueConverter = new();
-
         [Fact]
         public void ConvertToNeo4jValue_Decimal_ReturnsDouble()
         {
@@ -29,7 +43,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             decimal decimalValue = 123.456m;
 
             // Act
-            var result = valueConverter.ConvertToNeo4j(decimalValue);
+            var result = EntitySerializerBase.ConvertToNeo4jValue(decimalValue);
 
             // Assert
             Assert.NotNull(result);
@@ -44,7 +58,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             float floatValue = 78.9f;
 
             // Act
-            var result = valueConverter.ConvertToNeo4j(floatValue);
+            var result = EntitySerializerBase.ConvertToNeo4jValue(floatValue);
 
             // Assert
             Assert.NotNull(result);
@@ -59,7 +73,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             double doubleValue = 456.789;
 
             // Act
-            var result = valueConverter.ConvertFromNeo4j(doubleValue, typeof(decimal));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(doubleValue, typeof(decimal));
 
             // Assert
             Assert.NotNull(result);
@@ -74,7 +88,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             double doubleValue = 456.789;
 
             // Act
-            var result = valueConverter.ConvertFromNeo4j(doubleValue, typeof(float));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(doubleValue, typeof(float));
 
             // Assert
             Assert.NotNull(result);
@@ -94,7 +108,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             decimal decimalValue = (decimal)expectedValue;
 
             // Act
-            var result = valueConverter.ConvertToNeo4j(decimalValue);
+            var result = EntitySerializerBase.ConvertToNeo4jValue(decimalValue);
 
             // Assert
             Assert.NotNull(result);
@@ -111,7 +125,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             decimal decimalValue = (decimal)expectedValue;
 
             // Act
-            var result = valueConverter.ConvertToNeo4j(decimalValue);
+            var result = EntitySerializerBase.ConvertToNeo4jValue(decimalValue);
 
             // Assert
             Assert.NotNull(result);
@@ -127,7 +141,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
         public void ConvertToNeo4jValue_VariousFloatValues_ReturnsDouble(float floatValue)
         {
             // Act
-            var result = valueConverter.ConvertToNeo4j(floatValue);
+            var result = EntitySerializerBase.ConvertToNeo4jValue(floatValue);
 
             // Assert
             Assert.NotNull(result);
@@ -142,8 +156,8 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             decimal originalValue = 123.456789m;
 
             // Act
-            var neo4jValue = valueConverter.ConvertToNeo4j(originalValue);
-            var roundTripValue = valueConverter.ConvertFromNeo4j(neo4jValue, typeof(decimal));
+            var neo4jValue = EntitySerializerBase.ConvertToNeo4jValue(originalValue);
+            var roundTripValue = EntitySerializerBase.ConvertFromNeo4jValue(neo4jValue, typeof(decimal));
 
             // Assert
             Assert.Equal(originalValue, (decimal)roundTripValue);
@@ -156,8 +170,8 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             float originalValue = 78.9f;
 
             // Act
-            var neo4jValue = valueConverter.ConvertToNeo4j(originalValue);
-            var roundTripValue = valueConverter.ConvertFromNeo4j(neo4jValue, typeof(float));
+            var neo4jValue = EntitySerializerBase.ConvertToNeo4jValue(originalValue);
+            var roundTripValue = EntitySerializerBase.ConvertFromNeo4jValue(neo4jValue, typeof(float));
 
             // Assert
             Assert.Equal(originalValue, (float)roundTripValue, 5);
@@ -170,7 +184,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             decimal decimalValue = 123.456m;
 
             // Act
-            var result = valueConverter.ConvertToNeo4j(decimalValue);
+            var result = EntitySerializerBase.ConvertToNeo4jValue(decimalValue);
 
             // Assert
             Assert.NotNull(result);
@@ -185,7 +199,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             float floatValue = 789.123f;
 
             // Act
-            var result = valueConverter.ConvertToNeo4j(floatValue);
+            var result = EntitySerializerBase.ConvertToNeo4jValue(floatValue);
 
             // Assert
             Assert.NotNull(result);
@@ -201,7 +215,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
         public void ConvertFromNeo4jValue_ToDecimal_ConvertsCorrectly(object inputValue)
         {
             // Act
-            var result = valueConverter.ConvertFromNeo4j(inputValue, typeof(decimal));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(inputValue, typeof(decimal));
 
             // Assert
             Assert.NotNull(result);
@@ -216,7 +230,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             double doubleValue = 123.456;
 
             // Act
-            var result = valueConverter.ConvertFromNeo4j(doubleValue, typeof(decimal));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(doubleValue, typeof(decimal));
 
             // Assert
             Assert.Equal(123.456m, (decimal)result);
@@ -229,7 +243,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             float floatValue = 123.456f;
 
             // Act
-            var result = valueConverter.ConvertFromNeo4j(floatValue, typeof(decimal));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(floatValue, typeof(decimal));
 
             // Assert
             Assert.Equal((decimal)floatValue, (decimal)result);
@@ -249,7 +263,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
         public void ConvertFromNeo4jValue_ToFloat_ConvertsCorrectly(object inputValue)
         {
             // Act
-            var result = valueConverter.ConvertFromNeo4j(inputValue, typeof(float));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(inputValue, typeof(float));
 
             // Assert
             Assert.NotNull(result);
@@ -264,7 +278,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             double doubleValue = 789.123;
 
             // Act
-            var result = valueConverter.ConvertFromNeo4j(doubleValue, typeof(float));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(doubleValue, typeof(float));
 
             // Assert
             Assert.Equal(789.123f, (float)result, 3);
@@ -278,7 +292,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
         public void ConvertFromNeo4jValue_ToDouble_ConvertsCorrectly(object inputValue)
         {
             // Act
-            var result = valueConverter.ConvertFromNeo4j(inputValue, typeof(double));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(inputValue, typeof(double));
 
             // Assert
             Assert.NotNull(result);
@@ -293,7 +307,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             float floatValue = 789.123f;
 
             // Act
-            var result = valueConverter.ConvertFromNeo4j(floatValue, typeof(double));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(floatValue, typeof(double));
 
             // Assert
             Assert.Equal((double)floatValue, (double)result);
@@ -306,7 +320,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             decimal decimalValue = 789.123m;
 
             // Act
-            var result = valueConverter.ConvertFromNeo4j(decimalValue, typeof(double));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(decimalValue, typeof(double));
 
             // Assert
             Assert.Equal(789.123d, (double)result, 10);
@@ -319,7 +333,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             int intValue = 789;
 
             // Act
-            var result = valueConverter.ConvertFromNeo4j(intValue, typeof(float));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(intValue, typeof(float));
 
             // Assert
             Assert.Equal(789f, (float)result);
@@ -332,7 +346,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             long longValue = 789L;
 
             // Act
-            var result = valueConverter.ConvertFromNeo4j(longValue, typeof(float));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(longValue, typeof(float));
 
             // Assert
             Assert.Equal(789f, (float)result);
@@ -345,7 +359,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             int intValue = 789;
 
             // Act
-            var result = valueConverter.ConvertFromNeo4j(intValue, typeof(double));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(intValue, typeof(double));
 
             // Assert
             Assert.Equal(789d, (double)result);
@@ -358,7 +372,7 @@ namespace Cvoya.Graph.Model.Neo4j.Tests
             long longValue = 789L;
 
             // Act
-            var result = valueConverter.ConvertFromNeo4j(longValue, typeof(double));
+            var result = EntitySerializerBase.ConvertFromNeo4jValue(longValue, typeof(double));
 
             // Assert
             Assert.Equal(789d, (double)result);

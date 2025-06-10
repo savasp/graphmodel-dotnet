@@ -126,6 +126,12 @@ internal class CypherQueryBuilder
         return BuildSimpleQuery();
     }
 
+    public void AddRelationshipMatch(string relationshipType)
+    {
+        _matchClauses.Add($"()-[r:{relationshipType}]->()");
+        _mainNodeAlias = "r"; // Set main alias to the relationship
+    }
+
     private CypherQueryResult BuildExistsQuery()
     {
         var query = new StringBuilder();
