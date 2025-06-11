@@ -14,7 +14,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using Microsoft.CodeAnalysis;
 
 namespace Cvoya.Graph.Model.Neo4j.Serialization.CodeGen;
@@ -34,6 +33,29 @@ internal static class Utils
                 yield return prop;
             }
         }
+    }
+
+    internal static string GetNamespaceName(INamedTypeSymbol type)
+    {
+        var namespaceName = type.ContainingNamespace?.ToDisplayString();
+
+        if (namespaceName is null || namespaceName == "<global namespace>")
+        {
+            return "Generated";
+        }
+
+        return namespaceName + ".Generated";
+    }
+
+    internal static string GetTypeOfName(ITypeSymbol type)
+    {
+        // For nullable reference types, get the underlying non-nullable type
+        if (type.NullableAnnotation == NullableAnnotation.Annotated && !type.IsValueType)
+        {
+            return type.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString();
+        }
+
+        return type.ToDisplayString();
     }
 
     internal static string GetPropertyName(IPropertySymbol property)
@@ -121,5 +143,25 @@ internal static class Utils
 
         // Fall back to the type name with backticks removed
         return type.Name.Replace("`", "");
+    }
+
+    internal static string GetTypeForTypeOf(ITypeSymbol type)
+    {
+        // For nullable value types (like int?), get the underlying type
+        if (type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+        {
+            var underlyingType = ((INamedTypeSymbol)type).TypeArguments[0];
+            return underlyingType.ToDisplayString();
+        }
+
+        // For nullable reference types (like string?), just use the base type
+        if (type.IsReferenceType && type.NullableAnnotation == NullableAnnotation.Annotated)
+        {
+            // Remove the ? annotation for typeof()
+            return type.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString();
+        }
+
+        // For everything else, use as-is
+        return type.ToDisplayString();
     }
 }

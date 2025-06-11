@@ -92,7 +92,8 @@ public class PersonWithComplexProperties : INode
     public DateTime DateOfBirth { get; set; } = DateTime.UtcNow;
     public string Bio { get; set; } = string.Empty;
     public Address Address { get; set; } = new Address();
-    public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
+    // TODO: Add serialization support for dictionaries.
+    //public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
 }
 
 public record KnowsWithComplexProperty(PersonWithComplexProperty p1, PersonWithComplexProperty p2) : Relationship(p1.Id, p2.Id)

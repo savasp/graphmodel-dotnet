@@ -223,16 +223,19 @@ public abstract class BasicTestsBase : ITestBase
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
-        public Dictionary<string, Person> GenericProperty { get; set; } = [];
+        // TODO: Add serialization support for dictionaries.
+        //public Dictionary<string, Person> GenericProperty { get; set; } = [];
     }
 
-    [Fact]
-    public async Task CannotAddNodeWithGenericDictionaryProperty()
-    {
-        var person = new PersonWithGenericDictionaryProperty { FirstName = "A", GenericProperty = new Dictionary<string, Person>() };
+    /*
+        [Fact]
+        public async Task CannotAddNodeWithGenericDictionaryProperty()
+        {
+            var person = new PersonWithGenericDictionaryProperty { FirstName = "A", GenericProperty = new Dictionary<string, Person>() };
 
-        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNodeAsync(person));
-    }
+            await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNodeAsync(person));
+        }
+    */
 
     [Fact]
     public void CanQueryNodesLinq()

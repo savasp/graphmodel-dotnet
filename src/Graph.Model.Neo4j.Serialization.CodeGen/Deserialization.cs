@@ -20,7 +20,7 @@ using Microsoft.CodeAnalysis;
 
 namespace Cvoya.Graph.Model.Neo4j.Serialization.CodeGen;
 
-internal class Deserialization
+internal static class Deserialization
 {
     internal static void GenerateDeserializeMethod(StringBuilder sb, INamedTypeSymbol type)
     {
@@ -63,7 +63,7 @@ internal class Deserialization
         if (!needsConstructor && constructors.Any(c => c.Parameters.Length == 0))
         {
             // Simple case - parameterless constructor and all properties are settable
-            sb.AppendLine($"        var result = new {GetTypeOfName(type)}();");
+            sb.AppendLine($"        var result = new {Utils.GetTypeOfName(type)}();");
             GeneratePropertySetters(sb, settableProperties, "result", "entity");
         }
         else if (constructors.Any())
@@ -89,148 +89,280 @@ internal class Deserialization
         sb.AppendLine("    }");
     }
 
-    private static void GenerateConstructorBasedDeserialization(
-            StringBuilder sb,
-            INamedTypeSymbol type,
-            IMethodSymbol constructor,
-            List<IPropertySymbol> allProperties)
+    private static void GenerateConstructorBasedDeserialization(StringBuilder sb, INamedTypeSymbol type, IMethodSymbol constructor, List<IPropertySymbol> allProperties)
     {
-        // Get core properties that aren't handled by constructor
-        var corePropertyNames = new HashSet<string> { "Id", "StartNodeId", "EndNodeId", "Direction" };
-        var constructorParamNames = new HashSet<string>(
-            constructor.Parameters.Select(p => p.Name),
-            StringComparer.OrdinalIgnoreCase);
-
-        var unhandledCoreProperties = allProperties
-            .Where(p => corePropertyNames.Contains(p.Name) && !constructorParamNames.Contains(p.Name))
-            .ToList();
-
-        // Generate parameter extraction for constructor params
-        foreach (var param in constructor.Parameters)
+        // Extract values for each constructor parameter
+        foreach (var parameter in constructor.Parameters)
         {
-            var matchingProperty = allProperties.FirstOrDefault(p =>
-                string.Equals(p.Name, param.Name, StringComparison.OrdinalIgnoreCase));
-
-            var propertyName = matchingProperty != null ? Utils.GetPropertyName(matchingProperty) : Utils.GetPropertyNameFromParameter(param);
-            var paramType = param.Type.ToDisplayString();
-            var isNullable = param.Type.NullableAnnotation == NullableAnnotation.Annotated;
-
-            sb.AppendLine($"        // Extracting value for parameter '{param.Name}'");
-            sb.AppendLine($"        {paramType} {param.Name};");
-            sb.AppendLine($"        // Look for property in both simple and complex properties");
-            sb.AppendLine($"        var propRep = entity.SimpleProperties.TryGetValue(\"{propertyName}\", out var simpleProp) ? simpleProp");
-            sb.AppendLine($"                    : entity.ComplexProperties.TryGetValue(\"{propertyName}\", out var complexProp) ? complexProp : null;");
-            sb.AppendLine($"        if (propRep != null)");
-            sb.AppendLine("        {");
-
-            GenerateValueExtraction(sb, param.Type, $"{param.Name}", propertyName, 12);
-
-            sb.AppendLine("        }");
-            sb.AppendLine("        else");
-            sb.AppendLine("        {");
-
-            if (!isNullable && param.Type.IsReferenceType)
-            {
-                sb.AppendLine($"            throw new InvalidOperationException(\"Required property '{propertyName}' is missing\");");
-            }
-            else if (param.Type.IsReferenceType)
-            {
-                sb.AppendLine($"            {param.Name} = default({paramType})!;");
-            }
-            else
-            {
-                sb.AppendLine($"            {param.Name} = default({paramType});");
-            }
-
-            sb.AppendLine("        }");
+            GenerateConstructorParameterExtraction(sb, parameter, "entity");
         }
 
-        // Extract values for unhandled core properties with init setters
-        var corePropsWithInitSetters = new List<IPropertySymbol>();
+        // Generate constructor call
+        sb.AppendLine();
+        sb.AppendLine($"        var result = new {Utils.GetTypeOfName(type)}(");
 
-        foreach (var coreProp in unhandledCoreProperties)
+        var paramNames = constructor.Parameters.Select(p => p.Name).ToList();
+        for (int i = 0; i < paramNames.Count; i++)
         {
-            var propName = Utils.GetPropertyName(coreProp);
-            var propType = coreProp.Type.ToDisplayString();
-
-            sb.AppendLine($"        // Extracting core property '{coreProp.Name}' not in constructor");
-            sb.AppendLine($"        {propType} {coreProp.Name}Temp;");
-            sb.AppendLine($"        // Look for property in both simple and complex properties");
-            sb.AppendLine($"        var {coreProp.Name.ToLower()}PropRep = entity.SimpleProperties.TryGetValue(\"{propName}\", out var {coreProp.Name.ToLower()}SimpleProp) ? {coreProp.Name.ToLower()}SimpleProp");
-            sb.AppendLine($"                    : entity.ComplexProperties.TryGetValue(\"{propName}\", out var {coreProp.Name.ToLower()}ComplexProp) ? {coreProp.Name.ToLower()}ComplexProp : null;");
-            sb.AppendLine($"        if ({coreProp.Name.ToLower()}PropRep != null)");
-            sb.AppendLine("        {");
-            sb.AppendLine($"            var propRep = {coreProp.Name.ToLower()}PropRep;");
-
-            GenerateValueExtraction(sb, coreProp.Type, $"{coreProp.Name}Temp", propName, 12);
-
-            sb.AppendLine("        }");
-            sb.AppendLine("        else");
-            sb.AppendLine("        {");
-
-            if (coreProp.Type.IsReferenceType && coreProp.Type.NullableAnnotation != NullableAnnotation.Annotated)
-            {
-                sb.AppendLine($"            throw new InvalidOperationException(\"Required core property '{propName}' is missing\");");
-            }
-            else if (coreProp.Type.IsReferenceType)
-            {
-                sb.AppendLine($"            {coreProp.Name}Temp = default({propType})!;");
-            }
-            else
-            {
-                sb.AppendLine($"            {coreProp.Name}Temp = default({propType});");
-            }
-
-            sb.AppendLine("        }");
-
-            // Track props with init setters for later
-            if (coreProp.SetMethod?.IsInitOnly == true)
-            {
-                corePropsWithInitSetters.Add(coreProp);
-            }
+            var comma = i < paramNames.Count - 1 ? "," : "";
+            sb.AppendLine($"            {paramNames[i]}{comma}");
         }
 
-        // Call constructor with object initializer syntax if we have init-only properties
-        sb.Append($"        var result = new {GetTypeOfName(type)}(");
-        sb.Append(string.Join(", ", constructor.Parameters.Select(p => p.Name)));
-        sb.Append(")");
+        sb.AppendLine("        );");
+        sb.AppendLine();
 
-        // Add object initializer for init-only properties
-        if (corePropsWithInitSetters.Any())
-        {
-            sb.AppendLine();
-            sb.AppendLine("        {");
-            foreach (var coreProp in corePropsWithInitSetters)
-            {
-                sb.AppendLine($"            {coreProp.Name} = {coreProp.Name}Temp,");
-            }
-            sb.AppendLine("        };");
-        }
-        else
-        {
-            sb.AppendLine(";");
-        }
+        // Find properties that weren't handled by the constructor
+        var handledByConstructor = new HashSet<IPropertySymbol>(constructor.Parameters
+            .Select(p => allProperties.FirstOrDefault(prop =>
+                string.Equals(prop.Name, p.Name, StringComparison.OrdinalIgnoreCase)))
+            .Where(p => p != null), SymbolEqualityComparer.Default);
 
-        // Set any remaining properties that weren't handled by the constructor
-        var remainingSettableProperties = allProperties
+
+        var remainingProperties = allProperties
+            .Where(p => !handledByConstructor.Contains(p))
             .Where(p => p.SetMethod != null &&
-                       !p.SetMethod.IsInitOnly &&
-                       p.SetMethod.DeclaredAccessibility == Accessibility.Public &&
-                       !constructorParamNames.Contains(p.Name))
+                !p.SetMethod.IsInitOnly &&
+                p.SetMethod.DeclaredAccessibility == Accessibility.Public)
             .ToList();
 
-        if (remainingSettableProperties.Any())
+        // Set remaining properties
+        if (remainingProperties.Any())
         {
-            sb.AppendLine();
-            sb.AppendLine("        // Set remaining properties not handled by constructor");
-            GeneratePropertySetters(sb, remainingSettableProperties, "result", "entity");
+            sb.AppendLine("        // Set remaining properties");
+            GeneratePropertySetters(sb, remainingProperties, "result", "entity");
         }
     }
 
-    private static IMethodSymbol? FindBestConstructor(
-        List<IMethodSymbol> constructors,
-        List<IPropertySymbol> allProperties,
-        List<IPropertySymbol> coreProperties)
+    private static void GenerateConstructorParameterExtraction(StringBuilder sb, IParameterSymbol parameter, string entityVar)
+    {
+        var paramName = parameter.Name;
+        // For constructor parameters, we'll assume the property name matches the parameter name
+        // but with proper casing (camelCase for Neo4j properties)
+        var propName = Utils.GetPropertyNameFromParameter(parameter);
+        var paramType = parameter.Type.ToDisplayString();
+
+        // Use parameter-specific variable names to avoid conflicts
+        var propRepVar = $"{paramName.ToLowerInvariant()}PropRep";
+        var simplePropVar = $"{paramName.ToLowerInvariant()}SimpleProp";
+        var complexPropVar = $"{paramName.ToLowerInvariant()}ComplexProp";
+
+        sb.AppendLine($"        // Extracting value for parameter '{paramName}'");
+        sb.AppendLine($"        {paramType} {paramName};");
+        sb.AppendLine($"        // Look for property in both simple and complex properties");
+        sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propName}\", out var {simplePropVar}) ? {simplePropVar}");
+        sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
+        sb.AppendLine($"        if ({propRepVar} != null)");
+        sb.AppendLine("        {");
+
+        // Use the specific variable name directly - no more redundant assignment
+        GenerateValueExtraction(sb, parameter.Type, paramName, propName, propRepVar, 12);
+
+        sb.AppendLine("        }");
+        sb.AppendLine("        else");
+        sb.AppendLine("        {");
+
+        if (parameter.HasExplicitDefaultValue)
+        {
+            var defaultValue = FormatDefaultValue(parameter.ExplicitDefaultValue, parameter.Type);
+            sb.AppendLine($"            {paramName} = {defaultValue};");
+        }
+        else if (parameter.Type.IsReferenceType)
+        {
+            sb.AppendLine($"            throw new InvalidOperationException(\"Required property '{paramName}' is missing\");");
+        }
+        else
+        {
+            sb.AppendLine($"            {paramName} = default({paramType});");
+        }
+
+        sb.AppendLine("        }");
+    }
+
+    private static void GeneratePropertySetters(StringBuilder sb, List<IPropertySymbol> properties, string variableName, string entityVar)
+    {
+        foreach (var property in properties)
+        {
+            var propertyName = Utils.GetPropertyName(property);
+            var propName = property.Name;
+
+            // Use property-specific variable names to avoid conflicts
+            var propRepVar = $"{propName.ToLowerInvariant()}PropRep";
+            var simplePropVar = $"{propName.ToLowerInvariant()}SimpleProp";
+            var complexPropVar = $"{propName.ToLowerInvariant()}ComplexProp";
+
+            sb.AppendLine($"        // Look for property '{propName}' in both simple and complex properties");
+            sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
+            sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
+            sb.AppendLine($"        if ({propRepVar} != null)");
+            sb.AppendLine("        {");
+
+            GenerateValueExtraction(sb, property.Type, $"{variableName}.{propName}", propertyName, propRepVar, 12);
+
+            sb.AppendLine("        }");
+        }
+    }
+
+    private static void GenerateValueExtraction(StringBuilder sb, ITypeSymbol targetType, string variableName, string propertyLabel, string propRepVarName, int indent)
+    {
+        var indentStr = new string(' ', indent);
+
+        if (GraphDataModel.IsCollectionOfSimple(targetType) || GraphDataModel.IsCollectionOfComplex(targetType))
+        {
+            GenerateCollectionDeserialization(sb, targetType, variableName, propertyLabel, propRepVarName, indent);
+        }
+        else if (GraphDataModel.IsSimple(targetType))
+        {
+            sb.AppendLine($"{indentStr}// Extract simple value using base class conversion");
+            sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is SimpleValue simpleValue)");
+            sb.AppendLine($"{indentStr}{{");
+
+            // Get the actual type for typeof() - strip nullable annotations for reference types
+            var typeForTypeOf = Utils.GetTypeForTypeOf(targetType);
+            var castType = targetType.ToDisplayString();
+
+            sb.AppendLine($"{indentStr}    {variableName} = ({castType})ConvertFromNeo4jValue(simpleValue.Object, typeof({typeForTypeOf}))!;");
+            sb.AppendLine($"{indentStr}}}");
+            sb.AppendLine($"{indentStr}else");
+            sb.AppendLine($"{indentStr}{{");
+
+            if (targetType.IsReferenceType && targetType.NullableAnnotation != NullableAnnotation.Annotated)
+            {
+                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required simple property is missing or null\");");
+            }
+            else
+            {
+                sb.AppendLine($"{indentStr}    {variableName} = default({castType});");
+            }
+
+            sb.AppendLine($"{indentStr}}}");
+        }
+        else
+        {
+            // Complex type handling stays the same...
+            sb.AppendLine($"{indentStr}// Extract complex value");
+            sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is Entity complexEntity)");
+            sb.AppendLine($"{indentStr}{{");
+            sb.AppendLine($"{indentStr}    var complexSerializer = EntitySerializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(targetType)}));");
+            sb.AppendLine($"{indentStr}    if (complexSerializer != null)");
+            sb.AppendLine($"{indentStr}    {{");
+            sb.AppendLine($"{indentStr}        {variableName} = ({targetType.ToDisplayString()})complexSerializer.Deserialize(complexEntity);");
+            sb.AppendLine($"{indentStr}    }}");
+            sb.AppendLine($"{indentStr}    else");
+            sb.AppendLine($"{indentStr}    {{");
+            sb.AppendLine($"{indentStr}        throw new InvalidOperationException($\"No serializer found for type {targetType.ToDisplayString()}\");");
+            sb.AppendLine($"{indentStr}    }}");
+            sb.AppendLine($"{indentStr}}}");
+            sb.AppendLine($"{indentStr}else");
+            sb.AppendLine($"{indentStr}{{");
+
+            if (targetType.IsReferenceType && targetType.NullableAnnotation != NullableAnnotation.Annotated)
+            {
+                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required complex property is missing or null\");");
+            }
+            else
+            {
+                sb.AppendLine($"{indentStr}    {variableName} = default({targetType.ToDisplayString()});");
+            }
+
+            sb.AppendLine($"{indentStr}}}");
+        }
+    }
+
+    private static void GenerateCollectionDeserialization(StringBuilder sb, ITypeSymbol collectionType, string variableName, string propertyLabel, string propRepVarName, int indent)
+    {
+        var indentStr = new string(' ', indent);
+        var elementType = GraphDataModel.GetCollectionElementType(collectionType);
+
+        if (elementType == null)
+        {
+            sb.AppendLine($"{indentStr}// Warning: Could not determine element type for collection");
+            sb.AppendLine($"{indentStr}{variableName} = default({collectionType.ToDisplayString()});");
+            return;
+        }
+
+        var isElementSimple = GraphDataModel.IsSimple(elementType);
+
+        sb.AppendLine($"{indentStr}// Extract collection value");
+
+        if (isElementSimple)
+        {
+            sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is SimpleCollection simpleCollection)");
+            sb.AppendLine($"{indentStr}{{");
+            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.ToDisplayString()}>();");
+            sb.AppendLine($"{indentStr}    foreach (var simpleValue in simpleCollection.Values)");
+            sb.AppendLine($"{indentStr}    {{");
+
+            var elementTypeForTypeOf = Utils.GetTypeForTypeOf(elementType);
+            var elementCastType = elementType.ToDisplayString();
+
+            // Use the base class conversion method for each element
+            if (elementType.IsReferenceType || elementType.NullableAnnotation == NullableAnnotation.Annotated)
+            {
+                sb.AppendLine($"{indentStr}        if (simpleValue.Object != null)");
+                sb.AppendLine($"{indentStr}        {{");
+                sb.AppendLine($"{indentStr}            var convertedValue = ({elementCastType})ConvertFromNeo4jValue(simpleValue.Object, typeof({elementTypeForTypeOf}))!;");
+                sb.AppendLine($"{indentStr}            collection.Add(convertedValue);");
+                sb.AppendLine($"{indentStr}        }}");
+            }
+            else
+            {
+                sb.AppendLine($"{indentStr}        var convertedValue = ({elementCastType})ConvertFromNeo4jValue(simpleValue.Object, typeof({elementTypeForTypeOf}))!;");
+                sb.AppendLine($"{indentStr}        collection.Add(convertedValue);");
+            }
+
+            sb.AppendLine($"{indentStr}    }}");
+        }
+        else
+        {
+            // Complex collection handling stays the same...
+            sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is EntityCollection entityCollection)");
+            sb.AppendLine($"{indentStr}{{");
+            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.ToDisplayString()}>();");
+            sb.AppendLine($"{indentStr}    var itemSerializer = EntitySerializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(elementType)}));");
+            sb.AppendLine($"{indentStr}    if (itemSerializer != null)");
+            sb.AppendLine($"{indentStr}    {{");
+            sb.AppendLine($"{indentStr}        foreach (var entityItem in entityCollection.Entities)");
+            sb.AppendLine($"{indentStr}        {{");
+            sb.AppendLine($"{indentStr}            var deserializedItem = itemSerializer.Deserialize(entityItem);");
+            sb.AppendLine($"{indentStr}            if (deserializedItem is {elementType.ToDisplayString()} typedItem)");
+            sb.AppendLine($"{indentStr}            {{");
+            sb.AppendLine($"{indentStr}                collection.Add(typedItem);");
+            sb.AppendLine($"{indentStr}            }}");
+            sb.AppendLine($"{indentStr}        }}");
+            sb.AppendLine($"{indentStr}    }}");
+            sb.AppendLine($"{indentStr}    else");
+            sb.AppendLine($"{indentStr}    {{");
+            sb.AppendLine($"{indentStr}        throw new InvalidOperationException($\"No serializer found for element type {elementType.ToDisplayString()}\");");
+            sb.AppendLine($"{indentStr}    }}");
+        }
+
+        // Convert to appropriate collection type
+        if (collectionType.TypeKind == TypeKind.Array)
+        {
+            sb.AppendLine($"{indentStr}    {variableName} = collection.ToArray();");
+        }
+        else
+        {
+            sb.AppendLine($"{indentStr}    {variableName} = collection;");
+        }
+
+        sb.AppendLine($"{indentStr}}}");
+        sb.AppendLine($"{indentStr}else");
+        sb.AppendLine($"{indentStr}{{");
+
+        if (collectionType.IsReferenceType && collectionType.NullableAnnotation != NullableAnnotation.Annotated)
+        {
+            sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required collection property is missing or null\");");
+        }
+        else
+        {
+            sb.AppendLine($"{indentStr}    {variableName} = default({collectionType.ToDisplayString()});");
+        }
+
+        sb.AppendLine($"{indentStr}}}");
+    }
+
+    private static IMethodSymbol? FindBestConstructor(List<IMethodSymbol> constructors, List<IPropertySymbol> allProperties, List<IPropertySymbol> coreProperties)
     {
         // Score each constructor
         var constructorScores = constructors.Select(ctor =>
@@ -266,183 +398,15 @@ internal class Deserialization
             .FirstOrDefault();
     }
 
-    private static void GenerateValueExtraction(StringBuilder sb, ITypeSymbol targetType, string variableName, string propertyLabel, int indent)
+    private static string FormatDefaultValue(object? defaultValue, ITypeSymbol type)
     {
-        var indentStr = new string(' ', indent);
-
-        // Determine the type category at compile time - no runtime checks needed
-        if (GraphDataModel.IsCollectionOfSimple(targetType) || GraphDataModel.IsCollectionOfComplex(targetType))
+        return defaultValue switch
         {
-            GenerateCollectionDeserialization(sb, targetType, variableName, propertyLabel, indent);
-        }
-        else if (GraphDataModel.IsSimple(targetType))
-        {
-            sb.AppendLine($"{indentStr}// Extract simple value");
-            sb.AppendLine($"{indentStr}if (propRep.Value is SimpleValue simpleValue)");
-            sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    {variableName} = ({targetType.ToDisplayString()})simpleValue.Object;");
-            sb.AppendLine($"{indentStr}}}");
-            sb.AppendLine($"{indentStr}else");
-            sb.AppendLine($"{indentStr}{{");
-            if (targetType.IsReferenceType && targetType.NullableAnnotation != NullableAnnotation.Annotated)
-            {
-                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required simple property is missing or null\");");
-            }
-            else if (targetType.IsReferenceType)
-            {
-                sb.AppendLine($"{indentStr}    {variableName} = default({targetType.ToDisplayString()})!;");
-            }
-            else
-            {
-                sb.AppendLine($"{indentStr}    {variableName} = default({targetType.ToDisplayString()});");
-            }
-            sb.AppendLine($"{indentStr}}}");
-        }
-        else
-        {
-            // Complex type - recursively deserialize
-            sb.AppendLine($"{indentStr}// Extract complex value");
-            sb.AppendLine($"{indentStr}if (propRep.Value is Entity complexEntity)");
-            sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    var complexSerializer = EntitySerializerRegistry.GetSerializer(typeof({GetTypeOfName(targetType)}));");
-            sb.AppendLine($"{indentStr}    if (complexSerializer != null)");
-            sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        {variableName} = ({targetType.ToDisplayString()})complexSerializer.Deserialize(complexEntity);");
-            sb.AppendLine($"{indentStr}    }}");
-            sb.AppendLine($"{indentStr}    else");
-            sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        throw new InvalidOperationException($\"No serializer found for type {targetType.ToDisplayString()}\");");
-            sb.AppendLine($"{indentStr}    }}");
-            sb.AppendLine($"{indentStr}}}");
-            sb.AppendLine($"{indentStr}else");
-            sb.AppendLine($"{indentStr}{{");
-            if (targetType.IsReferenceType && targetType.NullableAnnotation != NullableAnnotation.Annotated)
-            {
-                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required complex property is missing or null\");");
-            }
-            else if (targetType.IsReferenceType)
-            {
-                sb.AppendLine($"{indentStr}    {variableName} = default({targetType.ToDisplayString()})!;");
-            }
-            else
-            {
-                sb.AppendLine($"{indentStr}    {variableName} = default({targetType.ToDisplayString()});");
-            }
-            sb.AppendLine($"{indentStr}}}");
-        }
-    }
-
-    private static void GenerateCollectionDeserialization(StringBuilder sb, ITypeSymbol collectionType, string variableName, string propertyLabel, int indent)
-    {
-        var indentStr = new string(' ', indent);
-        var elementType = GraphDataModel.GetCollectionElementType(collectionType);
-        if (elementType == null) return; // Should not happen for valid collections
-
-        var isElementSimple = GraphDataModel.IsSimple(elementType);
-
-        sb.AppendLine($"{indentStr}// Extract collection value");
-        if (isElementSimple)
-        {
-            sb.AppendLine($"{indentStr}if (propRep.Value is SimpleCollection simpleCollection)");
-            sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.ToDisplayString()}>();");
-            sb.AppendLine($"{indentStr}    foreach (var simpleValue in simpleCollection.Values)");
-            sb.AppendLine($"{indentStr}    {{");
-
-            // Only add null check for reference types
-            if (elementType.IsReferenceType || elementType.NullableAnnotation == NullableAnnotation.Annotated)
-            {
-                sb.AppendLine($"{indentStr}        if (simpleValue.Object != null)");
-                sb.AppendLine($"{indentStr}        {{");
-                sb.AppendLine($"{indentStr}            collection.Add(({elementType.ToDisplayString()})simpleValue.Object);");
-                sb.AppendLine($"{indentStr}        }}");
-            }
-            else
-            {
-                // Value types can't be null, so no null check needed
-                sb.AppendLine($"{indentStr}        collection.Add(({elementType.ToDisplayString()})simpleValue.Object);");
-            }
-
-            sb.AppendLine($"{indentStr}    }}");
-        }
-        else
-        {
-            sb.AppendLine($"{indentStr}if (propRep.Value is EntityCollection entityCollection)");
-            sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.ToDisplayString()}>();");
-            sb.AppendLine($"{indentStr}    var itemSerializer = EntitySerializerRegistry.GetSerializer(typeof({GetTypeOfName(elementType)}));");
-            sb.AppendLine($"{indentStr}    if (itemSerializer != null)");
-            sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        foreach (var entityItem in entityCollection.Entities)");
-            sb.AppendLine($"{indentStr}        {{");
-            sb.AppendLine($"{indentStr}            var deserializedItem = itemSerializer.Deserialize(entityItem);");
-            sb.AppendLine($"{indentStr}            if (deserializedItem is {elementType.ToDisplayString()} typedItem)");
-            sb.AppendLine($"{indentStr}            {{");
-            sb.AppendLine($"{indentStr}                collection.Add(typedItem);");
-            sb.AppendLine($"{indentStr}            }}");
-            sb.AppendLine($"{indentStr}        }}");
-            sb.AppendLine($"{indentStr}    }}");
-            sb.AppendLine($"{indentStr}    else");
-            sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        throw new InvalidOperationException($\"No serializer found for element type {elementType.ToDisplayString()}\");");
-            sb.AppendLine($"{indentStr}    }}");
-        }
-
-        // Convert to appropriate collection type
-        if (collectionType.TypeKind == TypeKind.Array)
-        {
-            sb.AppendLine($"{indentStr}    {variableName} = collection.ToArray();");
-        }
-        else
-        {
-            sb.AppendLine($"{indentStr}    {variableName} = collection;");
-        }
-
-        sb.AppendLine($"{indentStr}}}");
-        sb.AppendLine($"{indentStr}else");
-        sb.AppendLine($"{indentStr}{{");
-        if (collectionType.IsReferenceType && collectionType.NullableAnnotation != NullableAnnotation.Annotated)
-        {
-            sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required collection property is missing or null\");");
-        }
-        else if (collectionType.IsReferenceType)
-        {
-            sb.AppendLine($"{indentStr}    {variableName} = default({collectionType.ToDisplayString()})!;");
-        }
-        else
-        {
-            sb.AppendLine($"{indentStr}    {variableName} = default({collectionType.ToDisplayString()});");
-        }
-        sb.AppendLine($"{indentStr}}}");
-    }
-
-    private static void GeneratePropertySetters(StringBuilder sb, List<IPropertySymbol> properties, string variableName, string entityVar)
-    {
-        foreach (var property in properties)
-        {
-            var propertyName = Utils.GetPropertyName(property);
-
-            sb.AppendLine($"        // Look for property in both simple and complex properties");
-            sb.AppendLine($"        var {property.Name.ToLower()}PropRep = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {property.Name.ToLower()}SimpleProp) ? {property.Name.ToLower()}SimpleProp");
-            sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {property.Name.ToLower()}ComplexProp) ? {property.Name.ToLower()}ComplexProp : null;");
-            sb.AppendLine($"        if ({property.Name.ToLower()}PropRep != null)");
-            sb.AppendLine("        {");
-            sb.AppendLine($"            var propRep = {property.Name.ToLower()}PropRep;");
-
-            GenerateValueExtraction(sb, property.Type, $"{variableName}.{property.Name}", propertyName, 12);
-
-            sb.AppendLine("        }");
-        }
-    }
-
-    private static string GetTypeOfName(ITypeSymbol type)
-    {
-        // For nullable reference types, get the underlying non-nullable type
-        if (type.NullableAnnotation == NullableAnnotation.Annotated && !type.IsValueType)
-        {
-            return type.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString();
-        }
-
-        return type.ToDisplayString();
+            null when type.IsReferenceType => "null",
+            null => $"default({type.ToDisplayString()})",
+            string str => $"\"{str}\"",
+            bool b => b.ToString().ToLowerInvariant(),
+            _ => defaultValue.ToString() ?? "null"
+        };
     }
 }

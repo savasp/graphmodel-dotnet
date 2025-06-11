@@ -13,13 +13,14 @@
 // limitations under the License.
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cvoya.Graph.Model.Neo4j.Serialization;
 
 internal class GraphEntitySerializer(GraphContext context)
 {
-    private readonly ILogger<GraphEntitySerializer>? _logger = context.LoggerFactory?.CreateLogger<GraphEntitySerializer>();
-    private readonly EntityFactory _entityFactory = new EntityFactory(context.LoggerFactory);
+    private readonly ILogger<GraphEntitySerializer> _logger = context.LoggerFactory?.CreateLogger<GraphEntitySerializer>()
+        ?? NullLogger<GraphEntitySerializer>.Instance;
 
     public NodeSerializationResult SerializeNode(IEntity entity)
     {
@@ -64,7 +65,7 @@ internal class GraphEntitySerializer(GraphContext context)
             }
         }
 
-        return _entityFactory.CreateInstance(targetType, neo4jNode);
+        return context.EntityFactory.CreateInstance(targetType, neo4jNode);
     }
 
     public RelationshipSerializationResult SerializeRelationship(IRelationship relationship)
@@ -114,6 +115,6 @@ internal class GraphEntitySerializer(GraphContext context)
         }
 
         // Create the relationship instance
-        return _entityFactory.CreateInstance(targetType, neo4jRelationship);
+        return context.EntityFactory.CreateInstance(targetType, neo4jRelationship);
     }
 }

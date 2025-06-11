@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System.Collections;
+using System.Xml.Serialization;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Model.Neo4j.Serialization;
@@ -33,6 +34,12 @@ public abstract class EntitySerializerBase
     /// <param name="entity">The entity to deserialize</param>
     /// <returns>A .NET object representing the deserialized entity</returns>
     public abstract object Deserialize(Entity entity);
+
+    /// <summary>
+    /// Gets the schema information for the entity type this serializer handles
+    /// </summary>
+    /// <returns>A <see cref="EntitySchema"/> object representing the schema</returns>
+    public abstract EntitySchema GetSchema();
 
     /// <summary>
     /// Serializes a .NET object into a Neo4j entity representation
@@ -75,34 +82,49 @@ public abstract class EntitySerializerBase
     };
 
     /// <summary>
-    /// Converts a Neo4j value to the specified .NET type
+    /// Converts a Neo4j value to the specified .NET type with enhanced type conversion
     /// </summary>
     public static object? ConvertFromNeo4jValue(object? value, Type targetType)
     {
         if (value is null)
         {
-            throw new ArgumentNullException(nameof(value), "Value cannot be null");
+            return null;
         }
 
+        // Handle nullable types
         var underlyingType = Nullable.GetUnderlyingType(targetType);
         if (underlyingType != null)
         {
             targetType = underlyingType;
         }
 
+        // If types already match, return as-is
         if (value.GetType() == targetType)
             return value;
-        if (value == null)
-            return null;
 
         return (targetType, value) switch
         {
+            // String conversions
             (Type t, _) when t == typeof(string) => value.ToString(),
+
+            // Enhanced numeric conversions to handle Neo4j's type quirks
+            (Type t, int i) when t == typeof(long) => (long)i,
+            (Type t, long l) when t == typeof(int) && l >= int.MinValue && l <= int.MaxValue => (int)l,
+            (Type t, short s) when t == typeof(int) => (int)s,
+            (Type t, byte b) when t == typeof(int) => (int)b,
             (Type t, _) when t == typeof(int) => Convert.ToInt32(value),
             (Type t, _) when t == typeof(long) => Convert.ToInt64(value),
+
+            // Floating point conversions
+            (Type t, float f) when t == typeof(double) => (double)f,
+            (Type t, double d) when t == typeof(float) => (float)d,
+            (Type t, int i) when t == typeof(double) => (double)i,
+            (Type t, long l) when t == typeof(double) => (double)l,
             (Type t, _) when t == typeof(double) => Convert.ToDouble(value),
             (Type t, _) when t == typeof(float) => Convert.ToSingle(value),
             (Type t, _) when t == typeof(decimal) => ConvertToDecimal(value),
+
+            // Other basic types
             (Type t, _) when t == typeof(bool) => Convert.ToBoolean(value),
             (Type t, _) when t == typeof(byte) => Convert.ToByte(value),
             (Type t, _) when t == typeof(sbyte) => Convert.ToSByte(value),
@@ -110,6 +132,8 @@ public abstract class EntitySerializerBase
             (Type t, _) when t == typeof(ushort) => Convert.ToUInt16(value),
             (Type t, _) when t == typeof(uint) => Convert.ToUInt32(value),
             (Type t, _) when t == typeof(ulong) => Convert.ToUInt64(value),
+
+            // DateTime conversions
             (Type t, ZonedDateTime zdt) when t == typeof(DateTime) => zdt.ToDateTimeOffset().DateTime,
             (Type t, LocalDateTime ldt) when t == typeof(DateTime) => ldt.ToDateTime(),
             (Type t, LocalDate ld) when t == typeof(DateTime) => ld.ToDateTime(),
@@ -120,18 +144,57 @@ public abstract class EntitySerializerBase
             (Type t, LocalTime lt) when t == typeof(TimeOnly) => TimeOnly.FromTimeSpan(lt.ToTimeSpan()),
             (Type t, LocalDate ld) when t == typeof(DateOnly) => DateOnly.FromDateTime(ld.ToDateTime()),
             (Type t, LocalTime lt) when t == typeof(TimeSpan) => lt.ToTimeSpan(),
-            (Type t, LocalDate ld) when t == typeof(DateTime) => ConvertToDateOnly(ld),
+            (Type t, LocalDate ld) when t == typeof(DateOnly) => ConvertToDateOnly(ld),
             (Type t, LocalDateTime ldt) when t == typeof(DateOnly) => DateOnly.FromDateTime(ldt.ToDateTime()),
-            (Type t, LocalTime lt) when t == typeof(DateTime) => lt.ToString(),
+
+            // Guid and enum conversions
             (Type t, _) when t == typeof(Guid) => Guid.Parse(value.ToString()!),
             (Type t, string strValue) when t.IsEnum => Enum.Parse(targetType, strValue),
             (Type t, _) when t.IsEnum => Enum.ToObject(targetType, value),
+
+            // Point conversion
             (Type t, global::Neo4j.Driver.Point point) when t == typeof(Model.Point) => new Model.Point(point.X, point.Y, point.Z),
+
+            // Collection conversions
             (Type t, IList neo4jList) when t.IsArray => ConvertToArray(neo4jList, t.GetElementType()!),
             (Type t, IList neo4jList) when t.IsGenericType && t.GetGenericTypeDefinition().IsAssignableTo(typeof(IEnumerable<>)) => ConvertToList(neo4jList, t),
+
             _ => throw new NotSupportedException($"Cannot convert Neo4j value of type {value.GetType()} to {targetType}")
         };
     }
+
+    /// <summary>
+    /// Generic version of ConvertFromNeo4jValue for type safety
+    /// </summary>
+    public static T? ConvertFromNeo4jValue<T>(object? value)
+    {
+        return (T?)ConvertFromNeo4jValue(value, typeof(T));
+    }
+
+    /// <summary>
+    /// Normalizes a value for serialization by converting Neo4j-specific types to standard .NET types.
+    /// </summary>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    public static object? NormalizeValueForSerialization(object? value) => value switch
+    {
+        null => null,
+
+        // Convert Neo4j temporal types to standard .NET types
+        ZonedDateTime zdt => zdt.ToDateTimeOffset().DateTime,
+        LocalDateTime ldt => ldt.ToDateTime(),
+        LocalDate ld => DateOnly.FromDateTime(ld.ToDateTime()),
+        LocalTime lt => TimeOnly.FromTimeSpan(lt.ToTimeSpan()),
+
+        // Convert Neo4j spatial types
+        global::Neo4j.Driver.Point point => new Model.Point(point.X, point.Y, point.Z),
+
+        // Handle collections recursively
+        IList<object> list => list.Select(NormalizeValueForSerialization).ToList(),
+
+        // Everything else passes through as-is
+        _ => value
+    };
 
     /// <summary>
     /// Converts a collection of Neo4j values to an array of objects

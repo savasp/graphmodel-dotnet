@@ -172,8 +172,6 @@ internal class Graph : IGraph
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        GraphDataModel.EnforceGraphConstraintsForNode(node);
-
         try
         {
             _logger?.LogDebug("Creating node of type {NodeType}", typeof(N).Name);
@@ -199,8 +197,6 @@ internal class Graph : IGraph
         where R : IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
-
-        GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
 
         try
         {

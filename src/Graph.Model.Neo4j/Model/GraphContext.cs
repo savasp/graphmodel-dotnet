@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Cvoya.Graph.Model.Neo4j.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 
@@ -27,8 +28,10 @@ internal record GraphContext(
     private Neo4jConstraintManager? _constraintManager;
     private Neo4jNodeManager? _nodeManager;
     private Neo4jRelationshipManager? _relationshipManager;
+    private EntityFactory? _entityFactory;
 
     internal Neo4jConstraintManager ConstraintManager => _constraintManager ??= new(this);
     internal Neo4jNodeManager NodeManager => _nodeManager ??= new(this);
     internal Neo4jRelationshipManager RelationshipManager => _relationshipManager ??= new(this);
+    internal EntityFactory EntityFactory => _entityFactory ??= new(LoggerFactory);
 }

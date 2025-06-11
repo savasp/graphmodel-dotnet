@@ -81,13 +81,26 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 RETURN r";
 
             _logger?.LogDebug("Cypher query: {CypherQuery}", cypher);
+
+            var properties = serializedRelationship.SerializedEntity.SimpleProperties
+                .Where(kv => kv.Value.Value is not null)
+                .ToDictionary(
+                    kv => kv.Key,
+                    kv => kv.Value.Value switch
+                    {
+                        SimpleValue simpleValue => simpleValue.Object,
+                        SimpleCollection simpleCollection => simpleCollection.Values.Select(v => v.Object),
+                        _ => throw new GraphException($"This is a simple property so there should be no other Serialized type")
+                    });
+
             _logger?.LogDebug("Parameters: SourceId={SourceId}, TargetId={TargetId}, Properties={Properties}",
-                serializedRelationship.SourceId, serializedRelationship.TargetId, serializedRelationship.SerializedEntity);
+                serializedRelationship.SourceId, serializedRelationship.TargetId, properties);
+
             var result = await transaction.Transaction.RunAsync(cypher, new
             {
                 sourceId = serializedRelationship.SourceId,
                 targetId = serializedRelationship.TargetId,
-                props = serializedRelationship.SerializedEntity
+                props = properties
             });
 
             if (await result.CountAsync(cancellationToken) == 0)
