@@ -82,6 +82,7 @@ try
     Console.WriteLine($"✓ Created employee: {alice.Name}");
     Console.WriteLine($"✓ Created employee: {bob.Name}\n");
 
+    var springfield = new City { Name = "Springfield" };
     // Create a node with complex a complex property
     var charlie = new PersonWithComplex
     {
@@ -92,7 +93,7 @@ try
         HomeAddress = new Address
         {
             Street = "456 Elm St",
-            City = "Springfield",
+            City = springfield,
             State = State.CA,
             ZipCode = "62704",
             Country = "USA",
@@ -101,7 +102,7 @@ try
         WorkAddress = new Address
         {
             Street = "789 Oak St",
-            City = "Springfield",
+            City = springfield,
             State = State.CA,
             ZipCode = "62704",
             Country = "USA",
@@ -115,6 +116,13 @@ try
     Console.WriteLine($"  Home Address: {charlie.HomeAddress.Street}, {charlie.HomeAddress.City}, {charlie.HomeAddress.State} {charlie.HomeAddress.ZipCode}, {charlie.HomeAddress.Country}");
     Console.WriteLine($"  Work Address: {charlie.WorkAddress.Street}, {charlie.WorkAddress.City}, {charlie.WorkAddress.State} {charlie.WorkAddress.ZipCode}, {charlie.WorkAddress.Country}\n");
 
+    var seattle = new City { Name = "Seattle" };
+    var foo = new Foo
+    {
+        Name = "Shared Foo",
+        Value = 100
+    };
+
     // Create a node with a list of complex properties
     var dave = new PersonWithComplex
     {
@@ -122,10 +130,11 @@ try
         Email = "dave@techcorp.com",
         Age = 40,
         Department = "Sales",
+        Foo = foo, // Reference to shared Foo
         HomeAddress = new Address
         {
             Street = "123 Main St",
-            City = "Springfield",
+            City = seattle,
             State = State.WA,
             ZipCode = "62704",
             Country = "USA",
@@ -136,7 +145,7 @@ try
             new Address
             {
                 Street = "789 Oak St",
-                City = "Springfield",
+                City = seattle,
                 State = State.WA,
                 ZipCode = "62704",
                 Country = "USA",
@@ -145,7 +154,7 @@ try
             new Address
             {
                 Street = "101 Pine St",
-                City = "Springfield",
+                City = seattle,
                 State = State.OR,
                 ZipCode = "62704",
                 Country = "USA",
@@ -163,7 +172,7 @@ try
         HomeAddress = new Address
         {
             Street = "321 Oak St",
-            City = "Springfield",
+            City = seattle,
             State = State.CA,
             ZipCode = "62704",
             Country = "USA",
@@ -174,7 +183,7 @@ try
             new Address
             {
                 Street = "654 Maple St",
-                City = "Springfield",
+                City = seattle,
                 State = State.CA,
                 ZipCode = "62704",
                 Country = "USA",
@@ -190,11 +199,7 @@ try
             {
                 Description = "Elen's Bar",
                 Numbers = new List<int> { 7, 8, 9 },
-                Foo = new Foo
-                {
-                    Name = "Nested Foo",
-                    Value = 100
-                },
+                Foo = foo, // Reference to shared Foo
                 Baz = new Baz
                 {
                     Title = "Elen's Baz",

@@ -28,7 +28,7 @@ public enum State
 public record Address
 {
     public string Street { get; set; } = string.Empty;
-    public string City { get; set; } = string.Empty;
+    public City City { get; set; } = new City();
     public State State { get; set; } = State.Unknown;
     public string ZipCode { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
@@ -63,7 +63,7 @@ public record Person : Node
     public List<EmotionalState> EmotionalStates { get; set; } = new List<EmotionalState>();
 }
 
-public record Foo
+public class Foo
 {
     public string Name { get; set; } = string.Empty;
     public int Value { get; set; }
@@ -71,7 +71,7 @@ public record Foo
     public Bar Bar { get; set; } = new Bar();
 }
 
-public record Bar
+public class Bar
 {
     public string Description { get; set; } = string.Empty;
     public List<int> Numbers { get; set; } = new List<int>();
@@ -79,7 +79,7 @@ public record Bar
     public Baz? Baz { get; set; } = null;
 }
 
-public record Baz
+public class Baz
 {
     public string Title { get; set; } = string.Empty;
     public List<string> Tags { get; set; } = new List<string>();
@@ -98,4 +98,9 @@ public record PersonWithComplex : Node
     public List<Address> PreviousAddresses { get; set; } = new List<Address>();
     public Foo Foo { get; set; } = new Foo();
     public Bar? Bar { get; set; } = null;
+}
+
+public class City
+{
+    public string Name { get; set; } = string.Empty;
 }
