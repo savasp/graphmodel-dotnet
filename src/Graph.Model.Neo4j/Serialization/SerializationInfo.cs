@@ -12,30 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Reflection;
+
 namespace Cvoya.Graph.Model.Neo4j.Serialization;
 
 /// <summary>
-/// Contains the result of serializing a relationship.
+/// Represents metadata about a property for serialization purposes
 /// </summary>
-internal record RelationshipSerializationResult
-{
-    /// <summary>
-    /// The properties to store on the Neo4j relationship.
-    /// </summary>
-    public required Dictionary<string, IntermediateRepresentation> SerializedEntity { get; init; }
+/// <param name="IsSimple"></param>
+/// <param name="PropertyInfo"></param>
+/// <param name="IsNullable"></param>
+/// <param name="IsCollection"></param>
+/// <param name="CollectionElementType"></param>
+/// <param name="IsEnum"></param>
+/// <param name="Value"></param>
+public record IntermediateRepresentation(
+    PropertyInfo PropertyInfo,
+    bool IsSimple = false,
+    bool IsNullable = false,
+    bool IsCollection = false,
+    Type? CollectionElementType = null,
+    bool IsEnum = false,
+    object? Value = null);
 
-    /// <summary>
-    /// The relationship type/label.
-    /// </summary>
-    public required string Type { get; init; }
-
-    /// <summary>
-    /// The source node ID.
-    /// </summary>
-    public required string SourceId { get; init; }
-
-    /// <summary>
-    /// The target node ID.
-    /// </summary>
-    public required string TargetId { get; init; }
-}

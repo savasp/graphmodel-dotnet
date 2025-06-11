@@ -102,7 +102,7 @@ internal class CypherEngine(GraphContext graphContext)
         }
 
         // Use the serializer to convert Neo4j values to .NET types
-        var convertedValue = _serializer.ConvertScalarFromNeo4jValue(value, typeof(T));
+        var convertedValue = EntitySerializerBase.ConvertFromNeo4jValue(value, typeof(T));
 
         if (convertedValue is T typedValue)
         {
@@ -215,7 +215,7 @@ internal class CypherEngine(GraphContext graphContext)
                 }
 
                 // Handle scalar projections
-                var convertedValue = _serializer.ConvertScalarFromNeo4jValue(value, typeof(T));
+                var convertedValue = EntitySerializerBase.ConvertFromNeo4jValue(value, typeof(T));
                 return convertedValue is T typedValue ? typedValue : default!;
             }
         }
@@ -259,7 +259,7 @@ internal class CypherEngine(GraphContext graphContext)
                     }
                     else
                     {
-                        entity = _serializer.ConvertScalarFromNeo4jValue(value, elementType);
+                        entity = EntitySerializerBase.ConvertFromNeo4jValue(value, elementType);
                     }
 
                     if (entity != null)
@@ -516,41 +516,41 @@ internal class CypherEngine(GraphContext graphContext)
     }
 
     private object DeserializeSingleValue(object? value, Type requestedType, GraphQueryContext queryContext)
-{
-    if (value == null)
     {
-        return null!;
+        if (value == null)
+        {
+            return null!;
+        }
+
+        // Handle Neo4j entities
+        if (value is global::Neo4j.Driver.INode node)
+        {
+            return _serializer.DeserializeNodeFromNeo4jNode(
+                node,
+                requestedType,
+                queryContext.UseMostDerivedType);
+        }
+
+        if (value is global::Neo4j.Driver.IRelationship relationship)
+        {
+            return _serializer.DeserializeRelationshipFromNeo4jRelationship(
+                relationship,
+                requestedType);
+        }
+
+        // Handle scalar values - use the serializer's method which now uses EntitySerializerBase
+        var converted = EntitySerializerBase.ConvertFromNeo4jValue(value, requestedType);
+        if (converted == null && !IsNullableType(requestedType))
+        {
+            throw new NotSupportedException($"Cannot convert value of type {value.GetType()} to non-nullable type {requestedType}");
+        }
+        return converted ?? throw new NotSupportedException($"Cannot convert value of type {value.GetType()} to {requestedType}");
     }
 
-    // Handle Neo4j entities
-    if (value is global::Neo4j.Driver.INode node)
+    private static bool IsNullableType(Type type)
     {
-        return _serializer.DeserializeNodeFromNeo4jNode(
-            node,
-            requestedType,
-            queryContext.UseMostDerivedType);
+        return !type.IsValueType || Nullable.GetUnderlyingType(type) != null;
     }
-
-    if (value is global::Neo4j.Driver.IRelationship relationship)
-    {
-        return _serializer.DeserializeRelationshipFromNeo4jRelationship(
-            relationship,
-            requestedType);
-    }
-
-    // Handle scalar values - use the serializer's method which now uses EntitySerializerBase
-    var converted = _serializer.ConvertScalarFromNeo4jValue(value, requestedType);
-    if (converted == null && !IsNullableType(requestedType))
-    {
-        throw new NotSupportedException($"Cannot convert value of type {value.GetType()} to non-nullable type {requestedType}");
-    }
-    return converted ?? throw new NotSupportedException($"Cannot convert value of type {value.GetType()} to {requestedType}");
-}
-
-private static bool IsNullableType(Type type)
-{
-    return !type.IsValueType || Nullable.GetUnderlyingType(type) != null;
-}
 
     private bool TryDeserializeNodeWithComplexProperties(
         IRecord record,

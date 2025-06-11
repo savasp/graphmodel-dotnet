@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -66,14 +65,90 @@ public class EntitySerializerGenerator : IIncrementalGenerator
     {
         if (types.IsDefaultOrEmpty) return;
 
-        // Generate individual serializer files
+        // Discover all complex property types that need serializers
+        var allTypesToGenerate = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+
+        // Add the primary entity types
         foreach (var type in types.Where(t => t is not null))
         {
-            GenerateSerializerFile(context, type!);
+            allTypesToGenerate.Add(type!);
+        }
+
+        // Discover complex property types recursively
+        var typesToAnalyze = new Queue<INamedTypeSymbol>(allTypesToGenerate);
+        var analyzed = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+
+        while (typesToAnalyze.Count > 0)
+        {
+            var currentType = typesToAnalyze.Dequeue();
+            if (analyzed.Contains(currentType)) continue;
+            analyzed.Add(currentType);
+
+            // Find complex property types
+            var complexPropertyTypes = DiscoverComplexPropertyTypes(currentType);
+            foreach (var complexType in complexPropertyTypes)
+            {
+                if (!allTypesToGenerate.Contains(complexType))
+                {
+                    allTypesToGenerate.Add(complexType);
+                    typesToAnalyze.Enqueue(complexType);
+                }
+            }
+        }
+
+        // Generate individual serializer files for all discovered types
+        foreach (var type in allTypesToGenerate)
+        {
+            GenerateSerializerFile(context, type);
         }
 
         // Generate registration module
-        GenerateRegistrationModule(context, types);
+        GenerateRegistrationModule(context, allTypesToGenerate.Select(t => (INamedTypeSymbol?)t).ToImmutableArray());
+    }
+
+    private static IEnumerable<INamedTypeSymbol> DiscoverComplexPropertyTypes(INamedTypeSymbol type)
+    {
+        var complexTypes = new List<INamedTypeSymbol>();
+
+        // Get all properties of the type
+        var properties = type.GetMembers().OfType<IPropertySymbol>()
+            .Where(p => p.DeclaredAccessibility == Accessibility.Public &&
+                       p.GetMethod != null && p.SetMethod != null);
+
+        foreach (var property in properties)
+        {
+            var propertyType = property.Type;
+
+            // Check if it's a complex type (not simple and not collection of simple)
+            if (!GraphDataModel.IsSimple(propertyType) && !GraphDataModel.IsCollectionOfSimple(propertyType))
+            {
+                // Check if it's a collection of complex types
+                if (GraphDataModel.IsCollectionOfComplex(propertyType))
+                {
+                    var elementType = GraphDataModel.GetCollectionElementType(propertyType);
+                    if (elementType is INamedTypeSymbol namedElementType && IsSerializableComplexType(namedElementType))
+                    {
+                        complexTypes.Add(namedElementType);
+                    }
+                }
+                // Check if it's a single complex type
+                else if (propertyType is INamedTypeSymbol namedPropertyType && IsSerializableComplexType(namedPropertyType))
+                {
+                    complexTypes.Add(namedPropertyType);
+                }
+            }
+        }
+
+        return complexTypes;
+    }
+
+    private static bool IsSerializableComplexType(INamedTypeSymbol type)
+    {
+        // A type is serializable if it's a class (not interface, not abstract) 
+        // and has a parameterless constructor
+        return type.TypeKind == TypeKind.Class &&
+               !type.IsAbstract &&
+               type.InstanceConstructors.Any(c => c.DeclaredAccessibility == Accessibility.Public && c.Parameters.Length == 0);
     }
 
     private static void GenerateSerializerFile(SourceProductionContext context, INamedTypeSymbol type)
@@ -97,401 +172,13 @@ public class EntitySerializerGenerator : IIncrementalGenerator
         sb.AppendLine($"    public override Type EntityType => typeof({type.ToDisplayString()});");
         sb.AppendLine();
 
-        GenerateDeserializeMethod(sb, type);
+        Deserialization.GenerateDeserializeMethod(sb, type);
         sb.AppendLine();
-        GenerateSerializeMethod(sb, type);
+        Serialization.GenerateSerializeMethod(sb, type);
 
         sb.AppendLine("}");
 
         context.AddSource($"{serializerName}.g.cs", sb.ToString());
-    }
-
-    private static void GenerateDeserializeMethod(StringBuilder sb, INamedTypeSymbol type)
-    {
-        sb.AppendLine("    public override object Deserialize(global::Neo4j.Driver.IEntity entity)");
-        sb.AppendLine("    {");
-
-        // Get all properties that we can deserialize
-        var allProperties = GetAllProperties(type)
-            .Where(p => !SerializationShouldSkipProperty(p, type, sb))
-            .ToList();
-
-        // Core properties that must be set (even if readonly)
-        var corePropertyNames = new HashSet<string> { "Id", "StartNodeId", "EndNodeId", "Direction" };
-
-        // Separate properties by type
-        var coreProperties = allProperties.Where(p => corePropertyNames.Contains(p.Name)).ToList();
-        var regularProperties = allProperties.Where(p => !corePropertyNames.Contains(p.Name)).ToList();
-
-        // Properties that can only be set via constructor or init
-        var constructorOnlyProperties = allProperties
-            .Where(p => p.SetMethod == null || p.SetMethod.IsInitOnly)
-            .ToList();
-
-        // Properties that can be set after construction
-        var settableProperties = allProperties
-            .Where(p => p.SetMethod != null &&
-                       !p.SetMethod.IsInitOnly &&
-                       p.SetMethod.DeclaredAccessibility == Accessibility.Public)
-            .ToList();
-
-        // Find all public constructors
-        var constructors = type.Constructors
-            .Where(c => !c.IsStatic && c.DeclaredAccessibility == Accessibility.Public)
-            .OrderBy(c => c.Parameters.Length)
-            .ToList();
-
-        // We need constructor if we have any readonly/init-only properties
-        var needsConstructor = constructorOnlyProperties.Any() || type.IsRecord;
-
-        if (!needsConstructor && constructors.Any(c => c.Parameters.Length == 0))
-        {
-            // Simple case - parameterless constructor and all properties are settable
-            sb.AppendLine($"        var result = new {type.ToDisplayString()}();");
-            GeneratePropertySetters(sb, settableProperties, "result", "entity");
-        }
-        else if (constructors.Any())
-        {
-            // Find the best constructor that can set the most properties (especially core ones)
-            var bestConstructor = FindBestConstructor(constructors, allProperties, coreProperties);
-            if (bestConstructor != null)
-            {
-                GenerateConstructorBasedDeserialization(sb, type, bestConstructor, allProperties);
-            }
-            else
-            {
-                // Fall back to first public constructor
-                GenerateConstructorBasedDeserialization(sb, type, constructors.First(), allProperties);
-            }
-        }
-        else
-        {
-            sb.AppendLine($"        throw new InvalidOperationException(\"No suitable constructor found for type {type.Name}\");");
-        }
-
-        sb.AppendLine("        return result;");
-        sb.AppendLine("    }");
-    }
-
-    private static IMethodSymbol? FindBestConstructor(
-        List<IMethodSymbol> constructors,
-        List<IPropertySymbol> allProperties,
-        List<IPropertySymbol> coreProperties)
-    {
-        // Score each constructor
-        var constructorScores = constructors.Select(ctor =>
-        {
-            var matchingProps = ctor.Parameters
-                .Select(param => allProperties.FirstOrDefault(prop =>
-                    string.Equals(prop.Name, param.Name, StringComparison.OrdinalIgnoreCase)))
-                .Where(p => p != null)
-                .ToList();
-
-            var coreMatches = matchingProps.Count(p => coreProperties.Contains(p!));
-            var regularMatches = matchingProps.Count - coreMatches;
-
-            return new
-            {
-                Constructor = ctor,
-                CoreMatches = coreMatches,
-                RegularMatches = regularMatches,
-                TotalMatches = matchingProps.Count,
-                ExtraParams = ctor.Parameters.Length - matchingProps.Count
-            };
-        }).ToList();
-
-        // Prefer constructors that:
-        // 1. Can set the most core properties (Id, StartNodeId, etc.)
-        // 2. Can set the most total properties
-        // 3. Have the fewest extra parameters
-        return constructorScores
-            .OrderByDescending(x => x.CoreMatches)
-            .ThenByDescending(x => x.TotalMatches)
-            .ThenBy(x => x.ExtraParams)
-            .Select(x => x.Constructor)
-            .FirstOrDefault();
-    }
-
-    private static void GenerateConstructorBasedDeserialization(
-        StringBuilder sb,
-        INamedTypeSymbol type,
-        IMethodSymbol constructor,
-        List<IPropertySymbol> allProperties)
-    {
-        // Get core properties that aren't handled by constructor
-        var corePropertyNames = new HashSet<string> { "Id", "StartNodeId", "EndNodeId", "Direction" };
-        var constructorParamNames = new HashSet<string>(
-            constructor.Parameters.Select(p => p.Name),
-            StringComparer.OrdinalIgnoreCase);
-
-        var unhandledCoreProperties = allProperties
-            .Where(p => corePropertyNames.Contains(p.Name) && !constructorParamNames.Contains(p.Name))
-            .ToList();
-
-        // Generate parameter extraction for constructor params
-        foreach (var param in constructor.Parameters)
-        {
-            var matchingProperty = allProperties.FirstOrDefault(p =>
-                string.Equals(p.Name, param.Name, StringComparison.OrdinalIgnoreCase));
-
-            var propertyName = matchingProperty != null ? GetPropertyName(matchingProperty) : GetPropertyNameFromParameter(param);
-            var paramType = param.Type.ToDisplayString();
-            var isNullable = param.Type.NullableAnnotation == NullableAnnotation.Annotated;
-
-            // Try to get the value from the entity
-            sb.AppendLine($"        // Extracting value for parameter '{param.Name}'");
-
-            if (!isNullable && param.Type.IsReferenceType)
-            {
-                // Non-nullable reference type - we need a value or throw
-                sb.AppendLine($"        string? {param.Name}Temp = null;");
-                sb.AppendLine($"        if (TryGetProperty(entity, \"{propertyName}\", out var {param.Name}Value))");
-                sb.AppendLine("        {");
-                sb.AppendLine($"            {param.Name}Temp = ({paramType}?)ConvertFromNeo4jValue({param.Name}Value, typeof({paramType}));");
-                sb.AppendLine("        }");
-                sb.AppendLine($"        var {param.Name} = {param.Name}Temp ?? throw new InvalidOperationException(\"Required property '{propertyName}' is missing or null\");");
-            }
-            else
-            {
-                // Nullable or value type
-                if (isNullable)
-                {
-                    sb.AppendLine($"        {paramType} {param.Name} = default;");
-                }
-                else
-                {
-                    sb.AppendLine($"        var {param.Name} = default({paramType});");
-                }
-
-                sb.AppendLine($"        if (TryGetProperty(entity, \"{propertyName}\", out var {param.Name}Value))");
-                sb.AppendLine("        {");
-
-                if (isNullable)
-                {
-                    sb.AppendLine($"            {param.Name} = {param.Name}Value == null ? null : ({paramType})ConvertFromNeo4jValue({param.Name}Value, typeof({param.Type.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString()}));");
-                }
-                else
-                {
-                    sb.AppendLine($"            {param.Name} = ({paramType})ConvertFromNeo4jValue({param.Name}Value, typeof({paramType}))!;");
-                }
-
-                sb.AppendLine("        }");
-            }
-        }
-
-        // Before calling constructor, extract values for unhandled core properties
-        var corePropsWithInitSetters = new List<IPropertySymbol>();
-
-        foreach (var coreProp in unhandledCoreProperties)
-        {
-            var propName = GetPropertyName(coreProp);
-            var propType = coreProp.Type.ToDisplayString();
-
-            sb.AppendLine($"        // Extracting core property '{coreProp.Name}' not in constructor");
-
-            if (coreProp.Type.IsReferenceType && coreProp.Type.NullableAnnotation != NullableAnnotation.Annotated)
-            {
-                // Non-nullable reference type
-                sb.AppendLine($"        string? {coreProp.Name}Temp = null;");
-                sb.AppendLine($"        if (TryGetProperty(entity, \"{propName}\", out var {coreProp.Name}Value))");
-                sb.AppendLine("        {");
-                sb.AppendLine($"            {coreProp.Name}Temp = ({propType}?)ConvertFromNeo4jValue({coreProp.Name}Value, typeof({propType}));");
-                sb.AppendLine("        }");
-            }
-            else
-            {
-                sb.AppendLine($"        {propType} {coreProp.Name}Temp = default;");
-                sb.AppendLine($"        if (TryGetProperty(entity, \"{propName}\", out var {coreProp.Name}Value))");
-                sb.AppendLine("        {");
-                sb.AppendLine($"            {coreProp.Name}Temp = ({propType})ConvertFromNeo4jValue({coreProp.Name}Value, typeof({propType}))!;");
-                sb.AppendLine("        }");
-            }
-
-            // Track props with init setters for later
-            if (coreProp.SetMethod?.IsInitOnly == true)
-            {
-                corePropsWithInitSetters.Add(coreProp);
-            }
-        }
-
-        // Call constructor with object initializer syntax if we have init-only properties
-        sb.Append($"        var result = new {type.ToDisplayString()}(");
-        sb.Append(string.Join(", ", constructor.Parameters.Select(p => p.Name)));
-        sb.Append(")");
-
-        // Add object initializer for init-only properties
-        if (corePropsWithInitSetters.Any())
-        {
-            sb.AppendLine();
-            sb.AppendLine("        {");
-            foreach (var coreProp in corePropsWithInitSetters)
-            {
-                if (coreProp.Type.IsReferenceType && coreProp.Type.NullableAnnotation != NullableAnnotation.Annotated)
-                {
-                    // Add null-forgiving operator since we know it won't be null in practice
-                    // or it would have thrown during extraction
-                    sb.AppendLine($"            {coreProp.Name} = {coreProp.Name}Temp!,");
-                }
-                else
-                {
-                    sb.AppendLine($"            {coreProp.Name} = {coreProp.Name}Temp,");
-                }
-            }
-            sb.AppendLine("        };");
-        }
-        else
-        {
-            sb.AppendLine(";");
-        }
-
-        // Set any remaining properties that weren't handled by the constructor
-        var remainingSettableProperties = allProperties
-            .Where(p => p.SetMethod != null &&
-                       !p.SetMethod.IsInitOnly &&
-                       p.SetMethod.DeclaredAccessibility == Accessibility.Public &&
-                       !constructorParamNames.Contains(p.Name))
-            .ToList();
-
-        if (remainingSettableProperties.Any())
-        {
-            sb.AppendLine();
-            sb.AppendLine("        // Set remaining properties not handled by constructor");
-            GeneratePropertySetters(sb, remainingSettableProperties, "result", "entity");
-        }
-    }
-
-    private static void GenerateSerializeMethod(StringBuilder sb, INamedTypeSymbol type)
-    {
-        sb.AppendLine($"    public override Dictionary<string, object?> Serialize(object obj)");
-        sb.AppendLine("    {");
-        sb.AppendLine($"        var entity = ({type.ToDisplayString()})obj;");
-        sb.AppendLine("        var properties = new Dictionary<string, object?>();");
-        sb.AppendLine();
-
-        var properties = GetAllProperties(type);
-
-        foreach (var property in properties)
-        {
-            // Skip properties that shouldn't be serialized - pass the type now
-            if (SerializationShouldSkipProperty(property, type, sb))
-                continue;
-
-            var propertyName = GetPropertyName(property);
-
-            // Check if it's a simple type we can directly serialize
-            if (Cvoya.Graph.Model.Neo4j.Serialization.CodeGen.GraphDataModel.IsSimple(property.Type))
-            {
-                // Only add null check for reference types and nullable value types
-                if (property.Type.IsReferenceType || IsNullableValueType(property.Type))
-                {
-                    sb.AppendLine($"        if (entity.{property.Name} != null)");
-                    sb.AppendLine("        {");
-                    sb.AppendLine($"            properties[\"{propertyName}\"] = ConvertToNeo4jValue(entity.{property.Name});");
-                    sb.AppendLine("        }");
-                }
-                else
-                {
-                    // For non-nullable value types, always add them
-                    sb.AppendLine($"        properties[\"{propertyName}\"] = ConvertToNeo4jValue(entity.{property.Name});");
-                }
-            }
-            else if (Cvoya.Graph.Model.Neo4j.Serialization.CodeGen.GraphDataModel.IsCollectionOfSimple(property.Type))
-            {
-                // Collections are always reference types
-                sb.AppendLine($"        if (entity.{property.Name} != null)");
-                sb.AppendLine("        {");
-                sb.AppendLine($"            properties[\"{propertyName}\"] = ConvertToNeo4jValue(entity.{property.Name});");
-                sb.AppendLine("        }");
-            }
-            // Complex types are skipped - they should be handled as relationships
-        }
-
-        sb.AppendLine("        return properties;");
-        sb.AppendLine("    }");
-    }
-
-    private static bool IsNullableValueType(ITypeSymbol type)
-    {
-        return type is INamedTypeSymbol namedType &&
-               namedType.IsGenericType &&
-               namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T;
-    }
-
-    private static void GeneratePropertySetters(StringBuilder sb, List<IPropertySymbol> properties, string variableName, string entityVar)
-    {
-        foreach (var property in properties)
-        {
-            var propertyName = GetPropertyName(property);
-            var typeName = property.Type.ToDisplayString();
-
-            sb.AppendLine($"        if (TryGetProperty({entityVar}, \"{propertyName}\", out var {property.Name.ToLower()}Value))");
-            sb.AppendLine("        {");
-
-            if (property.Type.NullableAnnotation == NullableAnnotation.Annotated)
-            {
-                sb.AppendLine($"            {variableName}.{property.Name} = {property.Name.ToLower()}Value == null ? null : ({typeName})ConvertFromNeo4jValue({property.Name.ToLower()}Value, typeof({property.Type.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString()}));");
-            }
-            else
-            {
-                sb.AppendLine($"            {variableName}.{property.Name} = ({typeName})ConvertFromNeo4jValue({property.Name.ToLower()}Value, typeof({typeName}))!;");
-            }
-
-            sb.AppendLine("        }");
-        }
-    }
-
-    private static bool SerializationShouldSkipProperty(IPropertySymbol property, INamedTypeSymbol type, StringBuilder? sb = null)
-    {
-        sb?.AppendLine($"        // Checking property: '{property.Name}' of type '{property.Type.ToDisplayString()}'");
-
-        // Never skip these core properties - they're essential for graph entities
-        var coreProperties = new[] { "Id", "StartNodeId", "EndNodeId", "Direction" };
-        if (coreProperties.Contains(property.Name))
-        {
-            sb?.AppendLine($"        // Property '{property.Name}' is a core graph property - never skip.");
-            return false;
-        }
-
-        // Skip static properties
-        if (property.IsStatic)
-        {
-            sb?.AppendLine($"        // Property '{property.Name}' is static, skipping.");
-            return true;
-        }
-
-        // Check if property has [Property(Ignore = true)]
-        var propertyAttribute = property.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute" &&
-                                 a.AttributeClass?.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
-
-        if (propertyAttribute != null)
-        {
-            var ignoreArg = propertyAttribute.NamedArguments
-                .FirstOrDefault(na => na.Key == "Ignore");
-
-            if (ignoreArg.Value.Value is bool ignore && ignore)
-            {
-                sb?.AppendLine($"        // Property '{property.Name}' has [Property(Ignore = true)].");
-                return true;
-            }
-        }
-
-        // For serialization, we need a getter
-        if (property.GetMethod == null || property.DeclaredAccessibility != Accessibility.Public)
-        {
-            sb?.AppendLine($"        // Property '{property.Name}' has no public getter.");
-            return true;
-        }
-
-        // Skip navigation properties (complex types that aren't simple values)
-        if (!Cvoya.Graph.Model.Neo4j.Serialization.CodeGen.GraphDataModel.IsSimple(property.Type) &&
-            !Cvoya.Graph.Model.Neo4j.Serialization.CodeGen.GraphDataModel.IsCollectionOfSimple(property.Type))
-        {
-            sb?.AppendLine($"        // Property '{property.Name}' is a complex type.");
-            return true;
-        }
-
-        return false;
     }
 
     private static void GenerateRegistrationModule(SourceProductionContext context, ImmutableArray<INamedTypeSymbol?> types)
@@ -514,31 +201,27 @@ public class EntitySerializerGenerator : IIncrementalGenerator
             var namespaceName = GetNamespaceName(type);
             var serializerName = $"{type.Name}Serializer";
 
-            sb.AppendLine($"        EntitySerializerRegistry.Register<{typeName}>(new {namespaceName}.{serializerName}());");
+            // Check if the type implements IEntity (INode or IRelationship)
+            var implementsIEntity = type.AllInterfaces.Any(i =>
+                (i.Name == "INode" || i.Name == "IRelationship") &&
+                i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
+
+            if (implementsIEntity)
+            {
+                // Use generic registration for entity types
+                sb.AppendLine($"        EntitySerializerRegistry.Register<{typeName}>(new {namespaceName}.{serializerName}());");
+            }
+            else
+            {
+                // Use non-generic registration for complex property types
+                sb.AppendLine($"        EntitySerializerRegistry.Register(typeof({typeName}), new {namespaceName}.{serializerName}());");
+            }
         }
 
         sb.AppendLine("    }");
         sb.AppendLine("}");
 
         context.AddSource("EntitySerializerRegistration.g.cs", sb.ToString());
-    }
-
-    private static string GetPropertyName(IPropertySymbol property)
-    {
-        var propertyAttribute = property.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute");
-
-        if (propertyAttribute?.ConstructorArguments.Length > 0)
-        {
-            return propertyAttribute.ConstructorArguments[0].Value?.ToString() ?? property.Name;
-        }
-
-        return property.Name;
-    }
-
-    private static string GetPropertyNameFromParameter(IParameterSymbol parameter)
-    {
-        return char.ToUpper(parameter.Name[0]) + parameter.Name.Substring(1);
     }
 
     private static string GetNamespaceName(INamedTypeSymbol type)
@@ -551,20 +234,5 @@ public class EntitySerializerGenerator : IIncrementalGenerator
         }
 
         return namespaceName + ".Generated";
-    }
-
-    private static IEnumerable<IPropertySymbol> GetAllProperties(INamedTypeSymbol type)
-    {
-        for (var t = type; t != null; t = t.BaseType)
-        {
-            var props = t.GetMembers()
-                .OfType<IPropertySymbol>()
-                .Where(p => !p.IsStatic && p.DeclaredAccessibility == Accessibility.Public && p.GetMethod != null);
-
-            foreach (var prop in props)
-            {
-                yield return prop;
-            }
-        }
     }
 }

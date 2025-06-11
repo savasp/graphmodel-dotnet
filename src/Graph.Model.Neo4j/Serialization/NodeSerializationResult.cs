@@ -20,14 +20,9 @@ namespace Cvoya.Graph.Model.Neo4j.Serialization;
 internal record NodeSerializationResult
 {
     /// <summary>
-    /// The simple properties that can be stored directly on the Neo4j node.
+    /// The serialized entity representation.
     /// </summary>
-    public required Dictionary<string, object?> SimpleProperties { get; init; }
-
-    /// <summary>
-    /// Complex properties that need to be stored as separate nodes with relationships.
-    /// </summary>
-    public required List<ComplexPropertyInfo> ComplexProperties { get; init; }
+    public required Dictionary<string, IntermediateRepresentation> SerializedEntity { get; init; }
 
     /// <summary>
     /// The label to use for the Neo4j node.

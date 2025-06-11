@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System.Collections;
+using System.Reflection;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Model.Neo4j.Serialization;
@@ -30,16 +31,16 @@ public abstract class EntitySerializerBase
     /// <summary>
     /// Deserializes a Neo4j entity into a .NET object
     /// </summary>
-    /// <param name="entity">The Neo4j entity to deserialize</param>
-    /// <returns>A task that represents the asynchronous operation, containing the deserialized .NET object</returns>
-    public abstract object Deserialize(global::Neo4j.Driver.IEntity entity);
+    /// <param name="entity">The entity to deserialize</param>
+    /// <returns>A .NET object representing the deserialized entity</returns>
+    public abstract object Deserialize(Dictionary<string, IntermediateRepresentation> entity);
 
     /// <summary>
     /// Serializes a .NET object into a Neo4j entity representation
     /// </summary>
     /// <param name="entity">The .NET object to serialize</param>
     /// <returns>A dictionary representing the serialized entity</returns>
-    public abstract Dictionary<string, object?> Serialize(object entity);
+    public abstract Dictionary<string, IntermediateRepresentation> Serialize(object entity);
 
     /// <summary>
     /// Converts a .NET value to a Neo4j compatible value

@@ -30,6 +30,14 @@ public static class EntitySerializerRegistry
     }
 
     /// <summary>
+    /// Registers a serializer for any type (including complex property types)
+    /// </summary>
+    public static void Register(Type type, EntitySerializerBase serializer)
+    {
+        _serializers[type] = serializer;
+    }
+
+    /// <summary>
     /// Gets a serializer for the specified type
     /// </summary>
     public static EntitySerializerBase? GetSerializer(Type type)

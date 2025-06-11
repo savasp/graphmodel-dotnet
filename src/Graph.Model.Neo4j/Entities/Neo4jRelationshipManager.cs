@@ -82,12 +82,12 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             _logger?.LogDebug("Cypher query: {CypherQuery}", cypher);
             _logger?.LogDebug("Parameters: SourceId={SourceId}, TargetId={TargetId}, Properties={Properties}",
-                serializedRelationship.SourceId, serializedRelationship.TargetId, serializedRelationship.Properties);
+                serializedRelationship.SourceId, serializedRelationship.TargetId, serializedRelationship.SerializedEntity);
             var result = await transaction.Transaction.RunAsync(cypher, new
             {
                 sourceId = serializedRelationship.SourceId,
                 targetId = serializedRelationship.TargetId,
-                props = serializedRelationship.Properties
+                props = serializedRelationship.SerializedEntity
             });
 
             if (await result.CountAsync(cancellationToken) == 0)
@@ -126,7 +126,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             var result = _serializer.SerializeRelationship(relationship);
 
             var cypher = "MATCH ()-[r {Id: $relId}]->() SET r = $props RETURN r";
-            var relResult = await transaction.Transaction.RunAsync(cypher, new { relId = relationship.Id, props = result.Properties });
+            var relResult = await transaction.Transaction.RunAsync(cypher, new { relId = relationship.Id, props = result.SerializedEntity });
             var count = await relResult.CountAsync(cancellationToken);
 
             if (count == 0)

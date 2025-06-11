@@ -292,7 +292,7 @@ internal class CypherQueryBuilder
         query.AppendLine("WHERE size(nodes) = size(rels) + 1");
         query.AppendLine($"WITH {_mainNodeAlias},");
         query.AppendLine("     [i IN range(0, size(rels)-1) |");
-        query.AppendLine("        {Node: nodes[i+1], RelType: type(rels[i]), Direction: CASE WHEN startNode(rels[i]) = nodes[i] THEN 'OUT' ELSE 'IN' END}");
+        query.AppendLine("        {Node: nodes[i+1], RelType: type(rels[i]), RelationshipProperties: properties(rels[i])}");
         query.AppendLine("     ] AS relatedNodes");
         query.AppendLine($"RETURN {_mainNodeAlias}, relatedNodes");
 

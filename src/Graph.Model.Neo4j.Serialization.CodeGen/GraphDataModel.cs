@@ -85,6 +85,10 @@ internal static class GraphDataModel
 
     public static bool IsCollectionOfSimple(ITypeSymbol type)
     {
+        // String is not considered a collection, even though it implements IEnumerable<char>
+        if (type.SpecialType == SpecialType.System_String)
+            return false;
+
         // Handle arrays first
         if (type is IArrayTypeSymbol arrayType)
         {
@@ -115,5 +119,46 @@ internal static class GraphDataModel
         }
 
         return false;
+    }
+
+    internal static bool IsCollectionOfComplex(ITypeSymbol type)
+    {
+        // String is not considered a collection, even though it implements IEnumerable<char>
+        if (type.SpecialType == SpecialType.System_String)
+            return false;
+
+        var elementType = GetCollectionElementType(type);
+        return elementType != null && !IsSimple(elementType);
+    }
+
+    internal static ITypeSymbol? GetCollectionElementType(ITypeSymbol type)
+    {
+        // String is not considered a collection, even though it implements IEnumerable<char>
+        if (type.SpecialType == SpecialType.System_String)
+            return null;
+
+        if (type is IArrayTypeSymbol arrayType)
+        {
+            return arrayType.ElementType;
+        }
+
+        if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
+        {
+            var enumerableInterface = namedType.AllInterfaces
+                .FirstOrDefault(i => i.IsGenericType &&
+                                     i.ConstructedFrom.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T);
+
+            if (enumerableInterface != null)
+            {
+                return enumerableInterface.TypeArguments.FirstOrDefault();
+            }
+
+            if (namedType.ConstructedFrom.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T)
+            {
+                return namedType.TypeArguments.FirstOrDefault();
+            }
+        }
+
+        return null;
     }
 }

@@ -65,23 +65,32 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             GraphDataModel.EnsureNoReferenceCycle(node);
 
             // Serialize the node
-            var serializedNode = await _serializer.SerializeNodeAsync(node, cancellationToken);
+            var serializationResult = _serializer.SerializeNode(node);
 
             // Build the Cypher query
-            var cypher = $"CREATE (n:{serializedNode.Label} $props) RETURN n";
+            var cypher = $"CREATE (n:{serializationResult.Label} $props) RETURN n";
 
             _logger?.LogDebug("Cypher query for creating node: {Cypher}", cypher);
 
+            var simpleProperties = serializationResult.SerializedEntity
+                .Where(kv => GraphDataModel.IsSimple(kv.Value.PropertyInfo.PropertyType) ||
+                             GraphDataModel.IsCollectionOfSimple(kv.Value.PropertyInfo.PropertyType))
+                .ToDictionary(kv => kv.Key, kv => kv.Value.Value);
+
             // Create the main node
-            var nodeResult = await transaction.Transaction.RunAsync(cypher, new { props = serializedNode.SimpleProperties });
+            var nodeResult = await transaction.Transaction.RunAsync(cypher, new { props = simpleProperties });
 
             var nodeCreated = await nodeResult.CountAsync(cancellationToken) != 0;
             var complexPropertiesCreated = true;
 
+            var complexProperties = serializationResult.SerializedEntity.ComplexProperties;
+
+            _logger?.LogDebug("Node creation result: {NodeCreated}, Complex properties: {ComplexPropertiesCount}", nodeCreated, complexProperties.Count);
             // Create complex properties if any
-            if (serializedNode.ComplexProperties.Count > 0)
+            if (complexProperties.Any())
             {
-                complexPropertiesCreated = await CreateComplexPropertiesAsync(transaction.Transaction, node.Id, serializedNode.ComplexProperties, cancellationToken);
+                _logger?.LogDebug("Creating complex properties for node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+                complexPropertiesCreated = await CreateComplexPropertiesAsync(transaction.Transaction, node.Id, complexProperties, 0, cancellationToken);
             }
 
             if (!nodeCreated || !complexPropertiesCreated)
@@ -116,11 +125,11 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             GraphDataModel.EnsureNoReferenceCycle(node);
 
             // Serialize the node
-            var serializedNode = await _serializer.SerializeNodeAsync(node, cancellationToken);
+            var serializationResult = _serializer.SerializeNode(node);
 
             // Update the node properties
             var cypher = "MATCH (n {Id: $nodeId}) SET n = $props RETURN n";
-            var result = await transaction.Transaction.RunAsync(cypher, new { nodeId = node.Id, props = serializedNode.SimpleProperties });
+            var result = await transaction.Transaction.RunAsync(cypher, new { nodeId = node.Id, props = serializationResult.SerializedEntity.SimpleProperties });
 
             var updated = await result.CountAsync(cancellationToken) != 0;
             if (!updated)
@@ -130,9 +139,9 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             }
 
             // Update complex properties (delete old ones and create new ones)
-            var complexPropertiesUpdated = await UpdateComplexPropertiesAsync(transaction.Transaction, node.Id, serializedNode.ComplexProperties, cancellationToken);
+            var complexPropertiesUpdated = await UpdateComplexPropertiesAsync(transaction.Transaction, node.Id, serializationResult.SerializedEntity.ComplexProperties, cancellationToken);
 
-            if (!complexPropertiesUpdated && serializedNode.ComplexProperties.Count > 0)
+            if (!complexPropertiesUpdated && serializationResult.SerializedEntity.ComplexProperties.Count > 0)
             {
                 _logger?.LogWarning("No complex properties were updated for node with ID {NodeId}", node.Id);
                 throw new GraphException($"Failed to update the node's complex properties of type {typeof(TNode).Name} with ID {node.Id}");
@@ -212,50 +221,52 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     private async Task<bool> CreateComplexPropertiesAsync(
         IAsyncTransaction tx,
         string parentId,
-        List<ComplexPropertyInfo> complexProperties,
-        CancellationToken cancellationToken)
+        IReadOnlyDictionary<string, IntermediateRepresentation> complexProperties,
+        int index = 0,
+        CancellationToken cancellationToken = default)
     {
         var allCreated = true;
 
-        foreach (var complexProp in complexProperties)
+        foreach (var complexProp in complexProperties.Values)
         {
             // Create the complex property node
-            var labels = complexProp.SerializedNode.Label;
+            var relationshipLabel = GraphDataModel.PropertyNameToRelationshipTypeName(complexProp.PropertyInfo.Name);
+            var complexNodeLabel = Labels.GetLabelFromType(complexProp.PropertyInfo.PropertyType);
 
-            // Build relationship properties for collections
-            var relProps = new Dictionary<string, object>();
-            if (complexProp.CollectionIndex.HasValue)
-            {
-                relProps["SequenceNumber"] = complexProp.CollectionIndex.Value;
-            }
+            var relProps = new Dictionary<string, object> { { "SequenceNumber", index } };
 
-            var cypher = relProps.Count > 0
-                ? $@"MATCH (parent {{Id: $parentId}})
-                CREATE (parent)-[r:{complexProp.RelationshipType} $relProps]->(complex:{labels} $props)
-                RETURN complex"
-                : $@"MATCH (parent {{Id: $parentId}})
-                CREATE (parent)-[:{complexProp.RelationshipType}]->(complex:{labels} $props)
+            var cypher = $@"MATCH (parent {{Id: $parentId}})
+                CREATE (parent)-[r:{relationshipLabel} $relProps]->(complex:{complexNodeLabel} $props)
                 RETURN complex";
 
             _logger?.LogDebug($"Cypher query for creating complex property: {cypher}");
 
+            var nodeProps = (complexProp.Value as IReadOnlyDictionary<string, IntermediateRepresentation>)!
+                .SimpleProperties
+                .ToDictionary(kv => kv.Key, kv => kv.Value.Value);
+
             var result = await tx.RunAsync(cypher, new
             {
                 parentId,
-                props = complexProp.SerializedNode.SimpleProperties,
+                props = nodeProps,
                 relProps
             });
 
             allCreated &= await result.CountAsync(cancellationToken) != 0;
 
-            // Recursively create nested complex properties if any
-            if (allCreated && complexProp.SerializedNode.ComplexProperties.Count > 0)
+            if (allCreated && !complexProp.IsCollection)
             {
                 // We need the ID from the created node
-                var nodeId = complexProp.SerializedNode.SimpleProperties["Id"]?.ToString()
-                    ?? throw new GraphException("Complex property node must have an Id");
+                parentId = nodeProps["Id"] as string
+                    ?? throw new GraphException(
+                        $"Complex property {complexProp.PropertyInfo.Name} was created but ID is missing");
 
-                allCreated &= await CreateComplexPropertiesAsync(tx, nodeId, complexProp.SerializedNode.ComplexProperties, cancellationToken);
+                foreach (var cp in complexProp.Value as IEnumerable<IReadOnlyDictionary<string, IntermediateRepresentation>> ?? throw new GraphException(
+                    $"Complex property {complexProp.PropertyInfo.Name} is a collection but value is not a dictionary"))
+                {
+                    // Recursively create each item in the collection
+                    allCreated &= await CreateComplexPropertiesAsync(tx, parentId, cp, index + 1, cancellationToken);
+                }
             }
         }
 
@@ -265,7 +276,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     private async Task<bool> UpdateComplexPropertiesAsync(
         IAsyncTransaction tx,
         string parentId,
-        List<ComplexPropertyInfo> complexProperties,
+        IReadOnlyDictionary<string, IntermediateRepresentation> complexProperties,
         CancellationToken cancellationToken)
     {
         // First, delete all existing complex property relationships
@@ -286,7 +297,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
         _logger?.LogDebug("Deleted {DeletedCount} complex property relationships for parent ID {ParentId}", deletedCount, parentId);
 
-        var updatedComplexProperties = complexProperties.Count == 0 || await CreateComplexPropertiesAsync(tx, parentId, complexProperties, cancellationToken);
+        var updatedComplexProperties = !complexProperties.Any() || await CreateComplexPropertiesAsync(tx, parentId, complexProperties, 0, cancellationToken);
 
         return updatedComplexProperties;
     }

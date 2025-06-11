@@ -13,15 +13,16 @@
 // limitations under the License.
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cvoya.Graph.Model.Neo4j.Serialization;
 
 /// <summary>
 /// Default implementation of entity factory that uses reflection as a fallback
 /// </summary>
-internal class EntityFactory(ILogger<EntityFactory>? logger = null)
+internal class EntityFactory(ILoggerFactory? loggerFactory = null)
 {
-    private readonly ILogger<EntityFactory>? _logger = logger;
+    private readonly ILogger<EntityFactory>? _logger = loggerFactory?.CreateLogger<EntityFactory>() ?? NullLogger<EntityFactory>.Instance;
 
     public object CreateInstance(Type type, global::Neo4j.Driver.IEntity neo4jEntity)
     {
@@ -29,12 +30,78 @@ internal class EntityFactory(ILogger<EntityFactory>? logger = null)
         var serializer = EntitySerializerRegistry.GetSerializer(type);
         if (serializer != null)
         {
+            _logger?.LogDebug("No generated serializer found for type {Type}. Falling back to reflection-based creation.", type.Name);
+
+            var intermediateRepresentation = ConvertToIntermediateRepresentation(type, neo4jEntity);
+
             // The serializer will handle the entire deserialization process
-            return serializer.Deserialize(neo4jEntity);
+            return serializer.Deserialize(intermediateRepresentation);
         }
 
+        _logger?.LogDebug("No generated serializer found for type {Type}. Falling back to reflection-based creation.", type.Name);
         // Fallback to reflection-based creation for types without generated serializers
         return CreateInstanceViaReflection(type, neo4jEntity);
+    }
+
+    private Dictionary<string, IntermediateRepresentation> ConvertToIntermediateRepresentation(Type type, global::Neo4j.Driver.IEntity neo4jEntity)
+    {
+        var intermediateRepresentation = new Dictionary<string, IntermediateRepresentation>();
+
+        // Add properties from Neo4j entity
+        foreach (var property in neo4jEntity.Properties)
+        {
+            var propertyName = property.Key;
+            var value = property.Value;
+
+            // Get the property info given the name of the property
+            var propertyInfo = Labels.GetPropertyFromLabel(propertyName, type)
+                ?? throw new GraphException($"Property '{propertyName}' not found in type '{type.Name}'");
+
+            var isCollection = GraphDataModel.IsCollectionOfSimple(propertyInfo.PropertyType) ||
+                               GraphDataModel.IsCollectionOfComplex(propertyInfo.PropertyType);
+
+            var isNullable = propertyInfo.PropertyType.IsGenericType &&
+                            propertyInfo.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>);
+
+            var isSimple = GraphDataModel.IsSimple(propertyInfo.PropertyType);
+
+            if (isSimple)
+            {
+                intermediateRepresentation[propertyName] = new IntermediateRepresentation(
+                    propertyInfo,
+                    isSimple,
+                    isNullable,
+                    isCollection,
+                    propertyInfo.PropertyType.GetInterfaces().FirstOrDefault(i =>
+                        i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))?
+                        .GetGenericArguments().FirstOrDefault(),
+                    propertyInfo.PropertyType.IsEnum,
+                    EntitySerializerBase.ConvertFromNeo4jValue(value, propertyInfo.PropertyType)
+                );
+            }
+            else
+            {
+                var serializer = EntitySerializerRegistry.GetSerializer(propertyInfo.PropertyType)
+                    ?? throw new GraphException($"No serializer found for type {propertyInfo.PropertyType.Name}. " +
+                        "Ensure it is registered in the EntitySerializerRegistry.");
+
+                // TODO: When we want to support for arbitrary depth complex types, we need to change this logic
+                // This doesn't recursively serialize complex types beyond one hop
+                intermediateRepresentation[propertyName] = new IntermediateRepresentation(
+                    propertyInfo,
+                    isSimple,
+                    isNullable,
+                    isCollection,
+                    propertyInfo.PropertyType.GetInterfaces().FirstOrDefault(i =>
+                        i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))?
+                        .GetGenericArguments().FirstOrDefault(),
+                    propertyInfo.PropertyType.IsEnum,
+                    ConvertToIntermediateRepresentation(propertyInfo.PropertyType, (value as global::Neo4j.Driver.IEntity)!) // Recursive call for complex types
+                                                                                                                             // TODO: The above line will throw. Adding it temporarily until we debug the result structure from the cypher query.
+                );
+            }
+        }
+        return intermediateRepresentation;
     }
 
     private object CreateInstanceViaReflection(Type type, global::Neo4j.Driver.IEntity neo4jEntity)
