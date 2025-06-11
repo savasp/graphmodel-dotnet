@@ -24,7 +24,7 @@ internal class Deserialization
 {
     internal static void GenerateDeserializeMethod(StringBuilder sb, INamedTypeSymbol type)
     {
-        sb.AppendLine("    public override object Deserialize(Dictionary<string, IntermediateRepresentation> entity)");
+        sb.AppendLine("    public override object Deserialize(Entity entity)");
         sb.AppendLine("    {");
 
         // Get all properties that we can deserialize
@@ -63,7 +63,7 @@ internal class Deserialization
         if (!needsConstructor && constructors.Any(c => c.Parameters.Length == 0))
         {
             // Simple case - parameterless constructor and all properties are settable
-            sb.AppendLine($"        var result = new {type.ToDisplayString()}();");
+            sb.AppendLine($"        var result = new {GetTypeOfName(type)}();");
             GeneratePropertySetters(sb, settableProperties, "result", "entity");
         }
         else if (constructors.Any())
@@ -117,10 +117,13 @@ internal class Deserialization
 
             sb.AppendLine($"        // Extracting value for parameter '{param.Name}'");
             sb.AppendLine($"        {paramType} {param.Name};");
-            sb.AppendLine($"        if (entity.TryGetValue(\"{propertyName}\", out var {param.Name}Info))");
+            sb.AppendLine($"        // Look for property in both simple and complex properties");
+            sb.AppendLine($"        var propRep = entity.SimpleProperties.TryGetValue(\"{propertyName}\", out var simpleProp) ? simpleProp");
+            sb.AppendLine($"                    : entity.ComplexProperties.TryGetValue(\"{propertyName}\", out var complexProp) ? complexProp : null;");
+            sb.AppendLine($"        if (propRep != null)");
             sb.AppendLine("        {");
 
-            GenerateValueExtraction(sb, param.Type, $"{param.Name}", $"{param.Name}Info", 12);
+            GenerateValueExtraction(sb, param.Type, $"{param.Name}", propertyName, 12);
 
             sb.AppendLine("        }");
             sb.AppendLine("        else");
@@ -152,10 +155,14 @@ internal class Deserialization
 
             sb.AppendLine($"        // Extracting core property '{coreProp.Name}' not in constructor");
             sb.AppendLine($"        {propType} {coreProp.Name}Temp;");
-            sb.AppendLine($"        if (entity.TryGetValue(\"{propName}\", out var {coreProp.Name}Info))");
+            sb.AppendLine($"        // Look for property in both simple and complex properties");
+            sb.AppendLine($"        var {coreProp.Name.ToLower()}PropRep = entity.SimpleProperties.TryGetValue(\"{propName}\", out var {coreProp.Name.ToLower()}SimpleProp) ? {coreProp.Name.ToLower()}SimpleProp");
+            sb.AppendLine($"                    : entity.ComplexProperties.TryGetValue(\"{propName}\", out var {coreProp.Name.ToLower()}ComplexProp) ? {coreProp.Name.ToLower()}ComplexProp : null;");
+            sb.AppendLine($"        if ({coreProp.Name.ToLower()}PropRep != null)");
             sb.AppendLine("        {");
+            sb.AppendLine($"            var propRep = {coreProp.Name.ToLower()}PropRep;");
 
-            GenerateValueExtraction(sb, coreProp.Type, $"{coreProp.Name}Temp", $"{coreProp.Name}Info", 12);
+            GenerateValueExtraction(sb, coreProp.Type, $"{coreProp.Name}Temp", propName, 12);
 
             sb.AppendLine("        }");
             sb.AppendLine("        else");
@@ -184,7 +191,7 @@ internal class Deserialization
         }
 
         // Call constructor with object initializer syntax if we have init-only properties
-        sb.Append($"        var result = new {type.ToDisplayString()}(");
+        sb.Append($"        var result = new {GetTypeOfName(type)}(");
         sb.Append(string.Join(", ", constructor.Parameters.Select(p => p.Name)));
         sb.Append(")");
 
@@ -259,28 +266,48 @@ internal class Deserialization
             .FirstOrDefault();
     }
 
-    private static void GenerateValueExtraction(StringBuilder sb, ITypeSymbol targetType, string variableName, string infoVariableName, int indent)
+    private static void GenerateValueExtraction(StringBuilder sb, ITypeSymbol targetType, string variableName, string propertyLabel, int indent)
     {
         var indentStr = new string(' ', indent);
 
         // Determine the type category at compile time - no runtime checks needed
         if (GraphDataModel.IsCollectionOfSimple(targetType) || GraphDataModel.IsCollectionOfComplex(targetType))
         {
-            GenerateCollectionDeserialization(sb, targetType, variableName, infoVariableName, indent);
+            GenerateCollectionDeserialization(sb, targetType, variableName, propertyLabel, indent);
         }
         else if (GraphDataModel.IsSimple(targetType))
         {
-            sb.AppendLine($"{indentStr}{variableName} = ({targetType.ToDisplayString()}){infoVariableName}.Value!;");
+            sb.AppendLine($"{indentStr}// Extract simple value");
+            sb.AppendLine($"{indentStr}if (propRep.Value is SimpleValue simpleValue)");
+            sb.AppendLine($"{indentStr}{{");
+            sb.AppendLine($"{indentStr}    {variableName} = ({targetType.ToDisplayString()})simpleValue.Object;");
+            sb.AppendLine($"{indentStr}}}");
+            sb.AppendLine($"{indentStr}else");
+            sb.AppendLine($"{indentStr}{{");
+            if (targetType.IsReferenceType && targetType.NullableAnnotation != NullableAnnotation.Annotated)
+            {
+                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required simple property is missing or null\");");
+            }
+            else if (targetType.IsReferenceType)
+            {
+                sb.AppendLine($"{indentStr}    {variableName} = default({targetType.ToDisplayString()})!;");
+            }
+            else
+            {
+                sb.AppendLine($"{indentStr}    {variableName} = default({targetType.ToDisplayString()});");
+            }
+            sb.AppendLine($"{indentStr}}}");
         }
         else
         {
             // Complex type - recursively deserialize
-            sb.AppendLine($"{indentStr}if ({infoVariableName}.Value is Dictionary<string, IntermediateRepresentation> complexDict)");
+            sb.AppendLine($"{indentStr}// Extract complex value");
+            sb.AppendLine($"{indentStr}if (propRep.Value is Entity complexEntity)");
             sb.AppendLine($"{indentStr}{{");
             sb.AppendLine($"{indentStr}    var complexSerializer = EntitySerializerRegistry.GetSerializer(typeof({GetTypeOfName(targetType)}));");
             sb.AppendLine($"{indentStr}    if (complexSerializer != null)");
             sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        {variableName} = ({targetType.ToDisplayString()})complexSerializer.Deserialize(complexDict);");
+            sb.AppendLine($"{indentStr}        {variableName} = ({targetType.ToDisplayString()})complexSerializer.Deserialize(complexEntity);");
             sb.AppendLine($"{indentStr}    }}");
             sb.AppendLine($"{indentStr}    else");
             sb.AppendLine($"{indentStr}    {{");
@@ -305,42 +332,61 @@ internal class Deserialization
         }
     }
 
-    private static void GenerateCollectionDeserialization(StringBuilder sb, ITypeSymbol collectionType, string variableName, string infoVariableName, int indent)
+    private static void GenerateCollectionDeserialization(StringBuilder sb, ITypeSymbol collectionType, string variableName, string propertyLabel, int indent)
     {
         var indentStr = new string(' ', indent);
         var elementType = GraphDataModel.GetCollectionElementType(collectionType);
-        var isElementSimple = elementType != null && GraphDataModel.IsSimple(elementType);
+        if (elementType == null) return; // Should not happen for valid collections
 
-        sb.AppendLine($"{indentStr}if ({infoVariableName}.Value is IList<object?> collectionItems)");
-        sb.AppendLine($"{indentStr}{{");
-        sb.AppendLine($"{indentStr}    var collection = new List<{elementType}>();");
-        sb.AppendLine($"{indentStr}    foreach (var item in collectionItems)");
-        sb.AppendLine($"{indentStr}    {{");
+        var isElementSimple = GraphDataModel.IsSimple(elementType);
 
+        sb.AppendLine($"{indentStr}// Extract collection value");
         if (isElementSimple)
         {
-            sb.AppendLine($"{indentStr}        if (item != null)");
-            sb.AppendLine($"{indentStr}        {{");
-            sb.AppendLine($"{indentStr}            collection.Add(({elementType})item);");
-            sb.AppendLine($"{indentStr}        }}");
+            sb.AppendLine($"{indentStr}if (propRep.Value is SimpleCollection simpleCollection)");
+            sb.AppendLine($"{indentStr}{{");
+            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.ToDisplayString()}>();");
+            sb.AppendLine($"{indentStr}    foreach (var simpleValue in simpleCollection.Values)");
+            sb.AppendLine($"{indentStr}    {{");
+
+            // Only add null check for reference types
+            if (elementType.IsReferenceType || elementType.NullableAnnotation == NullableAnnotation.Annotated)
+            {
+                sb.AppendLine($"{indentStr}        if (simpleValue.Object != null)");
+                sb.AppendLine($"{indentStr}        {{");
+                sb.AppendLine($"{indentStr}            collection.Add(({elementType.ToDisplayString()})simpleValue.Object);");
+                sb.AppendLine($"{indentStr}        }}");
+            }
+            else
+            {
+                // Value types can't be null, so no null check needed
+                sb.AppendLine($"{indentStr}        collection.Add(({elementType.ToDisplayString()})simpleValue.Object);");
+            }
+
+            sb.AppendLine($"{indentStr}    }}");
         }
         else
         {
-            sb.AppendLine($"{indentStr}        if (item is Dictionary<string, IntermediateRepresentation> itemDict)");
+            sb.AppendLine($"{indentStr}if (propRep.Value is EntityCollection entityCollection)");
+            sb.AppendLine($"{indentStr}{{");
+            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.ToDisplayString()}>();");
+            sb.AppendLine($"{indentStr}    var itemSerializer = EntitySerializerRegistry.GetSerializer(typeof({GetTypeOfName(elementType)}));");
+            sb.AppendLine($"{indentStr}    if (itemSerializer != null)");
+            sb.AppendLine($"{indentStr}    {{");
+            sb.AppendLine($"{indentStr}        foreach (var entityItem in entityCollection.Entities)");
             sb.AppendLine($"{indentStr}        {{");
-            sb.AppendLine($"{indentStr}            var itemSerializer = EntitySerializerRegistry.GetSerializer(typeof({GetTypeOfName(elementType!)}));");
-            sb.AppendLine($"{indentStr}            if (itemSerializer != null)");
+            sb.AppendLine($"{indentStr}            var deserializedItem = itemSerializer.Deserialize(entityItem);");
+            sb.AppendLine($"{indentStr}            if (deserializedItem is {elementType.ToDisplayString()} typedItem)");
             sb.AppendLine($"{indentStr}            {{");
-            sb.AppendLine($"{indentStr}                collection.Add(({elementType})itemSerializer.Deserialize(itemDict));");
-            sb.AppendLine($"{indentStr}            }}");
-            sb.AppendLine($"{indentStr}            else");
-            sb.AppendLine($"{indentStr}            {{");
-            sb.AppendLine($"{indentStr}                throw new InvalidOperationException($\"No serializer found for element type {elementType}\");");
+            sb.AppendLine($"{indentStr}                collection.Add(typedItem);");
             sb.AppendLine($"{indentStr}            }}");
             sb.AppendLine($"{indentStr}        }}");
+            sb.AppendLine($"{indentStr}    }}");
+            sb.AppendLine($"{indentStr}    else");
+            sb.AppendLine($"{indentStr}    {{");
+            sb.AppendLine($"{indentStr}        throw new InvalidOperationException($\"No serializer found for element type {elementType.ToDisplayString()}\");");
+            sb.AppendLine($"{indentStr}    }}");
         }
-
-        sb.AppendLine($"{indentStr}    }}");
 
         // Convert to appropriate collection type
         if (collectionType.TypeKind == TypeKind.Array)
@@ -376,10 +422,14 @@ internal class Deserialization
         {
             var propertyName = Utils.GetPropertyName(property);
 
-            sb.AppendLine($"        if ({entityVar}.TryGetValue(\"{propertyName}\", out var {property.Name.ToLower()}Info))");
+            sb.AppendLine($"        // Look for property in both simple and complex properties");
+            sb.AppendLine($"        var {property.Name.ToLower()}PropRep = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {property.Name.ToLower()}SimpleProp) ? {property.Name.ToLower()}SimpleProp");
+            sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {property.Name.ToLower()}ComplexProp) ? {property.Name.ToLower()}ComplexProp : null;");
+            sb.AppendLine($"        if ({property.Name.ToLower()}PropRep != null)");
             sb.AppendLine("        {");
+            sb.AppendLine($"            var propRep = {property.Name.ToLower()}PropRep;");
 
-            GenerateValueExtraction(sb, property.Type, $"{variableName}.{property.Name}", $"{property.Name.ToLower()}Info", 12);
+            GenerateValueExtraction(sb, property.Type, $"{variableName}.{property.Name}", propertyName, 12);
 
             sb.AppendLine("        }");
         }

@@ -22,7 +22,7 @@ internal record RelationshipSerializationResult
     /// <summary>
     /// The properties to store on the Neo4j relationship.
     /// </summary>
-    public required Dictionary<string, IntermediateRepresentation> SerializedEntity { get; init; }
+    public required Entity SerializedEntity { get; init; }
 
     /// <summary>
     /// The relationship type/label.

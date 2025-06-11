@@ -1,7 +1,7 @@
 // Copyright 2025 Savas Parastatidis
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// you may not use this file except in compliance w            sb.AppendLine($"                            entities.Add(entityItem)");th the License.
 // You may obtain a copy of the License at
 //
 //      https://www.apache.org/licenses/LICENSE-2.0
@@ -21,10 +21,11 @@ internal static class Serialization
 {
     internal static void GenerateSerializeMethod(StringBuilder sb, INamedTypeSymbol type)
     {
-        sb.AppendLine($"    public override Dictionary<string, IntermediateRepresentation> Serialize(object obj)");
+        sb.AppendLine($"    public override Entity Serialize(object obj)");
         sb.AppendLine("    {");
-        sb.AppendLine($"        var entity = ({type.ToDisplayString()})obj;");
-        sb.AppendLine("        var result = new Dictionary<string, IntermediateRepresentation>();");
+        sb.AppendLine($"        var entity = ({GetTypeOfName(type)})obj;");
+        sb.AppendLine("        var simpleProperties = new Dictionary<string, PropertyRepresentation>();");
+        sb.AppendLine("        var complexProperties = new Dictionary<string, PropertyRepresentation>();");
         sb.AppendLine();
 
         var properties = Utils.GetAllProperties(type);
@@ -40,40 +41,61 @@ internal static class Serialization
 
             sb.AppendLine($"        // Serialize property: {property.Name}");
 
-            // Generate IntermediateRepresentation creation
+            // Generate property representation creation
             GenerateIntermediateRepresentationCreation(sb, property, propertyType, propertyName);
         }
 
-        sb.AppendLine("        return result;");
+        sb.AppendLine($"        return new Entity(");
+        sb.AppendLine($"            Type: typeof({GetTypeOfName(type)}),");
+        sb.AppendLine($"            Label: \"{Utils.GetLabelFromType(type)}\",");
+        sb.AppendLine($"            SimpleProperties: simpleProperties,");
+        sb.AppendLine($"            ComplexProperties: complexProperties");
+        sb.AppendLine($"        );");
         sb.AppendLine("    }");
     }
 
     private static void GenerateIntermediateRepresentationCreation(StringBuilder sb, IPropertySymbol property, ITypeSymbol propertyType, string propertyName)
     {
-        var isSimple = Cvoya.Graph.Model.Neo4j.Serialization.CodeGen.GraphDataModel.IsSimple(propertyType);
-        var isCollection = Cvoya.Graph.Model.Neo4j.Serialization.CodeGen.GraphDataModel.IsCollectionOfSimple(propertyType) || GraphDataModel.IsCollectionOfComplex(propertyType);
+        var isSimple = GraphDataModel.IsSimple(propertyType);
+        var isCollection = GraphDataModel.IsCollectionOfSimple(propertyType) || GraphDataModel.IsCollectionOfComplex(propertyType);
         var isNullable = propertyType.NullableAnnotation == NullableAnnotation.Annotated;
-
-        // Get collection element type if it's a collection
-        var collectionElementType = GraphDataModel.GetCollectionElementType(propertyType)!;
 
         sb.AppendLine($"        {{");
         sb.AppendLine($"            var propInfo = typeof({property.ContainingType.ToDisplayString()}).GetProperty(\"{property.Name}\")!;");
         sb.AppendLine($"            var value = entity.{property.Name};");
-        sb.AppendLine($"            object? serializedValue = null;");
+        sb.AppendLine($"            Serialized? serializedValue = null;");
         sb.AppendLine();
 
         if (isCollection)
         {
-            GenerateCollectionSerialization(sb, collectionElementType);
+            GenerateCollectionSerialization(sb, propertyType);
         }
         else if (isSimple)
         {
-            sb.AppendLine($"            serializedValue = EntitySerializerBase.ConvertToNeo4jValue(value);");
+            // For value types that can't be null, always serialize. For reference/nullable types, check for null
+            if (propertyType.IsValueType && propertyType.NullableAnnotation != NullableAnnotation.Annotated)
+            {
+                // Non-nullable value type - always serialize
+                sb.AppendLine($"            serializedValue = new SimpleValue(");
+                sb.AppendLine($"                Object: EntitySerializerBase.ConvertToNeo4jValue(value)!,");
+                sb.AppendLine($"                Type: typeof({GetTypeOfName(propertyType)})");
+                sb.AppendLine($"            );");
+            }
+            else
+            {
+                // Reference type or nullable value type - check for null
+                sb.AppendLine($"            if (value != null)");
+                sb.AppendLine($"            {{");
+                sb.AppendLine($"                serializedValue = new SimpleValue(");
+                sb.AppendLine($"                    Object: EntitySerializerBase.ConvertToNeo4jValue(value)!,");
+                sb.AppendLine($"                    Type: typeof({GetTypeOfName(propertyType)})");
+                sb.AppendLine($"                );");
+                sb.AppendLine($"            }}");
+            }
         }
         else
         {
-            // Complex type - recursively serialize to Dictionary<string, IntermediateRepresentation>
+            // Complex type - recursively serialize to Entity
             sb.AppendLine($"            if (value != null)");
             sb.AppendLine($"            {{");
             sb.AppendLine($"                var complexSerializer = EntitySerializerRegistry.GetSerializer(value.GetType());");
@@ -88,44 +110,61 @@ internal static class Serialization
             sb.AppendLine($"            }}");
         }
 
+        // Add to appropriate dictionary
+        var dictionaryName = isSimple || (isCollection && GraphDataModel.IsCollectionOfSimple(propertyType)) ? "simpleProperties" : "complexProperties";
         sb.AppendLine();
-        sb.AppendLine($"            result[\"{propertyName}\"] = new IntermediateRepresentation(");
+        sb.AppendLine($"            var propertyRep = new PropertyRepresentation(");
         sb.AppendLine($"                PropertyInfo: propInfo,");
-        sb.AppendLine($"                IsSimple: {isSimple.ToString().ToLower()},");
+        sb.AppendLine($"                Label: \"{propertyName}\",");
         sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLower()},");
-        sb.AppendLine($"                IsCollection: {isCollection.ToString().ToLower()},");
-
-        if (collectionElementType != null)
-        {
-            sb.AppendLine($"                CollectionElementType: typeof({GetTypeOfName(collectionElementType)}),");
-            sb.AppendLine($"                IsCollectionOfSimple: {Cvoya.Graph.Model.Neo4j.Serialization.CodeGen.GraphDataModel.IsSimple(collectionElementType).ToString().ToLower()},");
-        }
-        else
-        {
-            sb.AppendLine($"                CollectionElementType: null,");
-        }
-
         sb.AppendLine($"                Value: serializedValue");
         sb.AppendLine($"            );");
+        sb.AppendLine($"            {dictionaryName}[\"{propertyName}\"] = propertyRep;");
         sb.AppendLine($"        }}");
         sb.AppendLine();
     }
 
-    private static void GenerateCollectionSerialization(StringBuilder sb, ITypeSymbol elementType)
+    private static void GenerateCollectionSerialization(StringBuilder sb, ITypeSymbol collectionType)
     {
+        var elementType = GraphDataModel.GetCollectionElementType(collectionType);
+        if (elementType == null) return; // Should not happen for valid collections
+
         var isElementSimple = GraphDataModel.IsSimple(elementType);
 
         sb.AppendLine($"            if (value != null)");
         sb.AppendLine($"            {{");
-        sb.AppendLine($"                var collection = new List<object?>();");
 
         if (isElementSimple)
         {
-            // For simple collections, just convert each element without needing a serializer
+            sb.AppendLine($"                var values = new List<SimpleValue>();");
             sb.AppendLine($"                foreach (var item in value)");
             sb.AppendLine($"                {{");
-            sb.AppendLine($"                    collection.Add(EntitySerializerBase.ConvertToNeo4jValue(item));");
+
+            // Only add null check for reference types
+            if (elementType.IsReferenceType || elementType.NullableAnnotation == NullableAnnotation.Annotated)
+            {
+                sb.AppendLine($"                    if (item != null)");
+                sb.AppendLine($"                    {{");
+                sb.AppendLine($"                        values.Add(new SimpleValue(");
+                sb.AppendLine($"                            Object: EntitySerializerBase.ConvertToNeo4jValue(item)!,");
+                sb.AppendLine($"                            Type: typeof({GetTypeOfName(elementType)})");
+                sb.AppendLine($"                        ));");
+                sb.AppendLine($"                    }}");
+            }
+            else
+            {
+                // Value types can't be null, so no null check needed
+                sb.AppendLine($"                    values.Add(new SimpleValue(");
+                sb.AppendLine($"                        Object: EntitySerializerBase.ConvertToNeo4jValue(item)!,");
+                sb.AppendLine($"                        Type: typeof({GetTypeOfName(elementType)})");
+                sb.AppendLine($"                    ));");
+            }
+
             sb.AppendLine($"                }}");
+            sb.AppendLine($"                serializedValue = new SimpleCollection(");
+            sb.AppendLine($"                    Values: values,");
+            sb.AppendLine($"                    ElementType: typeof({GetTypeOfName(elementType)})");
+            sb.AppendLine($"                );");
         }
         else
         {
@@ -136,20 +175,39 @@ internal static class Serialization
             sb.AppendLine($"                    throw new InvalidOperationException($\"No serializer found for type {GetTypeOfName(elementType)}\");");
             sb.AppendLine($"                }}");
             sb.AppendLine();
+            sb.AppendLine($"                var entities = new List<Entity>();");
             sb.AppendLine($"                foreach (var item in value)");
             sb.AppendLine($"                {{");
-            sb.AppendLine($"                    if (item != null)");
-            sb.AppendLine($"                    {{");
-            sb.AppendLine($"                        collection.Add(itemSerializer.Serialize(item));");
-            sb.AppendLine($"                    }}");
-            sb.AppendLine($"                    else");
-            sb.AppendLine($"                    {{");
-            sb.AppendLine($"                        collection.Add(null);");
-            sb.AppendLine($"                    }}");
+
+            // Only add null check for reference types
+            if (elementType.IsReferenceType || elementType.NullableAnnotation == NullableAnnotation.Annotated)
+            {
+                sb.AppendLine($"                    if (item != null)");
+                sb.AppendLine($"                    {{");
+                sb.AppendLine($"                        var serializedItem = itemSerializer.Serialize(item);");
+                sb.AppendLine($"                        if (serializedItem is Entity entityItem)");
+                sb.AppendLine($"                        {{");
+                sb.AppendLine($"                            entities.Add(entityItem);");
+                sb.AppendLine($"                        }}");
+                sb.AppendLine($"                    }}");
+            }
+            else
+            {
+                // Value types can't be null, so no null check needed
+                sb.AppendLine($"                    var serializedItem = itemSerializer.Serialize(item);");
+                sb.AppendLine($"                    if (serializedItem is Entity entityItem)");
+                sb.AppendLine($"                    {{");
+                sb.AppendLine($"                        entities.Add(entityItem);");
+                sb.AppendLine($"                    }}");
+            }
+
             sb.AppendLine($"                }}");
+            sb.AppendLine($"                serializedValue = new EntityCollection(");
+            sb.AppendLine($"                    Type: typeof({GetTypeOfName(elementType)}),");
+            sb.AppendLine($"                    Entities: entities");
+            sb.AppendLine($"                );");
         }
 
-        sb.AppendLine($"                serializedValue = collection;");
         sb.AppendLine($"            }}");
     }
 

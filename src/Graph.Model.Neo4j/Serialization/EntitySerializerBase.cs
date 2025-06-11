@@ -32,14 +32,14 @@ public abstract class EntitySerializerBase
     /// </summary>
     /// <param name="entity">The entity to deserialize</param>
     /// <returns>A .NET object representing the deserialized entity</returns>
-    public abstract object Deserialize(Dictionary<string, IntermediateRepresentation> entity);
+    public abstract object Deserialize(Entity entity);
 
     /// <summary>
     /// Serializes a .NET object into a Neo4j entity representation
     /// </summary>
     /// <param name="entity">The .NET object to serialize</param>
     /// <returns>A dictionary representing the serialized entity</returns>
-    public abstract Dictionary<string, IntermediateRepresentation> Serialize(object entity);
+    public abstract Entity Serialize(object entity);
 
     /// <summary>
     /// Converts a .NET value to a Neo4j compatible value

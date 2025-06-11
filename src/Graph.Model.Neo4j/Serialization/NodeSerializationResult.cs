@@ -22,7 +22,7 @@ internal record NodeSerializationResult
     /// <summary>
     /// The serialized entity representation.
     /// </summary>
-    public required Dictionary<string, IntermediateRepresentation> SerializedEntity { get; init; }
+    public required Entity SerializedEntity { get; init; }
 
     /// <summary>
     /// The label to use for the Neo4j node.

@@ -33,10 +33,10 @@ internal class EntityFactory(ILoggerFactory? loggerFactory = null)
         {
             _logger?.LogDebug("No generated serializer found for type {Type}. Falling back to reflection-based creation.", type.Name);
 
-            var intermediateRepresentation = ConvertToIntermediateRepresentation(type, neo4jEntity);
+            var serializedEntity = ConvertToIntermediateRepresentation(type, neo4jEntity);
 
             // The serializer will handle the entire deserialization process
-            return serializer.Deserialize(intermediateRepresentation);
+            return serializer.Deserialize(serializedEntity);
         }
 
         _logger?.LogDebug("No generated serializer found for type {Type}. Falling back to reflection-based creation.", type.Name);
@@ -44,98 +44,18 @@ internal class EntityFactory(ILoggerFactory? loggerFactory = null)
         return CreateInstanceViaReflection(type, neo4jEntity);
     }
 
-    private Dictionary<string, IntermediateRepresentation> ConvertToIntermediateRepresentation(Type type, global::Neo4j.Driver.IEntity neo4jEntity)
+    private Entity ConvertToIntermediateRepresentation(Type type, global::Neo4j.Driver.IEntity neo4jEntity)
     {
-        var intermediateRepresentation = new Dictionary<string, IntermediateRepresentation>();
+        var simpleProperties = new Dictionary<string, PropertyRepresentation>();
+        var complexProperties = new Dictionary<string, PropertyRepresentation>();
 
-        // Add properties from Neo4j entity
-        foreach (var property in neo4jEntity.Properties)
-        {
-            var propertyName = property.Key;
-            var value = property.Value;
-
-            // Get the property info given the name of the property
-            var propertyInfo = Labels.GetPropertyFromLabel(propertyName, type)
-                ?? throw new GraphException($"Property '{propertyName}' not found in type '{type.Name}'");
-
-            var isCollection = GraphDataModel.IsCollectionOfSimple(propertyInfo.PropertyType) ||
-                               GraphDataModel.IsCollectionOfComplex(propertyInfo.PropertyType);
-
-            var isNullable = propertyInfo.PropertyType.IsGenericType &&
-                            propertyInfo.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>);
-
-            var isSimple = GraphDataModel.IsSimple(propertyInfo.PropertyType);
-
-            if (isSimple)
-            {
-                intermediateRepresentation[propertyName] = new IntermediateRepresentation(
-                    propertyInfo,
-                    true,
-                    isNullable,
-                    false,
-                    null,
-                    true,
-                    EntitySerializerBase.ConvertFromNeo4jValue(value, propertyInfo.PropertyType)
-                );
-            }
-            else if (isCollection)
-            {
-                var collectionElementType = propertyInfo.PropertyType.GetInterfaces().FirstOrDefault(i =>
-                    i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))?
-                    .GetGenericArguments().FirstOrDefault()!;
-                var collectionElementTypeIsSimple = collectionElementType != null && GraphDataModel.IsSimple(collectionElementType);
-
-                if (collectionElementTypeIsSimple)
-                {
-                    var convertedValues = EntitySerializerBase.ConvertCollection((IEnumerable)value)
-                        .Select(v => EntitySerializerBase.ConvertFromNeo4jValue(v, collectionElementType!))
-                        .ToArray();
-
-                    // Collection of simple types
-                    intermediateRepresentation[propertyName] = new IntermediateRepresentation(
-                        PropertyInfo: propertyInfo,
-                        IsSimple: false,
-                        IsNullable: isNullable,
-                        IsCollection: true,
-                        CollectionElementType: collectionElementType,
-                        IsCollectionOfSimple: true,
-                        Value: convertedValues
-                    );
-                }
-                else
-                {
-                    // Collection of complex types
-                    var convertedValues = (value as IEnumerable)?.Cast<global::Neo4j.Driver.IEntity>()
-                        .Select(v => ConvertToIntermediateRepresentation(collectionElementType!, v))
-                        .ToArray();
-
-                    intermediateRepresentation[propertyName] = new IntermediateRepresentation(
-                        PropertyInfo: propertyInfo,
-                        IsSimple: false,
-                        IsNullable: isNullable,
-                        IsCollection: true,
-                        CollectionElementType: collectionElementType,
-                        IsCollectionOfSimple: false,
-                        Value: convertedValues
-                    );
-                }
-            }
-            else
-            {
-                // Complex type
-                var convertedValue = ConvertToIntermediateRepresentation(propertyInfo.PropertyType, (global::Neo4j.Driver.IEntity)value);
-                intermediateRepresentation[propertyName] = new IntermediateRepresentation(
-                    PropertyInfo: propertyInfo,
-                    IsSimple: false,
-                    IsNullable: isNullable,
-                    IsCollection: false,
-                    CollectionElementType: null,
-                    IsCollectionOfSimple: false,
-                    Value: convertedValue
-                );
-            }
-        }
-        return intermediateRepresentation;
+        // TODO: Implement conversion logic for simple and complex properties
+        return new Entity(
+            Type: type,
+            Label: string.Empty,
+            SimpleProperties: simpleProperties,
+            ComplexProperties: complexProperties
+        );
     }
 
     private object CreateInstanceViaReflection(Type type, global::Neo4j.Driver.IEntity neo4jEntity)

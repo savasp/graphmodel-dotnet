@@ -169,7 +169,7 @@ public class EntitySerializerGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine($"internal sealed class {serializerName} : EntitySerializerBase");
         sb.AppendLine("{");
-        sb.AppendLine($"    public override Type EntityType => typeof({type.ToDisplayString()});");
+        sb.AppendLine($"    public override Type EntityType => typeof({GetTypeOfName(type)});");
         sb.AppendLine();
 
         Deserialization.GenerateDeserializeMethod(sb, type);
@@ -197,12 +197,12 @@ public class EntitySerializerGenerator : IIncrementalGenerator
 
         foreach (var type in types.Where(t => t is not null))
         {
-            var typeName = type!.ToDisplayString();
-            var namespaceName = GetNamespaceName(type);
-            var serializerName = $"{type.Name}Serializer";
+            var typeName = GetTypeOfName(type!);
+            var namespaceName = GetNamespaceName(type!);
+            var serializerName = $"{type!.Name}Serializer";
 
             // Check if the type implements IEntity (INode or IRelationship)
-            var implementsIEntity = type.AllInterfaces.Any(i =>
+            var implementsIEntity = type!.AllInterfaces.Any(i =>
                 (i.Name == "INode" || i.Name == "IRelationship") &&
                 i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
 
@@ -234,5 +234,16 @@ public class EntitySerializerGenerator : IIncrementalGenerator
         }
 
         return namespaceName + ".Generated";
+    }
+
+    private static string GetTypeOfName(ITypeSymbol type)
+    {
+        // For nullable reference types, get the underlying non-nullable type
+        if (type.NullableAnnotation == NullableAnnotation.Annotated && !type.IsValueType)
+        {
+            return type.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString();
+        }
+
+        return type.ToDisplayString();
     }
 }

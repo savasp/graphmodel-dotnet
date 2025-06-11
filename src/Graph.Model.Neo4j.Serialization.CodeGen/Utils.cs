@@ -80,4 +80,46 @@ internal static class Utils
     {
         return char.ToUpper(parameter.Name[0]) + parameter.Name.Substring(1);
     }
+
+    internal static string GetLabelFromType(INamedTypeSymbol type)
+    {
+        // Check for custom label from Node attribute
+        var nodeAttribute = type.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "NodeAttribute" &&
+                                 a.AttributeClass?.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
+
+        if (nodeAttribute?.ConstructorArguments.Length > 0)
+        {
+            var label = nodeAttribute.ConstructorArguments[0].Value?.ToString();
+            if (label is not null && !string.IsNullOrEmpty(label))
+                return label;
+        }
+
+        // Check for Label property on Node attribute
+        var labelArg = nodeAttribute?.NamedArguments
+            .FirstOrDefault(na => na.Key == "Label");
+        if (labelArg?.Value.Value is string labelValue && !string.IsNullOrEmpty(labelValue))
+            return labelValue;
+
+        // Check for custom label from Relationship attribute
+        var relationshipAttribute = type.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == "RelationshipAttribute" &&
+                                 a.AttributeClass?.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
+
+        if (relationshipAttribute?.ConstructorArguments.Length > 0)
+        {
+            var label = relationshipAttribute.ConstructorArguments[0].Value?.ToString();
+            if (label is not null && !string.IsNullOrEmpty(label))
+                return label;
+        }
+
+        // Check for Label property on Relationship attribute
+        var relLabelArg = relationshipAttribute?.NamedArguments
+            .FirstOrDefault(na => na.Key == "Label");
+        if (relLabelArg?.Value.Value is string relLabelValue && !string.IsNullOrEmpty(relLabelValue))
+            return relLabelValue;
+
+        // Fall back to the type name with backticks removed
+        return type.Name.Replace("`", "");
+    }
 }

@@ -63,8 +63,31 @@ public record Person : Node
     public List<EmotionalState> EmotionalStates { get; set; } = new List<EmotionalState>();
 }
 
+public record Foo
+{
+    public string Name { get; set; } = string.Empty;
+    public int Value { get; set; }
+    public List<DateTime> ImportantDates { get; set; } = new List<DateTime>();
+    public Bar Bar { get; set; } = new Bar();
+}
+
+public record Bar
+{
+    public string Description { get; set; } = string.Empty;
+    public List<int> Numbers { get; set; } = new List<int>();
+    public Foo? Foo { get; set; } = null;
+    public Baz? Baz { get; set; } = null;
+}
+
+public record Baz
+{
+    public string Title { get; set; } = string.Empty;
+    public List<string> Tags { get; set; } = new List<string>();
+    public Bar? Bar { get; set; } = null;
+}
+
 [Node(Label = "PersonWithAddress")]
-public record PersonWithAddress : Node
+public record PersonWithComplex : Node
 {
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
@@ -72,14 +95,7 @@ public record PersonWithAddress : Node
     public string? Department { get; set; }
     public Address HomeAddress { get; set; } = new Address();
     public Address? WorkAddress { get; set; } = null;
-}
-
-[Node(Label = "PersonWithListOfAddresses")]
-public record PersonWithListOfAddresses : Node
-{
-    public string Name { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
-    public int Age { get; set; }
-    public string? Department { get; set; }
-    public List<Address> Addresses { get; set; } = new List<Address>();
+    public List<Address> PreviousAddresses { get; set; } = new List<Address>();
+    public Foo Foo { get; set; } = new Foo();
+    public Bar? Bar { get; set; } = null;
 }

@@ -83,7 +83,7 @@ try
     Console.WriteLine($"✓ Created employee: {bob.Name}\n");
 
     // Create a node with complex a complex property
-    var charlie = new PersonWithAddress
+    var charlie = new PersonWithComplex
     {
         Name = "Charlie Brown",
         Email = "charlie@techcorp.com",
@@ -116,13 +116,22 @@ try
     Console.WriteLine($"  Work Address: {charlie.WorkAddress.Street}, {charlie.WorkAddress.City}, {charlie.WorkAddress.State} {charlie.WorkAddress.ZipCode}, {charlie.WorkAddress.Country}\n");
 
     // Create a node with a list of complex properties
-    var dave = new PersonWithListOfAddresses
+    var dave = new PersonWithComplex
     {
         Name = "Dave Wilson",
         Email = "dave@techcorp.com",
         Age = 40,
         Department = "Sales",
-        Addresses = new List<Address>
+        HomeAddress = new Address
+        {
+            Street = "123 Main St",
+            City = "Springfield",
+            State = State.WA,
+            ZipCode = "62704",
+            Country = "USA",
+            Aliases = new List<string> { "Home", "Personal" }
+        },
+        PreviousAddresses = new List<Address>
         {
             new Address
             {
@@ -145,11 +154,63 @@ try
         }
     };
 
+    var elen = new PersonWithComplex
+    {
+        Name = "Elen Smith",
+        Email = "elen@techcorp.com",
+        Age = 32,
+        Department = "HR",
+        HomeAddress = new Address
+        {
+            Street = "321 Oak St",
+            City = "Springfield",
+            State = State.CA,
+            ZipCode = "62704",
+            Country = "USA",
+            Aliases = new List<string> { "Home", "Personal" }
+        },
+        PreviousAddresses = new List<Address>
+        {
+            new Address
+            {
+                Street = "654 Maple St",
+                City = "Springfield",
+                State = State.CA,
+                ZipCode = "62704",
+                Country = "USA",
+                Aliases = new List<string> { "Old Home", "Childhood" }
+            }
+        },
+        Foo = new Foo
+        {
+            Name = "Elen's Foo",
+            Value = 42,
+            ImportantDates = new List<DateTime> { new DateTime(2022, 1, 1), new DateTime(2023, 6, 15) },
+            Bar = new Bar
+            {
+                Description = "Elen's Bar",
+                Numbers = new List<int> { 7, 8, 9 },
+                Foo = new Foo
+                {
+                    Name = "Nested Foo",
+                    Value = 100
+                },
+                Baz = new Baz
+                {
+                    Title = "Elen's Baz",
+                    Tags = new List<string> { "Tag1", "Tag2" },
+                }
+            }
+        },
+    };
+
     // Save the node with a list of addresses
     Console.WriteLine("2. Creating employee with multiple addresses...");
     await graph.CreateNodeAsync(dave);
+    await graph.CreateNodeAsync(elen);
+
     Console.WriteLine($"✓ Created employee with multiple addresses: {dave.Name}");
-    foreach (var address in dave.Addresses)
+    foreach (var address in dave.PreviousAddresses)
     {
         Console.WriteLine($"  Address: {address.Street}, {address.City}, {address.State} {address.ZipCode}, {address.Country}");
     }
