@@ -212,23 +212,32 @@ public static class GraphDataModel
     /// <item><see cref="Uri"/></item>
     /// </list>
     /// </summary>
-    public static bool IsSimple(Type type) => type switch
+    public static bool IsSimple(Type type)
     {
-        _ when type.IsPrimitive => true,
-        _ when type.IsEnum => true,
-        _ when type == typeof(string) => true,
-        _ when type == typeof(Point) => true,
-        _ when type == typeof(DateTime) => true,
-        _ when type == typeof(DateTimeOffset) => true,
-        _ when type == typeof(TimeSpan) => true,
-        _ when type == typeof(TimeOnly) => true,
-        _ when type == typeof(DateOnly) => true,
-        _ when type == typeof(decimal) => true,
-        _ when type == typeof(Guid) => true,
-        _ when type == typeof(byte[]) => true,
-        _ when type == typeof(Uri) => true,
-        _ => false
-    };
+        // Handle nullable value types
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+        {
+            type = type.GetGenericArguments()[0];
+        }
+
+        return type switch
+        {
+            _ when type.IsPrimitive => true,
+            _ when type.IsEnum => true,
+            _ when type == typeof(string) => true,
+            _ when type == typeof(Point) => true,
+            _ when type == typeof(DateTime) => true,
+            _ when type == typeof(DateTimeOffset) => true,
+            _ when type == typeof(TimeSpan) => true,
+            _ when type == typeof(TimeOnly) => true,
+            _ when type == typeof(DateOnly) => true,
+            _ when type == typeof(decimal) => true,
+            _ when type == typeof(Guid) => true,
+            _ when type == typeof(byte[]) => true,
+            _ when type == typeof(Uri) => true,
+            _ => false
+        };
+    }
 
     /// <summary>
     /// Checks if a type is considered to be a "complex" type in the context of the graph model.

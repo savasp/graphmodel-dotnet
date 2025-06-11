@@ -24,7 +24,7 @@ namespace Cvoya.Graph.Model.Neo4j.Serialization;
 /// <param name="IsNullable"></param>
 /// <param name="IsCollection"></param>
 /// <param name="CollectionElementType"></param>
-/// <param name="IsEnum"></param>
+/// <param name="IsCollectionOfSimple"></param>
 /// <param name="Value"></param>
 public record IntermediateRepresentation(
     PropertyInfo PropertyInfo,
@@ -32,6 +32,6 @@ public record IntermediateRepresentation(
     bool IsNullable = false,
     bool IsCollection = false,
     Type? CollectionElementType = null,
-    bool IsEnum = false,
+    bool IsCollectionOfSimple = false,
     object? Value = null);
 

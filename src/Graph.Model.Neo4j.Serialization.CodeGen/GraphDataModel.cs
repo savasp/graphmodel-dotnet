@@ -60,6 +60,10 @@ internal static class GraphDataModel
             type = namedType.TypeArguments[0];
         }
 
+        // Check if it's an enum type (align with runtime version)
+        if (type.TypeKind == TypeKind.Enum)
+            return true;
+
         // Check if it's a special type (much more reliable than string comparison!)
         if (SimpleSpecialTypes.Contains(type.SpecialType))
             return true;

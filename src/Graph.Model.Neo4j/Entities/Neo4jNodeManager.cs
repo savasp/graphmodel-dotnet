@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Collections;
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
@@ -84,6 +85,8 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var complexPropertiesCreated = true;
 
             var complexProperties = serializationResult.SerializedEntity.ComplexProperties;
+
+            Log(serializationResult.SerializedEntity);
 
             _logger?.LogDebug("Node creation result: {NodeCreated}, Complex properties: {ComplexPropertiesCount}", nodeCreated, complexProperties.Count);
             // Create complex properties if any
@@ -300,5 +303,51 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         var updatedComplexProperties = !complexProperties.Any() || await CreateComplexPropertiesAsync(tx, parentId, complexProperties, 0, cancellationToken);
 
         return updatedComplexProperties;
+    }
+
+    private void Log(IReadOnlyDictionary<string, IntermediateRepresentation> serializedEntity)
+    {
+        if (_logger?.IsEnabled(LogLevel.Debug) != true)
+            return;
+
+        _logger.LogDebug("Serialized entity properties:");
+        foreach (var kv in serializedEntity)
+        {
+            if (kv.Value.IsCollection && kv.Value.IsCollectionOfSimple)
+            {
+                // collection of simple
+                var collection = kv.Value.Value as IEnumerable<object> ??
+                    throw new GraphException($"Collection property {kv.Key} is not a collection of dictionaries");
+                _logger.LogDebug("  {PropertyName} (Collection of Simple): {PropertyValue}", kv.Key, string.Join(", ", kv.Value.Value as IEnumerable<object> ?? Enumerable.Empty<object>()));
+                continue;
+            }
+
+            if (kv.Value.IsCollection && !kv.Value.IsCollectionOfSimple)
+            {
+                // collection of complex
+                _logger.LogDebug(" {PropertyName} type {TypeName} is a collection of complex types: {ElementType}",
+                    kv.Key, kv.Value.PropertyInfo.PropertyType.Name, kv.Value.CollectionElementType?.Name);
+                var collection = kv.Value.Value as IEnumerable
+                    ?? throw new GraphException($"Collection property {kv.Key} is not a collection of dictionaries");
+                _logger.LogDebug("  {PropertyName} (Collection of Complex):", kv.Key);
+                foreach (var item in collection)
+                {
+                    Log(item as Dictionary<string, IntermediateRepresentation> ?? throw new GraphException(
+                        $"Collection property {kv.Key} item is not a dictionary"));
+                }
+                continue;
+            }
+
+            if (!kv.Value.IsSimple)
+            {
+                // complex
+                _logger.LogDebug("  {PropertyName} (Complex):", kv.Key);
+                Log(kv.Value.Value as IReadOnlyDictionary<string, IntermediateRepresentation> ?? throw new GraphException(
+                    $"Complex property {kv.Key} is not a dictionary"));
+                continue;
+            }
+
+            _logger.LogDebug("  {PropertyName}: {PropertyValue}", kv.Key, kv.Value.Value);
+        }
     }
 }

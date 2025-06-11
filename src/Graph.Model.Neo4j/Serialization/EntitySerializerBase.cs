@@ -13,7 +13,6 @@
 // limitations under the License.
 
 using System.Collections;
-using System.Reflection;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Model.Neo4j.Serialization;
@@ -135,6 +134,14 @@ public abstract class EntitySerializerBase
     }
 
     /// <summary>
+    /// Converts a collection of Neo4j values to an array of objects
+    /// </summary>
+    public static object[] ConvertCollection(IEnumerable collection)
+    {
+        return collection.Cast<object>().Select(ConvertToNeo4jValue).Where(x => x is not null).Select(x => x!).ToArray();
+    }
+
+    /// <summary>
     /// Safely gets a property value from the Neo4j entity
     /// </summary>
     protected static bool TryGetProperty(global::Neo4j.Driver.IEntity entity, string propertyName, out object? value)
@@ -151,11 +158,6 @@ public abstract class EntitySerializerBase
         string s when decimal.TryParse(s, out var parsed) => parsed,
         _ => Convert.ToDecimal(value)
     };
-
-    private static object[] ConvertCollection(IEnumerable collection)
-    {
-        return collection.Cast<object>().Select(ConvertToNeo4jValue).Where(x => x is not null).Select(x => x!).ToArray();
-    }
 
     private static Array ConvertToArray(IList neo4jList, Type elementType)
     {

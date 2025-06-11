@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Collections;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -69,35 +70,68 @@ internal class EntityFactory(ILoggerFactory? loggerFactory = null)
             {
                 intermediateRepresentation[propertyName] = new IntermediateRepresentation(
                     propertyInfo,
-                    isSimple,
+                    true,
                     isNullable,
-                    isCollection,
-                    propertyInfo.PropertyType.GetInterfaces().FirstOrDefault(i =>
-                        i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))?
-                        .GetGenericArguments().FirstOrDefault(),
-                    propertyInfo.PropertyType.IsEnum,
+                    false,
+                    null,
+                    true,
                     EntitySerializerBase.ConvertFromNeo4jValue(value, propertyInfo.PropertyType)
                 );
             }
+            else if (isCollection)
+            {
+                var collectionElementType = propertyInfo.PropertyType.GetInterfaces().FirstOrDefault(i =>
+                    i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))?
+                    .GetGenericArguments().FirstOrDefault()!;
+                var collectionElementTypeIsSimple = collectionElementType != null && GraphDataModel.IsSimple(collectionElementType);
+
+                if (collectionElementTypeIsSimple)
+                {
+                    var convertedValues = EntitySerializerBase.ConvertCollection((IEnumerable)value)
+                        .Select(v => EntitySerializerBase.ConvertFromNeo4jValue(v, collectionElementType!))
+                        .ToArray();
+
+                    // Collection of simple types
+                    intermediateRepresentation[propertyName] = new IntermediateRepresentation(
+                        PropertyInfo: propertyInfo,
+                        IsSimple: false,
+                        IsNullable: isNullable,
+                        IsCollection: true,
+                        CollectionElementType: collectionElementType,
+                        IsCollectionOfSimple: true,
+                        Value: convertedValues
+                    );
+                }
+                else
+                {
+                    // Collection of complex types
+                    var convertedValues = (value as IEnumerable)?.Cast<global::Neo4j.Driver.IEntity>()
+                        .Select(v => ConvertToIntermediateRepresentation(collectionElementType!, v))
+                        .ToArray();
+
+                    intermediateRepresentation[propertyName] = new IntermediateRepresentation(
+                        PropertyInfo: propertyInfo,
+                        IsSimple: false,
+                        IsNullable: isNullable,
+                        IsCollection: true,
+                        CollectionElementType: collectionElementType,
+                        IsCollectionOfSimple: false,
+                        Value: convertedValues
+                    );
+                }
+            }
             else
             {
-                var serializer = EntitySerializerRegistry.GetSerializer(propertyInfo.PropertyType)
-                    ?? throw new GraphException($"No serializer found for type {propertyInfo.PropertyType.Name}. " +
-                        "Ensure it is registered in the EntitySerializerRegistry.");
-
-                // TODO: When we want to support for arbitrary depth complex types, we need to change this logic
-                // This doesn't recursively serialize complex types beyond one hop
+                // Complex type
+                var convertedValue = ConvertToIntermediateRepresentation(propertyInfo.PropertyType, (global::Neo4j.Driver.IEntity)value);
                 intermediateRepresentation[propertyName] = new IntermediateRepresentation(
-                    propertyInfo,
-                    isSimple,
-                    isNullable,
-                    isCollection,
-                    propertyInfo.PropertyType.GetInterfaces().FirstOrDefault(i =>
-                        i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))?
-                        .GetGenericArguments().FirstOrDefault(),
-                    propertyInfo.PropertyType.IsEnum,
-                    ConvertToIntermediateRepresentation(propertyInfo.PropertyType, (value as global::Neo4j.Driver.IEntity)!) // Recursive call for complex types
-                                                                                                                             // TODO: The above line will throw. Adding it temporarily until we debug the result structure from the cypher query.
+                    PropertyInfo: propertyInfo,
+                    IsSimple: false,
+                    IsNullable: isNullable,
+                    IsCollection: false,
+                    CollectionElementType: null,
+                    IsCollectionOfSimple: false,
+                    Value: convertedValue
                 );
             }
         }

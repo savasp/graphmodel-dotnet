@@ -277,7 +277,7 @@ internal class Deserialization
             // Complex type - recursively deserialize
             sb.AppendLine($"{indentStr}if ({infoVariableName}.Value is Dictionary<string, IntermediateRepresentation> complexDict)");
             sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    var complexSerializer = EntitySerializerRegistry.GetSerializer(typeof({targetType.ToDisplayString()}));");
+            sb.AppendLine($"{indentStr}    var complexSerializer = EntitySerializerRegistry.GetSerializer(typeof({GetTypeOfName(targetType)}));");
             sb.AppendLine($"{indentStr}    if (complexSerializer != null)");
             sb.AppendLine($"{indentStr}    {{");
             sb.AppendLine($"{indentStr}        {variableName} = ({targetType.ToDisplayString()})complexSerializer.Deserialize(complexDict);");
@@ -328,7 +328,7 @@ internal class Deserialization
         {
             sb.AppendLine($"{indentStr}        if (item is Dictionary<string, IntermediateRepresentation> itemDict)");
             sb.AppendLine($"{indentStr}        {{");
-            sb.AppendLine($"{indentStr}            var itemSerializer = EntitySerializerRegistry.GetSerializer(typeof({elementType}));");
+            sb.AppendLine($"{indentStr}            var itemSerializer = EntitySerializerRegistry.GetSerializer(typeof({GetTypeOfName(elementType!)}));");
             sb.AppendLine($"{indentStr}            if (itemSerializer != null)");
             sb.AppendLine($"{indentStr}            {{");
             sb.AppendLine($"{indentStr}                collection.Add(({elementType})itemSerializer.Deserialize(itemDict));");
@@ -383,5 +383,16 @@ internal class Deserialization
 
             sb.AppendLine("        }");
         }
+    }
+
+    private static string GetTypeOfName(ITypeSymbol type)
+    {
+        // For nullable reference types, get the underlying non-nullable type
+        if (type.NullableAnnotation == NullableAnnotation.Annotated && !type.IsValueType)
+        {
+            return type.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString();
+        }
+
+        return type.ToDisplayString();
     }
 }

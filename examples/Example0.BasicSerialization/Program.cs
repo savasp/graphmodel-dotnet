@@ -56,7 +56,11 @@ try
         Name = "Alice Johnson",
         Email = "alice@techcorp.com",
         Age = 30,
-        Department = "Engineering"
+        Department = "Engineering",
+        Skills = new List<string> { "C#", "Neo4j", "Microservices" },
+        KeyDates = new List<DateTime> { new DateTime(2020, 1, 1), new DateTime(2021, 6, 1) },
+        SomeNumbers = new List<int> { 1, 2, 3 },
+        EmotionalStates = new List<EmotionalState> { EmotionalState.Happy, EmotionalState.Curious }
     };
 
     var bob = new Person
@@ -64,7 +68,11 @@ try
         Name = "Bob Smith",
         Email = "bob@techcorp.com",
         Age = 28,
-        Department = "Marketing"
+        Department = "Marketing",
+        Skills = new List<string> { "Marketing", "SEO", "Content Creation" },
+        KeyDates = new List<DateTime> { new DateTime(2020, 2, 1), new DateTime(2021, 7, 1) },
+        SomeNumbers = new List<int> { 4, 5, 6 },
+        EmotionalStates = new List<EmotionalState> { EmotionalState.Sad, EmotionalState.Anxious }
     };
 
     // Save nodes to graph
@@ -81,20 +89,31 @@ try
         Email = "charlie@techcorp.com",
         Age = 35,
         Department = "Design",
-        Address = new Address
+        HomeAddress = new Address
         {
             Street = "456 Elm St",
             City = "Springfield",
-            State = "IL",
+            State = State.CA,
             ZipCode = "62704",
-            Country = "USA"
+            Country = "USA",
+            Aliases = new List<string> { "Home", "Work" }
+        },
+        WorkAddress = new Address
+        {
+            Street = "789 Oak St",
+            City = "Springfield",
+            State = State.CA,
+            ZipCode = "62704",
+            Country = "USA",
+            Aliases = new List<string> { "Office", "HQ" }
         }
     };
 
     // Save complex node to graph
     await graph.CreateNodeAsync(charlie);
     Console.WriteLine($"✓ Created employee with address: {charlie.Name}");
-    Console.WriteLine($"  Address: {charlie.Address.Street}, {charlie.Address.City}, {charlie.Address.State} {charlie.Address.ZipCode}, {charlie.Address.Country}\n");
+    Console.WriteLine($"  Home Address: {charlie.HomeAddress.Street}, {charlie.HomeAddress.City}, {charlie.HomeAddress.State} {charlie.HomeAddress.ZipCode}, {charlie.HomeAddress.Country}");
+    Console.WriteLine($"  Work Address: {charlie.WorkAddress.Street}, {charlie.WorkAddress.City}, {charlie.WorkAddress.State} {charlie.WorkAddress.ZipCode}, {charlie.WorkAddress.Country}\n");
 
     // Create a node with a list of complex properties
     var dave = new PersonWithListOfAddresses
@@ -109,17 +128,19 @@ try
             {
                 Street = "789 Oak St",
                 City = "Springfield",
-                State = "IL",
+                State = State.WA,
                 ZipCode = "62704",
-                Country = "USA"
+                Country = "USA",
+                Aliases = new List<string> { "Home", "HQ" }
             },
             new Address
             {
                 Street = "101 Pine St",
                 City = "Springfield",
-                State = "IL",
+                State = State.OR,
                 ZipCode = "62704",
-                Country = "USA"
+                Country = "USA",
+                Aliases = new List<string> { "Office", "Branch" }
             }
         }
     };
@@ -132,7 +153,6 @@ try
     {
         Console.WriteLine($"  Address: {address.Street}, {address.City}, {address.State} {address.ZipCode}, {address.Country}");
     }
-
 
     Console.WriteLine("\n=== Example 0 Complete ===");
     Console.WriteLine("This example demonstrated:");
