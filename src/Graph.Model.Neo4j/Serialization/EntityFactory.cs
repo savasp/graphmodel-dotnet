@@ -46,8 +46,8 @@ internal class EntityFactory(ILoggerFactory? loggerFactory = null)
 
     private Entity ConvertToIntermediateRepresentation(Type type, global::Neo4j.Driver.IEntity neo4jEntity)
     {
-        var simpleProperties = new Dictionary<string, PropertyRepresentation>();
-        var complexProperties = new Dictionary<string, PropertyRepresentation>();
+        var simpleProperties = new Dictionary<string, Property>();
+        var complexProperties = new Dictionary<string, Property>();
 
         // TODO: Implement conversion logic for simple and complex properties
         return new Entity(

@@ -162,6 +162,7 @@ public class EntitySerializerGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
+        sb.AppendLine("using System.Reflection;");  // Add this for schema generation
         sb.AppendLine("using Cvoya.Graph.Model.Neo4j.Serialization;");
         sb.AppendLine("using Neo4j.Driver;");
         sb.AppendLine();
@@ -175,10 +176,192 @@ public class EntitySerializerGenerator : IIncrementalGenerator
         Deserialization.GenerateDeserializeMethod(sb, type);
         sb.AppendLine();
         Serialization.GenerateSerializeMethod(sb, type);
+        sb.AppendLine();
+
+        // Add schema generation
+        GenerateSchemaMethod(sb, type);
 
         sb.AppendLine("}");
 
         context.AddSource($"{serializerName}.g.cs", sb.ToString());
+    }
+
+    private static void GenerateSchemaMethod(StringBuilder sb, INamedTypeSymbol type)
+    {
+        var isRelationship = type.AllInterfaces.Any(i =>
+            i.Name == "IRelationship" &&
+            i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
+
+        var schemaType = isRelationship ? "RelationshipSchema" : "EntitySchema";
+        var typeName = GetTypeOfName(type);
+        var label = GetLabelFromType(type);
+
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine($"    /// Gets the schema information for {type.Name}.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    public static {schemaType} GetSchema()");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var properties = new Dictionary<string, PropertySchema>();");
+        sb.AppendLine();
+
+        // Get all serializable properties
+        var properties = type.GetMembers().OfType<IPropertySymbol>()
+            .Where(p => p.DeclaredAccessibility == Accessibility.Public &&
+                       p.GetMethod != null && p.SetMethod != null &&
+                       !ShouldSkipProperty(p, type));
+
+        foreach (var property in properties)
+        {
+            GeneratePropertySchema(sb, property, type);
+        }
+
+        sb.AppendLine();
+        sb.AppendLine($"        return new {schemaType}(");
+        sb.AppendLine($"            Type: typeof({typeName}),");
+        sb.AppendLine($"            Label: \"{label}\",");
+        sb.AppendLine("            Properties: properties");
+
+        if (isRelationship)
+        {
+            sb.AppendLine("            // StartNodeLabel and EndNodeLabel can be added later if needed");
+        }
+
+        sb.AppendLine("        );");
+        sb.AppendLine("    }");
+    }
+
+    private static void GeneratePropertySchema(StringBuilder sb, IPropertySymbol property, INamedTypeSymbol containingType)
+    {
+        var propertyType = property.Type;
+        var propertyName = GetPropertyName(property);
+        var isNullable = propertyType.NullableAnnotation == NullableAnnotation.Annotated ||
+                        (propertyType.CanBeReferencedByName && !propertyType.IsValueType);
+
+        sb.AppendLine($"        // Schema for property: {property.Name}");
+        sb.AppendLine("        {");
+        sb.AppendLine($"            var propInfo = typeof({GetTypeOfName(containingType)}).GetProperty(\"{property.Name}\")!;");
+
+        if (GraphDataModel.IsSimple(propertyType))
+        {
+            sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+            sb.AppendLine("                PropertyInfo: propInfo,");
+            sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+            sb.AppendLine("                PropertyType: PropertyType.Simple,");
+            sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
+            sb.AppendLine("            );");
+        }
+        else if (GraphDataModel.IsCollectionOfSimple(propertyType))
+        {
+            var elementType = GraphDataModel.GetCollectionElementType(propertyType);
+            if (elementType is not null)
+            {
+                sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine("                PropertyInfo: propInfo,");
+                sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+                sb.AppendLine("                PropertyType: PropertyType.SimpleCollection,");
+                sb.AppendLine($"                ElementType: typeof({GetTypeOfName(elementType)}),");
+                sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
+                sb.AppendLine("            );");
+            }
+            else
+            {
+                // Fallback - treat as simple property if we can't determine element type
+                sb.AppendLine($"            // Warning: Could not determine element type for collection property {property.Name}");
+                sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine("                PropertyInfo: propInfo,");
+                sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+                sb.AppendLine("                PropertyType: PropertyType.Simple,");
+                sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
+                sb.AppendLine("            );");
+            }
+        }
+        else if (GraphDataModel.IsCollectionOfComplex(propertyType))
+        {
+            var elementType = GraphDataModel.GetCollectionElementType(propertyType);
+            if (elementType is not null)
+            {
+                sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine("                PropertyInfo: propInfo,");
+                sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+                sb.AppendLine("                PropertyType: PropertyType.ComplexCollection,");
+                sb.AppendLine($"                ElementType: typeof({GetTypeOfName(elementType)}),");
+                sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
+                sb.AppendLine($"                NestedSchema: {elementType.Name}Serializer.GetSchema()");
+                sb.AppendLine("            );");
+            }
+            else
+            {
+                // Fallback - treat as simple property if we can't determine element type
+                sb.AppendLine($"            // Warning: Could not determine element type for complex collection property {property.Name}");
+                sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine("                PropertyInfo: propInfo,");
+                sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+                sb.AppendLine("                PropertyType: PropertyType.Simple,");
+                sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
+                sb.AppendLine("            );");
+            }
+        }
+        else
+        {
+            // Complex property
+            sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+            sb.AppendLine("                PropertyInfo: propInfo,");
+            sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+            sb.AppendLine("                PropertyType: PropertyType.Complex,");
+            sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
+            sb.AppendLine($"                NestedSchema: {propertyType.Name}Serializer.GetSchema()");
+            sb.AppendLine("            );");
+        }
+
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private static string GetLabelFromType(INamedTypeSymbol type)
+    {
+        // Check for NodeAttribute or RelationshipAttribute to get custom label
+        foreach (var attr in type.GetAttributes())
+        {
+            if (attr.AttributeClass?.Name == "NodeAttribute" ||
+                attr.AttributeClass?.Name == "RelationshipAttribute")
+            {
+                // First constructor argument should be the label
+                if (attr.ConstructorArguments.Length > 0 &&
+                    attr.ConstructorArguments[0].Value is string label)
+                {
+                    return label;
+                }
+            }
+        }
+
+        // Default to type name
+        return type.Name;
+    }
+
+    private static string GetPropertyName(IPropertySymbol property)
+    {
+        // Check for PropertyAttribute to get custom property name
+        foreach (var attr in property.GetAttributes())
+        {
+            if (attr.AttributeClass?.Name == "PropertyAttribute")
+            {
+                if (attr.ConstructorArguments.Length > 0 &&
+                    attr.ConstructorArguments[0].Value is string propName)
+                {
+                    return propName;
+                }
+            }
+        }
+
+        // Default to property name in camelCase
+        return property.Name;
+    }
+
+    private static bool ShouldSkipProperty(IPropertySymbol property, INamedTypeSymbol containingType)
+    {
+        // Check for IgnoreAttribute
+        return property.GetAttributes().Any(attr =>
+            attr.AttributeClass?.Name == "IgnoreAttribute");
     }
 
     private static void GenerateRegistrationModule(SourceProductionContext context, ImmutableArray<INamedTypeSymbol?> types)
@@ -202,18 +385,21 @@ public class EntitySerializerGenerator : IIncrementalGenerator
             var serializerName = $"{type!.Name}Serializer";
 
             // Check if the type implements IEntity (INode or IRelationship)
-            var implementsIEntity = type!.AllInterfaces.Any(i =>
-                (i.Name == "INode" || i.Name == "IRelationship") &&
+            var implementsINode = type!.AllInterfaces.Any(i =>
+                i.Name == "INode" &&
+                i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
+            var implementsIRelationship = type!.AllInterfaces.Any(i =>
+                i.Name == "IRelationship" &&
                 i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
 
-            if (implementsIEntity)
+            if (implementsINode || implementsIRelationship)
             {
-                // Use generic registration for entity types
+                // Register serializer for entity types
                 sb.AppendLine($"        EntitySerializerRegistry.Register<{typeName}>(new {namespaceName}.{serializerName}());");
             }
             else
             {
-                // Use non-generic registration for complex property types
+                // Register serializer for complex property types (no schema needed for these)
                 sb.AppendLine($"        EntitySerializerRegistry.Register(typeof({typeName}), new {namespaceName}.{serializerName}());");
             }
         }

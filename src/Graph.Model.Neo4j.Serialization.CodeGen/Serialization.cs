@@ -24,8 +24,8 @@ internal static class Serialization
         sb.AppendLine($"    public override Entity Serialize(object obj)");
         sb.AppendLine("    {");
         sb.AppendLine($"        var entity = ({GetTypeOfName(type)})obj;");
-        sb.AppendLine("        var simpleProperties = new Dictionary<string, PropertyRepresentation>();");
-        sb.AppendLine("        var complexProperties = new Dictionary<string, PropertyRepresentation>();");
+        sb.AppendLine("        var simpleProperties = new Dictionary<string, Property>();");
+        sb.AppendLine("        var complexProperties = new Dictionary<string, Property>();");
         sb.AppendLine();
 
         var properties = Utils.GetAllProperties(type);
@@ -113,7 +113,7 @@ internal static class Serialization
         // Add to appropriate dictionary
         var dictionaryName = isSimple || (isCollection && GraphDataModel.IsCollectionOfSimple(propertyType)) ? "simpleProperties" : "complexProperties";
         sb.AppendLine();
-        sb.AppendLine($"            var propertyRep = new PropertyRepresentation(");
+        sb.AppendLine($"            var propertyRep = new Property(");
         sb.AppendLine($"                PropertyInfo: propInfo,");
         sb.AppendLine($"                Label: \"{propertyName}\",");
         sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLower()},");
