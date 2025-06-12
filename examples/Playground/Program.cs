@@ -86,12 +86,12 @@ var johnDoe = graph.Nodes<Person>()
 
 // Without .WithDepth(1), the Department node won't be loaded as the target in r.Target.
 var johnWorksAtDepartment = graph.Relationships<WorksΑt>(new GraphOperationOptions().WithDepth(1))
-    .Where(r => r.SourceId == johnDoe!.Id)
+    .Where(r => r.StartNodeId == johnDoe!.Id)
     .Select(r => r.Target)
     .FirstOrDefault();
 
 var departmentPartOfCompany = graph.Relationships<PartOf>(new GraphOperationOptions().WithDepth(1))
-    .Where(r => r.SourceId == johnWorksAtDepartment!.Id)
+    .Where(r => r.StartNodeId == johnWorksAtDepartment!.Id)
     .Select(r => r.Target)
     .FirstOrDefault();
 

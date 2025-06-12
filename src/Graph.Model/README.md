@@ -38,8 +38,8 @@ public class Person : INode
 public class Knows : IRelationship<Person, Person>
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string SourceId { get; set; } = string.Empty;
-    public string TargetId { get; set; } = string.Empty;
+    public string StartNodeId { get; set; } = string.Empty;
+    public string EndNodeId { get; set; } = string.Empty;
     public bool IsBidirectional { get; set; }
 
     public Person? Source { get; set; }
@@ -60,8 +60,8 @@ await graph.CreateNode(bob);
 // Create relationships
 var knows = new Knows
 {
-    SourceId = alice.Id,
-    TargetId = bob.Id,
+    StartNodeId = alice.Id,
+    EndNodeId = bob.Id,
     Since = DateTime.UtcNow
 };
 await graph.CreateRelationship(knows);

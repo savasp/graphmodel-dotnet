@@ -40,14 +40,14 @@ public record Company : Node
 }
 
 [Relationship(Label = "WORKS_AT")]
-public record WorksAt(string sourceId, string targetId) : Relationship(sourceId, targetId)
+public record WorksAt(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public DateTime StartDate { get; set; }
     public decimal Salary { get; set; }
 }
 
 [Relationship(Label = "PART_OF")]
-public record PartOf(string sourceId, string targetId) : Relationship(sourceId, targetId)
+public record PartOf(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public DateTime Since { get; set; }
 }

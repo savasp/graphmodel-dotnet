@@ -14,6 +14,7 @@
 
 using System.Collections;
 using System.Linq.Expressions;
+using Cvoya.Graph.Model.Neo4j.Serialization;
 
 namespace Cvoya.Graph.Model.Neo4j.Linq;
 
@@ -37,6 +38,7 @@ internal class GraphQueryContext
     public Type? ProjectionType { get; set; }
     public Dictionary<string, object>? Parameters { get; set; }
     public Type? ResultType { get; set; }
+    public EntitySchema? TargetEntitySchema { get; set; }
 
     /// <summary>
     /// Whether to use the most derived type when deserializing entities.

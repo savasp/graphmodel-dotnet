@@ -284,12 +284,12 @@ var recentConnections = graph.Relationships<Knows>()
 
 // Relationships from specific node
 var aliceKnows = graph.Relationships<Knows>()
-    .Where(k => k.SourceId == aliceId)
+    .Where(k => k.StartNodeId == aliceId)
     .ToList();
 
 // Bidirectional search
 var connectedToAlice = graph.Relationships<Knows>()
-    .Where(k => k.SourceId == aliceId || k.TargetId == aliceId)
+    .Where(k => k.StartNodeId == aliceId || k.EndNodeId == aliceId)
     .ToList();
 ```
 
@@ -376,8 +376,8 @@ var knows = graph.Relationships<Knows>().ToList();
 
 // Join to find connections
 var connections = from person in people
-                  join k in knows on person.Id equals k.SourceId
-                  join friend in people on k.TargetId equals friend.Id
+                  join k in knows on person.Id equals k.StartNodeId
+                  join friend in people on k.EndNodeId equals friend.Id
                   select new
                   {
                       Person = person.FirstName,
@@ -387,7 +387,7 @@ var connections = from person in people
 
 // Group to find popular people
 var popular = knows
-    .GroupBy(k => k.TargetId)
+    .GroupBy(k => k.EndNodeId)
     .Select(g => new
     {
         PersonId = g.Key,

@@ -26,19 +26,19 @@ public record User : Node
 }
 
 [Relationship(Label = "FOLLOWS")]
-public record Follows(string sourceId, string targetId) : Relationship(sourceId, targetId)
+public record Follows(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public DateTime Since { get; set; }
 }
 
 [Relationship(Label = "LIKED_BY")]
-public record LikedBy(string sourceId, string targetId) : Relationship(sourceId, targetId);
+public record LikedBy(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId);
 
 [Relationship(Label = "POSTED")]
-public record Posted(string sourceId, string targetId) : Relationship(sourceId, targetId);
+public record Posted(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId);
 
 [Relationship(Label = "LIKES")]
-public record Likes(string sourceId, string targetId) : Relationship(sourceId, targetId)
+public record Likes(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public DateTime LikedAt { get; set; }
 }
@@ -51,19 +51,19 @@ public record Comment : Node
 }
 
 [Relationship(Label = "REPLY_TO")]
-public record ReplyTo(string sourceId, string targetId) : Relationship(sourceId, targetId);
+public record ReplyTo(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId);
 
 [Relationship(Label = "COMMENTED_ON")]
-public record CommentedOn(string sourceId, string targetId) : Relationship(sourceId, targetId);
+public record CommentedOn(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId);
 
 [Relationship(Label = "WROTE")]
-public record Wrote(string sourceId, string targetId) : Relationship(sourceId, targetId)
+public record Wrote(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public DateTime WrittenAt { get; set; }
 }
 
 [Relationship(Label = "AUTHORED_BY")]
-public record Author(string sourceId, string targetId) : Relationship(sourceId, targetId)
+public record Author(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public DateTime PublishedDate { get; set; }
     public int Likes { get; set; }

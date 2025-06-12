@@ -123,20 +123,20 @@ Represents a directional relationship (edge) between nodes.
 public interface IRelationship : IEntity
 {
     bool IsBidirectional { get; set; }
-    string SourceId { get; set; }
-    string TargetId { get; set; }
+    string StartNodeId { get; set; }
+    string EndNodeId { get; set; }
 }
 ```
 
 ### Key Properties
 
-- `SourceId` - The ID of the source node
-- `TargetId` - The ID of the target node
+- `StartNodeId` - The ID of the source node
+- `EndNodeId` - The ID of the target node
 - `IsBidirectional` - Whether the relationship should be treated as bidirectional
 
 ### Usage Notes
 
-- Always set `SourceId` and `TargetId` when creating relationships
+- Always set `StartNodeId` and `EndNodeId` when creating relationships
 - The `IsBidirectional` property is a hint to graph providers about traversal behavior
 - Use `[Relationship]` attribute to specify custom labels and direction
 
@@ -168,8 +168,8 @@ public interface IRelationship<S, T> : IRelationship
 public class Knows : IRelationship<Person, Person>
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string SourceId { get; set; } = string.Empty;
-    public string TargetId { get; set; } = string.Empty;
+    public string StartNodeId { get; set; } = string.Empty;
+    public string EndNodeId { get; set; } = string.Empty;
     public bool IsBidirectional { get; set; } = true;
 
     public Person? Source { get; set; }
@@ -201,7 +201,7 @@ try
     // Perform operations
     await graph.CreateNode(person, transaction: transaction);
     await graph.CreateNode(address, transaction: transaction);
-    var livesAt = new LivesAt { SourceId = person.Id, TargetId = address.Id };
+    var livesAt = new LivesAt { StartNodeId = person.Id, EndNodeId = address.Id };
     await graph.CreateRelationship(livesAt, transaction: transaction);
 
     await transaction.Commit();
@@ -297,8 +297,8 @@ public abstract class Node : INode
 public abstract class Relationship : IRelationship
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string SourceId { get; set; } = string.Empty;
-    public string TargetId { get; set; } = string.Empty;
+    public string StartNodeId { get; set; } = string.Empty;
+    public string EndNodeId { get; set; } = string.Empty;
     public bool IsBidirectional { get; set; }
 }
 ```

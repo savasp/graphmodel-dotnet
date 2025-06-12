@@ -32,10 +32,10 @@ internal record RelationshipSerializationResult
     /// <summary>
     /// The source node ID.
     /// </summary>
-    public required string SourceId { get; init; }
+    public required string StartNodeId { get; init; }
 
     /// <summary>
     /// The target node ID.
     /// </summary>
-    public required string TargetId { get; init; }
+    public required string EndNodeId { get; init; }
 }

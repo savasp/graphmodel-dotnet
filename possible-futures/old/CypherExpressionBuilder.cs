@@ -3084,7 +3084,7 @@ internal class CypherExpressionBuilder
                     rel.Id = relationship.ElementId;
                 }
 
-                // Note: SourceId and TargetId should be set by the caller
+                // Note: StartNodeId and EndNodeId should be set by the caller
                 // since they need to come from the source and target nodes
             }
 

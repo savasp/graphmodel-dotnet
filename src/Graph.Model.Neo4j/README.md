@@ -110,8 +110,8 @@ public class Address
 public class Knows : IRelationship<Person, Person>
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string SourceId { get; set; } = string.Empty;
-    public string TargetId { get; set; } = string.Empty;
+    public string StartNodeId { get; set; } = string.Empty;
+    public string EndNodeId { get; set; } = string.Empty;
     public bool IsBidirectional { get; set; } = true;
 
     public Person? Source { get; set; }
@@ -153,8 +153,8 @@ await graph.CreateNode(bob);
 // Create relationships
 var friendship = new Knows
 {
-    SourceId = alice.Id,
-    TargetId = bob.Id,
+    StartNodeId = alice.Id,
+    EndNodeId = bob.Id,
     Since = DateTime.UtcNow.AddYears(-2),
     RelationshipType = "close friend"
 };

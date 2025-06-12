@@ -25,7 +25,7 @@ namespace Cvoya.Graph.Model.Neo4j.Cypher;
 
 internal class CypherEngine(GraphContext graphContext)
 {
-    private readonly ILogger<CypherEngine>? _logger =
+    private readonly ILogger<CypherEngine> _logger =
         graphContext.LoggerFactory?.CreateLogger<CypherEngine>() ?? NullLogger<CypherEngine>.Instance;
     private readonly GraphEntitySerializer _serializer = new GraphEntitySerializer(graphContext);
 
@@ -38,8 +38,8 @@ internal class CypherEngine(GraphContext graphContext)
         ArgumentNullException.ThrowIfNull(cypher);
         ArgumentNullException.ThrowIfNull(queryContext);
 
-        _logger?.LogDebug("Executing Cypher query: {Query}", cypher);
-        _logger?.LogDebug("With parameters: {Parameters}",
+        _logger.LogDebug("Executing Cypher query: {Query}", cypher);
+        _logger.LogDebug("With parameters: {Parameters}",
             string.Join(", ", queryContext.Parameters?.Select(p => $"{p.Key}={p.Value}") ?? []));
 
         // Use the parameters from the query context
@@ -68,7 +68,12 @@ internal class CypherEngine(GraphContext graphContext)
 
         try
         {
-            var visitor = new CypherQueryVisitor(queryContext, graphContext.LoggerFactory);
+            // Populate schema information for better result handling
+            PopulateEntitySchema(queryContext);
+
+            var shouldLoadComplexProps = ShouldLoadComplexProperties(queryContext.ResultType);
+            var visitor = new CypherQueryVisitor(queryContext, shouldLoadComplexProps, graphContext.LoggerFactory);
+
             visitor.Visit(expression);
 
             var result = visitor.Build();
@@ -88,6 +93,74 @@ internal class CypherEngine(GraphContext graphContext)
             _logger?.LogError(ex, "Failed to convert expression to Cypher");
             throw new InvalidOperationException($"Failed to convert expression to Cypher: {ex.Message}", ex);
         }
+    }
+
+    private void PopulateEntitySchema(GraphQueryContext queryContext)
+    {
+        if (queryContext.ResultType == null) return;
+
+        // Get the actual entity type (handle collections)
+        var entityType = queryContext.ResultType;
+        if (entityType.IsGenericType && typeof(IEnumerable).IsAssignableFrom(entityType))
+        {
+            entityType = entityType.GetGenericArguments()[0];
+        }
+
+        // Only populate schema for entity types
+        if (!typeof(INode).IsAssignableFrom(entityType) && !typeof(IRelationship).IsAssignableFrom(entityType))
+            return;
+
+        try
+        {
+            var serializer = EntitySerializerRegistry.GetSerializer(entityType);
+            queryContext.TargetEntitySchema = serializer?.GetSchema();
+
+            _logger?.LogDebug("Populated schema for type {Type}: HasComplexProperties = {HasComplexProperties}",
+                entityType.Name, queryContext.TargetEntitySchema?.HasComplexProperties ?? false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Could not populate schema for type {Type}", entityType.Name);
+        }
+    }
+
+    private bool ShouldLoadComplexProperties(Type? resultType)
+    {
+        if (resultType == null) return false;
+
+        // Handle collections - get the element type
+        if (resultType.IsGenericType)
+        {
+            var genericTypeDef = resultType.GetGenericTypeDefinition();
+            if (genericTypeDef == typeof(IEnumerable<>) ||
+                genericTypeDef == typeof(List<>) ||
+                genericTypeDef == typeof(IList<>))
+            {
+                resultType = resultType.GetGenericArguments()[0];
+            }
+        }
+
+        // Only nodes can have complex properties
+        if (!typeof(INode).IsAssignableFrom(resultType))
+            return false;
+
+        // Check the generated schema to see if this type has complex properties
+        try
+        {
+            var serializer = EntitySerializerRegistry.GetSerializer(resultType);
+            if (serializer?.GetSchema() is { } schema)
+            {
+                _logger?.LogDebug("Type {Type} has complex properties: {HasComplexProperties}",
+                    resultType.Name, schema.HasComplexProperties);
+                return schema.HasComplexProperties;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Could not check schema for type {Type}", resultType.Name);
+        }
+
+        return false;
     }
 
     private async Task<T> HandleScalarResultAsync<T>(IResultCursor result, CancellationToken cancellationToken)
@@ -292,32 +365,142 @@ internal class CypherEngine(GraphContext graphContext)
 
             var results = new List<object>();
 
-            foreach (var record in records)
+            // Group records by main entity to handle complex properties
+            var entityGroups = GroupRecordsByMainEntity(records, queryContext);
+
+            foreach (var entityGroup in entityGroups)
             {
-                var entity = DeserializeEntityFromRecord(
-                    record,
+                var entity = ProcessEntityWithComplexProperties(
+                    entityGroup.MainNode,
+                    entityGroup.RelatedNodes,
                     elementType,
                     queryContext);
                 results.Add(entity);
             }
 
-            // Convert to appropriate collection type
             return ConvertToCollectionType<T>(results, elementType);
         }
         else
         {
             // Handle single entity result
-            var record = records.FirstOrDefault();
-            if (record == null)
+            if (records.Count == 0)
             {
                 return default!;
             }
 
-            return (T)DeserializeEntityFromRecord(
-                record,
-                typeof(T),
-                queryContext);
+            // For single entity queries with complex properties, we need to consolidate all records
+            if (queryContext.TargetEntitySchema?.HasComplexProperties == true)
+            {
+                var consolidatedEntity = ConsolidateRecordsForSingleEntity(records, typeof(T), queryContext);
+                return (T)consolidatedEntity;
+            }
+
+            // For simple single entity queries, just use the first record
+            var record = records.First();
+            return (T)DeserializeEntityFromRecord(record, typeof(T), queryContext);
         }
+    }
+
+    private object ConsolidateRecordsForSingleEntity(
+        List<IRecord> records,
+        Type requestedType,
+        GraphQueryContext queryContext)
+    {
+        if (records.Count == 0)
+        {
+            throw new InvalidOperationException("No records to consolidate");
+        }
+
+        // The pattern from your Cypher query: each record has (mainNode, relatedNodes)
+        global::Neo4j.Driver.INode? mainNode = null;
+        var allRelatedNodes = new List<object>();
+
+        foreach (var record in records)
+        {
+            if (record.Values.Count >= 2)
+            {
+                // Extract main node from first record or verify it's the same across records
+                if (record[0] is global::Neo4j.Driver.INode currentMainNode)
+                {
+                    if (mainNode == null)
+                    {
+                        mainNode = currentMainNode;
+                    }
+                    // Optionally verify it's the same entity across records
+                    else if (mainNode.ElementId != currentMainNode.ElementId)
+                    {
+                        _logger?.LogWarning("Different main nodes found across records: {Id1} vs {Id2}",
+                            mainNode.ElementId, currentMainNode.ElementId);
+                    }
+                }
+
+                // Collect related nodes from this record
+                if (record[1] is IList<object> relatedNodes)
+                {
+                    allRelatedNodes.AddRange(relatedNodes);
+                }
+            }
+        }
+
+        if (mainNode == null)
+        {
+            throw new InvalidOperationException("No main node found in records");
+        }
+
+        // Create the entity with all its complex properties
+        return DeserializeNodeWithComplexProperties(
+            mainNode,
+            allRelatedNodes,
+            requestedType,
+            queryContext);
+    }
+
+    private List<EntityGroup> GroupRecordsByMainEntity(
+        List<IRecord> records,
+        GraphQueryContext queryContext)
+    {
+        var groups = new Dictionary<string, EntityGroup>();
+
+        foreach (var record in records)
+        {
+            if (record.Values.Count >= 2 &&
+                record[0] is global::Neo4j.Driver.INode mainNode &&
+                record[1] is IList<object> relatedNodes)
+            {
+                var entityId = mainNode.ElementId;
+
+                if (!groups.TryGetValue(entityId, out var group))
+                {
+                    group = new EntityGroup { MainNode = mainNode, RelatedNodes = [] };
+                    groups[entityId] = group;
+                }
+
+                // Add related nodes from this record
+                group.RelatedNodes.AddRange(relatedNodes);
+            }
+        }
+
+        return groups.Values.ToList();
+    }
+
+    private object ProcessEntityWithComplexProperties(
+        global::Neo4j.Driver.INode mainNode,
+        List<object> allRelatedNodes,
+        Type requestedType,
+        GraphQueryContext queryContext)
+    {
+        return DeserializeNodeWithComplexProperties(
+            mainNode,
+            allRelatedNodes,
+            requestedType,
+            queryContext);
+    }
+
+    // Helper class to group records by main entity
+    private class EntityGroup
+    {
+        public global::Neo4j.Driver.INode MainNode { get; set; } = null!;
+        public List<object> RelatedNodes { get; set; } = [];
     }
 
     private static T ConvertToCollectionType<T>(List<object> items, Type elementType)
@@ -377,15 +560,12 @@ internal class CypherEngine(GraphContext graphContext)
         throw new NotSupportedException($"Cannot convert results to collection type {typeof(T)}");
     }
 
-    private object DeserializeNodeWithComplexPropertiesAsync(
+    private object DeserializeNodeWithComplexProperties(
         global::Neo4j.Driver.INode node,
-        List<object> relatedNodes,
+        IList<object> relatedNodes,
         Type requestedType,
         GraphQueryContext queryContext)
     {
-        // This is similar to what the serializer does, but we already have the data
-        // so we can deserialize directly without another query
-
         // First create the main entity
         var entity = _serializer.DeserializeNodeFromNeo4jNode(
             node,
@@ -402,54 +582,109 @@ internal class CypherEngine(GraphContext graphContext)
     }
 
     private void PopulateComplexPropertiesFromResults(
-            object entity,
-            List<object> relatedNodes,
-            GraphQueryContext queryContext)
+        object entity,
+        IList<object> relatedNodes,
+        GraphQueryContext queryContext)
     {
-        // Similar logic to the serializer's PopulateComplexPropertiesAsync
-        // but we work with the data we already have from the query
+        if (queryContext.TargetEntitySchema?.HasComplexProperties != true)
+        {
+            _logger?.LogDebug("No complex properties to populate for {Type}", entity.GetType().Name);
+            return;
+        }
 
         var type = entity.GetType();
         var complexPropsByRelType = new Dictionary<string, List<object>>();
 
-        foreach (var relatedNode in relatedNodes)
+        foreach (var relatedNodeObj in relatedNodes)
         {
-            if (relatedNode is not IDictionary<string, object> dict) continue;
+            if (relatedNodeObj is not IDictionary<string, object> dict)
+            {
+                _logger?.LogWarning("Expected dictionary for related node, got {Type}", relatedNodeObj?.GetType().Name);
+                continue;
+            }
 
             var neo4jNode = dict["Node"] as global::Neo4j.Driver.INode;
             var relType = dict["RelType"] as string;
 
-            if (neo4jNode == null || relType == null) continue;
+            if (neo4jNode == null || relType == null)
+            {
+                _logger?.LogWarning("Missing Node or RelType in related node data");
+                continue;
+            }
 
+            // Convert relationship type back to property name
             var propName = GraphDataModel.RelationshipTypeNameToPropertyName(relType);
 
             if (!complexPropsByRelType.ContainsKey(propName))
                 complexPropsByRelType[propName] = [];
 
-            // Deserialize the complex property node - use the correct method!
-            var complexEntity = _serializer.DeserializeNodeFromNeo4jNode(
-                neo4jNode,
-                typeof(INode), // We'll let the serializer figure out the actual type
-                queryContext.UseMostDerivedType);
+            // Deserialize the complex property node
+            try
+            {
+                var complexEntity = _serializer.DeserializeNodeFromNeo4jNode(
+                    neo4jNode,
+                    typeof(object), // Let the serializer figure out the actual type
+                    queryContext.UseMostDerivedType);
 
-            complexPropsByRelType[propName].Add(complexEntity);
+                complexPropsByRelType[propName].Add(complexEntity);
+
+                _logger?.LogDebug("Deserialized complex property {PropName} of type {Type}",
+                    propName, complexEntity.GetType().Name);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to deserialize complex property {PropName}", propName);
+            }
         }
 
-        // Set the properties on the entity
-        foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        // Set the properties on the entity using schema information
+        SetComplexPropertiesOnEntity(entity, complexPropsByRelType, queryContext);
+    }
+
+    private void SetComplexPropertiesOnEntity(
+    object entity,
+    Dictionary<string, List<object>> complexPropsByRelType,
+    GraphQueryContext queryContext)
+    {
+        var type = entity.GetType();
+        var schema = queryContext.TargetEntitySchema!;
+
+        foreach (var (propName, values) in complexPropsByRelType)
         {
-            if (!prop.CanWrite || !complexPropsByRelType.ContainsKey(prop.Name)) continue;
-
-            var values = complexPropsByRelType[prop.Name];
-
-            if (GraphDataModel.IsComplex(prop.PropertyType))
+            var prop = type.GetProperty(propName, BindingFlags.Public | BindingFlags.Instance);
+            if (prop?.CanWrite != true)
             {
-                prop.SetValue(entity, values.FirstOrDefault());
+                _logger?.LogWarning("Property {PropName} not found or not writable on {Type}", propName, type.Name);
+                continue;
             }
-            else if (GraphDataModel.IsCollectionOfComplex(prop.PropertyType))
+
+            // Check the schema to understand the property type
+            var neo4jPropName = GraphDataModel.RelationshipTypeNameToPropertyName(propName);
+            if (!schema.Properties.TryGetValue(neo4jPropName, out var propSchema))
             {
-                var collection = CreateCollection(prop.PropertyType, values);
-                prop.SetValue(entity, collection);
+                _logger?.LogWarning("No schema found for property {PropName}", propName);
+                continue;
+            }
+
+            try
+            {
+                if (propSchema.PropertyType == PropertyType.Complex)
+                {
+                    // Single complex property
+                    prop.SetValue(entity, values.FirstOrDefault());
+                }
+                else if (propSchema.PropertyType == PropertyType.ComplexCollection)
+                {
+                    // Collection of complex properties
+                    var collection = CreateCollection(prop.PropertyType, values);
+                    prop.SetValue(entity, collection);
+                }
+
+                _logger?.LogDebug("Set property {PropName} with {Count} values", propName, values.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to set property {PropName} on {Type}", propName, type.Name);
             }
         }
     }
@@ -482,6 +717,16 @@ internal class CypherEngine(GraphContext graphContext)
         Type requestedType,
         GraphQueryContext queryContext)
     {
+        // Check if we have the complex properties pattern: main node + related nodes
+        if (record.Values.Count == 2 &&
+            queryContext.TargetEntitySchema?.HasComplexProperties == true)
+        {
+            if (TryDeserializeNodeWithComplexProperties(record, requestedType, queryContext, out var complexResult))
+            {
+                return complexResult!;
+            }
+        }
+
         // If we have exactly one value, handle it based on its type
         if (record.Values.Count == 1)
         {
@@ -490,15 +735,6 @@ internal class CypherEngine(GraphContext graphContext)
         }
 
         // For multiple values, we need to understand the pattern
-        if (record.Values.Count == 2)
-        {
-            // Check for node + related nodes pattern (complex properties)
-            if (TryDeserializeNodeWithComplexProperties(record, requestedType, queryContext, out var result))
-            {
-                return result!;
-            }
-        }
-
         if (record.Values.Count == 3)
         {
             // Check for path pattern (source-relationship-target)
@@ -512,7 +748,7 @@ internal class CypherEngine(GraphContext graphContext)
         var valueTypes = string.Join(", ", record.Values.Select(v => v.Value?.GetType().Name ?? "null"));
         throw new NotSupportedException(
             $"Cannot deserialize record with {record.Values.Count} values to type {requestedType}. " +
-            $"Record contains: {valueTypes}");
+            $"Record contains: {valueTypes}. Schema HasComplexProperties: {queryContext.TargetEntitySchema?.HasComplexProperties}");
     }
 
     private object DeserializeSingleValue(object? value, Type requestedType, GraphQueryContext queryContext)
@@ -560,14 +796,19 @@ internal class CypherEngine(GraphContext graphContext)
     {
         result = null;
 
-        // Look for the pattern: INode + List<object>
-        var nodeValue = record.Values.FirstOrDefault(v => v.Value is global::Neo4j.Driver.INode);
-        var relatedNodesValue = record.Values.FirstOrDefault(v => v.Value is List<object>);
+        // Look for the pattern: INode + List<object> (from your Cypher query)
+        if (record.Values.Count != 2) return false;
 
-        if (nodeValue.Value is global::Neo4j.Driver.INode mainNode &&
-            relatedNodesValue.Value is List<object> relatedNodes)
+        var firstValue = record[0];
+        var secondValue = record[1];
+
+        // The pattern should be: main node, then related nodes list
+        if (firstValue is global::Neo4j.Driver.INode mainNode &&
+            secondValue is IList<object> relatedNodes)
         {
-            result = DeserializeNodeWithComplexPropertiesAsync(
+            _logger?.LogDebug("Deserializing node with {Count} complex properties", relatedNodes.Count);
+
+            result = DeserializeNodeWithComplexProperties(
                 mainNode,
                 relatedNodes,
                 requestedType,

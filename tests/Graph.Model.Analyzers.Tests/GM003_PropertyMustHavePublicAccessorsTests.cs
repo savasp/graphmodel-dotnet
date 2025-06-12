@@ -159,14 +159,14 @@ using Cvoya.Graph.Model;
 public class MyRelationship : IRelationship
 {
     public string Id { get; set; }
-    public string SourceId { get; private set; }
-    public string TargetId { get; set; }
+    public string StartNodeId { get; private set; }
+    public string EndNodeId { get; set; }
     public bool IsBidirectional { get; set; }
 }";
 
         var expected = Verify.Diagnostic("GM003")
             .WithSpan(7, 19, 7, 27)
-            .WithArguments("SourceId", "MyRelationship");
+            .WithArguments("StartNodeId", "MyRelationship");
 
         await Verify.VerifyAnalyzerAsync(test, expected);
     }

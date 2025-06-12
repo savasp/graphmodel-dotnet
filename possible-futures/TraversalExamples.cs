@@ -15,8 +15,8 @@ public class Company : INode
 public class WorksFor : IRelationship
 {
     public required string Id { get; init; }
-    public required string SourceId { get; init; }
-    public required string TargetId { get; init; }
+    public required string StartNodeId { get; init; }
+    public required string EndNodeId { get; init; }
     public DateTime Since { get; init; }
     public string? Title { get; init; }
 }
@@ -24,8 +24,8 @@ public class WorksFor : IRelationship
 public class Knows : IRelationship
 {
     public required string Id { get; init; }
-    public required string SourceId { get; init; }
-    public required string TargetId { get; init; }
+    public required string StartNodeId { get; init; }
+    public required string EndNodeId { get; init; }
 }
 
 // Example queries using the new API

@@ -196,7 +196,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error executing query synchronously");
+            _logger.LogError(ex, "Error executing query synchronously");
             throw;
         }
     }

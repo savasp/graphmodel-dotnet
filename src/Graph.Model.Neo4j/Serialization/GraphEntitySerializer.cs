@@ -61,7 +61,7 @@ internal class GraphEntitySerializer(GraphContext context)
             if (resolvedType != targetType)
             {
                 targetType = resolvedType;
-                _logger?.LogDebug($"Resolved type {resolvedType.Name} from labels {label} for requested type {targetType.Name}");
+                _logger.LogDebug($"Resolved type {resolvedType.Name} from labels {label} for requested type {targetType.Name}");
             }
         }
 
@@ -84,8 +84,8 @@ internal class GraphEntitySerializer(GraphContext context)
         {
             SerializedEntity = serializedRelationship,
             Type = relType,
-            SourceId = relationship.StartNodeId,
-            TargetId = relationship.EndNodeId
+            StartNodeId = relationship.StartNodeId,
+            EndNodeId = relationship.EndNodeId
         };
     }
 
@@ -109,7 +109,7 @@ internal class GraphEntitySerializer(GraphContext context)
             if (resolvedType != targetType)
             {
                 targetType = resolvedType;
-                _logger?.LogDebug("Resolved type {ResolvedType} from labels {Labels} for requested type {RequestedType}",
+                _logger.LogDebug("Resolved type {ResolvedType} from labels {Labels} for requested type {RequestedType}",
                     resolvedType.Name, label, targetType.Name);
             }
         }

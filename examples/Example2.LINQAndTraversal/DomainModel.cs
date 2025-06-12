@@ -27,7 +27,7 @@ public record Person : Node
 
 
 [Relationship(Label = "KNOWS")]
-public record Knows(string sourceId, string targetId) : Relationship(sourceId, targetId)
+public record Knows(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public DateTime Since { get; set; }
 }

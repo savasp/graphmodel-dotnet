@@ -27,7 +27,7 @@ internal class Neo4jConstraintManager
     private readonly object _constraintLock = new();
     private bool _constraintsLoaded = false;
     private readonly GraphContext _context;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
 
     public Neo4jConstraintManager(GraphContext context)
     {
@@ -115,7 +115,7 @@ internal class Neo4jConstraintManager
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to load existing constraints from Neo4j.");
+            _logger.LogError(ex, "Failed to load existing constraints from Neo4j.");
             throw new GraphException("Failed to load existing constraints from Neo4j.", ex);
         }
     }

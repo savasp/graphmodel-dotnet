@@ -19,9 +19,11 @@ namespace Cvoya.Graph.Model.Neo4j.Serialization;
 /// </summary>
 /// <param name="Type">The .NET type this schema represents.</param>
 /// <param name="Label">The Neo4j label for this entity.</param>
+/// <param name="HasComplexProperties">Indicates if this entity has properties that are complex objects.</param>
 /// <param name="Properties">Property mapping information, keyed by Neo4j property name.</param>
 public record EntitySchema(
     Type Type,
     string Label,
-    IReadOnlyDictionary<string, PropertySchema> Properties
+    IReadOnlyDictionary<string, PropertySchema> Properties,
+    bool HasComplexProperties = false
 );

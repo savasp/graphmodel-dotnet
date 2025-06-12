@@ -14,6 +14,7 @@
 
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Model.Neo4j;
@@ -24,7 +25,8 @@ namespace Cvoya.Graph.Model.Neo4j;
 /// <param name="context"></param>
 internal sealed class Neo4jRelationshipManager(GraphContext context)
 {
-    private readonly ILogger<Neo4jRelationshipManager>? _logger = context.LoggerFactory?.CreateLogger<Neo4jRelationshipManager>();
+    private readonly ILogger<Neo4jRelationshipManager> _logger = context.LoggerFactory?.CreateLogger<Neo4jRelationshipManager>()
+        ?? NullLogger<Neo4jRelationshipManager>.Instance;
     private readonly GraphEntitySerializer _serializer = new GraphEntitySerializer(context);
 
     public async Task<TRelationship?> GetRelationshipAsync<TRelationship>(
@@ -35,7 +37,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     {
         ArgumentException.ThrowIfNullOrEmpty(relationshipId);
 
-        _logger?.LogDebug("Getting relationship of type {RelationshipType} with ID {RelationshipId}", typeof(TRelationship).Name, relationshipId);
+        _logger.LogDebug("Getting relationship of type {RelationshipType} with ID {RelationshipId}", typeof(TRelationship).Name, relationshipId);
 
         try
         {
@@ -49,7 +51,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error retrieving relationship {RelationshipId} of type {RelationshipType}", relationshipId, typeof(TRelationship).Name);
+            _logger.LogError(ex, "Error retrieving relationship {RelationshipId} of type {RelationshipType}", relationshipId, typeof(TRelationship).Name);
             throw new GraphException($"Failed to retrieve relationship: {ex.Message}", ex);
         }
     }
@@ -62,7 +64,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
-        _logger?.LogDebug("Creating relationship of type {RelationshipType} from {SourceId} to {TargetId}",
+        _logger.LogDebug("Creating relationship of type {RelationshipType} from {StartNodeId} to {EndNodeId}",
             typeof(TRelationship).Name, relationship.StartNodeId, relationship.EndNodeId);
 
         try
@@ -75,12 +77,12 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             // Build the Cypher query
             var cypher = $@"
-                MATCH (source {{Id: $sourceId}})
-                MATCH (target {{Id: $targetId}})
+                MATCH (source {{Id: $startNodeId}})
+                MATCH (target {{Id: $endNodeId}})
                 CREATE (source)-[r:{serializedRelationship.Type} $props]->(target)
                 RETURN r";
 
-            _logger?.LogDebug("Cypher query: {CypherQuery}", cypher);
+            _logger.LogDebug("Cypher query: {CypherQuery}", cypher);
 
             var properties = serializedRelationship.SerializedEntity.SimpleProperties
                 .Where(kv => kv.Value.Value is not null)
@@ -93,28 +95,28 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                         _ => throw new GraphException($"This is a simple property so there should be no other Serialized type")
                     });
 
-            _logger?.LogDebug("Parameters: SourceId={SourceId}, TargetId={TargetId}, Properties={Properties}",
-                serializedRelationship.SourceId, serializedRelationship.TargetId, properties);
+            _logger.LogDebug("Parameters: StartNodeId={StartNodeId}, EndNodeId={EndNodeId}, Properties={Properties}",
+                serializedRelationship.StartNodeId, serializedRelationship.EndNodeId, properties);
 
             var result = await transaction.Transaction.RunAsync(cypher, new
             {
-                sourceId = serializedRelationship.SourceId,
-                targetId = serializedRelationship.TargetId,
+                startNodeId = serializedRelationship.StartNodeId,
+                endNodeId = serializedRelationship.EndNodeId,
                 props = properties
             });
 
             if (await result.CountAsync(cancellationToken) == 0)
             {
-                _logger?.LogWarning($"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}");
+                _logger.LogWarning($"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}");
                 throw new GraphException($"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}");
             }
 
-            _logger?.LogInformation("Created relationship of type {RelationshipType} with ID {RelationshipId}",
+            _logger.LogInformation("Created relationship of type {RelationshipType} with ID {RelationshipId}",
                 typeof(TRelationship).Name, relationship.Id);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error creating relationship of type {RelationshipType}", typeof(TRelationship).Name);
+            _logger.LogError(ex, "Error creating relationship of type {RelationshipType}", typeof(TRelationship).Name);
             throw new GraphException($"Failed to create relationship: {ex.Message}", ex);
         }
     }
@@ -127,7 +129,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
-        _logger?.LogDebug("Updating relationship of type {RelationshipType} with ID {RelationshipId}",
+        _logger.LogDebug("Updating relationship of type {RelationshipType} with ID {RelationshipId}",
             typeof(TRelationship).Name, relationship.Id);
 
         try
@@ -144,16 +146,16 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             if (count == 0)
             {
-                _logger?.LogWarning($"Relationship with ID {relationship.Id} not found for update");
+                _logger.LogWarning($"Relationship with ID {relationship.Id} not found for update");
                 throw new KeyNotFoundException($"Relationship with ID {relationship.Id} not found for update.");
             }
 
-            _logger?.LogInformation($"Updated relationship of type {typeof(TRelationship).Name} with ID {relationship.Id}");
+            _logger.LogInformation($"Updated relationship of type {typeof(TRelationship).Name} with ID {relationship.Id}");
             return true;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, $"Error updating relationship {relationship.Id} of type {typeof(TRelationship).Name}");
+            _logger.LogError(ex, $"Error updating relationship {relationship.Id} of type {typeof(TRelationship).Name}");
             throw new GraphException($"Failed to update relationship: {ex.Message}", ex);
         }
     }
@@ -165,7 +167,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     {
         ArgumentException.ThrowIfNullOrEmpty(relationshipId);
 
-        _logger?.LogDebug($"Deleting relationship with ID {relationshipId}");
+        _logger.LogDebug($"Deleting relationship with ID {relationshipId}");
 
         try
         {
@@ -177,7 +179,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             var result = await transaction.Transaction.RunAsync(cypher, new { relId = relationshipId });
 
-            _logger?.LogInformation($"Deleted relationship with ID {relationshipId}");
+            _logger.LogInformation($"Deleted relationship with ID {relationshipId}");
 
             // Check if the relationship was deleted
             var record = await result.SingleAsync(cancellationToken);
@@ -185,14 +187,14 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             if (!wasDeleted)
             {
-                _logger?.LogWarning($"Relationship with ID {relationshipId} not found for deletion");
+                _logger.LogWarning($"Relationship with ID {relationshipId} not found for deletion");
                 throw new KeyNotFoundException($"Relationship with ID {relationshipId} not found for deletion.");
             }
             return true;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, $"Error deleting relationship with ID {relationshipId}");
+            _logger.LogError(ex, $"Error deleting relationship with ID {relationshipId}");
             throw new GraphException($"Failed to delete relationship: {ex.Message}", ex);
         }
     }

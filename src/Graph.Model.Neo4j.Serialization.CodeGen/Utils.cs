@@ -37,14 +37,47 @@ internal static class Utils
 
     internal static string GetNamespaceName(INamedTypeSymbol type)
     {
-        var namespaceName = type.ContainingNamespace?.ToDisplayString();
+        var containingNamespace = type.ContainingNamespace?.ToDisplayString();
 
-        if (namespaceName is null || namespaceName == "<global namespace>")
+        // Handle global namespace case
+        if (string.IsNullOrEmpty(containingNamespace) || containingNamespace == "<global namespace>")
         {
             return "Generated";
         }
 
-        return namespaceName + ".Generated";
+        return $"{containingNamespace}.Generated";
+    }
+
+    internal static string GetNestedSchemaCall(ITypeSymbol nestedType)
+    {
+        if (nestedType is not INamedTypeSymbol namedType)
+            return "null";
+
+        // Generate the unique serializer class name and its namespace
+        var uniqueSerializerName = GetUniqueSerializerClassName(namedType);
+        var serializerNamespace = GetNamespaceName(namedType);
+
+        // Return the fully qualified call to GetSchemaStatic
+        return $"{serializerNamespace}.{uniqueSerializerName}.GetSchemaStatic()";
+    }
+
+    internal static string GetUniqueSerializerClassName(INamedTypeSymbol type)
+    {
+        var parts = new List<string>();
+
+        // Walk up the containing type hierarchy to handle nested types
+        var current = type.ContainingType;
+        while (current != null)
+        {
+            parts.Insert(0, current.Name);
+            current = current.ContainingType;
+        }
+
+        // Add the type itself
+        parts.Add(type.Name);
+
+        // Create a unique class name
+        return string.Join("_", parts) + "Serializer";
     }
 
     internal static string GetTypeOfName(ITypeSymbol type)
@@ -143,6 +176,19 @@ internal static class Utils
 
         // Fall back to the type name with backticks removed
         return type.Name.Replace("`", "");
+    }
+
+    internal static bool IsComplexProperty(IPropertySymbol property)
+    {
+        var propertyType = property.Type;
+
+        // Skip standard INode/IRelationship properties that aren't really "complex"
+        if (property.Name is "Id" or "StartNodeId" or "EndNodeId" or "Direction")
+            return false;
+
+        // A property is complex if it's not simple and not a collection of simple types
+        return !GraphDataModel.IsSimple(propertyType) &&
+               !GraphDataModel.IsCollectionOfSimple(propertyType);
     }
 
     internal static string GetTypeForTypeOf(ITypeSymbol type)

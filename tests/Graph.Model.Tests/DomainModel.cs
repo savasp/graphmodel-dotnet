@@ -38,14 +38,20 @@ public class Address : INode
     public string City { get; set; } = string.Empty;
 }
 
+public class AddressValue
+{
+    public string Street { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+}
+
 [Relationship(Label = "KNOWS")]
 public class Knows : IRelationship
 {
     public Knows() { }
-    public Knows(string sourceId, string targetId)
+    public Knows(string startNodeId, string endNodeId)
     {
-        this.StartNodeId = sourceId;
-        this.EndNodeId = targetId;
+        this.StartNodeId = startNodeId;
+        this.EndNodeId = endNodeId;
     }
     public Knows(INode source, INode target)
     {
@@ -63,7 +69,7 @@ public class Knows : IRelationship
 public class KnowsWell : Knows
 {
     public KnowsWell() { }
-    public KnowsWell(string sourceId, string targetId) : base(sourceId, targetId) { }
+    public KnowsWell(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
     public KnowsWell(INode source, INode target) : base(source, target) { }
     public string HowWell { get; set; } = string.Empty;
 }
@@ -80,7 +86,7 @@ public class LivesAt : IRelationship
 
 public class PersonWithComplexProperty : Person
 {
-    public Address Address { get; set; } = new Address();
+    public AddressValue Address { get; set; } = new AddressValue();
 }
 
 public class PersonWithComplexProperties : INode
@@ -91,7 +97,7 @@ public class PersonWithComplexProperties : INode
     public int Age { get; set; } = 30;
     public DateTime DateOfBirth { get; set; } = DateTime.UtcNow;
     public string Bio { get; set; } = string.Empty;
-    public Address Address { get; set; } = new Address();
+    public AddressValue Address { get; set; } = new AddressValue();
     // TODO: Add serialization support for dictionaries.
     //public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
 }
@@ -99,7 +105,7 @@ public class PersonWithComplexProperties : INode
 public record KnowsWithComplexProperty(PersonWithComplexProperty p1, PersonWithComplexProperty p2) : Relationship(p1.Id, p2.Id)
 {
     public DateTime Since { get; set; }
-    public Address MetAt { get; set; } = new Address();
+    public AddressValue MetAt { get; set; } = new AddressValue();
 }
 
 public record Class1 : Node

@@ -270,7 +270,7 @@ public class User : INode
 ```csharp
 // Good: Direct relationship query
 var knows = graph.Relationships<Knows>()
-    .Where(k => k.SourceId == personId || k.TargetId == personId)
+    .Where(k => k.StartNodeId == personId || k.EndNodeId == personId)
     .ToList();
 ```
 

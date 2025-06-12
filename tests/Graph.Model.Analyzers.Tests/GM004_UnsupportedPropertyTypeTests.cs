@@ -246,8 +246,8 @@ using System;
 public class MyRelationship : IRelationship
 {
     public string Id { get; set; }
-    public string SourceId { get; set; }
-    public string TargetId { get; set; }
+    public string StartNodeId { get; set; }
+    public string EndNodeId { get; set; }
     public bool IsBidirectional { get; set; }
     public object Metadata { get; set; }
 }";

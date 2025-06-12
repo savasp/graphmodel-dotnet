@@ -103,8 +103,8 @@ using Cvoya.Graph.Model;
 public class MyRelationship : IRelationship
 {
     public string Id { get; set; }
-    public string SourceId { get; set; }
-    public string TargetId { get; set; }
+    public string StartNodeId { get; set; }
+    public string EndNodeId { get; set; }
     public bool IsBidirectional { get; set; }
 }";
 
@@ -119,15 +119,15 @@ using Cvoya.Graph.Model;
 
 public class MyRelationship : IRelationship
 {
-    public MyRelationship(string sourceId, string targetId) 
+    public MyRelationship(string startNodeId, string endNodeId) 
     {
-        SourceId = sourceId;
-        TargetId = targetId;
+        StartNodeId = startNodeId;
+        EndNodeId = endNodeId;
     }
     
     public string Id { get; set; }
-    public string SourceId { get; set; }
-    public string TargetId { get; set; }
+    public string StartNodeId { get; set; }
+    public string EndNodeId { get; set; }
     public bool IsBidirectional { get; set; }
 }";
 

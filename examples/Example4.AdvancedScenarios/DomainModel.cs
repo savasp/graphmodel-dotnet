@@ -36,7 +36,7 @@ public record Content : Node
 }
 
 [Relationship(Label = "CONTAINS")]
-public record ContainedIn(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
+public record ContainedIn(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
 }
 
@@ -56,12 +56,12 @@ public record Video : Content
 }
 
 [Relationship(Label = "CONTAINS")]
-public record Contains(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
+public record Contains(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
 }
 
 [Relationship(Label = "REFERENCES")]
-public record References(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
+public record References(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
     public string Context { get; set; } = string.Empty;
 }
@@ -73,19 +73,19 @@ public record Tag : Node
 }
 
 [Relationship(Label = "REFERENCE")]
-public record Reference(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
+public record Reference(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
     public string Context { get; set; } = string.Empty;
 }
 
 [Relationship(Label = "TAGGED_WITH")]
-public record TaggedContent(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
+public record TaggedContent(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
     public string TagName { get; set; } = string.Empty;
 }
 
 [Relationship(Label = "TAGGED_WITH")]
-public record TaggedWith(string sourceId, string targetId) : Relationship(sourceId, targetId, Direction: RelationshipDirection.Bidirectional)
+public record TaggedWith(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
     public string TagName { get; set; } = string.Empty;
 }

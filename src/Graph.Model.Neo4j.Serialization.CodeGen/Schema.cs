@@ -25,7 +25,7 @@ internal static class Schema
     {
         var typeName = Utils.GetTypeOfName(type);
         var label = Utils.GetLabelFromType(type);
-        var uniqueSerializerName = GetUniqueSerializerClassName(type);
+        var uniqueSerializerName = Utils.GetUniqueSerializerClassName(type);
 
         sb.AppendLine("    /// <summary>");
         sb.AppendLine($"    /// Gets the schema information for {type.Name}.");
@@ -48,15 +48,25 @@ internal static class Schema
                        p.GetMethod != null && p.SetMethod != null &&
                        !Utils.SerializationShouldSkipProperty(p, type));
 
+        // Check if any properties are complex while generating schemas
+        var hasComplexProperties = false;
+
         foreach (var property in properties)
         {
             GeneratePropertySchema(sb, property, type);
+
+            // Check if this property makes the entity have complex properties
+            if (Utils.IsComplexProperty(property))
+            {
+                hasComplexProperties = true;
+            }
         }
 
         sb.AppendLine();
         sb.AppendLine($"        return new EntitySchema(");
         sb.AppendLine($"            Type: typeof({typeName}),");
         sb.AppendLine($"            Label: \"{label}\",");
+        sb.AppendLine($"            HasComplexProperties: {hasComplexProperties.ToString().ToLowerInvariant()},");
         sb.AppendLine("            Properties: properties");
         sb.AppendLine("        );");
         sb.AppendLine("    }");
@@ -112,7 +122,7 @@ internal static class Schema
             var elementType = GraphDataModel.GetCollectionElementType(propertyType);
             if (elementType is not null)
             {
-                var nestedSchemaCall = GetNestedSchemaCall(elementType);
+                var nestedSchemaCall = Utils.GetNestedSchemaCall(elementType);
                 sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
                 sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
@@ -137,7 +147,7 @@ internal static class Schema
         else
         {
             // Complex property
-            var nestedSchemaCall = GetNestedSchemaCall(propertyType);
+            var nestedSchemaCall = Utils.GetNestedSchemaCall(propertyType);
             sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
             sb.AppendLine("                PropertyInfo: propInfo,");
             sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
@@ -149,44 +159,5 @@ internal static class Schema
 
         sb.AppendLine("        }");
         sb.AppendLine();
-    }
-
-    private static string GetNestedSchemaCall(ITypeSymbol nestedType)
-    {
-        if (nestedType is not INamedTypeSymbol namedType)
-            return "null";
-
-        // Generate the unique serializer class name and its namespace
-        var uniqueSerializerName = GetUniqueSerializerClassName(namedType);
-        var serializerNamespace = GetNamespaceName(namedType);
-
-        // Return the fully qualified call to GetSchemaStatic
-        return $"{serializerNamespace}.{uniqueSerializerName}.GetSchemaStatic()";
-    }
-
-    private static string GetUniqueSerializerClassName(INamedTypeSymbol type)
-    {
-        var parts = new List<string>();
-
-        // Walk up the containing type hierarchy to handle nested types
-        var current = type.ContainingType;
-        while (current != null)
-        {
-            parts.Insert(0, current.Name);
-            current = current.ContainingType;
-        }
-
-        // Add the type itself
-        parts.Add(type.Name);
-
-        // Create a unique class name
-        return string.Join("_", parts) + "Serializer";
-    }
-
-    private static string GetNamespaceName(INamedTypeSymbol type)
-    {
-        // Use the containing namespace + ".Generated"
-        var namespaceName = type.ContainingNamespace?.ToDisplayString();
-        return string.IsNullOrEmpty(namespaceName) ? "Generated" : $"{namespaceName}.Generated";
     }
 }

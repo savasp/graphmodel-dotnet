@@ -5,6 +5,7 @@ This document provides concrete examples and usage patterns for the recommended 
 ## Current Usage Patterns (Analyzed from codebase)
 
 ### Basic Node Queries
+
 ```csharp
 // Current approach (from QueryTestsBase.cs)
 var smiths = graph.Nodes<Person>().Where(p => p.LastName == "Smith").ToList();
@@ -13,6 +14,7 @@ var count = graph.Nodes<Person>().Count();
 ```
 
 ### Relationship Queries
+
 ```csharp
 // Current approach (from AdvancedQueryTestsBase.cs)
 var recentConnections = graph.Relationships<Knows>()
@@ -21,6 +23,7 @@ var recentConnections = graph.Relationships<Knows>()
 ```
 
 ### Complex Pattern Queries with Navigation Properties
+
 ```csharp
 // Current approach requiring GraphOperationOptions
 var projectedAlice = graph.Nodes<PersonWithNavigationProperty>(
@@ -160,7 +163,7 @@ var allPeople = graph.Nodes<Person>().ToList();
 var allRelationships = graph.Relationships<Knows>().ToList();
 var connectionStats = allPeople.Select(p => new {
     Name = p.FirstName,
-    ConnectionCount = allRelationships.Count(r => r.SourceId == p.Id || r.TargetId == p.Id)
+    ConnectionCount = allRelationships.Count(r => r.StartNodeId == p.Id || r.EndNodeId == p.Id)
 });
 
 // Recommended approach - native graph aggregation
@@ -247,7 +250,7 @@ var dynamicQuery = graph.Query<Person>()
     .WhereIf(filterByCity, p => p.City == targetCity)
     .TraverseToIf<Company>(includeCompanies)
     .Via<WorksFor>()
-    .SelectConditional(includeCompanyDetails, 
+    .SelectConditional(includeCompanyDetails,
         p => new { p.FirstName, p.Age, Company = p.ConnectedNodes<Company, WorksFor>().FirstOrDefault() },
         p => new { p.FirstName, p.Age })
     .ToList();
@@ -353,6 +356,7 @@ var friendsOfFriends = graph.Query<Person>()
 ## Best Practices with Recommended Approach
 
 ### 1. Use Appropriate Abstraction Level
+
 ```csharp
 // For simple queries - use standard LINQ
 var basicQuery = graph.Nodes<Person>().Where(p => p.Age > 25).ToList();
@@ -372,6 +376,7 @@ var patternQuery = graph.Query<Person>()
 ```
 
 ### 2. Optimize for Performance
+
 ```csharp
 // Use indexes for large datasets
 var optimized = graph.Nodes<Person>()
@@ -385,6 +390,7 @@ var deep = graph.Query<Person>().WithDepth(1, 5).TraverseTo<Company>();
 ```
 
 ### 3. Handle Transactions Appropriately
+
 ```csharp
 // For read operations - use implicit transactions
 var data = graph.Query<Person>().Where(p => p.Age > 25).ToList();

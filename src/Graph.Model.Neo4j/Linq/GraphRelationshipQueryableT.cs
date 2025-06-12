@@ -21,7 +21,7 @@ namespace Cvoya.Graph.Model.Neo4j.Linq;
 internal class GraphRelationshipQueryable<TRel> : GraphQueryable<TRel>, IGraphRelationshipQueryable<TRel>
     where TRel : IRelationship
 {
-    private readonly ILogger? logger;
+    private readonly ILogger logger;
 
     internal GraphRelationshipQueryable(
         GraphQueryProvider provider,

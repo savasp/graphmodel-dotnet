@@ -24,13 +24,21 @@ internal class CypherQueryVisitor : ExpressionVisitor
     private readonly CypherQueryBuilder _builder = new();
     private readonly Stack<QueryScope> _scopes = new([new QueryScope("n")]);
     private Type? _entityType;
-    private readonly ILogger<CypherQueryVisitor>? logger;
+    private readonly ILogger<CypherQueryVisitor> logger;
     private readonly GraphQueryContext queryContext;
 
-    public CypherQueryVisitor(GraphQueryContext queryContext, ILoggerFactory? loggerFactory = null)
+    public CypherQueryVisitor(
+        GraphQueryContext queryContext,
+        bool shouldEnableComplexPropertyLoading = false,
+        ILoggerFactory? loggerFactory = null)
     {
         this.queryContext = queryContext ?? throw new ArgumentNullException(nameof(queryContext));
         logger = loggerFactory?.CreateLogger<CypherQueryVisitor>() ?? NullLogger<CypherQueryVisitor>.Instance;
+
+        if (shouldEnableComplexPropertyLoading)
+        {
+            _builder.EnableComplexPropertyLoading();
+        }
     }
 
     public CypherQueryResult Build()
@@ -65,7 +73,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     protected override Expression VisitMethodCall(MethodCallExpression node)
     {
-        logger?.LogDebug("Visiting method: {Method}", node.Method.Name);
+        logger.LogDebug("Visiting method: {Method}", node.Method.Name);
 
         return node.Method.Name switch
         {
@@ -92,18 +100,18 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     protected override Expression VisitConstant(ConstantExpression node)
     {
-        logger?.LogDebug("Processing constant expression of type: {Type}", node.Type.Name);
+        logger.LogDebug("Processing constant expression of type: {Type}", node.Type.Name);
 
         // Check for different types of queryables
         if (node.Value is IGraphNodeQueryable nodeQueryable)
         {
-            logger?.LogDebug("Found IGraphNodeQueryable: {QueryableType}", nodeQueryable.GetType().Name);
+            logger.LogDebug("Found IGraphNodeQueryable: {QueryableType}", nodeQueryable.GetType().Name);
 
             var elementType = nodeQueryable.ElementType;
             _entityType = elementType;
 
             var label = Labels.GetLabelFromType(elementType);
-            logger?.LogDebug("Using label: {Label} for type: {Type}", label, elementType.Name);
+            logger.LogDebug("Using label: {Label} for type: {Type}", label, elementType.Name);
             _builder.AddMatch("n", label);
 
             // Node queries use 'n' as the alias
@@ -112,13 +120,13 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
         else if (node.Value is IGraphRelationshipQueryable relationshipQueryable)
         {
-            logger?.LogDebug("Found IGraphRelationshipQueryable: {QueryableType}", relationshipQueryable.GetType().Name);
+            logger.LogDebug("Found IGraphRelationshipQueryable: {QueryableType}", relationshipQueryable.GetType().Name);
 
             var elementType = relationshipQueryable.ElementType;
             _entityType = elementType;
 
             var relationshipType = Labels.GetLabelFromType(elementType);
-            logger?.LogDebug("Using relationship type: {Type} for type: {Type}", relationshipType, elementType.Name);
+            logger.LogDebug("Using relationship type: {Type} for type: {Type}", relationshipType, elementType.Name);
 
             // Fix: Use the new method
             _builder.AddRelationshipMatch(relationshipType);
@@ -133,13 +141,13 @@ internal class CypherQueryVisitor : ExpressionVisitor
         else if (node.Value is IGraphTraversalQueryable traversalQueryable)
         {
             // Handle traversal queries if needed
-            logger?.LogDebug("Found IGraphTraversalQueryable: {QueryableType}", traversalQueryable.GetType().Name);
+            logger.LogDebug("Found IGraphTraversalQueryable: {QueryableType}", traversalQueryable.GetType().Name);
             // TODO: Implement traversal handling
         }
         else if (node.Value is IGraphQueryable graphQueryable)
         {
             // Fallback for any other queryable types
-            logger?.LogDebug("Found generic IGraphQueryable: {QueryableType}", graphQueryable.GetType().Name);
+            logger.LogDebug("Found generic IGraphQueryable: {QueryableType}", graphQueryable.GetType().Name);
             // This shouldn't really happen, but log it if it does
         }
 
@@ -148,19 +156,19 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandlePathSegments(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing PathSegments for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing PathSegments for method: {Method}", node.Method.Name);
 
         // PathSegments is a generic method, so we need to get the types
         if (node.Method.IsGenericMethodDefinition || node.Method.IsGenericMethod)
         {
             var genericArgs = node.Method.GetGenericArguments();
-            logger?.LogDebug("Generic args count: {Count}", genericArgs.Length);
+            logger.LogDebug("Generic args count: {Count}", genericArgs.Length);
 
             if (genericArgs.Length == 2)
             {
                 var relationshipType = genericArgs[0];
                 var targetNodeType = genericArgs[1];
-                logger?.LogDebug("Relationship type: {RelType}, Target type: {TargetType}",
+                logger.LogDebug("Relationship type: {RelType}, Target type: {TargetType}",
                     relationshipType.Name, targetNodeType.Name);
 
                 // Get the source type from the expression
@@ -173,7 +181,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
                     sourceExpression = node.Arguments[0];
                 }
 
-                logger?.LogDebug("Source expression type: {Type}, Expression node type: {NodeType}, Is null: {IsNull}",
+                logger.LogDebug("Source expression type: {Type}, Expression node type: {NodeType}, Is null: {IsNull}",
                     sourceExpression?.Type.Name, sourceExpression?.NodeType, sourceExpression == null);
 
                 if (sourceExpression != null)
@@ -189,7 +197,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
                         var relLabel = Labels.GetLabelFromType(relationshipType);
                         var targetLabel = Labels.GetLabelFromType(targetNodeType);
 
-                        logger?.LogDebug("Creating path pattern: {Source} -[{RelType}]-> {Target}",
+                        logger.LogDebug("Creating path pattern: {Source} -[{RelType}]-> {Target}",
                             sourceLabel, relLabel, targetLabel);
 
                         // Clear any existing match and add the path pattern
@@ -198,37 +206,37 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
                         // Add the match with the source node and the path extension
                         _builder.AddMatch("n", sourceLabel, $"-[r:{relLabel}]->(t:{targetLabel})");
-                        logger?.LogDebug("Added match clause");
+                        logger.LogDebug("Added match clause");
 
                         // Return all three elements
                         _builder.AddReturn("n");
                         _builder.AddReturn("r");
                         _builder.AddReturn("t");
-                        logger?.LogDebug("Added return clauses");
+                        logger.LogDebug("Added return clauses");
 
                         // Mark this as a projection query
                         queryContext.IsProjection = true;
                         queryContext.ProjectionType = node.Type;
-                        logger?.LogDebug("Set projection context");
+                        logger.LogDebug("Set projection context");
                     }
                     else
                     {
-                        logger?.LogWarning("Entity type not set after visiting source expression");
+                        logger.LogWarning("Entity type not set after visiting source expression");
                     }
                 }
                 else
                 {
-                    logger?.LogWarning("Source expression is null");
+                    logger.LogWarning("Source expression is null");
                 }
             }
             else
             {
-                logger?.LogWarning("Expected 2 generic arguments but got {Count}", genericArgs.Length);
+                logger.LogWarning("Expected 2 generic arguments but got {Count}", genericArgs.Length);
             }
         }
         else
         {
-            logger?.LogWarning("Method is not generic");
+            logger.LogWarning("Method is not generic");
         }
 
         return node;
@@ -236,7 +244,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleAll(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing all clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing all clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -259,7 +267,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleSum(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing sum clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing sum clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -282,7 +290,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleAverage(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing average clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing average clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -305,7 +313,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleMin(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing min clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing min clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -328,7 +336,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleMax(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing max clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing max clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -351,7 +359,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleWhere(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing where clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing where clause for method: {Method}", node.Method.Name);
 
         // First, visit the source expression (the queryable we're filtering)
         Visit(node.Arguments[0]);
@@ -359,16 +367,16 @@ internal class CypherQueryVisitor : ExpressionVisitor
         // Then process the lambda expression for the WHERE clause
         if (node.Arguments.Count > 1 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
         {
-            logger?.LogDebug("Processing WHERE lambda with parameter: {Parameter}", lambda.Parameters[0].Name);
+            logger.LogDebug("Processing WHERE lambda with parameter: {Parameter}", lambda.Parameters[0].Name);
 
             var whereVisitor = new WhereClauseVisitor(_scopes.Peek(), _builder);
             whereVisitor.ProcessWhereClause(lambda);
 
-            logger?.LogDebug("WHERE clause processed successfully");
+            logger.LogDebug("WHERE clause processed successfully");
         }
         else
         {
-            logger?.LogWarning("WHERE method call missing lambda expression");
+            logger.LogWarning("WHERE method call missing lambda expression");
         }
 
         return node;
@@ -376,7 +384,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleSelect(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing select clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing select clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -394,7 +402,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleOrderBy(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing order by clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing order by clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -409,7 +417,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleThenBy(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing then by clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing then by clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -424,7 +432,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleTake(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing take clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing take clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -438,7 +446,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleSkip(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing skip clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing skip clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -452,7 +460,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleFirst(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing first clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing first clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
         _builder.SetLimit(1);
@@ -461,7 +469,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleSingle(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing single clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing single clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
         _builder.SetLimit(2); // Get 2 to check for multiple results
@@ -470,7 +478,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleCount(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing count clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing count clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
         _builder.SetAggregation("count", _scopes.Peek().Alias);
@@ -480,7 +488,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleAny(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing any clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing any clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -502,7 +510,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleInclude(MethodCallExpression node)
     {
-        logger?.LogDebug("Processing include clause for method: {Method}", node.Method.Name);
+        logger.LogDebug("Processing include clause for method: {Method}", node.Method.Name);
 
         Visit(node.Arguments[0]);
 
@@ -526,7 +534,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression? VisitTransaction(GraphTransactionExpression transactionExpression)
     {
-        logger?.LogDebug("Processing transaction attachment");
+        logger.LogDebug("Processing transaction attachment");
 
         // Store the transaction in the query context
         if (transactionExpression.Transaction is GraphTransaction neo4jTx)

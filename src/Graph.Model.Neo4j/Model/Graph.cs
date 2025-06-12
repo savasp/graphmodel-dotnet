@@ -25,7 +25,7 @@ namespace Cvoya.Graph.Model.Neo4j;
 /// </summary>
 internal class Graph : IGraph
 {
-    private readonly Microsoft.Extensions.Logging.ILogger? _logger;
+    private readonly Microsoft.Extensions.Logging.ILogger _logger;
     private readonly GraphQueryProvider _graphQueryProvider;
     private readonly GraphContext _graphContext;
 
@@ -43,7 +43,7 @@ internal class Graph : IGraph
 
         _graphQueryProvider = new GraphQueryProvider(_graphContext);
 
-        _logger?.LogInformation("Graph initialized for database '{0}'", databaseName);
+        _logger.LogInformation("Graph initialized for database '{0}'", databaseName);
     }
 
     /// <inheritdoc />
@@ -52,7 +52,7 @@ internal class Graph : IGraph
     {
         try
         {
-            _logger?.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
+            _logger.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
 
             // Create the expression for the queryable
             var graphQueryContext = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Node };
@@ -68,7 +68,7 @@ internal class Graph : IGraph
         catch (Exception ex) when (ex is not GraphException)
         {
             var message = $"Failed to create nodes queryable for type {typeof(N).Name}";
-            _logger?.LogError(ex, message);
+            _logger.LogError(ex, message);
             throw new GraphException(message, ex);
         }
     }
@@ -79,7 +79,7 @@ internal class Graph : IGraph
     {
         try
         {
-            _logger?.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
+            _logger.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
 
             // Create the expression for the queryable
             var graphQueryContext = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Relationship };
@@ -95,7 +95,7 @@ internal class Graph : IGraph
         catch (Exception ex) when (ex is not GraphException)
         {
             var message = $"Failed to create relationships queryable for type {typeof(R).Name}";
-            _logger?.LogError(ex, message);
+            _logger.LogError(ex, message);
             throw new GraphException(message, ex);
         }
     }
@@ -108,7 +108,7 @@ internal class Graph : IGraph
 
         try
         {
-            _logger?.LogDebug("Getting node {NodeId} of type {NodeType}", id, typeof(N).Name);
+            _logger.LogDebug("Getting node {NodeId} of type {NodeType}", id, typeof(N).Name);
 
             var result = await TransactionHelpers.ExecuteInTransactionAsync(
                 graphContext: _graphContext,
@@ -122,13 +122,13 @@ internal class Graph : IGraph
                 throw new KeyNotFoundException($"Node with ID '{id}' not found.");
             }
 
-            _logger?.LogDebug("Successfully retrieved node {NodeId}", id);
+            _logger.LogDebug("Successfully retrieved node {NodeId}", id);
             return result;
         }
         catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException)
         {
             var message = $"Failed to get node {id} of type {typeof(N).Name}";
-            _logger?.LogError(ex, message);
+            _logger.LogError(ex, message);
             throw new GraphException(message, ex);
         }
     }
@@ -141,7 +141,7 @@ internal class Graph : IGraph
 
         try
         {
-            _logger?.LogDebug("Getting relationship {RelationshipId} of type {RelationshipType}", id, typeof(R).Name);
+            _logger.LogDebug("Getting relationship {RelationshipId} of type {RelationshipType}", id, typeof(R).Name);
 
             var result = await TransactionHelpers.ExecuteInTransactionAsync(
                 graphContext: _graphContext,
@@ -155,13 +155,13 @@ internal class Graph : IGraph
                 throw new KeyNotFoundException($"Relationship with ID '{id}' not found.");
             }
 
-            _logger?.LogDebug("Successfully retrieved relationship {RelationshipId}", id);
+            _logger.LogDebug("Successfully retrieved relationship {RelationshipId}", id);
             return result;
         }
         catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException)
         {
             var message = $"Failed to get relationship {id} of type {typeof(R).Name}";
-            _logger?.LogError(ex, message);
+            _logger.LogError(ex, message);
             throw new GraphException(message, ex);
         }
     }
@@ -174,7 +174,7 @@ internal class Graph : IGraph
 
         try
         {
-            _logger?.LogDebug("Creating node of type {NodeType}", typeof(N).Name);
+            _logger.LogDebug("Creating node of type {NodeType}", typeof(N).Name);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 graphContext: _graphContext,
@@ -182,12 +182,12 @@ internal class Graph : IGraph
                 tx => _graphContext.NodeManager.CreateNodeAsync(node, tx, cancellationToken),
                 $"Failed to create node of type {typeof(N).Name}");
 
-            _logger?.LogDebug("Successfully created node {NodeId}", node.Id);
+            _logger.LogDebug("Successfully created node {NodeId}", node.Id);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
             var message = $"Failed to create node of type {typeof(N).Name}";
-            _logger?.LogError(ex, message);
+            _logger.LogError(ex, message);
             throw new GraphException(message, ex);
         }
     }
@@ -200,7 +200,7 @@ internal class Graph : IGraph
 
         try
         {
-            _logger?.LogDebug("Creating relationship of type {RelationshipType}", typeof(R).Name);
+            _logger.LogDebug("Creating relationship of type {RelationshipType}", typeof(R).Name);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
@@ -212,12 +212,12 @@ internal class Graph : IGraph
                 },
                 $"Failed to create relationship of type {typeof(R).Name}");
 
-            _logger?.LogDebug("Successfully created relationship {RelationshipId}", relationship.Id);
+            _logger.LogDebug("Successfully created relationship {RelationshipId}", relationship.Id);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
             var message = $"Failed to create relationship of type {typeof(R).Name}";
-            _logger?.LogError(ex, message);
+            _logger.LogError(ex, message);
             throw new GraphException(message, ex);
         }
     }
@@ -232,7 +232,7 @@ internal class Graph : IGraph
 
         try
         {
-            _logger?.LogDebug("Updating node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
+            _logger.LogDebug("Updating node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
@@ -244,12 +244,12 @@ internal class Graph : IGraph
                 },
             $"Failed to update node {node.Id} of type {typeof(N).Name}");
 
-            _logger?.LogDebug("Successfully updated node {NodeId}", node.Id);
+            _logger.LogDebug("Successfully updated node {NodeId}", node.Id);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
             var message = $"Failed to update node {node.Id} of type {typeof(N).Name}";
-            _logger?.LogError(ex, message);
+            _logger.LogError(ex, message);
             throw new GraphException(message, ex);
         }
     }
@@ -264,7 +264,7 @@ internal class Graph : IGraph
 
         try
         {
-            _logger?.LogDebug("Updating relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
+            _logger.LogDebug("Updating relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
@@ -276,12 +276,12 @@ internal class Graph : IGraph
                 },
             $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}");
 
-            _logger?.LogDebug("Successfully updated relationship {RelationshipId}", relationship.Id);
+            _logger.LogDebug("Successfully updated relationship {RelationshipId}", relationship.Id);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
             var message = $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}";
-            _logger?.LogError(ex, message);
+            _logger.LogError(ex, message);
             throw new GraphException(message, ex);
         }
     }
@@ -291,19 +291,19 @@ internal class Graph : IGraph
     {
         try
         {
-            _logger?.LogDebug("Beginning new transaction");
+            _logger.LogDebug("Beginning new transaction");
 
             var session = _graphContext.Driver.AsyncSession(o => o.WithDatabase(_graphContext.DatabaseName));
             var transaction = await session.BeginTransactionAsync();
             var graphTransaction = new GraphTransaction(session, transaction);
 
-            _logger?.LogDebug("Successfully began transaction");
+            _logger.LogDebug("Successfully began transaction");
             return graphTransaction;
         }
         catch (Exception ex) when (ex is not GraphTransactionException)
         {
             const string message = "Failed to begin transaction";
-            _logger?.LogError(ex, message);
+            _logger.LogError(ex, message);
             throw new GraphTransactionException(message, ex);
         }
     }
@@ -315,7 +315,7 @@ internal class Graph : IGraph
 
         try
         {
-            _logger?.LogDebug("Deleting node {NodeId}", id);
+            _logger.LogDebug("Deleting node {NodeId}", id);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
@@ -327,12 +327,12 @@ internal class Graph : IGraph
                 },
                 $"Failed to delete node {id}");
 
-            _logger?.LogDebug("Successfully deleted node {NodeId}", id);
+            _logger.LogDebug("Successfully deleted node {NodeId}", id);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
             var message = $"Failed to delete node {id}";
-            _logger?.LogError(ex, message);
+            _logger.LogError(ex, message);
             throw new GraphException(message, ex);
         }
     }
@@ -344,7 +344,7 @@ internal class Graph : IGraph
 
         try
         {
-            _logger?.LogDebug("Deleting relationship {RelationshipId}", id);
+            _logger.LogDebug("Deleting relationship {RelationshipId}", id);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
@@ -357,12 +357,12 @@ internal class Graph : IGraph
                 $"Failed to delete relationship {id}",
                 _logger);
 
-            _logger?.LogDebug("Successfully deleted relationship {RelationshipId}", id);
+            _logger.LogDebug("Successfully deleted relationship {RelationshipId}", id);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
             var message = $"Failed to delete relationship {id}";
-            _logger?.LogError(ex, message);
+            _logger.LogError(ex, message);
             throw new GraphException(message, ex);
         }
     }

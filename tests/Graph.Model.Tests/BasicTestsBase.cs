@@ -31,7 +31,7 @@ public abstract class BasicTestsBase : ITestBase
     [Fact]
     public async Task CanCreateAndGetNodeWithComplexProperties()
     {
-        var person = new PersonWithComplexProperty { FirstName = "John", LastName = "Doe", Address = new Address { Street = "123 Main St", City = "Somewhere" } };
+        var person = new PersonWithComplexProperty { FirstName = "John", LastName = "Doe", Address = new AddressValue { Street = "123 Main St", City = "Somewhere" } };
         await this.Graph.CreateNodeAsync(person);
         var fetched = await this.Graph.GetNodeAsync<PersonWithComplexProperty>(person.Id);
         Assert.Equal("John", fetched.FirstName);
@@ -43,12 +43,12 @@ public abstract class BasicTestsBase : ITestBase
     [Fact(Skip = "We are going to implement a Roslyn analyzer to catch this at compile time. We need to decide whether to also have a runtime check. The check was there but has been removed. Hence why we are skipping this test for now.")]
     public async Task CannotCreateRelationshipWithComplexProperties()
     {
-        var p1 = new PersonWithComplexProperty { FirstName = "A", Address = new Address { Street = "123 Main St", City = "Somewhere" } };
+        var p1 = new PersonWithComplexProperty { FirstName = "A", Address = new AddressValue { Street = "123 Main St", City = "Somewhere" } };
         var p2 = new PersonWithComplexProperty { FirstName = "B" };
         await this.Graph.CreateNodeAsync(p1);
         await this.Graph.CreateNodeAsync(p2);
 
-        var address = new Address { Street = "123 Main St", City = "Somewhere" };
+        var address = new AddressValue { Street = "123 Main St", City = "Somewhere" };
         var knows = new KnowsWithComplexProperty(p1, p2) { MetAt = address };
 
         await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateRelationshipAsync(knows));

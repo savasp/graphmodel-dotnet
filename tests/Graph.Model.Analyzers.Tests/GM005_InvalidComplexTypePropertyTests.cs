@@ -197,8 +197,8 @@ public class Metadata
 public class MyRelationship : IRelationship
 {
     public string Id { get; set; }
-    public string SourceId { get; set; }
-    public string TargetId { get; set; }
+    public string StartNodeId { get; set; }
+    public string EndNodeId { get; set; }
     public bool IsBidirectional { get; set; }
     public Metadata Metadata { get; set; }
 }";
@@ -313,8 +313,8 @@ public class MyNode : INode
         public class MyRelationship : IRelationship
         {
             public string Id { get; set; }
-            public string SourceId { get; set; }
-            public string TargetId { get; set; }
+            public string StartNodeId { get; set; }
+            public string EndNodeId { get; set; }
             public bool IsBidirectional { get; set; }
             public ComplexType Complex { get; set; } // Should report GM004, not GM005
         }

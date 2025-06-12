@@ -61,8 +61,8 @@ public abstract class NodeTraversalTestsBase : ITestBase
             Assert.Equal("Bob", fetchedBob.FirstName);
 
             var fetchedKnows = await Graph.GetRelationship<Knows<PersonWithNavigationProperty, PersonWithNavigationProperty>>(knows.Id);
-            Assert.Equal(alice.Id, fetchedKnows.SourceId);
-            Assert.Equal(bob.Id, fetchedKnows.TargetId);
+            Assert.Equal(alice.Id, fetchedKnows.StartNodeId);
+            Assert.Equal(bob.Id, fetchedKnows.EndNodeId);
         }
 
         [Fact]
@@ -191,8 +191,8 @@ public abstract class NodeTraversalTestsBase : ITestBase
         {
             Source = source;
             Target = target;
-            SourceId = source.Id;
-            TargetId = target.Id;
+            StartNodeId = source.Id;
+            EndNodeId = target.Id;
         }
     */
 }

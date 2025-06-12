@@ -12,16 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Collections;
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Model.Neo4j;
 
 internal sealed class Neo4jNodeManager(GraphContext context)
 {
-    private readonly ILogger<Neo4jNodeManager>? _logger = context.LoggerFactory?.CreateLogger<Neo4jNodeManager>();
+    private readonly ILogger<Neo4jNodeManager> _logger = context.LoggerFactory?.CreateLogger<Neo4jNodeManager>()
+        ?? NullLogger<Neo4jNodeManager>.Instance;
     private readonly GraphEntitySerializer _serializer = new GraphEntitySerializer(context);
 
     public async Task<TNode?> GetNodeAsync<TNode>(
@@ -32,7 +33,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         ArgumentException.ThrowIfNullOrEmpty(nodeId);
 
-        _logger?.LogDebug("Getting node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, nodeId);
+        _logger.LogDebug("Getting node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, nodeId);
 
         try
         {
@@ -45,7 +46,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error retrieving node {NodeId} of type {NodeType}", nodeId, typeof(TNode).Name);
+            _logger.LogError(ex, "Error retrieving node {NodeId} of type {NodeType}", nodeId, typeof(TNode).Name);
             throw new GraphException($"Failed to retrieve node: {ex.Message}", ex);
         }
     }
@@ -58,7 +59,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        _logger?.LogDebug("Creating node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+        _logger.LogDebug("Creating node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
 
         try
         {
@@ -71,7 +72,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // Build the Cypher query
             var cypher = $"CREATE (n:{serializationResult.Label} $props) RETURN elementId(n) AS nodeId";
 
-            _logger?.LogDebug("Cypher query for creating node: {Cypher}", cypher);
+            _logger.LogDebug("Cypher query for creating node: {Cypher}", cypher);
 
             var simpleProperties = serializationResult.SerializedEntity.SimpleProperties
                 .Where(kv => kv.Value.Value is not null)
@@ -89,7 +90,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var record = await nodeResult.SingleAsync(cancellationToken);
             var parentId = record["nodeId"].As<string>();
 
-            _logger?.LogDebug("Created node with ID: {NodeId}", parentId);
+            _logger.LogDebug("Created node with ID: {NodeId}", parentId);
 
             // Yes, that's true by default. The entity being stored might not have any complex properties,
             var complexPropertiesCreated = true;
@@ -119,23 +120,23 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                         // If the complex property is null, we skip it
                         continue;
                     default:
-                        _logger?.LogWarning("Unsupported complex property type: {PropertyType} for property {PropertyName}", cp.Value.Value.GetType().Name, cp.Key);
+                        _logger.LogWarning("Unsupported complex property type: {PropertyType} for property {PropertyName}", cp.Value.Value.GetType().Name, cp.Key);
                         throw new GraphException($"Unsupported complex property type: {cp.Value.Value.GetType().Name} for property {cp.Key}");
                 }
             }
 
             if (!complexPropertiesCreated)
             {
-                _logger?.LogWarning("Node of type {NodeType} with ID {NodeId} was not created", typeof(TNode).Name, node.Id);
+                _logger.LogWarning("Node of type {NodeType} with ID {NodeId} was not created", typeof(TNode).Name, node.Id);
                 throw new GraphException($"Failed to create node of type {typeof(TNode).Name} with ID {node.Id}");
             }
 
-            _logger?.LogInformation("Created node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+            _logger.LogInformation("Created node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
             return node;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error creating node of type {NodeType}", typeof(TNode).Name);
+            _logger.LogError(ex, "Error creating node of type {NodeType}", typeof(TNode).Name);
             throw new GraphException($"Failed to create node: {ex.Message}", ex);
         }
     }
@@ -148,7 +149,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        _logger?.LogDebug("Updating node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+        _logger.LogDebug("Updating node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
 
         try
         {
@@ -165,7 +166,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var updated = await result.CountAsync(cancellationToken) != 0;
             if (!updated)
             {
-                _logger?.LogWarning("Node with ID {NodeId} not found for update", node.Id);
+                _logger.LogWarning("Node with ID {NodeId} not found for update", node.Id);
                 throw new KeyNotFoundException($"Node with ID {node.Id} not found for update");
             }
 
@@ -178,22 +179,22 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
             if (!complexPropertiesUpdated && serializationResult.SerializedEntity.ComplexProperties.Count > 0)
             {
-                _logger?.LogWarning("No complex properties were updated for node with ID {NodeId}", node.Id);
+                _logger.LogWarning("No complex properties were updated for node with ID {NodeId}", node.Id);
                 throw new GraphException($"Failed to update the node's complex properties of type {typeof(TNode).Name} with ID {node.Id}");
             }
 
             if (!updated && !complexPropertiesUpdated)
             {
-                _logger?.LogWarning("Node of type {NodeType} with ID {NodeId} was not updated", typeof(TNode).Name, node.Id);
+                _logger.LogWarning("Node of type {NodeType} with ID {NodeId} was not updated", typeof(TNode).Name, node.Id);
                 throw new GraphException($"Failed to update node of type {typeof(TNode).Name} with ID {node.Id}");
             }
 
-            _logger?.LogInformation("Updated node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+            _logger.LogInformation("Updated node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
             return true;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error updating node {NodeId} of type {NodeType}", node.Id, typeof(TNode).Name);
+            _logger.LogError(ex, "Error updating node {NodeId} of type {NodeType}", node.Id, typeof(TNode).Name);
             throw new GraphException($"Failed to update node: {ex.Message}", ex);
         }
     }
@@ -206,7 +207,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         ArgumentException.ThrowIfNullOrEmpty(nodeId);
 
-        _logger?.LogDebug("Deleting node with ID: {NodeId}", nodeId);
+        _logger.LogDebug("Deleting node with ID: {NodeId}", nodeId);
 
         try
         {
@@ -239,16 +240,16 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
             if (!wasDeleted)
             {
-                _logger?.LogWarning($"Node with ID {nodeId} not found for deletion");
+                _logger.LogWarning($"Node with ID {nodeId} not found for deletion");
                 throw new KeyNotFoundException($"Node with ID {nodeId} not found for deletion");
             }
 
-            _logger?.LogInformation($"Deleted node with ID {nodeId}");
+            _logger.LogInformation($"Deleted node with ID {nodeId}");
             return true;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, $"Error deleting node with ID: {nodeId}");
+            _logger.LogError(ex, $"Error deleting node with ID: {nodeId}");
             throw new GraphException($"Failed to delete node: {ex.Message}", ex);
         }
     }
@@ -266,12 +267,13 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
         // Create the complex property node
         var complexNodeLabel = entity.Label;
+        label = GraphDataModel.PropertyNameToRelationshipTypeName(label);
 
         var cypher = $@"MATCH (parent)
                 WHERE elementId(parent) = $parentId
                 CREATE (parent)-[r:{label} $relProps]->(complex:{complexNodeLabel} $props)
                 RETURN elementId(complex) as nodeId";
-        _logger?.LogDebug($"Cypher query for creating complex property: {cypher}");
+        _logger.LogDebug($"Cypher query for creating complex property: {cypher}");
 
         IReadOnlyDictionary<string, object>? nodeProps = null;
 
@@ -330,7 +332,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                     // If the complex property is null, we skip it
                     continue;
                 default:
-                    _logger?.LogWarning("Unsupported complex property type: {PropertyType} for property {PropertyName}", cp.Value.Value.GetType().Name, cp.Key);
+                    _logger.LogWarning("Unsupported complex property type: {PropertyType} for property {PropertyName}", cp.Value.Value.GetType().Name, cp.Key);
                     throw new GraphException($"Unsupported complex property type: {cp.Value.Value.GetType().Name} for property {cp.Key}");
             }
         }
@@ -360,7 +362,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
         var deletedCount = (await result.FirstAsync(cancellationToken))["deletedCount"].As<int>();
 
-        _logger?.LogDebug("Deleted {DeletedCount} complex property relationships for parent ID {ParentId}", deletedCount, parentId);
+        _logger.LogDebug("Deleted {DeletedCount} complex property relationships for parent ID {ParentId}", deletedCount, parentId);
 
         // Yes, that's true by default. The entity being stored might not have any complex properties,
         var updatedComplexProperties = true;
@@ -389,7 +391,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                     // If the complex property is null, we skip it
                     continue;
                 default:
-                    _logger?.LogWarning("Unsupported complex property type: {PropertyType} for property {PropertyName}", cp.Value.Value.GetType().Name, cp.Key);
+                    _logger.LogWarning("Unsupported complex property type: {PropertyType} for property {PropertyName}", cp.Value.Value.GetType().Name, cp.Key);
                     throw new GraphException($"Unsupported complex property type: {cp.Value.Value.GetType().Name} for property {cp.Key}");
             }
         }

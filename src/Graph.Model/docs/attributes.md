@@ -138,8 +138,8 @@ The `[Relationship]` attribute configures how relationship classes map to graph 
 public class Knows : IRelationship<Person, Person>
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string SourceId { get; set; } = string.Empty;
-    public string TargetId { get; set; } = string.Empty;
+    public string StartNodeId { get; set; } = string.Empty;
+    public string EndNodeId { get; set; } = string.Empty;
     public bool IsBidirectional { get; set; } = true;
 
     public Person? Source { get; set; }
@@ -197,8 +197,8 @@ public class ReportsTo : IRelationship<Person, Person>
 public class FriendOf : IRelationship<Person, Person>
 {
     public string Id { get; set; }
-    public string SourceId { get; set; }
-    public string TargetId { get; set; }
+    public string StartNodeId { get; set; }
+    public string EndNodeId { get; set; }
     public bool IsBidirectional { get; set; } = true; // Bidirectional
 
     public Person Source { get; set; }

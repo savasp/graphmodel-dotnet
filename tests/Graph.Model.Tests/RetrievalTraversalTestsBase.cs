@@ -115,8 +115,8 @@ public abstract class RetrievalTraversalTestsBase : ITestBase
                 new GraphOperationOptions { TraversalDepth = 0 });
 
             // Assert
-            Assert.Equal(alice.Id, retrieved.SourceId);
-            Assert.Equal(bob.Id, retrieved.TargetId);
+            Assert.Equal(alice.Id, retrieved.StartNodeId);
+            Assert.Equal(bob.Id, retrieved.EndNodeId);
             Assert.Null(retrieved.Source); // Nodes not loaded
             Assert.Null(retrieved.Target);
         }

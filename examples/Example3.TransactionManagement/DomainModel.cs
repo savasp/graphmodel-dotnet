@@ -32,14 +32,14 @@ public record Bank : Node
 }
 
 [Relationship(Label = "HAS_ACCOUNT")]
-public record BankAccount(string sourceId, string targetId) : Relationship(sourceId, targetId)
+public record BankAccount(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public DateTime OpenedOn { get; set; } = DateTime.UtcNow;
     public string AccountType { get; set; } = string.Empty;
 }
 
 [Relationship(Label = "TRANSFER")]
-public record Transfer(string sourceId, string targetId) : Relationship(sourceId, targetId)
+public record Transfer(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public decimal Amount { get; set; } = 0m;
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;

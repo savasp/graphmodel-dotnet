@@ -24,8 +24,8 @@ try
 
     var worksAt = new WorksAt
     {
-        SourceId = person.Id,
-        TargetId = company.Id,
+        StartNodeId = person.Id,
+        EndNodeId = company.Id,
         StartDate = DateTime.UtcNow
     };
     await graph.CreateRelationship(worksAt, transaction: transaction);
@@ -312,7 +312,7 @@ await using var transaction = await graph.BeginTransaction();
 try
 {
     // Acquire resources
-    var lockHandle = await AcquireLock(resourceId);
+    var lockHandle = await AcquireLock(restartNodeId);
     try
     {
         // Perform operations
@@ -342,7 +342,7 @@ await using var transaction = await graph.BeginTransaction();
 // Read with the transaction to ensure consistency
 var person = await graph.GetNode<Person>(id, transaction: transaction);
 var currentFriends = graph.Relationships<Knows>(transaction: transaction)
-    .Count(k => k.SourceId == person.Id);
+    .Count(k => k.StartNodeId == person.Id);
 
 if (currentFriends < 100)
 {

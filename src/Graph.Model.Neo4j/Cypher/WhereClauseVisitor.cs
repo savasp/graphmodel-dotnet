@@ -17,21 +17,23 @@ namespace Cvoya.Graph.Model.Neo4j.Cypher;
 using System.Linq.Expressions;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
-internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder, ILogger? logger = null) : ExpressionVisitor
+internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null) : ExpressionVisitor
 {
     private readonly Stack<string> _expressions = new();
+    private readonly ILogger logger = loggerFactory?.CreateLogger<WhereClauseVisitor>() ?? NullLogger<WhereClauseVisitor>.Instance;
 
     public void ProcessWhereClause(LambdaExpression lambda)
     {
-        logger?.LogDebug("Processing WHERE clause lambda: {Lambda}", lambda);
+        logger.LogDebug("Processing WHERE clause lambda: {Lambda}", lambda);
 
         Visit(lambda.Body);
 
         if (_expressions.Count == 1)
         {
             var whereClause = _expressions.Pop();
-            logger?.LogDebug("Adding WHERE clause to builder: {WhereClause}", whereClause);
+            logger.LogDebug("Adding WHERE clause to builder: {WhereClause}", whereClause);
             builder.AddWhere(whereClause);
         }
         else if (_expressions.Count > 1)
@@ -40,13 +42,13 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder, 
         }
         else
         {
-            logger?.LogWarning("WHERE clause processing produced no expressions");
+            logger.LogWarning("WHERE clause processing produced no expressions");
         }
     }
 
     protected override Expression VisitBinary(BinaryExpression node)
     {
-        logger?.LogDebug("Visiting binary expression: {NodeType}", node.NodeType);
+        logger.LogDebug("Visiting binary expression: {NodeType}", node.NodeType);
 
         Visit(node.Left);
         if (_expressions.Count == 0)
@@ -71,7 +73,7 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder, 
             _ => throw new NotSupportedException($"Binary operator {node.NodeType} is not supported")
         };
 
-        logger?.LogDebug("Binary expression result: {Expression}", expression);
+        logger.LogDebug("Binary expression result: {Expression}", expression);
         _expressions.Push(expression);
         return node;
     }
@@ -82,14 +84,14 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder, 
         if (node.Expression is ParameterExpression param)
         {
             var propertyPath = $"{scope.Alias}.{node.Member.Name}";
-            logger?.LogDebug("Pushing property path: {PropertyPath}", propertyPath);
+            logger.LogDebug("Pushing property path: {PropertyPath}", propertyPath);
             _expressions.Push(propertyPath);
         }
         else if (node.Expression is UnaryExpression unary && unary.Operand is ParameterExpression)
         {
             // Handle cases like Convert(n, IEntity).Id where n is a parameter
             var propertyPath = $"{scope.Alias}.{node.Member.Name}";
-            logger?.LogDebug("Pushing property path from converted parameter: {PropertyPath}", propertyPath);
+            logger.LogDebug("Pushing property path from converted parameter: {PropertyPath}", propertyPath);
             _expressions.Push(propertyPath);
         }
         else if (node.Expression is MemberExpression memberExpr)
@@ -98,7 +100,7 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder, 
             var path = BuildPropertyPath(node);
             if (path != null)
             {
-                logger?.LogDebug("Pushing nested property path: {PropertyPath}", path);
+                logger.LogDebug("Pushing nested property path: {PropertyPath}", path);
                 _expressions.Push(path);
             }
             else
@@ -122,13 +124,13 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder, 
     {
         if (node.Value == null)
         {
-            logger?.LogDebug("Pushing null constant");
+            logger.LogDebug("Pushing null constant");
             _expressions.Push("null");
         }
         else
         {
             var param = builder.AddParameter(node.Value);
-            logger?.LogDebug("Pushing constant parameter {ParamName} = {Value}", param, node.Value);
+            logger.LogDebug("Pushing constant parameter {ParamName} = {Value}", param, node.Value);
             _expressions.Push(param);
         }
         return node;
@@ -268,13 +270,13 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder, 
     {
         if (value is null)
         {
-            logger?.LogDebug("Pushing null");
+            logger.LogDebug("Pushing null");
             _expressions.Push("null");
         }
         else
         {
             var paramName = builder.AddParameter(value);
-            logger?.LogDebug("Pushing parameter {ParamName} = {Value}", paramName, value);
+            logger.LogDebug("Pushing parameter {ParamName} = {Value}", paramName, value);
             _expressions.Push(paramName);
         }
     }
