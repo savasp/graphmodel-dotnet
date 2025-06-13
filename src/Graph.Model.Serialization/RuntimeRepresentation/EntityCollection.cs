@@ -12,18 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Serialization;
+namespace Cvoya.Graph.Model.Serialization;
 
 /// <summary>
-/// Schema information for an entity type, mapping .NET types to Neo4j node structure.
+/// Represents a collection of entities.
 /// </summary>
-/// <param name="Type">The .NET type this schema represents.</param>
-/// <param name="Label">The Neo4j label for this entity.</param>
-/// <param name="HasComplexProperties">Indicates if this entity has properties that are complex objects.</param>
-/// <param name="Properties">Property mapping information, keyed by Neo4j property name.</param>
-public record EntitySchema(
+/// <param name="Entities">A collection of entities (<see cref="EntityInfo"/> ).</param>
+/// <param name="Type">The type of entities in the collection.</param>
+public record EntityCollection(
     Type Type,
-    string Label,
-    IReadOnlyDictionary<string, PropertySchema> Properties,
-    bool HasComplexProperties = false
-);
+    IReadOnlyCollection<EntityInfo> Entities
+) : Serialized;
+

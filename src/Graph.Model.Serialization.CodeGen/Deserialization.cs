@@ -18,13 +18,13 @@ using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
 
-namespace Cvoya.Graph.Model.Neo4j.Serialization.CodeGen;
+namespace Cvoya.Graph.Model.Serialization.CodeGen;
 
 internal static class Deserialization
 {
     internal static void GenerateDeserializeMethod(StringBuilder sb, INamedTypeSymbol type)
     {
-        sb.AppendLine("    public override object Deserialize(Entity entity)");
+        sb.AppendLine("    public override object Deserialize(Entity entity, Type targetType)");
         sb.AppendLine("    {");
 
         // Get all properties that we can deserialize
@@ -245,7 +245,7 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}    var complexSerializer = EntitySerializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(targetType)}));");
             sb.AppendLine($"{indentStr}    if (complexSerializer != null)");
             sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        {variableName} = ({targetType.ToDisplayString()})complexSerializer.Deserialize(complexEntity);");
+            sb.AppendLine($"{indentStr}        {variableName} = ({targetType.ToDisplayString()})complexSerializer.Deserialize(complexEntity, targetType);");
             sb.AppendLine($"{indentStr}    }}");
             sb.AppendLine($"{indentStr}    else");
             sb.AppendLine($"{indentStr}    {{");
@@ -323,7 +323,7 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}    {{");
             sb.AppendLine($"{indentStr}        foreach (var entityItem in entityCollection.Entities)");
             sb.AppendLine($"{indentStr}        {{");
-            sb.AppendLine($"{indentStr}            var deserializedItem = itemSerializer.Deserialize(entityItem);");
+            sb.AppendLine($"{indentStr}            var deserializedItem = itemSerializer.Deserialize(entityItem, targetType);");
             sb.AppendLine($"{indentStr}            if (deserializedItem is {elementType.ToDisplayString()} typedItem)");
             sb.AppendLine($"{indentStr}            {{");
             sb.AppendLine($"{indentStr}                collection.Add(typedItem);");

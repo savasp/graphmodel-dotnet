@@ -32,6 +32,7 @@ public class NodeAndRelationshipImplementationAnalyzer : DiagnosticAnalyzer
         new PropertyValidator()
     ];
 
+    /// <ineheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
     [
         DiagnosticDescriptors.OnlyClassesCanImplement,
@@ -41,6 +42,7 @@ public class NodeAndRelationshipImplementationAnalyzer : DiagnosticAnalyzer
         DiagnosticDescriptors.InvalidComplexTypeProperty
     ];
 
+    /// <ineheritdoc />
     public override void Initialize(AnalysisContext context)
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
@@ -66,15 +68,6 @@ public class NodeAndRelationshipImplementationAnalyzer : DiagnosticAnalyzer
             }
         }
     }
-
-    /*
-        private static bool ImplementsGraphInterface(INamedTypeSymbol typeSymbol)
-        {
-            return typeSymbol.AllInterfaces.Any(i =>
-                i.Name is "INode" or "IRelationship" &&
-                i.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph.Model");
-        }
-    */
 
     private static bool ImplementsGraphInterface(INamedTypeSymbol typeSymbol)
     {

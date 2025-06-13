@@ -16,7 +16,7 @@ using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Linq;
-using Cvoya.Graph.Model.Neo4j.Serialization;
+using Cvoya.Graph.Model.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Neo4j.Driver;
@@ -27,7 +27,6 @@ internal class CypherEngine(GraphContext graphContext)
 {
     private readonly ILogger<CypherEngine> _logger =
         graphContext.LoggerFactory?.CreateLogger<CypherEngine>() ?? NullLogger<CypherEngine>.Instance;
-    private readonly GraphEntitySerializer _serializer = new GraphEntitySerializer(graphContext);
 
     public async Task<T> ExecuteAsync<T>(
         string cypher,
@@ -112,8 +111,7 @@ internal class CypherEngine(GraphContext graphContext)
 
         try
         {
-            var serializer = EntitySerializerRegistry.GetSerializer(entityType);
-            queryContext.TargetEntitySchema = serializer?.GetSchema();
+            queryContext.TargetEntitySchema = 
 
             _logger?.LogDebug("Populated schema for type {Type}: HasComplexProperties = {HasComplexProperties}",
                 entityType.Name, queryContext.TargetEntitySchema?.HasComplexProperties ?? false);
@@ -210,141 +208,141 @@ internal class CypherEngine(GraphContext graphContext)
                 var concreteType = typeof(GraphPathSegment<,,>).MakeGenericType(sourceType, relType, targetType);
                 var listType = typeof(List<>).MakeGenericType(elementType);
                 var list = Activator.CreateInstance(listType) as IList ?? throw new InvalidOperationException();
+                /*
+                                foreach (var record in records)
+                                {
+                                    // We expect 3 values: source node, relationship, target node
+                                    if (record.Values.Count >= 3)
+                                    {
+                                        var sourceNode = _serializer.DeserializeNodeFromNeo4jNode(
+                                            record[0].As<global::Neo4j.Driver.INode>(),
+                                            sourceType,
+                                            queryContext.UseMostDerivedType);
 
-                foreach (var record in records)
-                {
-                    // We expect 3 values: source node, relationship, target node
-                    if (record.Values.Count >= 3)
-                    {
-                        var sourceNode = _serializer.DeserializeNodeFromNeo4jNode(
-                            record[0].As<global::Neo4j.Driver.INode>(),
-                            sourceType,
-                            queryContext.UseMostDerivedType);
+                                        var relationship = _serializer.DeserializeRelationshipFromNeo4jRelationship(
+                                            record[1].As<global::Neo4j.Driver.IRelationship>(),
+                                            relType);
 
-                        var relationship = _serializer.DeserializeRelationshipFromNeo4jRelationship(
-                            record[1].As<global::Neo4j.Driver.IRelationship>(),
-                            relType);
+                                        var targetNode = _serializer.DeserializeNodeFromNeo4jNode(
+                                            record[2].As<global::Neo4j.Driver.INode>(),
+                                            targetType,
+                                            queryContext.UseMostDerivedType);
 
-                        var targetNode = _serializer.DeserializeNodeFromNeo4jNode(
-                            record[2].As<global::Neo4j.Driver.INode>(),
-                            targetType,
-                            queryContext.UseMostDerivedType);
+                                        var pathSegment = Activator.CreateInstance(
+                                            concreteType,
+                                            sourceNode,
+                                            relationship,
+                                            targetNode);
 
-                        var pathSegment = Activator.CreateInstance(
-                            concreteType,
-                            sourceNode,
-                            relationship,
-                            targetNode);
-
-                        list.Add(pathSegment);
-                    }
-                }
-
+                                        list.Add(pathSegment);
+                                    }
+                                }
+                */
                 return (T)list;
             }
         }
-
-        // Handle single entity projections (like Select(r => r.Relationship).FirstOrDefault())
-        if (!typeof(IEnumerable).IsAssignableFrom(typeof(T)) || typeof(T) == typeof(string))
-        {
-            var record = records.FirstOrDefault();
-            if (record == null)
-            {
-                return default!;
-            }
-
-            // If we have multiple values (n, r, t) but want just one part
-            // This happens with queries like .Select(r => r.Relationship)
-            if (record.Values.Count == 3 &&
-                record[0] is global::Neo4j.Driver.INode &&
-                record[1] is global::Neo4j.Driver.IRelationship rel &&
-                record[2] is global::Neo4j.Driver.INode)
-            {
-                // We're selecting just the relationship
-                if (typeof(IRelationship).IsAssignableFrom(typeof(T)))
+        /*
+                // Handle single entity projections (like Select(r => r.Relationship).FirstOrDefault())
+                if (!typeof(IEnumerable).IsAssignableFrom(typeof(T)) || typeof(T) == typeof(string))
                 {
-                    return (T)_serializer.DeserializeRelationshipFromNeo4jRelationship(rel, typeof(T));
-                }
-            }
-
-            // Handle other single value projections
-            if (record.Values.Count == 1)
-            {
-                var value = record.Values.First().Value;
-
-                if (value is global::Neo4j.Driver.INode node && typeof(INode).IsAssignableFrom(typeof(T)))
-                {
-                    return (T)_serializer.DeserializeNodeFromNeo4jNode(
-                        node,
-                        typeof(T),
-                        queryContext.UseMostDerivedType);
-                }
-
-                if (value is global::Neo4j.Driver.IRelationship relationship && typeof(IRelationship).IsAssignableFrom(typeof(T)))
-                {
-                    return (T)_serializer.DeserializeRelationshipFromNeo4jRelationship(
-                        relationship,
-                        typeof(T));
-                }
-
-                // Handle scalar projections
-                var convertedValue = EntitySerializerBase.ConvertFromNeo4jValue(value, typeof(T));
-                return convertedValue is T typedValue ? typedValue : default!;
-            }
-        }
-
-        // Handle collection projections
-        if (typeof(IEnumerable).IsAssignableFrom(typeof(T)) && typeof(T) != typeof(string))
-        {
-            var elementType = typeof(T).IsArray
-                ? typeof(T).GetElementType()!
-                : typeof(T).GetGenericArguments().FirstOrDefault() ?? typeof(object);
-
-            var results = new List<object>();
-
-            foreach (var record in records)
-            {
-                // Similar logic as above but for collections
-                if (record.Values.Count == 3 &&
-                    record[1] is global::Neo4j.Driver.IRelationship rel &&
-                    typeof(IRelationship).IsAssignableFrom(elementType))
-                {
-                    var entity = _serializer.DeserializeRelationshipFromNeo4jRelationship(rel, elementType);
-                    results.Add(entity);
-                }
-                else if (record.Values.Count == 1)
-                {
-                    var value = record.Values.First().Value;
-                    object? entity = null;
-
-                    if (value is global::Neo4j.Driver.INode node)
+                    var record = records.FirstOrDefault();
+                    if (record == null)
                     {
-                        entity = _serializer.DeserializeNodeFromNeo4jNode(
-                            node,
-                            elementType,
-                            queryContext.UseMostDerivedType);
-                    }
-                    else if (value is global::Neo4j.Driver.IRelationship relationship)
-                    {
-                        entity = _serializer.DeserializeRelationshipFromNeo4jRelationship(
-                            relationship,
-                            elementType);
-                    }
-                    else
-                    {
-                        entity = EntitySerializerBase.ConvertFromNeo4jValue(value, elementType);
+                        return default!;
                     }
 
-                    if (entity != null)
+                    // If we have multiple values (n, r, t) but want just one part
+                    // This happens with queries like .Select(r => r.Relationship)
+                    if (record.Values.Count == 3 &&
+                        record[0] is global::Neo4j.Driver.INode &&
+                        record[1] is global::Neo4j.Driver.IRelationship rel &&
+                        record[2] is global::Neo4j.Driver.INode)
                     {
-                        results.Add(entity);
+                        // We're selecting just the relationship
+                        if (typeof(IRelationship).IsAssignableFrom(typeof(T)))
+                        {
+                            return (T)_serializer.DeserializeRelationshipFromNeo4jRelationship(rel, typeof(T));
+                        }
+                    }
+
+                    // Handle other single value projections
+                    if (record.Values.Count == 1)
+                    {
+                        var value = record.Values.First().Value;
+
+                        if (value is global::Neo4j.Driver.INode node && typeof(INode).IsAssignableFrom(typeof(T)))
+                        {
+                            return (T)_serializer.DeserializeNodeFromNeo4jNode(
+                                node,
+                                typeof(T),
+                                queryContext.UseMostDerivedType);
+                        }
+
+                        if (value is global::Neo4j.Driver.IRelationship relationship && typeof(IRelationship).IsAssignableFrom(typeof(T)))
+                        {
+                            return (T)_serializer.DeserializeRelationshipFromNeo4jRelationship(
+                                relationship,
+                                typeof(T));
+                        }
+
+                        // Handle scalar projections
+                        var convertedValue = EntitySerializerBase.ConvertFromNeo4jValue(value, typeof(T));
+                        return convertedValue is T typedValue ? typedValue : default!;
                     }
                 }
-            }
 
-            return ConvertToCollectionType<T>(results, elementType);
-        }
+                // Handle collection projections
+                if (typeof(IEnumerable).IsAssignableFrom(typeof(T)) && typeof(T) != typeof(string))
+                {
+                    var elementType = typeof(T).IsArray
+                        ? typeof(T).GetElementType()!
+                        : typeof(T).GetGenericArguments().FirstOrDefault() ?? typeof(object);
 
+                    var results = new List<object>();
+
+                    foreach (var record in records)
+                    {
+                        // Similar logic as above but for collections
+                        if (record.Values.Count == 3 &&
+                            record[1] is global::Neo4j.Driver.IRelationship rel &&
+                            typeof(IRelationship).IsAssignableFrom(elementType))
+                        {
+                            var entity = _serializer.DeserializeRelationshipFromNeo4jRelationship(rel, elementType);
+                            results.Add(entity);
+                        }
+                        else if (record.Values.Count == 1)
+                        {
+                            var value = record.Values.First().Value;
+                            object? entity = null;
+
+                            if (value is global::Neo4j.Driver.INode node)
+                            {
+                                entity = _serializer.DeserializeNodeFromNeo4jNode(
+                                    node,
+                                    elementType,
+                                    queryContext.UseMostDerivedType);
+                            }
+                            else if (value is global::Neo4j.Driver.IRelationship relationship)
+                            {
+                                entity = _serializer.DeserializeRelationshipFromNeo4jRelationship(
+                                    relationship,
+                                    elementType);
+                            }
+                            else
+                            {
+                                entity = EntitySerializerBase.ConvertFromNeo4jValue(value, elementType);
+                            }
+
+                            if (entity != null)
+                            {
+                                results.Add(entity);
+                            }
+                        }
+                    }
+
+                    return ConvertToCollectionType<T>(results, elementType);
+                }
+        */
         // If we get here, we don't know how to handle this projection
         throw new NotImplementedException($"Projection handling for type {typeof(T)} with {records.FirstOrDefault()?.Values.Count ?? 0} values not implemented yet!");
     }
@@ -567,7 +565,7 @@ internal class CypherEngine(GraphContext graphContext)
         GraphQueryContext queryContext)
     {
         // First create the main entity
-        var entity = _serializer.DeserializeNodeFromNeo4jNode(
+        var entity = DeserializeNodeFromNeo4jNode(
             node,
             requestedType,
             queryContext.UseMostDerivedType);
@@ -621,7 +619,7 @@ internal class CypherEngine(GraphContext graphContext)
             // Deserialize the complex property node
             try
             {
-                var complexEntity = _serializer.DeserializeNodeFromNeo4jNode(
+                var complexEntity = DeserializeNodeFromNeo4jNode(
                     neo4jNode,
                     typeof(object), // Let the serializer figure out the actual type
                     queryContext.UseMostDerivedType);
@@ -761,7 +759,7 @@ internal class CypherEngine(GraphContext graphContext)
         // Handle Neo4j entities
         if (value is global::Neo4j.Driver.INode node)
         {
-            return _serializer.DeserializeNodeFromNeo4jNode(
+            return DeserializeNodeFromNeo4jNode(
                 node,
                 requestedType,
                 queryContext.UseMostDerivedType);
@@ -769,7 +767,7 @@ internal class CypherEngine(GraphContext graphContext)
 
         if (value is global::Neo4j.Driver.IRelationship relationship)
         {
-            return _serializer.DeserializeRelationshipFromNeo4jRelationship(
+            return DeserializeRelationshipFromNeo4jRelationship(
                 relationship,
                 requestedType);
         }
@@ -835,7 +833,7 @@ internal class CypherEngine(GraphContext graphContext)
             // Determine what to return based on the requested type
             if (typeof(IRelationship).IsAssignableFrom(requestedType))
             {
-                result = _serializer.DeserializeRelationshipFromNeo4jRelationship(rel, requestedType);
+                result = DeserializeRelationshipFromNeo4jRelationship(rel, requestedType);
                 return true;
             }
 
@@ -843,7 +841,7 @@ internal class CypherEngine(GraphContext graphContext)
             {
                 // This is still a bit arbitrary - might need more context
                 // Consider adding metadata to the query context to indicate which node to return
-                result = _serializer.DeserializeNodeFromNeo4jNode(
+                result = DeserializeNodeFromNeo4jNode(
                     sourceNode,
                     requestedType,
                     queryContext.UseMostDerivedType);
@@ -858,9 +856,9 @@ internal class CypherEngine(GraphContext graphContext)
                 var genericArgs = requestedType.GetGenericArguments();
                 var concreteType = typeof(GraphPathSegment<,,>).MakeGenericType(genericArgs);
 
-                var source = _serializer.DeserializeNodeFromNeo4jNode(sourceNode, genericArgs[0], queryContext.UseMostDerivedType);
-                var relationship = _serializer.DeserializeRelationshipFromNeo4jRelationship(rel, genericArgs[1]);
-                var target = _serializer.DeserializeNodeFromNeo4jNode(targetNode, genericArgs[2], queryContext.UseMostDerivedType);
+                var source = DeserializeNodeFromNeo4jNode(sourceNode, genericArgs[0], queryContext.UseMostDerivedType);
+                var relationship = DeserializeRelationshipFromNeo4jRelationship(rel, genericArgs[1]);
+                var target = DeserializeNodeFromNeo4jNode(targetNode, genericArgs[2], queryContext.UseMostDerivedType);
 
                 result = Activator.CreateInstance(concreteType, source, relationship, target);
                 return true;
@@ -868,6 +866,62 @@ internal class CypherEngine(GraphContext graphContext)
         }
 
         return false;
+    }
+
+    public object DeserializeNodeFromNeo4jNode(
+        global::Neo4j.Driver.INode neo4jNode,
+        Type targetType,
+        bool useMostDerivedType = true)
+    {
+        ArgumentNullException.ThrowIfNull(neo4jNode);
+        ArgumentNullException.ThrowIfNull(targetType);
+
+        // Resolve the most derived type if requested
+        if (useMostDerivedType)
+        {
+            // Use the label from the Neo4j node to find the most derived type
+            var label = neo4jNode.Labels[0];
+            var resolvedType = Labels.GetMostDerivedType(targetType, label)
+                ?? throw new GraphException($"No type found for label '{label}' that is assignable to {targetType.Name}. " +
+                    "Ensure the label matches a registered type in the GraphDataModel.");
+
+            if (resolvedType != targetType)
+            {
+                targetType = resolvedType;
+                _logger.LogDebug($"Resolved type {resolvedType.Name} from labels {label} for requested type {targetType.Name}");
+            }
+        }
+
+        return graphContext.EntityFactory.CreateInstance(targetType, neo4jNode);
+    }
+
+    public object DeserializeRelationshipFromNeo4jRelationship(
+        global::Neo4j.Driver.IRelationship neo4jRelationship,
+        Type targetType,
+        bool useMostDerivedType = true)
+    {
+        ArgumentNullException.ThrowIfNull(neo4jRelationship);
+        ArgumentNullException.ThrowIfNull(targetType);
+
+        // Resolve the most derived type if requested
+        if (useMostDerivedType)
+        {
+            // Use the label from the Neo4j relationship to find the most derived type
+            var label = neo4jRelationship.Type;
+            var resolvedType = Labels.GetMostDerivedType(targetType, label)
+                ?? throw new GraphException($"No type found for label '{label}' that is assignable to {targetType.Name}. " +
+                    "Ensure the label matches a registered type in the GraphDataModel.");
+
+            if (resolvedType != targetType)
+            {
+                targetType = resolvedType;
+                _logger.LogDebug("Resolved type {ResolvedType} from labels {Labels} for requested type {RequestedType}",
+                    resolvedType.Name, label, targetType.Name);
+            }
+        }
+
+        // Create the relationship instance
+        return graphContext.EntityFactory.CreateInstance(targetType, neo4jRelationship);
     }
 }
 

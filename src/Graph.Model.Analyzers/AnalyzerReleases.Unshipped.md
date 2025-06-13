@@ -1,1 +1,3 @@
-# Release 0.2
+### New Rules
+Rule ID | Category | Severity | Notes
+--------|----------|----------|--------------------

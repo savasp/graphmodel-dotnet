@@ -55,6 +55,40 @@ For more details, see the individual package READMEs:
 - [Graph.Provider.Neo4j](src/Graph.Provider.Neo4j/README.md) - Neo4j implementation
 - [Graph.Model.Analyzers](src/Graph.Model.Analyzers/README.md) - Compile-time validation
 
+## Build
+
+### Normal development - builds with timestamped dev packages
+
+```sh
+> dotnet build
+> dotnet test
+```
+
+This will:
+
+1. Build all projects using project references.
+2. Run the tests
+
+### Release
+
+```sh
+> dotnet build -c Release
+```
+
+This will build the nuget packages. The proejects will be configured to use package references.
+
+### Force package generation in debug
+
+```sh
+> dotnet build -p:ForcePackageGeneration=true
+```
+
+### Clear local cache when needed
+
+```sh
+> dotnet nuget locals all --clear
+```
+
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.

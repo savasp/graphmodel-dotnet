@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Serialization;
+using System.Reflection;
+
+namespace Cvoya.Graph.Model.Serialization;
 
 /// <summary>
-/// Contains the result of serializing a node, including its simple properties and complex property references.
+/// Represents metadata about a property for serialization purposes
 /// </summary>
-internal record NodeSerializationResult
-{
-    /// <summary>
-    /// The serialized entity representation.
-    /// </summary>
-    public required Entity SerializedEntity { get; init; }
+/// <param name="PropertyInfo">The <see cref="PropertyInfo"/> for the property.</param>
+/// <param name="Label">The label for the property.</param>
+/// <param name="IsNullable">Indicates if the property is nullable.</param>
+/// <param name="Value">The serialized value of the property, if available.</param>
+public record Property(
+    PropertyInfo PropertyInfo,
+    string Label,
+    bool IsNullable = false,
+    Serialized? Value = null);
 
-    /// <summary>
-    /// The label to use for the Neo4j node.
-    /// </summary>
-    public required string Label { get; init; }
-}

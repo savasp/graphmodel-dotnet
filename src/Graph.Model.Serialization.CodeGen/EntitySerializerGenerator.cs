@@ -12,18 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using System.Text;
-using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Cvoya.Graph.Model.Neo4j.Serialization.CodeGen;
+namespace Cvoya.Graph.Model.Serialization.CodeGen;
 
 [Generator]
-public class EntitySerializerGenerator : IIncrementalGenerator
+internal class EntitySerializerGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {

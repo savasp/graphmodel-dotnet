@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model.Neo4j.Serialization;
+namespace Cvoya.Graph.Model.Neo4j;
+
+using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 
-namespace Cvoya.Graph.Model.Neo4j;
 
 internal record GraphContext(
     Graph Graph,

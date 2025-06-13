@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, ...</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, ...</value>
+  </resheader>
+
+  <!-- GM001 -->
+  <data name="GM001_Title" xml:space="preserve">
+    <value>Structs cannot implement INode or IRelationship</value>
+  </data>
+  <data name="GM001_MessageFormat" xml:space="preserve">
+    <value>Struct '{0}' cannot implement {1}. Only classes are supported.</value>
+  </data>
+  <data name="GM001_Description" xml:space="preserve">
+    <value>INode and IRelationship can only be implemented by classes, not structs.</value>
+  </data>
+
+  <!-- GM002 -->
+  <data name="GM002_Title" xml:space="preserve">
+    <value>Missing parameterless constructor</value>
+  </data>
+  <data name="GM002_MessageFormat" xml:space="preserve">
+    <value>Type '{0}' must have a parameterless constructor (public or internal)</value>
+  </data>
+  <data name="GM002_Description" xml:space="preserve">
+    <value>Types implementing INode or IRelationship must have a parameterless constructor.</value>
+  </data>
+
+  <!-- GM003 -->
+  <data name="GM003_Title" xml:space="preserve">
+    <value>Property must have public getter and setter</value>
+  </data>
+  <data name="GM003_MessageFormat" xml:space="preserve">
+    <value>Property '{0}' must have public getter and setter</value>
+  </data>
+  <data name="GM003_Description" xml:space="preserve">
+    <value>All properties in INode and IRelationship implementations must have public getters and setters.</value>
+  </data>
+
+  <!-- GM004 -->
+  <data name="GM004_Title" xml:space="preserve">
+    <value>Unsupported property type</value>
+  </data>
+  <data name="GM004_MessageFormat" xml:space="preserve">
+    <value>Property '{0}' has unsupported type '{1}'</value>
+  </data>
+  <data name="GM004_Description" xml:space="preserve">
+    <value>Properties can only be of supported types (primitives, string, date/time, Point, collections).</value>
+  </data>
+
+  <!-- GM005 -->
+  <data name="GM005_Title" xml:space="preserve">
+    <value>Invalid complex type property</value>
+  </data>
+  <data name="GM005_MessageFormat" xml:space="preserve">
+    <value>Property '{0}' of type '{1}' is not a valid complex type for INode implementations</value>
+  </data>
+  <data name="GM005_Description" xml:space="preserve">
+    <value>Complex type properties in INode implementations must be classes with parameterless constructors and only simple properties.</value>
+  </data>
+</root>

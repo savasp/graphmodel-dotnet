@@ -14,7 +14,7 @@
 
 using System.Reflection;
 
-namespace Cvoya.Graph.Model.Neo4j.Serialization;
+namespace Cvoya.Graph.Model.Serialization;
 
 /// <summary>
 /// Schema information for a property within an entity or relationship.

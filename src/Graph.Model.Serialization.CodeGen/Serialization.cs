@@ -15,7 +15,7 @@
 using System.Text;
 using Microsoft.CodeAnalysis;
 
-namespace Cvoya.Graph.Model.Neo4j.Serialization.CodeGen;
+namespace Cvoya.Graph.Model.Serialization.CodeGen;
 
 internal static class Serialization
 {

@@ -225,27 +225,18 @@ public static class Labels
             return cachedType;
         }
 
-        try
-        {
-            // First try to get the type directly from the label (this uses caching internally)
-            var typeFromLabel = GetTypeFromLabel(label);
+        // First try to get the type directly from the label (this uses caching internally)
+        var typeFromLabel = GetTypeFromLabel(label);
 
-            // Check if this type is assignable to our target type
-            if (targetType.IsAssignableFrom(typeFromLabel))
-            {
-                MostDerivedTypeCache[cacheKey] = typeFromLabel;
-                return typeFromLabel;
-            }
-
-            // Not assignable, cache null result
-            MostDerivedTypeCache[cacheKey] = null;
-            return null;
-        }
-        catch (GraphException)
+        // Check if this type is assignable to our target type
+        if (targetType.IsAssignableFrom(typeFromLabel))
         {
-            // No type found for this label, cache null result
-            MostDerivedTypeCache[cacheKey] = null;
-            return null;
+            MostDerivedTypeCache[cacheKey] = typeFromLabel;
+            return typeFromLabel;
         }
+
+        // Not assignable, cache null result
+        MostDerivedTypeCache[cacheKey] = targetType;
+        return targetType;
     }
 }

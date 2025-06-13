@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Serialization;
+namespace Cvoya.Graph.Model.Serialization;
 
 /// <summary>
-/// Represents a collection of values.
+/// Represents a collection of values. The predicate <see cref="Model.GraphDataModel.IsSimple(System.Type)"/>
+/// determines if a value is considered simple.
 /// </summary>
-/// <param name="Values"></param>
+/// <param name="Values">An <see cref="IReadOnlyCollection{SimpleValue}"/> of simple values.</param>
 /// <param name="ElementType">The type of elements in the collection.</param>
 public record SimpleCollection(
     IReadOnlyCollection<SimpleValue> Values,

@@ -1,0 +1,32 @@
+// Copyright 2025 Savas Parastatidis
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+namespace Cvoya.Graph.Model.Serialization;
+
+/// <summary>
+/// Represents a serialized Graph Model entity: <see cref="INode"/> or <see cref="IRelationship"/>.
+/// </summary>
+/// <param name="ActualType">The actual type of the entity. This might be different from what the schema
+/// expects. If it is different, then it has to be a derived type.</param>
+/// <param name="Label">The label for the entity.</param>
+/// <param name="SimpleProperties">An <see cref="IReadOnlyDictionary{String, Property}"/> of simple properties.
+/// <see cref="GraphDataModel.IsSimple(Type)"/> determines if a property is considered simple.</param>
+/// <param name="ComplexProperties">A dictionary of complex properties.
+/// <see cref="GraphDataModel.IsSimple(Type)"/> determines if a property is considered complex.</param>
+public record EntityInfo(
+    Type ActualType,
+    string Label,
+    IReadOnlyDictionary<string, Property> SimpleProperties,
+    IReadOnlyDictionary<string, Property> ComplexProperties
+) : Serialized;

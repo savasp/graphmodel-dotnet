@@ -2,43 +2,14 @@
 
     <PropertyGroup>
         <OutputType>library</OutputType>
-        <TargetFramework>net10.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <WarningsAsErrors>Nullable</WarningsAsErrors>
-        <LangVersion>preview</LangVersion>
-
         <RootNamespace>Cvoya.Graph.Model.Neo4j</RootNamespace>
         <AssemblyName>Cvoya.Graph.Model.Neo4j</AssemblyName>
     </PropertyGroup>
 
-    <!-- Package Information -->
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Model.Neo4j</PackageId>
-        <Version>0.2.0</Version>
-        <Authors>Savas Parastatidis</Authors>
-        <Company>Cvoya</Company>
         <Description>A graph provider for the Neo4j database with support for LINQ and the updated Graph.Model abstraction.</Description>
-        <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/savasp/graphmodel</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/savasp/graphmodel</RepositoryUrl>
-        <RepositoryType>git</RepositoryType>
         <PackageTags>graph;database;neo4j;linq</PackageTags>
-        <PackageReadmeFile>README.md</PackageReadmeFile>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    </PropertyGroup>
-
-    <!-- Include README in package -->
-    <ItemGroup>
-        <None Include="README.md" Pack="true" PackagePath="\" />
-    </ItemGroup>
-
-    <PropertyGroup>
-        <!-- Generate XML documentation -->
-        <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <!-- Include symbols for debugging -->
-        <IncludeSymbols>true</IncludeSymbols>
-        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     </PropertyGroup>
 
     <ItemGroup>
@@ -49,9 +20,20 @@
 
     <ItemGroup>
         <PackageReference Include="Neo4j.Driver" Version="5.28.1" />
-        <PackageReference Include="NLog.Extensions.Logging" Version="5.4.0" />
+    </ItemGroup>
+
+    <!-- Use project references for development (default) -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
         <ProjectReference Include="../Graph.Model/Graph.Model.csproj" />
-        <ProjectReference Include="../Graph.Model.Neo4j.Serialization.CodeGen/Graph.Model.Neo4j.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="../Graph.Model.Serialization/Graph.Model.Serialization.csproj" />
+        <ProjectReference Include="../Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
+
+    <!-- Use package references for releases -->
+    <ItemGroup Condition="'$(UseProjectReferences)' != 'true'">
+        <PackageReference Include="Cvoya.Graph.Model" Version="$(Version)" />
+        <PackageReference Include="Cvoya.Graph.Model.Serialization" Version="$(Version)" />
+        <PackageReference Include="Cvoya.Graph.Model.Serialization.CodeGen" Version="$(Version)" PrivateAssets="all" />
     </ItemGroup>
 
 </Project>

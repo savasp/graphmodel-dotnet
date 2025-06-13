@@ -13,41 +13,12 @@
 // limitations under the License.
 
 using System.Collections;
-using System.Xml.Serialization;
 using Neo4j.Driver;
 
-namespace Cvoya.Graph.Model.Neo4j.Serialization;
+namespace Cvoya.Graph.Model.Neo4j;
 
-/// <summary>
-/// Base class for generated entity serializers with shared conversion logic
-/// </summary>
-public abstract class EntitySerializerBase
+internal static class Serialization
 {
-    /// <summary>
-    /// Gets the type of the entity this serializer handles
-    /// </summary>
-    public abstract Type EntityType { get; }
-
-    /// <summary>
-    /// Deserializes a Neo4j entity into a .NET object
-    /// </summary>
-    /// <param name="entity">The entity to deserialize</param>
-    /// <returns>A .NET object representing the deserialized entity</returns>
-    public abstract object Deserialize(Entity entity);
-
-    /// <summary>
-    /// Gets the schema information for the entity type this serializer handles
-    /// </summary>
-    /// <returns>A <see cref="EntitySchema"/> object representing the schema</returns>
-    public abstract EntitySchema GetSchema();
-
-    /// <summary>
-    /// Serializes a .NET object into a Neo4j entity representation
-    /// </summary>
-    /// <param name="entity">The .NET object to serialize</param>
-    /// <returns>A dictionary representing the serialized entity</returns>
-    public abstract Entity Serialize(object entity);
-
     /// <summary>
     /// Converts a .NET value to a Neo4j compatible value
     /// </summary>
@@ -204,10 +175,11 @@ public abstract class EntitySerializerBase
         return collection.Cast<object>().Select(ConvertToNeo4jValue).Where(x => x is not null).Select(x => x!).ToArray();
     }
 
+    // TODO: Remove this!
     /// <summary>
     /// Safely gets a property value from the Neo4j entity
     /// </summary>
-    protected static bool TryGetProperty(global::Neo4j.Driver.IEntity entity, string propertyName, out object? value)
+    private static bool TryGetProperty(global::Neo4j.Driver.IEntity entity, string propertyName, out object? value)
     {
         return entity.Properties.TryGetValue(propertyName, out value);
     }

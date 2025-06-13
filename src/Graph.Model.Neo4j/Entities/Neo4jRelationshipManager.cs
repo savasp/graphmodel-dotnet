@@ -73,18 +73,18 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             GraphDataModel.EnsureNoReferenceCycle(relationship);
 
             // Serialize the relationship
-            var serializedRelationship = _serializer.SerializeRelationship(relationship);
+            var entity = _serializer.Serialize(relationship);
 
             // Build the Cypher query
             var cypher = $@"
                 MATCH (source {{Id: $startNodeId}})
                 MATCH (target {{Id: $endNodeId}})
-                CREATE (source)-[r:{serializedRelationship.Type} $props]->(target)
+                CREATE (source)-[r:{entity.Type} $props]->(target)
                 RETURN r";
 
             _logger.LogDebug("Cypher query: {CypherQuery}", cypher);
 
-            var properties = serializedRelationship.SerializedEntity.SimpleProperties
+            var properties = entity.SimpleProperties
                 .Where(kv => kv.Value.Value is not null)
                 .ToDictionary(
                     kv => kv.Key,
@@ -96,12 +96,12 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                     });
 
             _logger.LogDebug("Parameters: StartNodeId={StartNodeId}, EndNodeId={EndNodeId}, Properties={Properties}",
-                serializedRelationship.StartNodeId, serializedRelationship.EndNodeId, properties);
+                relationship.StartNodeId, relationship.EndNodeId, properties);
 
             var result = await transaction.Transaction.RunAsync(cypher, new
             {
-                startNodeId = serializedRelationship.StartNodeId,
-                endNodeId = serializedRelationship.EndNodeId,
+                startNodeId = relationship.StartNodeId,
+                endNodeId = relationship.EndNodeId,
                 props = properties
             });
 
@@ -138,10 +138,10 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             GraphDataModel.EnsureNoReferenceCycle(relationship);
 
             // Serialize the relationship
-            var result = _serializer.SerializeRelationship(relationship);
+            var result = _serializer.Serialize(relationship);
 
             var cypher = "MATCH ()-[r {Id: $relId}]->() SET r = $props RETURN r";
-            var relResult = await transaction.Transaction.RunAsync(cypher, new { relId = relationship.Id, props = result.SerializedEntity });
+            var relResult = await transaction.Transaction.RunAsync(cypher, new { relId = relationship.Id, props = result });
             var count = await relResult.CountAsync(cancellationToken);
 
             if (count == 0)

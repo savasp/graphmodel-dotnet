@@ -1,0 +1,50 @@
+<Project>
+    <PropertyGroup>
+        <!-- Compile settings -->
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+        <LangVersion>preview</LangVersion>
+        <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+        <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+        <WarningsAsErrors>Nullable</WarningsAsErrors>
+
+        <!-- Build settings -->
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+        <!-- Package settings -->
+        <IncludeBuildOutput>true</IncludeBuildOutput>
+        <Version>1.0.0-alpha-$([System.DateTime]::Now.ToString('yyyyMMddHHmmss'))</Version>
+        <Company>Cvoya</Company>
+        <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/savasp/graphmodel</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/savasp/graphmodel</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageOutputPath>$(MSBuildThisFileDirectory)artifacts</PackageOutputPath>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+
+        <!-- Development mode uses project references by default -->
+        <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Debug'">true</UseProjectReferences>
+        <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Release'">false</UseProjectReferences>
+
+        <!-- Only generate packages in Release mode or when explicitly requested -->
+        <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release' OR '$(ForcePackageGeneration)' == 'true'">true</GeneratePackageOnBuild>
+        <GeneratePackageOnBuild Condition="'$(GeneratePackageOnBuild)' == ''">false</GeneratePackageOnBuild>
+    </PropertyGroup>
+
+    <!-- Include README in the package -->
+    <ItemGroup>
+        <None Include="$(MSBuildProjectDirectory)\README.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
+
+    <!-- Test project settings -->
+    <PropertyGroup Condition=" $(MSBuildProjectDirectory.Contains('/tests/')) ">
+        <IsTestProject>true</IsTestProject>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+</Project>

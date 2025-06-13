@@ -12,18 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Serialization;
+namespace Cvoya.Graph.Model.Serialization;
 
 /// <summary>
-/// Represents a serialized entity.
+/// Represents a base record for serialized entities in the graph model.
 /// </summary>
-/// <param name="Type">The type of the entity.</param>
-/// <param name="Label">The label for the entity.</param>
-/// <param name="SimpleProperties">A dictionary of simple properties</param>
-/// <param name="ComplexProperties">A dictionary of complex properties</param>
-public record Entity(
-    Type Type,
-    string Label,
-    IReadOnlyDictionary<string, Property> SimpleProperties,
-    IReadOnlyDictionary<string, Property> ComplexProperties
-) : Serialized;
+public abstract record Serialized;

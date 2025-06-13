@@ -12,19 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Serialization;
+namespace Cvoya.Graph.Model.Serialization;
+
+using System.Collections.Concurrent;
 
 /// <summary>
 /// Registry for entity serializers
 /// </summary>
-public static class EntitySerializerRegistry
+internal class EntitySerializerRegistry
 {
-    private static readonly Dictionary<Type, EntitySerializerBase> _serializers = new();
+    private readonly ConcurrentDictionary<Type, IEntitySerializer> _serializers = new();
 
     /// <summary>
     /// Registers a serializer for a specific type
     /// </summary>
-    public static void Register<T>(EntitySerializerBase serializer) where T : IEntity
+    /// <typeparam name="T">The type of the entity</typeparam>
+    /// <param name="serializer">The serializer instance</param>
+    public void Register<T>(IEntitySerializer serializer) where T : IEntity
     {
         _serializers[typeof(T)] = serializer;
     }
@@ -32,23 +36,27 @@ public static class EntitySerializerRegistry
     /// <summary>
     /// Registers a serializer for any type (including complex property types)
     /// </summary>
-    public static void Register(Type type, EntitySerializerBase serializer)
+    public void Register(Type type, IEntitySerializer serializer)
     {
         _serializers[type] = serializer;
     }
 
     /// <summary>
-    /// Gets a serializer for the specified type
+    /// Gets a serializer for the specified type.
     /// </summary>
-    public static EntitySerializerBase? GetSerializer(Type type)
+    /// <param name="type">The type for which we are getting the serializer</param>
+    /// <returns>The serializer for the specified type, or null if not found</returns>
+    public IEntitySerializer? GetSerializer(Type type)
     {
         return _serializers.TryGetValue(type, out var serializer) ? serializer : null;
     }
 
     /// <summary>
-    /// Gets a serializer for the specified type
+    /// Gets a serializer for the specified type.
     /// </summary>
-    public static EntitySerializerBase? GetSerializer<T>() where T : IEntity
+    /// <typeparam name="T">The type for which we are getting the serializer</typeparam>
+    /// <returns>The serializer for the specified type, or null if not found</returns>
+    public IEntitySerializer? GetSerializer<T>() where T : IEntity
     {
         return GetSerializer(typeof(T));
     }

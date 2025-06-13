@@ -1,9 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <AssemblyName>Cvoya.Graph.Model.Neo4j.Tests</AssemblyName>
     <!-- Enhanced generator debugging -->
@@ -26,7 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj" />
     <ProjectReference Include="../Graph.Model.Tests/Graph.Model.Tests.csproj" />
-    <ProjectReference Include="../../src/Graph.Model.Neo4j.Serialization.CodeGen/Graph.Model.Neo4j.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

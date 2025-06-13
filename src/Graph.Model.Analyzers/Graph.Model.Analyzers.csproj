@@ -2,56 +2,44 @@
 
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
         <RootNamespace>Cvoya.Graph.Model.Analyzers</RootNamespace>
         <AssemblyName>Cvoya.Graph.Model.Analyzers</AssemblyName>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-        <LangVersion>latest</LangVersion>
+
+        <!-- The rest of the package-related properties come from the Directory.Build.props file -->
         <IncludeBuildOutput>false</IncludeBuildOutput>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <PackageOutputPath>../../artifacts</PackageOutputPath>
-        <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
-        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-    </PropertyGroup>
-
-    <!-- Package Information -->
-    <PropertyGroup>
-        <PackageId>Cvoya.Graph.Model.Analyzers</PackageId>
-        <Version>0.2.0</Version>
-        <Authors>Savas Parastatidis</Authors>
-        <Company>Cvoya</Company>
         <Description>Roslyn analyzer for enforcing implementation constraints on INode and IRelationship interfaces.</Description>
-        <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/savasp/graphmodel</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/savasp/graphmodel</RepositoryUrl>
-        <RepositoryType>git</RepositoryType>
         <PackageTags>roslyn;analyzer;graph;codeanalysis</PackageTags>
         <DevelopmentDependency>true</DevelopmentDependency>
+        <PackageId>Cvoya.Graph.Model.Analyzers</PackageId>
+
+        <!-- Force resource generation -->
+        <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+        <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+
+        <!-- Critical for analyzer packaging -->
+        <NoPackageAnalysis>true</NoPackageAnalysis>
+        <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+        <IncludeSymbols>false</IncludeSymbols>
+        <IncludeSource>false</IncludeSource>
     </PropertyGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="Properties/Resources.resx" />
+    </ItemGroup>
+
+    <!-- Package the analyzer properly -->
+    <Target Name="PackAnalyzer" BeforeTargets="GenerateNuspec">
+        <ItemGroup>
+            <_AnalyzerFiles Include="$(OutputPath)$(AssemblyName).dll" />
+        </ItemGroup>
+        <ItemGroup>
+            <TfmSpecificPackageFile Include="@(_AnalyzerFiles)" PackagePath="analyzers\dotnet\cs\%(Filename)%(Extension)" />
+        </ItemGroup>
+    </Target>
 
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" PrivateAssets="all" />
     </ItemGroup>
-
-    <ItemGroup>
-        <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers\dotnet\cs\$(AssemblyName).dll" Visible="false" />
-    </ItemGroup>
-    
-    <ItemGroup>
-        <EmbeddedResource Include="Resources.resx">
-            <Generator>ResXFileCodeGenerator</Generator>
-            <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-        </EmbeddedResource>
-    </ItemGroup>
-
-    <ItemGroup>
-        <Compile Update="Resources.Designer.cs">
-            <DesignTime>True</DesignTime>
-            <AutoGen>True</AutoGen>
-            <DependentUpon>Resources.resx</DependentUpon>
-        </Compile>
-    </ItemGroup>
-
 </Project>

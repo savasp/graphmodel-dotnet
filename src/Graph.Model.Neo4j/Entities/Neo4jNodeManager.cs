@@ -67,14 +67,14 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             GraphDataModel.EnsureNoReferenceCycle(node);
 
             // Serialize the node
-            var serializationResult = _serializer.SerializeNode(node);
+            var entity = _serializer.Serialize(node);
 
             // Build the Cypher query
-            var cypher = $"CREATE (n:{serializationResult.Label} $props) RETURN elementId(n) AS nodeId";
+            var cypher = $"CREATE (n:{entity.Label} $props) RETURN elementId(n) AS nodeId";
 
             _logger.LogDebug("Cypher query for creating node: {Cypher}", cypher);
 
-            var simpleProperties = serializationResult.SerializedEntity.SimpleProperties
+            var simpleProperties = entity.SimpleProperties
                 .Where(kv => kv.Value.Value is not null)
                 .ToDictionary(
                     kv => kv.Key,
@@ -94,7 +94,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
             // Yes, that's true by default. The entity being stored might not have any complex properties,
             var complexPropertiesCreated = true;
-            var complexProperties = serializationResult.SerializedEntity.ComplexProperties;
+            var complexProperties = entity.ComplexProperties;
 
             // Create complex properties if any
             foreach (var cp in complexProperties)
@@ -102,10 +102,10 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 var label = cp.Value.Label;
                 switch (cp.Value.Value)
                 {
-                    case Entity entity:
+                    case Entity e:
                         // Create complex properties recursively
                         // Note: The index is used to maintain the order in the collection
-                        complexPropertiesCreated = await CreateComplexGraphAsync(transaction.Transaction, parentId, label, entity, 0, cancellationToken);
+                        complexPropertiesCreated = await CreateComplexGraphAsync(transaction.Transaction, parentId, label, e, 0, cancellationToken);
                         break;
 
                     case EntityCollection entityCollection:
@@ -157,11 +157,11 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             GraphDataModel.EnsureNoReferenceCycle(node);
 
             // Serialize the node
-            var serializationResult = _serializer.SerializeNode(node);
+            var entity = _serializer.Serialize(node);
 
             // Update the node properties
             var cypher = "MATCH (n {Id: $nodeId}) SET n = $props RETURN n";
-            var result = await transaction.Transaction.RunAsync(cypher, new { nodeId = node.Id, props = serializationResult.SerializedEntity.SimpleProperties });
+            var result = await transaction.Transaction.RunAsync(cypher, new { nodeId = node.Id, props = entity.SimpleProperties });
 
             var updated = await result.CountAsync(cancellationToken) != 0;
             if (!updated)
@@ -174,10 +174,10 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var complexPropertiesUpdated = await UpdateComplexPropertiesAsync(
                 transaction.Transaction,
                 node.Id,
-                serializationResult.SerializedEntity,
+                entity,
                 cancellationToken);
 
-            if (!complexPropertiesUpdated && serializationResult.SerializedEntity.ComplexProperties.Count > 0)
+            if (!complexPropertiesUpdated && entity.ComplexProperties.Count > 0)
             {
                 _logger.LogWarning("No complex properties were updated for node with ID {NodeId}", node.Id);
                 throw new GraphException($"Failed to update the node's complex properties of type {typeof(TNode).Name} with ID {node.Id}");

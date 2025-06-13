@@ -12,62 +12,63 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Microsoft.CodeAnalysis;
-
 namespace Cvoya.Graph.Model.Analyzers;
+
+using Cvoya.Graph.Model.Analyzers.Properties;
+using Microsoft.CodeAnalysis;
 
 /// <summary>
 /// Diagnostic descriptors for Graph.Model analyzer rules.
 /// </summary>
-public static class DiagnosticDescriptors
+internal static class DiagnosticDescriptors
 {
     // GM001: Only classes can implement INode/IRelationship
     public static readonly DiagnosticDescriptor OnlyClassesCanImplement = new(
         id: "GM001",
-        title: "Structs cannot implement INode or IRelationship",
-        messageFormat: "Struct '{0}' cannot implement {1}. Only classes are supported.",
+        title: Resources.GM001_Title,
+        messageFormat: Resources.GM001_MessageFormat,
         category: "Graph.Model",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "INode and IRelationship can only be implemented by classes, not structs.");
+        description: Resources.GM001_Description);
 
     // GM002: Must have parameterless constructor
     public static readonly DiagnosticDescriptor MustHaveParameterlessConstructor = new(
         id: "GM002",
-        title: "Missing parameterless constructor",
-        messageFormat: "Type '{0}' must have a parameterless constructor (public or internal)",
+        title: Resources.GM002_Title,
+        messageFormat: Resources.GM002_MessageFormat,
         category: "Graph.Model",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Types implementing INode or IRelationship must have a parameterless constructor.");
+        description: Resources.GM002_Description);
 
     // GM003: Properties must have public getters and setters
     public static readonly DiagnosticDescriptor PropertyMustHavePublicGetterAndSetter = new(
         id: "GM003",
-        title: "Property must have public getter and setter",
-        messageFormat: "Property '{0}' must have public getter and setter",
+        title: Resources.GM003_Title,
+        messageFormat: Resources.GM003_MessageFormat,
         category: "Graph.Model",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "All properties in INode and IRelationship implementations must have public getters and setters.");
+        description: Resources.GM003_Description);
 
     // GM004: Unsupported property type
     public static readonly DiagnosticDescriptor UnsupportedPropertyType = new(
         id: "GM004",
-        title: "Unsupported property type",
-        messageFormat: "Property '{0}' has unsupported type '{1}'",
+        title: Resources.GM004_Title,
+        messageFormat: Resources.GM004_MessageFormat,
         category: "Graph.Model",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Properties can only be of supported types (primitives, string, date/time, Point, collections).");
+        description: Resources.GM004_Description);
 
     // GM005: Invalid complex type property (INode only)
     public static readonly DiagnosticDescriptor InvalidComplexTypeProperty = new(
         id: "GM005",
-        title: "Invalid complex type property",
-        messageFormat: "Property '{0}' of type '{1}' is not a valid complex type for INode implementations",
+        title: Resources.GM005_Title,
+        messageFormat: Resources.GM005_MessageFormat,
         category: "Graph.Model",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Complex type properties in INode implementations must be classes with parameterless constructors and only simple properties.");
+        description: Resources.GM005_Description);
 }
