@@ -215,10 +215,7 @@ public static class GraphDataModel
     public static bool IsSimple(Type type)
     {
         // Handle nullable value types
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
-        {
-            type = type.GetGenericArguments()[0];
-        }
+        type = Nullable.GetUnderlyingType(type) ?? type;
 
         return type switch
         {
@@ -257,7 +254,7 @@ public static class GraphDataModel
         && type switch
         {
             { IsArray: true } => IsSimple(type.GetElementType()!),
-            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } arg && IsSimple(arg),
+            { IsGenericType: true } => type.GetGenericTypeDefinition() is { } arg && IsSimple(arg),
             _ => false
         };
 

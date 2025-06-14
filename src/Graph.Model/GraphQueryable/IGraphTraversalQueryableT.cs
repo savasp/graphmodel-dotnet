@@ -49,13 +49,6 @@ public interface IGraphTraversalQueryable<TSource, TRel, TTarget> : IGraphQuerya
     IGraphTraversalQueryable<TSource, TRel, TTarget> WithDepth(int minDepth, int maxDepth);
 
     /// <summary>
-    /// Applies advanced traversal options (e.g., uniqueness, evaluation).
-    /// </summary>
-    /// <param name="options">The traversal options to apply.</param>
-    /// <returns>A new traversal queryable with the options applied.</returns>
-    IGraphTraversalQueryable<TSource, TRel, TTarget> WithOptions(TraversalOptions options);
-
-    /// <summary>
     /// Continues traversal with another relationship type and target node type.
     /// Enables chaining of multi-hop traversals in a fluent manner.
     /// </summary>

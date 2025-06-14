@@ -30,7 +30,7 @@
 
 #pragma warning disable CS8605
 
-using Cvoya.Graph.Model.Neo4j.Serialization;
+using Cvoya.Graph.Model.Neo4j.SerializationBridge;
 
 namespace Cvoya.Graph.Model.Neo4j.Tests
 {

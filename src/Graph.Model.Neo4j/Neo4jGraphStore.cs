@@ -13,6 +13,7 @@
 // limitations under the License.
 
 
+using Cvoya.Graph.Model.Neo4j.Core;
 using Neo4j.Driver;
 
 namespace Cvoya.Graph.Model.Neo4j;
@@ -53,7 +54,7 @@ public class Neo4jGraphStore : IAsyncDisposable
 
         // Create the Neo4j driver
         _driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
-        Graph = new Graph(_driver, databaseName, loggerFactory);
+        Graph = new Neo4jGraph(_driver, databaseName, loggerFactory);
     }
 
     /// <summary>
@@ -74,7 +75,7 @@ public class Neo4jGraphStore : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(driver, nameof(driver));
         databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
         _driver = driver;
-        Graph = new Graph(driver, databaseName, loggerFactory);
+        Graph = new Neo4jGraph(driver, databaseName, loggerFactory);
     }
 
     /// <inheritdoc />

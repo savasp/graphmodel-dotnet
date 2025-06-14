@@ -12,55 +12,57 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model.Neo4j.Serialization;
+namespace Cvoya.Graph.Model.Neo4j.Entities;
+
+using Cvoya.Graph.Model.Neo4j.Core;
+using Cvoya.Graph.Model.Serialization;
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Neo4j.Driver;
-
-namespace Cvoya.Graph.Model.Neo4j;
 
 /// <summary>
-///  All methods assume that there is already a transaction in progress.
+/// Manages CRUD operations for relationships in Neo4j.
+/// All methods assume that there is already a transaction in progress.
 /// </summary>
-/// <param name="context"></param>
 internal sealed class Neo4jRelationshipManager(GraphContext context)
 {
     private readonly ILogger<Neo4jRelationshipManager> _logger = context.LoggerFactory?.CreateLogger<Neo4jRelationshipManager>()
         ?? NullLogger<Neo4jRelationshipManager>.Instance;
-    private readonly GraphEntitySerializer _serializer = new GraphEntitySerializer(context);
+    private readonly EntityFactory _serializer = new();
 
     public async Task<TRelationship?> GetRelationshipAsync<TRelationship>(
         string relationshipId,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
-        where TRelationship : IRelationship
+        where TRelationship : Model.IRelationship
     {
         ArgumentException.ThrowIfNullOrEmpty(relationshipId);
 
-        _logger.LogDebug("Getting relationship of type {RelationshipType} with ID {RelationshipId}", typeof(TRelationship).Name, relationshipId);
+        _logger.LogDebug("Getting relationship of type {RelationshipType} with ID {RelationshipId}",
+            typeof(TRelationship).Name, relationshipId);
 
         try
         {
             // Use LINQ with the relationship queryable
             var query = context.Graph.Relationships<TRelationship>()
-                .Where(r => r.Id == relationshipId);
-
-            query = query.WithTransaction(transaction);
+                .Where(r => r.Id == relationshipId)
+                .WithTransaction(transaction);
 
             return await query.FirstOrDefaultAsync(cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving relationship {RelationshipId} of type {RelationshipType}", relationshipId, typeof(TRelationship).Name);
+            _logger.LogError(ex, "Error retrieving relationship {RelationshipId} of type {RelationshipType}",
+                relationshipId, typeof(TRelationship).Name);
             throw new GraphException($"Failed to retrieve relationship: {ex.Message}", ex);
         }
     }
 
-    public async Task CreateRelationshipAsync<TRelationship>(
+    public async Task<TRelationship> CreateRelationshipAsync<TRelationship>(
         TRelationship relationship,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
-        where TRelationship : IRelationship
+        where TRelationship : Model.IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
@@ -75,46 +77,34 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);
 
-            // Build the Cypher query
-            var cypher = $@"
-                MATCH (source {{Id: $startNodeId}})
-                MATCH (target {{Id: $endNodeId}})
-                CREATE (source)-[r:{entity.Type} $props]->(target)
-                RETURN r";
-
-            _logger.LogDebug("Cypher query: {CypherQuery}", cypher);
-
-            var properties = entity.SimpleProperties
-                .Where(kv => kv.Value.Value is not null)
-                .ToDictionary(
-                    kv => kv.Key,
-                    kv => kv.Value.Value switch
-                    {
-                        SimpleValue simpleValue => simpleValue.Object,
-                        SimpleCollection simpleCollection => simpleCollection.Values.Select(v => v.Object),
-                        _ => throw new GraphException($"This is a simple property so there should be no other Serialized type")
-                    });
-
-            _logger.LogDebug("Parameters: StartNodeId={StartNodeId}, EndNodeId={EndNodeId}, Properties={Properties}",
-                relationship.StartNodeId, relationship.EndNodeId, properties);
-
-            var result = await transaction.Transaction.RunAsync(cypher, new
+            // Validate that relationships don't have complex properties
+            if (entity.ComplexProperties.Count > 0)
             {
-                startNodeId = relationship.StartNodeId,
-                endNodeId = relationship.EndNodeId,
-                props = properties
-            });
+                throw new GraphException(
+                    $"Relationships cannot have complex properties. Found {entity.ComplexProperties.Count} complex properties on {typeof(TRelationship).Name}");
+            }
 
-            if (await result.CountAsync(cancellationToken) == 0)
+            // Create the relationship
+            var created = await CreateRelationshipInGraphAsync(
+                entity,
+                relationship.StartNodeId,
+                relationship.EndNodeId,
+                transaction.Transaction,
+                cancellationToken);
+
+            if (!created)
             {
-                _logger.LogWarning($"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}");
-                throw new GraphException($"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}");
+                throw new GraphException(
+                    $"Failed to create relationship of type {typeof(TRelationship).Name} from {relationship.StartNodeId} to {relationship.EndNodeId}. " +
+                    "One or both nodes may not exist.");
             }
 
             _logger.LogInformation("Created relationship of type {RelationshipType} with ID {RelationshipId}",
                 typeof(TRelationship).Name, relationship.Id);
+
+            return relationship;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not GraphException)
         {
             _logger.LogError(ex, "Error creating relationship of type {RelationshipType}", typeof(TRelationship).Name);
             throw new GraphException($"Failed to create relationship: {ex.Message}", ex);
@@ -125,7 +115,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         TRelationship relationship,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
-        where TRelationship : IRelationship
+        where TRelationship : Model.IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
@@ -138,24 +128,37 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             GraphDataModel.EnsureNoReferenceCycle(relationship);
 
             // Serialize the relationship
-            var result = _serializer.Serialize(relationship);
+            var entity = _serializer.Serialize(relationship);
 
-            var cypher = "MATCH ()-[r {Id: $relId}]->() SET r = $props RETURN r";
-            var relResult = await transaction.Transaction.RunAsync(cypher, new { relId = relationship.Id, props = result });
-            var count = await relResult.CountAsync(cancellationToken);
-
-            if (count == 0)
+            // Validate that relationships don't have complex properties
+            if (entity.ComplexProperties.Count > 0)
             {
-                _logger.LogWarning($"Relationship with ID {relationship.Id} not found for update");
-                throw new KeyNotFoundException($"Relationship with ID {relationship.Id} not found for update.");
+                throw new GraphException(
+                    $"Relationships cannot have complex properties. Found {entity.ComplexProperties.Count} complex properties on {typeof(TRelationship).Name}");
             }
 
-            _logger.LogInformation($"Updated relationship of type {typeof(TRelationship).Name} with ID {relationship.Id}");
+            // Update the relationship properties
+            var updated = await UpdateRelationshipPropertiesAsync(
+                relationship.Id,
+                entity,
+                transaction.Transaction,
+                cancellationToken);
+
+            if (!updated)
+            {
+                _logger.LogWarning("Relationship with ID {RelationshipId} not found for update", relationship.Id);
+                throw new KeyNotFoundException($"Relationship with ID {relationship.Id} not found for update");
+            }
+
+            _logger.LogInformation("Updated relationship of type {RelationshipType} with ID {RelationshipId}",
+                typeof(TRelationship).Name, relationship.Id);
+
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException)
         {
-            _logger.LogError(ex, $"Error updating relationship {relationship.Id} of type {typeof(TRelationship).Name}");
+            _logger.LogError(ex, "Error updating relationship {RelationshipId} of type {RelationshipType}",
+                relationship.Id, typeof(TRelationship).Name);
             throw new GraphException($"Failed to update relationship: {ex.Message}", ex);
         }
     }
@@ -167,35 +170,92 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     {
         ArgumentException.ThrowIfNullOrEmpty(relationshipId);
 
-        _logger.LogDebug($"Deleting relationship with ID {relationshipId}");
+        _logger.LogDebug("Deleting relationship with ID {RelationshipId}", relationshipId);
 
         try
         {
-            var cypher = @"
-                MATCH ()-[r {Id: $relId}]->()
-                WITH COUNT(r) AS count, r
-                DELETE r
-                RETURN count > 0 AS wasDeleted";
+            var cypher = "MATCH ()-[r {Id: $relId}]-() DELETE r RETURN COUNT(r) AS deletedCount";
 
-            var result = await transaction.Transaction.RunAsync(cypher, new { relId = relationshipId });
+            var result = await transaction.Transaction.RunAsync(
+                cypher,
+                new { relId = relationshipId });
 
-            _logger.LogInformation($"Deleted relationship with ID {relationshipId}");
-
-            // Check if the relationship was deleted
             var record = await result.SingleAsync(cancellationToken);
-            var wasDeleted = record["wasDeleted"].As<bool>();
+            var deletedCount = record["deletedCount"].As<int>();
 
-            if (!wasDeleted)
+            if (deletedCount == 0)
             {
-                _logger.LogWarning($"Relationship with ID {relationshipId} not found for deletion");
-                throw new KeyNotFoundException($"Relationship with ID {relationshipId} not found for deletion.");
+                _logger.LogWarning("Relationship with ID {RelationshipId} not found for deletion", relationshipId);
+                throw new KeyNotFoundException($"Relationship with ID {relationshipId} not found for deletion");
             }
+
+            _logger.LogInformation("Deleted relationship with ID {RelationshipId}", relationshipId);
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not KeyNotFoundException)
         {
-            _logger.LogError(ex, $"Error deleting relationship with ID {relationshipId}");
+            _logger.LogError(ex, "Error deleting relationship with ID {RelationshipId}", relationshipId);
             throw new GraphException($"Failed to delete relationship: {ex.Message}", ex);
         }
+    }
+
+    private async Task<bool> CreateRelationshipInGraphAsync(
+        EntityInfo entity,
+        string startNodeId,
+        string endNodeId,
+        IAsyncTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var cypher = $@"
+            MATCH (source {{Id: $startNodeId}})
+            MATCH (target {{Id: $endNodeId}})
+            CREATE (source)-[r:{entity.Label} $props]->(target)
+            RETURN r IS NOT NULL AS created";
+
+        var properties = SerializeSimpleProperties(entity);
+
+        var result = await transaction.RunAsync(cypher, new
+        {
+            startNodeId,
+            endNodeId,
+            props = properties
+        });
+
+        var record = await result.SingleAsync(cancellationToken);
+        return record["created"].As<bool>();
+    }
+
+    private async Task<bool> UpdateRelationshipPropertiesAsync(
+        string relationshipId,
+        EntityInfo entity,
+        IAsyncTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var cypher = "MATCH ()-[r {Id: $relId}]-() SET r = $props RETURN r IS NOT NULL AS updated";
+
+        var properties = SerializeSimpleProperties(entity);
+
+        var result = await transaction.RunAsync(cypher, new
+        {
+            relId = relationshipId,
+            props = properties
+        });
+
+        var record = await result.SingleAsync(cancellationToken);
+        return record["updated"].As<bool>();
+    }
+
+    private static Dictionary<string, object> SerializeSimpleProperties(EntityInfo entity)
+    {
+        return entity.SimpleProperties
+            .Where(kv => kv.Value.Value is not null)
+            .ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value.Value switch
+                {
+                    SimpleValue simple => simple.Object,
+                    SimpleCollection collection => collection.Values.Select(v => v.Object),
+                    _ => throw new GraphException("Unexpected value type in simple properties")
+                });
     }
 }

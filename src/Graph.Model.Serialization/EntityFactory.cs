@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Serialization;
 
+using System.Reflection.Metadata.Ecma335;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -60,5 +61,19 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             ?? throw new GraphException($"No serializer found for type {entity.GetType().Name}. Ensure it is registered in the EntitySerializerRegistry.");
 
         return serializer.Serialize(entity);
+    }
+
+    /// <summary>
+    /// Retrieves the schema for a given entity type.
+    /// </summary>
+    /// <param name="entityType">The type of the entity for which to retrieve the schema.</param>
+    /// /// <returns>An <see cref="EntitySchema"/> representing the schema of the entity type, or null if no serializer is found.</returns>
+    /// <exception cref="GraphException"></exception>
+    public EntitySchema? GetSchema(Type entityType)
+    {
+        var serializer = _serializerRegistry.GetSerializer(entityType)
+            ?? null;
+
+        return serializer?.GetSchema();
     }
 }
