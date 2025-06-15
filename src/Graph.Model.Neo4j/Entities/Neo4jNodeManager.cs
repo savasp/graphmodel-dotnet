@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Entities;
 
 using Cvoya.Graph.Model.Neo4j.Core;
+using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
@@ -201,7 +202,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         var cypher = $"CREATE (n:{entity.Label} $props) RETURN elementId(n) AS nodeId";
 
-        var simpleProperties = SerializeSimpleProperties(entity);
+        var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
 
         var result = await transaction.RunAsync(cypher, new { props = simpleProperties });
         var record = await result.SingleAsync(cancellationToken);
@@ -218,23 +219,9 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         var cypher = "MATCH (n {Id: $nodeId}) SET n = $props RETURN n";
 
-        var simpleProperties = SerializeSimpleProperties(entity);
+        var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
 
         var result = await transaction.RunAsync(cypher, new { nodeId, props = simpleProperties });
         return await result.CountAsync(cancellationToken) > 0;
-    }
-
-    private static Dictionary<string, object> SerializeSimpleProperties(EntityInfo entity)
-    {
-        return entity.SimpleProperties
-            .Where(kv => kv.Value.Value is not null)
-            .ToDictionary(
-                kv => kv.Key,
-                kv => kv.Value.Value switch
-                {
-                    SimpleValue simple => simple.Object,
-                    SimpleCollection collection => collection.Values.Select(v => v.Object),
-                    _ => throw new GraphException("Unexpected value type in simple properties")
-                });
     }
 }

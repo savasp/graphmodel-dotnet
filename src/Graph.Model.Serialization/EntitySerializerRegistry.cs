@@ -23,10 +23,18 @@ public class EntitySerializerRegistry
 {
     private readonly ConcurrentDictionary<Type, IEntitySerializer> _serializers = new();
 
+    // Proper singleton instance
+    private static readonly Lazy<EntitySerializerRegistry> _instance = new(() => new EntitySerializerRegistry());
+
+    private EntitySerializerRegistry()
+    {
+        // Private constructor to enforce singleton pattern
+    }
+
     /// <summary>
     /// Gets the collection of registered serializers
     /// </summary>
-    public static EntitySerializerRegistry Instance => new EntitySerializerRegistry();
+    public static EntitySerializerRegistry Instance => _instance.Value;
 
     /// <summary>
     /// Registers a serializer for a specific type

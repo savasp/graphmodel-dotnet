@@ -268,10 +268,10 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
 
         sb.AppendLine($"internal sealed class {uniqueSerializerName} : IEntitySerializer");
         sb.AppendLine("{");
-        sb.AppendLine("     private readonly EntitySerializerRegistry _serializerRegistry = new EntitySerializerRegistry();");
+        sb.AppendLine("    private readonly EntitySerializerRegistry _serializerRegistry = EntitySerializerRegistry.Instance;");
         sb.AppendLine($"    public Type EntityType => typeof({Utils.GetTypeOfName(type)});");
         sb.AppendLine();
-
+ 
         Deserialization.GenerateDeserializeMethod(sb, type);
         sb.AppendLine();
         Serialization.GenerateSerializeMethod(sb, type);

@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Entities;
 
 using Cvoya.Graph.Model.Neo4j.Core;
+using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
@@ -92,21 +93,20 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         CancellationToken cancellationToken)
     {
         var relationshipType = GraphDataModel.PropertyNameToRelationshipTypeName(propertyName);
+        var label = entity.Label;
 
-        var cypher = @"
+        var cypher = @$"
             MATCH (parent)
             WHERE elementId(parent) = $parentId
-            CREATE (parent)-[r:$relType $relProps]->(complex:$label $props)
+            CREATE (parent)-[r:{relationshipType} $relProps]->(complex:{label} $props)
             RETURN elementId(complex) as nodeId";
 
-        var nodeProps = SerializeSimpleProperties(entity);
+        var nodeProps = SerializationHelpers.SerializeSimpleProperties(entity);
         var relProps = new Dictionary<string, object> { ["SequenceNumber"] = sequenceNumber };
 
         var result = await transaction.RunAsync(cypher, new
         {
             parentId,
-            relType = relationshipType,
-            label = entity.Label,
             props = nodeProps,
             relProps
         });
@@ -165,19 +165,5 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         logger.LogDebug(
             "Deleted {DeletedCount} complex property relationships for parent {ParentId}",
             deletedCount, parentId);
-    }
-
-    private static Dictionary<string, object> SerializeSimpleProperties(EntityInfo entity)
-    {
-        return entity.SimpleProperties
-            .Where(kv => kv.Value.Value is not null)
-            .ToDictionary(
-                kv => kv.Key,
-                kv => kv.Value.Value switch
-                {
-                    SimpleValue simple => simple.Object,
-                    SimpleCollection collection => collection.Values.Select(v => v.Object),
-                    _ => throw new GraphException("Unexpected value type in simple properties")
-                });
     }
 }
