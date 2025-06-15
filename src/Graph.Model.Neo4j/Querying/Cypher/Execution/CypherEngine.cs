@@ -42,10 +42,10 @@ internal sealed class CypherEngine
 
     }
 
-    public async Task<List<T>> ExecuteAsync<T>(
-        Expression expression,
-        GraphTransaction transaction,
-        CancellationToken cancellationToken = default) // Remove the constraint!
+    public async Task<T?> ExecuteAsync<T>(
+            Expression expression,
+            GraphTransaction transaction,
+            CancellationToken cancellationToken = default)
     {
         try
         {
@@ -64,13 +64,9 @@ internal sealed class CypherEngine
                 transaction,
                 cancellationToken);
 
-            // Process ALL records to EntityInfo objects (handles entities AND projections)
-            var entityInfos = await _resultProcessor.ProcessAsync<T>(records, cancellationToken);
-
-            // Materialize the EntityInfo objects to final objects
-            var results = await _materializer.MaterializeAsync<T>(entityInfos, cancellationToken);
-
-            return results;
+            // Let the materializer handle everything - no need to duplicate logic here
+            var result = await _materializer.MaterializeAsync<T>(records, cancellationToken);
+            return result;
         }
         catch (Exception ex)
         {
@@ -86,7 +82,6 @@ internal sealed class CypherEngine
 
         var (cypher, parameters) = visitor.Build();
 
-        // Convert parameters using our parameter builder
         var paramBuilder = new CypherParameterBuilder(_entityFactory);
         var convertedParams = new Dictionary<string, object?>();
 
@@ -102,50 +97,45 @@ internal sealed class CypherEngine
     {
         var targetType = typeof(T);
 
-        // Only nodes can have complex properties
         if (!typeof(INode).IsAssignableFrom(targetType))
             return false;
 
-        // Check if we can deserialize this type
         if (!_entityFactory.CanDeserialize(targetType))
             return false;
 
-        // Check if the type actually has complex properties
         var schema = _entityFactory.GetSchema(targetType);
         if (schema is null || !schema.ComplexProperties.Any())
             return false;
 
-        // Check if this is a projection that wouldn't include complex properties
         var visitor = new ProjectionDetectorVisitor();
         visitor.Visit(expression);
 
-        // If there's a Select that projects to something else, we don't need complex props
         return !visitor.HasProjection;
     }
-}
 
-// Helper visitor to detect if we have a projection
-internal sealed class ProjectionDetectorVisitor : ExpressionVisitor
-{
-    public bool HasProjection { get; private set; }
-
-    protected override Expression VisitMethodCall(MethodCallExpression node)
+    // Helper visitor to detect if we have a projection
+    private sealed class ProjectionDetectorVisitor : ExpressionVisitor
     {
-        if (node.Method.Name == "Select" && node.Arguments.Count >= 2)
-        {
-            // Check if the selector is projecting to a different type
-            if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
-            {
-                var sourceType = lambda.Parameters[0].Type;
-                var resultType = lambda.ReturnType;
+        public bool HasProjection { get; private set; }
 
-                if (sourceType != resultType)
+        protected override Expression VisitMethodCall(MethodCallExpression node)
+        {
+            if (node.Method.Name == "Select" && node.Arguments.Count >= 2)
+            {
+                // Check if the selector is projecting to a different type
+                if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
                 {
-                    HasProjection = true;
+                    var sourceType = lambda.Parameters[0].Type;
+                    var resultType = lambda.ReturnType;
+
+                    if (sourceType != resultType)
+                    {
+                        HasProjection = true;
+                    }
                 }
             }
-        }
 
-        return base.VisitMethodCall(node);
+            return base.VisitMethodCall(node);
+        }
     }
 }

@@ -168,30 +168,12 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
             }
 
             // Execute using the CypherEngine
-            var results = await _cypherEngine.ExecuteAsync<TResult>(
+            var result = await _cypherEngine.ExecuteAsync<TResult>(
                 expression,
                 transaction,
                 cancellationToken);
 
-            // Handle single result expectations
-            if (IsSingleResultExpected(expression))
-            {
-                var singleResult = results.FirstOrDefault();
-                if (singleResult is null && !expression.ToString().Contains("OrDefault"))
-                {
-                    throw new InvalidOperationException("Sequence contains no elements");
-                }
-                return singleResult!;
-            }
-
-            // Return collection results
-            if (results is TResult typedResults)
-            {
-                return typedResults;
-            }
-
-            // This shouldn't happen, but let's be safe
-            throw new InvalidOperationException($"Cannot convert results to {typeof(TResult).Name}");
+            return result!;
         }
         catch (Exception ex)
         {

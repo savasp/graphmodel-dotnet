@@ -109,7 +109,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         {
             var alias = _scope.GetOrCreateAlias(rootType, "n");
             var label = Labels.GetLabelFromType(rootType);
-            _queryBuilder.AddMatch($"({alias}:{label})");
+            _queryBuilder.AddMatch(alias, label); // Pass alias and label separately!
             _scope.CurrentAlias = alias;
 
             // Check if we need to include complex properties

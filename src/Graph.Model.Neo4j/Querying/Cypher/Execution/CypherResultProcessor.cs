@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher;
+namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
@@ -31,19 +31,21 @@ internal sealed class CypherResultProcessor
         _logger = loggerFactory?.CreateLogger<CypherResultProcessor>() ?? NullLogger<CypherResultProcessor>.Instance;
     }
 
-    public async Task<List<EntityInfo>> ProcessAsync<T>(
+    // Remove the generic overload since it was just calling the non-generic one anyway
+    public async Task<List<EntityInfo>> ProcessAsync(
         List<IRecord> records,
+        Type targetType,
         CancellationToken cancellationToken = default)
     {
-        var targetType = typeof(T);
+        _logger.LogDebug("Processing records for target type: {TargetType}", targetType.Name);
 
         // Check if we're dealing with graph entities
-        if (typeof(INode).IsAssignableFrom(targetType))
+        if (typeof(Model.INode).IsAssignableFrom(targetType))
         {
             return await ProcessNodesAsync(records, targetType, cancellationToken);
         }
 
-        if (typeof(IRelationship).IsAssignableFrom(targetType))
+        if (typeof(Model.IRelationship).IsAssignableFrom(targetType))
         {
             return ProcessRelationships(records, targetType);
         }
@@ -58,7 +60,6 @@ internal sealed class CypherResultProcessor
 
         foreach (var record in records)
         {
-            // Convert the projection record to an EntityInfo
             var entityInfo = CreateEntityInfoFromProjection(record, targetType);
             results.Add(entityInfo);
         }
@@ -74,39 +75,25 @@ internal sealed class CypherResultProcessor
         foreach (var key in record.Keys)
         {
             var value = record[key];
+            // Do all the value conversion here once, not again in the materializer
             var convertedValue = SerializationBridge.FromNeo4jValue(value, typeof(object))
                 ?? throw new InvalidOperationException($"Failed to convert value for property '{key}'");
 
-            // TODO: Check the assumption that we don't have nullability in projections
-            simpleProperties[key] = new(
-                convertedValue.GetType().GetProperty(key) ?? throw new InvalidOperationException($"Property '{key}' not found on type '{targetType.Name}'"),
-                key,
-                false, // Projections don't have nullability
-                new SimpleValue(convertedValue, typeof(object)));
+            // Create a simple property info (we don't have real PropertyInfo for projections)
+            simpleProperties[key] = new Property(
+                PropertyInfo: null!, // We'll handle this differently for projections
+                Label: key,
+                IsNullable: true, // Assume nullable for projections
+                Value: new SimpleValue(convertedValue, convertedValue.GetType())
+            );
         }
 
         return new EntityInfo(
             ActualType: targetType,
             Label: targetType.Name,
             SimpleProperties: simpleProperties,
-            ComplexProperties: new Dictionary<string, Property>() // Projections don't have complex properties
+            ComplexProperties: new Dictionary<string, Property>()
         );
-    }
-
-    private async Task<List<EntityInfo>> ProcessNodesAsync(
-        List<IRecord> records,
-        Type targetType,
-        CancellationToken cancellationToken)
-    {
-        // Check if this query includes complex properties (relatedNodes in the results)
-        var hasComplexProperties = records.Any(r => r.Keys.Contains("relatedNodes"));
-
-        if (hasComplexProperties)
-        {
-            return await ProcessNodesWithComplexPropertiesAsync(records, targetType, cancellationToken);
-        }
-
-        return ProcessSimpleNodes(records, targetType);
     }
 
     private List<EntityInfo> ProcessSimpleNodes(List<IRecord> records, Type targetType)
@@ -374,10 +361,26 @@ internal sealed class CypherResultProcessor
 
         return new SimpleCollection(items, elementType);
     }
+    private async Task<List<EntityInfo>> ProcessNodesAsync(
+        List<IRecord> records,
+        Type targetType,
+        CancellationToken cancellationToken)
+    {
+        // Check if this query includes complex properties (relatedNodes in the results)
+        var hasComplexProperties = records.Any(r => r.Keys.Contains("relatedNodes"));
+
+        if (hasComplexProperties)
+        {
+            return await ProcessNodesWithComplexPropertiesAsync(records, targetType, cancellationToken);
+        }
+
+        return ProcessSimpleNodes(records, targetType);
+    }
+
+    // Helper record for organizing related node data
+    private record RelatedNodeInfo(
+        INode Node,
+        string RelType,
+        IReadOnlyDictionary<string, object> RelationshipProperties);
 }
 
-// Helper record for organizing related node data
-internal record RelatedNodeInfo(
-    INode Node,
-    string RelType,
-    IReadOnlyDictionary<string, object> RelationshipProperties);
