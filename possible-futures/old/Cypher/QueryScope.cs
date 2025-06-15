@@ -12,15 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Serialization;
+namespace Cvoya.Graph.Model.Neo4j.Cypher;
 
-/// <summary>
-/// Represents a collection of entities.
-/// </summary>
-/// <param name="Entities">A collection of entities (<see cref="EntityInfo"/> ).</param>
-/// <param name="Type">The type of entities in the collection.</param>
-public record EntityCollection(
-    Type Type,
-    ICollection<EntityInfo> Entities
-) : Serialized;
-
+internal record QueryScope(string Alias)
+{
+    public string? Label { get; init; }
+    public Type? EntityType { get; init; }
+    public Dictionary<string, string> PropertyMappings { get; init; } = [];
+}

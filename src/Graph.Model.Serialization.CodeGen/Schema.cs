@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
 
@@ -30,7 +28,7 @@ internal static class Schema
         sb.AppendLine("    /// <summary>");
         sb.AppendLine($"    /// Gets the schema information for {type.Name}.");
         sb.AppendLine("    /// </summary>");
-        sb.AppendLine("    public override EntitySchema GetSchema()");
+        sb.AppendLine("    public EntitySchema GetSchema()");
         sb.AppendLine("    {");
         sb.AppendLine($"        return {uniqueSerializerName}.GetSchemaStatic();");
         sb.AppendLine("    }");
@@ -39,8 +37,9 @@ internal static class Schema
         sb.AppendLine("    /// </summary>");
         sb.AppendLine($"    public static EntitySchema GetSchemaStatic()");
         sb.AppendLine("    {");
-        sb.AppendLine("        var properties = new Dictionary<string, PropertySchema>();");
-        sb.AppendLine();
+        sb.AppendLine($"        // Schema for type: {typeName}");
+        sb.AppendLine("        var simpleProperties = new Dictionary<string, PropertySchema>();");
+        sb.AppendLine("        var complexProperties = new Dictionary<string, PropertySchema>();");
 
         // Get all serializable properties
         var properties = type.GetMembers().OfType<IPropertySymbol>()
@@ -48,26 +47,23 @@ internal static class Schema
                        p.GetMethod != null && p.SetMethod != null &&
                        !Utils.SerializationShouldSkipProperty(p, type));
 
-        // Check if any properties are complex while generating schemas
-        var hasComplexProperties = false;
-
         foreach (var property in properties)
         {
             GeneratePropertySchema(sb, property, type);
-
-            // Check if this property makes the entity have complex properties
-            if (Utils.IsComplexProperty(property))
-            {
-                hasComplexProperties = true;
-            }
         }
+
+        var isNullable = type.NullableAnnotation == NullableAnnotation.Annotated ||
+                        (type.CanBeReferencedByName && !type.IsValueType);
+        var isSimple = GraphDataModel.IsSimple(type);
 
         sb.AppendLine();
         sb.AppendLine($"        return new EntitySchema(");
-        sb.AppendLine($"            Type: typeof({typeName}),");
+        sb.AppendLine($"            ExpectedType: typeof({typeName}),");
         sb.AppendLine($"            Label: \"{label}\",");
-        sb.AppendLine($"            HasComplexProperties: {hasComplexProperties.ToString().ToLowerInvariant()},");
-        sb.AppendLine("            Properties: properties");
+        sb.AppendLine($"            IsNullable: {isNullable.ToString().ToLowerInvariant()},");
+        sb.AppendLine($"            IsSimple: {isSimple.ToString().ToLowerInvariant()},");
+        sb.AppendLine($"            SimpleProperties: simpleProperties,");
+        sb.AppendLine($"            ComplexProperties: complexProperties");
         sb.AppendLine("        );");
         sb.AppendLine("    }");
     }
@@ -85,7 +81,7 @@ internal static class Schema
 
         if (GraphDataModel.IsSimple(propertyType))
         {
-            sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+            sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
             sb.AppendLine("                PropertyInfo: propInfo,");
             sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
             sb.AppendLine("                PropertyType: PropertyType.Simple,");
@@ -97,7 +93,7 @@ internal static class Schema
             var elementType = GraphDataModel.GetCollectionElementType(propertyType);
             if (elementType is not null)
             {
-                sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
                 sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
                 sb.AppendLine("                PropertyType: PropertyType.SimpleCollection,");
@@ -109,7 +105,7 @@ internal static class Schema
             {
                 // Fallback - treat as simple property if we can't determine element type
                 sb.AppendLine($"            // Warning: Could not determine element type for collection property {property.Name}");
-                sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
                 sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
                 sb.AppendLine("                PropertyType: PropertyType.Simple,");
@@ -123,7 +119,7 @@ internal static class Schema
             if (elementType is not null)
             {
                 var nestedSchemaCall = Utils.GetNestedSchemaCall(elementType);
-                sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
                 sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
                 sb.AppendLine("                PropertyType: PropertyType.ComplexCollection,");
@@ -136,7 +132,7 @@ internal static class Schema
             {
                 // Fallback - treat as simple property if we can't determine element type
                 sb.AppendLine($"            // Warning: Could not determine element type for complex collection property {property.Name}");
-                sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
                 sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
                 sb.AppendLine("                PropertyType: PropertyType.Simple,");
@@ -148,7 +144,7 @@ internal static class Schema
         {
             // Complex property
             var nestedSchemaCall = Utils.GetNestedSchemaCall(propertyType);
-            sb.AppendLine($"            properties[\"{propertyName}\"] = new PropertySchema(");
+            sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
             sb.AppendLine("                PropertyInfo: propInfo,");
             sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
             sb.AppendLine("                PropertyType: PropertyType.Complex,");

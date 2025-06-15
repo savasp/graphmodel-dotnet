@@ -15,8 +15,9 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 
-internal class SelectClauseVisitor(QueryScope scope, CypherQueryBuilder builder) : ExpressionVisitor
+internal class SelectVisitor(QueryScope scope, CypherQueryBuilder builder) : ExpressionVisitor
 {
     private readonly Stack<(string Expression, string? Alias)> _projections = new();
     private string? _currentMemberName;
@@ -40,7 +41,7 @@ internal class SelectClauseVisitor(QueryScope scope, CypherQueryBuilder builder)
 
         // Remove the alias prefix (e.g., "n.Age" -> "Age")
         var parts = propertyPath.Split('.');
-        if (parts.Length > 1 && parts[0] == scope.Alias)
+        if (parts.Length > 1 && parts[0] == scope.CurrentAlias)
         {
             return string.Join(".", parts.Skip(1));
         }
@@ -180,7 +181,7 @@ internal class SelectClauseVisitor(QueryScope scope, CypherQueryBuilder builder)
         if (node.Expression is ParameterExpression ||
             (node.Expression is MemberExpression memberExpr && GetRootExpression(memberExpr) is ParameterExpression))
         {
-            return $"{scope.Alias}.{string.Join(".", parts)}";
+            return $"{scope.CurrentAlias}.{string.Join(".", parts)}";
         }
 
         return string.Join(".", parts);
@@ -204,7 +205,7 @@ internal class SelectClauseVisitor(QueryScope scope, CypherQueryBuilder builder)
             return $"{function}({expression})";
         }
 
-        return $"{function}({scope.Alias})";
+        return $"{function}({scope.CurrentAlias})";
     }
 
     private string HandleStringFunction(MethodCallExpression node, string function)

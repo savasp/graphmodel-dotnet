@@ -16,13 +16,14 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using System.Text;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null) : ExpressionVisitor
+internal class WhereVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null) : ExpressionVisitor
 {
     private readonly Stack<string> _expressions = new();
-    private readonly ILogger logger = loggerFactory?.CreateLogger<WhereClauseVisitor>() ?? NullLogger<WhereClauseVisitor>.Instance;
+    private readonly ILogger logger = loggerFactory?.CreateLogger<WhereVisitor>() ?? NullLogger<WhereVisitor>.Instance;
 
     public void ProcessWhereClause(LambdaExpression lambda)
     {
@@ -83,14 +84,14 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder, 
         // Check if this is a parameter access (like p.Name)
         if (node.Expression is ParameterExpression param)
         {
-            var propertyPath = $"{scope.Alias}.{node.Member.Name}";
+            var propertyPath = $"{scope.CurrentAlias}.{node.Member.Name}";
             logger.LogDebug("Pushing property path: {PropertyPath}", propertyPath);
             _expressions.Push(propertyPath);
         }
         else if (node.Expression is UnaryExpression unary && unary.Operand is ParameterExpression)
         {
             // Handle cases like Convert(n, IEntity).Id where n is a parameter
-            var propertyPath = $"{scope.Alias}.{node.Member.Name}";
+            var propertyPath = $"{scope.CurrentAlias}.{node.Member.Name}";
             logger.LogDebug("Pushing property path from converted parameter: {PropertyPath}", propertyPath);
             _expressions.Push(propertyPath);
         }
@@ -250,7 +251,7 @@ internal class WhereClauseVisitor(QueryScope scope, CypherQueryBuilder builder, 
                 "StartNode" => "n",
                 "EndNode" => "t",
                 "Relationship" => "r",
-                _ => scope.Alias
+                _ => scope.CurrentAlias
             };
 
             // Build the rest of the path

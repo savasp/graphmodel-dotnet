@@ -29,7 +29,7 @@ internal class TraversalPatternVisitor(QueryScope scope, CypherQueryBuilder buil
         if (_patterns.Count > 0)
         {
             var fullPattern = string.Join("", _patterns.Reverse());
-            builder.AddMatch(scope.Alias, pattern: fullPattern);
+            builder.AddMatch(scope.CurrentAlias, pattern: fullPattern);
         }
     }
 
@@ -99,7 +99,7 @@ internal class TraversalPatternVisitor(QueryScope scope, CypherQueryBuilder buil
         {
             // Add label constraint to the last node in the pattern
             var lastPattern = _patterns.Pop();
-            var modifiedPattern = lastPattern.Replace($"({scope.Alias})", $"({scope.Alias}:{label})");
+            var modifiedPattern = lastPattern.Replace($"({scope.CurrentAlias})", $"({scope.CurrentAlias}:{label})");
             _patterns.Push(modifiedPattern);
         }
 

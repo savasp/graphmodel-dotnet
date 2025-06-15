@@ -55,10 +55,7 @@ internal class Neo4jGraph : IGraph
         {
             _logger.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
 
-            // Create the expression for the queryable
-            var graphQueryContext = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Node };
-
-            var expression = Expression.Constant(new GraphNodeQueryable<N>(_graphQueryProvider, _graphContext, graphQueryContext, null));
+            var expression = Expression.Constant(new GraphNodeQueryable<N>(_graphQueryProvider, _graphContext, null));
 
             // Use the provider to create the query properly
             var query = _graphQueryProvider.CreateNodeQuery<N>(expression);
@@ -82,10 +79,7 @@ internal class Neo4jGraph : IGraph
         {
             _logger.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
 
-            // Create the expression for the queryable
-            var graphQueryContext = new GraphQueryContext { RootType = GraphQueryContext.QueryRootType.Relationship };
-
-            var expression = Expression.Constant(new GraphRelationshipQueryable<R>(_graphQueryProvider, _graphContext, graphQueryContext, null));
+            var expression = Expression.Constant(new GraphRelationshipQueryable<R>(_graphQueryProvider, _graphContext, null));
 
             // Use the provider to create the query properly
             var query = _graphQueryProvider.CreateRelationshipQuery<R>(expression);

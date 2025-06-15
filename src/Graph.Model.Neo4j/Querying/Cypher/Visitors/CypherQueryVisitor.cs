@@ -15,543 +15,377 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Core;
-using Cvoya.Graph.Model.Neo4j.Linq;
-using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Serialization;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal class CypherQueryVisitor : ExpressionVisitor
+internal sealed class CypherQueryVisitor : ExpressionVisitor
 {
-    private readonly CypherQueryBuilder _builder = new();
-    private readonly Stack<QueryScope> _scopes = new([new QueryScope("n")]);
-    private Type? _entityType;
-    private readonly ILogger<CypherQueryVisitor> logger;
-    private readonly GraphQueryContext queryContext;
+    private readonly EntityFactory _entityFactory;
+    private readonly CypherQueryBuilder _queryBuilder;
+    private readonly QueryScope _scope;
+    private readonly ILogger<CypherQueryVisitor>? _logger;
 
-    public CypherQueryVisitor(
-        GraphQueryContext queryContext,
-        bool shouldEnableComplexPropertyLoading = false,
-        ILoggerFactory? loggerFactory = null)
+    public CypherQueryVisitor(EntityFactory entityFactory, ILogger<CypherQueryVisitor>? logger = null)
     {
-        this.queryContext = queryContext ?? throw new ArgumentNullException(nameof(queryContext));
-        logger = loggerFactory?.CreateLogger<CypherQueryVisitor>() ?? NullLogger<CypherQueryVisitor>.Instance;
-
-        if (shouldEnableComplexPropertyLoading)
-        {
-            _builder.EnableComplexPropertyLoading();
-        }
+        _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
+        _queryBuilder = new CypherQueryBuilder();
+        _scope = new QueryScope();
+        _logger = logger;
     }
 
-    public CypherQueryResult Build()
+    public CypherQuery Build()
     {
-        // If we're expecting a boolean result but haven't set up the query for that, fix it
-        if (queryContext.IsScalarResult && queryContext.ResultType == typeof(bool) && !_builder.HasExplicitReturn)
+        // Ensure we have a return clause if none was specified
+        if (!_queryBuilder.HasReturnClause)
         {
-            _builder.SetExistsQuery();
+            var alias = _scope.CurrentAlias
+                ?? throw new InvalidOperationException("No current alias set when building return clause");
+            _queryBuilder.AddReturn(alias);
         }
 
-        // Check if we're dealing with entity types that might have complex properties
-        if (_entityType != null && !queryContext.IsProjection && !queryContext.IsScalarResult)
-        {
-            if (ComplexPropertyHelper.HasComplexProperties(_entityType))
-            {
-                _builder.EnableComplexPropertyLoading();
-            }
-        }
-
-        return _builder.Build();
-    }
-
-    public override Expression? Visit(Expression? node)
-    {
-        return node switch
-        {
-            // Handle our custom transaction expression
-            GraphTransactionExpression txExpr => VisitTransaction(txExpr),
-            _ => base.Visit(node)
-        };
+        return _queryBuilder.Build();
     }
 
     protected override Expression VisitMethodCall(MethodCallExpression node)
     {
-        logger.LogDebug("Visiting method: {Method}", node.Method.Name);
+        _logger?.LogDebug("Visiting method: {MethodName}", node.Method.Name);
 
-        return node.Method.Name switch
+        // Visit the source first (this processes the expression tree bottom-up)
+        var source = node.Object ?? (node.Arguments.Count > 0 ? node.Arguments[0] : null);
+        if (source != null)
+        {
+            Visit(source);
+        }
+
+        // Then handle this method
+        var handled = node.Method.Name switch
         {
             "Where" => HandleWhere(node),
             "Select" => HandleSelect(node),
-            "OrderBy" or "OrderByDescending" => HandleOrderBy(node),
-            "ThenBy" or "ThenByDescending" => HandleThenBy(node),
+            "SelectMany" => HandleSelectMany(node),
+            "OrderBy" or "OrderByDescending" => HandleOrderBy(node, isDescending: node.Method.Name.Contains("Descending")),
+            "ThenBy" or "ThenByDescending" => HandleOrderBy(node, isDescending: node.Method.Name.Contains("Descending"), isThenBy: true),
             "Take" => HandleTake(node),
             "Skip" => HandleSkip(node),
-            "First" or "FirstOrDefault" => HandleFirst(node),
-            "Single" or "SingleOrDefault" => HandleSingle(node),
+            "First" or "FirstOrDefault" or "Single" or "SingleOrDefault" or "Last" or "LastOrDefault" => HandleFirst(node),
             "Count" or "LongCount" => HandleCount(node),
             "Any" => HandleAny(node),
             "All" => HandleAll(node),
-            "Sum" => HandleSum(node),
-            "Average" => HandleAverage(node),
-            "Min" => HandleMin(node),
-            "Max" => HandleMax(node),
-            "Include" => HandleInclude(node),
+            "Distinct" => HandleDistinct(node),
+            "GroupBy" => HandleGroupBy(node),
+            "Traverse" => HandleTraverse(node),
+            "Relationships" => HandleRelationships(node),
             "PathSegments" => HandlePathSegments(node),
-            _ => base.VisitMethodCall(node)
+            _ => false
         };
+
+        if (!handled)
+        {
+            _logger?.LogWarning("Unhandled method: {MethodName}", node.Method.Name);
+            return base.VisitMethodCall(node);
+        }
+
+        return node;
     }
 
     protected override Expression VisitConstant(ConstantExpression node)
     {
-        logger.LogDebug("Processing constant expression of type: {Type}", node.Type.Name);
-
-        // Check for different types of queryables
-        if (node.Value is IGraphNodeQueryable nodeQueryable)
+        // This is typically the root of our query
+        if (node.Value is IGraphQueryable queryable)
         {
-            logger.LogDebug("Found IGraphNodeQueryable: {QueryableType}", nodeQueryable.GetType().Name);
-
-            var elementType = nodeQueryable.ElementType;
-            _entityType = elementType;
-
-            var label = Labels.GetLabelFromType(elementType);
-            logger.LogDebug("Using label: {Label} for type: {Type}", label, elementType.Name);
-            _builder.AddMatch("n", label);
-
-            // Node queries use 'n' as the alias
-            _scopes.Clear();
-            _scopes.Push(new QueryScope("n"));
-        }
-        else if (node.Value is IGraphRelationshipQueryable relationshipQueryable)
-        {
-            logger.LogDebug("Found IGraphRelationshipQueryable: {QueryableType}", relationshipQueryable.GetType().Name);
-
-            var elementType = relationshipQueryable.ElementType;
-            _entityType = elementType;
-
-            var relationshipType = Labels.GetLabelFromType(elementType);
-            logger.LogDebug("Using relationship type: {Type} for type: {Type}", relationshipType, elementType.Name);
-
-            // Fix: Use the new method
-            _builder.AddRelationshipMatch(relationshipType);
-
-            // Add default return for the relationship
-            _builder.AddReturn("r");
-
-            // Relationship queries use 'r' as the alias
-            _scopes.Clear();
-            _scopes.Push(new QueryScope("r"));
-        }
-        else if (node.Value is IGraphTraversalQueryable traversalQueryable)
-        {
-            // Handle traversal queries if needed
-            logger.LogDebug("Found IGraphTraversalQueryable: {QueryableType}", traversalQueryable.GetType().Name);
-            // TODO: Implement traversal handling
-        }
-        else if (node.Value is IGraphQueryable graphQueryable)
-        {
-            // Fallback for any other queryable types
-            logger.LogDebug("Found generic IGraphQueryable: {QueryableType}", graphQueryable.GetType().Name);
-            // This shouldn't really happen, but log it if it does
+            var elementType = queryable.ElementType;
+            InitializeQuery(elementType);
         }
 
         return node;
     }
 
-    private Expression HandlePathSegments(MethodCallExpression node)
+    private void InitializeQuery(Type rootType)
     {
-        logger.LogDebug("Processing PathSegments for method: {Method}", node.Method.Name);
+        _logger?.LogDebug("Initializing query for type: {TypeName}", rootType.Name);
 
-        // PathSegments is a generic method, so we need to get the types
-        if (node.Method.IsGenericMethodDefinition || node.Method.IsGenericMethod)
+        if (typeof(INode).IsAssignableFrom(rootType))
         {
-            var genericArgs = node.Method.GetGenericArguments();
-            logger.LogDebug("Generic args count: {Count}", genericArgs.Length);
+            var alias = _scope.GetOrCreateAlias(rootType, "n");
+            var label = Labels.GetLabelFromType(rootType);
+            _queryBuilder.AddMatch($"({alias}:{label})");
+            _scope.CurrentAlias = alias;
 
-            if (genericArgs.Length == 2)
-            {
-                var relationshipType = genericArgs[0];
-                var targetNodeType = genericArgs[1];
-                logger.LogDebug("Relationship type: {RelType}, Target type: {TargetType}",
-                    relationshipType.Name, targetNodeType.Name);
-
-                // Get the source type from the expression
-                // For extension methods, the instance is in node.Object
-                Expression? sourceExpression = node.Object;
-
-                // If node.Object is null, it might be a static method call with the source as first argument
-                if (sourceExpression == null && node.Arguments.Count > 0)
-                {
-                    sourceExpression = node.Arguments[0];
-                }
-
-                logger.LogDebug("Source expression type: {Type}, Expression node type: {NodeType}, Is null: {IsNull}",
-                    sourceExpression?.Type.Name, sourceExpression?.NodeType, sourceExpression == null);
-
-                if (sourceExpression != null)
-                {
-                    // First, let's visit the source expression to set up the initial match
-                    Visit(sourceExpression);
-
-                    // Now _entityType should be set from visiting the source
-                    if (_entityType != null)
-                    {
-                        // Get labels
-                        var sourceLabel = Labels.GetLabelFromType(_entityType);
-                        var relLabel = Labels.GetLabelFromType(relationshipType);
-                        var targetLabel = Labels.GetLabelFromType(targetNodeType);
-
-                        logger.LogDebug("Creating path pattern: {Source} -[{RelType}]-> {Target}",
-                            sourceLabel, relLabel, targetLabel);
-
-                        // Clear any existing match and add the path pattern
-                        // Since we've already visited the source, we need to replace the simple node match
-                        _builder.ClearMatches(); // Add this method to CypherQueryBuilder
-
-                        // Add the match with the source node and the path extension
-                        _builder.AddMatch("n", sourceLabel, $"-[r:{relLabel}]->(t:{targetLabel})");
-                        logger.LogDebug("Added match clause");
-
-                        // Return all three elements
-                        _builder.AddReturn("n");
-                        _builder.AddReturn("r");
-                        _builder.AddReturn("t");
-                        logger.LogDebug("Added return clauses");
-
-                        // Mark this as a projection query
-                        queryContext.IsProjection = true;
-                        queryContext.ProjectionType = node.Type;
-                        logger.LogDebug("Set projection context");
-                    }
-                    else
-                    {
-                        logger.LogWarning("Entity type not set after visiting source expression");
-                    }
-                }
-                else
-                {
-                    logger.LogWarning("Source expression is null");
-                }
-            }
-            else
-            {
-                logger.LogWarning("Expected 2 generic arguments but got {Count}", genericArgs.Length);
-            }
+            // Check if we need to include complex properties
+            AddComplexPropertyMatches(rootType, alias);
         }
-        else
+        else if (typeof(IRelationship).IsAssignableFrom(rootType))
         {
-            logger.LogWarning("Method is not generic");
-        }
+            var srcAlias = _scope.GetOrCreateAlias(typeof(INode), "src");
+            var relAlias = _scope.GetOrCreateAlias(rootType, "r");
+            var tgtAlias = _scope.GetOrCreateAlias(typeof(INode), "tgt");
+            var relType = Labels.GetLabelFromType(rootType);
 
-        return node;
+            _queryBuilder.AddMatch($"({srcAlias})-[{relAlias}:{relType}]->({tgtAlias})");
+            _scope.CurrentAlias = relAlias;
+        }
     }
 
-    private Expression HandleAll(MethodCallExpression node)
+    private void AddComplexPropertyMatches(Type nodeType, string nodeAlias)
     {
-        logger.LogDebug("Processing all clause for method: {Method}", node.Method.Name);
+        if (!_entityFactory.CanDeserialize(nodeType))
+            return;
 
-        Visit(node.Arguments[0]);
-
-        if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        var schema = _entityFactory.GetSchema(nodeType);
+        if (schema is null)
         {
-            // All(predicate) means: NOT EXISTS (WHERE NOT predicate)
-            // So we need to find any record where the predicate is false
-            var negatedBody = Expression.Not(lambda.Body);
-            var negatedLambda = Expression.Lambda(negatedBody, lambda.Parameters);
-
-            var whereVisitor = new WhereClauseVisitor(_scopes.Peek(), _builder);
-            whereVisitor.ProcessWhereClause(negatedLambda);
-
-            _builder.SetNotExistsQuery();
+            _logger?.LogWarning("No schema found for type: {TypeName}", nodeType.Name);
+            return;
         }
 
-        queryContext.IsScalarResult = true;
-        return node;
+        if (!schema.ComplexProperties.Any())
+            return;
+
+        foreach (var (propName, propInfo) in schema.ComplexProperties)
+        {
+            var relType = GraphDataModel.PropertyNameToRelationshipTypeName(propName);
+            _queryBuilder.AddOptionalMatch($"path = ({nodeAlias})-[:{relType}]->()");
+        }
     }
 
-    private Expression HandleSum(MethodCallExpression node)
+    private bool HandleWhere(MethodCallExpression node)
     {
-        logger.LogDebug("Processing sum clause for method: {Method}", node.Method.Name);
+        if (node.Arguments.Count < 2) return false;
 
-        Visit(node.Arguments[0]);
-
-        if (node.Arguments.Count > 1 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        var predicate = StripQuotes(node.Arguments[1]);
+        if (predicate is LambdaExpression lambda)
         {
-            // Sum with selector
-            var selectVisitor = new SelectClauseVisitor(_scopes.Peek(), _builder);
-            var propertyName = selectVisitor.GetPropertyName(lambda.Body);
-            _builder.SetAggregation("sum", $"{_scopes.Peek().Alias}.{propertyName}");
-        }
-        else
-        {
-            // Sum without selector - for collections of numbers
-            _builder.SetAggregation("sum", _scopes.Peek().Alias);
+            var visitor = new WhereVisitor(_scope, _queryBuilder);
+            visitor.Visit(lambda.Body);
+            return true;
         }
 
-        queryContext.IsScalarResult = true;
-        return node;
+        return false;
     }
 
-    private Expression HandleAverage(MethodCallExpression node)
+    private bool HandleSelect(MethodCallExpression node)
     {
-        logger.LogDebug("Processing average clause for method: {Method}", node.Method.Name);
+        if (node.Arguments.Count < 2) return false;
 
-        Visit(node.Arguments[0]);
-
-        if (node.Arguments.Count > 1 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        var selector = StripQuotes(node.Arguments[1]);
+        if (selector is LambdaExpression lambda)
         {
-            // Average with selector
-            var selectVisitor = new SelectClauseVisitor(_scopes.Peek(), _builder);
-            var propertyName = selectVisitor.GetPropertyName(lambda.Body);
-            _builder.SetAggregation("avg", $"{_scopes.Peek().Alias}.{propertyName}");
-        }
-        else
-        {
-            // Average without selector
-            _builder.SetAggregation("avg", _scopes.Peek().Alias);
+            var visitor = new SelectVisitor(_scope, _queryBuilder);
+            visitor.Visit(lambda);
+            return true;
         }
 
-        queryContext.IsScalarResult = true;
-        return node;
+        return false;
     }
 
-    private Expression HandleMin(MethodCallExpression node)
+    private bool HandleSelectMany(MethodCallExpression node)
     {
-        logger.LogDebug("Processing min clause for method: {Method}", node.Method.Name);
+        if (node.Arguments.Count < 2) return false;
 
-        Visit(node.Arguments[0]);
+        var collectionSelector = StripQuotes(node.Arguments[1]) as LambdaExpression;
+        LambdaExpression? resultSelector = null;
 
-        if (node.Arguments.Count > 1 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        if (node.Arguments.Count > 2)
         {
-            // Min with selector
-            var selectVisitor = new SelectClauseVisitor(_scopes.Peek(), _builder);
-            var propertyName = selectVisitor.GetPropertyName(lambda.Body);
-            _builder.SetAggregation("min", $"{_scopes.Peek().Alias}.{propertyName}");
-        }
-        else
-        {
-            // Min without selector - returns the minimum entity based on some default comparison
-            _builder.SetAggregation("min", _scopes.Peek().Alias);
+            resultSelector = StripQuotes(node.Arguments[2]) as LambdaExpression;
         }
 
-        queryContext.IsScalarResult = true;
-        return node;
-    }
-
-    private Expression HandleMax(MethodCallExpression node)
-    {
-        logger.LogDebug("Processing max clause for method: {Method}", node.Method.Name);
-
-        Visit(node.Arguments[0]);
-
-        if (node.Arguments.Count > 1 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        if (collectionSelector != null)
         {
-            // Max with selector
-            var selectVisitor = new SelectClauseVisitor(_scopes.Peek(), _builder);
-            var propertyName = selectVisitor.GetPropertyName(lambda.Body);
-            _builder.SetAggregation("max", $"{_scopes.Peek().Alias}.{propertyName}");
-        }
-        else
-        {
-            // Max without selector
-            _builder.SetAggregation("max", _scopes.Peek().Alias);
+            var visitor = new SelectManyVisitor(_scope, _queryBuilder);
+            visitor.VisitSelectMany(collectionSelector, resultSelector);
+            return true;
         }
 
-        queryContext.IsScalarResult = true;
-        return node;
+        return false;
     }
 
-    private Expression HandleWhere(MethodCallExpression node)
+    private bool HandleOrderBy(MethodCallExpression node, bool isDescending, bool isThenBy = false)
     {
-        logger.LogDebug("Processing where clause for method: {Method}", node.Method.Name);
+        if (node.Arguments.Count < 2) return false;
 
-        // First, visit the source expression (the queryable we're filtering)
-        Visit(node.Arguments[0]);
-
-        // Then process the lambda expression for the WHERE clause
-        if (node.Arguments.Count > 1 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        var selector = StripQuotes(node.Arguments[1]) as LambdaExpression;
+        if (selector != null)
         {
-            logger.LogDebug("Processing WHERE lambda with parameter: {Parameter}", lambda.Parameters[0].Name);
-
-            var whereVisitor = new WhereClauseVisitor(_scopes.Peek(), _builder);
-            whereVisitor.ProcessWhereClause(lambda);
-
-            logger.LogDebug("WHERE clause processed successfully");
-        }
-        else
-        {
-            logger.LogWarning("WHERE method call missing lambda expression");
+            var visitor = new OrderByVisitor(_scope, _queryBuilder);
+            visitor.VisitOrderBy(selector, isDescending, isThenBy);
+            return true;
         }
 
-        return node;
+        return false;
     }
 
-    private Expression HandleSelect(MethodCallExpression node)
+    private bool HandleTake(MethodCallExpression node)
     {
-        logger.LogDebug("Processing select clause for method: {Method}", node.Method.Name);
+        if (node.Arguments.Count < 2) return false;
 
-        Visit(node.Arguments[0]);
-
-        if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        if (node.Arguments[1] is ConstantExpression constant && constant.Value is int limit)
         {
-            queryContext.IsProjection = true;
-            queryContext.ProjectionType = lambda.ReturnType;
-
-            var selectVisitor = new SelectClauseVisitor(_scopes.Peek(), _builder);
-            selectVisitor.Visit(lambda.Body);
+            _queryBuilder.AddLimit(limit);
+            return true;
         }
 
-        return node;
+        return false;
     }
 
-    private Expression HandleOrderBy(MethodCallExpression node)
+    private bool HandleSkip(MethodCallExpression node)
     {
-        logger.LogDebug("Processing order by clause for method: {Method}", node.Method.Name);
+        if (node.Arguments.Count < 2) return false;
 
-        Visit(node.Arguments[0]);
-
-        if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        if (node.Arguments[1] is ConstantExpression constant && constant.Value is int skip)
         {
-            var orderByVisitor = new OrderByClauseVisitor(_scopes.Peek(), _builder);
-            orderByVisitor.Visit(lambda.Body, node.Method.Name.Contains("Descending"));
+            _queryBuilder.AddSkip(skip);
+            return true;
         }
 
-        return node;
+        return false;
     }
 
-    private Expression HandleThenBy(MethodCallExpression node)
+    private bool HandleFirst(MethodCallExpression node)
     {
-        logger.LogDebug("Processing then by clause for method: {Method}", node.Method.Name);
-
-        Visit(node.Arguments[0]);
-
-        if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
-        {
-            var orderByVisitor = new OrderByClauseVisitor(_scopes.Peek(), _builder);
-            orderByVisitor.Visit(lambda.Body, node.Method.Name.Contains("Descending"));
-        }
-
-        return node;
-    }
-
-    private Expression HandleTake(MethodCallExpression node)
-    {
-        logger.LogDebug("Processing take clause for method: {Method}", node.Method.Name);
-
-        Visit(node.Arguments[0]);
-
-        if (node.Arguments[1] is ConstantExpression { Value: int limit })
-        {
-            _builder.SetLimit(limit);
-        }
-
-        return node;
-    }
-
-    private Expression HandleSkip(MethodCallExpression node)
-    {
-        logger.LogDebug("Processing skip clause for method: {Method}", node.Method.Name);
-
-        Visit(node.Arguments[0]);
-
-        if (node.Arguments[1] is ConstantExpression { Value: int skip })
-        {
-            _builder.SetSkip(skip);
-        }
-
-        return node;
-    }
-
-    private Expression HandleFirst(MethodCallExpression node)
-    {
-        logger.LogDebug("Processing first clause for method: {Method}", node.Method.Name);
-
-        Visit(node.Arguments[0]);
-        _builder.SetLimit(1);
-        return node;
-    }
-
-    private Expression HandleSingle(MethodCallExpression node)
-    {
-        logger.LogDebug("Processing single clause for method: {Method}", node.Method.Name);
-
-        Visit(node.Arguments[0]);
-        _builder.SetLimit(2); // Get 2 to check for multiple results
-        return node;
-    }
-
-    private Expression HandleCount(MethodCallExpression node)
-    {
-        logger.LogDebug("Processing count clause for method: {Method}", node.Method.Name);
-
-        Visit(node.Arguments[0]);
-        _builder.SetAggregation("count", _scopes.Peek().Alias);
-        queryContext.IsScalarResult = true;
-        return node;
-    }
-
-    private Expression HandleAny(MethodCallExpression node)
-    {
-        logger.LogDebug("Processing any clause for method: {Method}", node.Method.Name);
-
-        Visit(node.Arguments[0]);
-
+        Expression? predicate = null;
         if (node.Arguments.Count > 1)
         {
-            // Any with predicate
-            if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
-            {
-                var whereVisitor = new WhereClauseVisitor(_scopes.Peek(), _builder);
-                whereVisitor.Visit(lambda.Body);
-            }
+            predicate = StripQuotes(node.Arguments[1]);
         }
 
-        _builder.SetLimit(1);
-        _builder.SetExistsQuery();
-        queryContext.IsScalarResult = true;
-        return node;
+        var orDefault = node.Method.Name.Contains("OrDefault");
+        var isLast = node.Method.Name.StartsWith("Last");
+
+        var visitor = new FirstVisitor(_scope, _queryBuilder);
+        visitor.VisitFirst(predicate, orDefault, isLast);
+        return true;
     }
 
-    private Expression HandleInclude(MethodCallExpression node)
+    private bool HandleCount(MethodCallExpression node)
     {
-        logger.LogDebug("Processing include clause for method: {Method}", node.Method.Name);
-
-        Visit(node.Arguments[0]);
-
-        if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        Expression? selector = null;
+        if (node.Arguments.Count > 1)
         {
-            var includeVisitor = new IncludeClauseVisitor(_scopes.Peek(), _builder);
-            includeVisitor.Visit(lambda.Body);
+            selector = StripQuotes(node.Arguments[1]);
         }
 
-        return node;
+        var visitor = new AggregateVisitor(_scope, _queryBuilder);
+        visitor.VisitAggregate(node.Method.Name, selector);
+        return true;
     }
 
-    private static GraphQueryContext.QueryRootType DetermineRootType(IGraphQueryable queryable) =>
-        queryable switch
-        {
-            IGraphNodeQueryable => GraphQueryContext.QueryRootType.Node,
-            IGraphRelationshipQueryable => GraphQueryContext.QueryRootType.Relationship,
-            IGraphTraversalQueryable => GraphQueryContext.QueryRootType.Path,
-            _ => GraphQueryContext.QueryRootType.Custom
-        };
-
-    private Expression? VisitTransaction(GraphTransactionExpression transactionExpression)
+    private bool HandleAny(MethodCallExpression node)
     {
-        logger.LogDebug("Processing transaction attachment");
-
-        // Store the transaction in the query context
-        if (transactionExpression.Transaction is GraphTransaction neo4jTx)
+        Expression? predicate = null;
+        if (node.Arguments.Count > 1)
         {
-            queryContext.Transaction = neo4jTx;
-        }
-        else
-        {
-            throw new NotSupportedException(
-                $"Transaction type {transactionExpression.Transaction.GetType()} is not supported by Neo4j provider");
+            predicate = StripQuotes(node.Arguments[1]);
         }
 
-        // Continue visiting the source expression
-        return transactionExpression.InnerExpression is not null
-            ? Visit(transactionExpression.InnerExpression)
-            : transactionExpression;
+        var visitor = new AnyVisitor(_scope, _queryBuilder);
+        visitor.VisitAny(predicate);
+        return true;
+    }
+
+    private bool HandleAll(MethodCallExpression node)
+    {
+        if (node.Arguments.Count < 2) return false;
+
+        var predicate = StripQuotes(node.Arguments[1]) as LambdaExpression;
+        if (predicate != null)
+        {
+            var visitor = new AllVisitor(_scope, _queryBuilder);
+            visitor.VisitAll(predicate);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool HandleDistinct(MethodCallExpression node)
+    {
+        var visitor = new DistinctVisitor(_scope, _queryBuilder);
+        visitor.ApplyDistinct();
+        return true;
+    }
+
+    private bool HandleGroupBy(MethodCallExpression node)
+    {
+        if (node.Arguments.Count < 2) return false;
+
+        var keySelector = StripQuotes(node.Arguments[1]) as LambdaExpression;
+        LambdaExpression? elementSelector = null;
+
+        if (node.Arguments.Count > 2)
+        {
+            elementSelector = StripQuotes(node.Arguments[2]) as LambdaExpression;
+        }
+
+        if (keySelector != null)
+        {
+            var visitor = new GroupByVisitor(_scope, _queryBuilder);
+            visitor.VisitGroupBy(keySelector, elementSelector);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool HandleTraverse(MethodCallExpression node)
+    {
+        var genericArgs = node.Method.GetGenericArguments();
+        if (genericArgs.Length >= 2)
+        {
+            var builder = new TraverseBuilder(_scope, _queryBuilder);
+            builder.BuildTraversal(genericArgs[0], genericArgs[1]);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool HandleRelationships(MethodCallExpression node)
+    {
+        Type? relationshipType = null;
+        var direction = RelationshipDirection.Both;
+
+        // Extract type from generic arguments if present
+        if (node.Method.IsGenericMethod)
+        {
+            relationshipType = node.Method.GetGenericArguments()[0];
+        }
+
+        // Check for direction parameter
+        if (node.Arguments.Count > 1 && node.Arguments[1] is ConstantExpression dirConstant)
+        {
+            direction = (RelationshipDirection)dirConstant.Value!;
+        }
+
+        var visitor = new RelationshipsVisitor(_scope, _queryBuilder);
+        visitor.VisitRelationships(relationshipType, direction);
+        return true;
+    }
+
+    private bool HandlePathSegments(MethodCallExpression node)
+    {
+        var genericArgs = node.Method.GetGenericArguments();
+        if (genericArgs.Length >= 2)
+        {
+            var sourceType = node.Object?.Type ?? node.Arguments[0].Type;
+            var relationshipType = genericArgs[0];
+            var targetType = genericArgs[1];
+
+            var visitor = new PathSegmentVisitor(_scope, _queryBuilder);
+            visitor.BuildPathSegmentQuery(sourceType, relationshipType, targetType);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static Expression StripQuotes(Expression expression)
+    {
+        while (expression.NodeType == ExpressionType.Quote)
+        {
+            expression = ((UnaryExpression)expression).Operand;
+        }
+        return expression;
     }
 }

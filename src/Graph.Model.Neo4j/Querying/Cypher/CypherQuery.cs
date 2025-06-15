@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Serialization;
+namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher;
 
 /// <summary>
-/// Represents a collection of entities.
+/// Represents a Cypher query with its parameters and optional transaction context.
 /// </summary>
-/// <param name="Entities">A collection of entities (<see cref="EntityInfo"/> ).</param>
-/// <param name="Type">The type of entities in the collection.</param>
-public record EntityCollection(
-    Type Type,
-    ICollection<EntityInfo> Entities
-) : Serialized;
-
+internal sealed record CypherQuery(
+    string Text,
+    IReadOnlyDictionary<string, object?> Parameters)
+{
+    /// <summary>
+    /// Creates an empty query.
+    /// </summary>
+    public static CypherQuery Empty { get; } = new(string.Empty, new Dictionary<string, object?>());
+}

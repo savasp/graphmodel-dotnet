@@ -27,24 +27,16 @@ public interface IEntitySerializer
     /// <summary>
     /// Serializes a .NET object into an <see cref="EntityInfo"/> representation
     /// </summary>
-    /// <param name="entity">The .NET object to serialize, which must implement <see cref="IEntity"/></param>
+    /// <param name="obj">The .NET object to serialize</param>
     /// <returns>An <see cref="EntityInfo"/> representation of the .NET object</returns>
-    EntityInfo Serialize(IEntity entity);
+    EntityInfo Serialize(object obj);
 
     /// <summary>
     /// Deserializes an <see cref="EntityInfo"/> into a .NET object
     /// </summary>
     /// <param name="entity">The <see cref="EntityInfo"/> to deserialize</param>
     /// <returns>A .NET object graph from the <see cref="EntityInfo"/> representation</returns>
-    IEntity Deserialize(EntityInfo entity);
-
-    /// <summary>
-    /// Deserializes an <see cref="EntityInfo"/> into an <see cref="IEntity"/> 
-    /// </summary>
-    /// <param name="entity">The <see cref="EntityInfo"/> to deserialize</param>
-    /// <typeparam name="T">The type of the entity to deserialize into, which must implement <see cref="IEntity"/>.</typeparam>
-    /// <returns>A .NET object graph from the <see cref="EntityInfo"/> representation</returns>
-    T Deserialize<T>(EntityInfo entity) where T : IEntity;
+    object Deserialize(EntityInfo entity);
 
     /// <summary>
     /// Gets the schema information for the entity type this serializer handles

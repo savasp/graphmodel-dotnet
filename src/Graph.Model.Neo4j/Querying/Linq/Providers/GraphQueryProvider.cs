@@ -17,6 +17,8 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Linq.Helpers;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -25,12 +27,13 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
 {
     private readonly GraphContext _graphContext;
     private readonly ILogger<GraphQueryProvider> _logger;
-
+    private readonly CypherEngine _cypherEngine;
     public GraphQueryProvider(GraphContext context)
     {
         _graphContext = context ?? throw new ArgumentNullException(nameof(context));
         _logger = context.LoggerFactory?.CreateLogger<GraphQueryProvider>()
             ?? NullLogger<GraphQueryProvider>.Instance;
+        _cypherEngine = new CypherEngine(context.EntityFactory, context.LoggerFactory);
     }
 
     public IGraph Graph => _graphContext.Graph;
@@ -135,44 +138,116 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         return ExecuteAsync<object?>(expression, cancellationToken);
     }
 
+    // In GraphQueryProvider.cs, update the ExecuteAsync method:
+
     public async Task<TResult> ExecuteAsync<TResult>(
-         Expression expression,
-         CancellationToken cancellationToken = default)
+        Expression expression,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(expression);
 
-        _logger.LogDebug("Executing async query: {Expression}", expression);
+        _logger.LogDebug("Executing async query for result type: {ResultType}", typeof(TResult).Name);
 
-        // For now, let's just create a placeholder implementation
-        // This will be replaced when we implement the Cypher visitor
-        await Task.Yield(); // Ensure async behavior
+        GraphTransaction? transaction = null;
+        var shouldDisposeTransaction = false;
 
-        // Extract the query context from the expression
-        var queryContext = GraphQueryContext.FromExpression(expression);
-
-        _logger.LogDebug("Query context created with transaction: {HasTransaction}",
-            queryContext.Transaction != null);
-
-        // TODO: Implement Cypher generation and execution
-        // For now, return default values based on the result type
-        if (typeof(TResult) == typeof(int) || typeof(TResult) == typeof(long))
+        try
         {
-            return (TResult)(object)0;
+            // Extract transaction if present in the expression
+            transaction = ExtractTransaction(expression);
+
+            // If no transaction was provided, create one for this query
+            if (transaction is null)
+            {
+                transaction = await TransactionHelpers.GetOrCreateTransactionAsync(
+                    _graphContext,
+                    transaction: null,
+                    isReadOnly: true); // Queries are read-only by default
+                shouldDisposeTransaction = true;
+                _logger.LogDebug("Created read-only transaction for query execution");
+            }
+
+            // Execute using the CypherEngine
+            var results = await _cypherEngine.ExecuteAsync<TResult>(
+                expression,
+                transaction,
+                cancellationToken);
+
+            // Handle single result expectations
+            if (IsSingleResultExpected(expression))
+            {
+                var singleResult = results.FirstOrDefault();
+                if (singleResult is null && !expression.ToString().Contains("OrDefault"))
+                {
+                    throw new InvalidOperationException("Sequence contains no elements");
+                }
+                return singleResult!;
+            }
+
+            // Return collection results
+            if (results is TResult typedResults)
+            {
+                return typedResults;
+            }
+
+            // This shouldn't happen, but let's be safe
+            throw new InvalidOperationException($"Cannot convert results to {typeof(TResult).Name}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing query");
+
+            // If we created the transaction, try to roll it back
+            if (shouldDisposeTransaction && transaction != null)
+            {
+                try
+                {
+                    await transaction.Rollback();
+                }
+                catch (Exception rollbackEx)
+                {
+                    _logger.LogError(rollbackEx, "Failed to rollback transaction after error");
+                }
+            }
+
+            throw;
+        }
+        finally
+        {
+            // Clean up the transaction if we created it
+            if (shouldDisposeTransaction && transaction != null)
+            {
+                await transaction.DisposeAsync();
+            }
+        }
+    }
+
+    private GraphTransaction? ExtractTransaction(Expression expression)
+    {
+        var visitor = new TransactionExtractionVisitor();
+        visitor.Visit(expression);
+
+        // Check if we found multiple transactions - that's not allowed!
+        if (visitor.Transactions.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"Multiple transactions found in query expression. Found {visitor.Transactions.Count} transactions, but only one is allowed per query.");
         }
 
-        if (typeof(TResult) == typeof(bool))
+        // Return the single transaction if found, or null if none
+        return visitor.Transactions.SingleOrDefault();
+    }
+
+    private bool IsSingleResultExpected(Expression expression)
+    {
+        if (expression is MethodCallExpression methodCall)
         {
-            return (TResult)(object)false;
+            var methodName = methodCall.Method.Name;
+            return methodName is "First" or "FirstOrDefault" or "Single" or "SingleOrDefault"
+                or "Last" or "LastOrDefault";
         }
 
-        if (typeof(TResult).IsGenericType &&
-            typeof(TResult).GetGenericTypeDefinition() == typeof(List<>))
-        {
-            var listType = typeof(List<>).MakeGenericType(typeof(TResult).GetGenericArguments()[0]);
-            return (TResult)Activator.CreateInstance(listType)!;
-        }
-
-        return default!;
+        return false;
     }
 
     #endregion

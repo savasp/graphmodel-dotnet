@@ -76,7 +76,7 @@ internal class OrderByClauseVisitor(QueryScope scope, CypherQueryBuilder builder
             parts.Push(current.Member.Name);
         }
 
-        return $"{scope.Alias}.{string.Join(".", parts)}";
+        return $"{scope.CurrentAlias}.{string.Join(".", parts)}";
     }
 
     private string HandleToLower(MethodCallExpression node)

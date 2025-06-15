@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+namespace Cvoya.Graph.Model.Neo4j.Cypher;
 
 using System.Text;
 
@@ -22,15 +22,10 @@ internal class CypherQueryBuilder
     private readonly List<string> _whereClauses = [];
     private readonly List<string> _returnClauses = [];
     private readonly List<(string Expression, bool IsDescending)> _orderByClauses = [];
-    private readonly Dictionary<string, object?> _parameters = [];
-    private readonly List<string> _optionalMatchClauses = [];
-    private readonly List<string> _withClauses = [];
-    private readonly List<string> _unwindClauses = [];
-    private readonly List<string> _groupByClauses = [];
-    private int? _limit;
-    private int? _skip;
-    private bool _isDistinct;
+    private readonly Dictionary<string, object> _parameters = [];
 
+    private int? _skip;
+    private int? _limit;
     private string? _aggregation;
     private bool _isExistsQuery;
     private bool _isNotExistsQuery;
@@ -109,7 +104,7 @@ internal class CypherQueryBuilder
         return $"${paramName}";
     }
 
-    public CypherQuery Build()
+    public CypherQueryResult Build()
     {
         // Handle special query types first
         if (_isExistsQuery)
@@ -137,89 +132,33 @@ internal class CypherQueryBuilder
         _mainNodeAlias = "r"; // Set main alias to the relationship
     }
 
-    public bool HasOrderBy => _orderByClauses.Any();
-
-    public void ReverseOrderBy()
-    {
-        // Flip the IsDescending flag for all order clauses
-        for (int i = 0; i < _orderByClauses.Count; i++)
-        {
-            var (expression, isDescending) = _orderByClauses[i];
-            _orderByClauses[i] = (expression, !isDescending);
-        }
-    }
-
-    private CypherQuery BuildExistsQuery()
+    private CypherQueryResult BuildExistsQuery()
     {
         var query = new StringBuilder();
 
-        // MATCH clauses
-        if (_matchClauses.Any())
+        // MATCH clause
+        if (_matchClauses.Count > 0)
         {
-            query.AppendLine($"MATCH {string.Join(", ", _matchClauses)}");
+            query.Append("MATCH ");
+            query.AppendJoin(", ", _matchClauses);
+            query.AppendLine();
         }
 
-        // OPTIONAL MATCH clauses
-        foreach (var optionalMatch in _optionalMatchClauses)
+        // WHERE clause
+        if (_whereClauses.Count > 0)
         {
-            query.AppendLine($"OPTIONAL MATCH {optionalMatch}");
+            query.Append("WHERE ");
+            query.AppendJoin(" AND ", _whereClauses);
+            query.AppendLine();
         }
 
-        // WHERE clauses
-        if (_whereClauses.Any())
-        {
-            query.AppendLine($"WHERE {string.Join(" AND ", _whereClauses)}");
-        }
+        // For EXISTS queries, return true if any matching nodes exist
+        query.AppendLine($"RETURN COUNT({_mainNodeAlias ?? "n"}) > 0 AS exists");
 
-        // WITH clauses
-        foreach (var withClause in _withClauses)
-        {
-            query.AppendLine($"WITH {withClause}");
-        }
-
-        // UNWIND clauses
-        foreach (var unwindClause in _unwindClauses)
-        {
-            query.AppendLine($"UNWIND {unwindClause}");
-        }
-
-        // RETURN clause
-        if (_returnClauses.Any())
-        {
-            var returnClause = _isDistinct
-                ? $"RETURN DISTINCT {string.Join(", ", _returnClauses)}"
-                : $"RETURN {string.Join(", ", _returnClauses)}";
-            query.AppendLine(returnClause);
-        }
-
-        // GROUP BY clause
-        if (_groupByClauses.Any())
-        {
-            query.AppendLine($"GROUP BY {string.Join(", ", _groupByClauses)}");
-        }
-
-        // ORDER BY clause
-        if (_orderByClauses.Any())
-        {
-            var orderByParts = _orderByClauses.Select(o => o.IsDescending ? $"{o.Expression} DESC" : o.Expression);
-            query.AppendLine($"ORDER BY {string.Join(", ", orderByParts)}");
-        }
-
-        // SKIP/LIMIT
-        if (_skip.HasValue)
-        {
-            query.AppendLine($"SKIP {_skip.Value}");
-        }
-
-        if (_limit.HasValue)
-        {
-            query.AppendLine($"LIMIT {_limit.Value}");
-        }
-
-        return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
+        return new CypherQueryResult(query.ToString().Trim(), new Dictionary<string, object>(_parameters));
     }
 
-    private CypherQuery BuildNotExistsQuery()
+    private CypherQueryResult BuildNotExistsQuery()
     {
         var query = new StringBuilder();
 
@@ -242,10 +181,10 @@ internal class CypherQueryBuilder
         // For NOT EXISTS queries (used by All), return true if no matching nodes exist
         query.AppendLine($"RETURN COUNT({_mainNodeAlias ?? "n"}) = 0 AS all");
 
-        return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
+        return new CypherQueryResult(query.ToString().Trim(), new Dictionary<string, object>(_parameters));
     }
 
-    private CypherQuery BuildSimpleQuery()
+    private CypherQueryResult BuildSimpleQuery()
     {
         var query = new StringBuilder();
 
@@ -301,10 +240,10 @@ internal class CypherQueryBuilder
             query.AppendLine($"LIMIT {_limit.Value}");
         }
 
-        return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
+        return new CypherQueryResult(query.ToString().Trim(), new Dictionary<string, object>(_parameters));
     }
 
-    private CypherQuery BuildWithComplexProperties()
+    private CypherQueryResult BuildWithComplexProperties()
     {
         var query = new StringBuilder();
 
@@ -357,43 +296,6 @@ internal class CypherQueryBuilder
         query.AppendLine("     ] AS relatedNodes");
         query.AppendLine($"RETURN {_mainNodeAlias}, relatedNodes");
 
-        return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
+        return new CypherQueryResult(query.ToString().Trim(), new Dictionary<string, object>(_parameters));
     }
-
-    public void AddOptionalMatch(string pattern)
-    {
-        _optionalMatchClauses.Add(pattern);
-    }
-
-    public void AddLimit(int limit)
-    {
-        _limit = limit;
-    }
-
-    public void AddSkip(int skip)
-    {
-        _skip = skip;
-    }
-
-    public void AddWith(string expression)
-    {
-        _withClauses.Add(expression);
-    }
-
-    public void AddUnwind(string expression)
-    {
-        _unwindClauses.Add(expression);
-    }
-
-    public void AddGroupBy(string expression)
-    {
-        _groupByClauses.Add(expression);
-    }
-
-    public void SetDistinct(bool distinct)
-    {
-        _isDistinct = distinct;
-    }
-
-    public bool HasReturnClause => _returnClauses.Any();
 }

@@ -14,7 +14,6 @@
 
 namespace Cvoya.Graph.Model.Serialization;
 
-using System.Reflection.Metadata.Ecma335;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -33,8 +32,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     /// Deserializes an <see cref="IEntity"/>" from its serialized form.
     /// </summary>
     /// <param name="entity">The serialized entity information.</param>
-    /// <returns>An instance of <see cref="IEntity"/>.</returns>
-    public IEntity Deserialize(EntityInfo entity)
+    /// <returns>A .NET object graph</returns>
+    public object Deserialize(EntityInfo entity)
     {
         var serializer = _serializerRegistry.GetSerializer(entity.ActualType)
             ?? throw new GraphException($"No serializer found for type {entity.ActualType}. Ensure it is registered in the EntitySerializerRegistry.");
@@ -48,7 +47,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     /// <typeparam name="T">The type of the entity to deserialize into, which must implement <see cref="IEntity"/>.</typeparam>
     /// <param name="entity">The <see cref="EntityInfo"/> to deserialize.</param>
     /// <returns>A .NET object graph from the <see cref="EntityInfo"/> representation.</returns>
-    public T Deserialize<T>(EntityInfo entity) where T : IEntity => (T)Deserialize(entity);
+    public T Deserialize<T>(EntityInfo entity) => (T)Deserialize(entity);
 
     /// <summary>
     /// Serializes an <see cref="IEntity"/> into an <see cref="EntityInfo"/> representation.
@@ -64,10 +63,20 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     }
 
     /// <summary>
+    /// Checks if the factory can deserialize a given type.
+    /// </summary>
+    /// <param name="type">The type to check for deserialization capability.</param>
+    /// <returns>True if the factory can deserialize the type, otherwise false.</returns>
+    public bool CanDeserialize(Type type) =>
+        _serializerRegistry.ContainsType(type) ||
+        typeof(INode).IsAssignableFrom(type) ||
+        typeof(IRelationship).IsAssignableFrom(type);
+
+    /// <summary>
     /// Retrieves the schema for a given entity type.
     /// </summary>
     /// <param name="entityType">The type of the entity for which to retrieve the schema.</param>
-    /// /// <returns>An <see cref="EntitySchema"/> representing the schema of the entity type, or null if no serializer is found.</returns>
+    /// <returns>An <see cref="EntitySchema"/> representing the schema of the entity type, or null if no serializer is found.</returns>
     /// <exception cref="GraphException"></exception>
     public EntitySchema? GetSchema(Type entityType)
     {

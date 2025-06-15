@@ -18,9 +18,9 @@ namespace Cvoya.Graph.Model.Serialization;
 /// Represents a collection of values. The predicate <see cref="Model.GraphDataModel.IsSimple(System.Type)"/>
 /// determines if a value is considered simple.
 /// </summary>
-/// <param name="Values">An <see cref="IReadOnlyCollection{SimpleValue}"/> of simple values.</param>
+/// <param name="Values">An <see cref="ICollection{SimpleValue}"/> of simple values.</param>
 /// <param name="ElementType">The type of elements in the collection.</param>
 public record SimpleCollection(
-    IReadOnlyCollection<SimpleValue> Values,
+    ICollection<SimpleValue> Values,
     Type ElementType
 ) : Serialized;

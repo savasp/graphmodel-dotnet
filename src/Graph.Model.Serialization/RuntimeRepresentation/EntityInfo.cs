@@ -20,13 +20,13 @@ namespace Cvoya.Graph.Model.Serialization;
 /// <param name="ActualType">The actual type of the entity. This might be different from what the schema
 /// expects. If it is different, then it has to be a derived type.</param>
 /// <param name="Label">The label for the entity.</param>
-/// <param name="SimpleProperties">An <see cref="IReadOnlyDictionary{String, Property}"/> of simple properties.
+/// <param name="SimpleProperties">An <see cref="IDictionary{String, Property}"/> of simple properties.
 /// <see cref="GraphDataModel.IsSimple(Type)"/> determines if a property is considered simple.</param>
 /// <param name="ComplexProperties">A dictionary of complex properties.
 /// <see cref="GraphDataModel.IsSimple(Type)"/> determines if a property is considered complex.</param>
 public record EntityInfo(
     Type ActualType,
     string Label,
-    IReadOnlyDictionary<string, Property> SimpleProperties,
-    IReadOnlyDictionary<string, Property> ComplexProperties
+    IDictionary<string, Property> SimpleProperties,
+    IDictionary<string, Property> ComplexProperties
 ) : Serialized;

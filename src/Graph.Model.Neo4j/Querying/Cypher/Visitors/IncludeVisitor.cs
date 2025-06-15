@@ -16,8 +16,9 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using System.Reflection;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 
-internal class IncludeClauseVisitor(QueryScope scope, CypherQueryBuilder builder) : ExpressionVisitor
+internal class IncludeVisitor(QueryScope scope, CypherQueryBuilder builder) : ExpressionVisitor
 {
     private readonly Stack<string> _pathSegments = new();
     private int _includeCounter = 0;
@@ -35,7 +36,9 @@ internal class IncludeClauseVisitor(QueryScope scope, CypherQueryBuilder builder
         }
 
         // Generate the relationship pattern
-        var currentAlias = scope.Alias;
+        var currentAlias = scope.CurrentAlias
+            ?? throw new InvalidOperationException("No current alias set when processing Include clause");
+
         var patterns = new List<string>();
 
         while (pathSegments.TryPop(out var segment))

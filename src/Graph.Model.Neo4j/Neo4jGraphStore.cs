@@ -26,7 +26,7 @@ public class Neo4jGraphStore : IAsyncDisposable
     private readonly IDriver _driver;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="Neo4j.Graph"/> class.
+    /// Initializes a new instance of the <see cref="Neo4jGraph"/> class.
     /// </summary>
     /// <param name="uri">The URI of the Neo4j database.</param>
     /// <param name="username">The username for authentication.</param>

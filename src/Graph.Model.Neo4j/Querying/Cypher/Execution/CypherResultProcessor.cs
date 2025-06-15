@@ -12,336 +12,372 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
+namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher;
 
-using System.Reflection;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Serialization;
+using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
-/// <summary>
-/// Processes Cypher query results and converts them to strongly-typed objects.
-/// </summary>
 internal sealed class CypherResultProcessor
 {
     private readonly EntityFactory _entityFactory;
     private readonly ILogger<CypherResultProcessor> _logger;
 
-    public CypherResultProcessor(EntityFactory entityFactory, ILogger<CypherResultProcessor> logger)
+    public CypherResultProcessor(EntityFactory entityFactory, ILoggerFactory? loggerFactory = null)
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = loggerFactory?.CreateLogger<CypherResultProcessor>() ?? NullLogger<CypherResultProcessor>.Instance;
     }
 
-    /// <summary>
-    /// Processes a single record and converts it to the target type.
-    /// </summary>
-    public T? ProcessRecord<T>(IRecord record)
+    public async Task<List<EntityInfo>> ProcessAsync<T>(
+        List<IRecord> records,
+        CancellationToken cancellationToken = default)
     {
-        if (record == null)
-            return default;
-
         var targetType = typeof(T);
 
-        // Single value result
-        if (record.Values.Count == 1)
+        // Check if we're dealing with graph entities
+        if (typeof(INode).IsAssignableFrom(targetType))
         {
-            return ConvertValue<T>(record.Values.First().Value);
+            return await ProcessNodesAsync(records, targetType, cancellationToken);
         }
 
-        // Multiple values - check if it's an entity or projection
-        if (typeof(INode).IsAssignableFrom(targetType) || typeof(IRelationship).IsAssignableFrom(targetType))
+        if (typeof(IRelationship).IsAssignableFrom(targetType))
         {
-            // For entities, we expect the first value to be the node/relationship
-            return ConvertValue<T>(record.Values.First().Value);
+            return ProcessRelationships(records, targetType);
         }
 
-        // For projections (anonymous types or DTOs), use reflection
-        return DeserializeProjection<T>(record);
+        // For projections, convert to EntityInfo using reflection
+        return ProcessProjections(records, targetType);
     }
 
-    /// <summary>
-    /// Processes records that include complex properties.
-    /// </summary>
-    public T? ProcessRecordsWithComplexProperties<T>(IEnumerable<IRecord> records) where T : INode
+    private List<EntityInfo> ProcessProjections(List<IRecord> records, Type targetType)
     {
-        var recordList = records.ToList();
-        if (!recordList.Any())
-            return default;
+        var results = new List<EntityInfo>();
 
-        // Get the main node from the first record
-        var firstRecord = recordList.First();
-        if (!firstRecord.TryGet("n", out var mainNodeValue) || mainNodeValue is not INode mainNode)
-            return default;
-
-        // Create EntityInfo for the main node
-        var mainNodeInfo = CreateEntityInfoFromNode(mainNode, typeof(T));
-
-        // Process complex properties from paths
-        var complexProperties = new Dictionary<string, Property>();
-
-        foreach (var record in recordList)
+        foreach (var record in records)
         {
-            // Skip if no path
-            if (!record.TryGet("path", out var pathValue) || pathValue is not IPath path)
-                continue;
-
-            // Get the relationship to determine property name
-            var relationships = path.Relationships.ToList();
-            if (relationships.Count == 0)
-                continue;
-
-            var relationship = relationships.First();
-            var propertyName = GraphDataModel.RelationshipTypeNameToPropertyName(relationship.Type);
-
-            // Get the complex property node
-            if (path.Nodes.Count() < 2)
-                continue;
-
-            var complexNode = path.Nodes.Last();
-            var complexValue = DeserializeComplexPropertyNode(complexNode);
-
-            if (complexValue != null)
-            {
-                // Check if this property is a collection
-                var schema = _entityFactory.GetSchema(typeof(T));
-                var propInfo = schema.ComplexProperties.GetValueOrDefault(propertyName);
-
-                if (propInfo != null && GraphDataModel.IsCollectionOfComplex(propInfo.Type))
-                {
-                    // Add to collection
-                    if (!complexProperties.TryGetValue(propertyName, out var existing))
-                    {
-                        existing = new ComplexCollection(new List<object?>(), propInfo.Type);
-                        complexProperties[propertyName] = existing;
-                    }
-
-                    if (existing is ComplexCollection collection)
-                    {
-                        ((List<object?>)collection.Values).Add(complexValue);
-                    }
-                }
-                else
-                {
-                    // Single value
-                    complexProperties[propertyName] = new ComplexValue(complexValue, complexValue.GetType());
-                }
-            }
+            // Convert the projection record to an EntityInfo
+            var entityInfo = CreateEntityInfoFromProjection(record, targetType);
+            results.Add(entityInfo);
         }
 
-        // Merge complex properties into the main entity info
-        var finalEntityInfo = new EntityInfo(
-            Type: mainNodeInfo.Type,
-            SimpleProperties: mainNodeInfo.SimpleProperties,
-            ComplexProperties: complexProperties
-        );
-
-        return (T)_entityFactory.Deserialize(finalEntityInfo);
+        return results;
     }
 
-    private T? ConvertValue<T>(object? value)
+    private EntityInfo CreateEntityInfoFromProjection(IRecord record, Type targetType)
     {
-        if (value == null)
-            return default;
-
-        var targetType = typeof(T);
-
-        return value switch
-        {
-            INode node when typeof(INode).IsAssignableFrom(targetType) =>
-                (T)DeserializeNode(node, targetType),
-
-            IRelationship relationship when typeof(IRelationship).IsAssignableFrom(targetType) =>
-                (T)DeserializeRelationship(relationship, targetType),
-
-            _ => (T?)SerializationBridge.FromNeo4jValue(value, targetType)
-        };
-    }
-
-    private object DeserializeNode(INode node, Type expectedType)
-    {
-        _logger.LogDebug("Deserializing node {ElementId} with labels {Labels}", node.ElementId, node.Labels);
-
-        // Try to get the actual type from metadata
-        var actualType = SerializationBridge.GetTypeFromMetadata(node.Properties) ?? expectedType;
-
-        // Ensure the actual type is compatible with expected type
-        if (!expectedType.IsAssignableFrom(actualType))
-        {
-            _logger.LogWarning(
-                "Type mismatch: expected {Expected} but metadata indicates {Actual}. Using expected type.",
-                expectedType.Name, actualType.Name);
-            actualType = expectedType;
-        }
-
-        var entityInfo = CreateEntityInfoFromNode(node, actualType);
-        return _entityFactory.Deserialize(entityInfo);
-    }
-
-    private object DeserializeRelationship(IRelationship relationship, Type expectedType)
-    {
-        _logger.LogDebug("Deserializing relationship {ElementId} of type {Type}", relationship.ElementId, relationship.Type);
-
-        var actualType = SerializationBridge.GetTypeFromMetadata(relationship.Properties) ?? expectedType;
-
-        if (!expectedType.IsAssignableFrom(actualType))
-        {
-            actualType = expectedType;
-        }
-
-        var entityInfo = CreateEntityInfoFromRelationship(relationship, actualType);
-        var instance = _entityFactory.Deserialize(entityInfo);
-
-        // Set tracking info if applicable
-        if (instance is ITrackedRelationship trackedRel)
-        {
-            trackedRel.Id = new Neo4jElementId(relationship.ElementId);
-            trackedRel.SourceId = new Neo4jElementId(relationship.StartNodeElementId);
-            trackedRel.TargetId = new Neo4jElementId(relationship.EndNodeElementId);
-        }
-
-        return instance;
-    }
-
-    private EntityInfo CreateEntityInfoFromNode(INode node, Type type)
-    {
-        var schema = _entityFactory.GetSchema(type);
         var simpleProperties = new Dictionary<string, Property>();
 
-        // Set the ID if it's a tracked entity
-        if (typeof(ITrackedNode).IsAssignableFrom(type))
+        // Extract all values from the record as simple properties
+        foreach (var key in record.Keys)
         {
-            simpleProperties["Id"] = new SimpleValue(new Neo4jElementId(node.ElementId), typeof(Neo4jElementId));
-        }
+            var value = record[key];
+            var convertedValue = SerializationBridge.FromNeo4jValue(value, typeof(object))
+                ?? throw new InvalidOperationException($"Failed to convert value for property '{key}'");
 
-        // Extract simple properties
-        foreach (var (key, value) in node.Properties)
-        {
-            if (key == SerializationBridge.MetadataPropertyName)
-                continue;
-
-            var propertyInfo = schema.SimpleProperties.GetValueOrDefault(key);
-            if (propertyInfo != null)
-            {
-                var convertedValue = SerializationBridge.FromNeo4jValue(value, propertyInfo.Type);
-
-                if (GraphDataModel.IsCollectionOfSimple(propertyInfo.Type))
-                {
-                    // It's a collection
-                    simpleProperties[key] = new SimpleCollection(
-                        convertedValue as IEnumerable<object?> ?? new List<object?>(),
-                        propertyInfo.Type);
-                }
-                else
-                {
-                    // Single value
-                    simpleProperties[key] = new SimpleValue(convertedValue, propertyInfo.Type);
-                }
-            }
+            // TODO: Check the assumption that we don't have nullability in projections
+            simpleProperties[key] = new(
+                convertedValue.GetType().GetProperty(key) ?? throw new InvalidOperationException($"Property '{key}' not found on type '{targetType.Name}'"),
+                key,
+                false, // Projections don't have nullability
+                new SimpleValue(convertedValue, typeof(object)));
         }
 
         return new EntityInfo(
-            Type: type,
+            ActualType: targetType,
+            Label: targetType.Name,
             SimpleProperties: simpleProperties,
-            ComplexProperties: new Dictionary<string, Property>() // Complex properties handled separately
+            ComplexProperties: new Dictionary<string, Property>() // Projections don't have complex properties
         );
     }
 
-    private EntityInfo CreateEntityInfoFromRelationship(IRelationship relationship, Type type)
+    private async Task<List<EntityInfo>> ProcessNodesAsync(
+        List<IRecord> records,
+        Type targetType,
+        CancellationToken cancellationToken)
     {
-        var schema = _entityFactory.GetSchema(type);
-        var simpleProperties = new Dictionary<string, Property>();
+        // Check if this query includes complex properties (relatedNodes in the results)
+        var hasComplexProperties = records.Any(r => r.Keys.Contains("relatedNodes"));
 
-        // Extract simple properties
-        foreach (var (key, value) in relationship.Properties)
+        if (hasComplexProperties)
         {
-            if (key == SerializationBridge.MetadataPropertyName)
+            return await ProcessNodesWithComplexPropertiesAsync(records, targetType, cancellationToken);
+        }
+
+        return ProcessSimpleNodes(records, targetType);
+    }
+
+    private List<EntityInfo> ProcessSimpleNodes(List<IRecord> records, Type targetType)
+    {
+        var results = new List<EntityInfo>();
+
+        foreach (var record in records)
+        {
+            if (!record.TryGet<object>("n", out var nodeObj) || nodeObj is not INode node)
                 continue;
 
-            var propertyInfo = schema.SimpleProperties.GetValueOrDefault(key);
-            if (propertyInfo != null)
-            {
-                var convertedValue = SerializationBridge.FromNeo4jValue(value, propertyInfo.Type);
+            var entityInfo = CreateEntityInfoFromNode(node, targetType);
+            results.Add(entityInfo);
+        }
 
-                if (GraphDataModel.IsCollectionOfSimple(propertyInfo.Type))
-                {
-                    simpleProperties[key] = new SimpleCollection(
-                        convertedValue as IEnumerable<object?> ?? new List<object?>(),
-                        propertyInfo.Type);
-                }
-                else
-                {
-                    simpleProperties[key] = new SimpleValue(convertedValue, propertyInfo.Type);
-                }
+        return results;
+    }
+
+    private async Task<List<EntityInfo>> ProcessNodesWithComplexPropertiesAsync(
+        List<IRecord> records,
+        Type targetType,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<EntityInfo>();
+
+        foreach (var record in records)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!record.TryGet<object>("n", out var nodeObj) || nodeObj is not INode mainNode)
+                continue;
+
+            // Start with the main node
+            var entityInfo = CreateEntityInfoFromNode(mainNode, targetType);
+
+            // Add complex properties from related nodes
+            if (record.TryGet<object>("relatedNodes", out var relatedNodesObj) &&
+                relatedNodesObj is IList<object> relatedNodesList)
+            {
+                await AddComplexPropertiesFromRelatedNodes(entityInfo, relatedNodesList, cancellationToken);
+            }
+
+            results.Add(entityInfo);
+        }
+
+        return results;
+    }
+
+    private async Task AddComplexPropertiesFromRelatedNodes(
+        EntityInfo entityInfo,
+        IList<object> relatedNodesList,
+        CancellationToken cancellationToken)
+    {
+        if (!_entityFactory.CanDeserialize(entityInfo.ActualType))
+            return;
+
+        var schema = _entityFactory.GetSchema(entityInfo.ActualType);
+        if (schema?.ComplexProperties == null)
+            return;
+
+        // Group related nodes by relationship type
+        var nodesByRelType = new Dictionary<string, List<RelatedNodeInfo>>();
+
+        foreach (var relatedNodeObj in relatedNodesList)
+        {
+            if (relatedNodeObj is not IReadOnlyDictionary<string, object> relatedNodeDict)
+                continue;
+
+            var nodeInfo = ExtractRelatedNodeInfo(relatedNodeDict);
+            if (nodeInfo != null)
+            {
+                if (!nodesByRelType.ContainsKey(nodeInfo.RelType))
+                    nodesByRelType[nodeInfo.RelType] = [];
+
+                nodesByRelType[nodeInfo.RelType].Add(nodeInfo);
             }
         }
 
+        // Process each complex property
+        foreach (var (propertyName, propertySchema) in schema.ComplexProperties)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var expectedRelType = GraphDataModel.PropertyNameToRelationshipTypeName(propertyName);
+
+            if (!nodesByRelType.TryGetValue(expectedRelType, out var relatedNodes) || !relatedNodes.Any())
+                continue;
+
+            // Build the complex property
+            var complexProperty = await BuildComplexPropertyFromRelatedNodes(
+                relatedNodes, propertySchema, cancellationToken);
+
+            if (complexProperty != null)
+            {
+                entityInfo.ComplexProperties[propertyName] = complexProperty;
+            }
+        }
+    }
+
+    private RelatedNodeInfo? ExtractRelatedNodeInfo(IReadOnlyDictionary<string, object> relatedNodeDict)
+    {
+        if (!relatedNodeDict.TryGetValue("Node", out var nodeObj) || nodeObj is not INode node)
+            return null;
+
+        if (!relatedNodeDict.TryGetValue("RelType", out var relTypeObj) || relTypeObj is not string relType)
+            return null;
+
+        var relationshipProperties = relatedNodeDict.TryGetValue("RelationshipProperties", out var relPropsObj)
+            ? relPropsObj as IReadOnlyDictionary<string, object> ?? new Dictionary<string, object>()
+            : new Dictionary<string, object>();
+
+        return new RelatedNodeInfo(node, relType, relationshipProperties);
+    }
+
+    private Task<Property> BuildComplexPropertyFromRelatedNodes(
+        List<RelatedNodeInfo> relatedNodes,
+        PropertySchema propertySchema,
+        CancellationToken cancellationToken)
+    {
+        var childEntityInfos = new List<EntityInfo>();
+        var childType = propertySchema.PropertyInfo.PropertyType.IsGenericType
+            ? propertySchema.PropertyInfo.PropertyType.GetGenericArguments()[0]
+            : propertySchema.PropertyInfo.PropertyType;
+
+        foreach (var relatedNode in relatedNodes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var childEntityInfo = CreateEntityInfoFromNode(relatedNode.Node, childType);
+
+            // Handle any relationship properties if needed
+            if (relatedNode.RelationshipProperties.Any())
+            {
+                // For now, we'll log that we have relationship properties but don't process them
+                _logger.LogDebug("Relationship properties found but not yet processed for {RelType}", relatedNode.RelType);
+            }
+
+            childEntityInfos.Add(childEntityInfo);
+        }
+
+        // Return appropriate property type
+        if (propertySchema.PropertyType == PropertyType.ComplexCollection)
+        {
+            // Collection of simple or complex objects
+            if (propertySchema.ElementType == null)
+                throw new InvalidOperationException("Element type must be specified for collections.");
+
+            Property property = new(
+                propertySchema.PropertyInfo,
+                propertySchema.Neo4jPropertyName,
+                propertySchema.IsNullable,
+                new EntityCollection(propertySchema.ElementType, childEntityInfos));
+
+            return Task.FromResult(property);
+        }
+        else if (propertySchema.PropertyType == PropertyType.Complex)
+        {
+            // Single complex property
+            var firstChild = childEntityInfos.FirstOrDefault()
+                ?? throw new InvalidOperationException("No related nodes found for complex property.");
+            Property property = new(
+                propertySchema.PropertyInfo,
+                propertySchema.Neo4jPropertyName,
+                propertySchema.IsNullable,
+                firstChild);
+            return Task.FromResult(property);
+        }
+
+        throw new InvalidOperationException(
+            $"Unsupported property type for complex property: {propertySchema.PropertyType}");
+    }
+
+    private List<EntityInfo> ProcessRelationships(List<IRecord> records, Type targetType)
+    {
+        var results = new List<EntityInfo>();
+
+        foreach (var record in records)
+        {
+            if (!record.TryGet<object>("r", out var relObj) || relObj is not IRelationship relationship)
+                continue;
+
+            var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
+            results.Add(entityInfo);
+        }
+
+        return results;
+    }
+
+    private EntityInfo CreateEntityInfoFromNode(INode node, Type actualType)
+    {
+        var label = node.Labels.FirstOrDefault() ?? actualType.Name;
+        var simpleProperties = ExtractSimpleProperties(node.Properties, actualType);
+
         return new EntityInfo(
-            Type: type,
+            ActualType: actualType,
+            Label: label,
             SimpleProperties: simpleProperties,
             ComplexProperties: new Dictionary<string, Property>()
         );
     }
 
-    private object? DeserializeComplexPropertyNode(INode node)
+    private EntityInfo CreateEntityInfoFromRelationship(IRelationship relationship, Type actualType)
     {
-        try
-        {
-            // Get the type from metadata
-            var type = SerializationBridge.GetTypeFromMetadata(node.Properties);
-            if (type == null)
-            {
-                _logger.LogWarning("No type metadata found for complex property node");
-                return null;
-            }
+        var label = relationship.Type ?? actualType.Name;
+        var simpleProperties = ExtractSimpleProperties(relationship.Properties, actualType);
 
-            return DeserializeNode(node, type);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to deserialize complex property node");
-            return null;
-        }
+        return new EntityInfo(
+            ActualType: actualType,
+            Label: label,
+            SimpleProperties: simpleProperties,
+            ComplexProperties: new Dictionary<string, Property>() // Relationships can't have complex properties
+        );
     }
 
-    private T DeserializeProjection<T>(IRecord record)
+    private Dictionary<string, Property> ExtractSimpleProperties(
+        IReadOnlyDictionary<string, object> properties,
+        Type entityType)
     {
-        var targetType = typeof(T);
+        var result = new Dictionary<string, Property>();
 
-        // For anonymous types or projections, match constructor parameters
-        var constructor = targetType.GetConstructors().FirstOrDefault();
-        if (constructor == null)
-            throw new InvalidOperationException($"No constructor found for type {targetType}");
+        if (!_entityFactory.CanDeserialize(entityType))
+            return result;
 
-        var parameters = constructor.GetParameters();
-        var values = new object?[parameters.Length];
+        var schema = _entityFactory.GetSchema(entityType);
+        if (schema?.SimpleProperties == null)
+            return result;
 
-        for (int i = 0; i < parameters.Length; i++)
+        foreach (var (key, value) in properties)
         {
-            var param = parameters[i];
+            // Skip metadata properties
+            if (key == SerializationBridge.MetadataPropertyName)
+                continue;
 
-            // Try to find matching value by name
-            if (record.TryGet(param.Name!, out var value))
+            // Check if this property is in the schema
+            if (schema.SimpleProperties.TryGetValue(key, out var propertySchema))
             {
-                values[i] = ConvertValueNonGeneric(value, param.ParameterType);
-            }
-            else if (i < record.Values.Count)
-            {
-                // Fall back to positional matching
-                values[i] = ConvertValueNonGeneric(record.Values[i].Value, param.ParameterType);
+                var convertedValue = SerializationBridge.FromNeo4jValue(value, propertySchema.PropertyInfo.PropertyType)
+                    ?? throw new InvalidOperationException($"Failed to convert value for property '{key}' of type '{propertySchema.PropertyInfo.PropertyType}'");
+
+                Property property = new(
+                    propertySchema.PropertyInfo,
+                    propertySchema.Neo4jPropertyName,
+                    propertySchema.IsNullable,
+                    propertySchema.PropertyType == PropertyType.SimpleCollection
+                        ? CreateSimpleCollection(convertedValue, propertySchema.ElementType!)
+                        : new SimpleValue(convertedValue, propertySchema.PropertyInfo.PropertyType));
+
+                result[key] = property;
             }
         }
 
-        return (T)constructor.Invoke(values);
+        return result;
     }
 
-    private object? ConvertValueNonGeneric(object? value, Type targetType)
+    private SimpleCollection CreateSimpleCollection(object convertedValue, Type elementType)
     {
-        var method = GetType()
-            .GetMethod(nameof(ConvertValue), BindingFlags.NonPublic | BindingFlags.Instance)!
-            .MakeGenericMethod(targetType);
+        var items = new List<SimpleValue>();
+        if (convertedValue is IEnumerable<object> enumerable)
+        {
+            foreach (var item in enumerable)
+            {
+                items.Add(new SimpleValue(item, elementType));
+            }
+        }
 
-        return method.Invoke(this, new[] { value });
+        return new SimpleCollection(items, elementType);
     }
 }
+
+// Helper record for organizing related node data
+internal record RelatedNodeInfo(
+    INode Node,
+    string RelType,
+    IReadOnlyDictionary<string, object> RelationshipProperties);

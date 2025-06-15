@@ -19,7 +19,7 @@ using System.Collections.Concurrent;
 /// <summary>
 /// Registry for entity serializers
 /// </summary>
-internal class EntitySerializerRegistry
+public class EntitySerializerRegistry
 {
     private readonly ConcurrentDictionary<Type, IEntitySerializer> _serializers = new();
 
@@ -59,5 +59,15 @@ internal class EntitySerializerRegistry
     public IEntitySerializer? GetSerializer<T>() where T : IEntity
     {
         return GetSerializer(typeof(T));
+    }
+
+    /// <summary>
+    /// Checks if a serializer for the specified type exists in the registry.
+    /// </summary>
+    /// <param name="type">The type to check for a serializer</param>
+    /// <returns>True if a serializer exists for the specified type, otherwise false</returns>
+    public bool ContainsType(Type type)
+    {
+        return _serializers.ContainsKey(type);
     }
 }

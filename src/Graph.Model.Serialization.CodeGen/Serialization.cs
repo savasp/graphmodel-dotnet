@@ -21,7 +21,7 @@ internal static class Serialization
 {
     internal static void GenerateSerializeMethod(StringBuilder sb, INamedTypeSymbol type)
     {
-        sb.AppendLine($"    public override Entity Serialize(object obj)");
+        sb.AppendLine($"    public EntityInfo Serialize(object obj)");
         sb.AppendLine("    {");
         sb.AppendLine($"        var entity = ({GetTypeOfName(type)})obj;");
         sb.AppendLine("        var simpleProperties = new Dictionary<string, Property>();");
@@ -45,8 +45,8 @@ internal static class Serialization
             GenerateIntermediateRepresentationCreation(sb, property, propertyType, propertyName);
         }
 
-        sb.AppendLine($"        return new Entity(");
-        sb.AppendLine($"            Type: typeof({GetTypeOfName(type)}),");
+        sb.AppendLine($"        return new EntityInfo(");
+        sb.AppendLine($"            ActualType: typeof({GetTypeOfName(type)}),");
         sb.AppendLine($"            Label: \"{Utils.GetLabelFromType(type)}\",");
         sb.AppendLine($"            SimpleProperties: simpleProperties,");
         sb.AppendLine($"            ComplexProperties: complexProperties");
@@ -77,7 +77,7 @@ internal static class Serialization
             {
                 // Non-nullable value type - always serialize
                 sb.AppendLine($"            serializedValue = new SimpleValue(");
-                sb.AppendLine($"                Object: EntitySerializerBase.ConvertToNeo4jValue(value)!,");
+                sb.AppendLine($"                Object: value!,");
                 sb.AppendLine($"                Type: typeof({GetTypeOfName(propertyType)})");
                 sb.AppendLine($"            );");
             }
@@ -87,7 +87,7 @@ internal static class Serialization
                 sb.AppendLine($"            if (value != null)");
                 sb.AppendLine($"            {{");
                 sb.AppendLine($"                serializedValue = new SimpleValue(");
-                sb.AppendLine($"                    Object: EntitySerializerBase.ConvertToNeo4jValue(value)!,");
+                sb.AppendLine($"                    Object: value!,");
                 sb.AppendLine($"                    Type: typeof({GetTypeOfName(propertyType)})");
                 sb.AppendLine($"                );");
                 sb.AppendLine($"            }}");
@@ -98,7 +98,7 @@ internal static class Serialization
             // Complex type - recursively serialize to Entity
             sb.AppendLine($"            if (value != null)");
             sb.AppendLine($"            {{");
-            sb.AppendLine($"                var complexSerializer = EntitySerializerRegistry.GetSerializer(value.GetType());");
+            sb.AppendLine($"                var complexSerializer = _serializerRegistry.GetSerializer(value.GetType());");
             sb.AppendLine($"                if (complexSerializer != null)");
             sb.AppendLine($"                {{");
             sb.AppendLine($"                    serializedValue = complexSerializer.Serialize(value);");
@@ -146,7 +146,7 @@ internal static class Serialization
                 sb.AppendLine($"                    if (item != null)");
                 sb.AppendLine($"                    {{");
                 sb.AppendLine($"                        values.Add(new SimpleValue(");
-                sb.AppendLine($"                            Object: EntitySerializerBase.ConvertToNeo4jValue(item)!,");
+                sb.AppendLine($"                            Object: item!,");
                 sb.AppendLine($"                            Type: typeof({GetTypeOfName(elementType)})");
                 sb.AppendLine($"                        ));");
                 sb.AppendLine($"                    }}");
@@ -155,7 +155,7 @@ internal static class Serialization
             {
                 // Value types can't be null, so no null check needed
                 sb.AppendLine($"                    values.Add(new SimpleValue(");
-                sb.AppendLine($"                        Object: EntitySerializerBase.ConvertToNeo4jValue(item)!,");
+                sb.AppendLine($"                        Object: item!,");
                 sb.AppendLine($"                        Type: typeof({GetTypeOfName(elementType)})");
                 sb.AppendLine($"                    ));");
             }
@@ -169,13 +169,13 @@ internal static class Serialization
         else
         {
             // For complex collections, get the serializer once before the loop since all items have the same type
-            sb.AppendLine($"                var itemSerializer = EntitySerializerRegistry.GetSerializer(typeof({GetTypeOfName(elementType)}));");
+            sb.AppendLine($"                var itemSerializer = _serializerRegistry.GetSerializer(typeof({GetTypeOfName(elementType)}));");
             sb.AppendLine($"                if (itemSerializer == null)");
             sb.AppendLine($"                {{");
             sb.AppendLine($"                    throw new InvalidOperationException($\"No serializer found for type {GetTypeOfName(elementType)}\");");
             sb.AppendLine($"                }}");
             sb.AppendLine();
-            sb.AppendLine($"                var entities = new List<Entity>();");
+            sb.AppendLine($"                var entities = new List<EntityInfo>();");
             sb.AppendLine($"                foreach (var item in value)");
             sb.AppendLine($"                {{");
 
@@ -185,7 +185,7 @@ internal static class Serialization
                 sb.AppendLine($"                    if (item != null)");
                 sb.AppendLine($"                    {{");
                 sb.AppendLine($"                        var serializedItem = itemSerializer.Serialize(item);");
-                sb.AppendLine($"                        if (serializedItem is Entity entityItem)");
+                sb.AppendLine($"                        if (serializedItem is EntityInfo entityItem)");
                 sb.AppendLine($"                        {{");
                 sb.AppendLine($"                            entities.Add(entityItem);");
                 sb.AppendLine($"                        }}");
@@ -195,7 +195,7 @@ internal static class Serialization
             {
                 // Value types can't be null, so no null check needed
                 sb.AppendLine($"                    var serializedItem = itemSerializer.Serialize(item);");
-                sb.AppendLine($"                    if (serializedItem is Entity entityItem)");
+                sb.AppendLine($"                    if (serializedItem is EntityInfo entityItem)");
                 sb.AppendLine($"                    {{");
                 sb.AppendLine($"                        entities.Add(entityItem);");
                 sb.AppendLine($"                    }}");

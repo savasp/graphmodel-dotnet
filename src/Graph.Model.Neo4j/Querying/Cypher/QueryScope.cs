@@ -12,11 +12,87 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Cypher;
+namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher;
 
-internal record QueryScope(string Alias)
+internal sealed class QueryScope
 {
-    public string? Label { get; init; }
-    public Type? EntityType { get; init; }
-    public Dictionary<string, string> PropertyMappings { get; init; } = [];
+    private readonly Dictionary<Type, string> _typeAliases = [];
+    private readonly Dictionary<string, Type> _aliasTypes = [];
+    private readonly Stack<string> _aliasStack = new();
+    private int _aliasCounter = 0;
+
+    /// <summary>
+    /// Gets or sets the current alias being used in the query context.
+    /// This changes as we traverse through different parts of the expression tree.
+    /// </summary>
+    public string? CurrentAlias { get; set; }
+
+    /// <summary>
+    /// Pushes a new alias onto the stack and sets it as current.
+    /// </summary>
+    public void PushAlias(string alias)
+    {
+        _aliasStack.Push(CurrentAlias ?? string.Empty);
+        CurrentAlias = alias;
+    }
+
+    /// <summary>
+    /// Pops the previous alias from the stack and restores it.
+    /// </summary>
+    public void PopAlias()
+    {
+        if (_aliasStack.Count > 0)
+        {
+            CurrentAlias = _aliasStack.Pop();
+            if (string.IsNullOrEmpty(CurrentAlias))
+            {
+                CurrentAlias = null;
+            }
+        }
+    }
+
+    public string GetOrCreateAlias(Type type, string? preferredAlias = null)
+    {
+        if (_typeAliases.TryGetValue(type, out var existingAlias))
+        {
+            return existingAlias;
+        }
+
+        var alias = preferredAlias ?? GenerateAlias(type);
+
+        // Ensure uniqueness
+        while (_aliasTypes.ContainsKey(alias))
+        {
+            alias = $"{alias}{++_aliasCounter}";
+        }
+
+        _typeAliases[type] = alias;
+        _aliasTypes[alias] = type;
+
+        return alias;
+    }
+
+    public Type? GetTypeForAlias(string alias)
+    {
+        return _aliasTypes.GetValueOrDefault(alias);
+    }
+
+    public string? GetAliasForType(Type type)
+    {
+        return _typeAliases.GetValueOrDefault(type);
+    }
+
+    private string GenerateAlias(Type type)
+    {
+        var name = type.Name;
+
+        // Remove interface prefix
+        if (name.StartsWith("I") && name.Length > 1 && char.IsUpper(name[1]))
+        {
+            name = name[1..];
+        }
+
+        // Take first letter and make it lowercase
+        return char.ToLower(name[0]).ToString();
+    }
 }

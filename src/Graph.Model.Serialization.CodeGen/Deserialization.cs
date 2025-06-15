@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
 
@@ -24,7 +21,7 @@ internal static class Deserialization
 {
     internal static void GenerateDeserializeMethod(StringBuilder sb, INamedTypeSymbol type)
     {
-        sb.AppendLine("    public override object Deserialize(Entity entity, Type targetType)");
+        sb.AppendLine("    public object Deserialize(EntityInfo entity)");
         sb.AppendLine("    {");
 
         // Get all properties that we can deserialize
@@ -137,7 +134,6 @@ internal static class Deserialization
     {
         var paramName = parameter.Name;
         // For constructor parameters, we'll assume the property name matches the parameter name
-        // but with proper casing (camelCase for Neo4j properties)
         var propName = Utils.GetPropertyNameFromParameter(parameter);
         var paramType = parameter.Type.ToDisplayString();
 
@@ -220,7 +216,7 @@ internal static class Deserialization
             var typeForTypeOf = Utils.GetTypeForTypeOf(targetType);
             var castType = targetType.ToDisplayString();
 
-            sb.AppendLine($"{indentStr}    {variableName} = ({castType})ConvertFromNeo4jValue(simpleValue.Object, typeof({typeForTypeOf}))!;");
+            sb.AppendLine($"{indentStr}    {variableName} = simpleValue.Object;");
             sb.AppendLine($"{indentStr}}}");
             sb.AppendLine($"{indentStr}else");
             sb.AppendLine($"{indentStr}{{");
@@ -240,12 +236,12 @@ internal static class Deserialization
         {
             // Complex type handling stays the same...
             sb.AppendLine($"{indentStr}// Extract complex value");
-            sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is Entity complexEntity)");
+            sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is EntityInfo complexEntity)");
             sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    var complexSerializer = EntitySerializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(targetType)}));");
+            sb.AppendLine($"{indentStr}    var complexSerializer = _serializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(targetType)}));");
             sb.AppendLine($"{indentStr}    if (complexSerializer != null)");
             sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        {variableName} = ({targetType.ToDisplayString()})complexSerializer.Deserialize(complexEntity, targetType);");
+            sb.AppendLine($"{indentStr}        {variableName} = ({targetType.ToDisplayString()})complexSerializer.Deserialize(complexEntity);");
             sb.AppendLine($"{indentStr}    }}");
             sb.AppendLine($"{indentStr}    else");
             sb.AppendLine($"{indentStr}    {{");
@@ -300,14 +296,12 @@ internal static class Deserialization
             {
                 sb.AppendLine($"{indentStr}        if (simpleValue.Object != null)");
                 sb.AppendLine($"{indentStr}        {{");
-                sb.AppendLine($"{indentStr}            var convertedValue = ({elementCastType})ConvertFromNeo4jValue(simpleValue.Object, typeof({elementTypeForTypeOf}))!;");
-                sb.AppendLine($"{indentStr}            collection.Add(convertedValue);");
+                sb.AppendLine($"{indentStr}            collection.Add(simpleValue.Object);");
                 sb.AppendLine($"{indentStr}        }}");
             }
             else
             {
-                sb.AppendLine($"{indentStr}        var convertedValue = ({elementCastType})ConvertFromNeo4jValue(simpleValue.Object, typeof({elementTypeForTypeOf}))!;");
-                sb.AppendLine($"{indentStr}        collection.Add(convertedValue);");
+                sb.AppendLine($"{indentStr}        collection.Add(simpleValue.Object);");
             }
 
             sb.AppendLine($"{indentStr}    }}");
@@ -318,7 +312,7 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is EntityCollection entityCollection)");
             sb.AppendLine($"{indentStr}{{");
             sb.AppendLine($"{indentStr}    var collection = new List<{elementType.ToDisplayString()}>();");
-            sb.AppendLine($"{indentStr}    var itemSerializer = EntitySerializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(elementType)}));");
+            sb.AppendLine($"{indentStr}    var itemSerializer = _serializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(elementType)}));");
             sb.AppendLine($"{indentStr}    if (itemSerializer != null)");
             sb.AppendLine($"{indentStr}    {{");
             sb.AppendLine($"{indentStr}        foreach (var entityItem in entityCollection.Entities)");
