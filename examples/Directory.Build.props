@@ -1,4 +1,6 @@
 <Project>
+    <Import Project="../Directory.Build.props" />
+
     <PropertyGroup>
         <NoWarn>CS1591</NoWarn>
     </PropertyGroup>

@@ -1,5 +1,10 @@
 <Project>
     <PropertyGroup>
+        <!-- Default to Debug configuration for local development -->
+        <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    </PropertyGroup>
+
+    <PropertyGroup>
         <!-- Compile settings -->
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
@@ -17,7 +22,8 @@
 
         <!-- Package settings -->
         <IncludeBuildOutput>true</IncludeBuildOutput>
-        <Version>1.0.0-alpha-$([System.DateTime]::Now.ToString('yyyyMMddHHmmss'))</Version>
+        <Version>1.0.0</Version>
+        <VersionSuffix>alpha-$([System.DateTime]::Now.ToString('yyyyMMddHHmmss'))</VersionSuffix>
         <Company>Cvoya</Company>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/savasp/graphmodel</PackageProjectUrl>
@@ -43,6 +49,13 @@
     <!-- Test project settings -->
     <PropertyGroup Condition=" $(MSBuildProjectDirectory.Contains('/tests/')) ">
         <IsTestProject>true</IsTestProject>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <!-- Example project settings -->
+    <PropertyGroup Condition=" $(MSBuildProjectDirectory.Contains('/examples/')) ">
         <GenerateDocumentationFile>false</GenerateDocumentationFile>
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
         <IsPackable>false</IsPackable>
