@@ -30,6 +30,13 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         ?? NullLogger<Neo4jRelationshipManager>.Instance;
     private readonly EntityFactory _serializer = new();
 
+    private static readonly string[] _ignoredProperties =
+    [
+        nameof(Model.IRelationship.StartNodeId),
+        nameof(Model.IRelationship.EndNodeId),
+        nameof(Model.IRelationship.Direction)
+    ];
+
     public async Task<TRelationship?> GetRelationshipAsync<TRelationship>(
         string relationshipId,
         GraphTransaction transaction,
@@ -212,7 +219,9 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             CREATE (source)-[r:{entity.Label} $props]->(target)
             RETURN r IS NOT NULL AS created";
 
-        var properties = SerializeSimpleProperties(entity);
+        var properties = SerializeSimpleProperties(entity)
+            .Where(kv => !_ignoredProperties.Contains(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
 
         var result = await transaction.RunAsync(cypher, new
         {

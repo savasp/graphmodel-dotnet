@@ -220,6 +220,14 @@ try
         Console.WriteLine($"  Address: {address.Street}, {address.City}, {address.State} {address.ZipCode}, {address.Country}");
     }
 
+    // Serialize a relationship
+    Console.WriteLine("3. Creating a relationship between Alice and Bob...");
+    var aliceFriendBob = new Friend(alice.Id, bob.Id) { Since = new DateTime(2021, 1, 1) };
+    await graph.CreateRelationshipAsync(aliceFriendBob);
+
+    Console.WriteLine($"✓ Created relationship between {alice.Name} and {bob.Name}");
+    Console.WriteLine($"  Since: {aliceFriendBob.Since}");
+
     Console.WriteLine("\n=== Example 0 Complete ===");
     Console.WriteLine("This example demonstrated:");
     Console.WriteLine("• Creating nodes with complex properties");

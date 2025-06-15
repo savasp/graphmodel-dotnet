@@ -104,3 +104,12 @@ public class City
 {
     public string Name { get; set; } = string.Empty;
 }
+
+[Relationship(Label = "FRIEND_OF")]
+public record Friend : Relationship
+{
+    public Friend(string startNodeId, string endNodeId) : base(startNodeId, endNodeId)
+    {
+    }
+    public DateTime Since { get; set; }
+}
