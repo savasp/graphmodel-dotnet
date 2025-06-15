@@ -26,7 +26,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     private readonly ILogger<EntityFactory> _logger = loggerFactory?.CreateLogger<EntityFactory>()
         ?? NullLogger<EntityFactory>.Instance;
 
-    private readonly EntitySerializerRegistry _serializerRegistry = new();
+    private readonly EntitySerializerRegistry _serializerRegistry = EntitySerializerRegistry.Instance;
 
     /// <summary>
     /// Deserializes an <see cref="IEntity"/>" from its serialized form.

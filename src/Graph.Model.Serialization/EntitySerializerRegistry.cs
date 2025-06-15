@@ -24,6 +24,11 @@ public class EntitySerializerRegistry
     private readonly ConcurrentDictionary<Type, IEntitySerializer> _serializers = new();
 
     /// <summary>
+    /// Gets the collection of registered serializers
+    /// </summary>
+    public static EntitySerializerRegistry Instance => new EntitySerializerRegistry();
+
+    /// <summary>
     /// Registers a serializer for a specific type
     /// </summary>
     /// <typeparam name="T">The type of the entity</typeparam>

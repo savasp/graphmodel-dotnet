@@ -310,7 +310,7 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine("using System;");
         sb.AppendLine("using Cvoya.Graph.Model;");
-        sb.AppendLine("using Cvoya.Graph.Model.Neo4j.Serialization;");
+        sb.AppendLine("using Cvoya.Graph.Model.Serialization;");
         sb.AppendLine();
         sb.AppendLine("internal static class EntitySerializerRegistration");
         sb.AppendLine("{");
@@ -336,12 +336,12 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
             if (implementsINode || implementsIRelationship)
             {
                 // Register entity types with generic method
-                sb.AppendLine($"        EntitySerializerRegistry.Register<{cleanTypeName}>(new {namespaceName}.{uniqueSerializerName}());");
+                sb.AppendLine($"        EntitySerializerRegistry.Instance.Register<{cleanTypeName}>(new {namespaceName}.{uniqueSerializerName}());");
             }
             else
             {
                 // Register complex property types with typeof
-                sb.AppendLine($"        EntitySerializerRegistry.Register(typeof({cleanTypeName}), new {namespaceName}.{uniqueSerializerName}());");
+                sb.AppendLine($"        EntitySerializerRegistry.Instance.Register(typeof({cleanTypeName}), new {namespaceName}.{uniqueSerializerName}());");
             }
         }
 

@@ -216,7 +216,7 @@ internal static class Deserialization
             var typeForTypeOf = Utils.GetTypeForTypeOf(targetType);
             var castType = targetType.ToDisplayString();
 
-            sb.AppendLine($"{indentStr}    {variableName} = simpleValue.Object;");
+            sb.AppendLine($"{indentStr}    {variableName} = ({castType})simpleValue.Object;");
             sb.AppendLine($"{indentStr}}}");
             sb.AppendLine($"{indentStr}else");
             sb.AppendLine($"{indentStr}{{");
@@ -296,12 +296,12 @@ internal static class Deserialization
             {
                 sb.AppendLine($"{indentStr}        if (simpleValue.Object != null)");
                 sb.AppendLine($"{indentStr}        {{");
-                sb.AppendLine($"{indentStr}            collection.Add(simpleValue.Object);");
+                sb.AppendLine($"{indentStr}            collection.Add(({elementTypeForTypeOf})simpleValue.Object);");
                 sb.AppendLine($"{indentStr}        }}");
             }
             else
             {
-                sb.AppendLine($"{indentStr}        collection.Add(simpleValue.Object);");
+                sb.AppendLine($"{indentStr}        collection.Add(({elementTypeForTypeOf})simpleValue.Object);");
             }
 
             sb.AppendLine($"{indentStr}    }}");
@@ -317,10 +317,10 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}    {{");
             sb.AppendLine($"{indentStr}        foreach (var entityItem in entityCollection.Entities)");
             sb.AppendLine($"{indentStr}        {{");
-            sb.AppendLine($"{indentStr}            var deserializedItem = itemSerializer.Deserialize(entityItem, targetType);");
+            sb.AppendLine($"{indentStr}            var deserializedItem = itemSerializer.Deserialize(entityItem);");
             sb.AppendLine($"{indentStr}            if (deserializedItem is {elementType.ToDisplayString()} typedItem)");
             sb.AppendLine($"{indentStr}            {{");
-            sb.AppendLine($"{indentStr}                collection.Add(typedItem);");
+            sb.AppendLine($"{indentStr}                collection.Add((({elementType.ToDisplayString()})typedItem));");
             sb.AppendLine($"{indentStr}            }}");
             sb.AppendLine($"{indentStr}        }}");
             sb.AppendLine($"{indentStr}    }}");
