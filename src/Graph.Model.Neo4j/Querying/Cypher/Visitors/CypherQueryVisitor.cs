@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Cvoya.Graph.Model.Serialization;
 using Microsoft.Extensions.Logging;
 
@@ -368,9 +369,30 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         var genericArgs = node.Method.GetGenericArguments();
         if (genericArgs.Length >= 2)
         {
-            var sourceType = node.Object?.Type ?? node.Arguments[0].Type;
-            var relationshipType = genericArgs[0];
-            var targetType = genericArgs[1];
+            // Get the actual entity type from the queryable, not the queryable type itself
+            Type sourceType;
+
+            if (node.Object?.Type.IsGenericType == true &&
+                node.Object.Type.GetGenericTypeDefinition() == typeof(GraphNodeQueryable<>))
+            {
+                // Extract the entity type from GraphNodeQueryable<T>
+                sourceType = node.Object.Type.GetGenericArguments()[0];
+            }
+            else if (node.Arguments.Count > 0 &&
+                     node.Arguments[0].Type.IsGenericType &&
+                     node.Arguments[0].Type.GetGenericTypeDefinition() == typeof(GraphNodeQueryable<>))
+            {
+                // Extract from the first argument if it's a queryable
+                sourceType = node.Arguments[0].Type.GetGenericArguments()[0];
+            }
+            else
+            {
+                // Fallback to the original logic
+                sourceType = node.Object?.Type ?? node.Arguments[0].Type;
+            }
+
+            var relationshipType = genericArgs[0]; // WorksFor
+            var targetType = genericArgs[1];       // Company
 
             var visitor = new PathSegmentVisitor(_scope, _queryBuilder);
             visitor.BuildPathSegmentQuery(sourceType, relationshipType, targetType);

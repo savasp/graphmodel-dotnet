@@ -29,18 +29,21 @@ internal sealed class PathSegmentVisitor
 
     public void BuildPathSegmentQuery(Type sourceType, Type relationshipType, Type targetType)
     {
-        var sourceAlias = _scope.GetOrCreateAlias(sourceType, "src");
-        var relAlias = _scope.GetOrCreateAlias(relationshipType, "r");
-        var targetAlias = _scope.GetOrCreateAlias(targetType, "tgt");
-        
+        // Clear any existing matches - PathSegments should be completely self-contained
+        _builder.ClearMatches();
+
+        // Use different aliases to avoid conflicts
+        var sourceAlias = "src";  // Don't use scope, use fixed aliases
+        var relAlias = "r";
+        var targetAlias = "tgt";
+
         var sourceLabel = Labels.GetLabelFromType(sourceType);
         var relLabel = Labels.GetLabelFromType(relationshipType);
         var targetLabel = Labels.GetLabelFromType(targetType);
-        
-        // Build the path pattern
-        var pattern = $"({sourceAlias}:{sourceLabel})-[{relAlias}:{relLabel}]->({targetAlias}:{targetLabel})";
-        
-        _builder.AddMatch(pattern);
+
+        // Build the complete path pattern as a single match
+        var pathPattern = $"({sourceAlias}:{sourceLabel})-[{relAlias}:{relLabel}]->({targetAlias}:{targetLabel})";
+        _builder.AddMatchPattern(pathPattern);
         _builder.AddReturn($"{sourceAlias}, {relAlias}, {targetAlias}");
     }
 }

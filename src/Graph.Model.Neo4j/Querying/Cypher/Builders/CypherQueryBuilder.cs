@@ -72,6 +72,11 @@ internal class CypherQueryBuilder
         _mainNodeAlias ??= alias;
     }
 
+    public void AddMatchPattern(string fullPattern)
+    {
+        _matchClauses.Add(fullPattern);
+    }
+
     public void EnableComplexPropertyLoading()
     {
         _includeComplexProperties = true;

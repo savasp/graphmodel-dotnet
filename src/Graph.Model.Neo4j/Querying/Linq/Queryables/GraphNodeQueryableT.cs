@@ -49,9 +49,8 @@ internal sealed class GraphNodeQueryable<TNode> :
         where TTarget : INode
     {
         var methodCall = Expression.Call(
-            null,
-            GetGenericMethod(nameof(Traverse), typeof(TRel), typeof(TTarget)),
-            Expression);
+            Expression, // Pass the current instance, not null
+            GetGenericMethod(nameof(Traverse), typeof(TRel), typeof(TTarget)));
 
         return Provider.CreateTraversalQuery<TNode, TRel, TTarget>(methodCall);
     }
@@ -60,9 +59,8 @@ internal sealed class GraphNodeQueryable<TNode> :
         where TRel : IRelationship
     {
         var methodCall = Expression.Call(
-            null,
-            GetGenericMethod(nameof(Relationships), typeof(TRel)),
-            Expression);
+            Expression, // Pass the current instance, not null
+            GetGenericMethod(nameof(Relationships), typeof(TRel)));
 
         return Provider.CreateRelationshipQuery<TRel>(methodCall);
     }
@@ -72,13 +70,11 @@ internal sealed class GraphNodeQueryable<TNode> :
         where TTarget : INode
     {
         var methodCall = Expression.Call(
-            null,
-            GetGenericMethod(nameof(PathSegments), typeof(TRel), typeof(TTarget)),
-            Expression);
+            Expression, // Pass the current instance, not null
+            GetGenericMethod(nameof(PathSegments), typeof(TRel), typeof(TTarget)));
 
         return Provider.CreatePathSegmentQuery<TNode, TRel, TTarget>(methodCall);
     }
-
     #endregion
 
     private static MethodInfo GetGenericMethod(string methodName, params Type[] typeArguments)

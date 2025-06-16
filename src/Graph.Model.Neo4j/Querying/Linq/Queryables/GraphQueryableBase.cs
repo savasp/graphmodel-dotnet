@@ -89,7 +89,13 @@ internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedQuer
 
     public IEnumerator<T> GetEnumerator()
     {
-        return Provider.Execute<IEnumerable<T>>(Expression).GetEnumerator();
+        var result = Provider.Execute<IEnumerable<T>>(Expression);
+
+        // Handle the case where Execute returns null (no results)
+        if (result is null)
+            return Enumerable.Empty<T>().GetEnumerator();
+
+        return result.GetEnumerator();
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

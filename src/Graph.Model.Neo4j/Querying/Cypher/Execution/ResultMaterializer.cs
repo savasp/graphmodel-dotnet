@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
 using System.Collections;
+using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
@@ -37,78 +38,118 @@ internal sealed class ResultMaterializer
         List<IRecord> records,
         CancellationToken cancellationToken = default)
     {
-        if (!records.Any())
-            return default(T);
-
         var targetType = typeof(T);
         var elementType = Helpers.GetTargetTypeIfCollection(targetType);
         var isCollectionType = targetType != elementType;
 
-        // Let the processor handle all the record processing logic
+        // Handle empty results consistently
+        if (!records.Any())
+        {
+            return isCollectionType
+                ? ConvertToCollectionType<T>([], elementType)
+                : default;
+        }
+
+        // Process records to EntityInfo objects
         var entityInfos = await _resultProcessor.ProcessAsync(records, elementType, cancellationToken);
 
-        if (isCollectionType)
-        {
-            // Materialize all elements into a collection
-            var elements = entityInfos.Select(entityInfo => MaterializeSingleElement(entityInfo, elementType)).ToList();
-            return ConvertToCollectionType<T>(elements, elementType);
-        }
-        else
-        {
-            // Materialize single element
-            var firstEntityInfo = entityInfos.FirstOrDefault();
-            if (firstEntityInfo is null)
-                return default(T);
-
-            return (T?)MaterializeSingleElement(firstEntityInfo, elementType);
-        }
+        return isCollectionType
+            ? MaterializeAsCollection<T>(entityInfos, elementType)
+            : MaterializeSingleElement<T>(entityInfos.FirstOrDefault(), elementType);
     }
 
-    private object? MaterializeSingleElement(EntityInfo entityInfo, Type elementType)
+    private T MaterializeAsCollection<T>(List<EntityInfo> entityInfos, Type elementType)
     {
-        // Simple delegation - let EntityFactory handle entities, everything else is already processed
-        if (_entityFactory.CanDeserialize(elementType))
-        {
-            return _entityFactory.Deserialize(entityInfo);
-        }
-        else
-        {
-            // For projections, the CypherResultProcessor already did the heavy lifting
-            // We just need to create the object from the processed EntityInfo
-            return CreateObjectFromEntityInfo(entityInfo, elementType);
-        }
+        var elements = entityInfos
+            .Select(entityInfo => MaterializeSingleElement<object>(entityInfo, elementType))
+            .Where(item => item is not null)
+            .ToList();
+
+        return ConvertToCollectionType<T>(elements!, elementType);
+    }
+
+    private TResult? MaterializeSingleElement<TResult>(EntityInfo? entityInfo, Type elementType)
+    {
+        if (entityInfo is null)
+            return default(TResult);
+
+        var result = _entityFactory.CanDeserialize(elementType)
+            ? _entityFactory.Deserialize(entityInfo)
+            : CreateObjectFromEntityInfo(entityInfo, elementType);
+
+        return result is null ? default(TResult) : (TResult)result;
     }
 
     private object? CreateObjectFromEntityInfo(EntityInfo entityInfo, Type targetType)
     {
-        // Handle simple types - should have exactly one property
-        if (targetType.IsPrimitive || targetType == typeof(string) ||
-            targetType == typeof(DateTime) || targetType.IsEnum)
+        // Handle path segments specially
+        if (IsPathSegmentType(targetType))
         {
-            if (entityInfo.SimpleProperties.Count == 1)
-            {
-                var singleProperty = entityInfo.SimpleProperties.First().Value;
-                if (singleProperty.Value is SimpleValue simpleValue)
-                {
-                    return Convert.ChangeType(simpleValue.Object, targetType);
-                }
-            }
-            return GetDefaultValue(targetType);
+            return CreatePathSegmentFromEntityInfo(entityInfo, targetType);
         }
 
-        // Handle complex types - use constructor matching
+        // Handle simple value projections
+        if (GraphDataModel.IsSimple(targetType))
+        {
+            return CreateSimpleValue(entityInfo, targetType);
+        }
+
+        // Handle complex object construction
         return CreateComplexObject(entityInfo, targetType);
+    }
+
+    private object CreatePathSegmentFromEntityInfo(EntityInfo entityInfo, Type interfaceType)
+    {
+        var genericArgs = interfaceType.GetGenericArguments();
+        var concreteType = typeof(GraphPathSegment<,,>).MakeGenericType(genericArgs);
+
+        // Extract the three components from the path segment EntityInfo
+        var startNodeEntityInfo = GetComplexProperty(entityInfo, "StartNode");
+        var relationshipEntityInfo = GetComplexProperty(entityInfo, "Relationship");
+        var endNodeEntityInfo = GetComplexProperty(entityInfo, "EndNode");
+
+        // Materialize each component
+        var startNode = MaterializeSingleElement<object>(startNodeEntityInfo, genericArgs[0]);
+        var relationship = MaterializeSingleElement<object>(relationshipEntityInfo, genericArgs[1]);
+        var endNode = MaterializeSingleElement<object>(endNodeEntityInfo, genericArgs[2]);
+
+        // Find and invoke the constructor
+        var constructor = concreteType.GetConstructors()
+            .FirstOrDefault(c => c.GetParameters().Length == 3)
+            ?? throw new InvalidOperationException($"No 3-parameter constructor found for {concreteType.Name}");
+
+        return constructor.Invoke([startNode, relationship, endNode]);
+    }
+
+    private EntityInfo? GetComplexProperty(EntityInfo entityInfo, string propertyName)
+    {
+        return entityInfo.ComplexProperties.TryGetValue(propertyName, out var property)
+            && property.Value is EntityInfo nestedEntityInfo
+            ? nestedEntityInfo
+            : null;
+    }
+
+    private object? CreateSimpleValue(EntityInfo entityInfo, Type targetType)
+    {
+        if (entityInfo.SimpleProperties.Count == 1)
+        {
+            var singleProperty = entityInfo.SimpleProperties.First().Value;
+            if (singleProperty.Value is SimpleValue simpleValue)
+            {
+                return Convert.ChangeType(simpleValue.Object, targetType);
+            }
+        }
+
+        return GetDefaultValue(targetType);
     }
 
     private object? CreateComplexObject(EntityInfo entityInfo, Type targetType)
     {
-        var constructors = targetType.GetConstructors();
-        if (!constructors.Any())
-        {
-            throw new InvalidOperationException($"Type {targetType.Name} has no accessible constructors");
-        }
+        var constructor = targetType.GetConstructors()
+            .OrderByDescending(c => c.GetParameters().Length)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException($"Type {targetType.Name} has no accessible constructors");
 
-        var constructor = constructors.OrderByDescending(c => c.GetParameters().Length).First();
         var parameters = constructor.GetParameters();
         var values = new object?[parameters.Length];
 
@@ -116,46 +157,54 @@ internal sealed class ResultMaterializer
         {
             var param = parameters[i];
             var paramName = param.Name ?? $"param{i}";
+            var matchingProperty = FindPropertyInEntityInfo(entityInfo, paramName);
 
-            // Try to find matching property (case-insensitive)
-            var matchingProperty = entityInfo.SimpleProperties
-                .FirstOrDefault(kv => string.Equals(kv.Key, paramName, StringComparison.OrdinalIgnoreCase));
-
-            if (matchingProperty.Value?.Value is SimpleValue simpleValue)
+            values[i] = matchingProperty?.Value switch
             {
-                values[i] = ConvertToParameterType(simpleValue.Object, param.ParameterType);
-            }
-            else
-            {
-                values[i] = param.HasDefaultValue ? param.DefaultValue : GetDefaultValue(param.ParameterType);
-            }
+                SimpleValue simpleValue => ConvertToParameterType(simpleValue.Object, param.ParameterType),
+                EntityInfo complexEntityInfo => CreateObjectFromEntityInfo(complexEntityInfo, param.ParameterType),
+                _ => param.HasDefaultValue ? param.DefaultValue : GetDefaultValue(param.ParameterType)
+            };
         }
 
         return Activator.CreateInstance(targetType, values);
     }
 
+    private static Property? FindPropertyInEntityInfo(EntityInfo entityInfo, string paramName)
+    {
+        // Try exact matches first
+        if (entityInfo.SimpleProperties.TryGetValue(paramName, out var simpleProperty))
+            return simpleProperty;
+
+        if (entityInfo.ComplexProperties.TryGetValue(paramName, out var complexProperty))
+            return complexProperty;
+
+        // Try case-insensitive matches
+        return entityInfo.SimpleProperties
+            .FirstOrDefault(kv => string.Equals(kv.Key, paramName, StringComparison.OrdinalIgnoreCase)).Value
+            ?? entityInfo.ComplexProperties
+               .FirstOrDefault(kv => string.Equals(kv.Key, paramName, StringComparison.OrdinalIgnoreCase)).Value;
+    }
+
     private static object? ConvertToParameterType(object? value, Type targetType)
     {
-        if (value is null)
-            return GetDefaultValue(targetType);
-
-        if (targetType.IsAssignableFrom(value.GetType()))
-            return value;
-
-        if (targetType.IsEnum)
-            return Enum.ToObject(targetType, value);
+        if (value is null) return GetDefaultValue(targetType);
+        if (targetType.IsAssignableFrom(value.GetType())) return value;
+        if (targetType.IsEnum) return Enum.ToObject(targetType, value);
 
         return Convert.ChangeType(value, targetType);
     }
 
+    private static bool IsPathSegmentType(Type type) =>
+        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IGraphPathSegment<,,>);
+
     private static object? GetDefaultValue(Type type) =>
         type.IsValueType ? Activator.CreateInstance(type) : null;
 
-    private static T ConvertToCollectionType<T>(List<object?> items, Type elementType)
+    private static T ConvertToCollectionType<T>(List<object> items, Type elementType)
     {
         var targetType = typeof(T);
 
-        // Handle arrays
         if (targetType.IsArray)
         {
             var array = Array.CreateInstance(elementType, items.Count);
@@ -166,7 +215,6 @@ internal sealed class ResultMaterializer
             return (T)(object)array;
         }
 
-        // Handle generic collections
         if (targetType.IsGenericType)
         {
             var genericTypeDefinition = targetType.GetGenericTypeDefinition();
@@ -178,7 +226,7 @@ internal sealed class ResultMaterializer
             {
                 var listType = typeof(List<>).MakeGenericType(elementType);
                 var list = (IList)Activator.CreateInstance(listType)!;
-                foreach (var item in items.Where(i => i is not null))
+                foreach (var item in items)
                 {
                     list.Add(item);
                 }

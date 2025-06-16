@@ -31,7 +31,6 @@ internal sealed class CypherResultProcessor
         _logger = loggerFactory?.CreateLogger<CypherResultProcessor>() ?? NullLogger<CypherResultProcessor>.Instance;
     }
 
-    // Remove the generic overload since it was just calling the non-generic one anyway
     public async Task<List<EntityInfo>> ProcessAsync(
         List<IRecord> records,
         Type targetType,
@@ -39,7 +38,13 @@ internal sealed class CypherResultProcessor
     {
         _logger.LogDebug("Processing records for target type: {TargetType}", targetType.Name);
 
-        // Check if we're dealing with graph entities
+        // Handle path segments specially
+        if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(IGraphPathSegment<,,>))
+        {
+            return ProcessPathSegments(records, targetType);
+        }
+
+        // Handle regular entities
         if (typeof(Model.INode).IsAssignableFrom(targetType))
         {
             return await ProcessNodesAsync(records, targetType, cancellationToken);
@@ -47,11 +52,97 @@ internal sealed class CypherResultProcessor
 
         if (typeof(Model.IRelationship).IsAssignableFrom(targetType))
         {
-            return ProcessRelationships(records, targetType);
+            return ProcessRelationships(records, targetType, cancellationToken);
         }
 
-        // For projections, convert to EntityInfo using reflection
         return ProcessProjections(records, targetType);
+    }
+
+    private List<EntityInfo> ProcessPathSegments(List<IRecord> records, Type pathSegmentType)
+    {
+        var results = new List<EntityInfo>();
+        var genericArgs = pathSegmentType.GetGenericArguments();
+        var sourceType = genericArgs[0];  // Person
+        var relType = genericArgs[1];     // WorksFor
+        var targetType = genericArgs[2];  // Company
+
+        foreach (var record in records)
+        {
+            // Extract values by their return column names
+            var sourceNode = record["src"];  // The source node
+            var relationship = record["r"];  // The relationship
+            var targetNode = record["tgt"];  // The target node
+
+            // Process each component using existing logic
+            var sourceEntityInfo = ProcessSingleNode(sourceNode, sourceType);
+            var relEntityInfo = ProcessSingleRelationship(relationship, relType);
+            var targetEntityInfo = ProcessSingleNode(targetNode, targetType);
+
+            // Create the composite path segment EntityInfo
+            var pathSegmentEntityInfo = CreatePathSegmentEntityInfo(
+                sourceEntityInfo, relEntityInfo, targetEntityInfo, pathSegmentType);
+
+            results.Add(pathSegmentEntityInfo);
+        }
+
+        return results;
+    }
+
+    private EntityInfo ProcessSingleNode(object nodeValue, Type targetType)
+    {
+        if (nodeValue is not INode node)
+        {
+            throw new InvalidOperationException($"Expected INode, got {nodeValue?.GetType()}");
+        }
+
+        return CreateEntityInfoFromNode(node, targetType);
+    }
+
+    private EntityInfo ProcessSingleRelationship(object relationshipValue, Type targetType)
+    {
+        if (relationshipValue is not IRelationship relationship)
+        {
+            throw new InvalidOperationException($"Expected IRelationship, got {relationshipValue?.GetType()}");
+        }
+
+        return CreateEntityInfoFromRelationship(relationship, targetType);
+    }
+
+    private EntityInfo CreatePathSegmentEntityInfo(
+        EntityInfo sourceEntity,
+        EntityInfo relEntity,
+        EntityInfo targetEntity,
+        Type pathSegmentType)
+    {
+        // Store the three components as complex properties in the path segment EntityInfo
+        var complexProperties = new Dictionary<string, Property>
+        {
+            ["StartNode"] = new Property(
+                PropertyInfo: null!,
+                Label: "StartNode",
+                IsNullable: false,
+                Value: sourceEntity
+            ),
+            ["Relationship"] = new Property(
+                PropertyInfo: null!,
+                Label: "Relationship",
+                IsNullable: false,
+                Value: relEntity
+            ),
+            ["EndNode"] = new Property(
+                PropertyInfo: null!,
+                Label: "EndNode",
+                IsNullable: false,
+                Value: targetEntity
+            )
+        };
+
+        return new EntityInfo(
+            ActualType: pathSegmentType,
+            Label: "PathSegment",
+            SimpleProperties: new Dictionary<string, Property>(),
+            ComplexProperties: complexProperties
+        );
     }
 
     private List<EntityInfo> ProcessProjections(List<IRecord> records, Type targetType)
@@ -102,10 +193,11 @@ internal sealed class CypherResultProcessor
 
         foreach (var record in records)
         {
-            if (!record.TryGet<object>("n", out var nodeObj) || nodeObj is not INode node)
+            if (!record.TryGet<object>("n", out var nodeObj))
                 continue;
 
-            var entityInfo = CreateEntityInfoFromNode(node, targetType);
+            // Reuse the extracted logic
+            var entityInfo = ProcessSingleNode(nodeObj, targetType);
             results.Add(entityInfo);
         }
 
@@ -266,7 +358,7 @@ internal sealed class CypherResultProcessor
             $"Unsupported property type for complex property: {propertySchema.PropertyType}");
     }
 
-    private List<EntityInfo> ProcessRelationships(List<IRecord> records, Type targetType)
+    private List<EntityInfo> ProcessRelationships(List<IRecord> records, Type targetType, CancellationToken cancellationToken)
     {
         var results = new List<EntityInfo>();
 
@@ -361,6 +453,7 @@ internal sealed class CypherResultProcessor
 
         return new SimpleCollection(items, elementType);
     }
+
     private async Task<List<EntityInfo>> ProcessNodesAsync(
         List<IRecord> records,
         Type targetType,
