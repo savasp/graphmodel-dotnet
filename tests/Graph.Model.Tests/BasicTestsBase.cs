@@ -159,7 +159,7 @@ public abstract class BasicTestsBase : ITestBase
         var person = new Person { FirstName = "TxTest" };
         await this.Graph.CreateNodeAsync(person, tx);
         await tx.DisposeAsync(); // Rollback
-        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetNodeAsync<Person>(person.Id));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => this.Graph.GetNodeAsync<Person>(person.Id));
     }
 
     public record PersonWithCycle : Node
