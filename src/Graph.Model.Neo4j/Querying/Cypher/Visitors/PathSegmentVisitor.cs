@@ -20,11 +20,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class PathSegmentVisitor
 {
-    private readonly QueryScope _scope;
+    private readonly CypherQueryScope _scope;
     private readonly CypherQueryBuilder _builder;
     private readonly ILogger<PathSegmentVisitor> _logger;
 
-    public PathSegmentVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
+    public PathSegmentVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));

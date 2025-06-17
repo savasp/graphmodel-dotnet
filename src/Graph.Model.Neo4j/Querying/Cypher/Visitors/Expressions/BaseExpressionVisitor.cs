@@ -22,11 +22,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 internal class BaseExpressionVisitor : CypherExpressionVisitorBase
 {
-    private readonly QueryScope _scope;
+    private readonly CypherQueryScope _scope;
     private readonly CypherQueryBuilder _builder;
     private readonly ILogger<BaseExpressionVisitor> _logger;
 
-    public BaseExpressionVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
+    public BaseExpressionVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
     {
         _scope = scope;
         _builder = builder;

@@ -25,7 +25,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 {
     private readonly EntityFactory _entityFactory;
     private readonly CypherQueryBuilder _queryBuilder;
-    private readonly QueryScope _scope;
+    private readonly CypherQueryScope _scope;
     private readonly ILogger<CypherQueryVisitor> _logger;
     private readonly ILoggerFactory? _loggerFactory;
 
@@ -33,7 +33,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
         _queryBuilder = new CypherQueryBuilder();
-        _scope = new QueryScope();
+        _scope = new CypherQueryScope();
         _loggerFactory = loggerFactory;
         _logger = loggerFactory?.CreateLogger<CypherQueryVisitor>() ?? NullLogger<CypherQueryVisitor>.Instance;
     }

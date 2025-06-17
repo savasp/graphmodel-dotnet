@@ -16,10 +16,10 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 
 internal sealed class TraverseBuilder
 {
-    private readonly QueryScope _scope;
+    private readonly CypherQueryScope _scope;
     private readonly CypherQueryBuilder _queryBuilder;
 
-    public TraverseBuilder(QueryScope scope, CypherQueryBuilder queryBuilder)
+    public TraverseBuilder(CypherQueryScope scope, CypherQueryBuilder queryBuilder)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _queryBuilder = queryBuilder ?? throw new ArgumentNullException(nameof(queryBuilder));
@@ -29,20 +29,20 @@ internal sealed class TraverseBuilder
     {
         // Get the current node alias (source of traversal)
         var sourceAlias = _scope.CurrentAlias ?? "n";
-        
+
         // Create aliases for the relationship and target
         var relAlias = _scope.GetOrCreateAlias(relationshipType, "r");
         var targetAlias = _scope.GetOrCreateAlias(targetType, "t");
-        
+
         // Get labels
         var relLabel = Labels.GetLabelFromType(relationshipType);
         var targetLabel = Labels.GetLabelFromType(targetType);
-        
+
         // Build the traversal pattern
         var pattern = $"({sourceAlias})-[{relAlias}:{relLabel}]->({targetAlias}:{targetLabel})";
-        
+
         _queryBuilder.AddMatch(pattern);
-        
+
         // Update the current alias to the target
         _scope.CurrentAlias = targetAlias;
     }

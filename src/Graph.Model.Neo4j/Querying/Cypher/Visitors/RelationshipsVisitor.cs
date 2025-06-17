@@ -20,11 +20,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class RelationshipsVisitor
 {
-    private readonly QueryScope _scope;
+    private readonly CypherQueryScope _scope;
     private readonly CypherQueryBuilder _builder;
     private readonly ILogger<RelationshipsVisitor> _logger;
 
-    public RelationshipsVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
+    public RelationshipsVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));

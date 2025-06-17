@@ -21,12 +21,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class SelectManyVisitor : ExpressionVisitor
 {
-    private readonly QueryScope _scope;
+    private readonly CypherQueryScope _scope;
     private readonly CypherQueryBuilder _builder;
     private readonly ILogger<SelectManyVisitor> _logger;
     private readonly ILoggerFactory? _loggerFactory;
 
-    public SelectManyVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
+    public SelectManyVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
