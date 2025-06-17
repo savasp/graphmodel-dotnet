@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Serialization;
 
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -27,6 +28,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         ?? NullLogger<EntityFactory>.Instance;
 
     private readonly EntitySerializerRegistry _serializerRegistry = EntitySerializerRegistry.Instance;
+    private readonly ConcurrentDictionary<Type, EntitySchema> _schemas = new();
 
     /// <summary>
     /// Deserializes an <see cref="IEntity"/>" from its serialized form.
@@ -80,9 +82,20 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     /// <exception cref="GraphException"></exception>
     public EntitySchema? GetSchema(Type entityType)
     {
+        if (_schemas.TryGetValue(entityType, out var schema))
+        {
+            return schema;
+        }
+
         var serializer = _serializerRegistry.GetSerializer(entityType)
             ?? null;
 
-        return serializer?.GetSchema();
+        var s = serializer?.GetSchema();
+        if (s != null)
+        {
+            _schemas[entityType] = s;
+        }
+
+        return s;
     }
 }

@@ -25,6 +25,11 @@ internal static class Schema
         var label = Utils.GetLabelFromType(type);
         var uniqueSerializerName = Utils.GetUniqueSerializerClassName(type);
 
+        // Use a set to track what's currently being processed
+        sb.AppendLine("    private static readonly HashSet<Type> _currentlyProcessing = new();");
+        sb.AppendLine("    private static readonly Dictionary<Type, EntitySchema> _schemaCache = new();");
+        sb.AppendLine();
+
         sb.AppendLine("    /// <summary>");
         sb.AppendLine($"    /// Gets the schema information for {type.Name}.");
         sb.AppendLine("    /// </summary>");
@@ -32,14 +37,41 @@ internal static class Schema
         sb.AppendLine("    {");
         sb.AppendLine($"        return {uniqueSerializerName}.GetSchemaStatic();");
         sb.AppendLine("    }");
+        sb.AppendLine();
+
         sb.AppendLine("    /// <summary>");
         sb.AppendLine($"    /// Gets the schema information for {type.Name}.");
         sb.AppendLine("    /// </summary>");
         sb.AppendLine($"    public static EntitySchema GetSchemaStatic()");
         sb.AppendLine("    {");
-        sb.AppendLine($"        // Schema for type: {typeName}");
-        sb.AppendLine("        var simpleProperties = new Dictionary<string, PropertySchema>();");
-        sb.AppendLine("        var complexProperties = new Dictionary<string, PropertySchema>();");
+        sb.AppendLine($"        var typeKey = typeof({typeName});");
+        sb.AppendLine();
+        sb.AppendLine($"        // Return cached schema if available");
+        sb.AppendLine($"        if (_schemaCache.TryGetValue(typeKey, out var cachedSchema))");
+        sb.AppendLine($"            return cachedSchema;");
+        sb.AppendLine();
+        sb.AppendLine($"        // Check if we're already processing this type (circular reference)");
+        sb.AppendLine($"        if (_currentlyProcessing.Contains(typeKey))");
+        sb.AppendLine($"        {{");
+        sb.AppendLine($"            // Return a schema without nested schemas to break the cycle");
+        sb.AppendLine($"            return new EntitySchema(");
+        sb.AppendLine($"                ExpectedType: typeof({typeName}),");
+        sb.AppendLine($"                Label: \"{label}\",");
+        sb.AppendLine($"                IsNullable: {(type.NullableAnnotation == NullableAnnotation.Annotated || (type.CanBeReferencedByName && !type.IsValueType)).ToString().ToLowerInvariant()},");
+        sb.AppendLine($"                IsSimple: {(GraphDataModel.IsSimple(type) || GraphDataModel.IsCollectionOfSimple(type)).ToString().ToLowerInvariant()},");
+        sb.AppendLine($"                SimpleProperties: new Dictionary<string, PropertySchema>(),");
+        sb.AppendLine($"                ComplexProperties: new Dictionary<string, PropertySchema>()");
+        sb.AppendLine($"            );");
+        sb.AppendLine($"        }}");
+        sb.AppendLine();
+        sb.AppendLine($"        // Mark this type as being processed");
+        sb.AppendLine($"        _currentlyProcessing.Add(typeKey);");
+        sb.AppendLine();
+        sb.AppendLine($"        try");
+        sb.AppendLine($"        {{");
+        sb.AppendLine($"            // Build the actual schema");
+        sb.AppendLine("            var simpleProperties = new Dictionary<string, PropertySchema>();");
+        sb.AppendLine("            var complexProperties = new Dictionary<string, PropertySchema>();");
 
         // Get all serializable properties including interface properties
         var properties = GetAllPropertiesIncludingInterfaces(type)
@@ -51,19 +83,25 @@ internal static class Schema
             GeneratePropertySchema(sb, property, type);
         }
 
-        var isNullable = type.NullableAnnotation == NullableAnnotation.Annotated ||
-                        (type.CanBeReferencedByName && !type.IsValueType);
-        var isSimple = GraphDataModel.IsSimple(type) || GraphDataModel.IsCollectionOfSimple(type);
-
         sb.AppendLine();
-        sb.AppendLine($"        return new EntitySchema(");
-        sb.AppendLine($"            ExpectedType: typeof({typeName}),");
-        sb.AppendLine($"            Label: \"{label}\",");
-        sb.AppendLine($"            IsNullable: {isNullable.ToString().ToLowerInvariant()},");
-        sb.AppendLine($"            IsSimple: {isSimple.ToString().ToLowerInvariant()},");
-        sb.AppendLine($"            SimpleProperties: simpleProperties,");
-        sb.AppendLine($"            ComplexProperties: complexProperties");
-        sb.AppendLine("        );");
+        sb.AppendLine($"            var schema = new EntitySchema(");
+        sb.AppendLine($"                ExpectedType: typeof({typeName}),");
+        sb.AppendLine($"                Label: \"{label}\",");
+        sb.AppendLine($"                IsNullable: {(type.NullableAnnotation == NullableAnnotation.Annotated || (type.CanBeReferencedByName && !type.IsValueType)).ToString().ToLowerInvariant()},");
+        sb.AppendLine($"                IsSimple: {(GraphDataModel.IsSimple(type) || GraphDataModel.IsCollectionOfSimple(type)).ToString().ToLowerInvariant()},");
+        sb.AppendLine($"                SimpleProperties: simpleProperties,");
+        sb.AppendLine($"                ComplexProperties: complexProperties");
+        sb.AppendLine($"            );");
+        sb.AppendLine();
+        sb.AppendLine($"            // Cache the complete schema");
+        sb.AppendLine($"            _schemaCache[typeKey] = schema;");
+        sb.AppendLine($"            return schema;");
+        sb.AppendLine($"        }}");
+        sb.AppendLine($"        finally");
+        sb.AppendLine($"        {{");
+        sb.AppendLine($"            // Remove from processing set");
+        sb.AppendLine($"            _currentlyProcessing.Remove(typeKey);");
+        sb.AppendLine($"        }}");
         sb.AppendLine("    }");
     }
 
@@ -200,42 +238,35 @@ internal static class Schema
         }
         else if (GraphDataModel.IsCollectionOfComplex(propertyType))
         {
+            // Collection of complex types
             var elementType = GraphDataModel.GetCollectionElementType(propertyType);
-            if (elementType is not null)
+            if (elementType is INamedTypeSymbol namedElementType)
             {
                 var nestedSchemaCall = Utils.GetNestedSchemaCall(elementType);
                 sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
                 sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
                 sb.AppendLine("                PropertyType: PropertyType.ComplexCollection,");
-                sb.AppendLine($"                ElementType: typeof({Utils.GetTypeOfName(elementType)}),");
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
                 sb.AppendLine($"                NestedSchema: {nestedSchemaCall}");
-                sb.AppendLine("            );");
-            }
-            else
-            {
-                // Fallback - treat as simple property if we can't determine element type
-                sb.AppendLine($"            // Warning: Could not determine element type for complex collection property {property.Name}");
-                sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
-                sb.AppendLine("                PropertyInfo: propInfo,");
-                sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
-                sb.AppendLine("                PropertyType: PropertyType.Simple,");
-                sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
                 sb.AppendLine("            );");
             }
         }
         else
         {
-            // Complex property
-            var nestedSchemaCall = Utils.GetNestedSchemaCall(propertyType);
-            sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
-            sb.AppendLine("                PropertyInfo: propInfo,");
-            sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
-            sb.AppendLine("                PropertyType: PropertyType.Complex,");
-            sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
-            sb.AppendLine($"                NestedSchema: {nestedSchemaCall}");
-            sb.AppendLine("            );");
+            // Single complex property
+            var nestedType = propertyType is INamedTypeSymbol namedType ? namedType : null;
+            if (nestedType != null)
+            {
+                var nestedSchemaCall = Utils.GetNestedSchemaCall(propertyType);
+                sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
+                sb.AppendLine("                PropertyInfo: propInfo,");
+                sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+                sb.AppendLine("                PropertyType: PropertyType.Complex,");
+                sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
+                sb.AppendLine($"                NestedSchema: {nestedSchemaCall}");
+                sb.AppendLine("            );");
+            }
         }
 
         sb.AppendLine("        }");

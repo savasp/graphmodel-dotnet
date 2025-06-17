@@ -55,7 +55,7 @@ internal static class Utils
         var uniqueSerializerName = GetUniqueSerializerClassName(namedType);
         var serializerNamespace = GetNamespaceName(namedType);
 
-        // Return the fully qualified call to GetSchemaStatic
+        // Return a direct call to GetSchemaStatic which will handle cycle detection
         return $"{serializerNamespace}.{uniqueSerializerName}.GetSchemaStatic()";
     }
 
