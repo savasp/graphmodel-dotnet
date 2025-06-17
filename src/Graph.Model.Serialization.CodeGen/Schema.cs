@@ -41,11 +41,10 @@ internal static class Schema
         sb.AppendLine("        var simpleProperties = new Dictionary<string, PropertySchema>();");
         sb.AppendLine("        var complexProperties = new Dictionary<string, PropertySchema>();");
 
-        // Get all serializable properties
-        var properties = type.GetMembers().OfType<IPropertySymbol>()
-            .Where(p => p.DeclaredAccessibility == Accessibility.Public &&
-                       p.GetMethod != null && p.SetMethod != null &&
-                       !Utils.SerializationShouldSkipProperty(p, type));
+        // Get all serializable properties including interface properties
+        var properties = GetAllPropertiesIncludingInterfaces(type)
+            .Where(p => !Utils.SerializationShouldSkipProperty(p, type))
+            .ToList();
 
         foreach (var property in properties)
         {
@@ -68,6 +67,78 @@ internal static class Schema
         sb.AppendLine("    }");
     }
 
+    private static List<IPropertySymbol> GetAllPropertiesIncludingInterfaces(INamedTypeSymbol type)
+    {
+        var properties = new List<IPropertySymbol>();
+        var seenProperties = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // First, get properties from all implemented interfaces (including IEntity, IRelationship)
+        // This ensures we capture the core properties like Id, StartNodeId, EndNodeId, Direction
+        foreach (var interfaceType in type.AllInterfaces)
+        {
+            foreach (var property in interfaceType.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (ShouldIncludeProperty(property) && seenProperties.Add(property.Name))
+                {
+                    properties.Add(property);
+                }
+            }
+        }
+
+        // Then get properties from the type hierarchy (base classes and the type itself)
+        for (var currentType = type; currentType != null; currentType = currentType.BaseType)
+        {
+            foreach (var property in currentType.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (ShouldIncludeProperty(property) && seenProperties.Add(property.Name))
+                {
+                    properties.Add(property);
+                }
+            }
+        }
+
+        return properties;
+    }
+
+    private static bool ShouldIncludeProperty(IPropertySymbol property)
+    {
+        // Skip if it's not public
+        if (property.DeclaredAccessibility != Accessibility.Public)
+            return false;
+
+        // Skip if it's an indexer
+        if (property.IsIndexer)
+            return false;
+
+        // Skip static properties
+        if (property.IsStatic)
+            return false;
+
+        // Must have a getter
+        if (property.GetMethod == null)
+            return false;
+
+        // For interface properties, always include them if they're serializable
+        // Interface properties define the contract and don't have setters
+        if (property.ContainingType.TypeKind == TypeKind.Interface)
+        {
+            return GraphDataModel.IsSimple(property.Type);
+        }
+
+        // For concrete types, they need to be settable (either regular setter or init-only)
+        if (property.SetMethod == null && !IsRecordProperty(property))
+            return false;
+
+        // Include all simple types that can be serialized using the unified predicate
+        return GraphDataModel.IsSimple(property.Type);
+    }
+
+    private static bool IsRecordProperty(IPropertySymbol property)
+    {
+        // Check if this property is part of a record's primary constructor (init-only)
+        return property.SetMethod?.IsInitOnly == true;
+    }
+
     private static void GeneratePropertySchema(StringBuilder sb, IPropertySymbol property, INamedTypeSymbol containingType)
     {
         var propertyType = property.Type;
@@ -77,7 +148,17 @@ internal static class Schema
 
         sb.AppendLine($"        // Schema for property: {property.Name}");
         sb.AppendLine("        {");
-        sb.AppendLine($"            var propInfo = typeof({Utils.GetTypeOfName(containingType)}).GetProperty(\"{property.Name}\")!;");
+
+        // For interface properties, we need to handle the PropertyInfo lookup differently
+        if (property.ContainingType.TypeKind == TypeKind.Interface)
+        {
+            sb.AppendLine($"            var propInfo = typeof({Utils.GetTypeOfName(containingType)}).GetProperty(\"{property.Name}\")");
+            sb.AppendLine($"                ?? typeof({property.ContainingType.ToDisplayString()}).GetProperty(\"{property.Name}\")!;");
+        }
+        else
+        {
+            sb.AppendLine($"            var propInfo = typeof({Utils.GetTypeOfName(containingType)}).GetProperty(\"{property.Name}\")!;");
+        }
 
         if (GraphDataModel.IsSimple(propertyType))
         {

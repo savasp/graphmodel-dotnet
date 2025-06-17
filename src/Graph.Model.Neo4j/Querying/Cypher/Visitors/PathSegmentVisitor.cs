@@ -33,7 +33,7 @@ internal sealed class PathSegmentVisitor
         _builder.ClearMatches();
 
         // Use different aliases to avoid conflicts
-        var sourceAlias = "src";  // Don't use scope, use fixed aliases
+        var sourceAlias = "src";
         var relAlias = "r";
         var targetAlias = "tgt";
 
@@ -44,6 +44,8 @@ internal sealed class PathSegmentVisitor
         // Build the complete path pattern as a single match
         var pathPattern = $"({sourceAlias}:{sourceLabel})-[{relAlias}:{relLabel}]->({targetAlias}:{targetLabel})";
         _builder.AddMatchPattern(pathPattern);
+
+        // Always return all three components so we have context for relationship enhancement
         _builder.AddReturn($"{sourceAlias}, {relAlias}, {targetAlias}");
     }
 }

@@ -29,7 +29,6 @@ public interface IRelationship : IEntity
     /// <remarks>
     /// The direction determines how the relationship can be traversed.
     /// </remarks>
-    [Property(Ignore = true)]
     RelationshipDirection Direction { get; init; }
 
     /// <summary>
@@ -38,7 +37,6 @@ public interface IRelationship : IEntity
     /// <remarks>
     /// This is the ID of the node from which the relationship originates.
     /// </remarks>
-    [Property(Ignore = true)]
     string StartNodeId { get; init; }
 
     /// <summary>
@@ -47,6 +45,5 @@ public interface IRelationship : IEntity
     /// <remarks>
     /// This is the ID of the node to which the relationship points.
     /// </remarks>
-    [Property(Ignore = true)]
     string EndNodeId { get; init; }
 }

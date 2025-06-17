@@ -158,7 +158,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         if (predicate is LambdaExpression lambda)
         {
             var visitor = new WhereVisitor(_scope, _queryBuilder);
-            visitor.Visit(lambda.Body);
+            visitor.ProcessWhereClause(lambda);
             return true;
         }
 

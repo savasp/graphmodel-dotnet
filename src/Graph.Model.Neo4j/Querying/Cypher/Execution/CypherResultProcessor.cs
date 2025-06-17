@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
+using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
@@ -69,13 +70,16 @@ internal sealed class CypherResultProcessor
         foreach (var record in records)
         {
             // Extract values by their return column names
-            var sourceNode = record["src"];  // The source node
-            var relationship = record["r"];  // The relationship
-            var targetNode = record["tgt"];  // The target node
+            var sourceNode = record["src"].As<INode>();  // The source node
+            var relationship = record["r"].As<IRelationship>();  // The relationship
+            var targetNode = record["tgt"].As<INode>();  // The target node
 
             // Process each component using existing logic
             var sourceEntityInfo = ProcessSingleNode(sourceNode, sourceType);
-            var relEntityInfo = ProcessSingleRelationship(relationship, relType);
+
+            // For relationships in PathSegments, we need to reconstruct the missing properties
+            var relEntityInfo = ProcessSingleRelationshipWithContext(relationship, relType, sourceNode, targetNode);
+
             var targetEntityInfo = ProcessSingleNode(targetNode, targetType);
 
             // Create the composite path segment EntityInfo
@@ -88,6 +92,123 @@ internal sealed class CypherResultProcessor
         return results;
     }
 
+    private EntityInfo ProcessSingleRelationshipWithContext(IRelationship relationship, Type targetType, INode sourceNode, INode targetNode)
+    {
+        // Create the base EntityInfo from the relationship
+        var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
+
+        // Add back the missing properties using the shared enhancement logic
+        EnhanceRelationshipEntityInfo(entityInfo, targetType, sourceNode, targetNode);
+
+        return entityInfo;
+    }
+
+    private EntityInfo ProcessSingleRelationship(IRelationship relationship, Type targetType)
+    {
+        // Create the base EntityInfo from the relationship
+        var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
+
+        // For standalone relationships, we might not have source/target context
+        // but we should still try to add Direction if we can determine it
+        TryAddMissingRelationshipProperties(entityInfo, relationship, targetType);
+
+        return entityInfo;
+    }
+
+    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, Type targetType, INode sourceNode, INode targetNode)
+    {
+        // Add back the missing properties that were stripped during serialization
+        var startNodeId = GetNodeId(sourceNode);
+        var endNodeId = GetNodeId(targetNode);
+
+        // Add StartNodeId as a simple property
+        entityInfo.SimpleProperties[nameof(Model.IRelationship.StartNodeId)] = new Property(
+            PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.StartNodeId))!,
+            Label: nameof(Model.IRelationship.StartNodeId),
+            IsNullable: false,
+            Value: new SimpleValue(startNodeId, typeof(string))
+        );
+
+        // Add EndNodeId as a simple property  
+        entityInfo.SimpleProperties[nameof(Model.IRelationship.EndNodeId)] = new Property(
+            PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.EndNodeId))!,
+            Label: nameof(Model.IRelationship.EndNodeId),
+            IsNullable: false,
+            Value: new SimpleValue(endNodeId, typeof(string))
+        );
+
+        // Add Direction
+        var direction = GetRelationshipDirection(targetType);
+        entityInfo.SimpleProperties[nameof(Model.IRelationship.Direction)] = new Property(
+            PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.Direction))!,
+            Label: nameof(Model.IRelationship.Direction),
+            IsNullable: false,
+            Value: new SimpleValue(direction, typeof(RelationshipDirection))
+        );
+    }
+
+    private static void TryAddMissingRelationshipProperties(EntityInfo entityInfo, IRelationship relationship, Type targetType)
+    {
+        // Add Direction if it's missing but we can determine it
+        if (!entityInfo.SimpleProperties.ContainsKey(nameof(Model.IRelationship.Direction)))
+        {
+            var direction = GetRelationshipDirection(targetType);
+            entityInfo.SimpleProperties[nameof(Model.IRelationship.Direction)] = new Property(
+                PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.Direction))!,
+                Label: nameof(Model.IRelationship.Direction),
+                IsNullable: false,
+                Value: new SimpleValue(direction, typeof(RelationshipDirection))
+            );
+        }
+
+        // Note: StartNodeId and EndNodeId can't be reconstructed without the source/target nodes
+        // These will need to be provided when we have that context
+    }
+
+    private static string GetNodeId(INode node)
+    {
+        // Try to get the Id property from the node
+        if (node.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
+        {
+            return idValue.As<string>();
+        }
+
+        // Fallback to ElementId if no Id property
+        return node.ElementId;
+    }
+
+    private static RelationshipDirection GetRelationshipDirection(Type targetType)
+    {
+        // For records derived from Relationship, check if there's a default direction
+        // Most relationship types will use Outgoing as the default
+        return RelationshipDirection.Outgoing;
+    }
+
+    private static RelationshipDirection GetRelationshipDirection(IRelationship relationship, Type targetType)
+    {
+        // TODO: We should be getting the direction from neo4j!!!
+
+        // First, try to get Direction from the relationship properties if it exists
+        if (relationship.Properties.TryGetValue("Direction", out var directionValue))
+        {
+            if (directionValue is string directionString && Enum.TryParse<RelationshipDirection>(directionString, out var parsedDirection))
+            {
+                return parsedDirection;
+            }
+        }
+
+        // If the target type is derived from the base Relationship record, it likely has a default direction
+        // We can inspect the type to see what the default should be
+        if (targetType.IsSubclassOf(typeof(Relationship)))
+        {
+            // For records derived from Relationship, the default is typically Outgoing
+            return RelationshipDirection.Outgoing;
+        }
+
+        // Default fallback
+        return RelationshipDirection.Outgoing;
+    }
+
     private EntityInfo ProcessSingleNode(object nodeValue, Type targetType)
     {
         if (nodeValue is not INode node)
@@ -98,40 +219,30 @@ internal sealed class CypherResultProcessor
         return CreateEntityInfoFromNode(node, targetType);
     }
 
-    private EntityInfo ProcessSingleRelationship(object relationshipValue, Type targetType)
-    {
-        if (relationshipValue is not IRelationship relationship)
-        {
-            throw new InvalidOperationException($"Expected IRelationship, got {relationshipValue?.GetType()}");
-        }
-
-        return CreateEntityInfoFromRelationship(relationship, targetType);
-    }
-
     private EntityInfo CreatePathSegmentEntityInfo(
         EntityInfo sourceEntity,
         EntityInfo relEntity,
         EntityInfo targetEntity,
         Type pathSegmentType)
     {
-        // Store the three components as complex properties in the path segment EntityInfo
+        // Store the three components as properties in the path segment EntityInfo
         var complexProperties = new Dictionary<string, Property>
         {
-            ["StartNode"] = new Property(
+            [nameof(IGraphPathSegment.StartNode)] = new Property(
                 PropertyInfo: null!,
-                Label: "StartNode",
+                Label: nameof(IGraphPathSegment.StartNode),
                 IsNullable: false,
                 Value: sourceEntity
             ),
-            ["Relationship"] = new Property(
+            [nameof(IGraphPathSegment.Relationship)] = new Property(
                 PropertyInfo: null!,
-                Label: "Relationship",
+                Label: nameof(IGraphPathSegment.Relationship),
                 IsNullable: false,
                 Value: relEntity
             ),
-            ["EndNode"] = new Property(
+            [nameof(IGraphPathSegment.EndNode)] = new Property(
                 PropertyInfo: null!,
-                Label: "EndNode",
+                Label: nameof(IGraphPathSegment.EndNode),
                 IsNullable: false,
                 Value: targetEntity
             )
@@ -139,7 +250,7 @@ internal sealed class CypherResultProcessor
 
         return new EntityInfo(
             ActualType: pathSegmentType,
-            Label: "PathSegment",
+            Label: typeof(GraphPathSegment<,,>).Name,
             SimpleProperties: new Dictionary<string, Property>(),
             ComplexProperties: complexProperties
         );
@@ -367,7 +478,21 @@ internal sealed class CypherResultProcessor
             if (!record.TryGet<object>("r", out var relObj) || relObj is not IRelationship relationship)
                 continue;
 
-            var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
+            EntityInfo entityInfo;
+
+            // Check if we have source and target context available (from PathSegment projections)
+            if (record.TryGet<object>("src", out var srcObj) && srcObj is INode sourceNode &&
+                record.TryGet<object>("tgt", out var tgtObj) && tgtObj is INode targetNode)
+            {
+                // We have full context - use the enhanced processing
+                entityInfo = ProcessSingleRelationshipWithContext(relationship, targetType, sourceNode, targetNode);
+            }
+            else
+            {
+                // No context - use basic processing with partial enhancement
+                entityInfo = ProcessSingleRelationship(relationship, targetType);
+            }
+
             results.Add(entityInfo);
         }
 

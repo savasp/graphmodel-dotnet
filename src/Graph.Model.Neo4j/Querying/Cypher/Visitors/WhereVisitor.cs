@@ -241,15 +241,15 @@ internal class WhereVisitor(QueryScope scope, CypherQueryBuilder builder, ILogge
         if (current is ParameterExpression param)
         {
             // For path segments, we need to map the property correctly
-            // r.StartNode -> n (the source node)
-            // r.EndNode -> t (the target node)
+            // r.StartNode -> src (the source node)
+            // r.EndNode -> tgt (the target node)  
             // r.Relationship -> r (the relationship)
 
             var firstPart = parts.Count > 0 ? parts.Pop() : "";
             var alias = firstPart switch
             {
-                "StartNode" => "n",
-                "EndNode" => "t",
+                "StartNode" => "src",    // Changed from "n" to "src"
+                "EndNode" => "tgt",      // Changed from "t" to "tgt"
                 "Relationship" => "r",
                 _ => scope.CurrentAlias
             };

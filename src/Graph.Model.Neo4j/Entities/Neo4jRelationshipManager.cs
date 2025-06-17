@@ -240,9 +240,11 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         IAsyncTransaction transaction,
         CancellationToken cancellationToken)
     {
-        var cypher = "MATCH ()-[r {Id: $relId}]-() SET r = $props RETURN r IS NOT NULL AS updated";
+        var cypher = "MATCH ()-[r {Id: $relId}]->() SET r = $props RETURN r IS NOT NULL AS updated";
 
-        var properties = SerializeSimpleProperties(entity);
+        var properties = SerializeSimpleProperties(entity)
+            .Where(kv => !_ignoredProperties.Contains(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
 
         var result = await transaction.RunAsync(cypher, new
         {

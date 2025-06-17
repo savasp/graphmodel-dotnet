@@ -24,17 +24,10 @@ internal static class Deserialization
         sb.AppendLine("    public object Deserialize(EntityInfo entity)");
         sb.AppendLine("    {");
 
-        // Get all properties that we can deserialize
-        var allProperties = Utils.GetAllProperties(type)
+        // Get all properties from type and its interfaces
+        var allProperties = GetAllPropertiesIncludingInterfaces(type)
             .Where(p => !Utils.SerializationShouldSkipProperty(p, type))
             .ToList();
-
-        // Core properties that must be set (even if readonly)
-        var corePropertyNames = new HashSet<string> { "Id", "StartNodeId", "EndNodeId", "Direction" };
-
-        // Separate properties by type
-        var coreProperties = allProperties.Where(p => corePropertyNames.Contains(p.Name)).ToList();
-        var regularProperties = allProperties.Where(p => !corePropertyNames.Contains(p.Name)).ToList();
 
         // Properties that can only be set via constructor or init
         var constructorOnlyProperties = allProperties
@@ -54,7 +47,7 @@ internal static class Deserialization
             .OrderBy(c => c.Parameters.Length)
             .ToList();
 
-        // We need constructor if we have any readonly/init-only properties
+        // We need constructor if we have any readonly/init-only properties or it's a record
         var needsConstructor = constructorOnlyProperties.Any() || type.IsRecord;
 
         if (!needsConstructor && constructors.Any(c => c.Parameters.Length == 0))
@@ -65,15 +58,14 @@ internal static class Deserialization
         }
         else if (constructors.Any())
         {
-            // Find the best constructor that can set the most properties (especially core ones)
-            var bestConstructor = FindBestConstructor(constructors, allProperties, coreProperties);
+            // Find the best constructor for our needs
+            var bestConstructor = FindBestConstructor(constructors, allProperties);
             if (bestConstructor != null)
             {
                 GenerateConstructorBasedDeserialization(sb, type, bestConstructor, allProperties);
             }
             else
             {
-                // Fall back to first public constructor
                 GenerateConstructorBasedDeserialization(sb, type, constructors.First(), allProperties);
             }
         }
@@ -86,92 +78,227 @@ internal static class Deserialization
         sb.AppendLine("    }");
     }
 
+    private static List<IPropertySymbol> GetAllPropertiesIncludingInterfaces(INamedTypeSymbol type)
+    {
+        var properties = new List<IPropertySymbol>();
+        var seenProperties = new HashSet<string>();
+
+        // Get properties from all implemented interfaces first (including IEntity, IRelationship)
+        foreach (var interfaceType in type.AllInterfaces)
+        {
+            foreach (var property in interfaceType.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (property.DeclaredAccessibility == Accessibility.Public &&
+                    property.GetMethod != null &&
+                    seenProperties.Add(property.Name))
+                {
+                    properties.Add(property);
+                }
+            }
+        }
+
+        // Then get properties from the type hierarchy
+        for (var currentType = type; currentType != null; currentType = currentType.BaseType)
+        {
+            foreach (var property in currentType.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (property.DeclaredAccessibility == Accessibility.Public &&
+                    property.GetMethod != null &&
+                    !property.IsStatic &&
+                    seenProperties.Add(property.Name))
+                {
+                    properties.Add(property);
+                }
+            }
+        }
+
+        return properties;
+    }
+
     private static void GenerateConstructorBasedDeserialization(StringBuilder sb, INamedTypeSymbol type, IMethodSymbol constructor, List<IPropertySymbol> allProperties)
     {
-        // Extract values for each constructor parameter
+        // Extract values for each constructor parameter (including Direction if it's part of the constructor)
         foreach (var parameter in constructor.Parameters)
         {
             GenerateConstructorParameterExtraction(sb, parameter, "entity");
         }
 
-        // Generate constructor call
-        sb.AppendLine();
-        sb.AppendLine($"        var result = new {Utils.GetTypeOfName(type)}(");
+        // Find properties that need to be set via object initializer (only init-only properties like Id)
+        var handledByConstructor = new HashSet<string>(constructor.Parameters
+            .Select(p => p.Name ?? "")
+            .Where(name => !string.IsNullOrEmpty(name)), StringComparer.OrdinalIgnoreCase);
 
-        var paramNames = constructor.Parameters.Select(p => p.Name).ToList();
-        for (int i = 0; i < paramNames.Count; i++)
-        {
-            var comma = i < paramNames.Count - 1 ? "," : "";
-            sb.AppendLine($"            {paramNames[i]}{comma}");
-        }
+        var initOnlyProperties = allProperties
+            .Where(p => !handledByConstructor.Contains(p.Name))
+            .Where(p => p.SetMethod?.IsInitOnly == true)
+            .ToList();
 
-        sb.AppendLine("        );");
-        sb.AppendLine();
-
-        // Find properties that weren't handled by the constructor
-        var handledByConstructor = new HashSet<IPropertySymbol>(constructor.Parameters
-            .Select(p => allProperties.FirstOrDefault(prop =>
-                string.Equals(prop.Name, p.Name, StringComparison.OrdinalIgnoreCase)))
-            .Where(p => p != null), SymbolEqualityComparer.Default);
-
-
-        var remainingProperties = allProperties
-            .Where(p => !handledByConstructor.Contains(p))
+        var settableProperties = allProperties
+            .Where(p => !handledByConstructor.Contains(p.Name))
             .Where(p => p.SetMethod != null &&
                 !p.SetMethod.IsInitOnly &&
                 p.SetMethod.DeclaredAccessibility == Accessibility.Public)
             .ToList();
 
-        // Set remaining properties
-        if (remainingProperties.Any())
+        // Generate init-only property extractions (like Id)
+        foreach (var property in initOnlyProperties)
         {
-            sb.AppendLine("        // Set remaining properties");
-            GeneratePropertySetters(sb, remainingProperties, "result", "entity");
+            GeneratePropertyExtraction(sb, property, "entity");
+        }
+
+        // Generate constructor call with object initializer for init-only properties
+        sb.AppendLine();
+
+        if (initOnlyProperties.Any())
+        {
+            sb.AppendLine($"        var result = new {Utils.GetTypeOfName(type)}(");
+
+            var paramNames = constructor.Parameters.Select(p => p.Name).ToList();
+            for (int i = 0; i < paramNames.Count; i++)
+            {
+                var comma = i < paramNames.Count - 1 ? "," : "";
+                sb.AppendLine($"            {paramNames[i]}{comma}");
+            }
+
+            sb.AppendLine("        )");
+            sb.AppendLine("        {");
+
+            // Add init-only properties to object initializer
+            for (int i = 0; i < initOnlyProperties.Count; i++)
+            {
+                var property = initOnlyProperties[i];
+                var comma = i < initOnlyProperties.Count - 1 ? "," : "";
+                sb.AppendLine($"            {property.Name} = {property.Name.ToLowerInvariant()}Value{comma}");
+            }
+
+            sb.AppendLine("        };");
+        }
+        else
+        {
+            sb.AppendLine($"        var result = new {Utils.GetTypeOfName(type)}(");
+
+            var paramNames = constructor.Parameters.Select(p => p.Name).ToList();
+            for (int i = 0; i < paramNames.Count; i++)
+            {
+                var comma = i < paramNames.Count - 1 ? "," : "";
+                sb.AppendLine($"            {paramNames[i]}{comma}");
+            }
+
+            sb.AppendLine("        );");
+        }
+
+        sb.AppendLine();
+
+        // Set remaining properties with regular setters
+        if (settableProperties.Any())
+        {
+            sb.AppendLine("        // Set remaining properties with setters");
+            GeneratePropertySetters(sb, settableProperties, "result", "entity");
         }
     }
 
-    private static void GenerateConstructorParameterExtraction(StringBuilder sb, IParameterSymbol parameter, string entityVar)
+    private static void GeneratePropertyExtraction(StringBuilder sb, IPropertySymbol property, string entityVar)
     {
-        var paramName = parameter.Name;
-        // For constructor parameters, we'll assume the property name matches the parameter name
-        var propName = Utils.GetPropertyNameFromParameter(parameter);
-        var paramType = parameter.Type.ToDisplayString();
+        var propertyName = Utils.GetPropertyName(property);
+        var propName = property.Name;
+        var propertyType = property.Type.ToDisplayString();
+        var variableName = $"{propName.ToLowerInvariant()}Value";
 
-        // Use parameter-specific variable names to avoid conflicts
-        var propRepVar = $"{paramName.ToLowerInvariant()}PropRep";
-        var simplePropVar = $"{paramName.ToLowerInvariant()}SimpleProp";
-        var complexPropVar = $"{paramName.ToLowerInvariant()}ComplexProp";
+        // Use property-specific variable names to avoid conflicts
+        var propRepVar = $"{propName.ToLowerInvariant()}PropRep";
+        var simplePropVar = $"{propName.ToLowerInvariant()}SimpleProp";
+        var complexPropVar = $"{propName.ToLowerInvariant()}ComplexProp";
 
-        sb.AppendLine($"        // Extracting value for parameter '{paramName}'");
-        sb.AppendLine($"        {paramType} {paramName};");
-        sb.AppendLine($"        // Look for property in both simple and complex properties");
-        sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propName}\", out var {simplePropVar}) ? {simplePropVar}");
-        sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
+        sb.AppendLine($"        // Extracting init-only property '{propName}'");
+        sb.AppendLine($"        {propertyType} {variableName};");
+        sb.AppendLine($"        // Look for property '{propertyName}' in both simple and complex properties");
+        sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
+        sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
         sb.AppendLine($"        if ({propRepVar} != null)");
         sb.AppendLine("        {");
 
-        // Use the specific variable name directly - no more redundant assignment
-        GenerateValueExtraction(sb, parameter.Type, paramName, propName, propRepVar, 12);
+        GenerateValueExtraction(sb, property.Type, variableName, propertyName, propRepVar, 12);
 
         sb.AppendLine("        }");
         sb.AppendLine("        else");
         sb.AppendLine("        {");
 
+        // Handle missing init-only properties with proper defaults
+        var defaultValue = GetDefaultValueForProperty(propName, property.Type);
+        sb.AppendLine($"            {variableName} = {defaultValue};");
+
+        sb.AppendLine("        }");
+    }
+
+    private static string GetDefaultValueForProperty(string propertyName, ITypeSymbol propertyType)
+    {
+        // Handle known interface properties with sensible defaults
+        return propertyName.ToLowerInvariant() switch
+        {
+            "direction" when propertyType.Name.Contains("RelationshipDirection") => "RelationshipDirection.Outgoing",
+            "id" when propertyType.SpecialType == SpecialType.System_String => "Guid.NewGuid().ToString(\"N\")",
+            _ => GetTypeDefault(propertyType)
+        };
+    }
+
+    private static void GenerateConstructorParameterExtraction(StringBuilder sb, IParameterSymbol parameter, string entityVar)
+    {
+        var paramName = parameter.Name;
+        var paramType = parameter.Type.ToDisplayString();
+
+        // Use parameter-specific variable names to avoid conflicts
+        var propRepVar = $"{paramName?.ToLowerInvariant()}PropRep";
+        var simplePropVar = $"{paramName?.ToLowerInvariant()}SimpleProp";
+        var complexPropVar = $"{paramName?.ToLowerInvariant()}ComplexProp";
+
+        sb.AppendLine($"        // Extracting value for parameter '{paramName}'");
+        sb.AppendLine($"        {paramType} {paramName};");
+
+        // Find matching property by parameter name
+        var propertyName = FindPropertyNameForParameter(parameter, entityVar);
+
+        sb.AppendLine($"        // Look for property '{propertyName}' in both simple and complex properties");
+        sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
+        sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
+        sb.AppendLine($"        if ({propRepVar} != null)");
+        sb.AppendLine("        {");
+
+        GenerateValueExtraction(sb, parameter.Type, paramName!, propertyName, propRepVar, 12);
+
+        sb.AppendLine("        }");
+        sb.AppendLine("        else");
+        sb.AppendLine("        {");
+
+        // Handle missing parameters with proper defaults
         if (parameter.HasExplicitDefaultValue)
         {
             var defaultValue = FormatDefaultValue(parameter.ExplicitDefaultValue, parameter.Type);
             sb.AppendLine($"            {paramName} = {defaultValue};");
         }
-        else if (parameter.Type.IsReferenceType)
-        {
-            sb.AppendLine($"            throw new InvalidOperationException(\"Required property '{paramName}' is missing\");");
-        }
         else
         {
-            sb.AppendLine($"            {paramName} = default({paramType});");
+            // For required properties, use sensible defaults based on the property name and type
+            var defaultValue = GetDefaultValueForParameter(paramName!, parameter.Type);
+            sb.AppendLine($"            {paramName} = {defaultValue};");
         }
 
         sb.AppendLine("        }");
+    }
+
+    private static string FindPropertyNameForParameter(IParameterSymbol parameter, string entityVar)
+    {
+        var paramName = parameter.Name ?? "unknown";
+
+        // For constructor parameters, we need to find the corresponding property name
+        // This is especially important for interface properties that might not match parameter names exactly
+        return paramName.ToLowerInvariant() switch
+        {
+            "startnodeid" => "StartNodeId",
+            "endnodeid" => "EndNodeId",
+            "id" => "Id",
+            "direction" => "Direction",
+            _ => Utils.GetPropertyNameFromParameter(parameter)
+        };
     }
 
     private static void GeneratePropertySetters(StringBuilder sb, List<IPropertySymbol> properties, string variableName, string entityVar)
@@ -186,7 +313,7 @@ internal static class Deserialization
             var simplePropVar = $"{propName.ToLowerInvariant()}SimpleProp";
             var complexPropVar = $"{propName.ToLowerInvariant()}ComplexProp";
 
-            sb.AppendLine($"        // Look for property '{propName}' in both simple and complex properties");
+            sb.AppendLine($"        // Look for property '{propertyName}' in both simple and complex properties");
             sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
             sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
             sb.AppendLine($"        if ({propRepVar} != null)");
@@ -208,34 +335,29 @@ internal static class Deserialization
         }
         else if (GraphDataModel.IsSimple(targetType))
         {
-            sb.AppendLine($"{indentStr}// Extract simple value using base class conversion");
+            sb.AppendLine($"{indentStr}// Extract simple value - no conversion, just cast");
             sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is SimpleValue simpleValue)");
             sb.AppendLine($"{indentStr}{{");
-
-            // Get the actual type for typeof() - strip nullable annotations for reference types
-            var typeForTypeOf = Utils.GetTypeForTypeOf(targetType);
-            var castType = targetType.ToDisplayString();
-
-            sb.AppendLine($"{indentStr}    {variableName} = ({castType})simpleValue.Object;");
+            sb.AppendLine($"{indentStr}    {variableName} = ({targetType.ToDisplayString()})simpleValue.Object;");
             sb.AppendLine($"{indentStr}}}");
             sb.AppendLine($"{indentStr}else");
             sb.AppendLine($"{indentStr}{{");
 
             if (targetType.IsReferenceType && targetType.NullableAnnotation != NullableAnnotation.Annotated)
             {
-                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required simple property is missing or null\");");
+                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required simple property '{propertyLabel}' is missing or null\");");
             }
             else
             {
-                sb.AppendLine($"{indentStr}    {variableName} = default({castType});");
+                sb.AppendLine($"{indentStr}    {variableName} = default({targetType.ToDisplayString()});");
             }
 
             sb.AppendLine($"{indentStr}}}");
         }
         else
         {
-            // Complex type handling stays the same...
-            sb.AppendLine($"{indentStr}// Extract complex value");
+            // Complex type handling - delegate to other serializers
+            sb.AppendLine($"{indentStr}// Extract complex value using registered serializer");
             sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is EntityInfo complexEntity)");
             sb.AppendLine($"{indentStr}{{");
             sb.AppendLine($"{indentStr}    var complexSerializer = _serializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(targetType)}));");
@@ -253,7 +375,7 @@ internal static class Deserialization
 
             if (targetType.IsReferenceType && targetType.NullableAnnotation != NullableAnnotation.Annotated)
             {
-                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required complex property is missing or null\");");
+                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required complex property '{propertyLabel}' is missing or null\");");
             }
             else
             {
@@ -288,27 +410,24 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}    foreach (var simpleValue in simpleCollection.Values)");
             sb.AppendLine($"{indentStr}    {{");
 
-            var elementTypeForTypeOf = Utils.GetTypeForTypeOf(elementType);
-            var elementCastType = elementType.ToDisplayString();
-
-            // Use the base class conversion method for each element
+            // Pure casting - no conversion logic
             if (elementType.IsReferenceType || elementType.NullableAnnotation == NullableAnnotation.Annotated)
             {
                 sb.AppendLine($"{indentStr}        if (simpleValue.Object != null)");
                 sb.AppendLine($"{indentStr}        {{");
-                sb.AppendLine($"{indentStr}            collection.Add(({elementTypeForTypeOf})simpleValue.Object);");
+                sb.AppendLine($"{indentStr}            collection.Add(({elementType.ToDisplayString()})simpleValue.Object);");
                 sb.AppendLine($"{indentStr}        }}");
             }
             else
             {
-                sb.AppendLine($"{indentStr}        collection.Add(({elementTypeForTypeOf})simpleValue.Object);");
+                sb.AppendLine($"{indentStr}        collection.Add(({elementType.ToDisplayString()})simpleValue.Object);");
             }
 
             sb.AppendLine($"{indentStr}    }}");
         }
         else
         {
-            // Complex collection handling stays the same...
+            // Complex collection handling
             sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is EntityCollection entityCollection)");
             sb.AppendLine($"{indentStr}{{");
             sb.AppendLine($"{indentStr}    var collection = new List<{elementType.ToDisplayString()}>();");
@@ -320,7 +439,7 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}            var deserializedItem = itemSerializer.Deserialize(entityItem);");
             sb.AppendLine($"{indentStr}            if (deserializedItem is {elementType.ToDisplayString()} typedItem)");
             sb.AppendLine($"{indentStr}            {{");
-            sb.AppendLine($"{indentStr}                collection.Add((({elementType.ToDisplayString()})typedItem));");
+            sb.AppendLine($"{indentStr}                collection.Add(typedItem);");
             sb.AppendLine($"{indentStr}            }}");
             sb.AppendLine($"{indentStr}        }}");
             sb.AppendLine($"{indentStr}    }}");
@@ -346,7 +465,7 @@ internal static class Deserialization
 
         if (collectionType.IsReferenceType && collectionType.NullableAnnotation != NullableAnnotation.Annotated)
         {
-            sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required collection property is missing or null\");");
+            sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required collection property '{propertyLabel}' is missing or null\");");
         }
         else
         {
@@ -356,9 +475,9 @@ internal static class Deserialization
         sb.AppendLine($"{indentStr}}}");
     }
 
-    private static IMethodSymbol? FindBestConstructor(List<IMethodSymbol> constructors, List<IPropertySymbol> allProperties, List<IPropertySymbol> coreProperties)
+    private static IMethodSymbol? FindBestConstructor(List<IMethodSymbol> constructors, List<IPropertySymbol> allProperties)
     {
-        // Score each constructor
+        // Score each constructor based on how many properties it can set
         var constructorScores = constructors.Select(ctor =>
         {
             var matchingProps = ctor.Parameters
@@ -367,29 +486,60 @@ internal static class Deserialization
                 .Where(p => p != null)
                 .ToList();
 
-            var coreMatches = matchingProps.Count(p => coreProperties.Contains(p!));
-            var regularMatches = matchingProps.Count - coreMatches;
-
             return new
             {
                 Constructor = ctor,
-                CoreMatches = coreMatches,
-                RegularMatches = regularMatches,
                 TotalMatches = matchingProps.Count,
                 ExtraParams = ctor.Parameters.Length - matchingProps.Count
             };
         }).ToList();
 
-        // Prefer constructors that:
-        // 1. Can set the most core properties (Id, StartNodeId, etc.)
-        // 2. Can set the most total properties
-        // 3. Have the fewest extra parameters
+        // Prefer constructors that can set the most properties with fewest extra parameters
         return constructorScores
-            .OrderByDescending(x => x.CoreMatches)
-            .ThenByDescending(x => x.TotalMatches)
+            .OrderByDescending(x => x.TotalMatches)
             .ThenBy(x => x.ExtraParams)
             .Select(x => x.Constructor)
             .FirstOrDefault();
+    }
+
+    private static string GetDefaultValueForParameter(string paramName, ITypeSymbol paramType)
+    {
+        // Handle known graph model properties with sensible defaults
+        return paramName.ToLowerInvariant() switch
+        {
+            "direction" when paramType.Name.Contains("RelationshipDirection") => "RelationshipDirection.Outgoing",
+            "id" when paramType.SpecialType == SpecialType.System_String => "string.Empty",
+            "startnodeid" when paramType.SpecialType == SpecialType.System_String => "string.Empty",
+            "endnodeid" when paramType.SpecialType == SpecialType.System_String => "string.Empty",
+            _ => GetTypeDefault(paramType)
+        };
+    }
+
+    private static string GetTypeDefault(ITypeSymbol type)
+    {
+        if (type.IsReferenceType)
+        {
+            return type.NullableAnnotation == NullableAnnotation.Annotated ? "null" :
+                   "throw new InvalidOperationException(\"Required property is missing\")";
+        }
+
+        // Use the unified simple type check from GraphDataModel
+        if (GraphDataModel.IsSimple(type))
+        {
+            return type.SpecialType switch
+            {
+                SpecialType.System_String => "string.Empty",
+                SpecialType.System_Int32 => "0",
+                SpecialType.System_Int64 => "0L",
+                SpecialType.System_Double => "0.0",
+                SpecialType.System_Boolean => "false",
+                SpecialType.System_DateTime => "DateTime.MinValue",
+                _ when type.TypeKind == TypeKind.Enum => $"default({type.ToDisplayString()})",
+                _ => $"default({type.ToDisplayString()})"
+            };
+        }
+
+        return $"default({type.ToDisplayString()})";
     }
 
     private static string FormatDefaultValue(object? defaultValue, ITypeSymbol type)

@@ -1,4 +1,0 @@
-internal static class Placeholder
-{
-
-}
