@@ -53,7 +53,7 @@ internal static class Schema
 
         var isNullable = type.NullableAnnotation == NullableAnnotation.Annotated ||
                         (type.CanBeReferencedByName && !type.IsValueType);
-        var isSimple = GraphDataModel.IsSimple(type);
+        var isSimple = GraphDataModel.IsSimple(type) || GraphDataModel.IsCollectionOfSimple(type);
 
         sb.AppendLine();
         sb.AppendLine($"        return new EntitySchema(");
@@ -122,7 +122,8 @@ internal static class Schema
         // Interface properties define the contract and don't have setters
         if (property.ContainingType.TypeKind == TypeKind.Interface)
         {
-            return GraphDataModel.IsSimple(property.Type);
+            return GraphDataModel.IsSimple(property.Type) ||
+                   GraphDataModel.IsCollectionOfSimple(property.Type);
         }
 
         // For concrete types, they need to be settable (either regular setter or init-only)
@@ -130,7 +131,7 @@ internal static class Schema
             return false;
 
         // Include all simple types that can be serialized using the unified predicate
-        return GraphDataModel.IsSimple(property.Type);
+        return GraphDataModel.IsSimple(property.Type) || GraphDataModel.IsCollectionOfSimple(property.Type);
     }
 
     private static bool IsRecordProperty(IPropertySymbol property)

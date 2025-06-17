@@ -102,7 +102,7 @@ public static class GraphDataModel
     /// <exception cref="GraphException">Thrown if a reference cycle is detected</exception>
     public static void EnsureNoReferenceCycle(this IEntity entity)
     {
-        if (HasReferenceCycle(entity, []))
+        if (HasReferenceCycle(entity))
         {
             throw new GraphException($"Reference cycle detected in the entity with ID '{entity.Id}'");
         }
@@ -275,49 +275,81 @@ public static class GraphDataModel
     /// Checks if an object has reference cycles (true cycles, not just shared references).
     /// </summary>
     /// <param name="obj">The object to check</param>
-    /// <param name="path">Set of objects in the current traversal path</param>
     /// <returns>True if a reference cycle is detected, false otherwise</returns>
-    public static bool HasReferenceCycle(object obj, HashSet<object>? path = null)
+    public static bool HasReferenceCycle(object obj)
     {
-        path ??= new HashSet<object>(ReferenceComparer);
+        var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var currentPath = new HashSet<object>(ReferenceEqualityComparer.Instance);
 
-        if (obj == null || obj is string || obj.GetType().IsValueType)
+        return CheckForCycle(obj, visited, currentPath);
+    }
+
+    private static bool CheckForCycle(object obj, HashSet<object> visited, HashSet<object> currentPath)
+    {
+        // Early exit for null
+        if (obj == null)
             return false;
 
-        if (!path.Add(obj))
+        var type = obj.GetType();
+
+        // Skip value types and common immutable types
+        if (type.IsValueType || // This covers DateTime, int, bool, etc.
+            type == typeof(string) ||
+            type == typeof(Type) ||
+            type.IsEnum ||
+            type.IsPrimitive)
+        {
+            return false;
+        }
+
+        // Skip system types that we know don't have cycles
+        if (type.Namespace?.StartsWith("System") == true &&
+            !type.Namespace.StartsWith("System.Collections"))
+        {
+            return false;
+        }
+
+        // Now do the actual cycle detection for reference types
+        if (currentPath.Contains(obj))
             return true;
 
-        var type = obj.GetType();
-        foreach (var prop in type.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        if (visited.Contains(obj))
+            return false;
+
+        visited.Add(obj);
+        currentPath.Add(obj);
+
+        try
         {
-            if (prop.GetIndexParameters().Length > 0) continue; // Skip indexers
+            // Check all properties recursively
 
-            var value = prop.GetValue(obj);
-            if (value == null) continue;
+            foreach (var prop in type.GetProperties())
+            {
+                if (prop.CanRead && !prop.GetIndexParameters().Any())
+                {
+                    var value = prop.GetValue(obj);
+                    if (value != null && CheckForCycle(value, visited, currentPath))
+                        return true;
+                }
+            }
 
-            if (value is IEnumerable enumerable && !(value is string))
+            // Handle collections
+            if (obj is IEnumerable enumerable && !(obj is string))
             {
                 foreach (var item in enumerable)
                 {
-                    if (item != null && HasReferenceCycle(item, path))
-                    {
-                        path.Remove(obj);
+                    if (item != null && CheckForCycle(item, visited, currentPath))
                         return true;
-                    }
                 }
             }
-            else if (!prop.PropertyType.IsValueType && prop.PropertyType != typeof(string))
-            {
-                if (HasReferenceCycle(value, path))
-                {
-                    path.Remove(obj);
-                    return true;
-                }
-            }
-        }
 
-        path.Remove(obj);
-        return false;
+            return false;
+        }
+        finally
+        {
+            // CRITICAL: Remove from current path when backtracking!
+            currentPath.Remove(obj);
+        }
     }
 
     // Reference equality comparer for HashSet

@@ -118,12 +118,19 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         }
         else if (typeof(IRelationship).IsAssignableFrom(rootType))
         {
-            var srcAlias = _scope.GetOrCreateAlias(typeof(INode), "src");
+            // Hack: Use different types to force unique aliases since both nodes are INode
+            // We'll use IEntity for source and INode for target to get different aliases
+            var srcAlias = _scope.GetOrCreateAlias(typeof(IEntity), "src");
             var relAlias = _scope.GetOrCreateAlias(rootType, "r");
             var tgtAlias = _scope.GetOrCreateAlias(typeof(INode), "tgt");
+
             var relType = Labels.GetLabelFromType(rootType);
 
-            _queryBuilder.AddMatch($"({srcAlias})-[{relAlias}:{relType}]->({tgtAlias})");
+            _queryBuilder.AddMatchPattern($"({srcAlias})-[{relAlias}:{relType}]->({tgtAlias})");
+
+            // Add all three items to the return clause for materialization
+            _queryBuilder.AddReturn($"{srcAlias}, {relAlias}, {tgtAlias}");
+
             _scope.CurrentAlias = relAlias;
         }
     }

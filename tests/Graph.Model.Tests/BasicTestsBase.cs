@@ -196,7 +196,7 @@ public abstract class BasicTestsBase : ITestBase
     [Fact]
     public async Task CanAddAndGetNodeWithGenericCollectionOfPrimitiveProperty()
     {
-        var person = new PersonWithGenericCollectionOfPrimitiveProperty { FirstName = "A", GenericProperty = new List<string> { "B", "C" } };
+        var person = new PersonWithGenericCollectionOfPrimitiveProperty { FirstName = "A", GenericProperty = ["B", "C"] };
 
         await this.Graph.CreateNodeAsync(person);
 
