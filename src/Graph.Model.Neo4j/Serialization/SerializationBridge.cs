@@ -42,7 +42,8 @@ internal static class SerializationBridge
             // Primitives and strings
             string or bool or char => value,
             sbyte or byte or short or ushort or int or uint or long or ulong => value,
-            float or double or decimal => value,
+            double => value,
+            decimal or float => Convert.ToDouble(value, CultureInfo.InvariantCulture),
 
             // Convert enums to their string representation
             Enum enumValue => enumValue.ToString(),
