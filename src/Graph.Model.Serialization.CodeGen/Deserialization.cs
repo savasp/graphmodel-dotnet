@@ -519,8 +519,9 @@ internal static class Deserialization
     {
         if (type.IsReferenceType)
         {
-            return type.NullableAnnotation == NullableAnnotation.Annotated ? "null" :
-                   "throw new InvalidOperationException(\"Required property is missing\")";
+            // Always return a valid default value, even for non-nullable reference types
+            // The null check should be handled separately in the generated code
+            return type.Name == "String" ? "String.Empty" : "default";
         }
 
         // Use the unified simple type check from GraphDataModel

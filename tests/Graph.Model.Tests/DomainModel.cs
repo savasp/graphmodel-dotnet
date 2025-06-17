@@ -102,11 +102,6 @@ public class PersonWithComplexProperties : INode
     //public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
 }
 
-public record KnowsWithComplexProperty(PersonWithComplexProperty p1, PersonWithComplexProperty p2) : Relationship(p1.Id, p2.Id)
-{
-    public DateTime Since { get; set; }
-    public AddressValue MetAt { get; set; } = new AddressValue();
-}
 
 public record Class1 : Node
 {
