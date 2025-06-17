@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 
+using System.Linq;
 using System.Text;
 
 internal class CypherQueryBuilder
@@ -74,6 +75,11 @@ internal class CypherQueryBuilder
 
     public void AddMatchPattern(string fullPattern)
     {
+        // For relationship patterns, ensure we don't duplicate them
+        if (fullPattern.Contains("-[") && _matchClauses.Any(c => c.Contains("-[") && c.Contains("]->")))
+        {
+            return; // Skip if we already have a relationship pattern
+        }
         _matchClauses.Add(fullPattern);
     }
 
@@ -87,9 +93,18 @@ internal class CypherQueryBuilder
         _matchClauses.Clear();
     }
 
+    public void ClearWhere()
+    {
+        _whereClauses.Clear();
+    }
+
     public void AddWhere(string condition)
     {
-        _whereClauses.Add(condition);
+        // Don't add duplicate WHERE clauses
+        if (!_whereClauses.Contains(condition))
+        {
+            _whereClauses.Add(condition);
+        }
     }
 
     public void AddReturn(string expression, string? alias = null)
@@ -109,6 +124,13 @@ internal class CypherQueryBuilder
 
     public string AddParameter(object value)
     {
+        // Check if we already have this value as a parameter
+        var existingParam = _parameters.FirstOrDefault(p => Equals(p.Value, value));
+        if (existingParam.Key != null)
+        {
+            return $"${existingParam.Key}";
+        }
+
         var paramName = $"p{_parameterCounter++}";
         _parameters[paramName] = value;
         return $"${paramName}";
@@ -278,7 +300,9 @@ internal class CypherQueryBuilder
         }
         else if (_returnClauses.Count > 0)
         {
-            query.AppendJoin(", ", _returnClauses);
+            // For relationship queries, ensure we don't duplicate the return values
+            var returnValues = _returnClauses[0].Split(',').Select(v => v.Trim()).Distinct();
+            query.AppendJoin(", ", returnValues);
         }
         else
         {

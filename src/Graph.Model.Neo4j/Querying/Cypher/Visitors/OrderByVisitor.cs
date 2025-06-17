@@ -16,17 +16,21 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class OrderByVisitor : ExpressionVisitor
 {
     private readonly QueryScope _scope;
     private readonly CypherQueryBuilder _builder;
     private readonly List<(string Expression, bool IsDescending)> _orderClauses = [];
+    private readonly ILogger<OrderByVisitor> _logger;
 
-    public OrderByVisitor(QueryScope scope, CypherQueryBuilder builder)
+    public OrderByVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
+        _logger = loggerFactory?.CreateLogger<OrderByVisitor>() ?? NullLogger<OrderByVisitor>.Instance;
     }
 
     public void VisitOrderBy(LambdaExpression selector, bool isDescending = false, bool isThenBy = false)

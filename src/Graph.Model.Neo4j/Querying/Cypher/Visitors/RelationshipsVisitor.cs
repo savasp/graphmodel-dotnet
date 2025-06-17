@@ -15,16 +15,21 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class RelationshipsVisitor
 {
     private readonly QueryScope _scope;
     private readonly CypherQueryBuilder _builder;
+    private readonly ILogger<RelationshipsVisitor> _logger;
 
-    public RelationshipsVisitor(QueryScope scope, CypherQueryBuilder builder)
+    public RelationshipsVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
+        _logger = loggerFactory?.CreateLogger<RelationshipsVisitor>()
+            ?? NullLogger<RelationshipsVisitor>.Instance;
     }
 
     public void VisitRelationships(Type? relationshipType = null, RelationshipDirection direction = RelationshipDirection.Both)
@@ -49,7 +54,7 @@ internal sealed class RelationshipsVisitor
             pattern = pattern.Replace($"[{relAlias}]", $"[{relAlias}:{relLabel}]");
         }
 
-        _builder.AddMatch(pattern);
+        _builder.AddMatchPattern(pattern);
         _builder.AddReturn(relAlias);
 
         // Update current alias to the relationship

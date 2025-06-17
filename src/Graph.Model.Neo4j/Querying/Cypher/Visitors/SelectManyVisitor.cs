@@ -16,16 +16,22 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class SelectManyVisitor : ExpressionVisitor
 {
     private readonly QueryScope _scope;
     private readonly CypherQueryBuilder _builder;
+    private readonly ILogger<SelectManyVisitor> _logger;
+    private readonly ILoggerFactory? _loggerFactory;
 
-    public SelectManyVisitor(QueryScope scope, CypherQueryBuilder builder)
+    public SelectManyVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory?.CreateLogger<SelectManyVisitor>() ?? NullLogger<SelectManyVisitor>.Instance;
     }
 
     public void VisitSelectMany(LambdaExpression collectionSelector, LambdaExpression? resultSelector = null)
@@ -72,7 +78,7 @@ internal sealed class SelectManyVisitor : ExpressionVisitor
         if (resultSelector != null)
         {
             // Result selector typically combines source and target
-            var selectVisitor = new SelectVisitor(_scope, _builder);
+            var selectVisitor = new SelectVisitor(_scope, _builder, _loggerFactory);
             selectVisitor.Visit(resultSelector);
         }
         else
@@ -100,7 +106,7 @@ internal sealed class SelectManyVisitor : ExpressionVisitor
 
         if (resultSelector != null)
         {
-            var selectVisitor = new SelectVisitor(_scope, _builder);
+            var selectVisitor = new SelectVisitor(_scope, _builder, _loggerFactory);
             selectVisitor.Visit(resultSelector);
         }
         else

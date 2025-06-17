@@ -19,26 +19,29 @@ using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Cvoya.Graph.Model.Serialization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class CypherQueryVisitor : ExpressionVisitor
 {
     private readonly EntityFactory _entityFactory;
     private readonly CypherQueryBuilder _queryBuilder;
     private readonly QueryScope _scope;
-    private readonly ILogger<CypherQueryVisitor>? _logger;
+    private readonly ILogger<CypherQueryVisitor> _logger;
+    private readonly ILoggerFactory? _loggerFactory;
 
-    public CypherQueryVisitor(EntityFactory entityFactory, ILogger<CypherQueryVisitor>? logger = null)
+    public CypherQueryVisitor(EntityFactory entityFactory, ILoggerFactory? loggerFactory = null)
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
         _queryBuilder = new CypherQueryBuilder();
         _scope = new QueryScope();
-        _logger = logger;
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory?.CreateLogger<CypherQueryVisitor>() ?? NullLogger<CypherQueryVisitor>.Instance;
     }
 
     public CypherQuery Build()
     {
-        // Ensure we have a return clause if none was specified
-        if (!_queryBuilder.HasReturnClause)
+        // Only add a return clause if none exists and we're not dealing with a relationship query
+        if (!_queryBuilder.HasReturnClause && !typeof(IRelationship).IsAssignableFrom(_scope.CurrentType))
         {
             var alias = _scope.CurrentAlias
                 ?? throw new InvalidOperationException("No current alias set when building return clause");
@@ -50,7 +53,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 
     protected override Expression VisitMethodCall(MethodCallExpression node)
     {
-        _logger?.LogDebug("Visiting method: {MethodName}", node.Method.Name);
+        _logger.LogDebug("Visiting method: {MethodName}", node.Method.Name);
 
         // Visit the source first (this processes the expression tree bottom-up)
         var source = node.Object ?? (node.Arguments.Count > 0 ? node.Arguments[0] : null);
@@ -83,7 +86,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 
         if (!handled)
         {
-            _logger?.LogWarning("Unhandled method: {MethodName}", node.Method.Name);
+            _logger.LogWarning("Unhandled method: {MethodName}", node.Method.Name);
             return base.VisitMethodCall(node);
         }
 
@@ -104,7 +107,8 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 
     private void InitializeQuery(Type rootType)
     {
-        _logger?.LogDebug("Initializing query for type: {TypeName}", rootType.Name);
+        _logger.LogDebug("Initializing query for type: {TypeName}", rootType.Name);
+        _scope.CurrentType = rootType;
 
         if (typeof(INode).IsAssignableFrom(rootType))
         {
@@ -118,19 +122,20 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         }
         else if (typeof(IRelationship).IsAssignableFrom(rootType))
         {
-            // Hack: Use different types to force unique aliases since both nodes are INode
-            // We'll use IEntity for source and INode for target to get different aliases
+            // For relationship queries, we'll use a single pattern
             var srcAlias = _scope.GetOrCreateAlias(typeof(IEntity), "src");
             var relAlias = _scope.GetOrCreateAlias(rootType, "r");
             var tgtAlias = _scope.GetOrCreateAlias(typeof(INode), "tgt");
 
             var relType = Labels.GetLabelFromType(rootType);
 
+            // Add a single pattern match
             _queryBuilder.AddMatchPattern($"({srcAlias})-[{relAlias}:{relType}]->({tgtAlias})");
 
-            // Add all three items to the return clause for materialization
+            // Add return clause with all three elements for proper materialization
             _queryBuilder.AddReturn($"{srcAlias}, {relAlias}, {tgtAlias}");
 
+            // Set the current alias to the relationship for further operations
             _scope.CurrentAlias = relAlias;
         }
     }
@@ -143,7 +148,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         var schema = _entityFactory.GetSchema(nodeType);
         if (schema is null)
         {
-            _logger?.LogWarning("No schema found for type: {TypeName}", nodeType.Name);
+            _logger.LogWarning("No schema found for type: {TypeName}", nodeType.Name);
             return;
         }
 
@@ -164,7 +169,10 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         var predicate = StripQuotes(node.Arguments[1]);
         if (predicate is LambdaExpression lambda)
         {
-            var visitor = new WhereVisitor(_scope, _queryBuilder);
+            // Clear any existing WHERE clauses before processing
+            _queryBuilder.ClearWhere();
+
+            var visitor = new WhereVisitor(_scope, _queryBuilder, _loggerFactory);
             visitor.ProcessWhereClause(lambda);
             return true;
         }
@@ -179,7 +187,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         var selector = StripQuotes(node.Arguments[1]);
         if (selector is LambdaExpression lambda)
         {
-            var visitor = new SelectVisitor(_scope, _queryBuilder);
+            var visitor = new SelectVisitor(_scope, _queryBuilder, _loggerFactory);
             visitor.Visit(lambda);
             return true;
         }
@@ -201,7 +209,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 
         if (collectionSelector != null)
         {
-            var visitor = new SelectManyVisitor(_scope, _queryBuilder);
+            var visitor = new SelectManyVisitor(_scope, _queryBuilder, _loggerFactory);
             visitor.VisitSelectMany(collectionSelector, resultSelector);
             return true;
         }
@@ -216,7 +224,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         var selector = StripQuotes(node.Arguments[1]) as LambdaExpression;
         if (selector != null)
         {
-            var visitor = new OrderByVisitor(_scope, _queryBuilder);
+            var visitor = new OrderByVisitor(_scope, _queryBuilder, _loggerFactory);
             visitor.VisitOrderBy(selector, isDescending, isThenBy);
             return true;
         }
@@ -261,7 +269,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         var orDefault = node.Method.Name.Contains("OrDefault");
         var isLast = node.Method.Name.StartsWith("Last");
 
-        var visitor = new FirstVisitor(_scope, _queryBuilder);
+        var visitor = new FirstVisitor(_scope, _queryBuilder, _loggerFactory);
         visitor.VisitFirst(predicate, orDefault, isLast);
         return true;
     }
@@ -274,7 +282,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
             selector = StripQuotes(node.Arguments[1]);
         }
 
-        var visitor = new AggregateVisitor(_scope, _queryBuilder);
+        var visitor = new AggregateVisitor(_scope, _queryBuilder, _loggerFactory);
         visitor.VisitAggregate(node.Method.Name, selector);
         return true;
     }
@@ -287,7 +295,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
             predicate = StripQuotes(node.Arguments[1]);
         }
 
-        var visitor = new AnyVisitor(_scope, _queryBuilder);
+        var visitor = new AnyVisitor(_scope, _queryBuilder, _loggerFactory);
         visitor.VisitAny(predicate);
         return true;
     }
@@ -299,7 +307,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         var predicate = StripQuotes(node.Arguments[1]) as LambdaExpression;
         if (predicate != null)
         {
-            var visitor = new AllVisitor(_scope, _queryBuilder);
+            var visitor = new AllVisitor(_scope, _queryBuilder, _loggerFactory);
             visitor.VisitAll(predicate);
             return true;
         }
@@ -309,7 +317,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 
     private bool HandleDistinct(MethodCallExpression node)
     {
-        var visitor = new DistinctVisitor(_scope, _queryBuilder);
+        var visitor = new DistinctVisitor(_scope, _queryBuilder, _loggerFactory);
         visitor.ApplyDistinct();
         return true;
     }
@@ -328,7 +336,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 
         if (keySelector != null)
         {
-            var visitor = new GroupByVisitor(_scope, _queryBuilder);
+            var visitor = new GroupByVisitor(_scope, _queryBuilder, _loggerFactory);
             visitor.VisitGroupBy(keySelector, elementSelector);
             return true;
         }
@@ -366,7 +374,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
             direction = (RelationshipDirection)dirConstant.Value!;
         }
 
-        var visitor = new RelationshipsVisitor(_scope, _queryBuilder);
+        var visitor = new RelationshipsVisitor(_scope, _queryBuilder, _loggerFactory);
         visitor.VisitRelationships(relationshipType, direction);
         return true;
     }
@@ -401,7 +409,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
             var relationshipType = genericArgs[0]; // WorksFor
             var targetType = genericArgs[1];       // Company
 
-            var visitor = new PathSegmentVisitor(_scope, _queryBuilder);
+            var visitor = new PathSegmentVisitor(_scope, _queryBuilder, _loggerFactory);
             visitor.BuildPathSegmentQuery(sourceType, relationshipType, targetType);
             return true;
         }

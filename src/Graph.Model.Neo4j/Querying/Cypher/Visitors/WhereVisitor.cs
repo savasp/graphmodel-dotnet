@@ -15,270 +15,77 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
-using System.Text;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-internal class WhereVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null) : ExpressionVisitor
+internal class WhereVisitor : ExpressionVisitor
 {
-    private readonly Stack<string> _expressions = new();
-    private readonly ILogger logger = loggerFactory?.CreateLogger<WhereVisitor>() ?? NullLogger<WhereVisitor>.Instance;
+    private readonly QueryScope _scope;
+    private readonly CypherQueryBuilder _builder;
+    private readonly ILogger<WhereVisitor> _logger;
+    private readonly ICypherExpressionVisitor _expressionVisitor;
+
+    public WhereVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
+    {
+        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
+        _builder = builder ?? throw new ArgumentNullException(nameof(builder));
+        _logger = loggerFactory?.CreateLogger<WhereVisitor>() ?? NullLogger<WhereVisitor>.Instance;
+
+        // Create a chain of visitors
+        var baseVisitor = new BaseExpressionVisitor(scope, builder, loggerFactory);
+        var binaryVisitor = new BinaryExpressionVisitor(baseVisitor, loggerFactory);
+        var stringVisitor = new StringMethodVisitor(binaryVisitor, loggerFactory);
+        var collectionVisitor = new CollectionMethodVisitor(stringVisitor, loggerFactory);
+        _expressionVisitor = collectionVisitor;
+    }
 
     public void ProcessWhereClause(LambdaExpression lambda)
     {
-        logger.LogDebug("Processing WHERE clause lambda: {Lambda}", lambda);
+        _logger.LogDebug("Processing WHERE clause: {Expression}", lambda);
 
-        Visit(lambda.Body);
+        // Visit the lambda body to get the expression
+        var expression = _expressionVisitor.Visit(lambda.Body);
+        _logger.LogDebug("Generated WHERE expression: {Expression}", expression);
 
-        if (_expressions.Count == 1)
-        {
-            var whereClause = _expressions.Pop();
-            logger.LogDebug("Adding WHERE clause to builder: {WhereClause}", whereClause);
-            builder.AddWhere(whereClause);
-        }
-        else if (_expressions.Count > 1)
-        {
-            throw new InvalidOperationException($"Where clause processing left {_expressions.Count} expressions on stack");
-        }
-        else
-        {
-            logger.LogWarning("WHERE clause processing produced no expressions");
-        }
+        // Add the expression to the query builder
+        _builder.AddWhere(expression);
     }
 
     protected override Expression VisitBinary(BinaryExpression node)
     {
-        logger.LogDebug("Visiting binary expression: {NodeType}", node.NodeType);
-
-        Visit(node.Left);
-        if (_expressions.Count == 0)
-            throw new InvalidOperationException($"Left side of {node.NodeType} produced no value");
-        var left = _expressions.Pop();
-
-        Visit(node.Right);
-        if (_expressions.Count == 0)
-            throw new InvalidOperationException($"Right side of {node.NodeType} produced no value");
-        var right = _expressions.Pop();
-
-        var expression = node.NodeType switch
-        {
-            ExpressionType.Equal => $"{left} = {right}",
-            ExpressionType.NotEqual => $"{left} <> {right}",
-            ExpressionType.GreaterThan => $"{left} > {right}",
-            ExpressionType.GreaterThanOrEqual => $"{left} >= {right}",
-            ExpressionType.LessThan => $"{left} < {right}",
-            ExpressionType.LessThanOrEqual => $"{left} <= {right}",
-            ExpressionType.AndAlso => $"({left} AND {right})",
-            ExpressionType.OrElse => $"({left} OR {right})",
-            _ => throw new NotSupportedException($"Binary operator {node.NodeType} is not supported")
-        };
-
-        logger.LogDebug("Binary expression result: {Expression}", expression);
-        _expressions.Push(expression);
-        return node;
-    }
-
-    protected override Expression VisitMember(MemberExpression node)
-    {
-        // Check if this is a parameter access (like p.Name)
-        if (node.Expression is ParameterExpression param)
-        {
-            var propertyPath = $"{scope.CurrentAlias}.{node.Member.Name}";
-            logger.LogDebug("Pushing property path: {PropertyPath}", propertyPath);
-            _expressions.Push(propertyPath);
-        }
-        else if (node.Expression is UnaryExpression unary && unary.Operand is ParameterExpression)
-        {
-            // Handle cases like Convert(n, IEntity).Id where n is a parameter
-            var propertyPath = $"{scope.CurrentAlias}.{node.Member.Name}";
-            logger.LogDebug("Pushing property path from converted parameter: {PropertyPath}", propertyPath);
-            _expressions.Push(propertyPath);
-        }
-        else if (node.Expression is MemberExpression memberExpr)
-        {
-            // Handle nested member access like r.StartNode.Name
-            var path = BuildPropertyPath(node);
-            if (path != null)
-            {
-                logger.LogDebug("Pushing nested property path: {PropertyPath}", path);
-                _expressions.Push(path);
-            }
-            else
-            {
-                // Fall back to evaluation
-                var value = EvaluateMemberExpression(node);
-                HandleConstantValue(value);
-            }
-        }
-        else
-        {
-            // For other member access, try to evaluate it as a constant
-            var value = EvaluateMemberExpression(node);
-            HandleConstantValue(value);
-        }
-
-        return node;
-    }
-
-    protected override Expression VisitConstant(ConstantExpression node)
-    {
-        if (node.Value == null)
-        {
-            logger.LogDebug("Pushing null constant");
-            _expressions.Push("null");
-        }
-        else
-        {
-            var param = builder.AddParameter(node.Value);
-            logger.LogDebug("Pushing constant parameter {ParamName} = {Value}", param, node.Value);
-            _expressions.Push(param);
-        }
-        return node;
-    }
-
-    protected override Expression VisitMethodCall(MethodCallExpression node)
-    {
-        var expression = node.Method.Name switch
-        {
-            "Contains" when node.Object != null => HandleStringMethod(node, "CONTAINS"),
-            "StartsWith" => HandleStringMethod(node, "STARTS WITH"),
-            "EndsWith" => HandleStringMethod(node, "ENDS WITH"),
-            "ToLower" => HandleToLower(node),
-            "ToUpper" => HandleToUpper(node),
-            _ => throw new NotSupportedException($"Method {node.Method.Name} is not supported in WHERE clause")
-        };
-
-        _expressions.Push(expression);
+        _expressionVisitor.VisitBinary(node);
         return node;
     }
 
     protected override Expression VisitUnary(UnaryExpression node)
     {
-        if (node.NodeType == ExpressionType.Not)
-        {
-            Visit(node.Operand);
-            var operand = _expressions.Pop();
-            _expressions.Push($"NOT ({operand})");
-            return node;
-        }
-
-        return base.VisitUnary(node);
+        _expressionVisitor.VisitUnary(node);
+        return node;
     }
 
-    private static object? EvaluateMemberExpression(MemberExpression node)
+    protected override Expression VisitMember(MemberExpression node)
     {
-        // Don't try to evaluate if the expression contains parameters
-        if (ContainsParameter(node))
-        {
-            throw new InvalidOperationException($"Cannot evaluate member expression containing parameter: {node}");
-        }
-
-        // This evaluates member expressions that aren't parameter-based
-        // For example, if someone uses a captured variable in the lambda
-        var objectMember = Expression.Convert(node, typeof(object));
-        var getterLambda = Expression.Lambda<Func<object?>>(objectMember);
-        var getter = getterLambda.Compile();
-        return getter();
+        _expressionVisitor.VisitMember(node);
+        return node;
     }
 
-    private static bool ContainsParameter(Expression expression)
+    protected override Expression VisitMethodCall(MethodCallExpression node)
     {
-        var visitor = new ParameterExpressionVisitor();
-        visitor.Visit(expression);
-        return visitor.ContainsParameter;
+        _expressionVisitor.VisitMethodCall(node);
+        return node;
     }
 
-    private class ParameterExpressionVisitor : ExpressionVisitor
+    protected override Expression VisitConstant(ConstantExpression node)
     {
-        public bool ContainsParameter { get; private set; }
-
-        protected override Expression VisitParameter(ParameterExpression node)
-        {
-            ContainsParameter = true;
-            return base.VisitParameter(node);
-        }
+        _expressionVisitor.VisitConstant(node);
+        return node;
     }
 
-    private string HandleStringMethod(MethodCallExpression node, string cypherOperator)
+    protected override Expression VisitParameter(ParameterExpression node)
     {
-        Visit(node.Object!);
-        var target = _expressions.Pop();
-
-        Visit(node.Arguments[0]);
-        var argument = _expressions.Pop();
-
-        return $"{target} {cypherOperator} {argument}";
-    }
-
-    private string HandleToLower(MethodCallExpression node)
-    {
-        Visit(node.Object!);
-        var target = _expressions.Pop();
-        return $"toLower({target})";
-    }
-
-    private string HandleToUpper(MethodCallExpression node)
-    {
-        Visit(node.Object!);
-        var target = _expressions.Pop();
-        return $"toUpper({target})";
-    }
-
-    private string? BuildPropertyPath(MemberExpression node)
-    {
-        var parts = new Stack<string>();
-        Expression? current = node;  // Make current nullable
-
-        // Walk up the member chain
-        while (current is MemberExpression member)
-        {
-            parts.Push(member.Member.Name);
-            current = member.Expression;  // This could be null, which is fine
-        }
-
-        // Check if we end at a parameter
-        if (current is ParameterExpression param)
-        {
-            // For path segments, we need to map the property correctly
-            // r.StartNode -> src (the source node)
-            // r.EndNode -> tgt (the target node)  
-            // r.Relationship -> r (the relationship)
-
-            var firstPart = parts.Count > 0 ? parts.Pop() : "";
-            var alias = firstPart switch
-            {
-                "StartNode" => "src",    // Changed from "n" to "src"
-                "EndNode" => "tgt",      // Changed from "t" to "tgt"
-                "Relationship" => "r",
-                _ => scope.CurrentAlias
-            };
-
-            // Build the rest of the path
-            var pathBuilder = new StringBuilder(alias);
-            foreach (var part in parts.Reverse())
-            {
-                pathBuilder.Append('.').Append(part);
-            }
-
-            return pathBuilder.ToString();
-        }
-
-        return null;
-    }
-
-    private void HandleConstantValue(object? value)
-    {
-        if (value is null)
-        {
-            logger.LogDebug("Pushing null");
-            _expressions.Push("null");
-        }
-        else
-        {
-            var paramName = builder.AddParameter(value);
-            logger.LogDebug("Pushing parameter {ParamName} = {Value}", paramName, value);
-            _expressions.Push(paramName);
-        }
+        _expressionVisitor.VisitParameter(node);
+        return node;
     }
 }

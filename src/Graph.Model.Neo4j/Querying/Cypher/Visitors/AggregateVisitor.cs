@@ -16,16 +16,20 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class AggregateVisitor : ExpressionVisitor
 {
     private readonly QueryScope _scope;
     private readonly CypherQueryBuilder _builder;
+    private readonly ILogger<AggregateVisitor> _logger;
 
-    public AggregateVisitor(QueryScope scope, CypherQueryBuilder builder)
+    public AggregateVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
+        _logger = loggerFactory?.CreateLogger<AggregateVisitor>() ?? NullLogger<AggregateVisitor>.Instance;
     }
 
     public void VisitAggregate(string aggregateFunction, Expression? selector = null)

@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
+using System.Data;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
@@ -29,6 +30,7 @@ internal sealed class CypherEngine
     private readonly CypherExecutor _executor;
     private readonly ResultMaterializer _materializer;
     private readonly CypherResultProcessor _resultProcessor;
+    private readonly ILoggerFactory? _loggerFactory;
 
     public CypherEngine(EntityFactory entityFactory, ILoggerFactory? loggerFactory)
     {
@@ -39,6 +41,7 @@ internal sealed class CypherEngine
         _executor = new CypherExecutor(loggerFactory);
         _materializer = new ResultMaterializer(entityFactory, loggerFactory);
         _resultProcessor = new CypherResultProcessor(_entityFactory, loggerFactory);
+        _loggerFactory = loggerFactory;
 
     }
 
@@ -52,7 +55,7 @@ internal sealed class CypherEngine
             _logger.LogDebug("Executing query for type {Type}", typeof(T).Name);
 
             // Build the Cypher query from the expression
-            var cypherQuery = BuildCypherQuery(expression, transaction);
+            var cypherQuery = BuildCypherQuery(expression, transaction, _loggerFactory);
 
             _logger.LogDebug("Generated Cypher: {Cypher}", cypherQuery.Text);
             _logger.LogDebug("Parameters: {Parameters}", cypherQuery.Parameters);
@@ -75,9 +78,9 @@ internal sealed class CypherEngine
         }
     }
 
-    private CypherQuery BuildCypherQuery(Expression expression, GraphTransaction? transaction)
+    private CypherQuery BuildCypherQuery(Expression expression, GraphTransaction? transaction, ILoggerFactory? loggerFactory = null)
     {
-        var visitor = new CypherQueryVisitor(_entityFactory);
+        var visitor = new CypherQueryVisitor(_entityFactory, loggerFactory);
         visitor.Visit(expression);
 
         var (cypher, parameters) = visitor.Build();
@@ -91,26 +94,6 @@ internal sealed class CypherEngine
         }
 
         return new CypherQuery(cypher, convertedParams);
-    }
-
-    private bool ShouldIncludeComplexProperties<T>(Expression expression)
-    {
-        var targetType = typeof(T);
-
-        if (!typeof(INode).IsAssignableFrom(targetType))
-            return false;
-
-        if (!_entityFactory.CanDeserialize(targetType))
-            return false;
-
-        var schema = _entityFactory.GetSchema(targetType);
-        if (schema is null || !schema.ComplexProperties.Any())
-            return false;
-
-        var visitor = new ProjectionDetectorVisitor();
-        visitor.Visit(expression);
-
-        return !visitor.HasProjection;
     }
 
     // Helper visitor to detect if we have a projection

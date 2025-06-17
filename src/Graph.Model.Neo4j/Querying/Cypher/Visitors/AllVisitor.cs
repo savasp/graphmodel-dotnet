@@ -16,16 +16,22 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class AllVisitor : ExpressionVisitor
 {
     private readonly QueryScope _scope;
     private readonly CypherQueryBuilder _builder;
+    private readonly ILogger<AllVisitor> _logger;
+    private readonly ILoggerFactory? _loggerFactory;
 
-    public AllVisitor(QueryScope scope, CypherQueryBuilder builder)
+    public AllVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
+        _logger = loggerFactory?.CreateLogger<AllVisitor>() ?? NullLogger<AllVisitor>.Instance;
+        _loggerFactory = loggerFactory;
     }
 
     public void VisitAll(LambdaExpression predicate)
@@ -43,7 +49,7 @@ internal sealed class AllVisitor : ExpressionVisitor
         _builder.AddWith($"COUNT({alias}) AS {totalCountParam}");
 
         // Then apply the predicate
-        var whereVisitor = new WhereVisitor(_scope, _builder);
+        var whereVisitor = new WhereVisitor(_scope, _builder, _loggerFactory);
         whereVisitor.Visit(predicate.Body);
 
         // Count matching nodes and compare

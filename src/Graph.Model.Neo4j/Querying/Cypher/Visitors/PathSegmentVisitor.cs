@@ -15,16 +15,20 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class PathSegmentVisitor
 {
     private readonly QueryScope _scope;
     private readonly CypherQueryBuilder _builder;
+    private readonly ILogger<PathSegmentVisitor> _logger;
 
-    public PathSegmentVisitor(QueryScope scope, CypherQueryBuilder builder)
+    public PathSegmentVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
+        _logger = loggerFactory?.CreateLogger<PathSegmentVisitor>() ?? NullLogger<PathSegmentVisitor>.Instance;
     }
 
     public void BuildPathSegmentQuery(Type sourceType, Type relationshipType, Type targetType)

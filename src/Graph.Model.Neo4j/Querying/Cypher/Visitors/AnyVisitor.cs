@@ -16,16 +16,22 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class AnyVisitor : ExpressionVisitor
 {
     private readonly QueryScope _scope;
     private readonly CypherQueryBuilder _builder;
+    private readonly ILogger<AnyVisitor> _logger;
+    private readonly ILoggerFactory? _loggerFactory;
 
-    public AnyVisitor(QueryScope scope, CypherQueryBuilder builder)
+    public AnyVisitor(QueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
+        _logger = loggerFactory?.CreateLogger<AnyVisitor>()
+            ?? NullLogger<AnyVisitor>.Instance;
     }
 
     public void VisitAny(Expression? predicate = null)
@@ -33,7 +39,7 @@ internal sealed class AnyVisitor : ExpressionVisitor
         // If there's a predicate, apply it
         if (predicate != null)
         {
-            var whereVisitor = new WhereVisitor(_scope, _builder);
+            var whereVisitor = new WhereVisitor(_scope, _builder, _loggerFactory);
             whereVisitor.Visit(predicate);
         }
 

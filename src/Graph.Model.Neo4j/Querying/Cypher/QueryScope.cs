@@ -28,6 +28,12 @@ internal sealed class QueryScope
     public string? CurrentAlias { get; set; }
 
     /// <summary>
+    /// Gets or sets the current type being queried.
+    /// This is used to determine the type of the current context in the query.
+    /// </summary>
+    public Type? CurrentType { get; set; }
+
+    /// <summary>
     /// Pushes a new alias onto the stack and sets it as current.
     /// </summary>
     public void PushAlias(string alias)

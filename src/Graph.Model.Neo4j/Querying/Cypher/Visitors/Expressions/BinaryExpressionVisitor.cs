@@ -1,0 +1,104 @@
+// Copyright 2025 Savas Parastatidis
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
+
+using System.Linq.Expressions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
+internal class BinaryExpressionVisitor : CypherExpressionVisitorBase
+{
+    private readonly ICypherExpressionVisitor _innerVisitor;
+    private readonly ILogger<BinaryExpressionVisitor> _logger;
+
+    public BinaryExpressionVisitor(ICypherExpressionVisitor innerVisitor, ILoggerFactory? loggerFactory = null)
+    {
+        _innerVisitor = innerVisitor;
+        _logger = loggerFactory?.CreateLogger<BinaryExpressionVisitor>() ?? NullLogger<BinaryExpressionVisitor>.Instance;
+    }
+
+    public override string VisitBinary(BinaryExpression node)
+    {
+        _logger.LogDebug("Visiting binary expression: {NodeType}", node.NodeType);
+        _logger.LogDebug("Left expression type: {LeftType}, Node: {LeftNode}", node.Left?.GetType().FullName, node.Left);
+        _logger.LogDebug("Right expression type: {RightType}, Node: {RightNode}", node.Right?.GetType().FullName, node.Right);
+        // Optionally, try to log the value if it's a ConstantExpression
+        if (node.Right is ConstantExpression constRight)
+        {
+            _logger.LogDebug("Right ConstantExpression value: {Value}", constRight.Value);
+        }
+        if (node.Left is ConstantExpression constLeft)
+        {
+            _logger.LogDebug("Left ConstantExpression value: {Value}", constLeft.Value);
+        }
+
+        var left = node.Left != null ? _innerVisitor.Visit(node.Left) : "NULL";
+        var right = node.Right != null ? _innerVisitor.Visit(node.Right) : "NULL";
+
+        _logger.LogDebug("Binary expression left: {Left}, right: {Right}", left, right);
+
+        // For OR conditions, check if we're comparing the same property with different values
+        if (node.NodeType == ExpressionType.OrElse)
+        {
+            var leftParts = left.Split('=').Select(p => p.Trim()).ToArray();
+            var rightParts = right.Split('=').Select(p => p.Trim()).ToArray();
+
+            if (leftParts.Length == 2 && rightParts.Length == 2 &&
+                leftParts[0] == rightParts[0])
+            {
+                // Same property being compared, combine the values
+                var expr = $"{leftParts[0]} = {leftParts[1]} OR {rightParts[0]} = {rightParts[1]}";
+                _logger.LogDebug("Combined OR expression: {Expression}", expr);
+                return expr;
+            }
+        }
+
+        // For AND conditions, check if we're duplicating the same condition
+        if (node.NodeType == ExpressionType.AndAlso && left == right)
+        {
+            return left;
+        }
+
+        // Handle all binary expression types
+        var expression = node.NodeType switch
+        {
+            ExpressionType.Equal => $"{left} = {right}",
+            ExpressionType.NotEqual => $"{left} <> {right}",
+            ExpressionType.GreaterThan => $"{left} > {right}",
+            ExpressionType.GreaterThanOrEqual => $"{left} >= {right}",
+            ExpressionType.LessThan => $"{left} < {right}",
+            ExpressionType.LessThanOrEqual => $"{left} <= {right}",
+            ExpressionType.AndAlso => $"({left} AND {right})",
+            ExpressionType.OrElse => $"({left} OR {right})",
+            ExpressionType.Add => $"{left} + {right}",
+            ExpressionType.Subtract => $"{left} - {right}",
+            ExpressionType.Multiply => $"{left} * {right}",
+            ExpressionType.Divide => $"{left} / {right}",
+            ExpressionType.Modulo => $"{left} % {right}",
+            ExpressionType.Power => $"POWER({left}, {right})",
+            ExpressionType.Coalesce => $"COALESCE({left}, {right})",
+            _ => throw new NotSupportedException($"Binary operator {node.NodeType} is not supported")
+        };
+
+        _logger.LogDebug("Binary expression result: {Expression}", expression);
+        return expression;
+    }
+
+    public override string VisitUnary(UnaryExpression node) => _innerVisitor.VisitUnary(node);
+    public override string VisitMember(MemberExpression node) => _innerVisitor.VisitMember(node);
+    public override string VisitMethodCall(MethodCallExpression node) => _innerVisitor.VisitMethodCall(node);
+    public override string VisitConstant(ConstantExpression node) => _innerVisitor.VisitConstant(node);
+    public override string VisitParameter(ParameterExpression node) => _innerVisitor.VisitParameter(node);
+}

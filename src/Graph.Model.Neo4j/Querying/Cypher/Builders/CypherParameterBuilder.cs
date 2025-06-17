@@ -16,6 +16,8 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 /// <summary>
 /// Builds parameters for Cypher queries from entities and values.
@@ -23,10 +25,12 @@ using Cvoya.Graph.Model.Serialization;
 internal sealed class CypherParameterBuilder
 {
     private readonly EntityFactory _entityFactory;
+    private readonly ILogger<CypherParameterBuilder> _logger;
 
-    public CypherParameterBuilder(EntityFactory entityFactory)
+    public CypherParameterBuilder(EntityFactory entityFactory, ILoggerFactory? loggerFactory = null)
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
+        _logger = loggerFactory?.CreateLogger<CypherParameterBuilder>() ?? NullLogger<CypherParameterBuilder>.Instance;
     }
 
     /// <summary>
