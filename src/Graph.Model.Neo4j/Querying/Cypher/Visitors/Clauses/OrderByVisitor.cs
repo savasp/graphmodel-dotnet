@@ -16,22 +16,11 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal sealed class OrderByVisitor : ExpressionVisitor
+internal sealed class OrderByVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
+    : ClauseVisitorBase<OrderByVisitor>(scope, builder)
 {
-    private readonly CypherQueryScope _scope;
-    private readonly CypherQueryBuilder _builder;
     private readonly List<(string Expression, bool IsDescending)> _orderClauses = [];
-    private readonly ILogger<OrderByVisitor> _logger;
-
-    public OrderByVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
-    {
-        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        _builder = builder ?? throw new ArgumentNullException(nameof(builder));
-        _logger = loggerFactory?.CreateLogger<OrderByVisitor>() ?? NullLogger<OrderByVisitor>.Instance;
-    }
 
     public void VisitOrderBy(LambdaExpression selector, bool isDescending = false, bool isThenBy = false)
     {
@@ -57,7 +46,7 @@ internal sealed class OrderByVisitor : ExpressionVisitor
     {
         foreach (var clause in _orderClauses)
         {
-            _builder.AddOrderBy(clause.Expression, clause.IsDescending);
+            Builder.AddOrderBy(clause.Expression, clause.IsDescending);
         }
     }
 
@@ -68,7 +57,7 @@ internal sealed class OrderByVisitor : ExpressionVisitor
             MemberExpression member => BuildMemberAccess(member),
             MethodCallExpression method => BuildMethodCall(method),
             UnaryExpression unary => ExpressionToCypher(unary.Operand),
-            ConstantExpression constant => constant.Value is null ? "null" : _builder.AddParameter(constant.Value),
+            ConstantExpression constant => constant.Value is null ? "null" : Builder.AddParameter(constant.Value),
             _ => throw new NotSupportedException($"Expression type {expression.NodeType} not supported in ORDER BY")
         };
     }
@@ -77,7 +66,7 @@ internal sealed class OrderByVisitor : ExpressionVisitor
     {
         var obj = member.Expression switch
         {
-            ParameterExpression param => _scope.GetAliasForType(param.Type)
+            ParameterExpression param => Scope.GetAliasForType(param.Type)
                 ?? param.Name
                 ?? throw new InvalidOperationException($"No alias found for parameter of type {param.Type.Name}"),
             MemberExpression innerMember => ExpressionToCypher(innerMember),

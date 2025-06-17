@@ -49,7 +49,7 @@ internal sealed class AllVisitor : ExpressionVisitor
         _builder.AddWith($"COUNT({alias}) AS {totalCountParam}");
 
         // Then apply the predicate
-        var whereVisitor = new WhereVisitor(_scope, _builder, _loggerFactory);
+        var whereVisitor = new WhereVisitor(_scope, _builder);
         whereVisitor.Visit(predicate.Body);
 
         // Count matching nodes and compare

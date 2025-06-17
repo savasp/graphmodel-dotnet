@@ -173,7 +173,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
             // Clear any existing WHERE clauses before processing
             _queryBuilder.ClearWhere();
 
-            var visitor = new WhereVisitor(_scope, _queryBuilder, _loggerFactory);
+            var visitor = new WhereVisitor(_scope, _queryBuilder);
             visitor.ProcessWhereClause(lambda);
             return true;
         }
@@ -188,7 +188,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         var selector = StripQuotes(node.Arguments[1]);
         if (selector is LambdaExpression lambda)
         {
-            var visitor = new SelectVisitor(_scope, _queryBuilder, _loggerFactory);
+            var visitor = new SelectVisitor(_scope, _queryBuilder);
             visitor.Visit(lambda);
             return true;
         }
@@ -225,7 +225,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         var selector = StripQuotes(node.Arguments[1]) as LambdaExpression;
         if (selector != null)
         {
-            var visitor = new OrderByVisitor(_scope, _queryBuilder, _loggerFactory);
+            var visitor = new OrderByVisitor(_scope, _queryBuilder);
             visitor.VisitOrderBy(selector, isDescending, isThenBy);
             return true;
         }
@@ -318,7 +318,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 
     private bool HandleDistinct(MethodCallExpression node)
     {
-        var visitor = new DistinctVisitor(_scope, _queryBuilder, _loggerFactory);
+        var visitor = new DistinctVisitor(_scope, _queryBuilder);
         visitor.ApplyDistinct();
         return true;
     }
@@ -337,7 +337,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 
         if (keySelector != null)
         {
-            var visitor = new GroupByVisitor(_scope, _queryBuilder, _loggerFactory);
+            var visitor = new GroupByVisitor(_scope, _queryBuilder);
             visitor.VisitGroupBy(keySelector, elementSelector);
             return true;
         }

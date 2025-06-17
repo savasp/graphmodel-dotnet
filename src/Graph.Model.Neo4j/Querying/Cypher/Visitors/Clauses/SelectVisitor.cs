@@ -16,14 +16,12 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal class SelectVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null) : ExpressionVisitor
+internal sealed class SelectVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
+    : ClauseVisitorBase<SelectVisitor>(scope, builder)
 {
     private readonly Stack<(string Expression, string? Alias)> _projections = new();
     private string? _currentMemberName;
-    private readonly ILogger<SelectVisitor> _logger = loggerFactory?.CreateLogger<SelectVisitor>() ?? NullLogger<SelectVisitor>.Instance;
 
     public string GetPropertyName(Expression expression)
     {
@@ -44,7 +42,7 @@ internal class SelectVisitor(CypherQueryScope scope, CypherQueryBuilder builder,
 
         // Remove the alias prefix (e.g., "n.Age" -> "Age")
         var parts = propertyPath.Split('.');
-        if (parts.Length > 1 && parts[0] == scope.CurrentAlias)
+        if (parts.Length > 1 && parts[0] == Scope.CurrentAlias)
         {
             return string.Join(".", parts.Skip(1));
         }
@@ -68,7 +66,7 @@ internal class SelectVisitor(CypherQueryScope scope, CypherQueryBuilder builder,
         // Add all projections to the builder
         while (_projections.TryPop(out var projection))
         {
-            builder.AddReturn(projection.Expression, projection.Alias);
+            Builder.AddReturn(projection.Expression, projection.Alias);
         }
 
         return node;
@@ -89,7 +87,7 @@ internal class SelectVisitor(CypherQueryScope scope, CypherQueryBuilder builder,
         // Add all projections to the builder
         while (_projections.TryPop(out var projection))
         {
-            builder.AddReturn(projection.Expression, projection.Alias);
+            Builder.AddReturn(projection.Expression, projection.Alias);
         }
 
         return node;
@@ -184,7 +182,7 @@ internal class SelectVisitor(CypherQueryScope scope, CypherQueryBuilder builder,
         if (node.Expression is ParameterExpression ||
             (node.Expression is MemberExpression memberExpr && GetRootExpression(memberExpr) is ParameterExpression))
         {
-            return $"{scope.CurrentAlias}.{string.Join(".", parts)}";
+            return $"{Scope.CurrentAlias}.{string.Join(".", parts)}";
         }
 
         return string.Join(".", parts);
@@ -208,7 +206,7 @@ internal class SelectVisitor(CypherQueryScope scope, CypherQueryBuilder builder,
             return $"{function}({expression})";
         }
 
-        return $"{function}({scope.CurrentAlias})";
+        return $"{function}({Scope.CurrentAlias})";
     }
 
     private string HandleStringFunction(MethodCallExpression node, string function)

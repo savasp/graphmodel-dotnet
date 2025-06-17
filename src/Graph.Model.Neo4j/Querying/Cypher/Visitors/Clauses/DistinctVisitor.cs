@@ -15,32 +15,20 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal sealed class DistinctVisitor
+internal sealed class DistinctVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
+    : ClauseVisitorBase<DistinctVisitor>(scope, builder)
 {
-    private readonly CypherQueryScope _scope;
-    private readonly CypherQueryBuilder _builder;
-    private readonly ILogger<DistinctVisitor> _logger;
-
-    public DistinctVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
-    {
-        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        _builder = builder ?? throw new ArgumentNullException(nameof(builder));
-        _logger = loggerFactory?.CreateLogger<DistinctVisitor>() ?? NullLogger<DistinctVisitor>.Instance;
-    }
-
     public void ApplyDistinct()
     {
         // Mark the query as needing DISTINCT
-        _builder.SetDistinct(true);
+        Builder.SetDistinct(true);
 
         // If we don't have a RETURN clause yet, add one
-        if (!_builder.HasReturnClause)
+        if (!Builder.HasReturnClause)
         {
-            var alias = _scope.CurrentAlias ?? "n";
-            _builder.AddReturn($"DISTINCT {alias}");
+            var alias = Scope.CurrentAlias ?? "n";
+            Builder.AddReturn($"DISTINCT {alias}");
         }
     }
 }

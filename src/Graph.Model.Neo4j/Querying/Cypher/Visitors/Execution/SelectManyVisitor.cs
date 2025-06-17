@@ -78,7 +78,7 @@ internal sealed class SelectManyVisitor : ExpressionVisitor
         if (resultSelector != null)
         {
             // Result selector typically combines source and target
-            var selectVisitor = new SelectVisitor(_scope, _builder, _loggerFactory);
+            var selectVisitor = new SelectVisitor(_scope, _builder);
             selectVisitor.Visit(resultSelector);
         }
         else
@@ -106,7 +106,7 @@ internal sealed class SelectManyVisitor : ExpressionVisitor
 
         if (resultSelector != null)
         {
-            var selectVisitor = new SelectVisitor(_scope, _builder, _loggerFactory);
+            var selectVisitor = new SelectVisitor(_scope, _builder);
             selectVisitor.Visit(resultSelector);
         }
         else

@@ -16,22 +16,10 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal sealed class GroupByVisitor : ExpressionVisitor
+internal sealed class GroupByVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
+    : ClauseVisitorBase<GroupByVisitor>(scope, builder)
 {
-    private readonly CypherQueryScope _scope;
-    private readonly CypherQueryBuilder _builder;
-    private readonly ILogger<GroupByVisitor> _logger;
-
-    public GroupByVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
-    {
-        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        _builder = builder ?? throw new ArgumentNullException(nameof(builder));
-        _logger = loggerFactory?.CreateLogger<GroupByVisitor>() ?? NullLogger<GroupByVisitor>.Instance;
-    }
-
     public void VisitGroupBy(LambdaExpression keySelector, LambdaExpression? elementSelector = null)
     {
         // Visit the key selector
@@ -39,20 +27,20 @@ internal sealed class GroupByVisitor : ExpressionVisitor
         var cypherKey = ExpressionToCypher(keyExpression);
 
         // Add the GROUP BY clause
-        _builder.AddGroupBy(cypherKey);
+        Builder.AddGroupBy(cypherKey);
 
         // If we have an element selector, we need to handle the projection
         if (elementSelector != null)
         {
             var elementExpression = Visit(elementSelector.Body);
             var cypherElement = ExpressionToCypher(elementExpression);
-            _builder.AddReturn($"{cypherKey} AS key, COLLECT({cypherElement}) AS elements");
+            Builder.AddReturn($"{cypherKey} AS key, COLLECT({cypherElement}) AS elements");
         }
         else
         {
             // Default grouping - return key and all matching nodes/relationships
-            var currentAlias = _scope.CurrentAlias ?? "n";
-            _builder.AddReturn($"{cypherKey} AS key, COLLECT({currentAlias}) AS elements");
+            var currentAlias = Scope.CurrentAlias ?? "n";
+            Builder.AddReturn($"{cypherKey} AS key, COLLECT({currentAlias}) AS elements");
         }
     }
 
@@ -72,7 +60,7 @@ internal sealed class GroupByVisitor : ExpressionVisitor
     {
         var obj = member.Expression switch
         {
-            ParameterExpression param => _scope.GetAliasForType(param.Type)
+            ParameterExpression param => Scope.GetAliasForType(param.Type)
                 ?? param.Name
                 ?? throw new InvalidOperationException($"No alias found for parameter of type {param.Type.Name}"),
             MemberExpression innerMember => ExpressionToCypher(innerMember),
@@ -84,7 +72,7 @@ internal sealed class GroupByVisitor : ExpressionVisitor
 
     private string BuildConstant(ConstantExpression constant)
     {
-        return constant.Value is null ? "null" : _builder.AddParameter(constant.Value);
+        return constant.Value is null ? "null" : Builder.AddParameter(constant.Value);
     }
 
     private string BuildBinary(BinaryExpression binary)

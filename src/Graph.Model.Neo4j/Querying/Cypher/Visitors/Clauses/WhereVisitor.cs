@@ -18,39 +18,25 @@ using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal class WhereVisitor : ExpressionVisitor
+internal sealed class WhereVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
+    : ClauseVisitorBase<WhereVisitor>(scope, builder)
 {
-    private readonly CypherQueryScope _scope;
-    private readonly CypherQueryBuilder _builder;
-    private readonly ILogger<WhereVisitor> _logger;
-    private readonly ICypherExpressionVisitor _expressionVisitor;
-
-    public WhereVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
-    {
-        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        _builder = builder ?? throw new ArgumentNullException(nameof(builder));
-        _logger = loggerFactory?.CreateLogger<WhereVisitor>() ?? NullLogger<WhereVisitor>.Instance;
-
-        // Create a chain of visitors
-        var baseVisitor = new BaseExpressionVisitor(scope, builder, loggerFactory);
-        var binaryVisitor = new BinaryExpressionVisitor(baseVisitor, loggerFactory);
-        var stringVisitor = new StringMethodVisitor(binaryVisitor, loggerFactory);
-        var collectionVisitor = new CollectionMethodVisitor(stringVisitor, loggerFactory);
-        _expressionVisitor = collectionVisitor;
-    }
+    private readonly ICypherExpressionVisitor _expressionVisitor = new CollectionMethodVisitor(
+            new StringMethodVisitor(
+                new BinaryExpressionVisitor(
+                    new BaseExpressionVisitor(scope, builder))));
 
     public void ProcessWhereClause(LambdaExpression lambda)
     {
-        _logger.LogDebug("Processing WHERE clause: {Expression}", lambda);
+        Logger.LogDebug("Processing WHERE clause: {Expression}", lambda);
 
         // Visit the lambda body to get the expression
         var expression = _expressionVisitor.Visit(lambda.Body);
-        _logger.LogDebug("Generated WHERE expression: {Expression}", expression);
+        Logger.LogDebug("Generated WHERE expression: {Expression}", expression);
 
         // Add the expression to the query builder
-        _builder.AddWhere(expression);
+        Builder.AddWhere(expression);
     }
 
     protected override Expression VisitBinary(BinaryExpression node)

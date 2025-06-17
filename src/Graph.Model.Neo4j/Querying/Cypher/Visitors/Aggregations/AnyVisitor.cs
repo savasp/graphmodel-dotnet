@@ -40,7 +40,7 @@ internal sealed class AnyVisitor : ExpressionVisitor
         // If there's a predicate, apply it
         if (predicate != null)
         {
-            var whereVisitor = new WhereVisitor(_scope, _builder, _loggerFactory);
+            var whereVisitor = new WhereVisitor(_scope, _builder);
             whereVisitor.Visit(predicate);
         }
 
