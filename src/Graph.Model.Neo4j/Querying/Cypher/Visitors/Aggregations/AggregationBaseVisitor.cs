@@ -16,23 +16,12 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
-internal sealed class AnyVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
-    : AggregationBaseVisitor<AnyVisitor>(scope, builder)
+internal class AggregationBaseVisitor<T>(CypherQueryScope scope, CypherQueryBuilder builder) : ExpressionVisitor
 {
-    public void VisitAny(Expression? predicate = null)
-    {
-        // If there's a predicate, apply it
-        if (predicate != null)
-        {
-            var whereVisitor = new WhereVisitor(Scope, Builder);
-            whereVisitor.Visit(predicate);
-        }
-
-        // For Any(), we just need to know if at least one exists
-        // Use COUNT() > 0 for efficiency
-        var alias = Scope.CurrentAlias
-            ?? throw new InvalidOperationException("No current alias set when building Any clause");
-        Builder.AddReturn($"COUNT({alias}) > 0 AS result");
-    }
+    protected CypherQueryScope Scope => scope;
+    protected CypherQueryBuilder Builder => builder;
+    protected ILogger<T> Logger = scope.LoggerFactory?.CreateLogger<T>() ?? NullLogger<T>.Instance;
 }

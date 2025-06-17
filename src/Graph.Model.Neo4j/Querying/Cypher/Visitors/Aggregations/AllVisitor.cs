@@ -16,27 +16,13 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal sealed class AllVisitor : ExpressionVisitor
+internal sealed class AllVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
+    : AggregationBaseVisitor<AllVisitor>(scope, builder)
 {
-    private readonly CypherQueryScope _scope;
-    private readonly CypherQueryBuilder _builder;
-    private readonly ILogger<AllVisitor> _logger;
-    private readonly ILoggerFactory? _loggerFactory;
-
-    public AllVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
-    {
-        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        _builder = builder ?? throw new ArgumentNullException(nameof(builder));
-        _logger = loggerFactory?.CreateLogger<AllVisitor>() ?? NullLogger<AllVisitor>.Instance;
-        _loggerFactory = loggerFactory;
-    }
-
     public void VisitAll(LambdaExpression predicate)
     {
-        var alias = _scope.CurrentAlias ?? "n";
+        var alias = Scope.CurrentAlias ?? "n";
 
         // In Cypher, ALL(x IN collection WHERE predicate) checks if all match
         // But since we're working with matched nodes, we need a different approach
@@ -45,14 +31,14 @@ internal sealed class AllVisitor : ExpressionVisitor
         // If they're equal, all nodes match
 
         // First, get total count
-        var totalCountParam = _builder.AddParameter($"__totalCount_{alias}");
-        _builder.AddWith($"COUNT({alias}) AS {totalCountParam}");
+        var totalCountParam = Builder.AddParameter($"__totalCount_{alias}");
+        Builder.AddWith($"COUNT({alias}) AS {totalCountParam}");
 
         // Then apply the predicate
-        var whereVisitor = new WhereVisitor(_scope, _builder);
+        var whereVisitor = new WhereVisitor(Scope, Builder);
         whereVisitor.Visit(predicate.Body);
 
         // Count matching nodes and compare
-        _builder.AddReturn($"COUNT({alias}) = {totalCountParam} AS result");
+        Builder.AddReturn($"COUNT({alias}) = {totalCountParam} AS result");
     }
 }

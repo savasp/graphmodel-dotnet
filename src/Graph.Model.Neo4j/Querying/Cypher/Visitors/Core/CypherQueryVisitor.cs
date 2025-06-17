@@ -33,7 +33,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
         _queryBuilder = new CypherQueryBuilder();
-        _scope = new CypherQueryScope();
+        _scope = new CypherQueryScope(loggerFactory);
         _loggerFactory = loggerFactory;
         _logger = loggerFactory?.CreateLogger<CypherQueryVisitor>() ?? NullLogger<CypherQueryVisitor>.Instance;
     }
@@ -296,7 +296,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
             predicate = StripQuotes(node.Arguments[1]);
         }
 
-        var visitor = new AnyVisitor(_scope, _queryBuilder, _loggerFactory);
+        var visitor = new AnyVisitor(_scope, _queryBuilder);
         visitor.VisitAny(predicate);
         return true;
     }
@@ -308,7 +308,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         var predicate = StripQuotes(node.Arguments[1]) as LambdaExpression;
         if (predicate != null)
         {
-            var visitor = new AllVisitor(_scope, _queryBuilder, _loggerFactory);
+            var visitor = new AllVisitor(_scope, _queryBuilder);
             visitor.VisitAll(predicate);
             return true;
         }
