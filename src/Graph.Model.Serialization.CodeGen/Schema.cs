@@ -130,8 +130,11 @@ internal static class Schema
         if (property.SetMethod == null && !IsRecordProperty(property))
             return false;
 
-        // Include all simple types that can be serialized using the unified predicate
-        return GraphDataModel.IsSimple(property.Type) || GraphDataModel.IsCollectionOfSimple(property.Type);
+        // Include all serializable properties (simple, complex, and collections)
+        return GraphDataModel.IsSimple(property.Type) ||
+               GraphDataModel.IsCollectionOfSimple(property.Type) ||
+               !GraphDataModel.IsSimple(property.Type) ||
+               GraphDataModel.IsCollectionOfComplex(property.Type);
     }
 
     private static bool IsRecordProperty(IPropertySymbol property)

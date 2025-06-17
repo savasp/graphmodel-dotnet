@@ -119,6 +119,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 
             // Check if we need to include complex properties
             AddComplexPropertyMatches(rootType, alias);
+            _queryBuilder.EnableComplexPropertyLoading();
         }
         else if (typeof(IRelationship).IsAssignableFrom(rootType))
         {

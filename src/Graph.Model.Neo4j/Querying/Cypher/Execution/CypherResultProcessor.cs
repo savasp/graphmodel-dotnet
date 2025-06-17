@@ -320,29 +320,24 @@ internal sealed class CypherResultProcessor
         Type targetType,
         CancellationToken cancellationToken)
     {
-        var results = new List<EntityInfo>();
+        if (!records.Any())
+            return [];
 
+        // Create the base EntityInfo from the first record
+        var baseNode = records[0]["n"].As<INode>();
+        var entityInfo = CreateEntityInfoFromNode(baseNode, targetType);
+
+        // Process all records to build a complete EntityInfo
         foreach (var record in records)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (!record.TryGet<object>("n", out var nodeObj) || nodeObj is not INode mainNode)
-                continue;
-
-            // Start with the main node
-            var entityInfo = CreateEntityInfoFromNode(mainNode, targetType);
-
-            // Add complex properties from related nodes
-            if (record.TryGet<object>("relatedNodes", out var relatedNodesObj) &&
-                relatedNodesObj is IList<object> relatedNodesList)
+            var relatedNodesList = record["relatedNodes"].As<IList<object>>();
+            if (relatedNodesList != null && relatedNodesList.Any())
             {
                 await AddComplexPropertiesFromRelatedNodes(entityInfo, relatedNodesList, cancellationToken);
             }
-
-            results.Add(entityInfo);
         }
 
-        return results;
+        return [entityInfo];
     }
 
     private async Task AddComplexPropertiesFromRelatedNodes(

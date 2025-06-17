@@ -32,6 +32,7 @@ internal sealed class AnyVisitor : ExpressionVisitor
         _builder = builder ?? throw new ArgumentNullException(nameof(builder));
         _logger = loggerFactory?.CreateLogger<AnyVisitor>()
             ?? NullLogger<AnyVisitor>.Instance;
+        _loggerFactory = loggerFactory;
     }
 
     public void VisitAny(Expression? predicate = null)
