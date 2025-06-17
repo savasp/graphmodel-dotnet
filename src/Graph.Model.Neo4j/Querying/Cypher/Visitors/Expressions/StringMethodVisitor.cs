@@ -15,19 +15,15 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal class StringMethodVisitor : CypherExpressionVisitorBase
+internal class StringMethodVisitor(
+    ICypherExpressionVisitor innerVisitor,
+    CypherQueryScope scope,
+    CypherQueryBuilder builder) : CypherExpressionVisitorBase<StringMethodVisitor>(scope, builder)
 {
-    private readonly ICypherExpressionVisitor _innerVisitor;
-    private readonly ILogger<StringMethodVisitor> _logger;
-
-    public StringMethodVisitor(ICypherExpressionVisitor innerVisitor, ILoggerFactory? loggerFactory = null)
-    {
-        _innerVisitor = innerVisitor;
-        _logger = loggerFactory?.CreateLogger<StringMethodVisitor>() ?? NullLogger<StringMethodVisitor>.Instance;
-    }
+    private readonly ICypherExpressionVisitor _innerVisitor = innerVisitor;
 
     public override string VisitMethodCall(MethodCallExpression node)
     {
@@ -36,7 +32,7 @@ internal class StringMethodVisitor : CypherExpressionVisitorBase
             return _innerVisitor.VisitMethodCall(node);
         }
 
-        _logger.LogDebug("Visiting string method: {MethodName}", node.Method.Name);
+        Logger.LogDebug("Visiting string method: {MethodName}", node.Method.Name);
 
         var target = _innerVisitor.Visit(node.Object!);
         var arguments = node.Arguments.Select(arg => _innerVisitor.Visit(arg)).ToList();
@@ -59,7 +55,7 @@ internal class StringMethodVisitor : CypherExpressionVisitorBase
             _ => throw new NotSupportedException($"String method {node.Method.Name} is not supported")
         };
 
-        _logger.LogDebug("String method result: {Expression}", expression);
+        Logger.LogDebug("String method result: {Expression}", expression);
         return expression;
     }
 

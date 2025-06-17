@@ -18,21 +18,10 @@ using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal class BaseExpressionVisitor : CypherExpressionVisitorBase
+internal class BaseExpressionVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
+    : CypherExpressionVisitorBase<BaseExpressionVisitor>(scope, builder)
 {
-    private readonly CypherQueryScope _scope;
-    private readonly CypherQueryBuilder _builder;
-    private readonly ILogger<BaseExpressionVisitor> _logger;
-
-    public BaseExpressionVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
-    {
-        _scope = scope;
-        _builder = builder;
-        _logger = loggerFactory?.CreateLogger<BaseExpressionVisitor>() ?? NullLogger<BaseExpressionVisitor>.Instance;
-    }
-
     public override string VisitBinary(BinaryExpression node)
     {
         var left = Visit(node.Left);
@@ -48,20 +37,20 @@ internal class BaseExpressionVisitor : CypherExpressionVisitorBase
 
     public override string VisitMember(MemberExpression node)
     {
-        _logger.LogDebug("Visiting member: {MemberName}", node.Member.Name);
+        Logger.LogDebug("Visiting member: {MemberName}", node.Member.Name);
 
         if (node.Expression is ParameterExpression param)
         {
             var propertyName = node.Member.Name;
             var result = propertyName switch
             {
-                "StartNodeId" => $"{_scope.GetAliasForType(typeof(IEntity))}.Id",
-                "EndNodeId" => $"{_scope.GetAliasForType(typeof(INode))}.Id",
-                "Direction" => $"{_scope.CurrentAlias}.Direction",
-                "Id" => $"{_scope.CurrentAlias}.Id",  // Handle relationship's own Id property
-                _ => $"{_scope.CurrentAlias}.{propertyName}"
+                "StartNodeId" => $"{Scope.GetAliasForType(typeof(IEntity))}.Id",
+                "EndNodeId" => $"{Scope.GetAliasForType(typeof(INode))}.Id",
+                "Direction" => $"{Scope.CurrentAlias}.Direction",
+                "Id" => $"{Scope.CurrentAlias}.Id",  // Handle relationship's own Id property
+                _ => $"{Scope.CurrentAlias}.{propertyName}"
             };
-            _logger.LogDebug("Member expression result: {Result}", result);
+            Logger.LogDebug("Member expression result: {Result}", result);
             return result;
         }
         else if (node.Expression is MemberExpression memberExpr)
@@ -69,7 +58,7 @@ internal class BaseExpressionVisitor : CypherExpressionVisitorBase
             // Handle nested member access (e.g., r.relationshipId)
             var baseExpr = Visit(memberExpr);
             var result = $"{baseExpr}.{node.Member.Name}";
-            _logger.LogDebug("Nested member expression result: {Result}", result);
+            Logger.LogDebug("Nested member expression result: {Result}", result);
             return result;
         }
         else if (node.Expression is ConstantExpression constantExpr)
@@ -84,17 +73,17 @@ internal class BaseExpressionVisitor : CypherExpressionVisitorBase
 
             if (value == null)
             {
-                _logger.LogDebug("Closure value is null, returning NULL");
+                Logger.LogDebug("Closure value is null, returning NULL");
                 return "NULL";
             }
 
-            var paramRef = _builder.AddParameter(value);
-            _logger.LogDebug("Closure value result: {Result}", paramRef);
+            var paramRef = Builder.AddParameter(value);
+            Logger.LogDebug("Closure value result: {Result}", paramRef);
             return paramRef;
         }
 
-        var defaultResult = $"{_scope.CurrentAlias}.{node.Member.Name}";
-        _logger.LogDebug("Default member expression result: {Result}", defaultResult);
+        var defaultResult = $"{Scope.CurrentAlias}.{node.Member.Name}";
+        Logger.LogDebug("Default member expression result: {Result}", defaultResult);
         return defaultResult;
     }
 
@@ -105,7 +94,7 @@ internal class BaseExpressionVisitor : CypherExpressionVisitorBase
 
     public override string VisitConstant(ConstantExpression node)
     {
-        _logger.LogDebug("Visiting constant: {Value}", node.Value);
+        Logger.LogDebug("Visiting constant: {Value}", node.Value);
 
         if (node.Value == null)
         {
@@ -113,15 +102,15 @@ internal class BaseExpressionVisitor : CypherExpressionVisitorBase
         }
 
         // Add the parameter and return its reference
-        var paramRef = _builder.AddParameter(node.Value);
-        _logger.LogDebug("Added parameter: {Value} -> {ParamRef}", node.Value, paramRef);
+        var paramRef = Builder.AddParameter(node.Value);
+        Logger.LogDebug("Added parameter: {Value} -> {ParamRef}", node.Value, paramRef);
         return paramRef;
     }
 
     public override string VisitParameter(ParameterExpression node)
     {
-        var result = _scope.CurrentAlias ?? throw new InvalidOperationException("No current alias set");
-        _logger.LogDebug("Parameter expression result: {Result}", result);
+        var result = Scope.CurrentAlias ?? throw new InvalidOperationException("No current alias set");
+        Logger.LogDebug("Parameter expression result: {Result}", result);
         return result;
     }
 }

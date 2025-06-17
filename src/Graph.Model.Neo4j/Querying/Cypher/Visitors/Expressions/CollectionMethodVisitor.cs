@@ -15,19 +15,15 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal class CollectionMethodVisitor : CypherExpressionVisitorBase
+internal class CollectionMethodVisitor(
+    ICypherExpressionVisitor innerVisitor,
+    CypherQueryScope scope,
+    CypherQueryBuilder builder) : CypherExpressionVisitorBase<CollectionMethodVisitor>(scope, builder)
 {
-    private readonly ICypherExpressionVisitor _innerVisitor;
-    private readonly ILogger<CollectionMethodVisitor> _logger;
-
-    public CollectionMethodVisitor(ICypherExpressionVisitor innerVisitor, ILoggerFactory? loggerFactory = null)
-    {
-        _innerVisitor = innerVisitor;
-        _logger = loggerFactory?.CreateLogger<CollectionMethodVisitor>() ?? NullLogger<CollectionMethodVisitor>.Instance;
-    }
+    private readonly ICypherExpressionVisitor _innerVisitor = innerVisitor;
 
     public override string VisitMethodCall(MethodCallExpression node)
     {
@@ -36,7 +32,7 @@ internal class CollectionMethodVisitor : CypherExpressionVisitorBase
             return _innerVisitor.VisitMethodCall(node);
         }
 
-        _logger.LogDebug("Visiting collection method: {MethodName}", node.Method.Name);
+        Logger.LogDebug("Visiting collection method: {MethodName}", node.Method.Name);
 
         var collection = _innerVisitor.Visit(node.Arguments[0]);
 
@@ -53,7 +49,7 @@ internal class CollectionMethodVisitor : CypherExpressionVisitorBase
                 _ => throw new NotSupportedException($"Collection method {node.Method.Name} is not supported")
             };
 
-            _logger.LogDebug("Collection method result: {Expression}", expression);
+            Logger.LogDebug("Collection method result: {Expression}", expression);
             return expression;
         }
         else
@@ -65,7 +61,7 @@ internal class CollectionMethodVisitor : CypherExpressionVisitorBase
                 _ => throw new NotSupportedException($"Collection method {node.Method.Name} is not supported")
             };
 
-            _logger.LogDebug("Collection method result: {Expression}", expression);
+            Logger.LogDebug("Collection method result: {Expression}", expression);
             return expression;
         }
     }

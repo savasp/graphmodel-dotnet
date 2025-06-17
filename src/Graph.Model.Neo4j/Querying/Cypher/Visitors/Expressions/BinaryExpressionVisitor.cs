@@ -15,39 +15,35 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal class BinaryExpressionVisitor : CypherExpressionVisitorBase
+internal class BinaryExpressionVisitor(
+    ICypherExpressionVisitor innerVisitor,
+    CypherQueryScope scope,
+    CypherQueryBuilder builder) : CypherExpressionVisitorBase<BinaryExpression>(scope, builder)
 {
-    private readonly ICypherExpressionVisitor _innerVisitor;
-    private readonly ILogger<BinaryExpressionVisitor> _logger;
-
-    public BinaryExpressionVisitor(ICypherExpressionVisitor innerVisitor, ILoggerFactory? loggerFactory = null)
-    {
-        _innerVisitor = innerVisitor;
-        _logger = loggerFactory?.CreateLogger<BinaryExpressionVisitor>() ?? NullLogger<BinaryExpressionVisitor>.Instance;
-    }
+    private readonly ICypherExpressionVisitor _innerVisitor = innerVisitor;
 
     public override string VisitBinary(BinaryExpression node)
     {
-        _logger.LogDebug("Visiting binary expression: {NodeType}", node.NodeType);
-        _logger.LogDebug("Left expression type: {LeftType}, Node: {LeftNode}", node.Left?.GetType().FullName, node.Left);
-        _logger.LogDebug("Right expression type: {RightType}, Node: {RightNode}", node.Right?.GetType().FullName, node.Right);
+        Logger.LogDebug("Visiting binary expression: {NodeType}", node.NodeType);
+        Logger.LogDebug("Left expression type: {LeftType}, Node: {LeftNode}", node.Left?.GetType().FullName, node.Left);
+        Logger.LogDebug("Right expression type: {RightType}, Node: {RightNode}", node.Right?.GetType().FullName, node.Right);
         // Optionally, try to log the value if it's a ConstantExpression
         if (node.Right is ConstantExpression constRight)
         {
-            _logger.LogDebug("Right ConstantExpression value: {Value}", constRight.Value);
+            Logger.LogDebug("Right ConstantExpression value: {Value}", constRight.Value);
         }
         if (node.Left is ConstantExpression constLeft)
         {
-            _logger.LogDebug("Left ConstantExpression value: {Value}", constLeft.Value);
+            Logger.LogDebug("Left ConstantExpression value: {Value}", constLeft.Value);
         }
 
         var left = node.Left != null ? _innerVisitor.Visit(node.Left) : "NULL";
         var right = node.Right != null ? _innerVisitor.Visit(node.Right) : "NULL";
 
-        _logger.LogDebug("Binary expression left: {Left}, right: {Right}", left, right);
+        Logger.LogDebug("Binary expression left: {Left}, right: {Right}", left, right);
 
         // For OR conditions, check if we're comparing the same property with different values
         if (node.NodeType == ExpressionType.OrElse)
@@ -60,7 +56,7 @@ internal class BinaryExpressionVisitor : CypherExpressionVisitorBase
             {
                 // Same property being compared, combine the values
                 var expr = $"{leftParts[0]} = {leftParts[1]} OR {rightParts[0]} = {rightParts[1]}";
-                _logger.LogDebug("Combined OR expression: {Expression}", expr);
+                Logger.LogDebug("Combined OR expression: {Expression}", expr);
                 return expr;
             }
         }
@@ -92,7 +88,7 @@ internal class BinaryExpressionVisitor : CypherExpressionVisitorBase
             _ => throw new NotSupportedException($"Binary operator {node.NodeType} is not supported")
         };
 
-        _logger.LogDebug("Binary expression result: {Expression}", expression);
+        Logger.LogDebug("Binary expression result: {Expression}", expression);
         return expression;
     }
 

@@ -25,7 +25,7 @@ internal sealed class WhereVisitor(CypherQueryScope scope, CypherQueryBuilder bu
     private readonly ICypherExpressionVisitor _expressionVisitor = new CollectionMethodVisitor(
             new StringMethodVisitor(
                 new BinaryExpressionVisitor(
-                    new BaseExpressionVisitor(scope, builder))));
+                    new BaseExpressionVisitor(scope, builder), scope, builder), scope, builder), scope, builder);
 
     public void ProcessWhereClause(LambdaExpression lambda)
     {

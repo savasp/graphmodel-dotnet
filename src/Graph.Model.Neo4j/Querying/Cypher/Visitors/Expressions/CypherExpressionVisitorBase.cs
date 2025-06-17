@@ -15,22 +15,27 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-internal abstract class CypherExpressionVisitorBase : ICypherExpressionVisitor
+internal abstract class CypherExpressionVisitorBase<T> : ICypherExpressionVisitor
 {
-    private readonly ILogger<CypherExpressionVisitorBase> _logger;
-
-    protected CypherExpressionVisitorBase(ILoggerFactory? loggerFactory = null)
+    protected CypherExpressionVisitorBase(CypherQueryScope scope, CypherQueryBuilder builder)
     {
-        _logger = loggerFactory?.CreateLogger<CypherExpressionVisitorBase>() ?? NullLogger<CypherExpressionVisitorBase>.Instance;
+        Scope = scope ?? throw new ArgumentNullException(nameof(scope));
+        Builder = builder ?? throw new ArgumentNullException(nameof(builder));
+        Logger = scope.LoggerFactory?.CreateLogger<CypherExpressionVisitorBase<T>>() ?? NullLogger<CypherExpressionVisitorBase<T>>.Instance;
     }
+
+    protected CypherQueryScope Scope { get; }
+    protected CypherQueryBuilder Builder { get; }
+    protected ILogger<CypherExpressionVisitorBase<T>> Logger { get; }
 
     public virtual string Visit(Expression node)
     {
-        _logger.LogDebug("Visiting expression of type: {NodeType}", node.GetType().FullName);
-        _logger.LogDebug("Expression: {Expression}", node);
+        Logger.LogDebug("Visiting expression of type: {NodeType}", node.GetType().FullName);
+        Logger.LogDebug("Expression: {Expression}", node);
 
         return node switch
         {
