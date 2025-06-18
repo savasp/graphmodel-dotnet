@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 using Microsoft.Extensions.Logging;
 
 /// <summary>

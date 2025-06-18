@@ -48,7 +48,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
             var result = Visit(node.Arguments[0]);
 
             // Then try to handle the method using the registry
-            if (_context.MethodHandlers.TryHandle(node, result))
+            if (_context.MethodHandlers.TryHandle(_context, node, result))
             {
                 return result;
             }
@@ -84,12 +84,12 @@ internal class CypherQueryVisitor : ExpressionVisitor
         {
             _logger.LogDebug("Found root queryable of type {Type}", _context.Scope.RootType.Name);
 
-            var alias = _context.Scope.GetAliasForType(_context.Scope.RootType)
-                ?? throw new InvalidOperationException(
-                    $"No alias found for root type '{_context.Scope.RootType.Name}'.");
+            // Use GetOrCreateAlias instead of GetAliasForType
+            var alias = _context.Scope.GetOrCreateAlias(_context.Scope.RootType, "n");
             var label = Labels.GetLabelFromType(_context.Scope.RootType);
             _context.Builder.AddMatch(alias, label);
 
+            // Set as current alias
             _context.Scope.CurrentAlias = alias;
 
             return node;
