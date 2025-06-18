@@ -53,7 +53,7 @@ internal sealed class CypherResultProcessor
 
         if (typeof(Model.IRelationship).IsAssignableFrom(targetType))
         {
-            return ProcessRelationships(records, targetType, cancellationToken);
+            return ProcessRelationships(records, targetType);
         }
 
         return ProcessProjections(records, targetType);
@@ -78,7 +78,7 @@ internal sealed class CypherResultProcessor
             var sourceEntityInfo = ProcessSingleNode(sourceNode, sourceType);
 
             // For relationships in PathSegments, we need to reconstruct the missing properties
-            var relEntityInfo = ProcessSingleRelationshipWithContext(relationship, relType, sourceNode, targetNode);
+            var relEntityInfo = ProcessSingleRelationshipWithContext(relationship, relType, GetNodeId(sourceNode), GetNodeId(targetNode));
 
             var targetEntityInfo = ProcessSingleNode(targetNode, targetType);
 
@@ -92,35 +92,19 @@ internal sealed class CypherResultProcessor
         return results;
     }
 
-    private EntityInfo ProcessSingleRelationshipWithContext(IRelationship relationship, Type targetType, INode sourceNode, INode targetNode)
+    private EntityInfo ProcessSingleRelationshipWithContext(IRelationship relationship, Type targetType, string startNodeId, string endNodeId)
     {
         // Create the base EntityInfo from the relationship
         var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
 
         // Add back the missing properties using the shared enhancement logic
-        EnhanceRelationshipEntityInfo(entityInfo, targetType, sourceNode, targetNode);
+        EnhanceRelationshipEntityInfo(entityInfo, targetType, startNodeId, endNodeId);
 
         return entityInfo;
     }
 
-    private EntityInfo ProcessSingleRelationship(IRelationship relationship, Type targetType)
+    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, Type targetType, string startNodeId, string endNodeId)
     {
-        // Create the base EntityInfo from the relationship
-        var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
-
-        // For standalone relationships, we might not have source/target context
-        // but we should still try to add Direction if we can determine it
-        TryAddMissingRelationshipProperties(entityInfo, relationship, targetType);
-
-        return entityInfo;
-    }
-
-    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, Type targetType, INode sourceNode, INode targetNode)
-    {
-        // Add back the missing properties that were stripped during serialization
-        var startNodeId = GetNodeId(sourceNode);
-        var endNodeId = GetNodeId(targetNode);
-
         // Add StartNodeId as a simple property
         entityInfo.SimpleProperties[nameof(Model.IRelationship.StartNodeId)] = new Property(
             PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.StartNodeId))!,
@@ -147,26 +131,11 @@ internal sealed class CypherResultProcessor
         );
     }
 
-    private static void TryAddMissingRelationshipProperties(EntityInfo entityInfo, IRelationship relationship, Type targetType)
-    {
-        // Add Direction if it's missing but we can determine it
-        if (!entityInfo.SimpleProperties.ContainsKey(nameof(Model.IRelationship.Direction)))
-        {
-            var direction = GetRelationshipDirection(targetType);
-            entityInfo.SimpleProperties[nameof(Model.IRelationship.Direction)] = new Property(
-                PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.Direction))!,
-                Label: nameof(Model.IRelationship.Direction),
-                IsNullable: false,
-                Value: new SimpleValue(direction, typeof(RelationshipDirection))
-            );
-        }
-
-        // Note: StartNodeId and EndNodeId can't be reconstructed without the source/target nodes
-        // These will need to be provided when we have that context
-    }
-
     private static string GetNodeId(INode node)
     {
+        // TODO: Throughout this code, we use nameof(<interface>.Id) where <interface> is IEntity, IRelationship, INode.
+        // This is wrong. We should be using the label instead.
+
         // Try to get the Id property from the node
         if (node.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
         {
@@ -179,33 +148,9 @@ internal sealed class CypherResultProcessor
 
     private static RelationshipDirection GetRelationshipDirection(Type targetType)
     {
+        // TODO: We are treating all relationships as outgoing by default for now. We may need to fix this.
         // For records derived from Relationship, check if there's a default direction
         // Most relationship types will use Outgoing as the default
-        return RelationshipDirection.Outgoing;
-    }
-
-    private static RelationshipDirection GetRelationshipDirection(IRelationship relationship, Type targetType)
-    {
-        // TODO: We should be getting the direction from neo4j!!!
-
-        // First, try to get Direction from the relationship properties if it exists
-        if (relationship.Properties.TryGetValue("Direction", out var directionValue))
-        {
-            if (directionValue is string directionString && Enum.TryParse<RelationshipDirection>(directionString, out var parsedDirection))
-            {
-                return parsedDirection;
-            }
-        }
-
-        // If the target type is derived from the base Relationship record, it likely has a default direction
-        // We can inspect the type to see what the default should be
-        if (targetType.IsSubclassOf(typeof(Relationship)))
-        {
-            // For records derived from Relationship, the default is typically Outgoing
-            return RelationshipDirection.Outgoing;
-        }
-
-        // Default fallback
         return RelationshipDirection.Outgoing;
     }
 
@@ -464,7 +409,7 @@ internal sealed class CypherResultProcessor
             $"Unsupported property type for complex property: {propertySchema.PropertyType}");
     }
 
-    private List<EntityInfo> ProcessRelationships(List<IRecord> records, Type targetType, CancellationToken cancellationToken)
+    private List<EntityInfo> ProcessRelationships(List<IRecord> records, Type targetType)
     {
         var results = new List<EntityInfo>();
 
@@ -479,13 +424,20 @@ internal sealed class CypherResultProcessor
             if (record.TryGet<object>("src", out var srcObj) && srcObj is INode sourceNode &&
                 record.TryGet<object>("tgt", out var tgtObj) && tgtObj is INode targetNode)
             {
-                // We have full context - use the enhanced processing
-                entityInfo = ProcessSingleRelationshipWithContext(relationship, targetType, sourceNode, targetNode);
+                // We have full context
+                entityInfo = ProcessSingleRelationshipWithContext(relationship, targetType, GetNodeId(sourceNode), GetNodeId(targetNode));
+            }
+            else if (record.TryGet<object>(nameof(Model.IRelationship.StartNodeId), out var startNodeId)
+                  && record.TryGet<object>(nameof(Model.IRelationship.EndNodeId), out var endNodeId))
+            {
+                // We have start and end node IDs
+                entityInfo = ProcessSingleRelationshipWithContext(relationship, targetType, startNodeId.ToString()!, endNodeId.ToString()!);
             }
             else
             {
-                // No context - use basic processing with partial enhancement
-                entityInfo = ProcessSingleRelationship(relationship, targetType);
+                throw new GraphException(
+                    "Cannot process relationship without source and target context. " +
+                    "Ensure your query includes the necessary node IDs or nodes.");
             }
 
             results.Add(entityInfo);

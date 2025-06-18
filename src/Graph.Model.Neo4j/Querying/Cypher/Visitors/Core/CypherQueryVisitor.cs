@@ -84,13 +84,26 @@ internal class CypherQueryVisitor : ExpressionVisitor
         {
             _logger.LogDebug("Found root queryable of type {Type}", _context.Scope.RootType.Name);
 
-            // Use GetOrCreateAlias instead of GetAliasForType
-            var alias = _context.Scope.GetOrCreateAlias(_context.Scope.RootType, "n");
-            var label = Labels.GetLabelFromType(_context.Scope.RootType);
-            _context.Builder.AddMatch(alias, label);
+            // Check if this is a relationship queryable
+            if (node.Value is IGraphRelationshipQueryable relationshipQueryable)
+            {
+                var relLabel = Labels.GetLabelFromType(_context.Scope.RootType);
 
-            // Set as current alias
-            _context.Scope.CurrentAlias = alias;
+                // Use the existing AddRelationshipMatch method
+                _context.Builder.AddRelationshipMatch(relLabel);
+
+                // Set the current alias to "r" (which is what AddRelationshipMatch uses)
+                _context.Scope.CurrentAlias = "r";
+            }
+            else
+            {
+                // For nodes, use the existing logic
+                var alias = _context.Scope.GetOrCreateAlias(_context.Scope.RootType, "n");
+                var label = Labels.GetLabelFromType(_context.Scope.RootType);
+                _context.Builder.AddMatch(alias, label);
+                _context.Builder.EnableComplexPropertyLoading();
+                _context.Scope.CurrentAlias = alias;
+            }
 
             return node;
         }
