@@ -14,27 +14,16 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
-internal sealed class PathSegmentVisitor
+internal sealed class PathSegmentVisitor(CypherQueryContext context) : CypherVisitorBase<PathSegmentVisitor>(context)
 {
-    private readonly CypherQueryScope _scope;
-    private readonly CypherQueryBuilder _builder;
-    private readonly ILogger<PathSegmentVisitor> _logger;
-
-    public PathSegmentVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
-    {
-        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        _builder = builder ?? throw new ArgumentNullException(nameof(builder));
-        _logger = loggerFactory?.CreateLogger<PathSegmentVisitor>() ?? NullLogger<PathSegmentVisitor>.Instance;
-    }
 
     public void BuildPathSegmentQuery(Type sourceType, Type relationshipType, Type targetType)
     {
         // Clear any existing matches - PathSegments should be completely self-contained
-        _builder.ClearMatches();
+
+        Builder.ClearMatches();
 
         // Use different aliases to avoid conflicts
         var sourceAlias = "src";
@@ -47,9 +36,9 @@ internal sealed class PathSegmentVisitor
 
         // Build the complete path pattern as a single match
         var pathPattern = $"({sourceAlias}:{sourceLabel})-[{relAlias}:{relLabel}]->({targetAlias}:{targetLabel})";
-        _builder.AddMatchPattern(pathPattern);
+        Builder.AddMatchPattern(pathPattern);
 
         // Always return all three components so we have context for relationship enhancement
-        _builder.AddReturn($"{sourceAlias}, {relAlias}, {targetAlias}");
+        Builder.AddReturn($"{sourceAlias}, {relAlias}, {targetAlias}");
     }
 }

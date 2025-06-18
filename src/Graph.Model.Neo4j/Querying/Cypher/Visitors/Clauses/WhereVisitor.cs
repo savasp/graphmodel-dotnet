@@ -15,17 +15,19 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 using Microsoft.Extensions.Logging;
 
-internal sealed class WhereVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
-    : ClauseVisitorBase<WhereVisitor>(scope, builder)
+internal sealed class WhereVisitor(CypherQueryContext context) : ClauseVisitorBase<WhereVisitor>(context)
 {
     private readonly ICypherExpressionVisitor _expressionVisitor = new CollectionMethodVisitor(
-            new StringMethodVisitor(
-                new BinaryExpressionVisitor(
-                    new BaseExpressionVisitor(scope, builder), scope, builder), scope, builder), scope, builder);
+        context,
+        new StringMethodVisitor(
+            context,
+            new BinaryExpressionVisitor(
+                context,
+                new BaseExpressionVisitor(context))));
 
     public void ProcessWhereClause(LambdaExpression lambda)
     {

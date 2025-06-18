@@ -15,23 +15,76 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal abstract class ClauseVisitorBase<T> : ExpressionVisitor
+/// <summary>
+/// Base class for clause visitors that provides common functionality.
+/// </summary>
+internal abstract class ClauseVisitorBase<T>(CypherQueryContext context) : CypherVisitorBase<T>(context)
 {
-    protected readonly CypherQueryScope Scope;
-    protected readonly CypherQueryBuilder Builder;
-    protected readonly ILogger Logger;
+    /// <summary>
+    /// Gets the current alias from the scope.
+    /// </summary>
+    /// <exception cref="GraphException">Thrown when no current alias is set.</exception>
+    protected string GetCurrentAlias() =>
+        Scope.CurrentAlias ?? throw new GraphException(
+            $"No current alias set when processing {GetType().Name}. " +
+            "This typically indicates a query construction error.");
 
-    protected ClauseVisitorBase(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
+    /// <summary>
+    /// Validates that the expression is a lambda expression with the expected number of parameters.
+    /// </summary>
+    protected LambdaExpression ValidateLambdaExpression(
+        Expression expression,
+        int expectedParameterCount = 1,
+        string? operationName = null)
     {
-        Scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        Builder = builder ?? throw new ArgumentNullException(nameof(builder));
-        Logger = loggerFactory?.CreateLogger<T>() ?? NullLogger<T>.Instance;
+        operationName ??= GetType().Name.Replace("Visitor", "");
+
+        if (expression is not LambdaExpression lambda)
+        {
+            throw new GraphException(
+                $"{operationName} requires a lambda expression, but received {expression.NodeType}");
+        }
+
+        if (lambda.Parameters.Count != expectedParameterCount)
+        {
+            throw new GraphException(
+                $"{operationName} lambda must have exactly {expectedParameterCount} parameter(s), " +
+                $"but has {lambda.Parameters.Count}");
+        }
+
+        return lambda;
     }
 
-    protected string GetCurrentAlias() =>
-        Scope.CurrentAlias ?? throw new InvalidOperationException($"No current alias set when processing {GetType().Name}");
+    /// <summary>
+    /// Logs the start of a visitor operation.
+    /// </summary>
+    protected void LogOperationStart(string operation, Expression? expression = null)
+    {
+        if (Logger.IsEnabled(LogLevel.Debug))
+        {
+            Logger.LogDebug(
+                "Starting {Operation} in {Visitor}{Expression}",
+                operation,
+                GetType().Name,
+                expression != null ? $" for expression: {expression}" : "");
+        }
+    }
+
+    /// <summary>
+    /// Logs the completion of a visitor operation.
+    /// </summary>
+    protected void LogOperationComplete(string operation, string? result = null)
+    {
+        if (Logger.IsEnabled(LogLevel.Debug))
+        {
+            Logger.LogDebug(
+                "Completed {Operation} in {Visitor}{Result}",
+                operation,
+                GetType().Name,
+                result != null ? $" with result: {result}" : "");
+        }
+    }
 }

@@ -18,40 +18,42 @@ using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 
-internal class StringMethodVisitor(CypherQueryContext context, ICypherExpressionVisitor nextVisitor)
-    : CypherExpressionVisitorBase<StringMethodVisitor>(context, nextVisitor)
+internal class DateTimeMethodVisitor(
+    CypherQueryContext context, ICypherExpressionVisitor nextVisitor)
+    : CypherExpressionVisitorBase<DateTimeMethodVisitor>(context, nextVisitor)
 {
     public override string VisitMethodCall(MethodCallExpression node)
     {
-        if (node.Method.DeclaringType != typeof(string))
+        if (node.Method.DeclaringType != typeof(DateTime) &&
+            node.Method.DeclaringType != typeof(DateTimeOffset) &&
+            node.Method.DeclaringType != typeof(DateOnly) &&
+            node.Method.DeclaringType != typeof(TimeOnly))
         {
             return NextVisitor!.VisitMethodCall(node);
         }
 
-        Logger.LogDebug("Visiting string method: {MethodName}", node.Method.Name);
+        Logger.LogDebug("Visiting DateTime method: {MethodName}", node.Method.Name);
 
         var target = NextVisitor!.Visit(node.Object!);
         var arguments = node.Arguments.Select(arg => NextVisitor!.Visit(arg)).ToList();
 
         var expression = node.Method.Name switch
         {
-            "Contains" => $"{target} CONTAINS {arguments[0]}",
-            "StartsWith" => $"{target} STARTS WITH {arguments[0]}",
-            "EndsWith" => $"{target} ENDS WITH {arguments[0]}",
-            "ToLower" => $"toLower({target})",
-            "ToUpper" => $"toUpper({target})",
-            "Trim" => $"trim({target})",
-            "TrimStart" => $"ltrim({target})",
-            "TrimEnd" => $"rtrim({target})",
-            "Replace" => $"replace({target}, {arguments[0]}, {arguments[1]})",
-            "Substring" => arguments.Count == 1
-                ? $"substring({target}, {arguments[0]})"
-                : $"substring({target}, {arguments[0]}, {arguments[1]})",
-            "Length" => $"length({target})",
-            _ => throw new NotSupportedException($"String method {node.Method.Name} is not supported")
+            "AddYears" => $"date.addYears({target}, {arguments[0]})",
+            "AddMonths" => $"date.addMonths({target}, {arguments[0]})",
+            "AddDays" => $"date.addDays({target}, {arguments[0]})",
+            "AddHours" => $"date.addHours({target}, {arguments[0]})",
+            "AddMinutes" => $"date.addMinutes({target}, {arguments[0]})",
+            "AddSeconds" => $"date.addSeconds({target}, {arguments[0]})",
+            "ToUniversalTime" => $"date.toUtc({target})",
+            "ToLocalTime" => $"date.toLocal({target})",
+            "ToString" => arguments.Count == 0
+                ? $"date.format({target}, 'yyyy-MM-dd')"
+                : $"date.format({target}, {arguments[0]})",
+            _ => throw new NotSupportedException($"DateTime method {node.Method.Name} is not supported")
         };
 
-        Logger.LogDebug("String method result: {Expression}", expression);
+        Logger.LogDebug("DateTime method result: {Expression}", expression);
         return expression;
     }
 

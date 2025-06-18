@@ -14,29 +14,15 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
-internal sealed class RelationshipsVisitor
+internal sealed class RelationshipsVisitor(CypherQueryContext context) : CypherVisitorBase<RelationshipsVisitor>(context)
 {
-    private readonly CypherQueryScope _scope;
-    private readonly CypherQueryBuilder _builder;
-    private readonly ILogger<RelationshipsVisitor> _logger;
-
-    public RelationshipsVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
-    {
-        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        _builder = builder ?? throw new ArgumentNullException(nameof(builder));
-        _logger = loggerFactory?.CreateLogger<RelationshipsVisitor>()
-            ?? NullLogger<RelationshipsVisitor>.Instance;
-    }
-
     public void VisitRelationships(Type? relationshipType = null, RelationshipDirection direction = RelationshipDirection.Both)
     {
-        var nodeAlias = _scope.CurrentAlias ?? "n";
-        var relAlias = _scope.GetOrCreateAlias(relationshipType ?? typeof(IRelationship), "r");
-        var otherAlias = _scope.GetOrCreateAlias(typeof(INode), "other");
+        var nodeAlias = Scope.CurrentAlias ?? "n";
+        var relAlias = Scope.GetOrCreateAlias(relationshipType ?? typeof(IRelationship), "r");
+        var otherAlias = Scope.GetOrCreateAlias(typeof(INode), "other");
 
         // Build the pattern based on direction
         var pattern = direction switch
@@ -54,11 +40,11 @@ internal sealed class RelationshipsVisitor
             pattern = pattern.Replace($"[{relAlias}]", $"[{relAlias}:{relLabel}]");
         }
 
-        _builder.AddMatchPattern(pattern);
-        _builder.AddReturn(relAlias);
+        Builder.AddMatchPattern(pattern);
+        Builder.AddReturn(relAlias);
 
         // Update current alias to the relationship
-        _scope.CurrentAlias = relAlias;
+        Scope.CurrentAlias = relAlias;
     }
 }
 

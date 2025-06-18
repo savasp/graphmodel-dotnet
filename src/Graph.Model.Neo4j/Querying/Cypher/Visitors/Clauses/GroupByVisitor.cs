@@ -15,10 +15,9 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
-internal sealed class GroupByVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
-    : ClauseVisitorBase<GroupByVisitor>(scope, builder)
+internal sealed class GroupByVisitor(CypherQueryContext context) : ClauseVisitorBase<GroupByVisitor>(context)
 {
     public void VisitGroupBy(LambdaExpression keySelector, LambdaExpression? elementSelector = null)
     {

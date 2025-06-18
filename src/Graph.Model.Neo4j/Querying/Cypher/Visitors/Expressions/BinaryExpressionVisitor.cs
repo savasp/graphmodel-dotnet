@@ -15,16 +15,13 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 
 internal class BinaryExpressionVisitor(
-    ICypherExpressionVisitor innerVisitor,
-    CypherQueryScope scope,
-    CypherQueryBuilder builder) : CypherExpressionVisitorBase<BinaryExpression>(scope, builder)
+    CypherQueryContext context, ICypherExpressionVisitor nextVisitor)
+    : CypherExpressionVisitorBase<BinaryExpression>(context, nextVisitor)
 {
-    private readonly ICypherExpressionVisitor _innerVisitor = innerVisitor;
-
     public override string VisitBinary(BinaryExpression node)
     {
         Logger.LogDebug("Visiting binary expression: {NodeType}", node.NodeType);
@@ -40,8 +37,8 @@ internal class BinaryExpressionVisitor(
             Logger.LogDebug("Left ConstantExpression value: {Value}", constLeft.Value);
         }
 
-        var left = node.Left != null ? _innerVisitor.Visit(node.Left) : "NULL";
-        var right = node.Right != null ? _innerVisitor.Visit(node.Right) : "NULL";
+        var left = node.Left != null ? NextVisitor!.Visit(node.Left) : "NULL";
+        var right = node.Right != null ? NextVisitor!.Visit(node.Right) : "NULL";
 
         Logger.LogDebug("Binary expression left: {Left}, right: {Right}", left, right);
 
@@ -92,9 +89,9 @@ internal class BinaryExpressionVisitor(
         return expression;
     }
 
-    public override string VisitUnary(UnaryExpression node) => _innerVisitor.VisitUnary(node);
-    public override string VisitMember(MemberExpression node) => _innerVisitor.VisitMember(node);
-    public override string VisitMethodCall(MethodCallExpression node) => _innerVisitor.VisitMethodCall(node);
-    public override string VisitConstant(ConstantExpression node) => _innerVisitor.VisitConstant(node);
-    public override string VisitParameter(ParameterExpression node) => _innerVisitor.VisitParameter(node);
+    public override string VisitUnary(UnaryExpression node) => NextVisitor!.VisitUnary(node);
+    public override string VisitMember(MemberExpression node) => NextVisitor!.VisitMember(node);
+    public override string VisitMethodCall(MethodCallExpression node) => NextVisitor!.VisitMethodCall(node);
+    public override string VisitConstant(ConstantExpression node) => NextVisitor!.VisitConstant(node);
+    public override string VisitParameter(ParameterExpression node) => NextVisitor!.VisitParameter(node);
 }

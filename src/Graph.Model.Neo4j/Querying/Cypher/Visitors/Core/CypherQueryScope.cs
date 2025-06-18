@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Microsoft.Extensions.Logging;
-
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher;
 
-internal sealed class CypherQueryScope(ILoggerFactory? loggerFactory = null)
+internal sealed class CypherQueryScope(Type rootType)
 {
     private readonly Dictionary<Type, string> _typeAliases = [];
     private readonly Dictionary<string, Type> _aliasTypes = [];
@@ -24,9 +22,9 @@ internal sealed class CypherQueryScope(ILoggerFactory? loggerFactory = null)
     private int _aliasCounter = 0;
 
     /// <summary>
-    /// Gets the logger factory associated with this query scope.
+    /// Gets the root type of the query context.
     /// </summary>
-    public ILoggerFactory? LoggerFactory => loggerFactory;
+    public Type RootType { get; } = rootType;
 
     /// <summary>
     /// Gets or sets the current alias being used in the query context.

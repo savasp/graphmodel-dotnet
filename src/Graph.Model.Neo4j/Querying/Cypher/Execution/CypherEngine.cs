@@ -14,11 +14,10 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
-using System.Data;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -55,7 +54,7 @@ internal sealed class CypherEngine
             _logger.LogDebug("Executing query for type {Type}", typeof(T).Name);
 
             // Build the Cypher query from the expression
-            var cypherQuery = BuildCypherQuery(expression, transaction, _loggerFactory);
+            var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
 
             _logger.LogDebug("Generated Cypher: {Cypher}", cypherQuery.Text);
             _logger.LogDebug("Parameters: {Parameters}", cypherQuery.Parameters);
@@ -78,12 +77,12 @@ internal sealed class CypherEngine
         }
     }
 
-    private CypherQuery BuildCypherQuery(Expression expression, GraphTransaction? transaction, ILoggerFactory? loggerFactory = null)
+    private CypherQuery BuildCypherQuery(Type type, Expression expression, ILoggerFactory? loggerFactory = null)
     {
-        var visitor = new CypherQueryVisitor(_entityFactory, loggerFactory);
+        var visitor = new CypherQueryVisitor(type, loggerFactory);
         visitor.Visit(expression);
 
-        var (cypher, parameters) = visitor.Build();
+        var (cypher, parameters) = visitor.Query;
 
         var paramBuilder = new CypherParameterBuilder(_entityFactory);
         var convertedParams = new Dictionary<string, object?>();

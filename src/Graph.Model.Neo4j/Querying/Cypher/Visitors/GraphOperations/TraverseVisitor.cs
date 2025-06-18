@@ -17,8 +17,9 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 
-internal class IncludeVisitor(CypherQueryContext context) : CypherVisitorBase<IncludeVisitor>(context)
+internal class TraverseVisitor(CypherQueryContext context) : ClauseVisitorBase<TraverseVisitor>(context)
 {
     private readonly Stack<string> _pathSegments = new();
     private int _includeCounter = 0;

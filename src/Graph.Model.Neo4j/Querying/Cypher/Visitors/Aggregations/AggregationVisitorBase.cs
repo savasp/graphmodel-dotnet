@@ -14,14 +14,6 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
-using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
-internal class AggregationBaseVisitor<T>(CypherQueryScope scope, CypherQueryBuilder builder) : ExpressionVisitor
-{
-    protected CypherQueryScope Scope => scope;
-    protected CypherQueryBuilder Builder => builder;
-    protected ILogger<T> Logger = scope.LoggerFactory?.CreateLogger<T>() ?? NullLogger<T>.Instance;
-}
+internal class AggregationBaseVisitor<T>(CypherQueryContext context) : CypherVisitorBase<T>(context);

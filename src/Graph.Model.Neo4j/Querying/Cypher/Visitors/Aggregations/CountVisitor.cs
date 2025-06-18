@@ -17,9 +17,9 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
-internal sealed class AnyVisitor(CypherQueryContext context) : AggregationBaseVisitor<AnyVisitor>(context)
+internal sealed class CountVisitor(CypherQueryContext context) : AggregationBaseVisitor<CountVisitor>(context)
 {
-    public void VisitAny(Expression? predicate = null)
+    public void VisitCount(Expression? predicate = null)
     {
         // If there's a predicate, apply it
         if (predicate != null)
@@ -28,10 +28,10 @@ internal sealed class AnyVisitor(CypherQueryContext context) : AggregationBaseVi
             whereVisitor.Visit(predicate);
         }
 
-        // For Any(), we just need to know if at least one exists
-        // Use COUNT() > 0 for efficiency
+        // For Count(), we just need to know the total count
+        // Use COUNT() for efficiency
         var alias = Scope.CurrentAlias
-            ?? throw new InvalidOperationException("No current alias set when building Any clause");
-        Builder.AddReturn($"COUNT({alias}) > 0 AS result");
+            ?? throw new InvalidOperationException("No current alias set when building Count clause");
+        Builder.AddReturn($"COUNT({alias}) AS result");
     }
 }

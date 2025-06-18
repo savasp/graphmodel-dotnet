@@ -12,27 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
+namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal abstract class CypherExpressionVisitorBase<T> : ICypherExpressionVisitor
+internal abstract class CypherExpressionVisitorBase<T> : CypherVisitorBase<T>, ICypherExpressionVisitor
 {
-    protected CypherExpressionVisitorBase(CypherQueryScope scope, CypherQueryBuilder builder)
+    protected CypherExpressionVisitorBase(CypherQueryContext context, ICypherExpressionVisitor? nextVisitor = null)
+        : base(context)
     {
-        Scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        Builder = builder ?? throw new ArgumentNullException(nameof(builder));
-        Logger = scope.LoggerFactory?.CreateLogger<CypherExpressionVisitorBase<T>>() ?? NullLogger<CypherExpressionVisitorBase<T>>.Instance;
+        NextVisitor = nextVisitor;
     }
 
-    protected CypherQueryScope Scope { get; }
-    protected CypherQueryBuilder Builder { get; }
-    protected ILogger<CypherExpressionVisitorBase<T>> Logger { get; }
+    protected ICypherExpressionVisitor? NextVisitor { get; }
 
-    public virtual string Visit(Expression node)
+    public new virtual string Visit(Expression node)
     {
         Logger.LogDebug("Visiting expression of type: {NodeType}", node.GetType().FullName);
         Logger.LogDebug("Expression: {Expression}", node);
@@ -49,10 +45,10 @@ internal abstract class CypherExpressionVisitorBase<T> : ICypherExpressionVisito
         };
     }
 
-    public abstract string VisitBinary(BinaryExpression node);
-    public abstract string VisitUnary(UnaryExpression node);
-    public abstract string VisitMember(MemberExpression node);
-    public abstract string VisitMethodCall(MethodCallExpression node);
-    public abstract string VisitConstant(ConstantExpression node);
-    public abstract string VisitParameter(ParameterExpression node);
+    public new abstract string VisitBinary(BinaryExpression node);
+    public new abstract string VisitUnary(UnaryExpression node);
+    public new abstract string VisitMember(MemberExpression node);
+    public new abstract string VisitMethodCall(MethodCallExpression node);
+    public new abstract string VisitConstant(ConstantExpression node);
+    public new abstract string VisitParameter(ParameterExpression node);
 }

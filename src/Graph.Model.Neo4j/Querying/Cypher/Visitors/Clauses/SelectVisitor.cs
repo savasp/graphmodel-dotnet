@@ -15,10 +15,9 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
-internal sealed class SelectVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
-    : ClauseVisitorBase<SelectVisitor>(scope, builder)
+internal sealed class SelectVisitor(CypherQueryContext context) : ClauseVisitorBase<SelectVisitor>(context)
 {
     private readonly Stack<(string Expression, string? Alias)> _projections = new();
     private string? _currentMemberName;

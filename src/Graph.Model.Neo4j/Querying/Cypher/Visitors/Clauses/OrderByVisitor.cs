@@ -15,10 +15,9 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
-internal sealed class OrderByVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
-    : ClauseVisitorBase<OrderByVisitor>(scope, builder)
+internal sealed class OrderByVisitor(CypherQueryContext context) : ClauseVisitorBase<OrderByVisitor>(context)
 {
     private readonly List<(string Expression, bool IsDescending)> _orderClauses = [];
 

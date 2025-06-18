@@ -16,11 +16,12 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 
 using System.Linq.Expressions;
 using System.Reflection;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 
-internal class BaseExpressionVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
-    : CypherExpressionVisitorBase<BaseExpressionVisitor>(scope, builder)
+internal class BaseExpressionVisitor(
+    CypherQueryContext context, ICypherExpressionVisitor? nextVisitor = null)
+    : CypherExpressionVisitorBase<BaseExpressionVisitor>(context, nextVisitor)
 {
     public override string VisitBinary(BinaryExpression node)
     {

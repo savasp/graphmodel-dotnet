@@ -14,10 +14,9 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
-internal sealed class DistinctVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
-    : ClauseVisitorBase<DistinctVisitor>(scope, builder)
+internal sealed class DistinctVisitor(CypherQueryContext context) : ClauseVisitorBase<DistinctVisitor>(context)
 {
     public void ApplyDistinct()
     {

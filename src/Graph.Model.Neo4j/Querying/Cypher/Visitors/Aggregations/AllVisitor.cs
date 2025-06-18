@@ -15,10 +15,9 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
-internal sealed class AllVisitor(CypherQueryScope scope, CypherQueryBuilder builder)
-    : AggregationBaseVisitor<AllVisitor>(scope, builder)
+internal sealed class AllVisitor(CypherQueryContext context) : AggregationBaseVisitor<AllVisitor>(context)
 {
     public void VisitAll(LambdaExpression predicate)
     {
@@ -35,7 +34,7 @@ internal sealed class AllVisitor(CypherQueryScope scope, CypherQueryBuilder buil
         Builder.AddWith($"COUNT({alias}) AS {totalCountParam}");
 
         // Then apply the predicate
-        var whereVisitor = new WhereVisitor(Scope, Builder);
+        var whereVisitor = new WhereVisitor(Context);
         whereVisitor.Visit(predicate.Body);
 
         // Count matching nodes and compare

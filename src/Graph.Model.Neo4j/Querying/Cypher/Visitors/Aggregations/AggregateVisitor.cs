@@ -15,20 +15,18 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class AggregateVisitor : ExpressionVisitor
 {
-    private readonly CypherQueryScope _scope;
-    private readonly CypherQueryBuilder _builder;
     private readonly ILogger<AggregateVisitor> _logger;
+    private readonly CypherQueryContext _context;
 
-    public AggregateVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
+    public AggregateVisitor(CypherQueryContext context, ILoggerFactory? loggerFactory = null)
     {
-        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        _builder = builder ?? throw new ArgumentNullException(nameof(builder));
+        _context = context;
         _logger = loggerFactory?.CreateLogger<AggregateVisitor>() ?? NullLogger<AggregateVisitor>.Instance;
     }
 
@@ -36,7 +34,7 @@ internal sealed class AggregateVisitor : ExpressionVisitor
     {
         var targetExpression = selector != null
             ? ExpressionToCypher(selector)
-            : _scope.CurrentAlias ?? "n";
+            : _context.Scope.CurrentAlias ?? "n";
 
         var cypherFunction = aggregateFunction switch
         {
@@ -50,14 +48,14 @@ internal sealed class AggregateVisitor : ExpressionVisitor
             _ => throw new NotSupportedException($"Aggregate function {aggregateFunction} not supported")
         };
 
-        _builder.AddReturn(cypherFunction);
+        _context.Builder.AddReturn(cypherFunction);
     }
 
     private string BuildAllAggregate(Expression predicate)
     {
         // For All(), we need to check that all elements match the predicate
         // In Cypher, this is: NONE(x IN collection WHERE NOT predicate)
-        var alias = _scope.CurrentAlias ?? "n";
+        var alias = _context.Scope.CurrentAlias ?? "n";
         var predicateString = ExpressionToCypher(predicate);
 
         return $"NONE(x IN COLLECT({alias}) WHERE NOT ({predicateString}))";
@@ -70,8 +68,8 @@ internal sealed class AggregateVisitor : ExpressionVisitor
             LambdaExpression lambda => ExpressionToCypher(lambda.Body),
             MemberExpression member => BuildMemberAccess(member),
             BinaryExpression binary => BuildBinaryExpression(binary),
-            ConstantExpression constant => constant.Value is null ? "null" : _builder.AddParameter(constant.Value),
-            ParameterExpression param => _scope.GetAliasForType(param.Type) ?? param.Name ?? throw new InvalidOperationException($"No alias found for parameter {param.Type.Name}"),
+            ConstantExpression constant => constant.Value is null ? "null" : _context.Builder.AddParameter(constant.Value),
+            ParameterExpression param => _context.Scope.GetAliasForType(param.Type) ?? param.Name ?? throw new InvalidOperationException($"No alias found for parameter {param.Type.Name}"),
             _ => throw new NotSupportedException($"Expression type {expression.NodeType} not supported in aggregates")
         };
     }
@@ -80,7 +78,7 @@ internal sealed class AggregateVisitor : ExpressionVisitor
     {
         var obj = member.Expression switch
         {
-            ParameterExpression param => _scope.GetAliasForType(param.Type)
+            ParameterExpression param => _context.Scope.GetAliasForType(param.Type)
                 ?? param.Name
                 ?? throw new InvalidOperationException($"No alias found for parameter of type {param.Type.Name}"),
             _ => ExpressionToCypher(member.Expression!)

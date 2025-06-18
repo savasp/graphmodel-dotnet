@@ -15,29 +15,17 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
-internal sealed class FirstVisitor
+internal sealed class FirstVisitor(CypherQueryContext context) : CypherVisitorBase<FirstVisitor>(context)
 {
-    private readonly CypherQueryScope _scope;
-    private readonly CypherQueryBuilder _builder;
-    private readonly ILogger<FirstVisitor>? _logger;
-
-    public FirstVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
-    {
-        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        _builder = builder ?? throw new ArgumentNullException(nameof(builder));
-        _logger = loggerFactory?.CreateLogger<FirstVisitor>() ?? NullLogger<FirstVisitor>.Instance;
-    }
-
     public void VisitFirst(Expression? predicate = null, bool orDefault = false, bool isLast = false)
     {
         // If there's a predicate, apply it as a WHERE clause
         if (predicate != null)
         {
-            var whereVisitor = new WhereVisitor(_scope, _builder);
+            var whereVisitor = new WhereVisitor(Context);
             whereVisitor.Visit(predicate);
         }
 
@@ -48,33 +36,33 @@ internal sealed class FirstVisitor
         }
 
         // Add LIMIT 1 to get only the first/last result
-        _builder.AddLimit(1);
+        Builder.AddLimit(1);
 
         // If we don't have a RETURN clause yet, add one
-        if (!_builder.HasReturnClause)
+        if (!Builder.HasReturnClause)
         {
-            var alias = _scope.CurrentAlias
+            var alias = Scope.CurrentAlias
                 ?? throw new InvalidOperationException("No current alias set when building First/Last clause");
-            _builder.AddReturn(alias);
+            Builder.AddReturn(alias);
         }
     }
 
     private void HandleLastOperation()
     {
         // Check if we have existing ORDER BY clauses
-        if (_builder.HasOrderBy)
+        if (Builder.HasOrderBy)
         {
             // Reverse the existing order
-            _builder.ReverseOrderBy();
-            _logger?.LogDebug("Reversed existing ORDER BY for Last operation");
+            Builder.ReverseOrderBy();
+            Logger.LogDebug("Reversed existing ORDER BY for Last operation");
         }
         else
         {
             // No existing order - add default ordering by internal ID descending
-            var alias = _scope.CurrentAlias
+            var alias = Scope.CurrentAlias
                 ?? throw new InvalidOperationException("No current alias set when adding default order for Last");
-            _builder.AddOrderBy($"id({alias})", isDescending: true);
-            _logger?.LogDebug("Added default ORDER BY id() DESC for Last operation");
+            Builder.AddOrderBy($"id({alias})", isDescending: true);
+            Logger.LogDebug("Added default ORDER BY id() DESC for Last operation");
         }
     }
 }

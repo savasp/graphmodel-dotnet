@@ -15,25 +15,10 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
-internal sealed class SelectManyVisitor : ExpressionVisitor
+internal sealed class SelectManyVisitor(CypherQueryContext context) : CypherVisitorBase<SelectManyVisitor>(context)
 {
-    private readonly CypherQueryScope _scope;
-    private readonly CypherQueryBuilder _builder;
-    private readonly ILogger<SelectManyVisitor> _logger;
-    private readonly ILoggerFactory? _loggerFactory;
-
-    public SelectManyVisitor(CypherQueryScope scope, CypherQueryBuilder builder, ILoggerFactory? loggerFactory = null)
-    {
-        _scope = scope ?? throw new ArgumentNullException(nameof(scope));
-        _builder = builder ?? throw new ArgumentNullException(nameof(builder));
-        _loggerFactory = loggerFactory;
-        _logger = loggerFactory?.CreateLogger<SelectManyVisitor>() ?? NullLogger<SelectManyVisitor>.Instance;
-    }
-
     public void VisitSelectMany(LambdaExpression collectionSelector, LambdaExpression? resultSelector = null)
     {
         // SelectMany in graph context usually means traversing relationships
@@ -64,28 +49,28 @@ internal sealed class SelectManyVisitor : ExpressionVisitor
         var relationshipType = genericArgs[0];
         var targetType = genericArgs[1];
 
-        var sourceAlias = _scope.CurrentAlias ?? "n";
-        var relAlias = _scope.GetOrCreateAlias(relationshipType, "r");
-        var targetAlias = _scope.GetOrCreateAlias(targetType, "t");
+        var sourceAlias = Scope.CurrentAlias ?? "n";
+        var relAlias = Scope.GetOrCreateAlias(relationshipType, "r");
+        var targetAlias = Scope.GetOrCreateAlias(targetType, "t");
 
         var relLabel = Labels.GetLabelFromType(relationshipType);
         var targetLabel = Labels.GetLabelFromType(targetType);
 
         // Build the traversal
-        _builder.AddMatch($"({sourceAlias})-[{relAlias}:{relLabel}]->({targetAlias}:{targetLabel})");
+        Builder.AddMatch($"({sourceAlias})-[{relAlias}:{relLabel}]->({targetAlias}:{targetLabel})");
 
         // Handle result selector if provided
         if (resultSelector != null)
         {
             // Result selector typically combines source and target
-            var selectVisitor = new SelectVisitor(_scope, _builder);
+            var selectVisitor = new SelectVisitor(Context);
             selectVisitor.Visit(resultSelector);
         }
         else
         {
             // Default to returning the target nodes
-            _builder.AddReturn(targetAlias);
-            _scope.CurrentAlias = targetAlias;
+            Builder.AddReturn(targetAlias);
+            Scope.CurrentAlias = targetAlias;
         }
     }
 
@@ -93,25 +78,25 @@ internal sealed class SelectManyVisitor : ExpressionVisitor
     {
         var alias = member.Expression switch
         {
-            ParameterExpression param => _scope.GetAliasForType(param.Type)
+            ParameterExpression param => Scope.GetAliasForType(param.Type)
                 ?? param.Name
                 ?? throw new InvalidOperationException($"No alias found for parameter of type {param.Type.Name}"),
-            _ => _scope.CurrentAlias ?? "n"
+            _ => Scope.CurrentAlias ?? "n"
         };
 
         var propertyName = member.Member.Name;
 
         // UNWIND the collection
-        _builder.AddUnwind($"{alias}.{propertyName} AS item");
+        Builder.AddUnwind($"{alias}.{propertyName} AS item");
 
         if (resultSelector != null)
         {
-            var selectVisitor = new SelectVisitor(_scope, _builder);
+            var selectVisitor = new SelectVisitor(Context);
             selectVisitor.Visit(resultSelector);
         }
         else
         {
-            _builder.AddReturn("item");
+            Builder.AddReturn("item");
         }
     }
 }
