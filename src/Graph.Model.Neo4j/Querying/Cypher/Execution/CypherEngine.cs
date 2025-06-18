@@ -56,8 +56,8 @@ internal sealed class CypherEngine
             // Build the Cypher query from the expression
             var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
 
-            _logger.LogDebug("Generated Cypher: {Cypher}", cypherQuery.Text);
-            _logger.LogDebug("Parameters: {Parameters}", cypherQuery.Parameters);
+            _logger.LogDebug($"Generated Cypher: {cypherQuery.Text}");
+            _logger.LogDebug($"Parameters: {cypherQuery.Parameters}");
 
             // Execute the query
             var records = await _executor.ExecuteAsync(

@@ -98,57 +98,57 @@ internal class MethodHandlerRegistry
 
     private void RegisterDefaultHandlers()
     {
-        // For now, register empty handlers - these will be implemented as needed
-        // The actual work is done by the existing visitors
-        var emptyHandler = new DefaultMethodHandler();
+        // Create specific handlers for different method categories
+        var whereHandler = new WhereMethodHandler();
+        var selectHandler = new SelectMethodHandler();
+        var selectManyHandler = new SelectManyMethodHandler();
+        var orderByHandler = new OrderByMethodHandler();
+        var thenByHandler = new ThenByMethodHandler();
+        var limitHandler = new LimitMethodHandler();
+        var aggregationHandler = new AggregationMethodHandler();
+        var graphOperationHandler = new GraphOperationMethodHandler();
+        var distinctHandler = new DistinctMethodHandler();
+        var groupByHandler = new GroupByMethodHandler();
+        var joinHandler = new JoinMethodHandler();
+        var unionHandler = new UnionMethodHandler();
+
+        // For methods not yet implemented, use the default handler
+        var defaultHandler = new DefaultMethodHandler();
 
         // LINQ standard methods
-        RegisterHandler("Where", emptyHandler);
-        RegisterHandler("Select", emptyHandler);
-        RegisterHandler("SelectMany", emptyHandler);
-        RegisterHandler("OrderBy", emptyHandler);
-        RegisterHandler("OrderByDescending", emptyHandler);
-        RegisterHandler("ThenBy", emptyHandler);
-        RegisterHandler("ThenByDescending", emptyHandler);
-        RegisterHandler("Take", emptyHandler);
-        RegisterHandler("Skip", emptyHandler);
-        RegisterHandler("First", emptyHandler);
-        RegisterHandler("FirstOrDefault", emptyHandler);
-        RegisterHandler("Single", emptyHandler);
-        RegisterHandler("SingleOrDefault", emptyHandler);
-        RegisterHandler("Any", emptyHandler);
-        RegisterHandler("All", emptyHandler);
-        RegisterHandler("Count", emptyHandler);
-        RegisterHandler("Distinct", emptyHandler);
-        RegisterHandler("Include", emptyHandler);
+        RegisterHandler("Where", whereHandler);
+        RegisterHandler("Select", selectHandler);
+        RegisterHandler("SelectMany", selectManyHandler);
+        RegisterHandler("OrderBy", orderByHandler);
+        RegisterHandler("OrderByDescending", orderByHandler);
+        RegisterHandler("ThenBy", thenByHandler);
+        RegisterHandler("ThenByDescending", thenByHandler);
+        RegisterHandler("Take", limitHandler);
+        RegisterHandler("Skip", limitHandler);
+        RegisterHandler("First", aggregationHandler);
+        RegisterHandler("FirstOrDefault", aggregationHandler);
+        RegisterHandler("Single", aggregationHandler);
+        RegisterHandler("SingleOrDefault", aggregationHandler);
+        RegisterHandler("Any", aggregationHandler);
+        RegisterHandler("All", aggregationHandler);
+        RegisterHandler("Count", aggregationHandler);
+        RegisterHandler("Distinct", distinctHandler);
+        RegisterHandler("GroupBy", groupByHandler);
+        RegisterHandler("Join", joinHandler);
+        RegisterHandler("Union", unionHandler);
+        RegisterHandler("Concat", unionHandler);
+        RegisterHandler("Include", graphOperationHandler);
 
         // Graph-specific methods
-        RegisterHandler("WithTransaction", emptyHandler);
-        RegisterHandler("Traverse", emptyHandler);
-        RegisterHandler("Relationships", emptyHandler);
-        RegisterHandler("PathSegments", emptyHandler);
+        RegisterHandler("WithTransaction", graphOperationHandler);
+        RegisterHandler("Traverse", graphOperationHandler);
+        RegisterHandler("Relationships", graphOperationHandler);
+        RegisterHandler("PathSegments", graphOperationHandler);
 
-        // String methods
-        RegisterHandler("StartsWith", emptyHandler);
-        RegisterHandler("EndsWith", emptyHandler);
-        RegisterHandler("Contains", emptyHandler);
-        RegisterHandler("ToLower", emptyHandler);
-        RegisterHandler("ToUpper", emptyHandler);
-        RegisterHandler("Trim", emptyHandler);
-        RegisterHandler("Substring", emptyHandler);
-
-        // Math methods
-        RegisterHandler("Abs", emptyHandler);
-        RegisterHandler("Floor", emptyHandler);
-        RegisterHandler("Ceiling", emptyHandler);
-        RegisterHandler("Round", emptyHandler);
-        RegisterHandler("Min", emptyHandler);
-        RegisterHandler("Max", emptyHandler);
-
-        // DateTime methods
-        RegisterHandler("AddDays", emptyHandler);
-        RegisterHandler("AddMonths", emptyHandler);
-        RegisterHandler("AddYears", emptyHandler);
+        // Note: String methods (Contains, StartsWith, etc.), Math methods (Abs, Floor, etc.),
+        // and DateTime methods (AddDays, etc.) are handled by their respective expression visitors,
+        // not by the handler registry, since they are used within expressions rather than
+        // as top-level LINQ query operations.
     }
 
     private static string GenerateKey(string methodName, Type? declaringType)

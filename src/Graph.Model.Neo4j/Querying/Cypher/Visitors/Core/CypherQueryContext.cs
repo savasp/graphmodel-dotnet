@@ -59,7 +59,7 @@ internal record CypherQueryContext
     /// <summary>
     /// Gets the current query string.
     /// </summary>
-    public string GetQuery() => Builder.Build().ToString();
+    public string GetQuery() => Builder.Build().Text;
 
     /// <summary>
     /// Gets the query parameters.
