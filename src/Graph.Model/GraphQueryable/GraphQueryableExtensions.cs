@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System.Linq.Expressions;
+using System.Reflection;
 
 namespace Cvoya.Graph.Model;
 
@@ -362,6 +363,75 @@ public static class GraphQueryableExtensions
         var transactionExpression = new GraphTransactionExpression(source.Expression, transaction);
 
         // Use the provider to create a new queryable with the transaction expression
-        return (IGraphQueryable<TSource>)source.Provider.CreateQuery<TSource>(transactionExpression);
+        return source.Provider.CreateQuery<TSource>(transactionExpression);
+    }
+
+    /// <summary>
+    /// Specifies the maximum traversal depth for graph operations.
+    /// </summary>
+    /// <typeparam name="T">The type of the queryable items</typeparam>
+    /// <param name="source">The source queryable</param>
+    /// <param name="maxDepth">The maximum depth to traverse</param>
+    /// <returns>A queryable with the specified depth constraint</returns>
+    public static IGraphQueryable<T> WithDepth<T>(
+        this IGraphQueryable<T> source,
+        int maxDepth)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        return WithDepth(source, 1, maxDepth);
+    }
+
+    /// <summary>
+    /// Specifies the traversal depth range for graph operations.
+    /// </summary>
+    /// <typeparam name="T">The type of the queryable items</typeparam>
+    /// <param name="source">The source queryable</param>
+    /// <param name="minDepth">The minimum depth to traverse</param>
+    /// <param name="maxDepth">The maximum depth to traverse</param>
+    /// <returns>A queryable with the specified depth constraint</returns>
+    public static IGraphQueryable<T> WithDepth<T>(
+        this IGraphQueryable<T> source,
+        int minDepth,
+        int maxDepth)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        if (minDepth < 0)
+            throw new ArgumentOutOfRangeException(nameof(minDepth), "Minimum depth must be non-negative");
+        if (maxDepth < minDepth)
+            throw new ArgumentOutOfRangeException(nameof(maxDepth), "Maximum depth must be greater than or equal to minimum depth");
+
+
+        var methodCall = Expression.Call(
+            null,
+            ((MethodInfo)MethodBase.GetCurrentMethod()!).MakeGenericMethod(typeof(T)),
+            source.Expression,
+            Expression.Constant(minDepth),
+            Expression.Constant(maxDepth));
+
+        return source.Provider.CreateQuery<T>(methodCall);
+    }
+
+    /// <summary>
+    /// Specifies the direction of traversal for graph operations.
+    /// </summary>
+    /// <typeparam name="T">The type of the queryable items</typeparam>
+    /// <param name="source">The source queryable</param>
+    /// <param name="direction">The direction to traverse</param>
+    /// <returns>A queryable with the specified direction constraint</returns>
+    public static IGraphQueryable<T> InDirection<T>(
+        this IGraphQueryable<T> source,
+        TraversalDirection direction)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        var methodCall = Expression.Call(
+            null,
+            ((MethodInfo)MethodBase.GetCurrentMethod()!).MakeGenericMethod(typeof(T)),
+            source.Expression,
+            Expression.Constant(direction));
+
+        return source.Provider.CreateQuery<T>(methodCall);
     }
 }

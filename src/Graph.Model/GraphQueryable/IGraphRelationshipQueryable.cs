@@ -19,8 +19,4 @@ namespace Cvoya.Graph.Model;
 /// </summary>
 public interface IGraphRelationshipQueryable : IGraphQueryable
 {
-    /// <summary>
-    /// Gets the relationship type filter, if any.
-    /// </summary>
-    string? RelationshipType { get; }
 }

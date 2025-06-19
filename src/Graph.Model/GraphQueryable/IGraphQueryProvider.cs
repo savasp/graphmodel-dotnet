@@ -27,6 +27,14 @@ public interface IGraphQueryProvider : IQueryProvider
     IGraph Graph { get; }
 
     /// <summary>
+    /// Creates a new graph query with the specified expression
+    /// </summary>
+    /// <typeparam name="T">The type of the elements in the query</typeparam>
+    /// <param name="expression">The expression representing the query</param>
+    /// <returns>A new graph query with the specified expression</returns>
+    new IGraphQueryable<T> CreateQuery<T>(Expression expression);
+
+    /// <summary>
     /// Creates a new relationship query with the specified expression
     /// </summary>
     /// <param name="expression">The expression representing the query</param>
@@ -39,19 +47,6 @@ public interface IGraphQueryProvider : IQueryProvider
     /// <param name="expression">The expression representing the query</param>
     /// <returns>A new query with the specified expression</returns>
     IGraphNodeQueryable<TNode> CreateNodeQuery<TNode>(Expression expression) where TNode : INode;
-
-    /// <summary>
-    /// Creates a new traversal query that follows relationships of the specified type
-    /// </summary>
-    /// <typeparam name="TSource">The type of source node to start from</typeparam>
-    /// <typeparam name="TRelationship">The type of relationship to traverse</typeparam>
-    /// <typeparam name="TTarget">The type of target node to reach</typeparam>
-    /// <param name="sourceExpression">The expression representing the source nodes</param>
-    /// <returns>A new query that traverses the specified relationship type</returns>
-    IGraphTraversalQueryable<TSource, TRelationship, TTarget> CreateTraversalQuery<TSource, TRelationship, TTarget>(Expression sourceExpression)
-        where TSource : INode
-        where TRelationship : IRelationship
-        where TTarget : INode;
 
     /// <summary>
     /// Creates a new path segment query for traversing paths in the graph.

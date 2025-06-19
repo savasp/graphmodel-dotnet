@@ -24,8 +24,6 @@ internal sealed class GraphRelationshipQueryable<TRel> : GraphQueryableBase<TRel
     IOrderedGraphRelationshipQueryable<TRel>
     where TRel : IRelationship
 {
-    private string? _relationshipType;
-
     public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext)
         : this(provider, graphContext, expression: null)
     {
@@ -34,34 +32,5 @@ internal sealed class GraphRelationshipQueryable<TRel> : GraphQueryableBase<TRel
     public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext, Expression? expression)
         : base(typeof(TRel), provider, graphContext, expression ?? Expression.Constant(null, typeof(IGraphRelationshipQueryable<TRel>)))
     {
-        // Extract relationship type from TRel type if it has a RelationshipAttribute
-        _relationshipType = Labels.GetLabelFromType(typeof(TRel));
-    }
-
-    #region IGraphRelationshipQueryable Implementation
-
-    public string? RelationshipType => _relationshipType;
-
-    public IGraphTraversalQueryable<TSource, TRel, TTarget> Traverse<TSource, TTarget>()
-        where TSource : INode
-        where TTarget : INode
-    {
-        var methodCall = Expression.Call(
-            null,
-            GetGenericMethod(nameof(Traverse), typeof(TSource), typeof(TTarget)),
-            Expression);
-
-        return Provider.CreateTraversalQuery<TSource, TRel, TTarget>(methodCall);
-    }
-
-    #endregion
-
-    private static MethodInfo GetGenericMethod(string methodName, params Type[] typeArguments)
-    {
-        var method = typeof(IGraphRelationshipQueryable<TRel>)
-            .GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance)
-            ?? throw new InvalidOperationException($"Method {methodName} not found");
-
-        return typeArguments.Length > 0 ? method.MakeGenericMethod(typeArguments) : method;
     }
 }

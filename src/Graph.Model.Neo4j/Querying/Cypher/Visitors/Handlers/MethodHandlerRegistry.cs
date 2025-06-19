@@ -150,9 +150,6 @@ internal class MethodHandlerRegistry
 
         // Graph-specific methods
         RegisterHandler("WithTransaction", graphOperationHandler);
-        RegisterHandler("Traverse", graphOperationHandler);
-        RegisterHandler("WithDepth", graphOperationHandler);
-        RegisterHandler("Relationships", graphOperationHandler);
         RegisterHandler("PathSegments", graphOperationHandler);
 
         // Note: String methods (Contains, StartsWith, etc.), Math methods (Abs, Floor, etc.),

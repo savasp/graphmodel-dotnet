@@ -59,7 +59,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         }
     }
 
-    public IQueryable<TElement> CreateQuery<TElement>(Expression expression)
+    public IGraphQueryable<TElement> CreateQuery<TElement>(Expression expression)
     {
         ArgumentNullException.ThrowIfNull(expression);
 
@@ -67,7 +67,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         if (typeof(INode).IsAssignableFrom(typeof(TElement)))
         {
             var nodeQueryableType = typeof(GraphNodeQueryable<>).MakeGenericType(typeof(TElement));
-            return (IQueryable<TElement>)Activator.CreateInstance(
+            return (IGraphQueryable<TElement>)Activator.CreateInstance(
                 nodeQueryableType,
                 this,
                 _graphContext,
@@ -78,7 +78,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         if (typeof(IRelationship).IsAssignableFrom(typeof(TElement)))
         {
             var relQueryableType = typeof(GraphRelationshipQueryable<>).MakeGenericType(typeof(TElement));
-            return (IQueryable<TElement>)Activator.CreateInstance(
+            return (IGraphQueryable<TElement>)Activator.CreateInstance(
                 relQueryableType,
                 this,
                 _graphContext,
@@ -113,15 +113,6 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         where TNode : INode
     {
         return new GraphNodeQueryable<TNode>(this, _graphContext, expression);
-    }
-
-    public IGraphTraversalQueryable<TSource, TRelationship, TTarget> CreateTraversalQuery<TSource, TRelationship, TTarget>(
-        Expression sourceExpression)
-        where TSource : INode
-        where TRelationship : IRelationship
-        where TTarget : INode
-    {
-        return new GraphTraversalQueryable<TSource, TRelationship, TTarget>(this, _graphContext, sourceExpression);
     }
 
     public IGraphQueryable<IGraphPathSegment<TSource, TRel, TTarget>> CreatePathSegmentQuery<TSource, TRel, TTarget>(
@@ -239,5 +230,10 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         return ExecuteAsync<TResult>(expression, CancellationToken.None)
             .GetAwaiter()
             .GetResult();
+    }
+
+    IQueryable<TElement> IQueryProvider.CreateQuery<TElement>(Expression expression)
+    {
+        return CreateQuery<TElement>(expression);
     }
 }

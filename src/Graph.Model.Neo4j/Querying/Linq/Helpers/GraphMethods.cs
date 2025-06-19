@@ -24,8 +24,6 @@ using Cvoya.Graph.Model.Neo4j.Core;
 internal static class GraphMethods
 {
     public static readonly MethodInfo WithTransactionMethod;
-    public static readonly MethodInfo TraverseMethod;
-    public static readonly MethodInfo RelationshipsMethod;
     public static readonly MethodInfo PathSegmentsMethod;
 
     static GraphMethods()
@@ -37,12 +35,6 @@ internal static class GraphMethods
 
         // Get the generic method definitions from the interfaces
         var nodeQueryableType = typeof(IGraphNodeQueryable<>);
-
-        TraverseMethod = nodeQueryableType
-            .GetMethod(nameof(IGraphNodeQueryable<INode>.Traverse))!;
-
-        RelationshipsMethod = nodeQueryableType
-            .GetMethod(nameof(IGraphNodeQueryable<INode>.Relationships))!;
 
         PathSegmentsMethod = nodeQueryableType
             .GetMethod(nameof(IGraphNodeQueryable<INode>.PathSegments))!;

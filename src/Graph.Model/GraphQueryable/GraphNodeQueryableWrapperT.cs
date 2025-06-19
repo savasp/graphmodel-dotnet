@@ -86,16 +86,8 @@ internal sealed class GraphNodeQueryableWrapper<T>(
     public Task<TResult?> MinAsync<TResult>(Expression<Func<T, TResult>> selector, CancellationToken cancellationToken = default) =>
         Provider.ExecuteAsync<TResult?>(Expression, cancellationToken);
 
-    public IGraphTraversalQueryable<T, TRel, TTarget> Traverse<TRel, TTarget>()
-        where TRel : IRelationship
-        where TTarget : INode => Provider.CreateTraversalQuery<T, TRel, TTarget>(Expression);
-
     public IGraphRelationshipQueryable<TRel> Relationships<TRel>() where TRel : IRelationship =>
         Provider.CreateRelationshipQuery<TRel>(Expression);
-
-    public IGraphTraversalQueryable<T, TRel, TTarget> Relationships<TRel, TTarget>()
-        where TRel : IRelationship
-        where TTarget : INode => Provider.CreateTraversalQuery<T, TRel, TTarget>(Expression);
 
     public IGraphQueryable<IGraphPathSegment<T, TRel, TTarget>> PathSegments<TRel, TTarget>()
         where TRel : IRelationship

@@ -24,15 +24,4 @@ namespace Cvoya.Graph.Model;
 public interface IGraphRelationshipQueryable<TRel> : IGraphQueryable<TRel>, IGraphRelationshipQueryable
     where TRel : IRelationship
 {
-    /// <summary>
-    /// Starts traversing from the relationship to its source and target nodes.
-    /// This method allows for fluent traversal and filtering of relationships and nodes in a graph context.
-    /// It enables the construction of complex queries that traverse relationships between nodes.
-    /// </summary>
-    /// <typeparam name="TSource">The type of the source node, which must be an <see cref="INode"/>-derived type.</typeparam>
-    /// <typeparam name="TTarget">The type of the target node, which must be an <see cref="INode"/>-derived type.</typeparam>
-    /// <returns>An <see cref="IGraphTraversalQueryable{TSource, TRel, TTarget}"/> for fluent traversal and filtering.</returns>
-    IGraphTraversalQueryable<TSource, TRel, TTarget> Traverse<TSource, TTarget>()
-        where TSource : INode
-        where TTarget : INode;
 }

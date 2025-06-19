@@ -41,7 +41,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Traverse from Alice to people she knows
         var knownPeople = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .ToList();
 
         // Assert
@@ -71,7 +71,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act & Assert: Depth 1 - should only get Bob
         var depth1Results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .WithDepth(1)
             .ToList();
 
@@ -81,7 +81,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act & Assert: Depth 2 - should get Bob and Charlie
         var depth2Results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .WithDepth(2)
             .ToList();
 
@@ -111,7 +111,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Traverse with depth range 2-3 (should get Charlie and David, but not Bob)
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .WithDepth(2, 3)
             .ToList();
 
@@ -144,7 +144,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Traverse outgoing from Alice (should only get Bob)
         var outgoingResults = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .InDirection(TraversalDirection.Outgoing)
             .ToList();
 
@@ -171,7 +171,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Traverse incoming to Alice (should only get Charlie)
         var incomingResults = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .InDirection(TraversalDirection.Incoming)
             .ToList();
 
@@ -198,7 +198,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Traverse in both directions from Alice (should get both Bob and Charlie)
         var bothDirectionsResults = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .InDirection(TraversalDirection.Both)
             .ToList();
 
@@ -261,7 +261,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Find people Alice knows who are over 35
         var olderFriends = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .Where(p => p.Age > 35)
             .ToList();
 
@@ -292,7 +292,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Test traversing Knows relationships
         var knownPeople = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .ToList();
 
         Assert.Single(knownPeople);
@@ -301,7 +301,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Test traversing LivesAt relationships
         var addresses = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<LivesAt, Address>()
+            .Traverse<Person, LivesAt, Address>()
             .ToList();
 
         Assert.Single(addresses);
@@ -425,7 +425,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Get 2-hop paths from Alice
         var aliceKnowsTransitively = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .WithDepth(2)
             .ToList();
 
@@ -465,7 +465,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Find people Alice knows who are over 30, ordered by age
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .Where(p => p.Age > 30)
             .OrderBy(p => p.Age)
             .ToList();
@@ -497,7 +497,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Count people Alice knows
         var friendCount = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .Count();
 
         // Assert
@@ -506,7 +506,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Get average age of people Alice knows
         var averageAge = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .Average(p => p.Age);
 
         // Assert
@@ -556,7 +556,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Try to traverse from Alice
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .ToList();
 
         // Assert
@@ -569,7 +569,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Try to traverse from a non-existent person
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "NonExistent")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .ToList();
 
         // Assert
@@ -601,7 +601,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Traverse to all friends
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .ToList();
 
         // Assert
@@ -628,7 +628,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         // Act: Traverse with max depth 3 to potentially encounter the cycle
         var results = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .WithDepth(3)
             .Distinct() // Use Distinct to avoid duplicates from cycles
             .ToList();

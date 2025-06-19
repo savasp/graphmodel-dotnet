@@ -44,27 +44,6 @@ internal sealed class GraphNodeQueryable<TNode> :
 
     public string? Label => _label;
 
-    public IGraphTraversalQueryable<TNode, TRel, TTarget> Traverse<TRel, TTarget>()
-        where TRel : IRelationship
-        where TTarget : INode
-    {
-        var methodCall = Expression.Call(
-            Expression, // Pass the current instance, not null
-            GetGenericMethod(nameof(Traverse), typeof(TRel), typeof(TTarget)));
-
-        return Provider.CreateTraversalQuery<TNode, TRel, TTarget>(methodCall);
-    }
-
-    public IGraphRelationshipQueryable<TRel> Relationships<TRel>()
-        where TRel : IRelationship
-    {
-        var methodCall = Expression.Call(
-            Expression, // Pass the current instance, not null
-            GetGenericMethod(nameof(Relationships), typeof(TRel)));
-
-        return Provider.CreateRelationshipQuery<TRel>(methodCall);
-    }
-
     public IGraphQueryable<IGraphPathSegment<TNode, TRel, TTarget>> PathSegments<TRel, TTarget>()
         where TRel : IRelationship
         where TTarget : INode

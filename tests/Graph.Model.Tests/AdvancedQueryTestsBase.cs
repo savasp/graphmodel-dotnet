@@ -989,7 +989,7 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         Assert.Equal("Alice", simpleProjection.Name);
 
         var people = this.Graph.Nodes<Person>()
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .ToList();
 
         Assert.NotEmpty(people); // Ensure we have people
@@ -997,7 +997,7 @@ public abstract class AdvancedQueryTestsBase : ITestBase
 
         // Get the paths using TraversePath
         var paths = this.Graph.Nodes<Person>()
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .ToList();
 
         Assert.NotEmpty(paths); // Ensure we have paths
@@ -1009,7 +1009,7 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         // Now get the paths with TraversePath and a Where clause
         var filteredPaths = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .ToList();
 
         Assert.Equal(2, filteredPaths.Count);
@@ -1017,7 +1017,7 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         // Group the paths in memory instead of in the query
         var projectedAlice = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
+            .Traverse<Person, Knows, Person>()
             .GroupBy(path => path)
             .Select(group => new
             {

@@ -86,8 +86,4 @@ internal sealed class GraphRelationshipQueryableWrapper<TRel>(
 
     public Task<TResult?> MinAsync<TResult>(Expression<Func<TRel, TResult>> selector, CancellationToken cancellationToken = default) =>
         Provider.ExecuteAsync<TResult?>(Expression, cancellationToken);
-
-    public IGraphTraversalQueryable<TSource, TRel, TTarget> Traverse<TSource, TTarget>()
-        where TSource : INode
-        where TTarget : INode => Provider.CreateTraversalQuery<TSource, TRel, TTarget>(Expression);
 }
