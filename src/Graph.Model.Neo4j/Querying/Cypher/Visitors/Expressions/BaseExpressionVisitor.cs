@@ -105,8 +105,9 @@ internal class BaseExpressionVisitor(
                 param.Name, param.Type.Name, Scope.RootType?.Name, Scope.CurrentAlias);
 
             // If this parameter is for the root type, use the current alias (set by VisitConstant)
-            // Otherwise, get or create an alias for this specific type
-            var alias = param.Type == Scope.RootType
+            // For aggregation queries, the root type might be the return type (e.g., Boolean for Any())
+            // so we also check if there's a current alias set and use it for the main entity being queried
+            var alias = (param.Type == Scope.RootType || Scope.CurrentAlias != null)
                 ? (Scope.CurrentAlias ?? Scope.GetOrCreateAlias(param.Type, "n"))
                 : Scope.GetOrCreateAlias(param.Type);
 

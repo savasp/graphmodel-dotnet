@@ -42,10 +42,42 @@ internal record AggregationMethodHandler : MethodHandlerBase
 
     private static bool HandleCount(CypherQueryContext context, MethodCallExpression node)
     {
+        // Ensure we have a current alias set up - this should have been done by visiting the source
+        var alias = context.Scope.CurrentAlias;
+        if (alias == null)
+        {
+            // If no alias is set, we need to set up the query structure ourselves
+            // Extract the element type from the source queryable
+            var sourceArg = node.Arguments[0];
+            Type? elementType = null;
+
+            // Try to get the element type from the source expression type
+            if (sourceArg.Type.IsGenericType)
+            {
+                var genericArgs = sourceArg.Type.GetGenericArguments();
+                if (genericArgs.Length > 0)
+                {
+                    elementType = genericArgs[0];
+                }
+            }
+
+            if (elementType != null)
+            {
+                // Set up the match clause for the element type
+                var label = Labels.GetLabelFromType(elementType);
+                context.Builder.AddMatch("n", label);
+                context.Scope.CurrentAlias = "n";
+                alias = "n";
+            }
+            else
+            {
+                throw new InvalidOperationException("Could not determine element type for Count method.");
+            }
+        }
+
         if (node.Arguments.Count == 1)
         {
             // Simple count
-            var alias = context.Scope.CurrentAlias ?? "n";
             context.Builder.AddReturn($"COUNT({alias})");
         }
         else if (node.Arguments.Count == 2)
@@ -57,7 +89,6 @@ internal record AggregationMethodHandler : MethodHandlerBase
                 var condition = expressionVisitor.Visit(lambda.Body);
 
                 // Use CASE for conditional counting
-                var alias = context.Scope.CurrentAlias ?? "n";
                 context.Builder.AddReturn($"COUNT(CASE WHEN {condition} THEN {alias} END)");
             }
         }
@@ -71,11 +102,43 @@ internal record AggregationMethodHandler : MethodHandlerBase
 
     private static bool HandleAny(CypherQueryContext context, MethodCallExpression node)
     {
+        // Ensure we have a current alias set up - this should have been done by visiting the source
+        var alias = context.Scope.CurrentAlias;
+        if (alias == null)
+        {
+            // If no alias is set, we need to set up the query structure ourselves
+            // Extract the element type from the source queryable
+            var sourceArg = node.Arguments[0];
+            Type? elementType = null;
+
+            // Try to get the element type from the source expression type
+            if (sourceArg.Type.IsGenericType)
+            {
+                var genericArgs = sourceArg.Type.GetGenericArguments();
+                if (genericArgs.Length > 0)
+                {
+                    elementType = genericArgs[0];
+                }
+            }
+
+            if (elementType != null)
+            {
+                // Set up the match clause for the element type
+                var label = Labels.GetLabelFromType(elementType);
+                context.Builder.AddMatch("n", label);
+                context.Scope.CurrentAlias = "n";
+                alias = "n";
+            }
+            else
+            {
+                throw new InvalidOperationException("Could not determine element type for Any method.");
+            }
+        }
+
         if (node.Arguments.Count == 1)
         {
             // Simple existence check
-            var alias = context.Scope.CurrentAlias ?? "n";
-            context.Builder.AddReturn($"COUNT({alias}) > 0");
+            context.Builder.AddReturn($"COUNT({alias}) > 0 AS result");
         }
         else if (node.Arguments.Count == 2)
         {
@@ -85,8 +148,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
                 var expressionVisitor = CreateExpressionVisitor(context);
                 var condition = expressionVisitor.Visit(lambda.Body);
 
-                var alias = context.Scope.CurrentAlias ?? "n";
-                context.Builder.AddReturn($"COUNT(CASE WHEN {condition} THEN {alias} END) > 0");
+                context.Builder.AddReturn($"COUNT(CASE WHEN {condition} THEN {alias} END) > 0 AS result");
             }
         }
         else
