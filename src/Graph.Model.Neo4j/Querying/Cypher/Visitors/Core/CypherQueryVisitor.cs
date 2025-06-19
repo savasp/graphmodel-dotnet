@@ -85,16 +85,15 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         _logger.LogDebug("VisitConstant called with value type: {ValueType}", node.Value?.GetType().Name ?? "null");
 
-        // Handle root queryable
-        if (node.Value is IQueryable queryable &&
-            queryable.ElementType == _context.Scope.RootType)
+        // Handle queryable sources - these are the actual data sources we need to query
+        if (node.Value is IQueryable queryable)
         {
-            _logger.LogDebug("Found root queryable of type {Type}", _context.Scope.RootType.Name);
+            _logger.LogDebug("Found queryable of element type {Type}", queryable.ElementType.Name);
 
             // Check if this is a relationship queryable
             if (node.Value is IGraphRelationshipQueryable relationshipQueryable)
             {
-                var relLabel = Labels.GetLabelFromType(_context.Scope.RootType);
+                var relLabel = Labels.GetLabelFromType(queryable.ElementType);
 
                 // Use the existing AddRelationshipMatch method
                 _context.Builder.AddRelationshipMatch(relLabel);
@@ -102,18 +101,18 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 // Set the current alias to "r" (which is what AddRelationshipMatch uses)
                 _context.Scope.CurrentAlias = "r";
             }
-            else
+            else if (node.Value is IGraphNodeQueryable)
             {
-                // For nodes, use the existing logic
-                var alias = _context.Scope.GetOrCreateAlias(_context.Scope.RootType, "n");
-                var label = Labels.GetLabelFromType(_context.Scope.RootType);
+                // For nodes, generate the MATCH clause using the queryable's element type
+                var alias = _context.Scope.GetOrCreateAlias(queryable.ElementType, "n");
+                var label = Labels.GetLabelFromType(queryable.ElementType);
                 _logger.LogDebug("Adding MATCH clause: ({Alias}:{Label})", alias, label);
                 _context.Builder.AddMatch(alias, label);
-                
+
                 // Don't enable complex property loading here - defer the decision
                 // until we know if this is a traversal query
                 _logger.LogDebug("Deferring complex property loading decision");
-                
+
                 _context.Scope.CurrentAlias = alias;
             }
 

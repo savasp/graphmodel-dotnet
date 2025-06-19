@@ -24,6 +24,7 @@ internal class BinaryExpressionVisitor(
 {
     public override string VisitBinary(BinaryExpression node)
     {
+        Logger.LogDebug("BinaryExpressionVisitor.VisitBinary called with NodeType: {NodeType}", node.NodeType);
         Logger.LogDebug("Visiting binary expression: {NodeType}", node.NodeType);
         Logger.LogDebug("Left expression type: {LeftType}, Node: {LeftNode}", node.Left?.GetType().FullName, node.Left);
         Logger.LogDebug("Right expression type: {RightType}, Node: {RightNode}", node.Right?.GetType().FullName, node.Right);
@@ -37,8 +38,8 @@ internal class BinaryExpressionVisitor(
             Logger.LogDebug("Left ConstantExpression value: {Value}", constLeft.Value);
         }
 
-        var left = node.Left != null ? NextVisitor!.Visit(node.Left) : "NULL";
-        var right = node.Right != null ? NextVisitor!.Visit(node.Right) : "NULL";
+        var left = node.Left != null ? Visit(node.Left) : "NULL";
+        var right = node.Right != null ? Visit(node.Right) : "NULL";
 
         Logger.LogDebug("Binary expression left: {Left}, right: {Right}", left, right);
 
@@ -65,6 +66,7 @@ internal class BinaryExpressionVisitor(
         }
 
         // Handle all binary expression types
+        Logger.LogDebug("Processing binary expression with NodeType: {NodeType}", node.NodeType);
         var expression = node.NodeType switch
         {
             ExpressionType.Equal => $"{left} = {right}",
@@ -84,6 +86,7 @@ internal class BinaryExpressionVisitor(
             ExpressionType.Coalesce => $"COALESCE({left}, {right})",
             _ => throw new NotSupportedException($"Binary operator {node.NodeType} is not supported")
         };
+        Logger.LogDebug("Generated expression for {NodeType}: {Expression}", node.NodeType, expression);
 
         Logger.LogDebug("Binary expression result: {Expression}", expression);
         return expression;

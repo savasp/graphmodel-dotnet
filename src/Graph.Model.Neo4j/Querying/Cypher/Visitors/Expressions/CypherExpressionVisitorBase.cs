@@ -33,16 +33,21 @@ internal abstract class CypherExpressionVisitorBase<T> : CypherVisitorBase<T>, I
         Logger.LogDebug("Visiting expression of type: {NodeType}", node.GetType().FullName);
         Logger.LogDebug("Expression: {Expression}", node);
 
-        return node switch
-        {
-            BinaryExpression binary => VisitBinary(binary),
-            UnaryExpression unary => VisitUnary(unary),
-            MemberExpression member => VisitMember(member),
-            MethodCallExpression methodCall => VisitMethodCall(methodCall),
-            ConstantExpression constant => VisitConstant(constant),
-            ParameterExpression parameter => VisitParameter(parameter),
-            _ => throw new NotSupportedException($"Expression type {node.NodeType} is not supported")
-        };
+        // Use type checks instead of pattern matching to handle inheritance correctly
+        if (node is BinaryExpression binary)
+            return VisitBinary(binary);
+        if (node is UnaryExpression unary)
+            return VisitUnary(unary);
+        if (node is MemberExpression member)
+            return VisitMember(member);
+        if (node is MethodCallExpression methodCall)
+            return VisitMethodCall(methodCall);
+        if (node is ConstantExpression constant)
+            return VisitConstant(constant);
+        if (node is ParameterExpression parameter)
+            return VisitParameter(parameter);
+
+        throw new NotSupportedException($"Expression type {node.GetType().Name} is not supported");
     }
 
     public new abstract string VisitBinary(BinaryExpression node);
