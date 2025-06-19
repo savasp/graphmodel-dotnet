@@ -41,6 +41,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
     protected override Expression VisitMethodCall(MethodCallExpression node)
     {
         _logger.LogDebug("Visiting method call: {Method}", node.Method.Name);
+        _logger.LogDebug("Method declaring type: {DeclaringType}", node.Method.DeclaringType?.Name);
+        _logger.LogDebug("Method arguments count: {ArgsCount}", node.Arguments.Count);
 
         try
         {
@@ -50,8 +52,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
             // Then try to handle the method using the registry
             if (_context.MethodHandlers.TryHandle(_context, node, result))
             {
+                _logger.LogDebug("Method {Method} was handled by registry", node.Method.Name);
                 return result;
             }
+
+            _logger.LogDebug("Method {Method} was NOT handled by registry", node.Method.Name);
 
             // If not handled, check if it's a supported queryable method
             if (IsQueryableMethod(node))
@@ -104,7 +109,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 var label = Labels.GetLabelFromType(_context.Scope.RootType);
                 _logger.LogDebug("Adding MATCH clause: ({Alias}:{Label})", alias, label);
                 _context.Builder.AddMatch(alias, label);
-                _context.Builder.EnableComplexPropertyLoading();
+                
+                // Don't enable complex property loading here - defer the decision
+                // until we know if this is a traversal query
+                _logger.LogDebug("Deferring complex property loading decision");
+                
                 _context.Scope.CurrentAlias = alias;
             }
 

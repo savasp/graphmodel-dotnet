@@ -41,9 +41,8 @@ internal sealed class GraphTraversalQueryable<TSource, TRel, TTarget> : GraphQue
         _direction = direction;
 
         var methodCall = Expression.Call(
-            null,
-            GetMethod(nameof(InDirection)),
             Expression,
+            GetMethod(nameof(InDirection)),
             Expression.Constant(direction));
 
         var newQueryable = new GraphTraversalQueryable<TSource, TRel, TTarget>(Provider, Context, methodCall)
@@ -75,9 +74,8 @@ internal sealed class GraphTraversalQueryable<TSource, TRel, TTarget> : GraphQue
         _maxDepth = maxDepth;
 
         var methodCall = Expression.Call(
-            null,
+            Expression.Constant(this),
             GetMethod(nameof(WithDepth), 2),
-            Expression,
             Expression.Constant(minDepth),
             Expression.Constant(maxDepth));
 
@@ -99,9 +97,8 @@ internal sealed class GraphTraversalQueryable<TSource, TRel, TTarget> : GraphQue
         where TNextTarget : INode
     {
         var methodCall = Expression.Call(
-            null,
-            GetGenericMethod(nameof(ThenTraverse), typeof(TNextRel), typeof(TNextTarget)),
-            Expression);
+            Expression,
+            GetGenericMethod(nameof(ThenTraverse), typeof(TNextRel), typeof(TNextTarget)));
 
         return Provider.CreateTraversalQuery<TSource, TNextRel, TNextTarget>(methodCall);
     }
@@ -109,9 +106,8 @@ internal sealed class GraphTraversalQueryable<TSource, TRel, TTarget> : GraphQue
     public IGraphNodeQueryable<TTarget> To()
     {
         var methodCall = Expression.Call(
-            null,
-            GetMethod(nameof(To)),
-            Expression);
+            Expression,
+            GetMethod(nameof(To)));
 
         return Provider.CreateNodeQuery<TTarget>(methodCall);
     }
@@ -119,9 +115,8 @@ internal sealed class GraphTraversalQueryable<TSource, TRel, TTarget> : GraphQue
     public IGraphRelationshipQueryable<TRel> Relationships()
     {
         var methodCall = Expression.Call(
-            null,
-            GetMethod(nameof(Relationships)),
-            Expression);
+            Expression,
+            GetMethod(nameof(Relationships)));
 
         return Provider.CreateRelationshipQuery<TRel>(methodCall);
     }
@@ -129,9 +124,8 @@ internal sealed class GraphTraversalQueryable<TSource, TRel, TTarget> : GraphQue
     public IGraphQueryable<IGraphPathSegment<TSource, TRel, TTarget>> PathSegments()
     {
         var methodCall = Expression.Call(
-            null,
-            GetMethod(nameof(PathSegments)),
-            Expression);
+            Expression,
+            GetMethod(nameof(PathSegments)));
 
         return Provider.CreatePathSegmentQuery<TSource, TRel, TTarget>(methodCall);
     }

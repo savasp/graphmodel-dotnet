@@ -423,16 +423,21 @@ public abstract class QueryTraversalTestsBase : ITestBase
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow });
 
         // Act: Get 2-hop paths from Alice
-        var paths = Graph.Nodes<Person>()
+        var aliceKnowsTransitively = Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Knows, Person>()
             .WithDepth(2)
             .ToList();
 
+        foreach (var person in aliceKnowsTransitively)
+        {
+            Console.WriteLine($"Alice knows {person.FirstName}");
+        }
+
         // Assert
-        Assert.Equal(2, paths.Count); // Alice->Bob and Alice->Bob->Charlie
-        Assert.Contains(paths, p => p.FirstName == "Bob");
-        Assert.Contains(paths, p => p.FirstName == "Charlie");
+        Assert.Equal(2, aliceKnowsTransitively.Count); // Alice->Bob and Alice->Bob->Charlie
+        Assert.Contains(aliceKnowsTransitively, p => p.FirstName == "Bob");
+        Assert.Contains(aliceKnowsTransitively, p => p.FirstName == "Charlie");
     }
 
     #endregion

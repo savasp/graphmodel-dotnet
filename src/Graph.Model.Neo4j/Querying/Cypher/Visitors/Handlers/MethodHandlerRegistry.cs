@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Registry for method handlers that process LINQ method calls.
@@ -81,12 +82,18 @@ internal class MethodHandlerRegistry
     public bool TryHandle(CypherQueryContext context, MethodCallExpression node, Expression result)
     {
         var methodName = node.Method.Name;
+        var logger = context.LoggerFactory?.CreateLogger(nameof(MethodHandlerRegistry));
+        logger?.LogDebug("TryHandle: Looking for handler for method {Method}", methodName);
 
         if (_handlers.TryGetValue(methodName, out var handler))
         {
-            return handler.Handle(context, node, result);
+            logger?.LogDebug("TryHandle: Found handler for method {Method}: {HandlerType}", methodName, handler.GetType().Name);
+            var handled = handler.Handle(context, node, result);
+            logger?.LogDebug("TryHandle: Handler for {Method} returned {Handled}", methodName, handled);
+            return handled;
         }
 
+        logger?.LogDebug("TryHandle: No handler found for method {Method}", methodName);
         return false;
     }
 
@@ -144,6 +151,7 @@ internal class MethodHandlerRegistry
         // Graph-specific methods
         RegisterHandler("WithTransaction", graphOperationHandler);
         RegisterHandler("Traverse", graphOperationHandler);
+        RegisterHandler("WithDepth", graphOperationHandler);
         RegisterHandler("Relationships", graphOperationHandler);
         RegisterHandler("PathSegments", graphOperationHandler);
 

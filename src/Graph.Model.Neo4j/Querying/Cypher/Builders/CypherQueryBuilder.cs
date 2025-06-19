@@ -121,6 +121,16 @@ internal class CypherQueryBuilder
         _returnClauses.Add(returnClause);
     }
 
+    public void ClearReturn()
+    {
+        _returnClauses.Clear();
+    }
+
+    public void SetMainNodeAlias(string alias)
+    {
+        _mainNodeAlias = alias;
+    }
+
     public void AddOrderBy(string expression, bool isDescending = false)
     {
         _orderByClauses.Add((expression, isDescending));
@@ -355,8 +365,8 @@ internal class CypherQueryBuilder
 
     private void AppendComplexPropertyMatches(StringBuilder query)
     {
-        // Match the complex properties
-        query.AppendLine($"OPTIONAL MATCH path = ({_mainNodeAlias})-[*0..]-(target)");
+        // Match the complex properties using directed relationships
+        query.AppendLine($"OPTIONAL MATCH path = ({_mainNodeAlias})-[*0..]->(target)");
         query.AppendLine($"WHERE ALL(r IN relationships(path) WHERE type(r) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')");
         query.AppendLine($"WITH {_mainNodeAlias}, relationships(path) AS rels, nodes(path) AS nodes");
         query.AppendLine("WHERE size(nodes) = size(rels) + 1");

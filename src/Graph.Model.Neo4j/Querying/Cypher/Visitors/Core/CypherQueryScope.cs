@@ -39,6 +39,39 @@ internal sealed class CypherQueryScope(Type rootType)
     public Type? CurrentType { get; set; }
 
     /// <summary>
+    /// Gets the minimum traversal depth for path patterns.
+    /// </summary>
+    public int? TraversalMinDepth { get; private set; }
+
+    /// <summary>
+    /// Gets the maximum traversal depth for path patterns.
+    /// </summary>
+    public int? TraversalMaxDepth { get; private set; }
+
+    /// <summary>
+    /// Gets information about the current traversal operation.
+    /// </summary>
+    public TraversalInfo? TraversalInfo { get; private set; }
+
+    /// <summary>
+    /// Sets the traversal depth constraints for path patterns.
+    /// </summary>
+    public void SetTraversalDepth(int minDepth, int maxDepth)
+    {
+        TraversalMinDepth = minDepth;
+        TraversalMaxDepth = maxDepth;
+    }
+
+    /// <summary>
+    /// Clears the traversal depth constraints.
+    /// </summary>
+    public void ClearTraversalDepth()
+    {
+        TraversalMinDepth = null;
+        TraversalMaxDepth = null;
+    }
+
+    /// <summary>
     /// Pushes a new alias onto the stack and sets it as current.
     /// </summary>
     public void PushAlias(string alias)
@@ -93,6 +126,14 @@ internal sealed class CypherQueryScope(Type rootType)
         return _typeAliases.GetValueOrDefault(type);
     }
 
+    /// <summary>
+    /// Sets traversal information.
+    /// </summary>
+    public void SetTraversalInfo(Type relationshipType, Type targetNodeType)
+    {
+        TraversalInfo = new TraversalInfo(relationshipType, targetNodeType);
+    }
+
     private string GenerateAlias(Type type)
     {
         var name = type.Name;
@@ -107,3 +148,8 @@ internal sealed class CypherQueryScope(Type rootType)
         return char.ToLower(name[0]).ToString();
     }
 }
+
+/// <summary>
+/// Information about a traversal operation.
+/// </summary>
+internal record TraversalInfo(Type RelationshipType, Type TargetNodeType);

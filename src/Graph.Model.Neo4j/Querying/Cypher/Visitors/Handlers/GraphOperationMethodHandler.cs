@@ -15,8 +15,11 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 
 using System.Linq.Expressions;
+using System.Reflection;
+using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Handles graph-specific operations like Include, Traverse, etc.
@@ -26,11 +29,16 @@ internal record GraphOperationMethodHandler : MethodHandlerBase
     public override bool Handle(CypherQueryContext context, MethodCallExpression node, Expression result)
     {
         var methodName = node.Method.Name;
+        
+        // Add debug logging
+        var logger = context.LoggerFactory?.CreateLogger(nameof(GraphOperationMethodHandler));
+        logger?.LogDebug($"Handling graph operation method: {methodName}");
 
         return methodName switch
         {
             "Include" => HandleInclude(context, node),
             "Traverse" => HandleTraverse(context, node),
+            "WithDepth" => HandleWithDepth(context, node),
             "Relationships" => HandleRelationships(context, node),
             "PathSegments" => HandlePathSegments(context, node),
             "WithTransaction" => HandleWithTransaction(context, node),
@@ -68,20 +76,56 @@ internal record GraphOperationMethodHandler : MethodHandlerBase
 
     private static bool HandleTraverse(CypherQueryContext context, MethodCallExpression node)
     {
+        var logger = context.LoggerFactory?.CreateLogger(nameof(GraphOperationMethodHandler));
+        logger?.LogDebug("HandleTraverse called");
+        
         if (node.Arguments.Count < 2)
         {
+            logger?.LogDebug("HandleTraverse: insufficient arguments");
             return false;
         }
 
-        // Traverse operations typically involve path patterns
-        var currentAlias = context.Scope.CurrentAlias ?? "n";
-        var pathAlias = context.Scope.GetOrCreateAlias(typeof(object), "p");
+        // Extract relationship and target node types from the generic method arguments
+        if (node.Method.IsGenericMethod)
+        {
+            var genericArgs = node.Method.GetGenericArguments();
+            if (genericArgs.Length >= 2)
+            {
+                var relationshipType = genericArgs[0];
+                var targetNodeType = genericArgs[1];
+                
+                logger?.LogDebug($"HandleTraverse: setting traversal info for {relationshipType.Name} -> {targetNodeType.Name}");
+                
+                // Store traversal information in scope for later pattern generation
+                context.Scope.SetTraversalInfo(relationshipType, targetNodeType);
+                return true;
+            }
+        }
 
-        // Add a path pattern - this is a simplified implementation
-        context.Builder.AddMatch($"({currentAlias})-[*]->({pathAlias})");
-        context.Scope.CurrentAlias = pathAlias;
+        logger?.LogDebug("HandleTraverse: failed to extract generic arguments");
+        return false;
+    }
 
-        return true;
+    private static string BuildDepthPattern(CypherQueryScope scope)
+    {
+        // If both min and max depth are specified
+        if (scope.TraversalMinDepth.HasValue && scope.TraversalMaxDepth.HasValue)
+        {
+            if (scope.TraversalMinDepth == scope.TraversalMaxDepth)
+            {
+                return scope.TraversalMinDepth.Value.ToString();
+            }
+            return $"{scope.TraversalMinDepth}..{scope.TraversalMaxDepth}";
+        }
+        
+        // If only max depth is specified (common case)
+        if (scope.TraversalMaxDepth.HasValue)
+        {
+            return $"1..{scope.TraversalMaxDepth}";
+        }
+        
+        // Default to unlimited depth
+        return "";
     }
 
     private static bool HandleRelationships(CypherQueryContext context, MethodCallExpression node)
@@ -105,6 +149,117 @@ internal record GraphOperationMethodHandler : MethodHandlerBase
         // Transaction handling would be done at a higher level
         // For now, just pass through
         return true;
+    }
+
+    private static bool HandleWithDepth(CypherQueryContext context, MethodCallExpression node)
+    {
+        var logger = context.LoggerFactory?.CreateLogger(nameof(GraphOperationMethodHandler));
+        logger?.LogDebug("HandleWithDepth called");
+        
+        // WithDepth should extract depth constraints from the queryable instance
+        if (node.Arguments.Count < 2)
+        {
+            logger?.LogDebug("HandleWithDepth: insufficient arguments");
+            return false;
+        }
+
+        // Log all arguments to understand the structure
+        logger?.LogDebug($"HandleWithDepth: method object = {node.Object}");
+        for (int i = 0; i < node.Arguments.Count; i++)
+        {
+            var arg = node.Arguments[i];
+            logger?.LogDebug($"HandleWithDepth: arg[{i}] = {arg.GetType().Name}: {arg}");
+            if (arg is ConstantExpression constExpr)
+            {
+                logger?.LogDebug($"HandleWithDepth: arg[{i}] constant value type: {constExpr.Value?.GetType().Name ?? "null"}");
+            }
+        }
+
+        // For instance methods, the queryable should be in node.Object
+        if (node.Object is ConstantExpression { Value: var queryableInstance } && queryableInstance != null)
+        {
+            logger?.LogDebug($"HandleWithDepth: found queryable in Object: {queryableInstance.GetType().Name}");
+            
+            // Use reflection to get the depth information from the queryable
+            var queryableType = queryableInstance.GetType();
+            var minDepthField = queryableType.GetField("_minDepth", BindingFlags.NonPublic | BindingFlags.Instance);
+            var maxDepthField = queryableType.GetField("_maxDepth", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            if (minDepthField?.GetValue(queryableInstance) is int minDepth &&
+                maxDepthField?.GetValue(queryableInstance) is int maxDepth)
+            {
+                logger?.LogDebug($"HandleWithDepth: extracted depth from queryable: min={minDepth}, max={maxDepth}");
+                
+                // Store depth information in scope for traversal patterns to use
+                context.Scope.SetTraversalDepth(minDepth, maxDepth);
+                logger?.LogDebug("HandleWithDepth: stored depth info in scope");
+                
+                // Also extract and store traversal information
+                var sourceTypeArg = queryableType.GetGenericArguments().ElementAtOrDefault(0);
+                var relTypeArg = queryableType.GetGenericArguments().ElementAtOrDefault(1);
+                var targetTypeArg = queryableType.GetGenericArguments().ElementAtOrDefault(2);
+                
+                if (relTypeArg != null && targetTypeArg != null)
+                {
+                    context.Scope.SetTraversalInfo(relTypeArg, targetTypeArg);
+                    logger?.LogDebug($"HandleWithDepth: stored traversal info: rel={relTypeArg.Name}, target={targetTypeArg.Name}");
+                    
+                    // Generate the traversal pattern immediately
+                    GenerateTraversalPattern(context, logger);
+                }
+                
+                return true;
+            }
+        }
+
+        logger?.LogDebug("HandleWithDepth: could not extract depth information");
+        return false;
+    }
+
+    private static void GenerateTraversalPattern(CypherQueryContext context, ILogger? logger)
+    {
+        logger?.LogDebug("GenerateTraversalPattern: starting");
+        
+        if (context.Scope.TraversalInfo == null)
+        {
+            logger?.LogDebug("GenerateTraversalPattern: no traversal info found");
+            return;
+        }
+        
+        var currentAlias = context.Scope.CurrentAlias ?? "src";
+        var targetAlias = "n";  // Always use "n" for the target to match CypherResultProcessor expectations
+
+        // Build the relationship pattern with depth constraints if available
+        var depthPattern = BuildDepthPattern(context.Scope);
+        var relationshipLabel = GetRelationshipLabel(context.Scope.TraversalInfo.RelationshipType);
+        
+        // Clear existing matches and set up proper traversal pattern
+        context.Builder.ClearMatches();
+        
+        // Get labels for both source and target types
+        var sourceLabel = GetNodeLabel(context.Scope.RootType);
+        var targetLabel = GetNodeLabel(context.Scope.TraversalInfo.TargetNodeType);
+        
+        var pattern = $"({currentAlias}:{sourceLabel})-[:{relationshipLabel}*{depthPattern}]->({targetAlias}:{targetLabel})";
+        logger?.LogDebug($"GenerateTraversalPattern: generated pattern: {pattern}");
+        
+        // Add the traversal pattern
+        context.Builder.AddMatchPattern(pattern);
+        
+        // Update the main node alias for complex property loading
+        context.Builder.SetMainNodeAlias(targetAlias);
+        context.Scope.CurrentAlias = targetAlias;
+        
+        // Clear any existing return clauses and add return for target (using "n")
+        context.Builder.ClearReturn();
+        context.Builder.AddReturn(targetAlias);
+        logger?.LogDebug($"GenerateTraversalPattern: added return for {targetAlias}");
+        
+        // Enable complex property loading for the target nodes
+        context.Builder.EnableComplexPropertyLoading();
+        logger?.LogDebug("GenerateTraversalPattern: enabled complex property loading");
+        
+        logger?.LogDebug($"GenerateTraversalPattern: set current alias to {targetAlias}");
     }
 
     private static string GetRelationshipType(MemberExpression member)
@@ -137,5 +292,17 @@ internal record GraphOperationMethodHandler : MethodHandlerBase
     private static ICypherExpressionVisitor CreateExpressionVisitor(CypherQueryContext context)
     {
         return new ExpressionVisitorChainFactory(context).CreateStandardChain();
+    }
+
+    private static string GetRelationshipLabel(Type relationshipType)
+    {
+        // Use the Labels class to get the proper relationship type
+        return Labels.GetLabelFromType(relationshipType);
+    }
+
+    private static string GetNodeLabel(Type nodeType)
+    {
+        // Use the Labels class to get the proper node label
+        return Labels.GetLabelFromType(nodeType);
     }
 }
