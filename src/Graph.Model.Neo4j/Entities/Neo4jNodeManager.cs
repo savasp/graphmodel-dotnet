@@ -15,7 +15,6 @@
 namespace Cvoya.Graph.Model.Neo4j.Entities;
 
 using Cvoya.Graph.Model.Neo4j.Core;
-using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
