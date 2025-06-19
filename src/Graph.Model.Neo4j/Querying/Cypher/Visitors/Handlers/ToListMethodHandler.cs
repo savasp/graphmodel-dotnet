@@ -15,8 +15,8 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 
 using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
@@ -28,7 +28,7 @@ internal record ToListMethodHandler : MethodHandlerBase
     {
         var logger = context.LoggerFactory?.CreateLogger(nameof(ToListMethodHandler));
         logger?.LogDebug("ToListMethodHandler called");
-        
+
         if (node.Method.Name != "ToList" || node.Arguments.Count != 1)
         {
             logger?.LogDebug("ToListMethodHandler: not a ToList method or wrong arguments");
@@ -54,44 +54,54 @@ internal record ToListMethodHandler : MethodHandlerBase
     {
         var logger = context.LoggerFactory?.CreateLogger(nameof(ToListMethodHandler));
         logger?.LogDebug("FinalizeTraversalPatterns called");
-        
+
         // If we have pending traversal information, generate the pattern now
         if (context.Scope.TraversalInfo != null)
         {
             logger?.LogDebug($"Found traversal info: {context.Scope.TraversalInfo.RelationshipType.Name} -> {context.Scope.TraversalInfo.TargetNodeType.Name}");
-            
+
             var currentAlias = context.Scope.CurrentAlias ?? "n";
             var targetAlias = context.Scope.GetOrCreateAlias(
-                context.Scope.TraversalInfo.TargetNodeType, 
+                context.Scope.TraversalInfo.TargetNodeType,
                 GetPreferredAlias(context.Scope.TraversalInfo.TargetNodeType));
 
             // Build the relationship pattern with depth constraints if available
             var depthPattern = BuildDepthPattern(context.Scope);
             var relationshipLabel = GetRelationshipLabel(context.Scope.TraversalInfo.RelationshipType);
-            
+
             // Clear existing matches and set up proper traversal pattern
             context.Builder.ClearMatches();
-            
+
             // Get labels for both source and target types
             var sourceLabel = GetNodeLabel(context.Scope.RootType);
             var targetLabel = GetNodeLabel(context.Scope.TraversalInfo.TargetNodeType);
-            
+
             var pattern = $"({currentAlias}:{sourceLabel})-[:{relationshipLabel}*{depthPattern}]->({targetAlias}:{targetLabel})";
             logger?.LogDebug($"Generated traversal pattern: {pattern}");
-            
+
             // Add the traversal pattern
             context.Builder.AddMatchPattern(pattern);
             context.Scope.CurrentAlias = targetAlias;
-            
+
             // For traversal targets, enable complex property loading
             context.Builder.EnableComplexPropertyLoading();
             logger?.LogDebug("Enabled complex property loading for traversal targets");
         }
         else
         {
-            logger?.LogDebug("No traversal info found - enabling complex property loading for regular node query");
-            // This is a regular node query, enable complex property loading
-            context.Builder.EnableComplexPropertyLoading();
+            // Check if this is a relationship query
+            if (context.Builder.IsRelationshipQuery)
+            {
+                logger?.LogDebug("No traversal info found - this is a relationship query, skipping complex property loading");
+                // For relationship queries, don't enable complex property loading
+                // The relationship data will be returned as-is
+            }
+            else
+            {
+                logger?.LogDebug("No traversal info found - enabling complex property loading for regular node query");
+                // This is a regular node query, enable complex property loading
+                context.Builder.EnableComplexPropertyLoading();
+            }
         }
     }
 
@@ -106,13 +116,13 @@ internal record ToListMethodHandler : MethodHandlerBase
             }
             return $"{scope.TraversalMinDepth}..{scope.TraversalMaxDepth}";
         }
-        
+
         // If only max depth is specified (common case)
         if (scope.TraversalMaxDepth.HasValue)
         {
             return $"1..{scope.TraversalMaxDepth}";
         }
-        
+
         // Default to unlimited depth
         return "";
     }
@@ -120,7 +130,7 @@ internal record ToListMethodHandler : MethodHandlerBase
     private static string GetPreferredAlias(Type type)
     {
         var name = type.Name;
-        
+
         // Remove interface prefix
         if (name.StartsWith("I") && name.Length > 1 && char.IsUpper(name[1]))
         {

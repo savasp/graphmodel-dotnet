@@ -44,6 +44,8 @@ internal class CypherQueryBuilder
 
     public bool HasExplicitReturn => _returnClauses.Count > 0 || _aggregation != null || _isExistsQuery || _isNotExistsQuery;
 
+    public bool IsRelationshipQuery => _isRelationshipQuery;
+
     public void SetExistsQuery()
     {
         _isExistsQuery = true;
