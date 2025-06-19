@@ -38,58 +38,124 @@ internal class BaseExpressionVisitor(
 
     public override string VisitMember(MemberExpression node)
     {
-        Logger.LogDebug("Visiting member: {MemberName}", node.Member.Name);
+        Logger.LogDebug("Visiting member: {Member}", node.Member.Name);
 
+        // Handle nested member access - evaluate the entire chain for closure variables
+        if (node.Expression is MemberExpression nestedMember)
+        {
+            // Check if this is a closure variable chain (e.g., p1.Id)
+            if (IsClosureVariableChain(node))
+            {
+                // Evaluate the entire expression chain and extract the final value
+                var finalValue = EvaluateClosureExpression(node);
+                Logger.LogDebug("Evaluated closure expression chain {Expression}: {Value} (Type: {Type})",
+                    node, finalValue, finalValue?.GetType().FullName ?? "null");
+
+                var paramRef = Builder.AddParameter(finalValue);
+                return paramRef;
+            }
+            else
+            {
+                // Regular nested access (e.g., entity property chaining)
+                var parent = VisitMember(nestedMember);
+                return $"{parent}.{node.Member.Name}";
+            }
+        }
+
+        // Check if this is accessing a closure variable (captured variable)
+        if (node.Expression is ConstantExpression constantExpr)
+        {
+            try
+            {
+                // Get the value from the closure
+                var container = constantExpr.Value;
+                if (container is null)
+                {
+                    throw new GraphException($"Cannot access member '{node.Member.Name}' on null container");
+                }
+
+                var member = node.Member;
+
+                object? value = member switch
+                {
+                    FieldInfo field => field.GetValue(container),
+                    PropertyInfo property => property.GetValue(container),
+                    _ => throw new NotSupportedException($"Member type {member.MemberType} is not supported")
+                };
+
+                Logger.LogDebug("Extracted closure value for {Member}: {Value} (Type: {Type})",
+                    member.Name, value, value?.GetType().FullName ?? "null");
+
+                // Add as parameter and return reference
+                // AddParameter should handle null values appropriately
+                var paramRef = Builder.AddParameter(value);
+                return paramRef;
+            }
+            catch (Exception ex) when (ex is not GraphException)
+            {
+                Logger.LogError(ex, "Failed to extract value from closure for member {Member}", node.Member.Name);
+                throw new GraphException($"Failed to access closure variable '{node.Member.Name}'", ex);
+            }
+        }
+
+        // Check if we're accessing a parameter property
         if (node.Expression is ParameterExpression param)
         {
-            var propertyName = node.Member.Name;
-            var result = propertyName switch
-            {
-                "StartNodeId" => $"{Scope.GetAliasForType(typeof(IEntity))}.Id",
-                "EndNodeId" => $"{Scope.GetAliasForType(typeof(INode))}.Id",
-                "Direction" => $"{Scope.CurrentAlias}.Direction",
-                "Id" => $"{Scope.CurrentAlias}.Id",  // Handle relationship's own Id property
-                _ => $"{Scope.CurrentAlias}.{propertyName}"
-            };
-            Logger.LogDebug("Member expression result: {Result}", result);
-            return result;
-        }
-        else if (node.Expression is MemberExpression memberExpr)
-        {
-            // Handle nested member access (e.g., r.relationshipId)
-            var baseExpr = Visit(memberExpr);
-            var result = $"{baseExpr}.{node.Member.Name}";
-            Logger.LogDebug("Nested member expression result: {Result}", result);
-            return result;
-        }
-        else if (node.Expression is ConstantExpression constantExpr)
-        {
-            // Handle closure values (e.g., relationshipId from the outer scope)
-            var value = node.Member switch
-            {
-                FieldInfo field => field.GetValue(constantExpr.Value),
-                PropertyInfo prop => prop.GetValue(constantExpr.Value),
-                _ => throw new NotSupportedException($"Member type {node.Member.MemberType} is not supported")
-            };
+            Logger.LogDebug("Processing parameter {ParamName} of type {ParamType}, RootType is {RootType}, CurrentAlias is {CurrentAlias}",
+                param.Name, param.Type.Name, Scope.RootType?.Name, Scope.CurrentAlias);
 
-            if (value == null)
+            // If this parameter is for the root type, use the current alias (set by VisitConstant)
+            // Otherwise, get or create an alias for this specific type
+            var alias = param.Type == Scope.RootType
+                ? (Scope.CurrentAlias ?? Scope.GetOrCreateAlias(param.Type, "n"))
+                : Scope.GetOrCreateAlias(param.Type);
+
+            // Special handling for relationship properties
+            if (alias == "r" && typeof(Model.IRelationship).IsAssignableFrom(param.Type))
             {
-                Logger.LogDebug("Closure value is null, returning NULL");
-                return "NULL";
+                var propertyMapping = node.Member.Name switch
+                {
+                    nameof(Model.IRelationship.StartNodeId) => "src.Id",
+                    nameof(Model.IRelationship.EndNodeId) => "tgt.Id",
+                    _ => $"{alias}.{node.Member.Name}"
+                };
+                Logger.LogDebug("Mapped relationship property {Property} to {Mapping}", node.Member.Name, propertyMapping);
+                return propertyMapping;
             }
 
-            var paramRef = Builder.AddParameter(value);
-            Logger.LogDebug("Closure value result: {Result}", paramRef);
-            return paramRef;
+            Logger.LogDebug("Found parameter member access: {Alias}.{Member}", alias, node.Member.Name);
+            return $"{alias}.{node.Member.Name}";
         }
 
-        var defaultResult = $"{Scope.CurrentAlias}.{node.Member.Name}";
-        Logger.LogDebug("Default member expression result: {Result}", defaultResult);
-        return defaultResult;
+        // Handle nested member access
+        if (node.Expression is MemberExpression nested)
+        {
+            var parent = VisitMember(nested);
+            return $"{parent}.{node.Member.Name}";
+        }
+
+        // Handle convert expressions (Convert(n, IEntity).Id)
+        if (node.Expression is UnaryExpression unary && unary.NodeType == ExpressionType.Convert)
+        {
+            Logger.LogDebug("Processing member access on convert expression: {Expression}.{Member}", unary, node.Member.Name);
+            // For conversions, just visit the operand and ignore the conversion
+            var operand = Visit(unary.Operand);
+            return $"{operand}.{node.Member.Name}";
+        }
+
+        throw new NotSupportedException($"Member expression type {node.Expression?.GetType().Name} is not supported");
     }
 
     public override string VisitMethodCall(MethodCallExpression node)
     {
+        // Handle implicit/explicit conversion operators (op_Implicit, op_Explicit)
+        if (node.Method.Name.StartsWith("op_") && node.Arguments.Count == 1)
+        {
+            Logger.LogDebug("Processing conversion operator: {Method}", node.Method.Name);
+            // For conversion operators, just visit the operand and ignore the conversion
+            return Visit(node.Arguments[0]);
+        }
+
         throw new NotSupportedException($"Method {node.Method.Name} is not supported in base visitor");
     }
 
@@ -113,5 +179,40 @@ internal class BaseExpressionVisitor(
         var result = Scope.CurrentAlias ?? throw new InvalidOperationException("No current alias set");
         Logger.LogDebug("Parameter expression result: {Result}", result);
         return result;
+    }
+
+    private bool IsClosureVariableChain(MemberExpression node)
+    {
+        // Walk up the expression tree to see if this eventually leads to a ConstantExpression (closure)
+        var current = node;
+        while (current != null)
+        {
+            if (current.Expression is ConstantExpression)
+            {
+                return true;
+            }
+            if (current.Expression is MemberExpression parent)
+            {
+                current = parent;
+                continue;
+            }
+            break;
+        }
+        return false;
+    }
+
+    private object? EvaluateClosureExpression(MemberExpression node)
+    {
+        try
+        {
+            // Use Expression.Lambda to compile and evaluate the expression
+            var lambda = Expression.Lambda(node);
+            var compiled = lambda.Compile();
+            return compiled.DynamicInvoke();
+        }
+        catch (Exception ex)
+        {
+            throw new GraphException($"Failed to evaluate closure expression '{node}': {ex.Message}", ex);
+        }
     }
 }

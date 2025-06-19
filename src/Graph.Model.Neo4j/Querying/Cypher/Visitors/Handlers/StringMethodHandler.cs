@@ -62,12 +62,6 @@ internal record StringMethodHandler : MethodHandlerBase
 
     private static ICypherExpressionVisitor CreateExpressionVisitor(CypherQueryContext context)
     {
-        return new CollectionMethodVisitor(
-            context,
-            new StringMethodVisitor(
-                context,
-                new BinaryExpressionVisitor(
-                    context,
-                    new BaseExpressionVisitor(context))));
+        return new ExpressionVisitorChainFactory(context).CreateStandardChain();
     }
 }

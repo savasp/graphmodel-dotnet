@@ -42,6 +42,9 @@ internal sealed class ResultMaterializer
         var elementType = Helpers.GetTargetTypeIfCollection(targetType);
         var isCollectionType = targetType != elementType;
 
+        _logger.LogDebug("MaterializeAsync: TargetType={TargetType}, ElementType={ElementType}, IsCollectionType={IsCollectionType}, RecordCount={RecordCount}",
+            targetType.Name, elementType.Name, isCollectionType, records.Count);
+
         // Handle empty results consistently
         if (!records.Any())
         {
@@ -52,20 +55,38 @@ internal sealed class ResultMaterializer
 
         // Process records to EntityInfo objects
         var entityInfos = await _resultProcessor.ProcessAsync(records, elementType, cancellationToken);
+        _logger.LogDebug("MaterializeAsync: ProcessAsync returned {EntityInfoCount} entity infos", entityInfos.Count);
 
-        return isCollectionType
+        var result = isCollectionType
             ? MaterializeAsCollection<T>(entityInfos, elementType)
             : MaterializeSingleElement<T>(entityInfos.FirstOrDefault(), elementType);
+
+        _logger.LogDebug("MaterializeAsync: Final result type={ResultType}", result?.GetType().Name ?? "null");
+        if (result is IEnumerable enumerable && !(result is string))
+        {
+            var count = enumerable.Cast<object>().Count();
+            _logger.LogDebug("MaterializeAsync: Collection result contains {Count} items", count);
+        }
+
+        return result;
     }
 
     private T MaterializeAsCollection<T>(List<EntityInfo> entityInfos, Type elementType)
     {
+        _logger.LogDebug("MaterializeAsCollection: Processing {EntityInfoCount} entity infos for element type {ElementType}",
+            entityInfos.Count, elementType.Name);
+
         var elements = entityInfos
             .Select(entityInfo => MaterializeSingleElement<object>(entityInfo, elementType))
             .Where(item => item is not null)
             .ToList();
 
-        return ConvertToCollectionType<T>(elements!, elementType);
+        _logger.LogDebug("MaterializeAsCollection: Materialized {ElementCount} non-null elements", elements.Count);
+
+        var result = ConvertToCollectionType<T>(elements!, elementType);
+        _logger.LogDebug("MaterializeAsCollection: Converted to collection type {ResultType}", result?.GetType().Name ?? "null");
+
+        return result;
     }
 
     private TResult? MaterializeSingleElement<TResult>(EntityInfo? entityInfo, Type elementType)

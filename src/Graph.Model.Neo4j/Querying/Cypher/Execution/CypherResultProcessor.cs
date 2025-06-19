@@ -268,21 +268,43 @@ internal sealed class CypherResultProcessor
         if (!records.Any())
             return [];
 
-        // Create the base EntityInfo from the first record
-        var baseNode = records[0]["n"].As<INode>();
-        var entityInfo = CreateEntityInfoFromNode(baseNode, targetType);
+        // Group records by node ID to handle multiple different entities
+        var recordsByNodeId = new Dictionary<string, List<IRecord>>();
 
-        // Process all records to build a complete EntityInfo
         foreach (var record in records)
         {
-            var relatedNodesList = record["relatedNodes"].As<IList<object>>();
-            if (relatedNodesList != null && relatedNodesList.Any())
-            {
-                await AddComplexPropertiesFromRelatedNodes(entityInfo, relatedNodesList, cancellationToken);
-            }
+            var node = record["n"].As<INode>();
+            var nodeId = GetNodeId(node);
+
+            if (!recordsByNodeId.ContainsKey(nodeId))
+                recordsByNodeId[nodeId] = [];
+
+            recordsByNodeId[nodeId].Add(record);
         }
 
-        return [entityInfo];
+        var results = new List<EntityInfo>();
+
+        // Process each unique entity
+        foreach (var (nodeId, nodeRecords) in recordsByNodeId)
+        {
+            // Create the base EntityInfo from the first record of this entity
+            var baseNode = nodeRecords[0]["n"].As<INode>();
+            var entityInfo = CreateEntityInfoFromNode(baseNode, targetType);
+
+            // Process all records for this entity to build complete complex properties
+            foreach (var record in nodeRecords)
+            {
+                var relatedNodesList = record["relatedNodes"].As<IList<object>>();
+                if (relatedNodesList != null && relatedNodesList.Any())
+                {
+                    await AddComplexPropertiesFromRelatedNodes(entityInfo, relatedNodesList, cancellationToken);
+                }
+            }
+
+            results.Add(entityInfo);
+        }
+
+        return results;
     }
 
     private async Task AddComplexPropertiesFromRelatedNodes(

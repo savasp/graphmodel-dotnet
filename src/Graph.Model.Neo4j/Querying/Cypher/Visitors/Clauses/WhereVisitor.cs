@@ -21,13 +21,8 @@ using Microsoft.Extensions.Logging;
 
 internal sealed class WhereVisitor(CypherQueryContext context) : ClauseVisitorBase<WhereVisitor>(context)
 {
-    private readonly ICypherExpressionVisitor _expressionVisitor = new CollectionMethodVisitor(
-        context,
-        new StringMethodVisitor(
-            context,
-            new BinaryExpressionVisitor(
-                context,
-                new BaseExpressionVisitor(context))));
+    private readonly ICypherExpressionVisitor _expressionVisitor =
+        new ExpressionVisitorChainFactory(context).CreateWhereClauseChain();
 
     public void ProcessWhereClause(LambdaExpression lambda)
     {

@@ -16,35 +16,29 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 
 /// <summary>
-/// Handles the Where LINQ method by generating appropriate WHERE clauses.
+/// Handles the ToList LINQ method which is a terminal operation that executes the query.
 /// </summary>
-internal record WhereMethodHandler : MethodHandlerBase
+internal record ToListMethodHandler : MethodHandlerBase
 {
     public override bool Handle(CypherQueryContext context, MethodCallExpression node, Expression result)
     {
-        if (node.Method.Name != "Where" || node.Arguments.Count != 2)
+        if (node.Method.Name != "ToList" || node.Arguments.Count != 1)
         {
             return false;
         }
 
-        // Get the predicate (lambda expression)
-        if (node.Arguments[1] is not UnaryExpression { Operand: LambdaExpression lambda })
+        // ToList is a terminal operation - it doesn't modify the query, just executes it
+        // The query building has already been done by previous method calls in the chain
+        // We just need to ensure the query is properly finalized
+
+        // If no explicit return has been set, add a default return
+        if (!context.Builder.HasReturnClause)
         {
-            throw new GraphException("Where method requires a lambda expression predicate");
+            var alias = context.Scope.CurrentAlias ?? "n";
+            context.Builder.AddReturn(alias);
         }
-
-        // Use the factory to create the appropriate visitor chain
-        var factory = new ExpressionVisitorChainFactory(context);
-        var expressionVisitor = factory.CreateWhereClauseChain();
-
-        // Process the lambda body to generate the WHERE expression
-        var whereExpression = expressionVisitor.Visit(lambda.Body);
-
-        // Add the WHERE clause to the query builder
-        context.Builder.AddWhere(whereExpression);
 
         return true;
     }

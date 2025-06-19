@@ -111,6 +111,7 @@ internal class MethodHandlerRegistry
         var groupByHandler = new GroupByMethodHandler();
         var joinHandler = new JoinMethodHandler();
         var unionHandler = new UnionMethodHandler();
+        var toListHandler = new ToListMethodHandler();
 
         // For methods not yet implemented, use the default handler
         var defaultHandler = new DefaultMethodHandler();
@@ -137,6 +138,7 @@ internal class MethodHandlerRegistry
         RegisterHandler("Join", joinHandler);
         RegisterHandler("Union", unionHandler);
         RegisterHandler("Concat", unionHandler);
+        RegisterHandler("ToList", toListHandler);
         RegisterHandler("Include", graphOperationHandler);
 
         // Graph-specific methods

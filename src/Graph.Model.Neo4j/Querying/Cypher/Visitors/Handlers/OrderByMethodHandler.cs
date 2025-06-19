@@ -39,13 +39,7 @@ internal record OrderByMethodHandler : MethodHandlerBase
         }
 
         // Create expression visitor chain to process the key selector
-        var expressionVisitor = new CollectionMethodVisitor(
-            context,
-            new StringMethodVisitor(
-                context,
-                new BinaryExpressionVisitor(
-                    context,
-                    new BaseExpressionVisitor(context))));
+        var expressionVisitor = new ExpressionVisitorChainFactory(context).CreateOrderByChain();
 
         // Process the lambda body to generate the ORDER BY expression
         var orderExpression = expressionVisitor.Visit(lambda.Body);

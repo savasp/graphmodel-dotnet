@@ -78,6 +78,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     protected override Expression VisitConstant(ConstantExpression node)
     {
+        _logger.LogDebug("VisitConstant called with value type: {ValueType}", node.Value?.GetType().Name ?? "null");
+
         // Handle root queryable
         if (node.Value is IQueryable queryable &&
             queryable.ElementType == _context.Scope.RootType)
@@ -100,6 +102,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 // For nodes, use the existing logic
                 var alias = _context.Scope.GetOrCreateAlias(_context.Scope.RootType, "n");
                 var label = Labels.GetLabelFromType(_context.Scope.RootType);
+                _logger.LogDebug("Adding MATCH clause: ({Alias}:{Label})", alias, label);
                 _context.Builder.AddMatch(alias, label);
                 _context.Builder.EnableComplexPropertyLoading();
                 _context.Scope.CurrentAlias = alias;

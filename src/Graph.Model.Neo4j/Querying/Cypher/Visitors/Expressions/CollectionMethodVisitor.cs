@@ -24,6 +24,40 @@ internal class CollectionMethodVisitor(
 {
     public override string VisitMethodCall(MethodCallExpression node)
     {
+        // Handle conversion operators (op_Implicit, op_Explicit)
+        if (node.Method.Name.StartsWith("op_") && node.Arguments.Count == 1)
+        {
+            Logger.LogDebug("Processing conversion operator: {Method}", node.Method.Name);
+            // Just visit the argument, ignoring the conversion
+            return NextVisitor!.Visit(node.Arguments[0]);
+        }
+
+        // Check if it's a Contains method on a collection
+        if (node.Method.Name == "Contains")
+        {
+            Logger.LogDebug("Processing Contains method call");
+
+            // Handle instance Contains method (e.g., list.Contains(item))
+            if (node.Object != null)
+            {
+                var collection = NextVisitor!.Visit(node.Object);
+                var value = NextVisitor!.Visit(node.Arguments[0]);
+
+                Logger.LogDebug("Generating IN expression for Contains: {Value} IN {Collection}", value, collection);
+                return $"{value} IN {collection}";
+            }
+            // Handle static Contains method (e.g., Enumerable.Contains(list, item))
+            else if (node.Arguments.Count == 2)
+            {
+                var collection = NextVisitor!.Visit(node.Arguments[0]);
+                var value = NextVisitor!.Visit(node.Arguments[1]);
+
+                Logger.LogDebug("Generating IN expression for static Contains: {Value} IN {Collection}", value, collection);
+                return $"{value} IN {collection}";
+            }
+        }
+
+        // Check for other Enumerable methods
         if (node.Method.DeclaringType != typeof(Enumerable))
         {
             return NextVisitor!.VisitMethodCall(node);
@@ -31,7 +65,7 @@ internal class CollectionMethodVisitor(
 
         Logger.LogDebug("Visiting collection method: {MethodName}", node.Method.Name);
 
-        var collection = NextVisitor!.Visit(node.Arguments[0]);
+        var collectionArg = NextVisitor!.Visit(node.Arguments[0]);
 
         if (node.Arguments.Count > 1)
         {
@@ -39,10 +73,10 @@ internal class CollectionMethodVisitor(
 
             var expression = node.Method.Name switch
             {
-                "Any" => $"ANY(x IN {collection} WHERE {predicate})",
-                "All" => $"ALL(x IN {collection} WHERE {predicate})",
-                "None" => $"NONE(x IN {collection} WHERE {predicate})",
-                "Single" => $"SINGLE(x IN {collection} WHERE {predicate})",
+                "Any" => $"ANY(x IN {collectionArg} WHERE {predicate})",
+                "All" => $"ALL(x IN {collectionArg} WHERE {predicate})",
+                "None" => $"NONE(x IN {collectionArg} WHERE {predicate})",
+                "Single" => $"SINGLE(x IN {collectionArg} WHERE {predicate})",
                 _ => throw new NotSupportedException($"Collection method {node.Method.Name} is not supported")
             };
 
@@ -53,8 +87,8 @@ internal class CollectionMethodVisitor(
         {
             var expression = node.Method.Name switch
             {
-                "Any" => $"SIZE({collection}) > 0",
-                "Count" => $"SIZE({collection})",
+                "Any" => $"SIZE({collectionArg}) > 0",
+                "Count" => $"SIZE({collectionArg})",
                 _ => throw new NotSupportedException($"Collection method {node.Method.Name} is not supported")
             };
 

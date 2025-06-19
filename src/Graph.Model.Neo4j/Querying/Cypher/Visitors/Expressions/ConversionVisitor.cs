@@ -25,6 +25,14 @@ internal class ConversionVisitor(
 {
     public override string VisitMethodCall(MethodCallExpression node)
     {
+        // Handle implicit/explicit conversion operators (op_Implicit, op_Explicit)
+        if (node.Method.Name.StartsWith("op_") && node.Arguments.Count == 1)
+        {
+            Logger.LogDebug("Visiting conversion operator: {MethodName}", node.Method.Name);
+            // For conversion operators, just visit the operand and ignore the conversion
+            return NextVisitor!.Visit(node.Arguments[0]);
+        }
+
         // Handle Convert.* methods
         if (node.Method.DeclaringType == typeof(Convert))
         {

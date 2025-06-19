@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
 using System.Linq.Expressions;
+using System.Text.Json;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
@@ -57,7 +58,7 @@ internal sealed class CypherEngine
             var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
 
             _logger.LogDebug($"Generated Cypher: {cypherQuery.Text}");
-            _logger.LogDebug($"Parameters: {cypherQuery.Parameters}");
+            _logger.LogDebug($"Parameters: {JsonSerializer.Serialize(cypherQuery.Parameters)}");
 
             // Execute the query
             var records = await _executor.ExecuteAsync(
@@ -79,7 +80,10 @@ internal sealed class CypherEngine
 
     private CypherQuery BuildCypherQuery(Type type, Expression expression, ILoggerFactory? loggerFactory = null)
     {
-        var visitor = new CypherQueryVisitor(type, loggerFactory);
+        // Extract the element type from the expression if the type is a collection
+        var elementType = ExtractElementType(type, expression);
+
+        var visitor = new CypherQueryVisitor(elementType, loggerFactory);
         visitor.Visit(expression);
 
         var (cypher, parameters) = visitor.Query;
@@ -119,5 +123,55 @@ internal sealed class CypherEngine
 
             return base.VisitMethodCall(node);
         }
+    }
+
+    private static Type ExtractElementType(Type resultType, Expression expression)
+    {
+        // If the result type is a collection (List<T>, IEnumerable<T>, etc.), 
+        // extract the element type
+        if (resultType.IsGenericType)
+        {
+            var genericArgs = resultType.GetGenericArguments();
+            if (genericArgs.Length == 1)
+            {
+                return genericArgs[0];
+            }
+        }
+
+        // Try to extract from the expression tree by finding the first queryable constant
+        return ExtractElementTypeFromExpression(expression) ?? resultType;
+    }
+
+    private static Type? ExtractElementTypeFromExpression(Expression expression)
+    {
+        if (expression is ConstantExpression constant &&
+            constant.Value is IQueryable queryable)
+        {
+            return queryable.ElementType;
+        }
+
+        if (expression is MethodCallExpression methodCall)
+        {
+            // Check the object of the method call
+            if (methodCall.Object != null)
+            {
+                var objType = ExtractElementTypeFromExpression(methodCall.Object);
+                if (objType != null) return objType;
+            }
+
+            // Check the arguments
+            foreach (var arg in methodCall.Arguments)
+            {
+                var argType = ExtractElementTypeFromExpression(arg);
+                if (argType != null) return argType;
+            }
+        }
+
+        if (expression is UnaryExpression unary)
+        {
+            return ExtractElementTypeFromExpression(unary.Operand);
+        }
+
+        return null;
     }
 }

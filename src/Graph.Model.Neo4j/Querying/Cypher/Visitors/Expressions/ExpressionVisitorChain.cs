@@ -26,14 +26,7 @@ internal class ExpressionVisitorChain
 
     public ExpressionVisitorChain(CypherQueryContext context)
     {
-        _rootVisitor = new ExpressionVisitorChainBuilder(context)
-            .AddBase()
-            .AddBinary()
-            .AddStringMethods()
-            .AddCollectionMethods()
-            .AddDateTimeMethods()
-            .AddConversions()
-            .Build();
+        _rootVisitor = new ExpressionVisitorChainFactory(context).CreateStandardChain();
     }
 
     /// <summary>

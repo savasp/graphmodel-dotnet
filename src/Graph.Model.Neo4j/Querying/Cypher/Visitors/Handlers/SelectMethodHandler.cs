@@ -37,13 +37,7 @@ internal record SelectMethodHandler : MethodHandlerBase
         }
 
         // Create expression visitor chain to process the selector
-        var expressionVisitor = new CollectionMethodVisitor(
-            context,
-            new StringMethodVisitor(
-                context,
-                new BinaryExpressionVisitor(
-                    context,
-                    new BaseExpressionVisitor(context))));
+        var expressionVisitor = new ExpressionVisitorChainFactory(context).CreateSelectClauseChain();
 
         // Process different types of selections
         switch (lambda.Body)

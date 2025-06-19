@@ -112,6 +112,11 @@ internal class CypherQueryBuilder
 
     public void AddReturn(string expression, string? alias = null)
     {
+        if (_returnClauses.Contains(expression))
+        {
+            return; // Skip if this expression is already in the return clauses
+        }
+
         var returnClause = alias != null ? $"{expression} AS {alias}" : expression;
         _returnClauses.Add(returnClause);
     }
@@ -125,7 +130,7 @@ internal class CypherQueryBuilder
     public void SetLimit(int limit) => _limit = limit;
     public void SetAggregation(string function, string expression) => _aggregation = $"{function}({expression})";
 
-    public string AddParameter(object value)
+    public string AddParameter(object? value)
     {
         // Check if we already have this value as a parameter
         var existingParam = _parameters.FirstOrDefault(p => Equals(p.Value, value));
@@ -171,6 +176,7 @@ internal class CypherQueryBuilder
         _relationshipSourceAlias = "src";
         _relationshipTargetAlias = "tgt";
         _returnClauses.Add("src.Id AS StartNodeId");
+        _returnClauses.Add("r");
         _returnClauses.Add("tgt.Id AS EndNodeId");
         _isRelationshipQuery = true;
     }
@@ -258,7 +264,7 @@ internal class CypherQueryBuilder
         else if (_isRelationshipQuery && _relationshipSourceAlias != null && _relationshipTargetAlias != null)
         {
             // For relationship queries without explicit returns, return the full set
-            query.Append($"{_relationshipSourceAlias}.Id as StartNodeId, {_mainNodeAlias}, {_relationshipTargetAlias}.Id as EndNodeId");
+            query.Append($"{_relationshipSourceAlias}.Id AS StartNodeId, {_mainNodeAlias}, {_relationshipTargetAlias}.Id AS EndNodeId");
         }
         else
         {
