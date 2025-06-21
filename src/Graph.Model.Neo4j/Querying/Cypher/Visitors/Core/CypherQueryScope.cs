@@ -12,14 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher;
+namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
 internal sealed class CypherQueryScope(Type rootType)
 {
-    private readonly Dictionary<Type, string> _typeAliases = [];
+    private readonly Dictionary<Type, (string? Prefix, string Alias)> _typeAliases = [];
     private readonly Dictionary<string, Type> _aliasTypes = [];
     private readonly Stack<string> _aliasStack = new();
     private int _aliasCounter = 0;
+
+    internal enum MatchAliases
+    {
+        StartNode,
+        EndNode,
+        Relationship,
+        PathSegment,
+        Anonymous
+    };
 
     /// <summary>
     /// Gets the root type of the query context.
@@ -37,6 +46,18 @@ internal sealed class CypherQueryScope(Type rootType)
     /// This is used to determine the type of the current context in the query.
     /// </summary>
     public Type? CurrentType { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the current context is a path segment.
+    /// This is used to determine if we are currently processing a path segment in the query.
+    /// </summary>
+    public bool IsPathSegmentContext { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the path segment patterns have been finalized.
+    /// This is used to ensure that path segment patterns are only finalized once.
+    /// </summary>
+    public bool PathSegmentPatternsFinalized { get; set; }
 
     /// <summary>
     /// Gets the minimum traversal depth for path patterns.
@@ -95,25 +116,31 @@ internal sealed class CypherQueryScope(Type rootType)
         }
     }
 
-    public string GetOrCreateAlias(Type type, string? preferredAlias = null)
+    public string GetOrCreateAlias(Type type, string? preferredAlias = null, string? preferredPrefix = null)
     {
-        if (_typeAliases.TryGetValue(type, out var existingAlias))
+        if (_typeAliases.TryGetValue(type, out var pair))
         {
-            return existingAlias;
+            if (pair.Prefix == preferredPrefix && pair.Alias == preferredAlias)
+            {
+                return string.Concat(pair.Prefix, "_", pair.Alias);
+            }
         }
 
         var alias = preferredAlias ?? GenerateAlias(type);
+        var prefix = preferredPrefix;
+
+        var fullAlias = prefix is null ? alias : string.Concat(prefix, "_", alias);
 
         // Ensure uniqueness
-        while (_aliasTypes.ContainsKey(alias))
+        while (_aliasTypes.ContainsKey(fullAlias))
         {
-            alias = $"{alias}{++_aliasCounter}";
+            fullAlias = prefix is null ? $"{alias}{++_aliasCounter}" : $"{prefix}_{alias}{++_aliasCounter}";
         }
 
-        _typeAliases[type] = alias;
-        _aliasTypes[alias] = type;
+        _typeAliases[type] = (prefix, alias);
+        _aliasTypes[fullAlias] = type;
 
-        return alias;
+        return fullAlias;
     }
 
     public Type? GetTypeForAlias(string alias)
@@ -123,15 +150,19 @@ internal sealed class CypherQueryScope(Type rootType)
 
     public string? GetAliasForType(Type type)
     {
-        return _typeAliases.GetValueOrDefault(type);
+        return _typeAliases.GetValueOrDefault(type) switch
+        {
+            (string prefix, string alias) => string.Concat(prefix, alias),
+            _ => null
+        };
     }
 
     /// <summary>
     /// Sets traversal information.
     /// </summary>
-    public void SetTraversalInfo(Type relationshipType, Type targetNodeType)
+    public void SetTraversalInfo(Type sourceType, Type relationshipType, Type targetNodeType)
     {
-        TraversalInfo = new TraversalInfo(relationshipType, targetNodeType);
+        TraversalInfo = new TraversalInfo(sourceType, relationshipType, targetNodeType);
     }
 
     private string GenerateAlias(Type type)
@@ -147,9 +178,19 @@ internal sealed class CypherQueryScope(Type rootType)
         // Take first letter and make it lowercase
         return char.ToLower(name[0]).ToString();
     }
-}
 
-/// <summary>
-/// Information about a traversal operation.
-/// </summary>
-internal record TraversalInfo(Type RelationshipType, Type TargetNodeType);
+    private string GeneratePrefix(Type type)
+    {
+        if (typeof(INode).IsAssignableFrom(type))
+        {
+            return "n"; // Node prefix
+        }
+
+        if (typeof(IRelationship).IsAssignableFrom(type))
+        {
+            return "r"; // Relationship prefix
+        }
+
+        return GenerateAlias(type); // Default prefix based on alias
+    }
+}

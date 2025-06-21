@@ -223,7 +223,7 @@ public abstract class RetrievalTraversalTestsBase : ITestBase
                 new GraphOperationOptions { TraversalDepth = 1 });
 
             // Assert
-            var nodeList = nodes.ToList();
+            var nodeList = nodes.ToListAsync();
             Assert.Equal(2, nodeList.Count);
 
             var retrievedAlice = nodeList.First(n => n.FirstName == "Alice");

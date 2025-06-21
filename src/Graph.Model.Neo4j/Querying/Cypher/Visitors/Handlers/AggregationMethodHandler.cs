@@ -27,7 +27,19 @@ internal record AggregationMethodHandler : MethodHandlerBase
     {
         var methodName = node.Method.Name;
 
-        return methodName switch
+        // Map async marker methods to their base operations
+        var baseOperation = GetBaseOperation(methodName);
+        if (baseOperation == null)
+            return false;
+
+        // For operations that return individual nodes, enable complex property loading
+        var nodeReturningOperations = new[] { "First", "FirstOrDefault", "Single", "SingleOrDefault", "ElementAt", "ElementAtOrDefault" };
+        if (nodeReturningOperations.Contains(baseOperation) && !context.Builder.HasUserProjections)
+        {
+            context.Builder.EnableComplexPropertyLoading();
+        }
+
+        return baseOperation switch
         {
             "Count" => HandleCount(context, node),
             "Any" => HandleAny(context, node),
@@ -36,61 +48,93 @@ internal record AggregationMethodHandler : MethodHandlerBase
             "FirstOrDefault" => HandleFirst(context, node, true),
             "Single" => HandleSingle(context, node, false),
             "SingleOrDefault" => HandleSingle(context, node, true),
+            "Sum" => HandleSum(context, node),
+            "Average" => HandleAverage(context, node),
+            "Min" => HandleMin(context, node),
+            "Max" => HandleMax(context, node),
+            "Contains" => HandleContains(context, node),
+            "ElementAt" => HandleElementAt(context, node, false),
+            "ElementAtOrDefault" => HandleElementAt(context, node, true),
             _ => false
         };
     }
 
+    private static string? GetBaseOperation(string methodName)
+    {
+        // Remove "AsyncMarker" suffix to get the base operation
+        if (methodName.EndsWith("AsyncMarker"))
+        {
+            var baseName = methodName[..^11]; // Remove "AsyncMarker"
+            return baseName;
+        }
+        return null;
+    }
+
+
+    private static ICypherExpressionVisitor CreateExpressionVisitor(CypherQueryContext context)
+    {
+        return new ExpressionVisitorChainFactory(context).CreateStandardChain();
+    }
+
+    private static bool HandleFirst(CypherQueryContext context, MethodCallExpression node, bool allowDefault)
+    {
+        if (node.Arguments.Count == 2 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        {
+            // First with predicate
+            var expressionVisitor = CreateExpressionVisitor(context);
+            var condition = expressionVisitor.Visit(lambda.Body);
+            context.Builder.AddWhere(condition);
+        }
+
+        // Add LIMIT 1 for First/FirstOrDefault
+        context.Builder.AddLimit(1);
+
+        var alias = context.Scope.CurrentAlias ?? "n";
+        if (!context.Builder.HasReturnClause)
+        {
+            context.Builder.AddReturn(alias);
+        }
+
+        return true;
+    }
+
+    private static bool HandleSingle(CypherQueryContext context, MethodCallExpression node, bool allowDefault)
+    {
+        if (node.Arguments.Count == 2 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        {
+            // Single with predicate
+            var expressionVisitor = CreateExpressionVisitor(context);
+            var condition = expressionVisitor.Visit(lambda.Body);
+            context.Builder.AddWhere(condition);
+        }
+
+        // Use LIMIT 2 so we can detect if there are multiple results
+        context.Builder.AddLimit(2);
+
+        var alias = context.Scope.CurrentAlias ?? "n";
+        if (!context.Builder.HasReturnClause)
+        {
+            context.Builder.AddReturn(alias);
+        }
+
+        return true;
+    }
+
     private static bool HandleCount(CypherQueryContext context, MethodCallExpression node)
     {
-        // Ensure we have a current alias set up - this should have been done by visiting the source
-        var alias = context.Scope.CurrentAlias;
-        if (alias == null)
-        {
-            // If no alias is set, we need to set up the query structure ourselves
-            // Extract the element type from the source queryable
-            var sourceArg = node.Arguments[0];
-            Type? elementType = null;
-
-            // Try to get the element type from the source expression type
-            if (sourceArg.Type.IsGenericType)
-            {
-                var genericArgs = sourceArg.Type.GetGenericArguments();
-                if (genericArgs.Length > 0)
-                {
-                    elementType = genericArgs[0];
-                }
-            }
-
-            if (elementType != null)
-            {
-                // Set up the match clause for the element type
-                var label = Labels.GetLabelFromType(elementType);
-                context.Builder.AddMatch("n", label);
-                context.Scope.CurrentAlias = "n";
-                alias = "n";
-            }
-            else
-            {
-                throw new InvalidOperationException("Could not determine element type for Count method.");
-            }
-        }
+        var alias = context.Scope.CurrentAlias ?? "n";
 
         if (node.Arguments.Count == 1)
         {
             // Simple count
             context.Builder.AddReturn($"COUNT({alias})");
         }
-        else if (node.Arguments.Count == 2)
+        else if (node.Arguments.Count == 2 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
         {
             // Count with predicate
-            if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
-            {
-                var expressionVisitor = CreateExpressionVisitor(context);
-                var condition = expressionVisitor.Visit(lambda.Body);
-
-                // Use CASE for conditional counting
-                context.Builder.AddReturn($"COUNT(CASE WHEN {condition} THEN {alias} END)");
-            }
+            var expressionVisitor = CreateExpressionVisitor(context);
+            var condition = expressionVisitor.Visit(lambda.Body);
+            context.Builder.AddReturn($"COUNT(CASE WHEN {condition} THEN {alias} END)");
         }
         else
         {
@@ -102,54 +146,19 @@ internal record AggregationMethodHandler : MethodHandlerBase
 
     private static bool HandleAny(CypherQueryContext context, MethodCallExpression node)
     {
-        // Ensure we have a current alias set up - this should have been done by visiting the source
-        var alias = context.Scope.CurrentAlias;
-        if (alias == null)
-        {
-            // If no alias is set, we need to set up the query structure ourselves
-            // Extract the element type from the source queryable
-            var sourceArg = node.Arguments[0];
-            Type? elementType = null;
-
-            // Try to get the element type from the source expression type
-            if (sourceArg.Type.IsGenericType)
-            {
-                var genericArgs = sourceArg.Type.GetGenericArguments();
-                if (genericArgs.Length > 0)
-                {
-                    elementType = genericArgs[0];
-                }
-            }
-
-            if (elementType != null)
-            {
-                // Set up the match clause for the element type
-                var label = Labels.GetLabelFromType(elementType);
-                context.Builder.AddMatch("n", label);
-                context.Scope.CurrentAlias = "n";
-                alias = "n";
-            }
-            else
-            {
-                throw new InvalidOperationException("Could not determine element type for Any method.");
-            }
-        }
+        var alias = context.Scope.CurrentAlias ?? "n";
 
         if (node.Arguments.Count == 1)
         {
             // Simple existence check
             context.Builder.AddReturn($"COUNT({alias}) > 0 AS result");
         }
-        else if (node.Arguments.Count == 2)
+        else if (node.Arguments.Count == 2 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
         {
             // Any with predicate
-            if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
-            {
-                var expressionVisitor = CreateExpressionVisitor(context);
-                var condition = expressionVisitor.Visit(lambda.Body);
-
-                context.Builder.AddReturn($"COUNT(CASE WHEN {condition} THEN {alias} END) > 0 AS result");
-            }
+            var expressionVisitor = CreateExpressionVisitor(context);
+            var condition = expressionVisitor.Visit(lambda.Body);
+            context.Builder.AddReturn($"COUNT(CASE WHEN {condition} THEN {alias} END) > 0 AS result");
         }
         else
         {
@@ -173,54 +182,153 @@ internal record AggregationMethodHandler : MethodHandlerBase
 
             var alias = context.Scope.CurrentAlias ?? "n";
             // All is true when count of non-matching items is 0
-            context.Builder.AddReturn($"COUNT(CASE WHEN NOT ({condition}) THEN {alias} END) = 0");
+            context.Builder.AddReturn($"COUNT(CASE WHEN NOT ({condition}) THEN {alias} END) = 0 AS result");
         }
 
         return true;
     }
 
-    private static bool HandleFirst(CypherQueryContext context, MethodCallExpression node, bool allowDefault)
+    private static bool HandleSum(CypherQueryContext context, MethodCallExpression node)
     {
-        if (node.Arguments.Count == 2 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        var alias = context.Scope.CurrentAlias ?? "n";
+
+        if (node.Arguments.Count == 1)
         {
-            // First with predicate
+            // Direct sum on numeric queryable
+            context.Builder.AddReturn($"SUM({alias})");
+        }
+        else if (node.Arguments.Count == 2 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        {
+            // Sum with selector
             var expressionVisitor = CreateExpressionVisitor(context);
-            var condition = expressionVisitor.Visit(lambda.Body);
-            context.Builder.AddWhere(condition);
+            var selector = expressionVisitor.Visit(lambda.Body);
+            context.Builder.AddReturn($"SUM({selector})");
+        }
+        else
+        {
+            return false;
         }
 
-        // Add LIMIT 1 for First/FirstOrDefault
+        return true;
+    }
+
+    private static bool HandleAverage(CypherQueryContext context, MethodCallExpression node)
+    {
+        var alias = context.Scope.CurrentAlias ?? "n";
+
+        if (node.Arguments.Count == 1)
+        {
+            // Direct average on numeric queryable
+            context.Builder.AddReturn($"AVG(toFloat({alias}))"); // Neo4j requires toFloat for average
+        }
+        else if (node.Arguments.Count == 2 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        {
+            // Average with selector
+            var expressionVisitor = CreateExpressionVisitor(context);
+            var selector = expressionVisitor.Visit(lambda.Body);
+            context.Builder.AddReturn($"AVG(toFloat({selector}))");
+        }
+        else
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool HandleMin(CypherQueryContext context, MethodCallExpression node)
+    {
+        var alias = context.Scope.CurrentAlias ?? "n";
+
+        if (node.Arguments.Count == 1)
+        {
+            // Direct min on comparable queryable
+            context.Builder.AddReturn($"MIN({alias})");
+        }
+        else if (node.Arguments.Count == 2 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        {
+            // Min with selector
+            var expressionVisitor = CreateExpressionVisitor(context);
+            var selector = expressionVisitor.Visit(lambda.Body);
+            context.Builder.AddReturn($"MIN({selector})");
+        }
+        else
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool HandleMax(CypherQueryContext context, MethodCallExpression node)
+    {
+        var alias = context.Scope.CurrentAlias ?? "n";
+
+        if (node.Arguments.Count == 1)
+        {
+            // Direct max on comparable queryable
+            context.Builder.AddReturn($"MAX({alias})");
+        }
+        else if (node.Arguments.Count == 2 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        {
+            // Max with selector
+            var expressionVisitor = CreateExpressionVisitor(context);
+            var selector = expressionVisitor.Visit(lambda.Body);
+            context.Builder.AddReturn($"MAX({selector})");
+        }
+        else
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool HandleContains(CypherQueryContext context, MethodCallExpression node)
+    {
+        if (node.Arguments.Count != 2)
+        {
+            return false;
+        }
+
+        var alias = context.Scope.CurrentAlias ?? "n";
+
+        // Get the item to search for from the second argument
+        var itemExpression = node.Arguments[1];
+        var expressionVisitor = CreateExpressionVisitor(context);
+        var itemValue = expressionVisitor.Visit(itemExpression);
+
+        // Check if any item equals the search value
+        context.Builder.AddReturn($"COUNT(CASE WHEN {alias} = {itemValue} THEN {alias} END) > 0 AS result");
+
+        return true;
+    }
+
+    private static bool HandleElementAt(CypherQueryContext context, MethodCallExpression node, bool allowDefault)
+    {
+        if (node.Arguments.Count != 2)
+        {
+            return false;
+        }
+
+        // Get the index from the second argument
+        var indexExpression = node.Arguments[1];
+        if (indexExpression is not ConstantExpression { Value: int index })
+        {
+            return false;
+        }
+
+        var alias = context.Scope.CurrentAlias ?? "n";
+
+        // Use SKIP and LIMIT to get the element at the specific index
+        context.Builder.AddSkip(index);
         context.Builder.AddLimit(1);
 
-        // For FirstOrDefault, we should return the item or null
-        var alias = context.Scope.CurrentAlias ?? "n";
-        context.Builder.AddReturn(alias);
-
-        return true;
-    }
-
-    private static bool HandleSingle(CypherQueryContext context, MethodCallExpression node, bool allowDefault)
-    {
-        if (node.Arguments.Count == 2 && node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
+        if (!context.Builder.HasReturnClause)
         {
-            // Single with predicate
-            var expressionVisitor = CreateExpressionVisitor(context);
-            var condition = expressionVisitor.Visit(lambda.Body);
-            context.Builder.AddWhere(condition);
+            context.Builder.AddReturn(alias);
         }
 
-        // For Single/SingleOrDefault, we expect exactly one result
-        // In Neo4j, we can use LIMIT 2 and check the count in application code
-        context.Builder.AddLimit(2);
-
-        var alias = context.Scope.CurrentAlias ?? "n";
-        context.Builder.AddReturn(alias);
-
         return true;
-    }
-
-    private static ICypherExpressionVisitor CreateExpressionVisitor(CypherQueryContext context)
-    {
-        return new ExpressionVisitorChainFactory(context).CreateStandardChain();
     }
 }

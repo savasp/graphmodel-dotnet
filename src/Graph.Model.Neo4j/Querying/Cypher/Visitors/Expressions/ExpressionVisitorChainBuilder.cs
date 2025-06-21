@@ -60,6 +60,12 @@ internal class ExpressionVisitorChainBuilder(CypherQueryContext context)
         return this;
     }
 
+    public ExpressionVisitorChainBuilder AddMemberExpressions()
+    {
+        _visitorFactories.Add(next => new MemberExpressionVisitor(_context, next!));
+        return this;
+    }
+
     public ExpressionVisitorChainBuilder AddAggregations()
     {
         _visitorFactories.Add(next => new AggregationMethodVisitor(_context, next));

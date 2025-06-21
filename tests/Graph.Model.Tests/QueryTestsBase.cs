@@ -28,9 +28,9 @@ public abstract class QueryTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(p2);
         await this.Graph.CreateNodeAsync(p3);
 
-        var smiths = this.Graph.Nodes<Person>()
+        var smiths = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
-            .ToList();
+            .ToListAsync();
         Assert.Contains(smiths, p => p.FirstName == "Alice");
         Assert.Contains(smiths, p => p.FirstName == "Bob");
         Assert.DoesNotContain(smiths, p => p.FirstName == "Charlie");
@@ -44,7 +44,7 @@ public abstract class QueryTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(p1);
         await this.Graph.CreateNodeAsync(p2);
 
-        var all = this.Graph.Nodes<Person>().ToList();
+        var all = await this.Graph.Nodes<Person>().ToListAsync();
         Assert.True(all.Count >= 2);
         Assert.Contains(all, p => p.FirstName == "A");
         Assert.Contains(all, p => p.FirstName == "B");
@@ -60,10 +60,10 @@ public abstract class QueryTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(p2);
         await this.Graph.CreateNodeAsync(p3);
 
-        var smithsOrdered = this.Graph.Nodes<Person>()
+        var smithsOrdered = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .OrderBy(p => p.FirstName)
-            .ToList();
+            .ToListAsync();
         Assert.Equal(2, smithsOrdered.Count);
         Assert.Equal("Alice", smithsOrdered[0].FirstName);
         Assert.Equal("Charlie", smithsOrdered[1].FirstName);
@@ -79,12 +79,12 @@ public abstract class QueryTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(p2);
         await this.Graph.CreateNodeAsync(p3);
 
-        var taken = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Take(2).ToList();
+        var taken = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Take(2).ToListAsync();
         Assert.Equal(2, taken.Count);
         Assert.Equal("A", taken[0].FirstName);
         Assert.Equal("B", taken[1].FirstName);
 
-        var skipped = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Skip(1).ToList();
+        var skipped = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Skip(1).ToListAsync();
         Assert.Contains(skipped, p => p.FirstName == "B");
         Assert.Contains(skipped, p => p.FirstName == "C");
     }
@@ -97,10 +97,10 @@ public abstract class QueryTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(p1);
         await this.Graph.CreateNodeAsync(p2);
 
-        var first = this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).First();
+        var first = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).FirstAsync();
         Assert.Equal("A", first.FirstName);
 
-        var single = this.Graph.Nodes<Person>().Single(p => p.FirstName == "A");
+        var single = await this.Graph.Nodes<Person>().SingleAsync(p => p.FirstName == "A");
         Assert.Equal("A", single.FirstName);
     }
 
@@ -112,10 +112,10 @@ public abstract class QueryTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(p1);
         await this.Graph.CreateNodeAsync(p2);
 
-        var anyA = this.Graph.Nodes<Person>().Any(p => p.FirstName == "A");
+        var anyA = await this.Graph.Nodes<Person>().AnyAsync(p => p.FirstName == "A");
         Assert.True(anyA);
 
-        var count = this.Graph.Nodes<Person>().Count();
+        var count = await this.Graph.Nodes<Person>().CountAsync();
         Assert.True(count >= 2);
     }
 
@@ -127,7 +127,7 @@ public abstract class QueryTestsBase : ITestBase
 
         var localName = "A";
 
-        var a = this.Graph.Nodes<Person>().Where(p => p.FirstName == localName).FirstOrDefault();
+        var a = await this.Graph.Nodes<Person>().Where(p => p.FirstName == localName).FirstOrDefaultAsync();
         Assert.NotNull(a);
         Assert.Equal(localName, a.FirstName);
     }
@@ -140,7 +140,7 @@ public abstract class QueryTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(p1);
         await this.Graph.CreateNodeAsync(p2);
 
-        var a = this.Graph.Nodes<Person>().Where(p => p.FirstName == p1.FirstName).FirstOrDefault();
+        var a = await this.Graph.Nodes<Person>().Where(p => p.FirstName == p1.FirstName).FirstOrDefaultAsync();
         Assert.NotNull(a);
         Assert.Equal(p1.FirstName, a.FirstName);
     }

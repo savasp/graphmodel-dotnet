@@ -85,6 +85,23 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
                 expression)!;
         }
 
+        // Handle PathSegments extension method calls
+        if (expression is MethodCallExpression methodCall &&
+            methodCall.Method.DeclaringType == typeof(GraphTraversalExtensions) &&
+            methodCall.Method.Name == nameof(GraphTraversalExtensions.PathSegments))
+        {
+            var genericArgs = methodCall.Method.GetGenericArguments();
+            var sourceType = genericArgs[0];
+            var relType = genericArgs[1];
+            var targetType = genericArgs[2];
+
+            var createMethod = this.GetType()
+                .GetMethod(nameof(CreatePathSegmentQuery), 3, [typeof(Expression)])!
+                .MakeGenericMethod(sourceType, relType, targetType);
+            return (IGraphQueryable<TElement>)createMethod
+                .Invoke(this, [expression])!;
+        }
+
         // For other types (projections, anonymous types, path segments, etc.)
         return new GraphQueryable<TElement>(this, _graphContext, expression);
     }
@@ -138,6 +155,10 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         ArgumentNullException.ThrowIfNull(expression);
 
         _logger.LogDebug("Executing async query for result type: {ResultType}", typeof(TResult).Name);
+        _logger.LogDebug("Expression type: {ExpressionType}", expression.Type.Name);
+
+        // Log the expression tree for debugging
+        LogExpressionTree(expression);
 
         GraphTransaction? transaction = null;
         var shouldDisposeTransaction = false;
@@ -235,5 +256,32 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
     IQueryable<TElement> IQueryProvider.CreateQuery<TElement>(Expression expression)
     {
         return CreateQuery<TElement>(expression);
+    }
+
+    private void LogExpressionTree(Expression expression, int depth = 0)
+    {
+        var indent = new string(' ', depth * 2);
+
+        if (expression is MethodCallExpression methodCall)
+        {
+            _logger.LogDebug("{Indent}Method: {Method} from {DeclaringType}",
+                indent, methodCall.Method.Name, methodCall.Method.DeclaringType?.Name);
+
+            foreach (var arg in methodCall.Arguments)
+            {
+                LogExpressionTree(arg, depth + 1);
+            }
+        }
+        else if (expression is ConstantExpression constant)
+        {
+            _logger.LogDebug("{Indent}Constant: {Type}",
+                indent, constant.Value?.GetType().Name ?? "null");
+        }
+        // More expression types can be added here as needed
+        else
+        {
+            _logger.LogDebug("{Indent}Unhandled expression type: {Type}",
+                indent, expression.GetType().Name);
+        }
     }
 }

@@ -15,8 +15,10 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 
 using System.Linq.Expressions;
+using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Handles the Select LINQ method by generating appropriate RETURN clauses.
@@ -25,58 +27,87 @@ internal record SelectMethodHandler : MethodHandlerBase
 {
     public override bool Handle(CypherQueryContext context, MethodCallExpression node, Expression result)
     {
+        var logger = context.LoggerFactory?.CreateLogger(nameof(SelectMethodHandler));
+        logger?.LogDebug("SelectMethodHandler called");
+
         if (node.Method.Name != "Select" || node.Arguments.Count != 2)
         {
+            logger?.LogDebug("SelectMethodHandler: not a Select method or wrong arguments");
             return false;
         }
 
-        // Get the selector (lambda expression)
-        if (node.Arguments[1] is not UnaryExpression { Operand: LambdaExpression lambda })
+        var selectorExpression = node.Arguments[1];
+
+        // Extract the lambda expression
+        var lambda = selectorExpression switch
         {
-            throw new GraphException("Select method requires a lambda expression selector");
+            LambdaExpression directLambda => directLambda,
+            UnaryExpression { Operand: LambdaExpression unaryLambda } => unaryLambda,
+            _ => null
+        };
+
+        if (lambda is null)
+        {
+            logger?.LogDebug("Could not extract lambda expression from selector");
+            return false;
         }
 
-        // Create expression visitor chain to process the selector
-        var expressionVisitor = new ExpressionVisitorChainFactory(context).CreateSelectClauseChain();
-
-        // Process different types of selections
-        switch (lambda.Body)
+        // Check if this is selecting the full entity (identity function like x => x)
+        if (IsIdentitySelection(lambda))
         {
-            case ParameterExpression parameter:
-                // Simple identity selection: x => x
-                var alias = context.Scope.CurrentAlias ?? "n";
-                context.Builder.AddReturn(alias);
-                break;
-
-            case MemberExpression member:
-                // Property selection: x => x.Property
-                var memberExpression = expressionVisitor.Visit(member);
-                context.Builder.AddReturn(memberExpression);
-                break;
-
-            case NewExpression newExpression:
-                // Anonymous type projection: x => new { x.Prop1, x.Prop2 }
-                HandleAnonymousTypeProjection(context, newExpression, expressionVisitor);
-                break;
-
-            default:
-                // General expression
-                var selectExpression = expressionVisitor.Visit(lambda.Body);
-                context.Builder.AddReturn(selectExpression);
-                break;
+            var rootType = context.Scope.RootType;
+            if (ShouldEnableComplexPropertyLoading(rootType))
+            {
+                logger?.LogDebug("Identity selection detected - enabling complex property loading");
+                context.Builder.EnableComplexPropertyLoading();
+            }
         }
 
-        return true;
+        // Handle the actual projection using our dedicated method
+        return HandleProjection(context, lambda, result);
     }
 
-    private static void HandleAnonymousTypeProjection(
+    private static bool IsIdentitySelection(Expression selectorExpression)
+    {
+        // Check if selector is like x => x (parameter expression)
+        if (selectorExpression is LambdaExpression lambda &&
+            lambda.Body is ParameterExpression param &&
+            lambda.Parameters.Contains(param))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool ShouldEnableComplexPropertyLoading(Type type)
+    {
+        return typeof(INode).IsAssignableFrom(type) ||
+               typeof(IGraphPathSegment).IsAssignableFrom(type);
+    }
+
+    private static bool HandleProjection(CypherQueryContext context, LambdaExpression lambda, Expression? result)
+    {
+        var expressionVisitorFactory = new ExpressionVisitorChainFactory(context);
+        var expressionVisitor = expressionVisitorFactory.CreateSelectClauseChain();
+
+        return lambda.Body switch
+        {
+            NewExpression newExpression when IsAnonymousType(newExpression.Type) =>
+                HandleAnonymousTypeProjection(context, newExpression, expressionVisitor),
+
+            _ => HandleSimpleProjection(context, lambda.Body, expressionVisitor)
+        };
+    }
+
+    private static bool HandleAnonymousTypeProjection(
         CypherQueryContext context,
         NewExpression newExpression,
         ICypherExpressionVisitor expressionVisitor)
     {
         if (newExpression.Arguments.Count == 0)
         {
-            return;
+            return true; // Empty anonymous type, nothing to project
         }
 
         for (var i = 0; i < newExpression.Arguments.Count; i++)
@@ -85,7 +116,29 @@ internal record SelectMethodHandler : MethodHandlerBase
             var memberName = newExpression.Members?[i]?.Name ?? $"Item{i}";
 
             var expression = expressionVisitor.Visit(argument);
-            context.Builder.AddReturn($"{expression} AS {memberName}");
+            context.Builder.AddUserProjection($"{expression} AS {memberName}");
         }
+
+        return true;
+    }
+
+    private static bool HandleSimpleProjection(
+        CypherQueryContext context,
+        Expression projectionExpression,
+        ICypherExpressionVisitor expressionVisitor)
+    {
+        var projection = expressionVisitor.Visit(projectionExpression);
+        context.Builder.AddUserProjection(projection);
+        return true;
+    }
+
+    private static bool IsAnonymousType(Type type)
+    {
+        return type.IsGenericType
+            && type.IsClass
+            && type.IsSealed
+            && type.Attributes.HasFlag(TypeAttributes.NotPublic)
+            && type.Name.StartsWith("<>", StringComparison.Ordinal)
+            && type.Name.Contains("AnonymousType");
     }
 }

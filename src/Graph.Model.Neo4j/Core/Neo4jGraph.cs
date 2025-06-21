@@ -55,9 +55,9 @@ internal class Neo4jGraph : IGraph
         {
             _logger.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
 
-            var expression = Expression.Constant(new GraphNodeQueryable<N>(_graphQueryProvider, _graphContext, null));
+            var queryable = new GraphNodeQueryable<N>(_graphQueryProvider, _graphContext, null);
+            var expression = Expression.Constant(queryable, typeof(IGraphNodeQueryable<N>));
 
-            // Use the provider to create the query properly
             var query = _graphQueryProvider.CreateNodeQuery<N>(expression);
 
             var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true).Result;
@@ -79,9 +79,9 @@ internal class Neo4jGraph : IGraph
         {
             _logger.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
 
-            var expression = Expression.Constant(new GraphRelationshipQueryable<R>(_graphQueryProvider, _graphContext, null));
+            var queryable = new GraphRelationshipQueryable<R>(_graphQueryProvider, _graphContext, null);
+            var expression = Expression.Constant(queryable, typeof(IGraphRelationshipQueryable<R>));
 
-            // Use the provider to create the query properly
             var query = _graphQueryProvider.CreateRelationshipQuery<R>(expression);
 
             var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true).Result;

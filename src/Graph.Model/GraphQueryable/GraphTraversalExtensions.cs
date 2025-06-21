@@ -14,12 +14,40 @@
 
 namespace Cvoya.Graph.Model;
 
+using System.Linq.Expressions;
+
 /// <summary>
 /// Extension methods for graph traversal operations built on top of PathSegments.
 /// These methods provide convenient ways to traverse relationships and get target nodes or relationships.
 /// </summary>
 public static class GraphTraversalExtensions
 {
+    /// <summary>
+    /// The foundational path segments method that all other traversal operations are built upon.
+    /// Gets path segments representing the traversal from source nodes through relationships to target nodes.
+    /// </summary>
+    /// <typeparam name="TStartNode">The type of the starting nodes</typeparam>
+    /// <typeparam name="TRelationship">The type of relationships to traverse</typeparam>
+    /// <typeparam name="TEndNode">The type of the target nodes</typeparam>
+    /// <param name="source">The source queryable of starting nodes</param>
+    /// <returns>A queryable of path segments representing the traversal</returns>
+    public static IGraphQueryable<IGraphPathSegment<TStartNode, TRelationship, TEndNode>> PathSegments<TStartNode, TRelationship, TEndNode>(
+        this IGraphQueryable<TStartNode> source)
+        where TStartNode : INode
+        where TRelationship : IRelationship
+        where TEndNode : INode
+    {
+        // This would be implemented by your query provider
+        // Similar to how the instance method is currently implemented
+        var methodInfo = typeof(GraphTraversalExtensions)
+            .GetMethod(nameof(PathSegments))!
+            .MakeGenericMethod(typeof(TStartNode), typeof(TRelationship), typeof(TEndNode));
+
+        var callExpression = Expression.Call(methodInfo, source.Expression);
+
+        return source.Provider.CreateQuery<IGraphPathSegment<TStartNode, TRelationship, TEndNode>>(callExpression);
+    }
+
     /// <summary>
     /// Traverses relationships of the specified type to get the target nodes.
     /// This is implemented as a convenience method on top of PathSegments.
@@ -30,13 +58,13 @@ public static class GraphTraversalExtensions
     /// <param name="source">The source queryable of starting nodes</param>
     /// <returns>A queryable of target nodes reached through the traversal</returns>
     public static IGraphQueryable<TEndNode> Traverse<TStartNode, TRelationship, TEndNode>(
-        this IGraphNodeQueryable<TStartNode> source)
-        where TStartNode : INode
-        where TRelationship : IRelationship
-        where TEndNode : INode
+    this IGraphNodeQueryable<TStartNode> source)
+    where TStartNode : INode
+    where TRelationship : IRelationship
+    where TEndNode : INode
     {
         return source
-            .PathSegments<TRelationship, TEndNode>()
+            .PathSegments<TStartNode, TRelationship, TEndNode>()
             .Select(ps => ps.EndNode);
     }
 
@@ -58,7 +86,7 @@ public static class GraphTraversalExtensions
         where TEndNode : INode
     {
         return source
-            .PathSegments<TRelationship, TEndNode>()
+            .PathSegments<TStartNode, TRelationship, TEndNode>()
             .WithDepth(maxDepth)
             .Select(ps => ps.EndNode);
     }
@@ -83,7 +111,7 @@ public static class GraphTraversalExtensions
         where TEndNode : INode
     {
         return source
-            .PathSegments<TRelationship, TEndNode>()
+            .PathSegments<TStartNode, TRelationship, TEndNode>()
             .WithDepth(minDepth, maxDepth)
             .Select(ps => ps.EndNode);
     }
@@ -100,14 +128,14 @@ public static class GraphTraversalExtensions
     /// <returns>A queryable of target nodes reached through the traversal</returns>
     public static IGraphQueryable<TEndNode> Traverse<TStartNode, TRelationship, TEndNode>(
         this IGraphNodeQueryable<TStartNode> source,
-        TraversalDirection direction)
+        GraphTraversalDirection direction)
         where TStartNode : INode
         where TRelationship : IRelationship
         where TEndNode : INode
     {
         return source
-            .PathSegments<TRelationship, TEndNode>()
-            .InDirection(direction)
+            .PathSegments<TStartNode, TRelationship, TEndNode>()
+            .Direction(direction)
             .Select(ps => ps.EndNode);
     }
 
@@ -127,7 +155,7 @@ public static class GraphTraversalExtensions
         where TEndNode : INode
     {
         return source
-            .PathSegments<TRelationship, TEndNode>()
+            .PathSegments<TStartNode, TRelationship, TEndNode>()
             .Select(ps => ps.Relationship);
     }
 }

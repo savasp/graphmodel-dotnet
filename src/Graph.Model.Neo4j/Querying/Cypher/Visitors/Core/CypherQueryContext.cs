@@ -33,17 +33,12 @@ internal record CypherQueryContext
     {
         LoggerFactory = loggerFactory;
         Scope = new CypherQueryScope(rootType);
-        Builder = new CypherQueryBuilder();
-
-        // Enable complex property loading for INode types
-        if (typeof(INode).IsAssignableFrom(rootType))
-        {
-            Builder.EnableComplexPropertyLoading();
-        }
+        Builder = new CypherQueryBuilder(loggerFactory);
 
         // Set these last in case they access the previous properties in their constructors
         VisitorFactory = new VisitorFactory(this);
         MethodHandlers = MethodHandlerRegistry.Instance;
+        MethodHandlers.SetLoggerFactory(loggerFactory);
     }
 
     /// <summary>

@@ -28,15 +28,11 @@ internal static class GraphMethods
 
     static GraphMethods()
     {
-        var graphNodeQueryableExtensions = typeof(GraphNodeQueryableExtensions);
-
         WithTransactionMethod = typeof(GraphQueryableExtensions)
             .GetMethod(nameof(GraphQueryableExtensions.WithTransaction))!;
 
-        // Get the generic method definitions from the interfaces
-        var nodeQueryableType = typeof(IGraphNodeQueryable<>);
-
-        PathSegmentsMethod = nodeQueryableType
-            .GetMethod(nameof(IGraphNodeQueryable<INode>.PathSegments))!;
+        // Now get PathSegments from the extension class instead of the interface
+        PathSegmentsMethod = typeof(GraphTraversalExtensions)
+            .GetMethod(nameof(GraphTraversalExtensions.PathSegments))!;
     }
 }

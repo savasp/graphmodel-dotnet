@@ -17,7 +17,7 @@ namespace Cvoya.Graph.Model;
 /// <summary>
 /// Direction for graph traversal
 /// </summary>
-public enum TraversalDirection
+public enum GraphTraversalDirection
 {
     /// <summary>Follow outgoing relationships</summary>
     Outgoing,

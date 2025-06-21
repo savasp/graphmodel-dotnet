@@ -46,19 +46,23 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
         try
         {
-            // First visit the source of the method call
-            var result = Visit(node.Arguments[0]);
+            Expression? sourceExpression = node.Method.IsStatic
+                ? (node.Arguments.Count > 0 ? node.Arguments[0] : null)
+                : node.Object;
 
-            // Then try to handle the method using the registry
-            if (_context.MethodHandlers.TryHandle(_context, node, result))
+            Expression? result = null;
+            if (sourceExpression is not null)
+                result = Visit(sourceExpression);
+
+            if (result is not null && _context.MethodHandlers.TryHandle(_context, node, result))
             {
                 _logger.LogDebug("Method {Method} was handled by registry", node.Method.Name);
+
                 return result;
             }
 
             _logger.LogDebug("Method {Method} was NOT handled by registry", node.Method.Name);
 
-            // If not handled, check if it's a supported queryable method
             if (IsQueryableMethod(node))
             {
                 throw new GraphException(
@@ -66,7 +70,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
                     "Consider using a supported method or restructuring your query.");
             }
 
-            // Otherwise, it might be a method call within an expression
+            foreach (var arg in node.Arguments)
+            {
+                Visit(arg);
+            }
+
             return base.VisitMethodCall(node);
         }
         catch (GraphException)
@@ -91,7 +99,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
             _logger.LogDebug("Found queryable of element type {Type}", queryable.ElementType.Name);
 
             // Check if this is a relationship queryable
-            if (node.Value is IGraphRelationshipQueryable relationshipQueryable)
+            if (node.Value is IGraphRelationshipQueryable)
             {
                 var relLabel = Labels.GetLabelFromType(queryable.ElementType);
 
@@ -109,11 +117,10 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 _logger.LogDebug("Adding MATCH clause: ({Alias}:{Label})", alias, label);
                 _context.Builder.AddMatch(alias, label);
 
-                // Don't enable complex property loading here - defer the decision
-                // until we know if this is a traversal query
-                _logger.LogDebug("Deferring complex property loading decision");
-
+                // Set the current alias so that parameter expressions can be resolved
                 _context.Scope.CurrentAlias = alias;
+
+                _logger.LogDebug("Set up base query with alias: {Alias}", alias);
             }
 
             return node;

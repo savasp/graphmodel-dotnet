@@ -41,9 +41,28 @@ internal record GraphOperationMethodHandler : MethodHandlerBase
 
     private static bool HandlePathSegments(CypherQueryContext context, MethodCallExpression node)
     {
-        // This would return path segments
-        var currentAlias = context.Scope.CurrentAlias ?? "n";
-        context.Builder.AddReturn($"nodes({currentAlias})");
+        var logger = context.LoggerFactory?.CreateLogger(nameof(GraphOperationMethodHandler));
+        logger?.LogDebug("HandlePathSegments called");
+
+        var genericArgs = node.Method.GetGenericArguments();
+        if (genericArgs.Length != 3)
+        {
+            logger?.LogError("PathSegments method doesn't have the expected generic arguments");
+            return false;
+        }
+
+        var sourceType = genericArgs[0];
+        var relationshipType = genericArgs[1];
+        var targetNodeType = genericArgs[2];
+
+        // Store the path segment info in the scope
+        context.Scope.SetTraversalInfo(sourceType, relationshipType, targetNodeType);
+        context.Scope.IsPathSegmentContext = true;
+
+        logger?.LogDebug($"Source Type: {sourceType.Name}, Relationship Type: {relationshipType.Name}, Target Node Type: {targetNodeType.Name}");
+        var pathSegmentVisitor = new PathSegmentVisitor(context);
+        pathSegmentVisitor.Visit(node);
+
         return true;
     }
 

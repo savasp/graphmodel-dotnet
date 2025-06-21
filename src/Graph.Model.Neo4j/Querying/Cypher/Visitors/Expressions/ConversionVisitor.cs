@@ -20,7 +20,7 @@ using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 
 internal class ConversionVisitor(
-    CypherQueryContext context, ICypherExpressionVisitor nextVisitor)
+    CypherQueryContext context, ICypherExpressionVisitor? nextVisitor)
     : CypherExpressionVisitorBase<ConversionVisitor>(context, nextVisitor)
 {
     public override string VisitMethodCall(MethodCallExpression node)
@@ -137,7 +137,6 @@ internal class ConversionVisitor(
     private static bool IsConversionMethod(MethodInfo method)
     {
         var methodName = method.Name;
-        var declaringType = method.DeclaringType;
 
         // Check for common conversion methods
         return methodName switch

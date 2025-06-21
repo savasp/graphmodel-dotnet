@@ -44,24 +44,5 @@ internal sealed class GraphNodeQueryable<TNode> :
 
     public string? Label => _label;
 
-    public IGraphQueryable<IGraphPathSegment<TNode, TRel, TTarget>> PathSegments<TRel, TTarget>()
-        where TRel : IRelationship
-        where TTarget : INode
-    {
-        var methodCall = Expression.Call(
-            Expression, // Pass the current instance, not null
-            GetGenericMethod(nameof(PathSegments), typeof(TRel), typeof(TTarget)));
-
-        return Provider.CreatePathSegmentQuery<TNode, TRel, TTarget>(methodCall);
-    }
     #endregion
-
-    private static MethodInfo GetGenericMethod(string methodName, params Type[] typeArguments)
-    {
-        var method = typeof(IGraphNodeQueryable<TNode>)
-            .GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance)
-            ?? throw new InvalidOperationException($"Method {methodName} not found");
-
-        return typeArguments.Length > 0 ? method.MakeGenericMethod(typeArguments) : method;
-    }
 }

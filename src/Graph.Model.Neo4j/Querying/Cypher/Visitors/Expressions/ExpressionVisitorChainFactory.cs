@@ -24,12 +24,13 @@ internal class ExpressionVisitorChainFactory(CypherQueryContext context)
     // Define standard chains that can be reused
     public ICypherExpressionVisitor CreateStandardChain() =>
         new ExpressionVisitorChainBuilder(context)
-            .AddConversions()     // Handle conversions first (op_Implicit, etc.)
+            .AddMemberExpressions() // Add member expression handling early to detect complex property access
+            .AddConversions()       // Handle conversions first (op_Implicit, etc.)
             .AddCollectionMethods()
             .AddDateTimeMethods()
             .AddStringMethods()
             .AddBinary()
-            .AddBase()           // Base should be last as the fallback
+            .AddBase()             // Base should be last as the fallback
             .Build();
 
     public ICypherExpressionVisitor CreateWhereClauseChain() =>
@@ -37,8 +38,9 @@ internal class ExpressionVisitorChainFactory(CypherQueryContext context)
 
     public ICypherExpressionVisitor CreateSelectClauseChain() =>
         new ExpressionVisitorChainBuilder(context)
+            .AddMemberExpressions() // Especially important for SELECT to detect complex property access
             .AddConversions()
-            .AddAggregations()   // SELECT might need aggregation support
+            .AddAggregations()      // SELECT might need aggregation support
             .AddCollectionMethods()
             .AddDateTimeMethods()
             .AddStringMethods()
@@ -48,14 +50,16 @@ internal class ExpressionVisitorChainFactory(CypherQueryContext context)
 
     public ICypherExpressionVisitor CreateOrderByChain() =>
         new ExpressionVisitorChainBuilder(context)
+            .AddMemberExpressions() // ORDER BY often accesses properties
             .AddConversions()
-            .AddStringMethods()  // Often need string operations in ORDER BY
+            .AddStringMethods()     // Often need string operations in ORDER BY
             .AddBinary()
             .AddBase()
             .Build();
 
     public ICypherExpressionVisitor CreateGroupByChain() =>
         new ExpressionVisitorChainBuilder(context)
+            .AddMemberExpressions() // GROUP BY accesses properties
             .AddConversions()
             .AddBinary()
             .AddBase()

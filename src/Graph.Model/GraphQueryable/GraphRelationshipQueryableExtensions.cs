@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Linq.Expressions;
-
 namespace Cvoya.Graph.Model;
+
+using System.Linq.Expressions;
+using static Cvoya.Graph.Model.ExtensionUtils;
 
 /// <summary>
 /// Extension methods that preserve <see cref="IGraphRelationshipQueryable{T}"/> interface through LINQ operations.
@@ -22,7 +23,7 @@ namespace Cvoya.Graph.Model;
 public static class GraphRelationshipQueryableExtensions
 {
     /// <summary>
-    /// Filters nodes based on a predicate while preserving the IGraphRelationshipQueryable interface.
+    /// Filters relationships based on a predicate while preserving the IGraphRelationshipQueryable interface.
     /// </summary>
     public static IGraphRelationshipQueryable<T> Where<T>(
         this IGraphRelationshipQueryable<T> source,
@@ -32,12 +33,23 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var filtered = Queryable.Where(source, predicate);
-        return new GraphRelationshipQueryableWrapper<T>(filtered, source.Graph, source.Provider);
+        var methodInfo = GetGenericExtensionMethod(
+            typeof(GraphRelationshipQueryableExtensions),
+            nameof(Where),
+            1, // T
+            2  // source, predicate
+        ).MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            predicate);
+
+        return source.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Projects each node to a new form while preserving the graph context.
+    /// Projects each relationship into a new form while preserving the IGraphRelationshipQueryable interface.
     /// </summary>
     public static IGraphRelationshipQueryable<TResult> Select<T, TResult>(
         this IGraphRelationshipQueryable<T> source,
@@ -48,92 +60,107 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(selector);
 
-        var projected = Queryable.Select(source, selector);
-        return new GraphRelationshipQueryableWrapper<TResult>(projected, source.Graph, source.Provider);
+        var methodInfo = GetGenericExtensionMethod(
+            typeof(GraphRelationshipQueryableExtensions),
+            nameof(Select),
+            2, // T, TResult
+            2  // source, selector
+        ).MakeGenericMethod(typeof(T), typeof(TResult));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            selector);
+
+        return source.Provider.CreateRelationshipQuery<TResult>(expression);
     }
 
     /// <summary>
-    /// Projects each node to a new form with its index.
-    /// </summary>
-    public static IGraphRelationshipQueryable<TResult> Select<T, TResult>(
-        this IGraphRelationshipQueryable<T> source,
-        Expression<Func<T, int, TResult>> selector)
-        where T : IRelationship
-        where TResult : IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        var projected = Queryable.Select(source, selector);
-        return new GraphRelationshipQueryableWrapper<TResult>(projected, source.Graph, source.Provider);
-    }
-
-    /// <summary>
-    /// Sorts nodes in ascending order.
+    /// Sorts relationships in ascending order according to a key.
     /// </summary>
     public static IOrderedGraphRelationshipQueryable<T> OrderBy<T, TKey>(
         this IGraphRelationshipQueryable<T> source,
         Expression<Func<T, TKey>> keySelector)
         where T : IRelationship
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var ordered = Queryable.OrderBy(source, keySelector);
-        return new GraphRelationshipQueryableWrapper<T>(ordered, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.OrderBy).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            keySelector);
+
+        return (IOrderedGraphRelationshipQueryable<T>)source.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Sorts nodes in descending order.
+    /// Sorts relationships in descending order according to a key.
     /// </summary>
     public static IOrderedGraphRelationshipQueryable<T> OrderByDescending<T, TKey>(
         this IGraphRelationshipQueryable<T> source,
         Expression<Func<T, TKey>> keySelector)
         where T : IRelationship
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var ordered = Queryable.OrderByDescending(source, keySelector);
-        return new GraphRelationshipQueryableWrapper<T>(ordered, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.OrderByDescending).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            keySelector);
+
+        return (IOrderedGraphRelationshipQueryable<T>)source.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Performs a subsequent ordering of nodes in ascending order.
+    /// Performs a subsequent ordering of relationships in ascending order.
     /// </summary>
     public static IOrderedGraphRelationshipQueryable<T> ThenBy<T, TKey>(
         this IOrderedGraphRelationshipQueryable<T> source,
         Expression<Func<T, TKey>> keySelector)
         where T : IRelationship
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var ordered = Queryable.ThenBy(source, keySelector);
-        return new GraphRelationshipQueryableWrapper<T>(ordered, source.Graph, source.Provider);
+        var methodInfo = new Func<IOrderedQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.ThenBy).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            keySelector);
+
+        return (IOrderedGraphRelationshipQueryable<T>)source.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Performs a subsequent ordering of nodes in descending order.
+    /// Performs a subsequent ordering of relationships in descending order.
     /// </summary>
     public static IOrderedGraphRelationshipQueryable<T> ThenByDescending<T, TKey>(
         this IOrderedGraphRelationshipQueryable<T> source,
         Expression<Func<T, TKey>> keySelector)
         where T : IRelationship
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var ordered = Queryable.ThenByDescending(source, keySelector);
-        return new GraphRelationshipQueryableWrapper<T>(ordered, source.Graph, source.Provider);
+        var methodInfo = new Func<IOrderedQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.ThenByDescending).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            keySelector);
+
+        return (IOrderedGraphRelationshipQueryable<T>)source.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Skips a specified number of nodes.
+    /// Bypasses a specified number of relationships and returns the remaining relationships.
     /// </summary>
     public static IGraphRelationshipQueryable<T> Skip<T>(
         this IGraphRelationshipQueryable<T> source,
@@ -142,12 +169,18 @@ public static class GraphRelationshipQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var skipped = Queryable.Skip(source, count);
-        return new GraphRelationshipQueryableWrapper<T>(skipped, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, int, IQueryable<T>>(Queryable.Skip).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            Expression.Constant(count));
+
+        return source.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Takes a specified number of nodes.
+    /// Returns a specified number of contiguous relationships from the start.
     /// </summary>
     public static IGraphRelationshipQueryable<T> Take<T>(
         this IGraphRelationshipQueryable<T> source,
@@ -156,72 +189,18 @@ public static class GraphRelationshipQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var taken = Queryable.Take(source, count);
-        return new GraphRelationshipQueryableWrapper<T>(taken, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, int, IQueryable<T>>(Queryable.Take).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            Expression.Constant(count));
+
+        return source.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Skips nodes while the condition is true.
-    /// </summary>
-    public static IGraphRelationshipQueryable<T> SkipWhile<T>(
-        this IGraphRelationshipQueryable<T> source,
-        Expression<Func<T, bool>> predicate)
-        where T : IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(predicate);
-
-        var skipped = Queryable.SkipWhile(source, predicate);
-        return new GraphRelationshipQueryableWrapper<T>(skipped, source.Graph, source.Provider);
-    }
-
-    /// <summary>
-    /// Skips nodes while the condition is true, using the index.
-    /// </summary>
-    public static IGraphRelationshipQueryable<T> SkipWhile<T>(
-        this IGraphRelationshipQueryable<T> source,
-        Expression<Func<T, int, bool>> predicate)
-        where T : IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(predicate);
-
-        var skipped = Queryable.SkipWhile(source, predicate);
-        return new GraphRelationshipQueryableWrapper<T>(skipped, source.Graph, source.Provider);
-    }
-
-    /// <summary>
-    /// Takes nodes while the condition is true.
-    /// </summary>
-    public static IGraphRelationshipQueryable<T> TakeWhile<T>(
-        this IGraphRelationshipQueryable<T> source,
-        Expression<Func<T, bool>> predicate)
-        where T : IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(predicate);
-
-        var taken = Queryable.TakeWhile(source, predicate);
-        return new GraphRelationshipQueryableWrapper<T>(taken, source.Graph, source.Provider);
-    }
-
-    /// <summary>
-    /// Takes nodes while the condition is true, using the index.
-    /// </summary>
-    public static IGraphRelationshipQueryable<T> TakeWhile<T>(
-        this IGraphRelationshipQueryable<T> source,
-        Expression<Func<T, int, bool>> predicate)
-        where T : IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(predicate);
-
-        var taken = Queryable.TakeWhile(source, predicate);
-        return new GraphRelationshipQueryableWrapper<T>(taken, source.Graph, source.Provider);
-    }
-
-    /// <summary>
-    /// Returns distinct nodes.
+    /// Returns distinct relationships from a sequence.
     /// </summary>
     public static IGraphRelationshipQueryable<T> Distinct<T>(
         this IGraphRelationshipQueryable<T> source)
@@ -229,58 +208,56 @@ public static class GraphRelationshipQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var distinct = Queryable.Distinct(source);
-        return new GraphRelationshipQueryableWrapper<T>(distinct, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, IQueryable<T>>(Queryable.Distinct).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression);
+
+        return source.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Returns distinct nodes using a custom equality comparer.
+    /// Groups relationships according to a specified key selector function.
     /// </summary>
-    public static IGraphRelationshipQueryable<T> Distinct<T>(
-        this IGraphRelationshipQueryable<T> source,
-        IEqualityComparer<T> comparer)
-        where T : IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var distinct = Queryable.Distinct(source, comparer);
-        return new GraphRelationshipQueryableWrapper<T>(distinct, source.Graph, source.Provider);
-    }
-
-    /// <summary>
-    /// Groups nodes by a key.
-    /// </summary>
-    public static IQueryable<IGrouping<TKey, T>> GroupBy<T, TKey>(
+    public static IGraphQueryable<IGrouping<TKey, T>> GroupBy<T, TKey>(
         this IGraphRelationshipQueryable<T> source,
         Expression<Func<T, TKey>> keySelector)
         where T : IRelationship
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        return Queryable.GroupBy(source, keySelector);
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, TKey>>, IQueryable<IGrouping<TKey, T>>>(Queryable.GroupBy).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            keySelector);
+
+        return source.Provider.CreateQuery<IGrouping<TKey, T>>(expression);
     }
 
     /// <summary>
-    /// Groups nodes by a key and projects each node.
+    /// Inverts the order of the relationships in a sequence.
     /// </summary>
-    public static IQueryable<IGrouping<TKey, TElement>> GroupBy<T, TKey, TElement>(
-        this IGraphRelationshipQueryable<T> source,
-        Expression<Func<T, TKey>> keySelector,
-        Expression<Func<T, TElement>> elementSelector)
+    public static IGraphRelationshipQueryable<T> Reverse<T>(
+        this IGraphRelationshipQueryable<T> source)
         where T : IRelationship
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(keySelector);
-        ArgumentNullException.ThrowIfNull(elementSelector);
 
-        return Queryable.GroupBy(source, keySelector, elementSelector);
+        var methodInfo = new Func<IQueryable<T>, IQueryable<T>>(Queryable.Reverse).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression);
+
+        return source.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Concatenates two sequences of nodes.
+    /// Concatenates two relationship sequences.
     /// </summary>
     public static IGraphRelationshipQueryable<T> Concat<T>(
         this IGraphRelationshipQueryable<T> first,
@@ -290,12 +267,18 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var concatenated = Queryable.Concat(first, second.AsQueryable());
-        return new GraphRelationshipQueryableWrapper<T>(concatenated, first.Graph, first.Provider);
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Concat).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            first.Expression,
+            Expression.Constant(second));
+
+        return first.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Produces the set union of two sequences.
+    /// Produces the set union of two relationship sequences.
     /// </summary>
     public static IGraphRelationshipQueryable<T> Union<T>(
         this IGraphRelationshipQueryable<T> first,
@@ -305,12 +288,18 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var union = Queryable.Union(first, second.AsQueryable());
-        return new GraphRelationshipQueryableWrapper<T>(union, first.Graph, first.Provider);
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Union).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            first.Expression,
+            Expression.Constant(second));
+
+        return first.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Produces the set intersection of two sequences.
+    /// Produces the set intersection of two relationship sequences.
     /// </summary>
     public static IGraphRelationshipQueryable<T> Intersect<T>(
         this IGraphRelationshipQueryable<T> first,
@@ -320,12 +309,18 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var intersection = Queryable.Intersect(first, second.AsQueryable());
-        return new GraphRelationshipQueryableWrapper<T>(intersection, first.Graph, first.Provider);
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Intersect).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            first.Expression,
+            Expression.Constant(second));
+
+        return first.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Produces the set difference of two sequences.
+    /// Produces the set difference of two relationship sequences.
     /// </summary>
     public static IGraphRelationshipQueryable<T> Except<T>(
         this IGraphRelationshipQueryable<T> first,
@@ -335,49 +330,40 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var except = Queryable.Except(first, second.AsQueryable());
-        return new GraphRelationshipQueryableWrapper<T>(except, first.Graph, first.Provider);
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Except).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            first.Expression,
+            Expression.Constant(second));
+
+        return first.Provider.CreateRelationshipQuery<T>(expression);
     }
 
     /// <summary>
-    /// Reverses the order of nodes.
+    /// Projects each relationship to an IEnumerable and flattens the resulting sequences.
     /// </summary>
-    public static IGraphRelationshipQueryable<T> Reverse<T>(
-        this IGraphRelationshipQueryable<T> source)
-        where T : IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var reversed = Queryable.Reverse(source);
-        return new GraphRelationshipQueryableWrapper<T>(reversed, source.Graph, source.Provider);
-    }
-
-    /// <summary>
-    /// Determines whether all nodes satisfy a condition.
-    /// </summary>
-    public static bool All<T>(
+    public static IGraphQueryable<TResult> SelectMany<T, TResult>(
         this IGraphRelationshipQueryable<T> source,
-        Expression<Func<T, bool>> predicate)
+        Expression<Func<T, IEnumerable<TResult>>> selector)
         where T : IRelationship
     {
         ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(predicate);
+        ArgumentNullException.ThrowIfNull(selector);
 
-        return Queryable.All(source, predicate);
-    }
+        var methodInfo = GetGenericExtensionMethod(
+            typeof(GraphRelationshipQueryableExtensions),
+            nameof(SelectMany),
+            2, // T, TResult
+            2  // source, selector
+        ).MakeGenericMethod(typeof(T), typeof(TResult));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            selector);
 
-    /// <summary>
-    /// Determines whether any node satisfies a condition.
-    /// </summary>
-    public static bool Any<T>(
-        this IGraphRelationshipQueryable<T> source,
-        Expression<Func<T, bool>> predicate)
-        where T : IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(predicate);
-
-        return Queryable.Any(source, predicate);
+        return source.Provider.CreateQuery<TResult>(expression);
     }
 
     /// <summary>
@@ -385,15 +371,23 @@ public static class GraphRelationshipQueryableExtensions
     /// </summary>
     public static IGraphRelationshipQueryable<TSource> WithTransaction<TSource>(
         this IGraphRelationshipQueryable<TSource> source,
-        IGraphTransaction transaction) where TSource : IRelationship
+        IGraphTransaction transaction)
+        where TSource : IRelationship
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(transaction);
 
-        // Wrap the current expression in a transaction expression
-        var transactionExpression = new GraphTransactionExpression(source.Expression, transaction);
+        // Build a method call expression for WithTransaction
+        var methodInfo = typeof(GraphRelationshipQueryableExtensions)
+            .GetMethod(nameof(WithTransaction))!
+            .MakeGenericMethod(typeof(TSource));
 
-        // Use the provider to create a new queryable with the transaction expression
-        return source.Provider.CreateRelationshipQuery<TSource>(transactionExpression);
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            Expression.Constant(transaction));
+
+        return source.Provider.CreateRelationshipQuery<TSource>(expression);
     }
 }

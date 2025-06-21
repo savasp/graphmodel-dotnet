@@ -12,16 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model;
+namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
 /// <summary>
-/// Represents a queryable graph data source that supports LINQ operations over nodes.
-/// This interface extends IGraphQueryable&lt;T&gt; with additional functionality specific to graph nodes.
-/// It allows for traversing relationships and querying nodes in a graph context.
-/// This interface is designed to be used with graph databases and provides methods for traversing relationships
+/// Information about a traversal operation.
 /// </summary>
-/// <typeparam name="TNode">An <see cref="INode"/>-derived type.</typeparam>
-public interface IGraphNodeQueryable<TNode> : IGraphQueryable<TNode>, IGraphNodeQueryable
-    where TNode : INode
-{
-}
+internal record TraversalInfo(
+    Type SourceNodeType,
+    Type RelationshipType,
+    Type TargetNodeType);

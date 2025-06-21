@@ -43,7 +43,7 @@ public class Neo4jConstraintAndCypherTests : IClassFixture<Neo4jGraphProviderTes
         await provider.CreateNode(new GraphProviderTestsBase.Person { FirstName = "B", LastName = "X" });
         var cypher = "MATCH (n: Cvoya_Graph_Client_Model_Tests_GraphProviderTestsBase_Person) WHERE n.LastName = $ln RETURN n";
         var results = await provider.ExecuteCypher(cypher, new { ln = "X" });
-        Assert.True(results.Count() >= 2);
+        Assert.True(results.CountAsync() >= 2);
     }
 
     [Fact]

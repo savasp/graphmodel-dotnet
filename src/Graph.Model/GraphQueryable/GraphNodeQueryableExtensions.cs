@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Linq.Expressions;
-
 namespace Cvoya.Graph.Model;
+
+using System.Linq.Expressions;
+using static Cvoya.Graph.Model.ExtensionUtils;
 
 /// <summary>
 /// Extension methods that preserve <see cref="IGraphNodeQueryable{T}"/> interface through LINQ operations.
@@ -32,12 +33,23 @@ public static class GraphNodeQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var filtered = Queryable.Where(source, predicate);
-        return new GraphNodeQueryableWrapper<T>(filtered, source.Graph, source.Provider);
+        var methodInfo = GetGenericExtensionMethod(
+            typeof(GraphNodeQueryableExtensions),
+            nameof(Where),
+            1, // T
+            2  // source, predicate
+        ).MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            predicate);
+
+        return source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Projects each node to a new form while preserving the graph context.
+    /// Projects each node into a new form while preserving the IGraphNodeQueryable interface.
     /// </summary>
     public static IGraphNodeQueryable<TResult> Select<T, TResult>(
         this IGraphNodeQueryable<T> source,
@@ -48,12 +60,23 @@ public static class GraphNodeQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(selector);
 
-        var projected = Queryable.Select(source, selector);
-        return new GraphNodeQueryableWrapper<TResult>(projected, source.Graph, source.Provider);
+        var methodInfo = GetGenericExtensionMethod(
+            typeof(GraphNodeQueryableExtensions),
+            nameof(Select),
+            2, // T, TResult
+            2  // source, selector
+        ).MakeGenericMethod(typeof(T), typeof(TResult));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            selector);
+
+        return source.Provider.CreateNodeQuery<TResult>(expression);
     }
 
     /// <summary>
-    /// Projects each node to a new form with its index.
+    /// Projects each node into a new form with index while preserving the IGraphNodeQueryable interface.
     /// </summary>
     public static IGraphNodeQueryable<TResult> Select<T, TResult>(
         this IGraphNodeQueryable<T> source,
@@ -64,40 +87,61 @@ public static class GraphNodeQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(selector);
 
-        var projected = Queryable.Select(source, selector);
-        return new GraphNodeQueryableWrapper<TResult>(projected, source.Graph, source.Provider);
+        var methodInfo = GetGenericExtensionMethod(
+            typeof(GraphNodeQueryableExtensions),
+            nameof(Select),
+            2, // T, TResult
+            2  // source, selector
+        ).MakeGenericMethod(typeof(T), typeof(TResult));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            selector);
+
+        return source.Provider.CreateNodeQuery<TResult>(expression);
     }
 
     /// <summary>
-    /// Sorts nodes in ascending order.
+    /// Sorts nodes in ascending order according to a key.
     /// </summary>
     public static IOrderedGraphNodeQueryable<T> OrderBy<T, TKey>(
         this IGraphNodeQueryable<T> source,
         Expression<Func<T, TKey>> keySelector)
         where T : INode
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var ordered = Queryable.OrderBy(source, keySelector);
-        return new GraphNodeQueryableWrapper<T>(ordered, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.OrderBy).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            keySelector);
+
+        return (IOrderedGraphNodeQueryable<T>)source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Sorts nodes in descending order.
+    /// Sorts nodes in descending order according to a key.
     /// </summary>
     public static IOrderedGraphNodeQueryable<T> OrderByDescending<T, TKey>(
         this IGraphNodeQueryable<T> source,
         Expression<Func<T, TKey>> keySelector)
         where T : INode
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var ordered = Queryable.OrderByDescending(source, keySelector);
-        return new GraphNodeQueryableWrapper<T>(ordered, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.OrderByDescending).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            keySelector);
+
+        return (IOrderedGraphNodeQueryable<T>)source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
@@ -107,13 +151,18 @@ public static class GraphNodeQueryableExtensions
         this IOrderedGraphNodeQueryable<T> source,
         Expression<Func<T, TKey>> keySelector)
         where T : INode
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var ordered = Queryable.ThenBy(source, keySelector);
-        return new GraphNodeQueryableWrapper<T>(ordered, source.Graph, source.Provider);
+        var methodInfo = new Func<IOrderedQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.ThenBy).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            keySelector);
+
+        return (IOrderedGraphNodeQueryable<T>)source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
@@ -123,17 +172,22 @@ public static class GraphNodeQueryableExtensions
         this IOrderedGraphNodeQueryable<T> source,
         Expression<Func<T, TKey>> keySelector)
         where T : INode
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var ordered = Queryable.ThenByDescending(source, keySelector);
-        return new GraphNodeQueryableWrapper<T>(ordered, source.Graph, source.Provider);
+        var methodInfo = new Func<IOrderedQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.ThenByDescending).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            keySelector);
+
+        return (IOrderedGraphNodeQueryable<T>)source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Skips a specified number of nodes.
+    /// Bypasses a specified number of nodes and returns the remaining nodes.
     /// </summary>
     public static IGraphNodeQueryable<T> Skip<T>(
         this IGraphNodeQueryable<T> source,
@@ -142,12 +196,18 @@ public static class GraphNodeQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var skipped = Queryable.Skip(source, count);
-        return new GraphNodeQueryableWrapper<T>(skipped, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, int, IQueryable<T>>(Queryable.Skip).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            Expression.Constant(count));
+
+        return source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Takes a specified number of nodes.
+    /// Returns a specified number of contiguous nodes from the start.
     /// </summary>
     public static IGraphNodeQueryable<T> Take<T>(
         this IGraphNodeQueryable<T> source,
@@ -156,12 +216,18 @@ public static class GraphNodeQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var taken = Queryable.Take(source, count);
-        return new GraphNodeQueryableWrapper<T>(taken, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, int, IQueryable<T>>(Queryable.Take).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            Expression.Constant(count));
+
+        return source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Skips nodes while the condition is true.
+    /// Bypasses nodes while the specified condition is true and returns the remaining nodes.
     /// </summary>
     public static IGraphNodeQueryable<T> SkipWhile<T>(
         this IGraphNodeQueryable<T> source,
@@ -171,12 +237,18 @@ public static class GraphNodeQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var skipped = Queryable.SkipWhile(source, predicate);
-        return new GraphNodeQueryableWrapper<T>(skipped, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, bool>>, IQueryable<T>>(Queryable.SkipWhile).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            predicate);
+
+        return source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Skips nodes while the condition is true, using the index.
+    /// Bypasses nodes while the specified condition with index is true and returns the remaining nodes.
     /// </summary>
     public static IGraphNodeQueryable<T> SkipWhile<T>(
         this IGraphNodeQueryable<T> source,
@@ -186,12 +258,18 @@ public static class GraphNodeQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var skipped = Queryable.SkipWhile(source, predicate);
-        return new GraphNodeQueryableWrapper<T>(skipped, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, int, bool>>, IQueryable<T>>(Queryable.SkipWhile).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            predicate);
+
+        return source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Takes nodes while the condition is true.
+    /// Returns nodes while the specified condition is true.
     /// </summary>
     public static IGraphNodeQueryable<T> TakeWhile<T>(
         this IGraphNodeQueryable<T> source,
@@ -201,12 +279,18 @@ public static class GraphNodeQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var taken = Queryable.TakeWhile(source, predicate);
-        return new GraphNodeQueryableWrapper<T>(taken, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, bool>>, IQueryable<T>>(Queryable.TakeWhile).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            predicate);
+
+        return source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Takes nodes while the condition is true, using the index.
+    /// Returns nodes while the specified condition with index is true.
     /// </summary>
     public static IGraphNodeQueryable<T> TakeWhile<T>(
         this IGraphNodeQueryable<T> source,
@@ -216,12 +300,18 @@ public static class GraphNodeQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        var taken = Queryable.TakeWhile(source, predicate);
-        return new GraphNodeQueryableWrapper<T>(taken, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, int, bool>>, IQueryable<T>>(Queryable.TakeWhile).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            predicate);
+
+        return source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Returns distinct nodes.
+    /// Returns distinct nodes from a sequence.
     /// </summary>
     public static IGraphNodeQueryable<T> Distinct<T>(
         this IGraphNodeQueryable<T> source)
@@ -229,12 +319,17 @@ public static class GraphNodeQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var distinct = Queryable.Distinct(source);
-        return new GraphNodeQueryableWrapper<T>(distinct, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, IQueryable<T>>(Queryable.Distinct).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression);
+
+        return source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Returns distinct nodes using a custom equality comparer.
+    /// Returns distinct nodes from a sequence using a specified comparer.
     /// </summary>
     public static IGraphNodeQueryable<T> Distinct<T>(
         this IGraphNodeQueryable<T> source,
@@ -243,44 +338,68 @@ public static class GraphNodeQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var distinct = Queryable.Distinct(source, comparer);
-        return new GraphNodeQueryableWrapper<T>(distinct, source.Graph, source.Provider);
+        var methodInfo = typeof(Queryable)
+            .GetMethods()
+            .Where(m => m.Name == nameof(Queryable.Distinct))
+            .Single(m => m.GetParameters().Length == 2)
+            .MakeGenericMethod(typeof(T));
+
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            Expression.Constant(comparer));
+
+        return source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Groups nodes by a key.
+    /// Groups nodes according to a specified key selector function.
     /// </summary>
-    public static IQueryable<IGrouping<TKey, T>> GroupBy<T, TKey>(
+    public static IGraphQueryable<IGrouping<TKey, T>> GroupBy<T, TKey>(
         this IGraphNodeQueryable<T> source,
         Expression<Func<T, TKey>> keySelector)
         where T : INode
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        return Queryable.GroupBy(source, keySelector);
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, TKey>>, IQueryable<IGrouping<TKey, T>>>(Queryable.GroupBy).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            keySelector);
+
+        return source.Provider.CreateQuery<IGrouping<TKey, T>>(expression);
     }
 
     /// <summary>
-    /// Groups nodes by a key and projects each node.
+    /// Groups nodes and projects each group using the specified functions.
     /// </summary>
-    public static IQueryable<IGrouping<TKey, TElement>> GroupBy<T, TKey, TElement>(
+    public static IGraphQueryable<TResult> GroupBy<T, TKey, TResult>(
         this IGraphNodeQueryable<T> source,
         Expression<Func<T, TKey>> keySelector,
-        Expression<Func<T, TElement>> elementSelector)
+        Expression<Func<TKey, IEnumerable<T>, TResult>> resultSelector)
         where T : INode
-        where TKey : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
-        ArgumentNullException.ThrowIfNull(elementSelector);
+        ArgumentNullException.ThrowIfNull(resultSelector);
 
-        return Queryable.GroupBy(source, keySelector, elementSelector);
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, TKey>>, Expression<Func<TKey, IEnumerable<T>, TResult>>, IQueryable<TResult>>(Queryable.GroupBy).Method.MakeGenericMethod(typeof(T), typeof(TKey), typeof(TResult));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            keySelector,
+            resultSelector);
+
+        return source.Provider.CreateQuery<TResult>(expression);
     }
 
     /// <summary>
-    /// Concatenates two sequences of nodes.
+    /// Concatenates two node sequences.
     /// </summary>
     public static IGraphNodeQueryable<T> Concat<T>(
         this IGraphNodeQueryable<T> first,
@@ -290,12 +409,18 @@ public static class GraphNodeQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var concatenated = Queryable.Concat(first, second.AsQueryable());
-        return new GraphNodeQueryableWrapper<T>(concatenated, first.Graph, first.Provider);
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Concat).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            first.Expression,
+            Expression.Constant(second));
+
+        return first.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Produces the set union of two sequences.
+    /// Produces the set union of two node sequences.
     /// </summary>
     public static IGraphNodeQueryable<T> Union<T>(
         this IGraphNodeQueryable<T> first,
@@ -305,12 +430,18 @@ public static class GraphNodeQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var union = Queryable.Union(first, second.AsQueryable());
-        return new GraphNodeQueryableWrapper<T>(union, first.Graph, first.Provider);
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Union).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            first.Expression,
+            Expression.Constant(second));
+
+        return first.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Produces the set intersection of two sequences.
+    /// Produces the set intersection of two node sequences.
     /// </summary>
     public static IGraphNodeQueryable<T> Intersect<T>(
         this IGraphNodeQueryable<T> first,
@@ -320,12 +451,18 @@ public static class GraphNodeQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var intersection = Queryable.Intersect(first, second.AsQueryable());
-        return new GraphNodeQueryableWrapper<T>(intersection, first.Graph, first.Provider);
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Intersect).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            first.Expression,
+            Expression.Constant(second));
+
+        return first.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Produces the set difference of two sequences.
+    /// Produces the set difference of two node sequences.
     /// </summary>
     public static IGraphNodeQueryable<T> Except<T>(
         this IGraphNodeQueryable<T> first,
@@ -335,12 +472,18 @@ public static class GraphNodeQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var except = Queryable.Except(first, second.AsQueryable());
-        return new GraphNodeQueryableWrapper<T>(except, first.Graph, first.Provider);
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Except).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            first.Expression,
+            Expression.Constant(second));
+
+        return first.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Reverses the order of nodes.
+    /// Inverts the order of the nodes in a sequence.
     /// </summary>
     public static IGraphNodeQueryable<T> Reverse<T>(
         this IGraphNodeQueryable<T> source)
@@ -348,36 +491,68 @@ public static class GraphNodeQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var reversed = Queryable.Reverse(source);
-        return new GraphNodeQueryableWrapper<T>(reversed, source.Graph, source.Provider);
+        var methodInfo = new Func<IQueryable<T>, IQueryable<T>>(Queryable.Reverse).Method.MakeGenericMethod(typeof(T));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression);
+
+        return source.Provider.CreateNodeQuery<T>(expression);
     }
 
     /// <summary>
-    /// Determines whether all nodes satisfy a condition.
+    /// Projects each node to an IEnumerable and flattens the resulting sequences.
     /// </summary>
-    public static bool All<T>(
+    public static IGraphQueryable<TResult> SelectMany<T, TResult>(
         this IGraphNodeQueryable<T> source,
-        Expression<Func<T, bool>> predicate)
+        Expression<Func<T, IEnumerable<TResult>>> selector)
         where T : INode
     {
         ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(predicate);
+        ArgumentNullException.ThrowIfNull(selector);
 
-        return Queryable.All(source, predicate);
+        var methodInfo = GetGenericExtensionMethod(
+            typeof(GraphNodeQueryableExtensions),
+            nameof(SelectMany),
+            2, // T, TResult
+            2  // source, selector
+        ).MakeGenericMethod(typeof(T), typeof(TResult));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            selector);
+
+        return source.Provider.CreateQuery<TResult>(expression);
     }
 
     /// <summary>
-    /// Determines whether any node satisfies a condition.
+    /// Projects each node to an IEnumerable, flattens the sequences, and invokes a result selector.
     /// </summary>
-    public static bool Any<T>(
+    public static IGraphQueryable<TResult> SelectMany<T, TCollection, TResult>(
         this IGraphNodeQueryable<T> source,
-        Expression<Func<T, bool>> predicate)
+        Expression<Func<T, IEnumerable<TCollection>>> collectionSelector,
+        Expression<Func<T, TCollection, TResult>> resultSelector)
         where T : INode
     {
         ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(predicate);
+        ArgumentNullException.ThrowIfNull(collectionSelector);
+        ArgumentNullException.ThrowIfNull(resultSelector);
 
-        return Queryable.Any(source, predicate);
+        var methodInfo = GetGenericExtensionMethod(
+            typeof(GraphNodeQueryableExtensions),
+            nameof(SelectMany),
+            3, // T, TCollection, TResult
+            3  // source, collectionSelector, resultSelector
+        ).MakeGenericMethod(typeof(T), typeof(TCollection), typeof(TResult));
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            collectionSelector,
+            resultSelector);
+
+        return source.Provider.CreateQuery<TResult>(expression);
     }
 
     /// <summary>
@@ -385,15 +560,23 @@ public static class GraphNodeQueryableExtensions
     /// </summary>
     public static IGraphNodeQueryable<TSource> WithTransaction<TSource>(
         this IGraphNodeQueryable<TSource> source,
-        IGraphTransaction transaction) where TSource : INode
+        IGraphTransaction transaction)
+        where TSource : INode
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(transaction);
 
-        // Wrap the current expression in a transaction expression
-        var transactionExpression = new GraphTransactionExpression(source.Expression, transaction);
+        // Build a method call expression for WithTransaction
+        var methodInfo = typeof(GraphNodeQueryableExtensions)
+            .GetMethod(nameof(WithTransaction))!
+            .MakeGenericMethod(typeof(TSource));
 
-        // Use the provider to create a new queryable with the transaction expression
-        return source.Provider.CreateNodeQuery<TSource>(transactionExpression);
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            Expression.Constant(transaction));
+
+        return source.Provider.CreateNodeQuery<TSource>(expression);
     }
 }

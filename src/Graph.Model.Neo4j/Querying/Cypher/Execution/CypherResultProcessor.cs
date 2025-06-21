@@ -26,37 +26,97 @@ internal sealed class CypherResultProcessor
     private readonly EntityFactory _entityFactory;
     private readonly ILogger<CypherResultProcessor> _logger;
 
+    private record ComplexProperty(
+        INode ParentNode,
+        IRelationship Relationship,
+        INode Property);
+    private record NodeResult(INode Node, List<ComplexProperty> ComplexProperties);
+    private record PathSegmentResult(
+        NodeResult StartNode,
+        IRelationship Relationship,
+        NodeResult EndNode);
+
     public CypherResultProcessor(EntityFactory entityFactory, ILoggerFactory? loggerFactory = null)
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
         _logger = loggerFactory?.CreateLogger<CypherResultProcessor>() ?? NullLogger<CypherResultProcessor>.Instance;
     }
 
-    public async Task<List<EntityInfo>> ProcessAsync(
+    public Task<List<EntityInfo>> ProcessAsync(
         List<IRecord> records,
         Type targetType,
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Processing records for target type: {TargetType}", targetType.Name);
 
+        if (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogDebug("Processing cancelled.");
+            return Task.FromResult(new List<EntityInfo>());
+        }
+
         // Handle path segments specially
         if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(IGraphPathSegment<,,>))
         {
-            return ProcessPathSegments(records, targetType);
+            return Task.FromResult(ProcessPathSegments(records, targetType));
         }
 
-        // Handle regular entities
+        // Handle nodes
         if (typeof(Model.INode).IsAssignableFrom(targetType))
         {
-            return await ProcessNodesAsync(records, targetType, cancellationToken);
+            return Task.FromResult(ProcessNodes(records, targetType));
         }
 
+        // Handle relationships1
         if (typeof(Model.IRelationship).IsAssignableFrom(targetType))
         {
-            return ProcessRelationships(records, targetType);
+            return Task.FromResult(ProcessRelationships(records, targetType));
         }
 
-        return ProcessProjections(records, targetType);
+        // Handle projections (EntityInfo)
+        return Task.FromResult(ProcessProjections(records, targetType));
+    }
+
+    private PathSegmentResult? DeserializePathSegment(IReadOnlyDictionary<string, object> pathSegmentRecord)
+    {
+        // Extract the relevant properties from the dictionary
+        if (!pathSegmentRecord.TryGetValue("StartNode", out var startNodeObj) ||
+            !pathSegmentRecord.TryGetValue("Relationship", out var relationshipObj) ||
+            !pathSegmentRecord.TryGetValue("EndNode", out var endNodeObj))
+        {
+            return null;
+        }
+
+        var startNode = DeserializeNode(startNodeObj.As<Dictionary<string, object>>())
+                ?? throw new GraphException("Failed to deserialize start node from path segment record.");
+        var relationship = relationshipObj.As<IRelationship>()
+            ?? throw new GraphException("Failed to deserialize relationship from path segment record.");
+        var endNode = DeserializeNode(endNodeObj.As<Dictionary<string, object>>())
+            ?? throw new GraphException("Failed to deserialize end node from path segment record.");
+
+        return new PathSegmentResult(startNode, relationship, endNode);
+    }
+
+    private static NodeResult? DeserializeNode(IReadOnlyDictionary<string, object> nodeRecord)
+    {
+        // Extract the relevant properties from the dictionary
+        if (!nodeRecord.TryGetValue("Node", out var nodeObj) ||
+            !nodeRecord.TryGetValue("ComplexProperties", out var complexPropsObj))
+        {
+            return null;
+        }
+
+        var node = nodeObj.As<INode>();
+        var list = complexPropsObj as List<object> ?? [];
+        var complexProperties = list
+            .OfType<Dictionary<string, object>>()
+            .Select(dict => new ComplexProperty(
+                ParentNode: dict["ParentNode"].As<INode>(),
+                Relationship: dict["Relationship"].As<IRelationship>(),
+                Property: dict["Property"].As<INode>()
+        )).ToList();
+
+        return new NodeResult(node, complexProperties);
     }
 
     private List<EntityInfo> ProcessPathSegments(List<IRecord> records, Type pathSegmentType)
@@ -69,22 +129,20 @@ internal sealed class CypherResultProcessor
 
         foreach (var record in records)
         {
-            // Extract values by their return column names
-            var sourceNode = record["src"].As<INode>();  // The source node
-            var relationship = record["r"].As<IRelationship>();  // The relationship
-            var targetNode = record["tgt"].As<INode>();  // The target node
+            var pathSegment = DeserializePathSegment(record["path_segment"].As<Dictionary<string, object>>())
+                ?? throw new GraphException("Failed to deserialize path segment from record.");
 
-            // Process each component using existing logic
-            var sourceEntityInfo = ProcessSingleNode(sourceNode, sourceType);
-
-            // For relationships in PathSegments, we need to reconstruct the missing properties
-            var relEntityInfo = ProcessSingleRelationshipWithContext(relationship, relType, GetNodeId(sourceNode), GetNodeId(targetNode));
-
-            var targetEntityInfo = ProcessSingleNode(targetNode, targetType);
+            // Process each component
+            var startNodeEntityInfo = ProcessSingleNodeResult(pathSegment.StartNode, sourceType);
+            var relEntityInfo = ProcessSingleRelationshipFromPathSegment(
+                pathSegment.Relationship, relType,
+                GetNodeId(pathSegment.StartNode.Node),
+                GetNodeId(pathSegment.EndNode.Node));
+            var endNodeEntityInfo = ProcessSingleNodeResult(pathSegment.EndNode, targetType);
 
             // Create the composite path segment EntityInfo
             var pathSegmentEntityInfo = CreatePathSegmentEntityInfo(
-                sourceEntityInfo, relEntityInfo, targetEntityInfo, pathSegmentType);
+                startNodeEntityInfo, relEntityInfo, endNodeEntityInfo, pathSegmentType);
 
             results.Add(pathSegmentEntityInfo);
         }
@@ -92,113 +150,165 @@ internal sealed class CypherResultProcessor
         return results;
     }
 
-    private EntityInfo ProcessSingleRelationshipWithContext(IRelationship relationship, Type targetType, string startNodeId, string endNodeId)
+    private List<EntityInfo> ProcessRelationships(List<IRecord> records, Type targetType)
     {
-        // Create the base EntityInfo from the relationship
-        var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
+        var results = new List<EntityInfo>();
 
-        // Add back the missing properties using the shared enhancement logic
-        EnhanceRelationshipEntityInfo(entityInfo, targetType, startNodeId, endNodeId);
+        foreach (var record in records)
+        {
+            // Both old and new formats now go through the same path segment deserialization
+            if (record.Keys.Contains("path_segment"))
+            {
+                var pathSegment = DeserializePathSegment(record["path_segment"].As<Dictionary<string, object>>())
+                    ?? throw new GraphException("Failed to deserialize relationship from record.");
+
+                // For relationships, we only care about the relationship part
+                var relationshipEntityInfo = ProcessSingleRelationshipFromPathSegment(
+                    pathSegment.Relationship,
+                    targetType,
+                    GetNodeId(pathSegment.StartNode.Node),
+                    GetNodeId(pathSegment.EndNode.Node));
+
+                results.Add(relationshipEntityInfo);
+            }
+            else
+            {
+                // Fallback for any old format queries that might still be around
+                throw new GraphException("Legacy relationship format no longer supported. Please use the unified path segment format.");
+            }
+        }
+
+        return results;
+    }
+
+    private EntityInfo ProcessSingleNodeResult(NodeResult nodeResult, Type targetType)
+    {
+        // Create the base EntityInfo from the node
+        var entityInfo = CreateEntityInfoFromNode(nodeResult.Node, targetType);
+
+        // Reconstruct complex properties from the flat list
+        if (nodeResult.ComplexProperties.Count > 0)
+        {
+            ReconstructComplexProperties(entityInfo, nodeResult.ComplexProperties, targetType);
+        }
 
         return entityInfo;
     }
 
-    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, Type targetType, string startNodeId, string endNodeId)
+    private void ReconstructComplexProperties(
+        EntityInfo entityInfo,
+        List<ComplexProperty> complexProperties,
+        Type targetType)
     {
-        // Add StartNodeId as a simple property
-        entityInfo.SimpleProperties[nameof(Model.IRelationship.StartNodeId)] = new Property(
-            PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.StartNodeId))!,
-            Label: nameof(Model.IRelationship.StartNodeId),
-            IsNullable: false,
-            Value: new SimpleValue(startNodeId, typeof(string))
-        );
+        if (!_entityFactory.CanDeserialize(targetType))
+            return;
 
-        // Add EndNodeId as a simple property  
-        entityInfo.SimpleProperties[nameof(Model.IRelationship.EndNodeId)] = new Property(
-            PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.EndNodeId))!,
-            Label: nameof(Model.IRelationship.EndNodeId),
-            IsNullable: false,
-            Value: new SimpleValue(endNodeId, typeof(string))
-        );
+        var schema = _entityFactory.GetSchema(targetType);
+        if (schema?.ComplexProperties == null)
+            return;
 
-        // Add Direction
-        var direction = GetRelationshipDirection(targetType);
-        entityInfo.SimpleProperties[nameof(Model.IRelationship.Direction)] = new Property(
-            PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.Direction))!,
-            Label: nameof(Model.IRelationship.Direction),
-            IsNullable: false,
-            Value: new SimpleValue(direction, typeof(RelationshipDirection))
-        );
+        // Group complex properties by relationship type (which maps to property names)
+        var propertiesByRelType = complexProperties
+            .GroupBy(cp => cp.Relationship.Type)
+            .ToLookup(g => g.Key, g => g.AsEnumerable());
+
+        foreach (var (propertyName, propertySchema) in schema.ComplexProperties)
+        {
+            var expectedRelType = GraphDataModel.PropertyNameToRelationshipTypeName(propertyName);
+
+            if (!propertiesByRelType.Contains(expectedRelType))
+                continue;
+
+            var relatedProperties = propertiesByRelType[expectedRelType].SelectMany(x => x).ToList();
+
+            if (relatedProperties.Count == 0)
+                continue;
+
+            var complexProperty = BuildComplexPropertyFromFlatList(
+                relatedProperties, propertySchema, propertyName);
+
+            if (complexProperty != null)
+            {
+                entityInfo.ComplexProperties[propertyName] = complexProperty;
+            }
+        }
     }
 
-    private static string GetNodeId(INode node)
+    private Property? BuildComplexPropertyFromFlatList(
+        List<ComplexProperty> relatedProperties,
+        PropertySchema propertySchema,
+        string propertyName)
     {
-        // TODO: Throughout this code, we use nameof(<interface>.Id) where <interface> is IEntity, IRelationship, INode.
-        // This is wrong. We should be using the label instead.
+        var childEntityInfos = new List<EntityInfo>();
+        var childType = propertySchema.PropertyInfo.PropertyType.IsGenericType
+            ? propertySchema.PropertyInfo.PropertyType.GetGenericArguments()[0]
+            : propertySchema.PropertyInfo.PropertyType;
 
-        // Try to get the Id property from the node
-        if (node.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
+        // Group by the actual property node's ElementId to avoid duplicates
+        var propertiesByElementId = relatedProperties
+            .GroupBy(cp => cp.Property.ElementId)
+            .ToList();
+
+        foreach (var propertyGroup in propertiesByElementId)
         {
-            return idValue.As<string>();
+            // Take the first one (they should all be the same node)
+            var complexProperty = propertyGroup.First();
+            var childEntityInfo = CreateEntityInfoFromNode(complexProperty.Property, childType);
+
+            // If this child also has complex properties, we'd need to recurse here
+            // For now, we'll assume the flat list contains all levels
+
+            childEntityInfos.Add(childEntityInfo);
         }
 
-        // Fallback to ElementId if no Id property
-        return node.ElementId;
-    }
-
-    private static RelationshipDirection GetRelationshipDirection(Type targetType)
-    {
-        // TODO: We are treating all relationships as outgoing by default for now. We may need to fix this.
-        // For records derived from Relationship, check if there's a default direction
-        // Most relationship types will use Outgoing as the default
-        return RelationshipDirection.Outgoing;
-    }
-
-    private EntityInfo ProcessSingleNode(object nodeValue, Type targetType)
-    {
-        if (nodeValue is not INode node)
+        // Return appropriate property type
+        if (propertySchema.PropertyType == PropertyType.ComplexCollection)
         {
-            throw new InvalidOperationException($"Expected INode, got {nodeValue?.GetType()}");
+            if (propertySchema.ElementType == null)
+                throw new InvalidOperationException("Element type must be specified for collections.");
+
+            return new Property(
+                propertySchema.PropertyInfo,
+                propertySchema.Neo4jPropertyName,
+                propertySchema.IsNullable,
+                new EntityCollection(propertySchema.ElementType, childEntityInfos));
+        }
+        else if (propertySchema.PropertyType == PropertyType.Complex)
+        {
+            var firstChild = childEntityInfos.FirstOrDefault()
+                ?? throw new InvalidOperationException($"No related nodes found for complex property '{propertyName}'.");
+
+            return new Property(
+                propertySchema.PropertyInfo,
+                propertySchema.Neo4jPropertyName,
+                propertySchema.IsNullable,
+                firstChild);
         }
 
-        return CreateEntityInfoFromNode(node, targetType);
+        throw new InvalidOperationException(
+            $"Unsupported property type for complex property '{propertyName}': {propertySchema.PropertyType}");
     }
 
-    private EntityInfo CreatePathSegmentEntityInfo(
-        EntityInfo sourceEntity,
-        EntityInfo relEntity,
-        EntityInfo targetEntity,
-        Type pathSegmentType)
+    private EntityInfo ProcessSingleRelationshipFromPathSegment(
+        IRelationship relationship,
+        Type targetType,
+        string startNodeId,
+        string endNodeId)
     {
-        // Store the three components as properties in the path segment EntityInfo
-        var complexProperties = new Dictionary<string, Property>
-        {
-            [nameof(IGraphPathSegment.StartNode)] = new Property(
-                PropertyInfo: null!,
-                Label: nameof(IGraphPathSegment.StartNode),
-                IsNullable: false,
-                Value: sourceEntity
-            ),
-            [nameof(IGraphPathSegment.Relationship)] = new Property(
-                PropertyInfo: null!,
-                Label: nameof(IGraphPathSegment.Relationship),
-                IsNullable: false,
-                Value: relEntity
-            ),
-            [nameof(IGraphPathSegment.EndNode)] = new Property(
-                PropertyInfo: null!,
-                Label: nameof(IGraphPathSegment.EndNode),
-                IsNullable: false,
-                Value: targetEntity
-            )
-        };
+        var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
+        EnhanceRelationshipEntityInfo(entityInfo, targetType, startNodeId, endNodeId);
+        return entityInfo;
+    }
 
-        return new EntityInfo(
-            ActualType: pathSegmentType,
-            Label: typeof(GraphPathSegment<,,>).Name,
-            SimpleProperties: new Dictionary<string, Property>(),
-            ComplexProperties: complexProperties
-        );
+    private EntityInfo ProcessSingleRelationshipWithIds(
+        IRelationship relationship,
+        Type targetType,
+        string startNodeId,
+        string endNodeId)
+    {
+        var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
+        EnhanceRelationshipEntityInfo(entityInfo, targetType, startNodeId, endNodeId);
+        return entityInfo;
     }
 
     private List<EntityInfo> ProcessProjections(List<IRecord> records, Type targetType)
@@ -243,225 +353,121 @@ internal sealed class CypherResultProcessor
         );
     }
 
-    private List<EntityInfo> ProcessSimpleNodes(List<IRecord> records, Type targetType)
+    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, Type targetType, string startNodeId, string endNodeId)
+    {
+        // Add StartNodeId as a simple property
+        if (targetType.GetProperty(nameof(Model.IRelationship.StartNodeId)) != null)
+        {
+            entityInfo.SimpleProperties[nameof(Model.IRelationship.StartNodeId)] = new Property(
+                PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.StartNodeId))!,
+                Label: nameof(Model.IRelationship.StartNodeId),
+                IsNullable: false,
+                Value: new SimpleValue(startNodeId, typeof(string))
+            );
+        }
+
+        // Add EndNodeId as a simple property  
+        if (targetType.GetProperty(nameof(Model.IRelationship.EndNodeId)) != null)
+        {
+            entityInfo.SimpleProperties[nameof(Model.IRelationship.EndNodeId)] = new Property(
+                PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.EndNodeId))!,
+                Label: nameof(Model.IRelationship.EndNodeId),
+                IsNullable: false,
+                Value: new SimpleValue(endNodeId, typeof(string))
+            );
+        }
+
+        // Add Direction
+        if (targetType.GetProperty(nameof(Model.IRelationship.Direction)) != null)
+        {
+            var direction = GetRelationshipDirection(targetType);
+            entityInfo.SimpleProperties[nameof(Model.IRelationship.Direction)] = new Property(
+                PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.Direction))!,
+                Label: nameof(Model.IRelationship.Direction),
+                IsNullable: false,
+                Value: new SimpleValue(direction, typeof(RelationshipDirection))
+            );
+        }
+    }
+
+    private static string GetNodeId(INode node)
+    {
+        // TODO: Throughout this code, we use nameof(<interface>.Id) where <interface> is IEntity, IRelationship, INode.
+        // This is wrong. We should be using the label instead.
+
+        // Try to get the Id property from the node
+        if (node.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
+        {
+            return idValue.As<string>();
+        }
+
+        // Fallback to ElementId if no Id property
+        return node.ElementId;
+    }
+
+    private static RelationshipDirection GetRelationshipDirection(Type targetType)
+    {
+        // TODO: We are treating all relationships as outgoing by default for now. We may need to fix this.
+        return RelationshipDirection.Outgoing;
+    }
+
+    private EntityInfo CreatePathSegmentEntityInfo(
+        EntityInfo sourceEntity,
+        EntityInfo relEntity,
+        EntityInfo targetEntity,
+        Type pathSegmentType)
+    {
+        // Store the three components as properties in the path segment EntityInfo
+        var complexProperties = new Dictionary<string, Property>
+        {
+            [nameof(IGraphPathSegment.StartNode)] = new Property(
+                PropertyInfo: null!,
+                Label: nameof(IGraphPathSegment.StartNode),
+                IsNullable: false,
+                Value: sourceEntity
+            ),
+            [nameof(IGraphPathSegment.Relationship)] = new Property(
+                PropertyInfo: null!,
+                Label: nameof(IGraphPathSegment.Relationship),
+                IsNullable: false,
+                Value: relEntity
+            ),
+            [nameof(IGraphPathSegment.EndNode)] = new Property(
+                PropertyInfo: null!,
+                Label: nameof(IGraphPathSegment.EndNode),
+                IsNullable: false,
+                Value: targetEntity
+            )
+        };
+
+        return new EntityInfo(
+            ActualType: pathSegmentType,
+            Label: typeof(GraphPathSegment<,,>).Name,
+            SimpleProperties: new Dictionary<string, Property>(),
+            ComplexProperties: complexProperties
+        );
+    }
+
+    private List<EntityInfo> ProcessNodes(List<IRecord> records, Type targetType)
     {
         var results = new List<EntityInfo>();
 
         foreach (var record in records)
         {
-            if (!record.TryGet<object>("n", out var nodeObj))
-                continue;
+            NodeResult? nodeResult = null;
 
-            // Reuse the extracted logic
-            var entityInfo = ProcessSingleNode(nodeObj, targetType);
-            results.Add(entityInfo);
-        }
-
-        return results;
-    }
-
-    private async Task<List<EntityInfo>> ProcessNodesWithComplexPropertiesAsync(
-        List<IRecord> records,
-        Type targetType,
-        CancellationToken cancellationToken)
-    {
-        if (!records.Any())
-            return [];
-
-        // Group records by node ID to handle multiple different entities
-        var recordsByNodeId = new Dictionary<string, List<IRecord>>();
-
-        foreach (var record in records)
-        {
-            var node = record["n"].As<INode>();
-            var nodeId = GetNodeId(node);
-
-            if (!recordsByNodeId.ContainsKey(nodeId))
-                recordsByNodeId[nodeId] = [];
-
-            recordsByNodeId[nodeId].Add(record);
-        }
-
-        var results = new List<EntityInfo>();
-
-        // Process each unique entity
-        foreach (var (nodeId, nodeRecords) in recordsByNodeId)
-        {
-            // Create the base EntityInfo from the first record of this entity
-            var baseNode = nodeRecords[0]["n"].As<INode>();
-            var entityInfo = CreateEntityInfoFromNode(baseNode, targetType);
-
-            // Process all records for this entity to build complete complex properties
-            foreach (var record in nodeRecords)
+            // Check if this is the new structured format
+            if (record.Keys.Contains("Node"))
             {
-                var relatedNodesList = record["relatedNodes"].As<IList<object>>();
-                if (relatedNodesList != null && relatedNodesList.Any())
-                {
-                    await AddComplexPropertiesFromRelatedNodes(entityInfo, relatedNodesList, cancellationToken);
-                }
-            }
-
-            results.Add(entityInfo);
-        }
-
-        return results;
-    }
-
-    private async Task AddComplexPropertiesFromRelatedNodes(
-        EntityInfo entityInfo,
-        IList<object> relatedNodesList,
-        CancellationToken cancellationToken)
-    {
-        if (!_entityFactory.CanDeserialize(entityInfo.ActualType))
-            return;
-
-        var schema = _entityFactory.GetSchema(entityInfo.ActualType);
-        if (schema?.ComplexProperties == null)
-            return;
-
-        // Group related nodes by relationship type
-        var nodesByRelType = new Dictionary<string, List<RelatedNodeInfo>>();
-
-        foreach (var relatedNodeObj in relatedNodesList)
-        {
-            if (relatedNodeObj is not IReadOnlyDictionary<string, object> relatedNodeDict)
-                continue;
-
-            var nodeInfo = ExtractRelatedNodeInfo(relatedNodeDict);
-            if (nodeInfo != null)
-            {
-                if (!nodesByRelType.ContainsKey(nodeInfo.RelType))
-                    nodesByRelType[nodeInfo.RelType] = [];
-
-                nodesByRelType[nodeInfo.RelType].Add(nodeInfo);
-            }
-        }
-
-        // Process each complex property
-        foreach (var (propertyName, propertySchema) in schema.ComplexProperties)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var expectedRelType = GraphDataModel.PropertyNameToRelationshipTypeName(propertyName);
-
-            if (!nodesByRelType.TryGetValue(expectedRelType, out var relatedNodes) || !relatedNodes.Any())
-                continue;
-
-            // Build the complex property
-            var complexProperty = await BuildComplexPropertyFromRelatedNodes(
-                relatedNodes, propertySchema, cancellationToken);
-
-            if (complexProperty != null)
-            {
-                entityInfo.ComplexProperties[propertyName] = complexProperty;
-            }
-        }
-    }
-
-    private RelatedNodeInfo? ExtractRelatedNodeInfo(IReadOnlyDictionary<string, object> relatedNodeDict)
-    {
-        if (!relatedNodeDict.TryGetValue("Node", out var nodeObj) || nodeObj is not INode node)
-            return null;
-
-        if (!relatedNodeDict.TryGetValue("RelType", out var relTypeObj) || relTypeObj is not string relType)
-            return null;
-
-        var relationshipProperties = relatedNodeDict.TryGetValue("RelationshipProperties", out var relPropsObj)
-            ? relPropsObj as IReadOnlyDictionary<string, object> ?? new Dictionary<string, object>()
-            : new Dictionary<string, object>();
-
-        return new RelatedNodeInfo(node, relType, relationshipProperties);
-    }
-
-    private Task<Property> BuildComplexPropertyFromRelatedNodes(
-        List<RelatedNodeInfo> relatedNodes,
-        PropertySchema propertySchema,
-        CancellationToken cancellationToken)
-    {
-        var childEntityInfos = new List<EntityInfo>();
-        var childType = propertySchema.PropertyInfo.PropertyType.IsGenericType
-            ? propertySchema.PropertyInfo.PropertyType.GetGenericArguments()[0]
-            : propertySchema.PropertyInfo.PropertyType;
-
-        foreach (var relatedNode in relatedNodes)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var childEntityInfo = CreateEntityInfoFromNode(relatedNode.Node, childType);
-
-            // Handle any relationship properties if needed
-            if (relatedNode.RelationshipProperties.Any())
-            {
-                // For now, we'll log that we have relationship properties but don't process them
-                _logger.LogDebug("Relationship properties found but not yet processed for {RelType}", relatedNode.RelType);
-            }
-
-            childEntityInfos.Add(childEntityInfo);
-        }
-
-        // Return appropriate property type
-        if (propertySchema.PropertyType == PropertyType.ComplexCollection)
-        {
-            // Collection of simple or complex objects
-            if (propertySchema.ElementType == null)
-                throw new InvalidOperationException("Element type must be specified for collections.");
-
-            Property property = new(
-                propertySchema.PropertyInfo,
-                propertySchema.Neo4jPropertyName,
-                propertySchema.IsNullable,
-                new EntityCollection(propertySchema.ElementType, childEntityInfos));
-
-            return Task.FromResult(property);
-        }
-        else if (propertySchema.PropertyType == PropertyType.Complex)
-        {
-            // Single complex property
-            var firstChild = childEntityInfos.FirstOrDefault()
-                ?? throw new InvalidOperationException("No related nodes found for complex property.");
-            Property property = new(
-                propertySchema.PropertyInfo,
-                propertySchema.Neo4jPropertyName,
-                propertySchema.IsNullable,
-                firstChild);
-            return Task.FromResult(property);
-        }
-
-        throw new InvalidOperationException(
-            $"Unsupported property type for complex property: {propertySchema.PropertyType}");
-    }
-
-    private List<EntityInfo> ProcessRelationships(List<IRecord> records, Type targetType)
-    {
-        var results = new List<EntityInfo>();
-
-        foreach (var record in records)
-        {
-            if (!record.TryGet<object>("r", out var relObj) || relObj is not IRelationship relationship)
-                continue;
-
-            EntityInfo entityInfo;
-
-            // Check if we have source and target context available (from PathSegment projections)
-            if (record.TryGet<object>("src", out var srcObj) && srcObj is INode sourceNode &&
-                record.TryGet<object>("tgt", out var tgtObj) && tgtObj is INode targetNode)
-            {
-                // We have full context
-                entityInfo = ProcessSingleRelationshipWithContext(relationship, targetType, GetNodeId(sourceNode), GetNodeId(targetNode));
-            }
-            else if (record.TryGet<object>(nameof(Model.IRelationship.StartNodeId), out var startNodeId)
-                  && record.TryGet<object>(nameof(Model.IRelationship.EndNodeId), out var endNodeId))
-            {
-                // We have start and end node IDs
-                entityInfo = ProcessSingleRelationshipWithContext(relationship, targetType, startNodeId.ToString()!, endNodeId.ToString()!);
+                nodeResult = DeserializeNode(record["Node"].As<Dictionary<string, object>>())
+                    ?? throw new GraphException("Failed to deserialize node from structured record.");
             }
             else
             {
-                throw new GraphException(
-                    "Cannot process relationship without source and target context. " +
-                    "Ensure your query includes the necessary node IDs or nodes.");
+                throw new GraphException("Unable to find node data in record.");
             }
 
+            var entityInfo = ProcessSingleNodeResult(nodeResult, targetType);
             results.Add(entityInfo);
         }
 
@@ -472,6 +478,20 @@ internal sealed class CypherResultProcessor
     {
         var label = node.Labels.FirstOrDefault() ?? actualType.Name;
         var simpleProperties = ExtractSimpleProperties(node.Properties, actualType);
+
+        // Add ElementId as a system property if the type has an Id property
+        if (actualType.GetProperty(nameof(Model.IEntity.Id)) != null)
+        {
+            if (node.Properties.TryGetValue("Id", out var idValue))
+            {
+                simpleProperties[nameof(Model.IEntity.Id)] = new Property(
+                    PropertyInfo: actualType.GetProperty(nameof(Model.IEntity.Id))!,
+                    Label: nameof(Model.IEntity.Id),
+                    IsNullable: false,
+                    Value: new SimpleValue(idValue, typeof(string))
+                );
+            }
+        }
 
         return new EntityInfo(
             ActualType: actualType,
@@ -486,11 +506,22 @@ internal sealed class CypherResultProcessor
         var label = relationship.Type ?? actualType.Name;
         var simpleProperties = ExtractSimpleProperties(relationship.Properties, actualType);
 
+        // Add ElementId as the Id property
+        if (actualType.GetProperty(nameof(Model.IEntity.Id)) != null)
+        {
+            simpleProperties[nameof(Model.IEntity.Id)] = new Property(
+                PropertyInfo: actualType.GetProperty(nameof(Model.IEntity.Id))!,
+                Label: nameof(Model.IEntity.Id),
+                IsNullable: false,
+                Value: new SimpleValue(relationship.ElementId, typeof(string))
+            );
+        }
+
         return new EntityInfo(
             ActualType: actualType,
             Label: label,
             SimpleProperties: simpleProperties,
-            ComplexProperties: new Dictionary<string, Property>() // Relationships can't have complex properties
+            ComplexProperties: new Dictionary<string, Property>()
         );
     }
 
@@ -547,27 +578,5 @@ internal sealed class CypherResultProcessor
 
         return new SimpleCollection(items, elementType);
     }
-
-    private async Task<List<EntityInfo>> ProcessNodesAsync(
-        List<IRecord> records,
-        Type targetType,
-        CancellationToken cancellationToken)
-    {
-        // Check if this query includes complex properties (relatedNodes in the results)
-        var hasComplexProperties = records.Any(r => r.Keys.Contains("relatedNodes"));
-
-        if (hasComplexProperties)
-        {
-            return await ProcessNodesWithComplexPropertiesAsync(records, targetType, cancellationToken);
-        }
-
-        return ProcessSimpleNodes(records, targetType);
-    }
-
-    // Helper record for organizing related node data
-    private record RelatedNodeInfo(
-        INode Node,
-        string RelType,
-        IReadOnlyDictionary<string, object> RelationshipProperties);
 }
 

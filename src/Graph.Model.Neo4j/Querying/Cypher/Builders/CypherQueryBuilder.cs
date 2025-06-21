@@ -16,9 +16,14 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 
 using System.Linq;
 using System.Text;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
-internal class CypherQueryBuilder
+internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
 {
+    private readonly ILogger<CypherQueryBuilder> _logger = loggerFactory?.CreateLogger<CypherQueryBuilder>()
+        ?? NullLogger<CypherQueryBuilder>.Instance;
+
     private readonly List<string> _matchClauses = [];
     private readonly List<string> _whereClauses = [];
     private readonly List<string> _returnClauses = [];
@@ -32,8 +37,6 @@ internal class CypherQueryBuilder
     private int? _skip;
     private bool _isDistinct;
     private bool _isRelationshipQuery;
-    private string? _relationshipSourceAlias;
-    private string? _relationshipTargetAlias;
 
     private string? _aggregation;
     private bool _isExistsQuery;
@@ -41,6 +44,10 @@ internal class CypherQueryBuilder
     private bool _includeComplexProperties;
     private string? _mainNodeAlias;
     private int _parameterCounter;
+    private bool _loadPathSegment;
+    private bool _hasUserProjections = false;
+
+    public bool HasUserProjections => _hasUserProjections;
 
     public bool HasExplicitReturn => _returnClauses.Count > 0 || _aggregation != null || _isExistsQuery || _isNotExistsQuery;
 
@@ -93,6 +100,12 @@ internal class CypherQueryBuilder
         _includeComplexProperties = true;
     }
 
+    public void EnablePathSegmentLoading()
+    {
+        _includeComplexProperties = true;
+        _loadPathSegment = true;
+    }
+
     public void ClearMatches()
     {
         _matchClauses.Clear();
@@ -110,17 +123,6 @@ internal class CypherQueryBuilder
         {
             _whereClauses.Add(condition);
         }
-    }
-
-    public void AddReturn(string expression, string? alias = null)
-    {
-        if (_returnClauses.Contains(expression))
-        {
-            return; // Skip if this expression is already in the return clauses
-        }
-
-        var returnClause = alias != null ? $"{expression} AS {alias}" : expression;
-        _returnClauses.Add(returnClause);
     }
 
     public void ClearReturn()
@@ -144,6 +146,8 @@ internal class CypherQueryBuilder
 
     public string AddParameter(object? value)
     {
+        _logger.LogDebug("Adding parameter with value: {Value}", value);
+
         // Check if we already have this value as a parameter
         var existingParam = _parameters.FirstOrDefault(p => Equals(p.Value, value));
         if (existingParam.Key != null)
@@ -158,6 +162,8 @@ internal class CypherQueryBuilder
 
     public CypherQuery Build()
     {
+        _logger.LogDebug("Building Cypher query");
+
         // Handle special query types first
         if (_isExistsQuery)
         {
@@ -181,22 +187,24 @@ internal class CypherQueryBuilder
 
     public void AddRelationshipMatch(string relationshipType)
     {
-        _matchClauses.Add($"(src)-[r:{relationshipType}]->(tgt)");
+        _logger.LogDebug("AddRelationshipMatch called with type: {Type}", relationshipType);
+
+        // Use the same pattern as path segments
+        _matchClauses.Add($"(n_src)-[r:{relationshipType}]->(m_tgt)");
         _mainNodeAlias = "r"; // Set main alias to the relationship
 
-        // Track that this is a relationship query
-        _relationshipSourceAlias = "src";
-        _relationshipTargetAlias = "tgt";
-        _returnClauses.Add("src.Id AS StartNodeId");
-        _returnClauses.Add("r");
-        _returnClauses.Add("tgt.Id AS EndNodeId");
         _isRelationshipQuery = true;
+
+        // Enable path segment loading since relationships are path segments
+        EnablePathSegmentLoading();
     }
 
     public bool HasOrderBy => _orderByClauses.Any();
 
     public void ReverseOrderBy()
     {
+        _logger.LogDebug("Reversing ORDER BY clauses");
+
         // Flip the IsDescending flag for all order clauses
         for (int i = 0; i < _orderByClauses.Count; i++)
         {
@@ -207,6 +215,8 @@ internal class CypherQueryBuilder
 
     private CypherQuery BuildSimpleQuery()
     {
+        _logger.LogDebug("Building simple query");
+
         var query = new StringBuilder();
 
         // Build the main query structure
@@ -221,6 +231,8 @@ internal class CypherQueryBuilder
 
     private void AppendMatchClauses(StringBuilder query)
     {
+        _logger.LogDebug("Appending MATCH clauses");
+
         if (_matchClauses.Count > 0)
         {
             query.Append("MATCH ");
@@ -237,6 +249,8 @@ internal class CypherQueryBuilder
 
     private void AppendWhereClauses(StringBuilder query)
     {
+        _logger.LogDebug("Appending WHERE clauses");
+
         if (_whereClauses.Count > 0)
         {
             query.Append("WHERE ");
@@ -247,6 +261,8 @@ internal class CypherQueryBuilder
 
     private void AppendReturnClause(StringBuilder query)
     {
+        _logger.LogDebug("Appending RETURN clause");
+
         // Handle WITH clauses first
         foreach (var withClause in _withClauses)
         {
@@ -273,14 +289,9 @@ internal class CypherQueryBuilder
                 : string.Join(", ", _returnClauses);
             query.Append(returnExpression);
         }
-        else if (_isRelationshipQuery && _relationshipSourceAlias != null && _relationshipTargetAlias != null)
-        {
-            // For relationship queries without explicit returns, return the full set
-            query.Append($"{_relationshipSourceAlias}.Id AS StartNodeId, {_mainNodeAlias}, {_relationshipTargetAlias}.Id AS EndNodeId");
-        }
         else
         {
-            // Default return
+            // Default return - let the complex property handling take care of structured returns
             query.Append(_mainNodeAlias ?? "n");
         }
 
@@ -297,6 +308,8 @@ internal class CypherQueryBuilder
 
     private void AppendOrderByClauses(StringBuilder query)
     {
+        _logger.LogDebug("Appending ORDER BY clauses");
+
         if (_orderByClauses.Count > 0)
         {
             query.Append("ORDER BY ");
@@ -309,6 +322,8 @@ internal class CypherQueryBuilder
 
     private void AppendPaginationClauses(StringBuilder query)
     {
+        _logger.LogDebug("Appending pagination clauses");
+
         if (_skip.HasValue)
         {
             query.AppendLine($"SKIP {_skip.Value}");
@@ -322,6 +337,8 @@ internal class CypherQueryBuilder
 
     private CypherQuery BuildExistsQuery()
     {
+        _logger.LogDebug("Building EXISTS query");
+
         var query = new StringBuilder();
 
         AppendMatchClauses(query);
@@ -335,6 +352,8 @@ internal class CypherQueryBuilder
 
     private CypherQuery BuildNotExistsQuery()
     {
+        _logger.LogDebug("Building NOT EXISTS query");
+
         var query = new StringBuilder();
 
         AppendMatchClauses(query);
@@ -348,71 +367,181 @@ internal class CypherQueryBuilder
 
     private CypherQuery BuildWithComplexProperties()
     {
+        _logger.LogDebug("Building query with complex properties");
+
         var query = new StringBuilder();
 
         // First part: get the main nodes
         AppendMatchClauses(query);
         AppendWhereClauses(query);
 
-        // Collect main nodes with ordering and pagination
-        query.AppendLine($"WITH {_mainNodeAlias}");
-        AppendOrderByClauses(query);
-        AppendPaginationClauses(query);
-
-        // Second part: match complex properties
-        AppendComplexPropertyMatches(query);
+        // For path segments, we don't need the intermediate WITH clause
+        if (_loadPathSegment)
+        {
+            // Skip the WITH clause for path segments - go straight to complex property loading
+            AppendComplexPropertyMatchesForPathSegment(query);
+        }
+        else if (!string.IsNullOrEmpty(_mainNodeAlias))
+        {
+            // For regular node queries, collect main nodes with ordering and pagination
+            AppendOrderByClauses(query);
+            AppendPaginationClauses(query);
+            AppendComplexPropertyMatchesForSingleNode(query);
+        }
+        else
+        {
+            // Fallback - just add complex property matches
+            AppendComplexPropertyMatchesForSingleNode(query);
+        }
 
         return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
     }
 
-    private void AppendComplexPropertyMatches(StringBuilder query)
+    private void AppendComplexPropertyMatchesForSingleNode(StringBuilder query)
     {
-        // Match the complex properties using directed relationships
-        query.AppendLine($"OPTIONAL MATCH path = ({_mainNodeAlias})-[*0..]->(target)");
-        query.AppendLine($"WHERE ALL(r IN relationships(path) WHERE type(r) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')");
-        query.AppendLine($"WITH {_mainNodeAlias}, relationships(path) AS rels, nodes(path) AS nodes");
-        query.AppendLine("WHERE size(nodes) = size(rels) + 1");
-        query.AppendLine($"WITH {_mainNodeAlias},");
-        query.AppendLine("     [i IN range(0, size(rels)-1) |");
-        query.AppendLine("        {Node: nodes[i+1], RelType: type(rels[i]), RelationshipProperties: properties(rels[i])}");
-        query.AppendLine("     ] AS relatedNodes");
-        query.AppendLine($"RETURN {_mainNodeAlias}, relatedNodes");
+        _logger.LogDebug("Appending complex property matches for single node");
+
+        query.AppendLine(@$"
+            // All complex property paths from src
+            OPTIONAL MATCH src_path = ({_mainNodeAlias})-[rels*1..]->(prop)
+            WHERE ALL(rel in rels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
+            WITH {_mainNodeAlias},
+            CASE 
+                WHEN src_path IS NULL THEN []
+                ELSE [i IN range(0, size(rels)-1) | {{
+                    ParentNode: nodes(src_path)[i],
+                    Relationship: rels[i],
+                    Property: nodes(src_path)[i+1]
+                }}]
+            END AS src_flat_property
+
+            WITH {_mainNodeAlias}, collect(src_flat_property) AS src_flat_properties_nested
+            WITH {_mainNodeAlias}, reduce(flat = [], l IN src_flat_properties_nested | flat + l) AS src_flat_properties
+
+            RETURN {{
+                Node: {_mainNodeAlias},
+                ComplexProperties: src_flat_properties
+            }} AS Node
+        ");
+    }
+
+    private void AppendComplexPropertyMatchesForPathSegment(StringBuilder query)
+    {
+        _logger.LogDebug("Appending complex property matches for path segment");
+
+        query.AppendLine(@$"
+            // All complex property paths from source node
+            OPTIONAL MATCH src_path = (n_src)-[rels*1..]->(prop)
+            WHERE ALL(rel in rels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
+            WITH n_src, r, m_tgt, 
+            CASE 
+                WHEN src_path IS NULL THEN []
+                ELSE [i IN range(0, size(rels)-1) | {{
+                    ParentNode: nodes(src_path)[i],
+                    Relationship: rels[i],
+                    Property: nodes(src_path)[i+1]
+                }}]
+            END AS src_flat_property
+
+            WITH n_src, collect(src_flat_property) AS src_flat_properties_nested
+            WITH n_src, reduce(flat = [], l IN src_flat_properties_nested | flat + l) AS src_flat_properties
+
+            // All complex property paths from target node
+            OPTIONAL MATCH tgt_path = (m_tgt)-[trels*1..]->(tprop)
+            WHERE ALL(rel in trels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
+            WITH n_src, r, m_tgt, src_flat_property,
+            CASE 
+                WHEN tgt_path IS NULL THEN []
+                ELSE [i IN range(0, size(trels)-1) | {{
+                    ParentNode: nodes(tgt_path)[i],
+                    Relationship: trels[i],
+                    Property: nodes(tgt_path)[i+1]
+                }}]
+            END AS tgt_flat_property
+
+            WITH n_tgt, collect(tgt_flat_property) AS tgt_flat_properties_nested
+            WITH n_tgt, reduce(flat = [], l IN tgt_flat_properties_nested | flat + l) AS tgt_flat_properties, n_src, r, src_flat_properties
+
+            RETURN {{
+                StartNode: {{
+                    Node: n_src,
+                    ComplexProperties: src_flat_properties
+                }},
+                Relationship: r,
+                EndNode: {{
+                    Node: m_tgt,
+                    ComplexProperties: tgt_flat_properties
+                }}
+            }} AS path_segment
+        ");
     }
 
     public void AddOptionalMatch(string pattern)
     {
+        _logger.LogDebug("AddOptionalMatch called with pattern: '{Pattern}'", pattern);
         _optionalMatchClauses.Add(pattern);
     }
 
     public void AddLimit(int limit)
     {
+        _logger.LogDebug("AddLimit called with value: {Limit}", limit);
         _limit = limit;
     }
 
     public void AddSkip(int skip)
     {
+        _logger.LogDebug("AddSkip called with value: {Skip}", skip);
         _skip = skip;
     }
 
     public void AddWith(string expression)
     {
+        _logger.LogDebug("AddWith called with expression: '{Expression}'", expression);
         _withClauses.Add(expression);
     }
 
     public void AddUnwind(string expression)
     {
+        _logger.LogDebug("AddUnwind called with expression: '{Expression}'", expression);
         _unwindClauses.Add(expression);
     }
 
     public void AddGroupBy(string expression)
     {
+        _logger.LogDebug("AddGroupBy called with expression: '{Expression}'", expression);
         _groupByClauses.Add(expression);
     }
 
     public void SetDistinct(bool distinct)
     {
+        _logger.LogDebug("SetDistinct called with value: {Value}", distinct);
         _isDistinct = distinct;
     }
 
     public bool HasReturnClause => _returnClauses.Any();
+
+    public void AddReturn(string expression, string? alias = null)
+    {
+        if (!string.IsNullOrWhiteSpace(alias))
+        {
+            _returnClauses.Add($"{expression} AS {alias}");
+        }
+        else
+        {
+            _returnClauses.Add(expression);
+        }
+    }
+
+    public void AddUserProjection(string expression, string? alias = null)
+    {
+        _hasUserProjections = true;
+        AddReturn(expression, alias);
+    }
+
+    public void AddInfrastructureReturn(string expression, string? alias = null)
+    {
+        // This is for infrastructure returns like path segments - don't mark as user projection
+        AddReturn(expression, alias);
+    }
+
 }

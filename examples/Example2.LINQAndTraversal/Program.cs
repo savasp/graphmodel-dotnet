@@ -106,7 +106,7 @@ try
     // Depth 1: Node with immediate relationships
     var aliceKnowsDepth1 = await graph.Nodes<Person>()
         .Where(p => p.Id == alice.Id)
-        .Traverse<Knows, Person>()
+        .Traverse<Person, Knows, Person>()
         .ToListAsync();
 
     Console.WriteLine($"\nAlice with depth 1:");
@@ -116,7 +116,7 @@ try
     // Depth 2: Two levels of relationships
     var aliceKnowsDepth2 = await graph.Nodes<Person>()
         .Where(p => p.Id == alice.Id)
-        .Traverse<Knows, Person>()
+        .Traverse<Person, Knows, Person>()
         .WithDepth(2)
         .ToListAsync();
 
@@ -160,13 +160,13 @@ try
             // Get people that person1 knows
             var person1Knows = await graph.Nodes<Person>()
                 .Where(p => p.Id == person1.Id)
-                .Traverse<Knows, Person>()
+                .Traverse<Person, Knows, Person>()
                 .ToListAsync();
 
             // Get people that person2 knows
             var person2Knows = await graph.Nodes<Person>()
                 .Where(p => p.Id == person2.Id)
-                .Traverse<Knows, Person>()
+                .Traverse<Person, Knows, Person>()
                 .ToListAsync();
 
             // Find mutual connections
@@ -197,14 +197,14 @@ try
     // Get Alice's connections
     var aliceConnections = await graph.Nodes<Person>()
         .Where(p => p.Id == alice.Id)
-        .Traverse<Knows, Person>()
+        .Traverse<Person, Knows, Person>()
         .Select(p => p.Id)
         .ToListAsync();
 
     // Find Bob's connections that are also in Alice's connections
     var mutualBetweenAliceAndBob = await graph.Nodes<Person>()
         .Where(p => p.Id == bob.Id)
-        .Traverse<Knows, Person>()
+        .Traverse<Person, Knows, Person>()
         .Where(p => aliceConnections.Contains(p.Id))
         .ToListAsync();
 
