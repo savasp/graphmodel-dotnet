@@ -108,7 +108,7 @@ internal class BaseExpressionVisitor(
             // For aggregation queries, the root type might be the return type (e.g., Boolean for Any())
             // so we also check if there's a current alias set and use it for the main entity being queried
             var alias = (param.Type == Scope.RootType || Scope.CurrentAlias != null)
-                ? (Scope.CurrentAlias ?? Scope.GetOrCreateAlias(param.Type, "n"))
+                ? (Scope.CurrentAlias ?? Scope.GetOrCreateAlias(param.Type, "src"))
                 : Scope.GetOrCreateAlias(param.Type);
 
             // Special handling for relationship properties

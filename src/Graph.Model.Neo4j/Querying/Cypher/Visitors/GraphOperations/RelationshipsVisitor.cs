@@ -18,18 +18,18 @@ using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
 internal sealed class RelationshipsVisitor(CypherQueryContext context) : CypherVisitorBase<RelationshipsVisitor>(context)
 {
-    public void VisitRelationships(Type? relationshipType = null, RelationshipDirection direction = RelationshipDirection.Both)
+    public void VisitRelationships(Type? relationshipType = null, RelationshipDirection direction = RelationshipDirection.Outgoing)
     {
-        var nodeAlias = Scope.CurrentAlias ?? "n";
+        var nodeAlias = Scope.CurrentAlias ?? "src";
         var relAlias = Scope.GetOrCreateAlias(relationshipType ?? typeof(IRelationship), "r");
-        var otherAlias = Scope.GetOrCreateAlias(typeof(INode), "other");
+        var otherAlias = Scope.GetOrCreateAlias(typeof(INode), "tgt");
 
         // Build the pattern based on direction
         var pattern = direction switch
         {
             RelationshipDirection.Outgoing => $"({nodeAlias})-[{relAlias}]->({otherAlias})",
             RelationshipDirection.Incoming => $"({nodeAlias})<-[{relAlias}]-({otherAlias})",
-            RelationshipDirection.Both => $"({nodeAlias})-[{relAlias}]-({otherAlias})",
+            RelationshipDirection.Bidirectional => $"({nodeAlias})-[{relAlias}]-({otherAlias})",
             _ => throw new ArgumentException($"Unknown direction: {direction}")
         };
 
@@ -46,11 +46,4 @@ internal sealed class RelationshipsVisitor(CypherQueryContext context) : CypherV
         // Update current alias to the relationship
         Scope.CurrentAlias = relAlias;
     }
-}
-
-internal enum RelationshipDirection
-{
-    Both,
-    Outgoing,
-    Incoming
 }

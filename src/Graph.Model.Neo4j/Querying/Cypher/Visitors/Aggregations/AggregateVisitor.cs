@@ -34,7 +34,7 @@ internal sealed class AggregateVisitor : ExpressionVisitor
     {
         var targetExpression = selector != null
             ? ExpressionToCypher(selector)
-            : _context.Scope.CurrentAlias ?? "n";
+            : _context.Scope.CurrentAlias ?? "src";
 
         var cypherFunction = aggregateFunction switch
         {
@@ -55,7 +55,7 @@ internal sealed class AggregateVisitor : ExpressionVisitor
     {
         // For All(), we need to check that all elements match the predicate
         // In Cypher, this is: NONE(x IN collection WHERE NOT predicate)
-        var alias = _context.Scope.CurrentAlias ?? "n";
+        var alias = _context.Scope.CurrentAlias ?? "src";
         var predicateString = ExpressionToCypher(predicate);
 
         return $"NONE(x IN COLLECT({alias}) WHERE NOT ({predicateString}))";

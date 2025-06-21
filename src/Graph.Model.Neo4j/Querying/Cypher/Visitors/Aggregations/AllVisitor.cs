@@ -21,7 +21,7 @@ internal sealed class AllVisitor(CypherQueryContext context) : AggregationBaseVi
 {
     public void VisitAll(LambdaExpression predicate)
     {
-        var alias = Scope.CurrentAlias ?? "n";
+        var alias = Scope.CurrentAlias ?? "src";
 
         // In Cypher, ALL(x IN collection WHERE predicate) checks if all match
         // But since we're working with matched nodes, we need a different approach

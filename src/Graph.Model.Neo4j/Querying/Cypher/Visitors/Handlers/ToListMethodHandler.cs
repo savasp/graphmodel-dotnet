@@ -49,7 +49,7 @@ internal record ToListMethodHandler : MethodHandlerBase
         // If no explicit return has been set, add a default return
         if (!context.Builder.HasReturnClause)
         {
-            var alias = context.Scope.CurrentAlias ?? "n";
+            var alias = context.Scope.CurrentAlias ?? "src";
             logger?.LogDebug($"ToListMethodHandler: adding default return for alias {alias}");
             context.Builder.AddReturn(alias);
         }

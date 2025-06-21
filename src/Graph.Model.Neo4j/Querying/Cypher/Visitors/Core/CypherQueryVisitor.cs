@@ -107,12 +107,12 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 _context.Builder.AddRelationshipMatch(relLabel);
 
                 // Set the current alias to "r" (which is what AddRelationshipMatch uses)
-                _context.Scope.CurrentAlias = "r";
+                _context.Scope.CurrentAlias = "src";
             }
             else if (node.Value is IGraphNodeQueryable)
             {
                 // For nodes, generate the MATCH clause using the queryable's element type
-                var alias = _context.Scope.GetOrCreateAlias(queryable.ElementType, "n");
+                var alias = _context.Scope.GetOrCreateAlias(queryable.ElementType, "src");
                 var label = Labels.GetLabelFromType(queryable.ElementType);
                 _logger.LogDebug("Adding MATCH clause: ({Alias}:{Label})", alias, label);
                 _context.Builder.AddMatch(alias, label);

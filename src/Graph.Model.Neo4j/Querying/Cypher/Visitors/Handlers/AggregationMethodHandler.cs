@@ -89,7 +89,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
         // Add LIMIT 1 for First/FirstOrDefault
         context.Builder.AddLimit(1);
 
-        var alias = context.Scope.CurrentAlias ?? "n";
+        var alias = context.Scope.CurrentAlias ?? "src";
         if (!context.Builder.HasReturnClause)
         {
             context.Builder.AddReturn(alias);
@@ -111,7 +111,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
         // Use LIMIT 2 so we can detect if there are multiple results
         context.Builder.AddLimit(2);
 
-        var alias = context.Scope.CurrentAlias ?? "n";
+        var alias = context.Scope.CurrentAlias ?? "src";
         if (!context.Builder.HasReturnClause)
         {
             context.Builder.AddReturn(alias);
@@ -122,7 +122,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
 
     private static bool HandleCount(CypherQueryContext context, MethodCallExpression node)
     {
-        var alias = context.Scope.CurrentAlias ?? "n";
+        var alias = context.Scope.CurrentAlias ?? "src";
 
         if (node.Arguments.Count == 1)
         {
@@ -146,7 +146,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
 
     private static bool HandleAny(CypherQueryContext context, MethodCallExpression node)
     {
-        var alias = context.Scope.CurrentAlias ?? "n";
+        var alias = context.Scope.CurrentAlias ?? "src";
 
         if (node.Arguments.Count == 1)
         {
@@ -180,7 +180,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
             var expressionVisitor = CreateExpressionVisitor(context);
             var condition = expressionVisitor.Visit(lambda.Body);
 
-            var alias = context.Scope.CurrentAlias ?? "n";
+            var alias = context.Scope.CurrentAlias ?? "src";
             // All is true when count of non-matching items is 0
             context.Builder.AddReturn($"COUNT(CASE WHEN NOT ({condition}) THEN {alias} END) = 0 AS result");
         }
@@ -190,7 +190,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
 
     private static bool HandleSum(CypherQueryContext context, MethodCallExpression node)
     {
-        var alias = context.Scope.CurrentAlias ?? "n";
+        var alias = context.Scope.CurrentAlias ?? "src";
 
         if (node.Arguments.Count == 1)
         {
@@ -214,7 +214,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
 
     private static bool HandleAverage(CypherQueryContext context, MethodCallExpression node)
     {
-        var alias = context.Scope.CurrentAlias ?? "n";
+        var alias = context.Scope.CurrentAlias ?? "src";
 
         if (node.Arguments.Count == 1)
         {
@@ -238,7 +238,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
 
     private static bool HandleMin(CypherQueryContext context, MethodCallExpression node)
     {
-        var alias = context.Scope.CurrentAlias ?? "n";
+        var alias = context.Scope.CurrentAlias ?? "src";
 
         if (node.Arguments.Count == 1)
         {
@@ -262,7 +262,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
 
     private static bool HandleMax(CypherQueryContext context, MethodCallExpression node)
     {
-        var alias = context.Scope.CurrentAlias ?? "n";
+        var alias = context.Scope.CurrentAlias ?? "src";
 
         if (node.Arguments.Count == 1)
         {
@@ -291,7 +291,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
             return false;
         }
 
-        var alias = context.Scope.CurrentAlias ?? "n";
+        var alias = context.Scope.CurrentAlias ?? "src";
 
         // Get the item to search for from the second argument
         var itemExpression = node.Arguments[1];
@@ -318,7 +318,7 @@ internal record AggregationMethodHandler : MethodHandlerBase
             return false;
         }
 
-        var alias = context.Scope.CurrentAlias ?? "n";
+        var alias = context.Scope.CurrentAlias ?? "src";
 
         // Use SKIP and LIMIT to get the element at the specific index
         context.Builder.AddSkip(index);

@@ -45,7 +45,7 @@ internal record SelectManyMethodHandler : MethodHandlerBase
         // For graph traversals, this typically involves relationships
         if (collectionSelector.Body is MemberExpression member)
         {
-            var currentAlias = context.Scope.CurrentAlias ?? "n";
+            var currentAlias = context.Scope.CurrentAlias ?? "src";
             var relationshipType = GetRelationshipType(member);
             var targetType = GetElementType(member.Type);
             var targetAlias = context.Scope.GetOrCreateAlias(targetType, GetPreferredAlias(targetType));

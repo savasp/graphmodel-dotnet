@@ -82,9 +82,9 @@ internal sealed class PathSegmentVisitor(CypherQueryContext context) : CypherVis
         Logger.LogDebug("Building path segment query for {SourceType} -> {RelType} -> {TargetType}",
                     sourceType.Name, relType.Name, targetType.Name);
 
-        var sourceAlias = Scope.GetOrCreateAlias(sourceType, "src", "n");
+        var sourceAlias = Scope.GetOrCreateAlias(sourceType, "src");
         var relAlias = Scope.GetOrCreateAlias(relType, "r");
-        var targetAlias = Scope.GetOrCreateAlias(targetType, "tgt", "m");
+        var targetAlias = Scope.GetOrCreateAlias(targetType, "tgt");
 
         var sourceLabel = Labels.GetLabelFromType(sourceType);
         var relLabel = Labels.GetLabelFromType(relType);

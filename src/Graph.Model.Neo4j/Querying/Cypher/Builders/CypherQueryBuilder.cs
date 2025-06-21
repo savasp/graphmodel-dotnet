@@ -292,7 +292,7 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
         else
         {
             // Default return - let the complex property handling take care of structured returns
-            query.Append(_mainNodeAlias ?? "n");
+            query.Append(_mainNodeAlias ?? "src");
         }
 
         query.AppendLine();
@@ -345,7 +345,7 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
         AppendWhereClauses(query);
 
         // For EXISTS queries, we return a count > 0
-        query.AppendLine($"RETURN COUNT({_mainNodeAlias ?? "n"}) > 0 AS exists");
+        query.AppendLine($"RETURN COUNT({_mainNodeAlias ?? "src"}) > 0 AS exists");
 
         return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
     }
@@ -360,7 +360,7 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
         AppendWhereClauses(query);
 
         // For NOT EXISTS queries (used by All), return true if no matching nodes exist
-        query.AppendLine($"RETURN COUNT({_mainNodeAlias ?? "n"}) = 0 AS all");
+        query.AppendLine($"RETURN COUNT({_mainNodeAlias ?? "src"}) = 0 AS all");
 
         return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
     }
@@ -411,7 +411,7 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
                     ELSE [i IN range(0, size(rels)-1) | {{
                         ParentNode: 
                             CASE 
-                                WHEN i = 0 THEN n
+                                WHEN i = 0 THEN {_mainNodeAlias}
                                 ELSE nodes(src_path)[i]
                             END,
                         Relationship: rels[i],
@@ -443,7 +443,10 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
                 CASE 
                     WHEN src_path IS NULL THEN []
                     ELSE [i IN range(0, size(rels)-1) | {{
-                        ParentNode: nodes(src_path)[i],
+                        ParentNode: CASE 
+                            WHEN i = 0 THEN src
+                            ELSE nodes(src_path)[i]
+                        END,
                         Relationship: rels[i],
                         Property: nodes(src_path)[i+1]
                     }}]
@@ -460,7 +463,10 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
                 CASE 
                     WHEN tgt_path IS NULL THEN []
                     ELSE [i IN range(0, size(trels)-1) | {{
-                        ParentNode: nodes(tgt_path)[i],
+                        ParentNode: CASE 
+                            WHEN i = 0 THEN tgt
+                            ELSE nodes(tgt_path)[i]
+                        END,
                         Relationship: trels[i],
                         Property: nodes(tgt_path)[i+1]
                     }}]

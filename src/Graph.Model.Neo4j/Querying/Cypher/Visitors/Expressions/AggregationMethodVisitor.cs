@@ -49,7 +49,7 @@ internal class AggregationMethodVisitor(
         if (node.Arguments.Count == 0)
         {
             // Count() on the collection itself
-            var target = node.Object != null ? Visit(node.Object) : Scope.CurrentAlias ?? "n";
+            var target = node.Object != null ? Visit(node.Object) : Scope.CurrentAlias ?? "src";
             return $"count({target})";
         }
 
@@ -61,7 +61,7 @@ internal class AggregationMethodVisitor(
     {
         var target = node.Arguments.Count > 0
             ? Visit(node.Arguments[0])
-            : Scope.CurrentAlias ?? "n";
+            : Scope.CurrentAlias ?? "src";
 
         return $"{cypherFunction}({target})";
     }

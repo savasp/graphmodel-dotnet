@@ -26,7 +26,7 @@ internal sealed class DistinctVisitor(CypherQueryContext context) : ClauseVisito
         // If we don't have a RETURN clause yet, add one
         if (!Builder.HasReturnClause)
         {
-            var alias = Scope.CurrentAlias ?? "n";
+            var alias = Scope.CurrentAlias ?? "src";
             Builder.AddReturn($"DISTINCT {alias}");
         }
     }

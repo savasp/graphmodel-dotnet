@@ -44,7 +44,7 @@ internal class IncludeVisitor(CypherQueryContext context) : CypherVisitorBase<In
         while (pathSegments.TryPop(out var segment))
         {
             var relationshipAlias = $"r{_includeCounter}";
-            var targetAlias = $"n{++_includeCounter}";
+            var targetAlias = $"src{++_includeCounter}";
 
             // Check if this is a collection or single relationship
             var memberType = GetMemberType(node.Type, segment);

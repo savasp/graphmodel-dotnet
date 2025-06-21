@@ -16,19 +16,10 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
 internal sealed class CypherQueryScope(Type rootType)
 {
-    private readonly Dictionary<Type, (string? Prefix, string Alias)> _typeAliases = [];
+    private readonly Dictionary<Type, string> _typeAliases = [];
     private readonly Dictionary<string, Type> _aliasTypes = [];
     private readonly Stack<string> _aliasStack = new();
     private int _aliasCounter = 0;
-
-    internal enum MatchAliases
-    {
-        StartNode,
-        EndNode,
-        Relationship,
-        PathSegment,
-        Anonymous
-    };
 
     /// <summary>
     /// Gets the root type of the query context.
@@ -116,31 +107,28 @@ internal sealed class CypherQueryScope(Type rootType)
         }
     }
 
-    public string GetOrCreateAlias(Type type, string? preferredAlias = null, string? preferredPrefix = null)
+    public string GetOrCreateAlias(Type type, string? preferredAlias = null)
     {
-        if (_typeAliases.TryGetValue(type, out var pair))
+        if (_typeAliases.TryGetValue(type, out var alias))
         {
-            if (pair.Prefix == preferredPrefix && pair.Alias == preferredAlias)
+            if (alias == preferredAlias)
             {
-                return string.Concat(pair.Prefix, "_", pair.Alias);
+                return string.Concat(alias);
             }
         }
 
-        var alias = preferredAlias ?? GenerateAlias(type);
-        var prefix = preferredPrefix;
-
-        var fullAlias = prefix is null ? alias : string.Concat(prefix, "_", alias);
+        alias = preferredAlias ?? GenerateAlias(type);
 
         // Ensure uniqueness
-        while (_aliasTypes.ContainsKey(fullAlias))
+        while (_aliasTypes.ContainsKey(alias))
         {
-            fullAlias = prefix is null ? $"{alias}{++_aliasCounter}" : $"{prefix}_{alias}{++_aliasCounter}";
+            alias = $"{alias}_{++_aliasCounter}";
         }
 
-        _typeAliases[type] = (prefix, alias);
-        _aliasTypes[fullAlias] = type;
+        _typeAliases[type] = alias;
+        _aliasTypes[alias] = type;
 
-        return fullAlias;
+        return alias;
     }
 
     public Type? GetTypeForAlias(string alias)
@@ -150,11 +138,7 @@ internal sealed class CypherQueryScope(Type rootType)
 
     public string? GetAliasForType(Type type)
     {
-        return _typeAliases.GetValueOrDefault(type) switch
-        {
-            (string prefix, string alias) => string.Concat(prefix, alias),
-            _ => null
-        };
+        return _typeAliases.GetValueOrDefault(type);
     }
 
     /// <summary>
@@ -177,20 +161,5 @@ internal sealed class CypherQueryScope(Type rootType)
 
         // Take first letter and make it lowercase
         return char.ToLower(name[0]).ToString();
-    }
-
-    private string GeneratePrefix(Type type)
-    {
-        if (typeof(INode).IsAssignableFrom(type))
-        {
-            return "n"; // Node prefix
-        }
-
-        if (typeof(IRelationship).IsAssignableFrom(type))
-        {
-            return "r"; // Relationship prefix
-        }
-
-        return GenerateAlias(type); // Default prefix based on alias
     }
 }

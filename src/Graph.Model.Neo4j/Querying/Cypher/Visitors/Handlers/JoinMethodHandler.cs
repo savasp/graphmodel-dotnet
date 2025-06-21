@@ -49,8 +49,8 @@ internal record JoinMethodHandler : MethodHandlerBase
         var innerKey = expressionVisitor.Visit(innerLambda.Body);
 
         // Create aliases for the joined entities
-        var outerAlias = context.Scope.CurrentAlias ?? "n";
-        var innerAlias = context.Scope.GetOrCreateAlias(typeof(object), "m");
+        var outerAlias = context.Scope.CurrentAlias ?? "src";
+        var innerAlias = context.Scope.GetOrCreateAlias(typeof(object), "tgt");
 
         // Add a MATCH clause with the join condition
         context.Builder.AddMatch($"({outerAlias}), ({innerAlias})");

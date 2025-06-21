@@ -49,7 +49,7 @@ internal sealed class SelectManyVisitor(CypherQueryContext context) : CypherVisi
         var relationshipType = genericArgs[0];
         var targetType = genericArgs[1];
 
-        var sourceAlias = Scope.CurrentAlias ?? "n";
+        var sourceAlias = Scope.CurrentAlias ?? "src";
         var relAlias = Scope.GetOrCreateAlias(relationshipType, "r");
         var targetAlias = Scope.GetOrCreateAlias(targetType, "t");
 
@@ -81,7 +81,7 @@ internal sealed class SelectManyVisitor(CypherQueryContext context) : CypherVisi
             ParameterExpression param => Scope.GetAliasForType(param.Type)
                 ?? param.Name
                 ?? throw new InvalidOperationException($"No alias found for parameter of type {param.Type.Name}"),
-            _ => Scope.CurrentAlias ?? "n"
+            _ => Scope.CurrentAlias ?? "src"
         };
 
         var propertyName = member.Member.Name;
