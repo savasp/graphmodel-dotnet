@@ -655,84 +655,117 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     private void AppendComplexPropertyMatchesForPathSegment(StringBuilder query)
     {
-        _logger.LogDebug("Appending complex property matches for path segment");
+        _logger.LogDebug("Appending complex property matches for path segment with projection: {Projection}", _pathSegmentProjection);
 
         var src = PathSegmentSourceAlias ?? "src";
         var rel = PathSegmentRelationshipAlias ?? "r";
         var tgt = PathSegmentTargetAlias ?? "tgt";
 
-        query.AppendLine($@"
-            // All complex property paths from source node
-            OPTIONAL MATCH src_path = ({src})-[rels*1..]->(prop)
-            WHERE ALL(rel in rels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
-            WITH {src}, {rel}, {tgt}, 
-                CASE 
-                    WHEN src_path IS NULL THEN []
-                    ELSE [i IN range(0, size(rels)-1) | {{
-                        ParentNode: CASE 
-                            WHEN i = 0 THEN {src}
-                            ELSE nodes(src_path)[i]
-                        END,
-                        Relationship: rels[i],
-                        Property: nodes(src_path)[i+1]
-                    }}]
-                END AS src_flat_property
+        // Determine what complex properties we need based on projection
+        var (needsSourceProps, needsTargetProps) = _pathSegmentProjection switch
+        {
+            PathSegmentProjection.StartNode => (true, false),   // Only source
+            PathSegmentProjection.EndNode => (false, true),    // Only target
+            PathSegmentProjection.Relationship => (true, true), // Both for relationship navigation
+            PathSegmentProjection.Full => (true, true),        // Both for full path
+            _ => (false, false)
+        };
 
-            WITH {src}, {rel}, {tgt},
-                reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
-            WITH {src}, {rel}, {tgt}, apoc.coll.toSet(src_flat_properties) AS src_flat_properties
+        _logger.LogDebug("Complex property loading - Source: {NeedsSource}, Target: {NeedsTarget}",
+            needsSourceProps, needsTargetProps);
 
-            // All complex property paths from target node
-            OPTIONAL MATCH tgt_path = ({tgt})-[trels*1..]->(tprop)
-            WHERE ALL(rel in trels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
-            WITH {src}, {rel}, {tgt}, src_flat_properties,
-                CASE 
-                    WHEN tgt_path IS NULL THEN []
-                    ELSE [i IN range(0, size(trels)-1) | {{
-                        ParentNode: CASE 
-                            WHEN i = 0 THEN {tgt}
-                            ELSE nodes(tgt_path)[i]
-                        END,
-                        Relationship: trels[i],
-                        Property: nodes(tgt_path)[i+1]
-                    }}]
-                END AS tgt_flat_property
+        // Build the WITH clause components we'll need
+        var baseWith = $"{src}, {rel}, {tgt}";
+        var currentWith = baseWith;
 
-            WITH {tgt}, {rel}, {src}, src_flat_properties,
-                reduce(flat = [], l IN collect(tgt_flat_property) | flat + l) AS tgt_flat_properties
-            WITH {src}, {rel}, {tgt}, src_flat_properties, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties
-        ");
+        if (needsSourceProps)
+        {
+            query.AppendLine($@"
+        // Complex properties from source node
+        OPTIONAL MATCH src_path = ({src})-[rels*1..]->(prop)
+        WHERE ALL(rel in rels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
+        WITH {currentWith},
+            CASE 
+                WHEN src_path IS NULL THEN []
+                ELSE [i IN range(0, size(rels)-1) | {{
+                    ParentNode: CASE 
+                        WHEN i = 0 THEN {src}
+                        ELSE nodes(src_path)[i]
+                    END,
+                    Relationship: rels[i],
+                    Property: nodes(src_path)[i+1]
+                }}]
+            END AS src_flat_property
+        WITH {currentWith},
+            reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
+        WITH {currentWith}, apoc.coll.toSet(src_flat_properties) AS src_flat_properties");
 
-        // Now return based on the projection
+            currentWith += ", src_flat_properties";
+        }
+
+        if (needsTargetProps)
+        {
+            query.AppendLine($@"
+        // Complex properties from target node
+        OPTIONAL MATCH tgt_path = ({tgt})-[trels*1..]->(tprop)
+        WHERE ALL(rel in trels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
+        WITH {currentWith},
+            CASE 
+                WHEN tgt_path IS NULL THEN []
+                ELSE [i IN range(0, size(trels)-1) | {{
+                    ParentNode: CASE 
+                        WHEN i = 0 THEN {tgt}
+                        ELSE nodes(tgt_path)[i]
+                    END,
+                    Relationship: trels[i],
+                    Property: nodes(tgt_path)[i+1]
+                }}]
+            END AS tgt_flat_property
+        WITH {currentWith},
+            reduce(flat = [], l IN collect(tgt_flat_property) | flat + l) AS tgt_flat_properties
+        WITH {currentWith}, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties");
+        }
+
+        // Build the return clause based on what we loaded
         var returnClause = _pathSegmentProjection switch
         {
             PathSegmentProjection.EndNode => $@"
-            RETURN {{
-                Node: {tgt},
-                ComplexProperties: tgt_flat_properties
-            }} AS Node",
+        RETURN {{
+            Node: {tgt},
+            ComplexProperties: tgt_flat_properties
+        }} AS Node",
 
             PathSegmentProjection.StartNode => $@"
-            RETURN {{
-                Node: {src},
-                ComplexProperties: src_flat_properties
-            }} AS Node",
+        RETURN {{
+            Node: {src},
+            ComplexProperties: src_flat_properties
+        }} AS Node",
 
             PathSegmentProjection.Relationship => $@"
-            RETURN {rel} AS Relationship",
+        RETURN {{
+            Relationship: {rel},
+            SourceNode: {{
+                Node: {src},
+                ComplexProperties: src_flat_properties
+            }},
+            TargetNode: {{
+                Node: {tgt},
+                ComplexProperties: tgt_flat_properties
+            }}
+        }} AS RelationshipWithNodes",
 
             PathSegmentProjection.Full => $@"
-            RETURN {{
-                StartNode: {{
-                    Node: {src},
-                    ComplexProperties: src_flat_properties
-                }},
-                Relationship: {rel},
-                EndNode: {{
-                    Node: {tgt},
-                    ComplexProperties: tgt_flat_properties
-                }}
-            }} AS path_segment",
+        RETURN {{
+            StartNode: {{
+                Node: {src},
+                ComplexProperties: src_flat_properties
+            }},
+            Relationship: {rel},
+            EndNode: {{
+                Node: {tgt},
+                ComplexProperties: tgt_flat_properties
+            }}
+        }} AS path_segment",
 
             _ => throw new ArgumentOutOfRangeException(nameof(_pathSegmentProjection), _pathSegmentProjection, "Unknown path segment projection")
         };
