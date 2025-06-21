@@ -72,9 +72,8 @@ internal sealed class PathSegmentVisitor(CypherQueryContext context) : CypherVis
             return;
         }
 
-        // Clear any existing matches - PathSegments should be completely self-contained
-        Builder.ClearMatches();
-
+        // Don't clear matches or build the pattern immediately
+        // Instead, just store the traversal info and defer pattern building
         var sourceType = Scope.TraversalInfo.SourceNodeType;
         var relType = Scope.TraversalInfo.RelationshipType;
         var targetType = Scope.TraversalInfo.TargetNodeType;
@@ -86,24 +85,10 @@ internal sealed class PathSegmentVisitor(CypherQueryContext context) : CypherVis
         var relAlias = Scope.GetOrCreateAlias(relType, "r");
         var targetAlias = Scope.GetOrCreateAlias(targetType, "tgt");
 
-        var sourceLabel = Labels.GetLabelFromType(sourceType);
-        var relLabel = Labels.GetLabelFromType(relType);
-        var targetLabel = Labels.GetLabelFromType(targetType);
-
-        // Build path segment pattern: (n:Person)-[r:KNOWS]->(m:Person)
-        var pattern = $"({sourceAlias}:{sourceLabel})-[{relAlias}:{relLabel}]->({targetAlias}:{targetLabel})";
-
-        Logger.LogDebug($"Generated path segment pattern: {pattern}");
-
-        Builder.AddMatchPattern(pattern);
-
-        // Mark that we've finalized this pattern
-        Scope.PathSegmentPatternsFinalized = true;
+        // Mark that we need to build the path segment pattern later
+        Builder.SetPendingPathSegmentPattern(sourceType, relType, targetType, sourceAlias, relAlias, targetAlias);
 
         Builder.EnablePathSegmentLoading();
-
-        // Always return all three components so we have context for relationship enhancement
-        Builder.AddReturn($"{sourceAlias}, {relAlias}, {targetAlias}");
         Scope.CurrentAlias = sourceAlias;
     }
 }

@@ -49,7 +49,8 @@ internal record ToListMethodHandler : MethodHandlerBase
         // If no explicit return has been set, add a default return
         if (!context.Builder.HasReturnClause)
         {
-            var alias = context.Scope.CurrentAlias ?? "src";
+            var alias = context.Scope.CurrentAlias
+                ?? throw new InvalidOperationException("No current alias set when building ToList return clause");
             logger?.LogDebug($"ToListMethodHandler: adding default return for alias {alias}");
             context.Builder.AddReturn(alias);
         }
@@ -87,7 +88,7 @@ internal record ToListMethodHandler : MethodHandlerBase
         if (typeof(INode).IsAssignableFrom(rootType))
         {
             // Check if there are user-defined projections (vs infrastructure return clauses)
-            if (!context.Builder.HasUserProjections)
+            if (context.Builder.NeedsComplexProperties(rootType))
             {
                 logger?.LogDebug("Enabling complex property loading for node query");
                 context.Builder.EnableComplexPropertyLoading();

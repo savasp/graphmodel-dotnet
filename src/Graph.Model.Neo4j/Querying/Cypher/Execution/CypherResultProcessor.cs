@@ -67,7 +67,7 @@ internal sealed class CypherResultProcessor
             return Task.FromResult(ProcessNodes(records, targetType));
         }
 
-        // Handle relationships1
+        // Handle relationships
         if (typeof(Model.IRelationship).IsAssignableFrom(targetType))
         {
             return Task.FromResult(ProcessRelationships(records, targetType));

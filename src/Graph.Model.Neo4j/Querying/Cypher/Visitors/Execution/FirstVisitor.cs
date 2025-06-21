@@ -22,10 +22,13 @@ internal sealed class FirstVisitor(CypherQueryContext context) : CypherVisitorBa
 {
     public void VisitFirst(Expression? predicate = null, bool orDefault = false, bool isLast = false)
     {
+        var alias = Scope.CurrentAlias
+            ?? throw new InvalidOperationException("No current alias set when building First/Last clause");
+
         // If there's a predicate, apply it as a WHERE clause
         if (predicate != null)
         {
-            var whereVisitor = new WhereVisitor(Context);
+            var whereVisitor = new WhereVisitor(alias, Context);
             whereVisitor.Visit(predicate);
         }
 
@@ -41,8 +44,6 @@ internal sealed class FirstVisitor(CypherQueryContext context) : CypherVisitorBa
         // If we don't have a RETURN clause yet, add one
         if (!Builder.HasReturnClause)
         {
-            var alias = Scope.CurrentAlias
-                ?? throw new InvalidOperationException("No current alias set when building First/Last clause");
             Builder.AddReturn(alias);
         }
     }

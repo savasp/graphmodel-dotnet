@@ -34,7 +34,8 @@ internal sealed class AggregateVisitor : ExpressionVisitor
     {
         var targetExpression = selector != null
             ? ExpressionToCypher(selector)
-            : _context.Scope.CurrentAlias ?? "src";
+            : _context.Scope.CurrentAlias
+                ?? throw new InvalidOperationException("No current alias set when building aggregate function");
 
         var cypherFunction = aggregateFunction switch
         {
@@ -55,7 +56,8 @@ internal sealed class AggregateVisitor : ExpressionVisitor
     {
         // For All(), we need to check that all elements match the predicate
         // In Cypher, this is: NONE(x IN collection WHERE NOT predicate)
-        var alias = _context.Scope.CurrentAlias ?? "src";
+        var alias = _context.Scope.CurrentAlias
+            ?? throw new InvalidOperationException("No current alias set when building All() aggregate function");
         var predicateString = ExpressionToCypher(predicate);
 
         return $"NONE(x IN COLLECT({alias}) WHERE NOT ({predicateString}))";

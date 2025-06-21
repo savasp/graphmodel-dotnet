@@ -38,7 +38,8 @@ internal sealed class GroupByVisitor(CypherQueryContext context) : ClauseVisitor
         else
         {
             // Default grouping - return key and all matching nodes/relationships
-            var currentAlias = Scope.CurrentAlias ?? "src";
+            var currentAlias = Scope.CurrentAlias
+                ?? throw new InvalidOperationException("No current alias set when building GROUP BY clause");
             Builder.AddReturn($"{cypherKey} AS key, COLLECT({currentAlias}) AS elements");
         }
     }

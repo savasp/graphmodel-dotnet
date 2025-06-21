@@ -33,12 +33,20 @@ internal class ExpressionVisitorChainFactory(CypherQueryContext context)
             .AddBase()             // Base should be last as the fallback
             .Build();
 
-    public ICypherExpressionVisitor CreateWhereClauseChain() =>
-        CreateStandardChain(); // WHERE uses the standard chain
+    public ICypherExpressionVisitor CreateWhereClauseChain(string alias) =>
+            new ExpressionVisitorChainBuilder(context)
+                .AddMemberExpressions(alias)
+                .AddConversions()
+                .AddCollectionMethods()
+                .AddDateTimeMethods()
+                .AddStringMethods()
+                .AddBinary()
+                .AddBase()
+                .Build();
 
-    public ICypherExpressionVisitor CreateSelectClauseChain() =>
+    public ICypherExpressionVisitor CreateSelectClauseChain(string alias) =>
         new ExpressionVisitorChainBuilder(context)
-            .AddMemberExpressions() // Especially important for SELECT to detect complex property access
+            .AddMemberExpressions(alias) // Especially important for SELECT to detect complex property access
             .AddConversions()
             .AddAggregations()      // SELECT might need aggregation support
             .AddCollectionMethods()

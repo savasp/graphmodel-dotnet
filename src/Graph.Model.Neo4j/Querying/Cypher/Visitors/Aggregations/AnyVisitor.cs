@@ -21,17 +21,16 @@ internal sealed class AnyVisitor(CypherQueryContext context) : AggregationBaseVi
 {
     public void VisitAny(Expression? predicate = null)
     {
+        var alias = Scope.CurrentAlias
+            ?? throw new InvalidOperationException("No current alias set when building Any clause");
+
         // If there's a predicate, apply it
         if (predicate != null)
         {
-            var whereVisitor = new WhereVisitor(Context);
+            var whereVisitor = new WhereVisitor(alias, Context);
             whereVisitor.Visit(predicate);
         }
 
-        // For Any(), we just need to know if at least one exists
-        // Use COUNT() > 0 for efficiency
-        var alias = Scope.CurrentAlias
-            ?? throw new InvalidOperationException("No current alias set when building Any clause");
         Builder.AddReturn($"COUNT({alias}) > 0 AS result");
     }
 }

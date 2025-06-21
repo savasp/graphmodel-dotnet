@@ -30,21 +30,24 @@ internal record WhereMethodHandler : MethodHandlerBase
             return false;
         }
 
+        context.Builder.HasAppliedRootWhere = true;
+
+        // Mark that we've applied the root predicate
+        context.Builder.HasAppliedRootWhere = true;
+
         // Get the predicate (lambda expression)
         if (node.Arguments[1] is not UnaryExpression { Operand: LambdaExpression lambda })
         {
             throw new GraphException("Where method requires a lambda expression predicate");
         }
 
-        // Use the factory to create the appropriate visitor chain
-        var factory = new ExpressionVisitorChainFactory(context);
-        var expressionVisitor = factory.CreateWhereClauseChain();
+        // Pass the root alias to the visitor chain
+        var rootAlias = (context.Scope.IsPathSegmentContext
+            ? context.Builder.PathSegmentSourceAlias
+            : context.Builder.RootNodeAlias)
+                ?? throw new GraphException("No root alias set when building Where clause");
 
-        // Process the lambda body to generate the WHERE expression
-        var whereExpression = expressionVisitor.Visit(lambda.Body);
-
-        // Add the WHERE clause to the query builder
-        context.Builder.AddWhere(whereExpression);
+        context.Builder.SetPendingWhere(lambda, rootAlias);
 
         return true;
     }

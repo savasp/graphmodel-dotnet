@@ -21,7 +21,8 @@ internal sealed class AllVisitor(CypherQueryContext context) : AggregationBaseVi
 {
     public void VisitAll(LambdaExpression predicate)
     {
-        var alias = Scope.CurrentAlias ?? "src";
+        var alias = Scope.CurrentAlias
+            ?? throw new InvalidOperationException("No current alias set when building All clause");
 
         // In Cypher, ALL(x IN collection WHERE predicate) checks if all match
         // But since we're working with matched nodes, we need a different approach
@@ -34,7 +35,7 @@ internal sealed class AllVisitor(CypherQueryContext context) : AggregationBaseVi
         Builder.AddWith($"COUNT({alias}) AS {totalCountParam}");
 
         // Then apply the predicate
-        var whereVisitor = new WhereVisitor(Context);
+        var whereVisitor = new WhereVisitor(alias, Context);
         whereVisitor.Visit(predicate.Body);
 
         // Count matching nodes and compare

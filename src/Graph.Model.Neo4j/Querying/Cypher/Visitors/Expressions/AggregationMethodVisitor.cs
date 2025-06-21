@@ -49,7 +49,8 @@ internal class AggregationMethodVisitor(
         if (node.Arguments.Count == 0)
         {
             // Count() on the collection itself
-            var target = node.Object != null ? Visit(node.Object) : Scope.CurrentAlias ?? "src";
+            var target = node.Object != null ? Visit(node.Object) : Scope.CurrentAlias
+                ?? throw new InvalidOperationException("No current alias set when building Count() function");
             return $"count({target})";
         }
 
@@ -61,7 +62,8 @@ internal class AggregationMethodVisitor(
     {
         var target = node.Arguments.Count > 0
             ? Visit(node.Arguments[0])
-            : Scope.CurrentAlias ?? "src";
+            : Scope.CurrentAlias
+              ?? throw new InvalidOperationException($"No current alias set when building {cypherFunction} function");
 
         return $"{cypherFunction}({target})";
     }

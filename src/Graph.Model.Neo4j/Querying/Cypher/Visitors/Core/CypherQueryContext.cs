@@ -25,7 +25,6 @@ internal record CypherQueryContext
 {
     public CypherQueryScope Scope { get; }
     public CypherQueryBuilder Builder { get; }
-    public VisitorFactory VisitorFactory { get; }
     public ILoggerFactory? LoggerFactory { get; }
     public MethodHandlerRegistry MethodHandlers { get; }
 
@@ -33,20 +32,11 @@ internal record CypherQueryContext
     {
         LoggerFactory = loggerFactory;
         Scope = new CypherQueryScope(rootType);
-        Builder = new CypherQueryBuilder(loggerFactory);
+        Builder = new CypherQueryBuilder(this);
 
         // Set these last in case they access the previous properties in their constructors
-        VisitorFactory = new VisitorFactory(this);
         MethodHandlers = MethodHandlerRegistry.Instance;
         MethodHandlers.SetLoggerFactory(loggerFactory);
-    }
-
-    /// <summary>
-    /// Creates a visitor of the specified type.
-    /// </summary>
-    public TVisitor CreateVisitor<TVisitor>() where TVisitor : class
-    {
-        return VisitorFactory.Create<TVisitor>();
     }
 
     /// <summary>

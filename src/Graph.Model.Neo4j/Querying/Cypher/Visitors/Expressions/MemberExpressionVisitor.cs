@@ -21,11 +21,31 @@ using Microsoft.Extensions.Logging;
 /// <summary>
 /// Handles member access expressions and enables complex property loading when needed.
 /// </summary>
-internal class MemberExpressionVisitor(CypherQueryContext context, ICypherExpressionVisitor? nextVisitor = null)
+internal class MemberExpressionVisitor(string? alias, CypherQueryContext context, ICypherExpressionVisitor? nextVisitor = null)
     : CypherExpressionVisitorBase<MemberExpressionVisitor>(context, nextVisitor)
 {
+    private readonly string? _alias = alias;
+
     public override string VisitMember(MemberExpression node)
     {
+        // Check if this is accessing a path segment property
+        if (node.Expression is ParameterExpression param && Context.Scope.IsPathSegmentContext)
+        {
+            Logger.LogDebug("Path segment property access: {MemberName}", node.Member.Name);
+
+            // Map path segment properties to the correct aliases
+            var propertyMapping = node.Member.Name switch
+            {
+                nameof(IGraphPathSegment.StartNode) => Context.Builder.PathSegmentSourceAlias ?? "src",
+                nameof(IGraphPathSegment.EndNode) => Context.Builder.PathSegmentTargetAlias ?? "tgt",
+                nameof(IGraphPathSegment.Relationship) => Context.Builder.PathSegmentRelationshipAlias ?? "r",
+                _ => throw new NotSupportedException($"Path segment property '{node.Member.Name}' is not supported")
+            };
+
+            Logger.LogDebug("Mapped path segment property {Property} to alias {Alias}", node.Member.Name, propertyMapping);
+            return propertyMapping;
+        }
+
         // Check if this is accessing a complex property chain
         if (IsComplexPropertyNavigation(node))
         {
@@ -33,7 +53,15 @@ internal class MemberExpressionVisitor(CypherQueryContext context, ICypherExpres
             return HandleComplexPropertyNavigation(node);
         }
 
-        // Delegate to the next visitor for regular member access
+        // If this is a simple property access on the root parameter, use the alias
+        if (node.Expression is ParameterExpression && !string.IsNullOrEmpty(_alias))
+        {
+            Logger.LogDebug("Simple property access on root parameter: {MemberName}", node.Member.Name);
+            Logger.LogDebug("Using alias: {Alias}", _alias);
+            return $"{_alias}.{node.Member.Name}";
+        }
+
+        // Delegate to the next visitor for other cases
         return NextVisitor?.VisitMember(node) ?? throw new InvalidOperationException("No next visitor available for member expression");
     }
 

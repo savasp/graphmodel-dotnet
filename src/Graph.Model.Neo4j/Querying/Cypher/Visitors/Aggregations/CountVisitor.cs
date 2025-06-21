@@ -21,17 +21,16 @@ internal sealed class CountVisitor(CypherQueryContext context) : AggregationBase
 {
     public void VisitCount(Expression? predicate = null)
     {
+        var alias = Scope.CurrentAlias
+            ?? throw new InvalidOperationException("No current alias set when building Count clause");
+
         // If there's a predicate, apply it
         if (predicate != null)
         {
-            var whereVisitor = new WhereVisitor(Context);
+            var whereVisitor = new WhereVisitor(alias, Context);
             whereVisitor.Visit(predicate);
         }
 
-        // For Count(), we just need to know the total count
-        // Use COUNT() for efficiency
-        var alias = Scope.CurrentAlias
-            ?? throw new InvalidOperationException("No current alias set when building Count clause");
         Builder.AddReturn($"COUNT({alias}) AS result");
     }
 }

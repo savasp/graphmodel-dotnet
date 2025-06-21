@@ -15,14 +15,36 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 
 using System.Linq;
+using System.Linq.Expressions;
+using System.Reflection;
 using System.Text;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
+internal class CypherQueryBuilder(CypherQueryContext context)
 {
-    private readonly ILogger<CypherQueryBuilder> _logger = loggerFactory?.CreateLogger<CypherQueryBuilder>()
+    private readonly ILogger<CypherQueryBuilder> _logger = context.LoggerFactory?.CreateLogger<CypherQueryBuilder>()
         ?? NullLogger<CypherQueryBuilder>.Instance;
+
+    private record PendingPathSegmentPattern(
+        Type SourceType,
+        Type RelType,
+        Type TargetType,
+        string SourceAlias,
+        string RelAlias,
+        string TargetAlias
+    );
+
+    private PendingPathSegmentPattern? _pendingPathSegmentPattern;
+
+    private static readonly Type[] ComplexPropertyInterfaces =
+    [
+        typeof(INode),
+        typeof(IRelationship),
+        typeof(IGraphPathSegment)
+    ];
 
     private readonly List<string> _matchClauses = [];
     private readonly List<string> _whereClauses = [];
@@ -37,6 +59,8 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
     private int? _skip;
     private bool _isDistinct;
     private bool _isRelationshipQuery;
+    private int? _minDepth;
+    private int? _maxDepth;
 
     private string? _aggregation;
     private bool _isExistsQuery;
@@ -46,12 +70,79 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
     private int _parameterCounter;
     private bool _loadPathSegment;
     private bool _hasUserProjections = false;
+    private PathSegmentProjection _pathSegmentProjection = PathSegmentProjection.Full;
+
+    private LambdaExpression? _pendingWhereLambda;
+    private string? _pendingWhereAlias;
+
+    public bool HasAppliedRootWhere { get; set; }
+    public string? RootNodeAlias { get; set; }
+
+    public string? PathSegmentSourceAlias { get; set; }
+    public string? PathSegmentRelationshipAlias { get; set; }
+    public string? PathSegmentTargetAlias { get; set; }
 
     public bool HasUserProjections => _hasUserProjections;
 
     public bool HasExplicitReturn => _returnClauses.Count > 0 || _aggregation != null || _isExistsQuery || _isNotExistsQuery;
 
     public bool IsRelationshipQuery => _isRelationshipQuery;
+
+    public void SetDepth(int maxDepth)
+    {
+        _maxDepth = maxDepth;
+        _minDepth = null; // Clear min depth when only max is set
+    }
+
+    public bool HasDepthConstraints => _minDepth.HasValue || _maxDepth.HasValue;
+
+    public string GetDepthPattern()
+    {
+        return (_minDepth, _maxDepth) switch
+        {
+            (null, int max) => $"1..{max}",     // e.g., *1..2
+            (int min, int max) => $"{min}..{max}", // e.g., *2..3  
+            (int min, null) => $"{min}..",      // e.g., *2.. (unlimited max)
+            _ => "1"                            // Default single hop
+        };
+    }
+
+    public void SetDepth(int minDepth, int maxDepth)
+    {
+        _minDepth = minDepth;
+        _maxDepth = maxDepth;
+    }
+
+    public void SetPendingPathSegmentPattern(
+        Type sourceType,
+        Type relType,
+        Type targetType,
+        string sourceAlias,
+        string relAlias,
+        string targetAlias)
+    {
+        _pendingPathSegmentPattern = new PendingPathSegmentPattern(
+            sourceType, relType, targetType, sourceAlias, relAlias, targetAlias);
+    }
+
+    public enum PathSegmentProjection
+    {
+        Full,        // Return the whole path segment
+        StartNode,   // Return only the start node  
+        EndNode,     // Return only the end node
+        Relationship // Return only the relationship
+    }
+
+    public void SetPathSegmentProjection(PathSegmentProjection projection)
+    {
+        _pathSegmentProjection = projection;
+    }
+
+    public void SetPendingWhere(LambdaExpression lambda, string? alias)
+    {
+        _pendingWhereLambda = lambda;
+        _pendingWhereAlias = alias;
+    }
 
     public void SetExistsQuery()
     {
@@ -65,6 +156,11 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
 
     public void AddMatch(string alias, string? label = null, string? pattern = null)
     {
+        if (RootNodeAlias is null)
+        {
+            RootNodeAlias = alias;
+        }
+
         var match = new StringBuilder($"({alias}");
 
         if (!string.IsNullOrEmpty(label))
@@ -109,6 +205,12 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
     public void ClearMatches()
     {
         _matchClauses.Clear();
+    }
+
+    public void ClearUserProjections()
+    {
+        _hasUserProjections = false;
+        ClearReturn();
     }
 
     public void ClearWhere()
@@ -164,6 +266,9 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
     {
         _logger.LogDebug("Building Cypher query");
 
+        // Build any pending path segment patterns now that we have full context
+        BuildPendingPathSegmentPattern();
+
         // Handle special query types first
         if (_isExistsQuery)
         {
@@ -178,11 +283,19 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
         // Handle complex properties if needed
         if (_includeComplexProperties)
         {
+            FinalizeWhereClause();
+
             return BuildWithComplexProperties();
         }
 
         // Otherwise build a simple query
         return BuildSimpleQuery();
+    }
+
+    public bool NeedsComplexProperties(Type type)
+    {
+        var visited = new HashSet<Type>();
+        return NeedsComplexPropertiesRecursive(type, visited);
     }
 
     public void AddRelationshipMatch(string relationshipType)
@@ -201,6 +314,75 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
 
     public bool HasOrderBy => _orderByClauses.Any();
 
+
+    public void AddOptionalMatch(string pattern)
+    {
+        _logger.LogDebug("AddOptionalMatch called with pattern: '{Pattern}'", pattern);
+        _optionalMatchClauses.Add(pattern);
+    }
+
+    public void AddLimit(int limit)
+    {
+        _logger.LogDebug("AddLimit called with value: {Limit}", limit);
+        _limit = limit;
+    }
+
+    public void AddSkip(int skip)
+    {
+        _logger.LogDebug("AddSkip called with value: {Skip}", skip);
+        _skip = skip;
+    }
+
+    public void AddWith(string expression)
+    {
+        _logger.LogDebug("AddWith called with expression: '{Expression}'", expression);
+        _withClauses.Add(expression);
+    }
+
+    public void AddUnwind(string expression)
+    {
+        _logger.LogDebug("AddUnwind called with expression: '{Expression}'", expression);
+        _unwindClauses.Add(expression);
+    }
+
+    public void AddGroupBy(string expression)
+    {
+        _logger.LogDebug("AddGroupBy called with expression: '{Expression}'", expression);
+        _groupByClauses.Add(expression);
+    }
+
+    public void SetDistinct(bool distinct)
+    {
+        _logger.LogDebug("SetDistinct called with value: {Value}", distinct);
+        _isDistinct = distinct;
+    }
+
+    public bool HasReturnClause => _returnClauses.Any();
+
+    public void AddReturn(string expression, string? alias = null)
+    {
+        if (!string.IsNullOrWhiteSpace(alias))
+        {
+            _returnClauses.Add($"{expression} AS {alias}");
+        }
+        else
+        {
+            _returnClauses.Add(expression);
+        }
+    }
+
+    public void AddUserProjection(string expression, string? alias = null)
+    {
+        _hasUserProjections = true;
+        AddReturn(expression, alias);
+    }
+
+    public void AddInfrastructureReturn(string expression, string? alias = null)
+    {
+        // This is for infrastructure returns like path segments - don't mark as user projection
+        AddReturn(expression, alias);
+    }
+
     public void ReverseOrderBy()
     {
         _logger.LogDebug("Reversing ORDER BY clauses");
@@ -211,6 +393,46 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
             var (expression, isDescending) = _orderByClauses[i];
             _orderByClauses[i] = (expression, !isDescending);
         }
+    }
+
+    private void FinalizeWhereClause()
+    {
+        if (_pendingWhereLambda is not null && !string.IsNullOrEmpty(_pendingWhereAlias))
+        {
+            var factory = new ExpressionVisitorChainFactory(context);
+            var visitor = factory.CreateWhereClauseChain(_pendingWhereAlias);
+            var whereExpression = visitor.Visit(_pendingWhereLambda.Body);
+            AddWhere(whereExpression);
+            _pendingWhereLambda = null;
+            _pendingWhereAlias = null;
+        }
+    }
+
+    private static bool NeedsComplexPropertiesRecursive(Type type, HashSet<Type> visited)
+    {
+        if (type is null || !visited.Add(type))
+            return false;
+
+        // Direct match
+        if (ComplexPropertyInterfaces.Any(i => i.IsAssignableFrom(type)))
+            return true;
+
+        // Handle collections (e.g., IEnumerable<T>)
+        if (type.IsGenericType && typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
+        {
+            var elementType = type.GetGenericArguments().FirstOrDefault();
+            if (elementType is not null && NeedsComplexPropertiesRecursive(elementType, visited))
+                return true;
+        }
+
+        // Check properties recursively
+        foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (NeedsComplexPropertiesRecursive(prop.PropertyType, visited))
+                return true;
+        }
+
+        return false;
     }
 
     private CypherQuery BuildSimpleQuery()
@@ -435,16 +657,20 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
     {
         _logger.LogDebug("Appending complex property matches for path segment");
 
-        query.AppendLine(@$"
+        var src = PathSegmentSourceAlias ?? "src";
+        var rel = PathSegmentRelationshipAlias ?? "r";
+        var tgt = PathSegmentTargetAlias ?? "tgt";
+
+        query.AppendLine($@"
             // All complex property paths from source node
-            OPTIONAL MATCH src_path = (src)-[rels*1..]->(prop)
+            OPTIONAL MATCH src_path = ({src})-[rels*1..]->(prop)
             WHERE ALL(rel in rels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
-            WITH src, r, tgt, 
+            WITH {src}, {rel}, {tgt}, 
                 CASE 
                     WHEN src_path IS NULL THEN []
                     ELSE [i IN range(0, size(rels)-1) | {{
                         ParentNode: CASE 
-                            WHEN i = 0 THEN src
+                            WHEN i = 0 THEN {src}
                             ELSE nodes(src_path)[i]
                         END,
                         Relationship: rels[i],
@@ -452,19 +678,19 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
                     }}]
                 END AS src_flat_property
 
-            WITH src, r, tgt,
+            WITH {src}, {rel}, {tgt},
                 reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
-            WITH src, r, tgt, apoc.coll.toSet(src_flat_properties) AS src_flat_properties
+            WITH {src}, {rel}, {tgt}, apoc.coll.toSet(src_flat_properties) AS src_flat_properties
 
             // All complex property paths from target node
-            OPTIONAL MATCH tgt_path = (tgt)-[trels*1..]->(tprop)
+            OPTIONAL MATCH tgt_path = ({tgt})-[trels*1..]->(tprop)
             WHERE ALL(rel in trels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
-            WITH src, r, tgt, src_flat_properties,
+            WITH {src}, {rel}, {tgt}, src_flat_properties,
                 CASE 
                     WHEN tgt_path IS NULL THEN []
                     ELSE [i IN range(0, size(trels)-1) | {{
                         ParentNode: CASE 
-                            WHEN i = 0 THEN tgt
+                            WHEN i = 0 THEN {tgt}
                             ELSE nodes(tgt_path)[i]
                         END,
                         Relationship: trels[i],
@@ -472,90 +698,67 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
                     }}]
                 END AS tgt_flat_property
 
-            WITH tgt, r, src, src_flat_properties,
+            WITH {tgt}, {rel}, {src}, src_flat_properties,
                 reduce(flat = [], l IN collect(tgt_flat_property) | flat + l) AS tgt_flat_properties
-            WITH src, r, tgt, src_flat_properties, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties
+            WITH {src}, {rel}, {tgt}, src_flat_properties, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties
+        ");
 
+        // Now return based on the projection
+        var returnClause = _pathSegmentProjection switch
+        {
+            PathSegmentProjection.EndNode => $@"
+            RETURN {{
+                Node: {tgt},
+                ComplexProperties: tgt_flat_properties
+            }} AS Node",
+
+            PathSegmentProjection.StartNode => $@"
+            RETURN {{
+                Node: {src},
+                ComplexProperties: src_flat_properties
+            }} AS Node",
+
+            PathSegmentProjection.Relationship => $@"
+            RETURN {rel} AS Relationship",
+
+            PathSegmentProjection.Full => $@"
             RETURN {{
                 StartNode: {{
-                    Node: src,
+                    Node: {src},
                     ComplexProperties: src_flat_properties
                 }},
-                Relationship: r,
+                Relationship: {rel},
                 EndNode: {{
-                    Node: tgt,
+                    Node: {tgt},
                     ComplexProperties: tgt_flat_properties
                 }}
-            }} AS path_segment
-        ");
+            }} AS path_segment",
+
+            _ => throw new ArgumentOutOfRangeException(nameof(_pathSegmentProjection), _pathSegmentProjection, "Unknown path segment projection")
+        };
+
+        query.AppendLine(returnClause);
     }
 
-    public void AddOptionalMatch(string pattern)
+    private void BuildPendingPathSegmentPattern()
     {
-        _logger.LogDebug("AddOptionalMatch called with pattern: '{Pattern}'", pattern);
-        _optionalMatchClauses.Add(pattern);
+        if (_pendingPathSegmentPattern is null) return;
+
+        var p = _pendingPathSegmentPattern;
+        var sourceLabel = Labels.GetLabelFromType(p.SourceType);
+        var relLabel = Labels.GetLabelFromType(p.RelType);
+        var targetLabel = Labels.GetLabelFromType(p.TargetType);
+
+        // Now we build the pattern with current depth constraints
+        var pattern = HasDepthConstraints ?
+            $"({p.SourceAlias}:{sourceLabel})-[{p.RelAlias}:{relLabel}*{GetDepthPattern()}]->({p.TargetAlias}:{targetLabel})" :
+            $"({p.SourceAlias}:{sourceLabel})-[{p.RelAlias}:{relLabel}]->({p.TargetAlias}:{targetLabel})";
+
+        _logger.LogDebug($"Building deferred path segment pattern with depth constraints: {pattern}");
+
+        ClearMatches(); // Clear any existing matches
+        AddMatchPattern(pattern);
+
+        _pendingPathSegmentPattern = null; // Clear the pending pattern
     }
-
-    public void AddLimit(int limit)
-    {
-        _logger.LogDebug("AddLimit called with value: {Limit}", limit);
-        _limit = limit;
-    }
-
-    public void AddSkip(int skip)
-    {
-        _logger.LogDebug("AddSkip called with value: {Skip}", skip);
-        _skip = skip;
-    }
-
-    public void AddWith(string expression)
-    {
-        _logger.LogDebug("AddWith called with expression: '{Expression}'", expression);
-        _withClauses.Add(expression);
-    }
-
-    public void AddUnwind(string expression)
-    {
-        _logger.LogDebug("AddUnwind called with expression: '{Expression}'", expression);
-        _unwindClauses.Add(expression);
-    }
-
-    public void AddGroupBy(string expression)
-    {
-        _logger.LogDebug("AddGroupBy called with expression: '{Expression}'", expression);
-        _groupByClauses.Add(expression);
-    }
-
-    public void SetDistinct(bool distinct)
-    {
-        _logger.LogDebug("SetDistinct called with value: {Value}", distinct);
-        _isDistinct = distinct;
-    }
-
-    public bool HasReturnClause => _returnClauses.Any();
-
-    public void AddReturn(string expression, string? alias = null)
-    {
-        if (!string.IsNullOrWhiteSpace(alias))
-        {
-            _returnClauses.Add($"{expression} AS {alias}");
-        }
-        else
-        {
-            _returnClauses.Add(expression);
-        }
-    }
-
-    public void AddUserProjection(string expression, string? alias = null)
-    {
-        _hasUserProjections = true;
-        AddReturn(expression, alias);
-    }
-
-    public void AddInfrastructureReturn(string expression, string? alias = null)
-    {
-        // This is for infrastructure returns like path segments - don't mark as user projection
-        AddReturn(expression, alias);
-    }
-
 }

@@ -20,16 +20,20 @@ internal sealed class RelationshipsVisitor(CypherQueryContext context) : CypherV
 {
     public void VisitRelationships(Type? relationshipType = null, RelationshipDirection direction = RelationshipDirection.Outgoing)
     {
-        var nodeAlias = Scope.CurrentAlias ?? "src";
+        var sourceAlias = Scope.CurrentAlias ?? "src";
         var relAlias = Scope.GetOrCreateAlias(relationshipType ?? typeof(IRelationship), "r");
-        var otherAlias = Scope.GetOrCreateAlias(typeof(INode), "tgt");
+        var targetAlias = Scope.GetOrCreateAlias(typeof(INode), "tgt");
+
+        Builder.PathSegmentSourceAlias = sourceAlias;
+        Builder.PathSegmentRelationshipAlias = relAlias;
+        Builder.PathSegmentTargetAlias = targetAlias;
 
         // Build the pattern based on direction
         var pattern = direction switch
         {
-            RelationshipDirection.Outgoing => $"({nodeAlias})-[{relAlias}]->({otherAlias})",
-            RelationshipDirection.Incoming => $"({nodeAlias})<-[{relAlias}]-({otherAlias})",
-            RelationshipDirection.Bidirectional => $"({nodeAlias})-[{relAlias}]-({otherAlias})",
+            RelationshipDirection.Outgoing => $"({sourceAlias})-[{relAlias}]->({targetAlias})",
+            RelationshipDirection.Incoming => $"({sourceAlias})<-[{relAlias}]-({targetAlias})",
+            RelationshipDirection.Bidirectional => $"({sourceAlias})-[{relAlias}]-({targetAlias})",
             _ => throw new ArgumentException($"Unknown direction: {direction}")
         };
 

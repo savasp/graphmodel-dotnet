@@ -44,7 +44,8 @@ internal record GroupByMethodHandler : MethodHandlerBase
 
         // In Neo4j, grouping is typically done with aggregate functions in RETURN
         // Add the grouping key to WITH clause first, then to RETURN
-        var currentAlias = context.Scope.CurrentAlias ?? "src";
+        var currentAlias = context.Scope.CurrentAlias
+            ?? throw new InvalidOperationException("No current alias set when building GroupBy clause");
 
         // Handle element selector if present (3-argument form)
         if (node.Arguments.Count >= 3 && node.Arguments[2] is UnaryExpression { Operand: LambdaExpression elementSelector })

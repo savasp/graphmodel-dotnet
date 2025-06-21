@@ -19,10 +19,10 @@ using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 using Microsoft.Extensions.Logging;
 
-internal sealed class WhereVisitor(CypherQueryContext context) : ClauseVisitorBase<WhereVisitor>(context)
+internal sealed class WhereVisitor(string alias, CypherQueryContext context) : ClauseVisitorBase<WhereVisitor>(context)
 {
     private readonly ICypherExpressionVisitor _expressionVisitor =
-        new ExpressionVisitorChainFactory(context).CreateWhereClauseChain();
+        new ExpressionVisitorChainFactory(context).CreateWhereClauseChain(alias);
 
     public void ProcessWhereClause(LambdaExpression lambda)
     {

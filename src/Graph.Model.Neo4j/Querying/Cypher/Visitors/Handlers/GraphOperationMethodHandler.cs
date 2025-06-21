@@ -35,6 +35,7 @@ internal record GraphOperationMethodHandler : MethodHandlerBase
         {
             "PathSegments" => HandlePathSegments(context, node),
             "WithTransaction" => HandleWithTransaction(context, node),
+            "WithDepth" => HandleWithDepth(context, node),
             _ => false
         };
     }
@@ -71,5 +72,39 @@ internal record GraphOperationMethodHandler : MethodHandlerBase
         // Transaction handling would be done at a higher level
         // For now, just pass through
         return true;
+    }
+
+    private static bool HandleWithDepth(CypherQueryContext context, MethodCallExpression node)
+    {
+        var logger = context.LoggerFactory?.CreateLogger(nameof(GraphOperationMethodHandler));
+        logger?.LogDebug("HandleWithDepth called");
+
+        // Extract depth parameters from the method call
+        if (node.Arguments.Count == 2) // WithDepth(maxDepth)
+        {
+            var maxDepthArg = node.Arguments[1];
+            if (maxDepthArg is ConstantExpression { Value: int maxDepth })
+            {
+                logger?.LogDebug($"Setting max depth: {maxDepth}");
+                context.Builder.SetDepth(maxDepth);
+                return true;
+            }
+        }
+        else if (node.Arguments.Count == 3) // WithDepth(minDepth, maxDepth)
+        {
+            var minDepthArg = node.Arguments[1];
+            var maxDepthArg = node.Arguments[2];
+
+            if (minDepthArg is ConstantExpression { Value: int minDepth } &&
+                maxDepthArg is ConstantExpression { Value: int maxDepth })
+            {
+                logger?.LogDebug($"Setting depth range: {minDepth}-{maxDepth}");
+                context.Builder.SetDepth(minDepth, maxDepth);
+                return true;
+            }
+        }
+
+        logger?.LogWarning("Could not extract depth parameters from WithDepth method call");
+        return false;
     }
 }

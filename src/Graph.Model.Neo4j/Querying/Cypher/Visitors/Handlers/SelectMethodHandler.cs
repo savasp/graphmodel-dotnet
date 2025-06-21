@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 
 using System.Linq.Expressions;
 using System.Reflection;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 using Microsoft.Extensions.Logging;
@@ -56,7 +57,7 @@ internal record SelectMethodHandler : MethodHandlerBase
         if (IsIdentitySelection(lambda))
         {
             var rootType = context.Scope.RootType;
-            if (ShouldEnableComplexPropertyLoading(rootType))
+            if (context.Builder.NeedsComplexProperties(rootType))
             {
                 logger?.LogDebug("Identity selection detected - enabling complex property loading");
                 context.Builder.EnableComplexPropertyLoading();
@@ -80,16 +81,13 @@ internal record SelectMethodHandler : MethodHandlerBase
         return false;
     }
 
-    private static bool ShouldEnableComplexPropertyLoading(Type type)
-    {
-        return typeof(INode).IsAssignableFrom(type) ||
-               typeof(IGraphPathSegment).IsAssignableFrom(type);
-    }
-
     private static bool HandleProjection(CypherQueryContext context, LambdaExpression lambda, Expression? result)
     {
+        var alias = context.Scope.CurrentAlias
+            ?? throw new InvalidOperationException("No current alias set in the scope for Select method");
+
         var expressionVisitorFactory = new ExpressionVisitorChainFactory(context);
-        var expressionVisitor = expressionVisitorFactory.CreateSelectClauseChain();
+        var expressionVisitor = expressionVisitorFactory.CreateSelectClauseChain(alias);
 
         return lambda.Body switch
         {
@@ -128,6 +126,43 @@ internal record SelectMethodHandler : MethodHandlerBase
         ICypherExpressionVisitor expressionVisitor)
     {
         var projection = expressionVisitor.Visit(projectionExpression);
+
+        // Check if we're projecting from a path segment to a single node
+        if (context.Scope.IsPathSegmentContext &&
+            projectionExpression is MemberExpression member)
+        {
+            var pathSegmentProjection = member.Member.Name switch
+            {
+                nameof(IGraphPathSegment.EndNode) => CypherQueryBuilder.PathSegmentProjection.EndNode,
+                nameof(IGraphPathSegment.StartNode) => CypherQueryBuilder.PathSegmentProjection.StartNode,
+                nameof(IGraphPathSegment.Relationship) => CypherQueryBuilder.PathSegmentProjection.Relationship,
+                _ => CypherQueryBuilder.PathSegmentProjection.Full
+            };
+
+            if (pathSegmentProjection != CypherQueryBuilder.PathSegmentProjection.Full)
+            {
+                // Set the projection type on the builder
+                context.Builder.SetPathSegmentProjection(pathSegmentProjection);
+
+                // Update the scope to reflect what we're now returning
+                var targetType = pathSegmentProjection switch
+                {
+                    CypherQueryBuilder.PathSegmentProjection.EndNode => context.Scope.TraversalInfo?.TargetNodeType,
+                    CypherQueryBuilder.PathSegmentProjection.StartNode => context.Scope.TraversalInfo?.SourceNodeType,
+                    CypherQueryBuilder.PathSegmentProjection.Relationship => context.Scope.TraversalInfo?.RelationshipType,
+                    _ => null
+                };
+
+                if (targetType != null)
+                {
+                    context.Scope.CurrentType = targetType;
+                    context.Scope.IsPathSegmentContext = false;
+                }
+
+                return true;
+            }
+        }
+
         context.Builder.AddUserProjection(projection);
         return true;
     }

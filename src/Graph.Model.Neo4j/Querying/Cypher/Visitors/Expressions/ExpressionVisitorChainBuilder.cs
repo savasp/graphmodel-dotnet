@@ -60,9 +60,9 @@ internal class ExpressionVisitorChainBuilder(CypherQueryContext context)
         return this;
     }
 
-    public ExpressionVisitorChainBuilder AddMemberExpressions()
+    public ExpressionVisitorChainBuilder AddMemberExpressions(string? alias = null)
     {
-        _visitorFactories.Add(next => new MemberExpressionVisitor(_context, next!));
+        _visitorFactories.Add(next => new MemberExpressionVisitor(alias, _context, next!));
         return this;
     }
 
