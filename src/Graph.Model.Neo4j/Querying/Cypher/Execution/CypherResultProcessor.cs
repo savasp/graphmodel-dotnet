@@ -183,110 +183,74 @@ internal sealed class CypherResultProcessor
 
     private EntityInfo ProcessSingleNodeResult(NodeResult nodeResult, Type targetType)
     {
-        // Create the base EntityInfo from the node
-        var entityInfo = CreateEntityInfoFromNode(nodeResult.Node, targetType);
-
-        // Reconstruct complex properties from the flat list
-        if (nodeResult.ComplexProperties.Count > 0)
-        {
-            ReconstructComplexProperties(entityInfo, nodeResult.ComplexProperties, targetType);
-        }
-
-        return entityInfo;
+        // Use the new recursive deserializer for complex properties
+        return DeserializeComplexPropertiesForNode(nodeResult.Node, nodeResult.ComplexProperties, targetType);
     }
 
-    private void ReconstructComplexProperties(
-        EntityInfo entityInfo,
-        List<ComplexProperty> complexProperties,
-        Type targetType)
+    /// <summary>
+    /// Recursively reconstructs the object graph for a node and its complex properties.
+    /// </summary>
+    private EntityInfo DeserializeComplexPropertiesForNode(
+        INode node,
+        List<ComplexProperty> allComplexProperties,
+        Type nodeType)
     {
-        if (!_entityFactory.CanDeserialize(targetType))
-            return;
+        // Create the base entity info for this node
+        var entityInfo = CreateEntityInfoFromNode(node, nodeType);
 
-        var schema = _entityFactory.GetSchema(targetType);
+        // Find all complex properties where this node is the parent
+        var directComplexProps = allComplexProperties
+            .Where(cp => cp.ParentNode.ElementId == node.ElementId)
+            .ToList();
+
+        if (directComplexProps.Count == 0)
+            return entityInfo;
+
+        var schema = _entityFactory.GetSchema(nodeType);
         if (schema?.ComplexProperties == null)
-            return;
-
-        // Group complex properties by relationship type (which maps to property names)
-        var propertiesByRelType = complexProperties
-            .GroupBy(cp => cp.Relationship.Type)
-            .ToLookup(g => g.Key, g => g.AsEnumerable());
+            return entityInfo;
 
         foreach (var (propertyName, propertySchema) in schema.ComplexProperties)
         {
             var expectedRelType = GraphDataModel.PropertyNameToRelationshipTypeName(propertyName);
 
-            if (!propertiesByRelType.Contains(expectedRelType))
+            // Find all complex properties for this property
+            var matchingProps = directComplexProps
+                .Where(cp => cp.Relationship.Type == expectedRelType)
+                .ToList();
+
+            if (matchingProps.Count == 0)
                 continue;
 
-            var relatedProperties = propertiesByRelType[expectedRelType].SelectMany(x => x).ToList();
+            var childType = propertySchema.PropertyInfo.PropertyType.IsGenericType
+                ? propertySchema.PropertyInfo.PropertyType.GetGenericArguments()[0]
+                : propertySchema.PropertyInfo.PropertyType;
 
-            if (relatedProperties.Count == 0)
-                continue;
-
-            var complexProperty = BuildComplexPropertyFromFlatList(
-                relatedProperties, propertySchema, propertyName);
-
-            if (complexProperty != null)
+            if (propertySchema.PropertyType == PropertyType.ComplexCollection)
             {
-                entityInfo.ComplexProperties[propertyName] = complexProperty;
+                var children = matchingProps
+                    .Select(cp => DeserializeComplexPropertiesForNode(cp.Property, allComplexProperties, childType))
+                    .ToList();
+
+                entityInfo.ComplexProperties[propertyName] = new Property(
+                    propertySchema.PropertyInfo,
+                    propertySchema.Neo4jPropertyName,
+                    propertySchema.IsNullable,
+                    new EntityCollection(propertySchema.ElementType!, children));
+            }
+            else if (propertySchema.PropertyType == PropertyType.Complex)
+            {
+                var child = DeserializeComplexPropertiesForNode(matchingProps[0].Property, allComplexProperties, childType);
+
+                entityInfo.ComplexProperties[propertyName] = new Property(
+                    propertySchema.PropertyInfo,
+                    propertySchema.Neo4jPropertyName,
+                    propertySchema.IsNullable,
+                    child);
             }
         }
-    }
 
-    private Property? BuildComplexPropertyFromFlatList(
-        List<ComplexProperty> relatedProperties,
-        PropertySchema propertySchema,
-        string propertyName)
-    {
-        var childEntityInfos = new List<EntityInfo>();
-        var childType = propertySchema.PropertyInfo.PropertyType.IsGenericType
-            ? propertySchema.PropertyInfo.PropertyType.GetGenericArguments()[0]
-            : propertySchema.PropertyInfo.PropertyType;
-
-        // Group by the actual property node's ElementId to avoid duplicates
-        var propertiesByElementId = relatedProperties
-            .GroupBy(cp => cp.Property.ElementId)
-            .ToList();
-
-        foreach (var propertyGroup in propertiesByElementId)
-        {
-            // Take the first one (they should all be the same node)
-            var complexProperty = propertyGroup.First();
-            var childEntityInfo = CreateEntityInfoFromNode(complexProperty.Property, childType);
-
-            // If this child also has complex properties, we'd need to recurse here
-            // For now, we'll assume the flat list contains all levels
-
-            childEntityInfos.Add(childEntityInfo);
-        }
-
-        // Return appropriate property type
-        if (propertySchema.PropertyType == PropertyType.ComplexCollection)
-        {
-            if (propertySchema.ElementType == null)
-                throw new InvalidOperationException("Element type must be specified for collections.");
-
-            return new Property(
-                propertySchema.PropertyInfo,
-                propertySchema.Neo4jPropertyName,
-                propertySchema.IsNullable,
-                new EntityCollection(propertySchema.ElementType, childEntityInfos));
-        }
-        else if (propertySchema.PropertyType == PropertyType.Complex)
-        {
-            var firstChild = childEntityInfos.FirstOrDefault()
-                ?? throw new InvalidOperationException($"No related nodes found for complex property '{propertyName}'.");
-
-            return new Property(
-                propertySchema.PropertyInfo,
-                propertySchema.Neo4jPropertyName,
-                propertySchema.IsNullable,
-                firstChild);
-        }
-
-        throw new InvalidOperationException(
-            $"Unsupported property type for complex property '{propertyName}': {propertySchema.PropertyType}");
+        return entityInfo;
     }
 
     private EntityInfo ProcessSingleRelationshipFromPathSegment(
