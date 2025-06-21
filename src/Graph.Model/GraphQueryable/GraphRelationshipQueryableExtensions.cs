@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model;
 
 using System.Linq.Expressions;
+using System.Reflection;
 using static Cvoya.Graph.Model.ExtensionUtils;
 
 /// <summary>
@@ -86,10 +87,24 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.OrderBy).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var orderByMethod = typeof(Queryable)
+            .GetMethods(BindingFlags.Static | BindingFlags.Public)
+            .Where(m =>
+                m.Name == "OrderBy" &&
+                m.IsGenericMethodDefinition &&
+                m.GetParameters().Length == 2)
+            .First(m =>
+            {
+                var parameters = m.GetParameters();
+                return parameters[0].ParameterType.GetGenericTypeDefinition() == typeof(IQueryable<>) &&
+                       parameters[1].ParameterType.GetGenericTypeDefinition() == typeof(Expression<>) &&
+                       parameters[1].ParameterType.GenericTypeArguments[0].GetGenericTypeDefinition() == typeof(Func<,>);
+            })
+            .MakeGenericMethod(typeof(T), typeof(TKey));
+
         var expression = Expression.Call(
             null,
-            methodInfo,
+            orderByMethod,
             source.Expression,
             keySelector);
 
@@ -107,10 +122,24 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.OrderByDescending).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var orderByDescMethod = typeof(Queryable)
+            .GetMethods(BindingFlags.Static | BindingFlags.Public)
+            .Where(m =>
+                m.Name == "OrderByDescending" &&
+                m.IsGenericMethodDefinition &&
+                m.GetParameters().Length == 2)
+            .First(m =>
+            {
+                var parameters = m.GetParameters();
+                return parameters[0].ParameterType.GetGenericTypeDefinition() == typeof(IQueryable<>) &&
+                       parameters[1].ParameterType.GetGenericTypeDefinition() == typeof(Expression<>) &&
+                       parameters[1].ParameterType.GenericTypeArguments[0].GetGenericTypeDefinition() == typeof(Func<,>);
+            })
+            .MakeGenericMethod(typeof(T), typeof(TKey));
+
         var expression = Expression.Call(
             null,
-            methodInfo,
+            orderByDescMethod,
             source.Expression,
             keySelector);
 
@@ -128,10 +157,24 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var methodInfo = new Func<IOrderedQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.ThenBy).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var thenByMethod = typeof(Queryable)
+            .GetMethods(BindingFlags.Static | BindingFlags.Public)
+            .Where(m =>
+                m.Name == "ThenBy" &&
+                m.IsGenericMethodDefinition &&
+                m.GetParameters().Length == 2)
+            .First(m =>
+            {
+                var parameters = m.GetParameters();
+                return parameters[0].ParameterType.GetGenericTypeDefinition() == typeof(IOrderedQueryable<>) &&
+                       parameters[1].ParameterType.GetGenericTypeDefinition() == typeof(Expression<>) &&
+                       parameters[1].ParameterType.GenericTypeArguments[0].GetGenericTypeDefinition() == typeof(Func<,>);
+            })
+            .MakeGenericMethod(typeof(T), typeof(TKey));
+
         var expression = Expression.Call(
             null,
-            methodInfo,
+            thenByMethod,
             source.Expression,
             keySelector);
 
@@ -149,10 +192,24 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var methodInfo = new Func<IOrderedQueryable<T>, Expression<Func<T, TKey>>, IOrderedQueryable<T>>(Queryable.ThenByDescending).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var thenByDescMethod = typeof(Queryable)
+            .GetMethods(BindingFlags.Static | BindingFlags.Public)
+            .Where(m =>
+                m.Name == "ThenByDescending" &&
+                m.IsGenericMethodDefinition &&
+                m.GetParameters().Length == 2)
+            .First(m =>
+            {
+                var parameters = m.GetParameters();
+                return parameters[0].ParameterType.GetGenericTypeDefinition() == typeof(IOrderedQueryable<>) &&
+                       parameters[1].ParameterType.GetGenericTypeDefinition() == typeof(Expression<>) &&
+                       parameters[1].ParameterType.GenericTypeArguments[0].GetGenericTypeDefinition() == typeof(Func<,>);
+            })
+            .MakeGenericMethod(typeof(T), typeof(TKey));
+
         var expression = Expression.Call(
             null,
-            methodInfo,
+            thenByDescMethod,
             source.Expression,
             keySelector);
 
@@ -169,10 +226,23 @@ public static class GraphRelationshipQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var methodInfo = new Func<IQueryable<T>, int, IQueryable<T>>(Queryable.Skip).Method.MakeGenericMethod(typeof(T));
+        var skipMethod = typeof(Queryable)
+            .GetMethods(BindingFlags.Static | BindingFlags.Public)
+            .Where(m =>
+                m.Name == "Skip" &&
+                m.IsGenericMethodDefinition &&
+                m.GetParameters().Length == 2)
+            .First(m =>
+            {
+                var parameters = m.GetParameters();
+                return parameters[0].ParameterType.GetGenericTypeDefinition() == typeof(IQueryable<>) &&
+                       parameters[1].ParameterType == typeof(int);
+            })
+            .MakeGenericMethod(typeof(T));
+
         var expression = Expression.Call(
             null,
-            methodInfo,
+            skipMethod,
             source.Expression,
             Expression.Constant(count));
 
@@ -189,10 +259,23 @@ public static class GraphRelationshipQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var methodInfo = new Func<IQueryable<T>, int, IQueryable<T>>(Queryable.Take).Method.MakeGenericMethod(typeof(T));
+        var takeMethod = typeof(Queryable)
+            .GetMethods(BindingFlags.Static | BindingFlags.Public)
+            .Where(m =>
+                m.Name == "Take" &&
+                m.IsGenericMethodDefinition &&
+                m.GetParameters().Length == 2)
+            .First(m =>
+            {
+                var parameters = m.GetParameters();
+                return parameters[0].ParameterType.GetGenericTypeDefinition() == typeof(IQueryable<>) &&
+                       parameters[1].ParameterType == typeof(int);
+            })
+            .MakeGenericMethod(typeof(T));
+
         var expression = Expression.Call(
             null,
-            methodInfo,
+            takeMethod,
             source.Expression,
             Expression.Constant(count));
 
@@ -208,7 +291,7 @@ public static class GraphRelationshipQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var methodInfo = new Func<IQueryable<T>, IQueryable<T>>(Queryable.Distinct).Method.MakeGenericMethod(typeof(T));
+        var methodInfo = new Func<IQueryable<T>, IQueryable<T>>(Queryable.Distinct).Method.GetGenericMethodDefinition().MakeGenericMethod(typeof(T));
         var expression = Expression.Call(
             null,
             methodInfo,
@@ -228,7 +311,7 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, TKey>>, IQueryable<IGrouping<TKey, T>>>(Queryable.GroupBy).Method.MakeGenericMethod(typeof(T), typeof(TKey));
+        var methodInfo = new Func<IQueryable<T>, Expression<Func<T, TKey>>, IQueryable<IGrouping<TKey, T>>>(Queryable.GroupBy).Method.GetGenericMethodDefinition().MakeGenericMethod(typeof(T), typeof(TKey));
         var expression = Expression.Call(
             null,
             methodInfo,
@@ -247,7 +330,7 @@ public static class GraphRelationshipQueryableExtensions
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var methodInfo = new Func<IQueryable<T>, IQueryable<T>>(Queryable.Reverse).Method.MakeGenericMethod(typeof(T));
+        var methodInfo = new Func<IQueryable<T>, IQueryable<T>>(Queryable.Reverse).Method.GetGenericMethodDefinition().MakeGenericMethod(typeof(T));
         var expression = Expression.Call(
             null,
             methodInfo,
@@ -267,7 +350,7 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Concat).Method.MakeGenericMethod(typeof(T));
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Concat).Method.GetGenericMethodDefinition().MakeGenericMethod(typeof(T));
         var expression = Expression.Call(
             null,
             methodInfo,
@@ -288,7 +371,7 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Union).Method.MakeGenericMethod(typeof(T));
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Union).Method.GetGenericMethodDefinition().MakeGenericMethod(typeof(T));
         var expression = Expression.Call(
             null,
             methodInfo,
@@ -309,7 +392,7 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Intersect).Method.MakeGenericMethod(typeof(T));
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Intersect).Method.GetGenericMethodDefinition().MakeGenericMethod(typeof(T));
         var expression = Expression.Call(
             null,
             methodInfo,
@@ -330,7 +413,7 @@ public static class GraphRelationshipQueryableExtensions
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(second);
 
-        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Except).Method.MakeGenericMethod(typeof(T));
+        var methodInfo = new Func<IQueryable<T>, IEnumerable<T>, IQueryable<T>>(Queryable.Except).Method.GetGenericMethodDefinition().MakeGenericMethod(typeof(T));
         var expression = Expression.Call(
             null,
             methodInfo,
