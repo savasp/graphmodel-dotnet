@@ -409,7 +409,11 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
                 CASE 
                     WHEN src_path IS NULL THEN []
                     ELSE [i IN range(0, size(rels)-1) | {{
-                        ParentNode: nodes(src_path)[i],
+                        ParentNode: 
+                            CASE 
+                                WHEN i = 0 THEN n
+                                ELSE nodes(src_path)[i]
+                            END,
                         Relationship: rels[i],
                         Property: nodes(src_path)[i+1]
                     }}]
@@ -417,6 +421,8 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
 
             WITH {_mainNodeAlias},
                 reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
+            WITH {_mainNodeAlias}, apoc.coll.toSet(src_flat_properties) AS src_flat_properties
+
 
             RETURN {{
                 Node: {_mainNodeAlias},
@@ -445,6 +451,7 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
 
             WITH src, r, tgt,
                 reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
+            WITH src, r, tgt, apoc.coll.toSet(src_flat_properties) AS src_flat_properties
 
             // All complex property paths from target node
             OPTIONAL MATCH tgt_path = (tgt)-[trels*1..]->(tprop)
@@ -461,6 +468,7 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
 
             WITH tgt, r, src, src_flat_properties,
                 reduce(flat = [], l IN collect(tgt_flat_property) | flat + l) AS tgt_flat_properties
+            WITH src, r, tgt, src_flat_properties, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties
 
             RETURN {{
                 StartNode: {{
