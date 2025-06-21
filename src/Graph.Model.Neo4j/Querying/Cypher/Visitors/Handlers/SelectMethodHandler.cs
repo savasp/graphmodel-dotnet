@@ -20,6 +20,7 @@ using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 /// <summary>
 /// Handles the Select LINQ method by generating appropriate RETURN clauses.
@@ -28,12 +29,14 @@ internal record SelectMethodHandler : MethodHandlerBase
 {
     public override bool Handle(CypherQueryContext context, MethodCallExpression node, Expression result)
     {
-        var logger = context.LoggerFactory?.CreateLogger(nameof(SelectMethodHandler));
-        logger?.LogDebug("SelectMethodHandler called");
+        var logger = context.LoggerFactory?.CreateLogger<SelectMethodHandler>()
+            ?? NullLogger<SelectMethodHandler>.Instance;
+
+        logger.LogDebug("SelectMethodHandler called");
 
         if (node.Method.Name != "Select" || node.Arguments.Count != 2)
         {
-            logger?.LogDebug("SelectMethodHandler: not a Select method or wrong arguments");
+            logger.LogDebug("SelectMethodHandler: not a Select method or wrong arguments");
             return false;
         }
 
@@ -144,6 +147,8 @@ internal record SelectMethodHandler : MethodHandlerBase
                 // Set the projection type on the builder
                 context.Builder.SetPathSegmentProjection(pathSegmentProjection);
 
+                context.Builder.HasUserProjections = true;
+
                 // Update the scope to reflect what we're now returning
                 var targetType = pathSegmentProjection switch
                 {
@@ -156,7 +161,6 @@ internal record SelectMethodHandler : MethodHandlerBase
                 if (targetType != null)
                 {
                     context.Scope.CurrentType = targetType;
-                    context.Scope.IsPathSegmentContext = false;
                 }
 
                 return true;

@@ -15,8 +15,9 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Handles the Where LINQ method by generating appropriate WHERE clauses.
@@ -41,14 +42,51 @@ internal record WhereMethodHandler : MethodHandlerBase
             throw new GraphException("Where method requires a lambda expression predicate");
         }
 
-        // Pass the root alias to the visitor chain
-        var rootAlias = (context.Scope.IsPathSegmentContext
-            ? context.Builder.PathSegmentSourceAlias
-            : context.Builder.RootNodeAlias)
-                ?? throw new GraphException("No root alias set when building Where clause");
+        // Determine the correct alias based on current context
+        var targetAlias = DetermineWhereAlias(context);
 
-        context.Builder.SetPendingWhere(lambda, rootAlias);
+        context.Builder.SetPendingWhere(lambda, targetAlias);
 
         return true;
+    }
+
+    private static string DetermineWhereAlias(CypherQueryContext context)
+    {
+        var logger = context.LoggerFactory?.CreateLogger<WhereMethodHandler>();
+
+        logger?.LogDebug("DetermineWhereAlias called");
+        logger?.LogDebug("IsPathSegmentContext: {IsPathSegment}", context.Scope.IsPathSegmentContext);
+        logger?.LogDebug("HasUserProjections: {HasProjections}", context.Builder.HasUserProjections);
+
+        // If we're in a path segment context and have user projections,
+        // use the alias based on what we're projecting
+        if (context.Scope.IsPathSegmentContext && context.Builder.HasUserProjections)
+        {
+            var projection = context.Builder.GetPathSegmentProjection();
+            logger?.LogDebug("PathSegmentProjection: {Projection}", projection);
+            var alias = projection switch
+            {
+                CypherQueryBuilder.PathSegmentProjection.EndNode => context.Builder.PathSegmentTargetAlias ?? "tgt",
+                CypherQueryBuilder.PathSegmentProjection.StartNode => context.Builder.PathSegmentSourceAlias ?? "src",
+                CypherQueryBuilder.PathSegmentProjection.Relationship => context.Builder.PathSegmentRelationshipAlias ?? "r",
+                _ => context.Builder.PathSegmentSourceAlias ?? "src"
+            };
+
+            logger?.LogDebug("Selected alias for path segment projection: {Alias}", alias);
+            return alias;
+        }
+
+        // If we're in path segment context but no projections yet, use source
+        if (context.Scope.IsPathSegmentContext)
+        {
+            var alias = context.Builder.PathSegmentSourceAlias ?? "src";
+            logger?.LogDebug("Path segment context, no projections, using source alias: {Alias}", alias);
+            return alias;
+        }
+
+        // Regular node query
+        var regularAlias = context.Builder.RootNodeAlias ?? "src";
+        logger?.LogDebug("Regular node query, using root alias: {Alias}", regularAlias);
+        return regularAlias;
     }
 }

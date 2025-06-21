@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Base class for method handlers.

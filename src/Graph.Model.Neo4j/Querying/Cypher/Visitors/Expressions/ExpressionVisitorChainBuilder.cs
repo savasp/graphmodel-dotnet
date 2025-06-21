@@ -24,9 +24,9 @@ internal class ExpressionVisitorChainBuilder(CypherQueryContext context)
     private CypherQueryContext _context = context;
     private readonly List<Func<ICypherExpressionVisitor?, ICypherExpressionVisitor>> _visitorFactories = [];
 
-    public ExpressionVisitorChainBuilder AddBase()
+    public ExpressionVisitorChainBuilder AddBase(string? alias = null)
     {
-        _visitorFactories.Add(next => new BaseExpressionVisitor(_context, next));
+        _visitorFactories.Add(next => new BaseExpressionVisitor(_context, alias, next));
         return this;
     }
 

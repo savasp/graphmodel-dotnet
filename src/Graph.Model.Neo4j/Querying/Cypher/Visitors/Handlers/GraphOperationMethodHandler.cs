@@ -58,7 +58,8 @@ internal record GraphOperationMethodHandler : MethodHandlerBase
 
         // Store the path segment info in the scope
         context.Scope.SetTraversalInfo(sourceType, relationshipType, targetNodeType);
-        context.Scope.IsPathSegmentContext = true;
+        // DON'T set IsPathSegmentContext here - it will affect the wrong parts of the query!
+        // context.Scope.IsPathSegmentContext = true;
 
         logger?.LogDebug($"Source Type: {sourceType.Name}, Relationship Type: {relationshipType.Name}, Target Node Type: {targetNodeType.Name}");
         var pathSegmentVisitor = new PathSegmentVisitor(context);

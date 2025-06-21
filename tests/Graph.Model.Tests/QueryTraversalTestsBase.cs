@@ -275,7 +275,115 @@ public abstract class QueryTraversalTestsBase : ITestBase
     }
 
     [Fact]
-    public async Task CanFilterTargetNodesByProperty()
+    public async Task CanFilterTargetNodesByPropertyEmpty()
+    {
+        // Setup:
+        // Alice is 25, Bob is 30, Charlie is 40
+        // Alice knows Bob (30) and Elen (45)
+        // Bob knows Charlie (40)
+
+        var alice = new Person { FirstName = "Alice", LastName = "Smith", Age = 25 };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones", Age = 30 };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown", Age = 40 };
+        var elen = new Person { FirstName = "Elen", LastName = "White", Age = 45 };
+
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
+        await Graph.CreateNodeAsync(elen);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = elen.Id, Since = DateTime.UtcNow });
+
+        // Act: Find people Alice knows directly who are over 50
+        var olderFriends = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .Traverse<Person, Knows, Person>()
+            .Where(p => p.Age > 50)
+            .ToListAsync();
+
+        // Assert
+        // We shouldn't find any friends over 50 directly connected to Alice
+        Assert.Empty(olderFriends);
+    }
+
+    [Fact]
+    public async Task CanFilterTargetNodesByPropertyOneHop()
+    {
+        // Setup:
+        // Alice is 25, Bob is 30, Charlie is 40
+        // Alice knows Bob (30) and Elen (45)
+        // Bob knows Charlie (40)
+
+        var alice = new Person { FirstName = "Alice", LastName = "Smith", Age = 25 };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones", Age = 30 };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown", Age = 40 };
+        var elen = new Person { FirstName = "Elen", LastName = "White", Age = 45 };
+
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
+        await Graph.CreateNodeAsync(elen);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = elen.Id, Since = DateTime.UtcNow });
+
+        // Act: Find people Alice knows directly who are over 25
+        // This should return Bob (30) and Elen (45)
+        // Charlie isn't directly connected to Alice, so he won't be included
+        var olderFriends = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .Traverse<Person, Knows, Person>()
+            .Where(p => p.Age > 25)
+            .ToListAsync();
+
+        // Assert
+        Assert.Equal(2, olderFriends.Count);
+        Assert.Equal("Bob", olderFriends[0].FirstName);
+        Assert.Equal("Elen", olderFriends[1].FirstName);
+    }
+
+    [Fact]
+    public async Task CanFilterTargetNodesByPropertyTwoHops()
+    {
+        // Setup:
+        // Alice is 25, Bob is 30, Charlie is 40
+        // Alice knows Bob (30) and Elen (45)
+        // Bob knows Charlie (40)
+
+        var alice = new Person { FirstName = "Alice", LastName = "Smith", Age = 25 };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones", Age = 30 };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown", Age = 40 };
+        var elen = new Person { FirstName = "Elen", LastName = "White", Age = 45 };
+
+        await Graph.CreateNodeAsync(alice);
+        await Graph.CreateNodeAsync(bob);
+        await Graph.CreateNodeAsync(charlie);
+        await Graph.CreateNodeAsync(elen);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow });
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = elen.Id, Since = DateTime.UtcNow });
+
+        // Act: Find people Alice knows with two hops who are over 35
+        // We should get Charlie (40) through Bob, and Elen directly
+
+        var olderFriends = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .Traverse<Person, Knows, Person>()
+            .WithDepth(2)
+            .Where(p => p.Age > 35)
+            .ToListAsync();
+
+        Assert.Equal(2, olderFriends.Count);
+        Assert.Contains(olderFriends, p => p.FirstName == "Charlie");
+        Assert.Contains(olderFriends, p => p.FirstName == "Elen");
+    }
+
+    [Fact]
+    public async Task CanFilterTargetNodesByPropertyWithoutTraverse()
     {
         // Setup: Alice knows Bob (30) and Charlie (40)
         var alice = new Person { FirstName = "Alice", LastName = "Smith", Age = 25 };
@@ -289,16 +397,25 @@ public abstract class QueryTraversalTestsBase : ITestBase
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow });
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow });
 
-        // Act: Find people Alice knows who are over 35
+        // Act: Find people Alice knows who are over 35 with one hop
         var olderFriends = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
-            .Where(p => p.Age > 35)
+            .PathSegments<Person, Knows, Person>()
+            .Where(ps => ps.EndNode.Age > 35)
             .ToListAsync();
 
         // Assert
-        Assert.Single(olderFriends);
-        Assert.Equal("Charlie", olderFriends[0].FirstName);
+        Assert.Empty(olderFriends); // No friends over 35 with one hop
+
+        olderFriends = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .PathSegments<Person, Knows, Person>()
+            .WithDepth(2)
+            .Where(ps => ps.EndNode.Age > 35)
+            .ToListAsync();
+
+        Assert.Empty(olderFriends); // No friends over 35 with two hops
+        Assert.Equal(charlie.FirstName, olderFriends[0].EndNode.FirstName); // Charlie is over 35
     }
 
     #endregion

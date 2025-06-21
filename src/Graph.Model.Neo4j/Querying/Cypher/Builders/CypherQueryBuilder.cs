@@ -28,6 +28,8 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     private readonly ILogger<CypherQueryBuilder> _logger = context.LoggerFactory?.CreateLogger<CypherQueryBuilder>()
         ?? NullLogger<CypherQueryBuilder>.Instance;
 
+    private readonly List<(LambdaExpression Lambda, string Alias)> _pendingWhereClauses = [];
+
     private record PendingPathSegmentPattern(
         Type SourceType,
         Type RelType,
@@ -69,7 +71,6 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     private string? _mainNodeAlias;
     private int _parameterCounter;
     private bool _loadPathSegment;
-    private bool _hasUserProjections = false;
     private PathSegmentProjection _pathSegmentProjection = PathSegmentProjection.Full;
 
     private LambdaExpression? _pendingWhereLambda;
@@ -82,7 +83,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     public string? PathSegmentRelationshipAlias { get; set; }
     public string? PathSegmentTargetAlias { get; set; }
 
-    public bool HasUserProjections => _hasUserProjections;
+    public bool HasUserProjections { get; set; } = false;
 
     public bool HasExplicitReturn => _returnClauses.Count > 0 || _aggregation != null || _isExistsQuery || _isNotExistsQuery;
 
@@ -140,8 +141,10 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     public void SetPendingWhere(LambdaExpression lambda, string? alias)
     {
-        _pendingWhereLambda = lambda;
-        _pendingWhereAlias = alias;
+        if (!string.IsNullOrEmpty(alias))
+        {
+            _pendingWhereClauses.Add((lambda, alias));
+        }
     }
 
     public void SetExistsQuery()
@@ -209,7 +212,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     public void ClearUserProjections()
     {
-        _hasUserProjections = false;
+        HasUserProjections = false;
         ClearReturn();
     }
 
@@ -314,6 +317,10 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     public bool HasOrderBy => _orderByClauses.Any();
 
+    public PathSegmentProjection GetPathSegmentProjection()
+    {
+        return _pathSegmentProjection;
+    }
 
     public void AddOptionalMatch(string pattern)
     {
@@ -373,7 +380,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     public void AddUserProjection(string expression, string? alias = null)
     {
-        _hasUserProjections = true;
+        HasUserProjections = true;
         AddReturn(expression, alias);
     }
 
@@ -397,15 +404,18 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     private void FinalizeWhereClause()
     {
-        if (_pendingWhereLambda is not null && !string.IsNullOrEmpty(_pendingWhereAlias))
+        foreach (var (lambda, alias) in _pendingWhereClauses)
         {
-            var factory = new ExpressionVisitorChainFactory(context);
-            var visitor = factory.CreateWhereClauseChain(_pendingWhereAlias);
-            var whereExpression = visitor.Visit(_pendingWhereLambda.Body);
+            _logger.LogDebug("Processing pending WHERE clause with alias: {Alias}", alias);
+
+            // Use the factory to create the proper visitor chain with the specific alias
+            var expressionVisitor = new ExpressionVisitorChainFactory(context)
+                .CreateWhereClauseChain(alias);
+            var whereExpression = expressionVisitor.Visit(lambda.Body);
             AddWhere(whereExpression);
-            _pendingWhereLambda = null;
-            _pendingWhereAlias = null;
         }
+
+        _pendingWhereClauses.Clear();
     }
 
     private static bool NeedsComplexPropertiesRecursive(Type type, HashSet<Type> visited)

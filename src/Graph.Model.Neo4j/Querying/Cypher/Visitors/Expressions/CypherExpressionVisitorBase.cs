@@ -26,7 +26,7 @@ internal abstract class CypherExpressionVisitorBase<T> : CypherVisitorBase<T>, I
         NextVisitor = nextVisitor;
     }
 
-    protected ICypherExpressionVisitor? NextVisitor { get; }
+    public ICypherExpressionVisitor? NextVisitor { get; }
 
     public new virtual string Visit(Expression node)
     {

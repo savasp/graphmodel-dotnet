@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Factory for creating standardized expression visitor chains
@@ -33,16 +34,23 @@ internal class ExpressionVisitorChainFactory(CypherQueryContext context)
             .AddBase()             // Base should be last as the fallback
             .Build();
 
-    public ICypherExpressionVisitor CreateWhereClauseChain(string alias) =>
-            new ExpressionVisitorChainBuilder(context)
+    public ICypherExpressionVisitor CreateWhereClauseChain(string alias)
+    {
+        context.LoggerFactory?.CreateLogger<ExpressionVisitorChainFactory>()
+            .LogDebug("Creating WHERE clause chain with alias: {Alias}", alias);
+
+        var chain = new ExpressionVisitorChainBuilder(context)
                 .AddMemberExpressions(alias)
                 .AddConversions()
                 .AddCollectionMethods()
                 .AddDateTimeMethods()
                 .AddStringMethods()
                 .AddBinary()
-                .AddBase()
+                .AddBase(alias)
                 .Build();
+
+        return chain;
+    }
 
     public ICypherExpressionVisitor CreateSelectClauseChain(string alias) =>
         new ExpressionVisitorChainBuilder(context)

@@ -15,13 +15,14 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 
 using System.Linq.Expressions;
-using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 
 internal class BaseExpressionVisitor(
-    CypherQueryContext context, ICypherExpressionVisitor? nextVisitor = null)
-    : CypherExpressionVisitorBase<BaseExpressionVisitor>(context, nextVisitor)
+    CypherQueryContext context,
+    string? contextAlias = null,
+    ICypherExpressionVisitor? nextVisitor = null)
+        : CypherExpressionVisitorBase<BaseExpressionVisitor>(context, nextVisitor)
 {
     public override string VisitBinary(BinaryExpression node)
     {
@@ -40,106 +41,55 @@ internal class BaseExpressionVisitor(
     {
         Logger.LogDebug("Visiting member: {Member}", node.Member.Name);
 
-        // Handle nested member access - evaluate the entire chain for closure variables
+        // Handle nested member access
         if (node.Expression is MemberExpression nestedMember)
         {
-            // Check if this is a closure variable chain (e.g., p1.Id)
-            if (IsClosureVariableChain(node))
-            {
-                // Evaluate the entire expression chain and extract the final value
-                var finalValue = EvaluateClosureExpression(node);
-                Logger.LogDebug("Evaluated closure expression chain {Expression}: {Value} (Type: {Type})",
-                    node, finalValue, finalValue?.GetType().FullName ?? "null");
-
-                var paramRef = Builder.AddParameter(finalValue);
-                return paramRef;
-            }
-            else
-            {
-                // Regular nested access (e.g., entity property chaining)
-                var parent = VisitMember(nestedMember);
-                return $"{parent}.{node.Member.Name}";
-            }
+            var parent = VisitMember(nestedMember);
+            return $"{parent}.{node.Member.Name}";
         }
 
-        // Check if this is accessing a closure variable (captured variable)
-        if (node.Expression is ConstantExpression constantExpr)
-        {
-            try
-            {
-                // Get the value from the closure
-                var container = constantExpr.Value;
-                if (container is null)
-                {
-                    throw new GraphException($"Cannot access member '{node.Member.Name}' on null container");
-                }
-
-                var member = node.Member;
-
-                object? value = member switch
-                {
-                    FieldInfo field => field.GetValue(container),
-                    PropertyInfo property => property.GetValue(container),
-                    _ => throw new NotSupportedException($"Member type {member.MemberType} is not supported")
-                };
-
-                Logger.LogDebug("Extracted closure value for {Member}: {Value} (Type: {Type})",
-                    member.Name, value, value?.GetType().FullName ?? "null");
-
-                // Add as parameter and return reference
-                // AddParameter should handle null values appropriately
-                var paramRef = Builder.AddParameter(value);
-                return paramRef;
-            }
-            catch (Exception ex) when (ex is not GraphException)
-            {
-                Logger.LogError(ex, "Failed to extract value from closure for member {Member}", node.Member.Name);
-                throw new GraphException($"Failed to access closure variable '{node.Member.Name}'", ex);
-            }
-        }
-
-        // Check if we're accessing a parameter property
+        // Handle parameter property access
         if (node.Expression is ParameterExpression param)
         {
             Logger.LogDebug("Processing parameter {ParamName} of type {ParamType}, RootType is {RootType}, CurrentAlias is {CurrentAlias}",
                 param.Name, param.Type.Name, Scope.RootType?.Name, Scope.CurrentAlias);
 
-            // If this parameter is a relationship, use "r" as the alias
-            var alias = typeof(Model.IRelationship).IsAssignableFrom(param.Type)
-                ? "r"
-                : (param.Type == Scope.RootType || Scope.CurrentAlias != null)
-                    ? (Scope.CurrentAlias ?? Scope.GetOrCreateAlias(param.Type, "src"))
-                    : Scope.GetOrCreateAlias(param.Type);
+            var alias = contextAlias ?? (param.Type == Scope.RootType || Scope.CurrentAlias != null
+                ? (Scope.CurrentAlias ?? Scope.GetOrCreateAlias(param.Type, "src"))
+                : Scope.GetOrCreateAlias(param.Type));
 
-            // Special handling for relationship properties
-            if (typeof(Model.IRelationship).IsAssignableFrom(param.Type))
+            // Special handling for EndNode in path segment context
+            if (param.Type.Name.Contains("IGraphPathSegment") && node.Member.Name == "EndNode")
             {
-                var propertyMapping = node.Member.Name switch
-                {
-                    nameof(Model.IRelationship.StartNodeId) => "src.Id",
-                    nameof(Model.IRelationship.EndNodeId) => "tgt.Id",
-                    _ => $"{alias}.{node.Member.Name}"
-                };
-                Logger.LogDebug("Mapped relationship property {Property} to {Mapping}", node.Member.Name, propertyMapping);
-                return propertyMapping;
+                alias = "tgt"; // Use the target alias for EndNode
+                Logger.LogDebug("EndNode detected, using alias: {Alias}", alias);
+                return alias; // Stop here, don't append ".EndNode"
             }
 
             Logger.LogDebug("Found parameter member access: {Alias}.{Member}", alias, node.Member.Name);
             return $"{alias}.{node.Member.Name}";
         }
 
-        // Handle nested member access
-        if (node.Expression is MemberExpression nested)
+        // Handle constant expressions (e.g., closure variables)
+        if (node.Expression is ConstantExpression constant)
         {
-            var parent = VisitMember(nested);
-            return $"{parent}.{node.Member.Name}";
+            Logger.LogDebug("Processing constant expression for member: {Member}", node.Member.Name);
+
+            var value = EvaluateClosureExpression(node);
+            if (value == null)
+            {
+                throw new NotSupportedException($"Cannot resolve member {node.Member.Name} on a null constant expression.");
+            }
+
+            var paramRef = Builder.AddParameter(value);
+            Logger.LogDebug("Resolved constant member {Member} to parameter reference: {ParamRef}", node.Member.Name, paramRef);
+            return paramRef;
         }
 
         // Handle convert expressions (Convert(n, IEntity).Id)
         if (node.Expression is UnaryExpression unary && unary.NodeType == ExpressionType.Convert)
         {
             Logger.LogDebug("Processing member access on convert expression: {Expression}.{Member}", unary, node.Member.Name);
-            // For conversions, just visit the operand and ignore the conversion
             var operand = Visit(unary.Operand);
             return $"{operand}.{node.Member.Name}";
         }

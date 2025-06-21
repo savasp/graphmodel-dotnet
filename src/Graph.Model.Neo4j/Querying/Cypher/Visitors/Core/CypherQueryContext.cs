@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 using Microsoft.Extensions.Logging;
 
@@ -27,7 +28,7 @@ internal record CypherQueryContext
     public CypherQueryBuilder Builder { get; }
     public ILoggerFactory? LoggerFactory { get; }
     public MethodHandlerRegistry MethodHandlers { get; }
-
+    public ICypherExpressionVisitor? RootExpressionVisitor { get; set; }
     public CypherQueryContext(Type rootType, ILoggerFactory? loggerFactory = null)
     {
         LoggerFactory = loggerFactory;

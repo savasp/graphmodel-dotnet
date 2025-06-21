@@ -55,20 +55,27 @@ internal sealed class PathSegmentVisitor(CypherQueryContext context) : CypherVis
     {
         Logger.LogDebug("Processing PathSegments method call");
 
+        // Continue visiting the object expression (the queryable) first
+        var result = Visit(methodCall.Object) ?? methodCall;
+
+        // NOW set the path segment context and build the query
+        Scope.IsPathSegmentContext = true;
+
+        // Build the path segment query AFTER setting the context
         if (Scope.TraversalInfo is not null)
         {
             BuildPathSegmentQuery();
         }
 
-        // Continue visiting the object expression (the queryable)
-        return Visit(methodCall.Object) ?? methodCall;
+        return result;
     }
 
     private void BuildPathSegmentQuery()
     {
-        if (!Scope.IsPathSegmentContext || Scope.TraversalInfo is null)
+        // Remove the context check - we already know we're in the right context
+        if (Scope.TraversalInfo is null)
         {
-            Logger.LogDebug("Not in path segment context, skipping");
+            Logger.LogDebug("No traversal info available");
             return;
         }
 

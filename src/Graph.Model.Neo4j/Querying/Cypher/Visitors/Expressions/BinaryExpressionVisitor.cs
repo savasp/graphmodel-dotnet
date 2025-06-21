@@ -28,18 +28,29 @@ internal class BinaryExpressionVisitor(
         Logger.LogDebug("Visiting binary expression: {NodeType}", node.NodeType);
         Logger.LogDebug("Left expression type: {LeftType}, Node: {LeftNode}", node.Left?.GetType().FullName, node.Left);
         Logger.LogDebug("Right expression type: {RightType}, Node: {RightNode}", node.Right?.GetType().FullName, node.Right);
-        // Optionally, try to log the value if it's a ConstantExpression
-        if (node.Right is ConstantExpression constRight)
+
+        // Get the root visitor to ensure we go through the entire chain
+        var rootVisitor = GetRootVisitor();
+
+        // Get the root visitor from context or use ourselves
+        var visitor = Context.RootExpressionVisitor ?? this;
+
+        // Use the root visitor to process sub-expressions
+        string left = "NULL";
+        if (node.Left != null)
         {
-            Logger.LogDebug("Right ConstantExpression value: {Value}", constRight.Value);
-        }
-        if (node.Left is ConstantExpression constLeft)
-        {
-            Logger.LogDebug("Left ConstantExpression value: {Value}", constLeft.Value);
+            Logger.LogDebug("Visiting left expression of type: {Type}", node.Left.GetType().Name);
+            Logger.LogDebug("Expression: {Expression}", node.Left);
+            left = visitor.Visit(node.Left);
         }
 
-        var left = node.Left != null ? Visit(node.Left) : "NULL";
-        var right = node.Right != null ? Visit(node.Right) : "NULL";
+        string right = "NULL";
+        if (node.Right != null)
+        {
+            Logger.LogDebug("Visiting right expression of type: {Type}", node.Right.GetType().Name);
+            Logger.LogDebug("Expression: {Expression}", node.Right);
+            right = visitor.Visit(node.Right);
+        }
 
         Logger.LogDebug("Binary expression left: {Left}, right: {Right}", left, right);
 
@@ -97,4 +108,37 @@ internal class BinaryExpressionVisitor(
     public override string VisitMethodCall(MethodCallExpression node) => NextVisitor!.VisitMethodCall(node);
     public override string VisitConstant(ConstantExpression node) => NextVisitor!.VisitConstant(node);
     public override string VisitParameter(ParameterExpression node) => NextVisitor!.VisitParameter(node);
+
+    private ICypherExpressionVisitor GetRootVisitor()
+    {
+        // Walk back through the chain to find the root visitor
+        var current = this as ICypherExpressionVisitor;
+        var visited = new HashSet<ICypherExpressionVisitor>();
+
+        while (current != null)
+        {
+            if (!visited.Add(current))
+                break; // Prevent infinite loops
+
+            var next = current switch
+            {
+                MemberExpressionVisitor m => m.NextVisitor,
+                BinaryExpressionVisitor b => b.NextVisitor,
+                BaseExpressionVisitor b => null, // Base is the end
+                _ => null
+            };
+
+            if (next == null)
+                break;
+
+            // Check if next is a MemberExpressionVisitor - if so, that's our root
+            if (next is MemberExpressionVisitor)
+                return next;
+
+            current = next;
+        }
+
+        // If we can't find a MemberExpressionVisitor, use ourselves
+        return this;
+    }
 }

@@ -26,8 +26,24 @@ internal class MemberExpressionVisitor(string? alias, CypherQueryContext context
 {
     private readonly string? _alias = alias;
 
+    public override string Visit(Expression expression)
+    {
+        if (expression is null)
+        {
+            throw new ArgumentNullException(nameof(expression), "Expression cannot be null");
+        }
+
+        Logger.LogDebug("MemberExpressionVisitor.Visit called with alias: {Alias}, Expression type: {Type}",
+            _alias, expression.GetType().Name);
+        return base.Visit(expression);
+    }
+
     public override string VisitMember(MemberExpression node)
     {
+        Logger.LogDebug("MemberExpressionVisitor.VisitMember called with alias: {Alias}, Expression: {Expression}", _alias, node);
+        Logger.LogDebug("Node.Expression type: {Type}, IsParameterExpression: {IsParam}", node.Expression?.GetType(), node.Expression is ParameterExpression);
+        Logger.LogDebug("IsPathSegmentContext: {IsPathSegment}", Context.Scope.IsPathSegmentContext);
+
         // Check if this is accessing a path segment property
         if (node.Expression is ParameterExpression param && Context.Scope.IsPathSegmentContext)
         {
@@ -58,10 +74,14 @@ internal class MemberExpressionVisitor(string? alias, CypherQueryContext context
         {
             Logger.LogDebug("Simple property access on root parameter: {MemberName}", node.Member.Name);
             Logger.LogDebug("Using alias: {Alias}", _alias);
+            Logger.LogDebug("Final result: {Result}", $"{_alias}.{node.Member.Name}");
             return $"{_alias}.{node.Member.Name}";
         }
 
         // Delegate to the next visitor for other cases
+        Logger.LogDebug("Delegating to next visitor because no conditions matched");
+        Logger.LogDebug("_alias is: {Alias}", _alias);
+        Logger.LogDebug("node.Expression is ParameterExpression: {IsParam}", node.Expression is ParameterExpression);
         return NextVisitor?.VisitMember(node) ?? throw new InvalidOperationException("No next visitor available for member expression");
     }
 
