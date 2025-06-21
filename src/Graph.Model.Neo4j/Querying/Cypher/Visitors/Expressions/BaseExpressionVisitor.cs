@@ -104,15 +104,15 @@ internal class BaseExpressionVisitor(
             Logger.LogDebug("Processing parameter {ParamName} of type {ParamType}, RootType is {RootType}, CurrentAlias is {CurrentAlias}",
                 param.Name, param.Type.Name, Scope.RootType?.Name, Scope.CurrentAlias);
 
-            // If this parameter is for the root type, use the current alias (set by VisitConstant)
-            // For aggregation queries, the root type might be the return type (e.g., Boolean for Any())
-            // so we also check if there's a current alias set and use it for the main entity being queried
-            var alias = (param.Type == Scope.RootType || Scope.CurrentAlias != null)
-                ? (Scope.CurrentAlias ?? Scope.GetOrCreateAlias(param.Type, "src"))
-                : Scope.GetOrCreateAlias(param.Type);
+            // If this parameter is a relationship, use "r" as the alias
+            var alias = typeof(Model.IRelationship).IsAssignableFrom(param.Type)
+                ? "r"
+                : (param.Type == Scope.RootType || Scope.CurrentAlias != null)
+                    ? (Scope.CurrentAlias ?? Scope.GetOrCreateAlias(param.Type, "src"))
+                    : Scope.GetOrCreateAlias(param.Type);
 
             // Special handling for relationship properties
-            if (alias == "r" && typeof(Model.IRelationship).IsAssignableFrom(param.Type))
+            if (typeof(Model.IRelationship).IsAssignableFrom(param.Type))
             {
                 var propertyMapping = node.Member.Name switch
                 {
@@ -177,6 +177,13 @@ internal class BaseExpressionVisitor(
 
     public override string VisitParameter(ParameterExpression node)
     {
+        // If this parameter is a relationship, always use "r"
+        if (typeof(Model.IRelationship).IsAssignableFrom(node.Type))
+        {
+            Logger.LogDebug("Parameter expression for relationship: using alias 'r'");
+            return "r";
+        }
+
         var result = Scope.CurrentAlias ?? throw new InvalidOperationException("No current alias set");
         Logger.LogDebug("Parameter expression result: {Result}", result);
         return result;
