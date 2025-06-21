@@ -166,8 +166,8 @@ internal sealed class CypherResultProcessor
                 var relationshipEntityInfo = ProcessSingleRelationshipFromPathSegment(
                     pathSegment.Relationship,
                     targetType,
-                    GetNodeId(pathSegment.StartNode.Node),
-                    GetNodeId(pathSegment.EndNode.Node));
+                    pathSegment.StartNode.Node.Properties[nameof(Model.IEntity.Id)].As<string>(),
+                    pathSegment.EndNode.Node.Properties[nameof(Model.IEntity.Id)].As<string>());
 
                 results.Add(relationshipEntityInfo);
             }
@@ -290,17 +290,6 @@ internal sealed class CypherResultProcessor
     }
 
     private EntityInfo ProcessSingleRelationshipFromPathSegment(
-        IRelationship relationship,
-        Type targetType,
-        string startNodeId,
-        string endNodeId)
-    {
-        var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
-        EnhanceRelationshipEntityInfo(entityInfo, targetType, startNodeId, endNodeId);
-        return entityInfo;
-    }
-
-    private EntityInfo ProcessSingleRelationshipWithIds(
         IRelationship relationship,
         Type targetType,
         string startNodeId,
@@ -513,7 +502,7 @@ internal sealed class CypherResultProcessor
                 PropertyInfo: actualType.GetProperty(nameof(Model.IEntity.Id))!,
                 Label: nameof(Model.IEntity.Id),
                 IsNullable: false,
-                Value: new SimpleValue(relationship.ElementId, typeof(string))
+                Value: new SimpleValue(relationship.Properties[nameof(Model.IEntity.Id)], typeof(string))
             );
         }
 

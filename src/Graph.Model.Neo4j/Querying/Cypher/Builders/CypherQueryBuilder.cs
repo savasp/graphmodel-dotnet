@@ -190,7 +190,7 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
         _logger.LogDebug("AddRelationshipMatch called with type: {Type}", relationshipType);
 
         // Use the same pattern as path segments
-        _matchClauses.Add($"(n_src)-[r:{relationshipType}]->(m_tgt)");
+        _matchClauses.Add($"(src)-[r:{relationshipType}]->(tgt)");
         _mainNodeAlias = "r"; // Set main alias to the relationship
 
         _isRelationshipQuery = true;
@@ -406,17 +406,17 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
             OPTIONAL MATCH src_path = ({_mainNodeAlias})-[rels*1..]->(prop)
             WHERE ALL(rel in rels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
             WITH {_mainNodeAlias},
-            CASE 
-                WHEN src_path IS NULL THEN []
-                ELSE [i IN range(0, size(rels)-1) | {{
-                    ParentNode: nodes(src_path)[i],
-                    Relationship: rels[i],
-                    Property: nodes(src_path)[i+1]
-                }}]
-            END AS src_flat_property
+                CASE 
+                    WHEN src_path IS NULL THEN []
+                    ELSE [i IN range(0, size(rels)-1) | {{
+                        ParentNode: nodes(src_path)[i],
+                        Relationship: rels[i],
+                        Property: nodes(src_path)[i+1]
+                    }}]
+                END AS src_flat_property
 
-            WITH {_mainNodeAlias}, collect(src_flat_property) AS src_flat_properties_nested
-            WITH {_mainNodeAlias}, reduce(flat = [], l IN src_flat_properties_nested | flat + l) AS src_flat_properties
+            WITH {_mainNodeAlias},
+                reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
 
             RETURN {{
                 Node: {_mainNodeAlias},
@@ -431,45 +431,45 @@ internal class CypherQueryBuilder(ILoggerFactory? loggerFactory = null)
 
         query.AppendLine(@$"
             // All complex property paths from source node
-            OPTIONAL MATCH src_path = (n_src)-[rels*1..]->(prop)
+            OPTIONAL MATCH src_path = (src)-[rels*1..]->(prop)
             WHERE ALL(rel in rels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
-            WITH n_src, r, m_tgt, 
-            CASE 
-                WHEN src_path IS NULL THEN []
-                ELSE [i IN range(0, size(rels)-1) | {{
-                    ParentNode: nodes(src_path)[i],
-                    Relationship: rels[i],
-                    Property: nodes(src_path)[i+1]
-                }}]
-            END AS src_flat_property
+            WITH src, r, tgt, 
+                CASE 
+                    WHEN src_path IS NULL THEN []
+                    ELSE [i IN range(0, size(rels)-1) | {{
+                        ParentNode: nodes(src_path)[i],
+                        Relationship: rels[i],
+                        Property: nodes(src_path)[i+1]
+                    }}]
+                END AS src_flat_property
 
-            WITH n_src, collect(src_flat_property) AS src_flat_properties_nested
-            WITH n_src, reduce(flat = [], l IN src_flat_properties_nested | flat + l) AS src_flat_properties
+            WITH src, r, tgt,
+                reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
 
             // All complex property paths from target node
-            OPTIONAL MATCH tgt_path = (m_tgt)-[trels*1..]->(tprop)
+            OPTIONAL MATCH tgt_path = (tgt)-[trels*1..]->(tprop)
             WHERE ALL(rel in trels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
-            WITH n_src, r, m_tgt, src_flat_property,
-            CASE 
-                WHEN tgt_path IS NULL THEN []
-                ELSE [i IN range(0, size(trels)-1) | {{
-                    ParentNode: nodes(tgt_path)[i],
-                    Relationship: trels[i],
-                    Property: nodes(tgt_path)[i+1]
-                }}]
-            END AS tgt_flat_property
+            WITH src, r, tgt, src_flat_properties,
+                CASE 
+                    WHEN tgt_path IS NULL THEN []
+                    ELSE [i IN range(0, size(trels)-1) | {{
+                        ParentNode: nodes(tgt_path)[i],
+                        Relationship: trels[i],
+                        Property: nodes(tgt_path)[i+1]
+                    }}]
+                END AS tgt_flat_property
 
-            WITH n_tgt, collect(tgt_flat_property) AS tgt_flat_properties_nested
-            WITH n_tgt, reduce(flat = [], l IN tgt_flat_properties_nested | flat + l) AS tgt_flat_properties, n_src, r, src_flat_properties
+            WITH tgt, r, src, src_flat_properties,
+                reduce(flat = [], l IN collect(tgt_flat_property) | flat + l) AS tgt_flat_properties
 
             RETURN {{
                 StartNode: {{
-                    Node: n_src,
+                    Node: src,
                     ComplexProperties: src_flat_properties
                 }},
                 Relationship: r,
                 EndNode: {{
-                    Node: m_tgt,
+                    Node: tgt,
                     ComplexProperties: tgt_flat_properties
                 }}
             }} AS path_segment
