@@ -112,9 +112,23 @@ internal record GraphOperationMethodHandler : MethodHandlerBase
 
     private static bool HandleDirection(CypherQueryContext context, MethodCallExpression node)
     {
-        // For now, just mark as handled. You can add logic here later if needed.
         var logger = context.LoggerFactory?.CreateLogger(nameof(GraphOperationMethodHandler));
         logger?.LogDebug("HandleDirection called");
-        return true;
+
+        // Only allow one Direction() in the expression tree
+        if (context.Builder.TraversalDirection is not null)
+        {
+            throw new InvalidOperationException("Only one Direction() call is allowed in a traversal query.");
+        }
+
+        if (node.Arguments.Count == 2 && node.Arguments[1] is ConstantExpression ce && ce.Value is GraphTraversalDirection direction)
+        {
+            context.Builder.SetTraversalDirection(direction);
+            logger?.LogDebug($"Set traversal direction: {direction}");
+            return true;
+        }
+
+        logger?.LogWarning("Could not extract direction from Direction() method call");
+        return false;
     }
 }

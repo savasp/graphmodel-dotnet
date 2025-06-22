@@ -86,6 +86,13 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     public bool IsRelationshipQuery => _isRelationshipQuery;
 
+    public GraphTraversalDirection? TraversalDirection { get; private set; }
+
+    public void SetTraversalDirection(GraphTraversalDirection direction)
+    {
+        TraversalDirection = direction;
+    }
+
     public void SetDepth(int maxDepth)
     {
         _maxDepth = maxDepth;
@@ -822,21 +829,34 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         var relLabel = Labels.GetLabelFromType(p.RelType);
         var targetLabel = Labels.GetLabelFromType(p.TargetType);
 
-        // Now we build the pattern with current depth constraints
-        var pattern = HasDepthConstraints ?
-            $"({p.SourceAlias}:{sourceLabel})-[{p.RelAlias}:{relLabel}*{GetDepthPattern()}]->({p.TargetAlias}:{targetLabel})" :
-            $"({p.SourceAlias}:{sourceLabel})-[{p.RelAlias}:{relLabel}]->({p.TargetAlias}:{targetLabel})";
+        // Determine direction
+        var direction = TraversalDirection ?? GraphTraversalDirection.Outgoing;
+        string pattern = direction switch
+        {
+            GraphTraversalDirection.Outgoing => HasDepthConstraints
+                ? $"({p.SourceAlias}:{sourceLabel})-[{p.RelAlias}:{relLabel}*{GetDepthPattern()}]->({p.TargetAlias}:{targetLabel})"
+                : $"({p.SourceAlias}:{sourceLabel})-[{p.RelAlias}:{relLabel}]->({p.TargetAlias}:{targetLabel})",
 
-        _logger.LogDebug($"Building deferred path segment pattern with depth constraints: {pattern}");
+            GraphTraversalDirection.Incoming => HasDepthConstraints
+                ? $"({p.SourceAlias}:{sourceLabel})<-[{p.RelAlias}:{relLabel}*{GetDepthPattern()}]-({p.TargetAlias}:{targetLabel})"
+                : $"({p.SourceAlias}:{sourceLabel})<-[{p.RelAlias}:{relLabel}]-({p.TargetAlias}:{targetLabel})",
 
-        ClearMatches(); // Clear any existing matches
+            GraphTraversalDirection.Both => HasDepthConstraints
+                ? $"({p.SourceAlias}:{sourceLabel})-[{p.RelAlias}:{relLabel}*{GetDepthPattern()}]-({p.TargetAlias}:{targetLabel})"
+                : $"({p.SourceAlias}:{sourceLabel})-[{p.RelAlias}:{relLabel}]-({p.TargetAlias}:{targetLabel})",
+
+            _ => throw new NotSupportedException($"Unknown traversal direction: {direction}")
+        };
+
+        _logger.LogDebug($"Building deferred path segment pattern with direction {direction}: {pattern}");
+
+        ClearMatches();
         AddMatchPattern(pattern);
 
-        // Update the path segment aliases to match what we actually used in the pattern
         PathSegmentSourceAlias = p.SourceAlias;
         PathSegmentRelationshipAlias = p.RelAlias;
         PathSegmentTargetAlias = p.TargetAlias;
 
-        _pendingPathSegmentPattern = null; // Clear the pending pattern
+        _pendingPathSegmentPattern = null;
     }
 }

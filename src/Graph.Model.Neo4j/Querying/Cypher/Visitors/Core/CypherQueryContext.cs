@@ -29,6 +29,7 @@ internal record CypherQueryContext
     public ILoggerFactory? LoggerFactory { get; }
     public MethodHandlerRegistry MethodHandlers { get; }
     public ICypherExpressionVisitor? RootExpressionVisitor { get; set; }
+
     public CypherQueryContext(Type rootType, ILoggerFactory? loggerFactory = null)
     {
         LoggerFactory = loggerFactory;
