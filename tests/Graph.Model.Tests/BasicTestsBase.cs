@@ -128,7 +128,7 @@ public abstract class BasicTestsBase : ITestBase
         var rels = await this.Graph.Relationships<Knows>()
             .Where(r => r.StartNodeId == p1.Id || r.StartNodeId == p2.Id)
             .ToListAsync();
-        Assert.Equal(2, ((ICollection<Knows>)rels).Count);
+        Assert.Equal(2, rels.Count);
         Assert.Contains(rels, r => r.Id == knows1.Id);
         Assert.Contains(rels, r => r.Id == knows2.Id);
     }

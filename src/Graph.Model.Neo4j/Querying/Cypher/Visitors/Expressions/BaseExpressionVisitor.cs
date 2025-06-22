@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 
 using System.Linq.Expressions;
+using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 
@@ -41,9 +42,22 @@ internal class BaseExpressionVisitor(
     {
         Logger.LogDebug("Visiting member: {Member}", node.Member.Name);
 
-        // Handle nested member access
+        // Handle nested member access - check if this is a closure variable chain
         if (node.Expression is MemberExpression nestedMember)
         {
+            // Check if this is a closure variable chain (value(...).p1.Id)
+            if (IsClosureVariableChain(node))
+            {
+                Logger.LogDebug("Processing closure variable chain for member: {Member}", node.Member.Name);
+
+                // Evaluate the entire expression to get the final value
+                var closureValue = EvaluateClosureExpression(node);
+                var paramRef = Builder.AddParameter(closureValue);
+                Logger.LogDebug("Resolved closure variable chain {Member} to parameter reference: {ParamRef}", node.Member.Name, paramRef);
+                return paramRef;
+            }
+
+            // Regular nested member access
             var parent = VisitMember(nestedMember);
             return $"{parent}.{node.Member.Name}";
         }
@@ -54,35 +68,65 @@ internal class BaseExpressionVisitor(
             Logger.LogDebug("Processing parameter {ParamName} of type {ParamType}, RootType is {RootType}, CurrentAlias is {CurrentAlias}",
                 param.Name, param.Type.Name, Scope.RootType?.Name, Scope.CurrentAlias);
 
-            var alias = contextAlias ?? (param.Type == Scope.RootType || Scope.CurrentAlias != null
-                ? (Scope.CurrentAlias ?? Scope.GetOrCreateAlias(param.Type, "src"))
-                : Scope.GetOrCreateAlias(param.Type));
-
-            // Special handling for EndNode in path segment context
-            if (param.Type.Name.Contains("IGraphPathSegment") && node.Member.Name == "EndNode")
+            // Special handling for relationship StartNodeId and EndNodeId properties
+            if (typeof(Model.IRelationship).IsAssignableFrom(param.Type))
             {
-                alias = "tgt"; // Use the target alias for EndNode
-                Logger.LogDebug("EndNode detected, using alias: {Alias}", alias);
-                return alias; // Stop here, don't append ".EndNode"
+                if (node.Member.Name == nameof(Model.IRelationship.StartNodeId))
+                {
+                    // StartNodeId maps to src.Id (or whatever the Id property is called)
+                    // Since INode inherits from IEntity, we get the Id property from IEntity
+                    var idPropertyInfo = typeof(Model.IEntity).GetProperty(nameof(Model.IEntity.Id), BindingFlags.Public | BindingFlags.Instance);
+                    if (idPropertyInfo == null)
+                    {
+                        throw new InvalidOperationException($"Property '{nameof(Model.IEntity.Id)}' not found on type '{typeof(Model.IEntity)}'.");
+                    }
+
+                    var idLabel = Labels.GetLabelFromProperty(idPropertyInfo);
+                    Logger.LogDebug("Mapping relationship StartNodeId to src.{IdLabel}", idLabel);
+                    return $"src.{idLabel}";
+                }
+
+                if (node.Member.Name == nameof(Model.IRelationship.EndNodeId))
+                {
+                    // EndNodeId maps to tgt.Id (or whatever the Id property is called)
+                    // Since INode inherits from IEntity, we get the Id property from IEntity
+                    var idPropertyInfo = typeof(Model.IEntity).GetProperty(nameof(Model.IEntity.Id), BindingFlags.Public | BindingFlags.Instance);
+                    if (idPropertyInfo == null)
+                    {
+                        throw new InvalidOperationException($"Property '{nameof(Model.IEntity.Id)}' not found on type '{typeof(Model.IEntity)}'.");
+                    }
+
+                    var idLabel = Labels.GetLabelFromProperty(idPropertyInfo);
+                    Logger.LogDebug("Mapping relationship EndNodeId to tgt.{IdLabel}", idLabel);
+                    return $"tgt.{idLabel}";
+                }
             }
+
+            // For all other cases, prefer contextAlias over parameter name
+            // Only use parameter name when there's no contextAlias and it's the root type
+            var alias = contextAlias ??
+                (param.Type == Scope.RootType || Scope.CurrentAlias != null
+                    ? (Scope.CurrentAlias ?? Scope.GetOrCreateAlias(param.Type, "src"))
+                    : Scope.GetOrCreateAlias(param.Type));
 
             Logger.LogDebug("Found parameter member access: {Alias}.{Member}", alias, node.Member.Name);
             return $"{alias}.{node.Member.Name}";
         }
 
-        // Handle constant expressions (e.g., closure variables)
+        // Handle closure variables (e.g., simple cases)
         if (node.Expression is ConstantExpression constant)
         {
-            Logger.LogDebug("Processing constant expression for member: {Member}", node.Member.Name);
+            Logger.LogDebug("Processing closure variable for member: {Member}", node.Member.Name);
 
-            var value = EvaluateClosureExpression(node);
-            if (value == null)
+            // Extract the value of the closure variable
+            var closureValue = EvaluateClosureExpression(node);
+            if (closureValue == null)
             {
-                throw new NotSupportedException($"Cannot resolve member {node.Member.Name} on a null constant expression.");
+                throw new NotSupportedException($"Cannot resolve member {node.Member.Name} on a null closure variable.");
             }
 
-            var paramRef = Builder.AddParameter(value);
-            Logger.LogDebug("Resolved constant member {Member} to parameter reference: {ParamRef}", node.Member.Name, paramRef);
+            var paramRef = Builder.AddParameter(closureValue);
+            Logger.LogDebug("Resolved closure variable member {Member} to parameter reference: {ParamRef}", node.Member.Name, paramRef);
             return paramRef;
         }
 

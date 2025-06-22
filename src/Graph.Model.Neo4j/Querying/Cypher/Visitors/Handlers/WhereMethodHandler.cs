@@ -58,6 +58,13 @@ internal record WhereMethodHandler : MethodHandlerBase
         logger?.LogDebug("IsPathSegmentContext: {IsPathSegment}", context.Scope.IsPathSegmentContext);
         logger?.LogDebug("HasUserProjections: {HasProjections}", context.Builder.HasUserProjections);
 
+        // Check if this is a relationship query
+        if (context.Scope.RootType != null && typeof(Model.IRelationship).IsAssignableFrom(context.Scope.RootType))
+        {
+            logger?.LogDebug("Relationship query detected, using relationship alias: r");
+            return "r";
+        }
+
         // If we're in a path segment context and have user projections,
         // use the alias based on what we're projecting
         if (context.Scope.IsPathSegmentContext && context.Builder.HasUserProjections)
