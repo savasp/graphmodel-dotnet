@@ -25,13 +25,13 @@ public class NodeTraversalTests : Model.Tests.NodeTraversalTestsBase, IAsyncLife
 
     public override IGraph Graph => fixture.TestInfrastructure.GraphStore.Graph;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await fixture.TestInfrastructure.ResetDatabase();
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }

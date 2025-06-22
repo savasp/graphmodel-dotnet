@@ -140,7 +140,7 @@ try
 
     // Find relationships
     var paths = graph.Nodes<Person>()
-        .PathSegments<WorksFor, Company>()
+        .PathSegments<Person, WorksFor, Company>()
         .ToList();
     Console.WriteLine($"\nFound {paths.Count} work relationships:");
     foreach (var path in paths)
@@ -162,7 +162,7 @@ try
 
     // Update Bob's salary
     var bobRelationship = graph.Nodes<Person>()
-        .PathSegments<WorksFor, Company>()
+        .PathSegments<Person, WorksFor, Company>()
         .Where(r => r.StartNode.Name == "Bob Smith")
         .Select(r => r.Relationship)
         .FirstOrDefault();

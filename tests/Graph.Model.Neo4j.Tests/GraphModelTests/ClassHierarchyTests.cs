@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
 public class ClassHierarchyTests : Model.Tests.ClassHierarchyTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
@@ -25,13 +26,13 @@ public class ClassHierarchyTests : Model.Tests.ClassHierarchyTestsBase, IAsyncLi
 
     public override IGraph Graph => fixture.TestInfrastructure.GraphStore.Graph;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await fixture.TestInfrastructure.ResetDatabase();
     }
 
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }

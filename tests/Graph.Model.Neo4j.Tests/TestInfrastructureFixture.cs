@@ -36,12 +36,12 @@ public class TestInfrastructureFixture : IAsyncLifetime
 
     public ITestInfrastructure TestInfrastructure => this.testInfrastructure;
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await testInfrastructure.DisposeAsync();
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await testInfrastructure.Setup();
     }

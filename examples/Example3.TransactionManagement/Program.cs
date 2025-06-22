@@ -210,7 +210,7 @@ try
     Console.WriteLine("\n5. Transaction history...");
 
     var transfers = await graph.Nodes<Account>()
-        .PathSegments<Transfer, Account>()
+        .PathSegments<Account, Transfer, Account>()
         .ToListAsync();
 
     Console.WriteLine($"Total transfers: {transfers.Count}");

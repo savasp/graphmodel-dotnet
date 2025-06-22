@@ -24,13 +24,13 @@ public abstract class QueryTestsBase : ITestBase
         var p1 = new Person { FirstName = "Alice", LastName = "Smith" };
         var p2 = new Person { FirstName = "Bob", LastName = "Smith" };
         var p3 = new Person { FirstName = "Charlie", LastName = "Jones" };
-        await this.Graph.CreateNodeAsync(p1);
-        await this.Graph.CreateNodeAsync(p2);
-        await this.Graph.CreateNodeAsync(p3);
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
         var smiths = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
-            .ToListAsync();
+            .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Contains(smiths, p => p.FirstName == "Alice");
         Assert.Contains(smiths, p => p.FirstName == "Bob");
         Assert.DoesNotContain(smiths, p => p.FirstName == "Charlie");
@@ -41,10 +41,10 @@ public abstract class QueryTestsBase : ITestBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.Graph.CreateNodeAsync(p1);
-        await this.Graph.CreateNodeAsync(p2);
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var all = await this.Graph.Nodes<Person>().ToListAsync();
+        var all = await this.Graph.Nodes<Person>().ToListAsync(TestContext.Current.CancellationToken);
         Assert.True(all.Count >= 2);
         Assert.Contains(all, p => p.FirstName == "A");
         Assert.Contains(all, p => p.FirstName == "B");
@@ -56,14 +56,14 @@ public abstract class QueryTestsBase : ITestBase
         var p1 = new Person { FirstName = "Charlie", LastName = "Smith" };
         var p2 = new Person { FirstName = "Alice", LastName = "Smith" };
         var p3 = new Person { FirstName = "Bob", LastName = "Jones" };
-        await this.Graph.CreateNodeAsync(p1);
-        await this.Graph.CreateNodeAsync(p2);
-        await this.Graph.CreateNodeAsync(p3);
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
         var smithsOrdered = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .OrderBy(p => p.FirstName)
-            .ToListAsync();
+            .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, smithsOrdered.Count);
         Assert.Equal("Alice", smithsOrdered[0].FirstName);
         Assert.Equal("Charlie", smithsOrdered[1].FirstName);
@@ -75,16 +75,16 @@ public abstract class QueryTestsBase : ITestBase
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
         var p3 = new Person { FirstName = "C" };
-        await this.Graph.CreateNodeAsync(p1);
-        await this.Graph.CreateNodeAsync(p2);
-        await this.Graph.CreateNodeAsync(p3);
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var taken = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Take(2).ToListAsync();
+        var taken = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Take(2).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, taken.Count);
         Assert.Equal("A", taken[0].FirstName);
         Assert.Equal("B", taken[1].FirstName);
 
-        var skipped = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Skip(1).ToListAsync();
+        var skipped = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Skip(1).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Contains(skipped, p => p.FirstName == "B");
         Assert.Contains(skipped, p => p.FirstName == "C");
     }
@@ -94,13 +94,13 @@ public abstract class QueryTestsBase : ITestBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.Graph.CreateNodeAsync(p1);
-        await this.Graph.CreateNodeAsync(p2);
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var first = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).FirstAsync();
+        var first = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).FirstAsync(TestContext.Current.CancellationToken);
         Assert.Equal("A", first.FirstName);
 
-        var single = await this.Graph.Nodes<Person>().SingleAsync(p => p.FirstName == "A");
+        var single = await this.Graph.Nodes<Person>().SingleAsync(p => p.FirstName == "A", TestContext.Current.CancellationToken);
         Assert.Equal("A", single.FirstName);
     }
 
@@ -109,13 +109,13 @@ public abstract class QueryTestsBase : ITestBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.Graph.CreateNodeAsync(p1);
-        await this.Graph.CreateNodeAsync(p2);
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var anyA = await this.Graph.Nodes<Person>().AnyAsync(p => p.FirstName == "A");
+        var anyA = await this.Graph.Nodes<Person>().AnyAsync(p => p.FirstName == "A", TestContext.Current.CancellationToken);
         Assert.True(anyA);
 
-        var count = await this.Graph.Nodes<Person>().CountAsync();
+        var count = await this.Graph.Nodes<Person>().CountAsync(TestContext.Current.CancellationToken);
         Assert.True(count >= 2);
     }
 
@@ -123,11 +123,11 @@ public abstract class QueryTestsBase : ITestBase
     public async Task CanQueryWithLocalScopeVariableCapture()
     {
         var p1 = new Person { FirstName = "A" };
-        await this.Graph.CreateNodeAsync(p1);
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
 
         var localName = "A";
 
-        var a = await this.Graph.Nodes<Person>().Where(p => p.FirstName == localName).FirstOrDefaultAsync();
+        var a = await this.Graph.Nodes<Person>().Where(p => p.FirstName == localName).FirstOrDefaultAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(a);
         Assert.Equal(localName, a.FirstName);
     }
@@ -137,10 +137,10 @@ public abstract class QueryTestsBase : ITestBase
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
-        await this.Graph.CreateNodeAsync(p1);
-        await this.Graph.CreateNodeAsync(p2);
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var a = await this.Graph.Nodes<Person>().Where(p => p.FirstName == p1.FirstName).FirstOrDefaultAsync();
+        var a = await this.Graph.Nodes<Person>().Where(p => p.FirstName == p1.FirstName).FirstOrDefaultAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(a);
         Assert.Equal(p1.FirstName, a.FirstName);
     }

@@ -25,12 +25,11 @@ public interface IGraph : IAsyncDisposable
     /// </summary>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
-    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <typeparam name="N">The type of the nodes to query</typeparam>
     /// <returns>A queryable interface to the nodes</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
-    IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+    IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
         where N : INode;
 
     /// <summary>
@@ -38,12 +37,11 @@ public interface IGraph : IAsyncDisposable
     /// </summary>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
-    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <typeparam name="R">The type of the relationships to query</typeparam>
     /// <returns>A queryable interface to the relationships</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
     /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
-    IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+    IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
         where R : IRelationship;
 
     /// <summary>

@@ -23,8 +23,8 @@ public abstract class ComplexObjectGraphSerializationTestsBase : ITestBase
     {
         var n1 = new Class1 { Property1 = "Value A", Property2 = "Value B", A = new ComplexClassA { Property1 = "Nested A", Property2 = "Nested B" } };
 
-        await this.Graph.CreateNodeAsync(n1);
-        var fetched = await this.Graph.GetNodeAsync<Class1>(n1.Id);
+        await this.Graph.CreateNodeAsync(n1, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.GetNodeAsync<Class1>(n1.Id, null, TestContext.Current.CancellationToken);
         Assert.Equal(n1.Property1, fetched.Property1);
         Assert.Equal(n1.Property2, fetched.Property2);
         Assert.Equal(n1.A?.Property1, fetched.A?.Property1);
@@ -38,8 +38,8 @@ public abstract class ComplexObjectGraphSerializationTestsBase : ITestBase
         var n1 = new Class1 { Property1 = "Value A", Property2 = "Value B", A = new ComplexClassA { Property1 = "Nested A", Property2 = "Nested B" } };
         n1.A.B = new ComplexClassB { Property1 = "Nested B1" };
 
-        await this.Graph.CreateNodeAsync(n1);
-        var fetched = await this.Graph.GetNodeAsync<Class1>(n1.Id);
+        await this.Graph.CreateNodeAsync(n1, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.GetNodeAsync<Class1>(n1.Id, null, TestContext.Current.CancellationToken);
         Assert.Equal(n1.Property1, fetched.Property1);
         Assert.Equal(n1.Property2, fetched.Property2);
         Assert.Equal(n1.A?.Property1, fetched.A?.Property1);
@@ -60,8 +60,8 @@ public abstract class ComplexObjectGraphSerializationTestsBase : ITestBase
         // C -> B
         n1.A.C.B = new ComplexClassB();
 
-        await this.Graph.CreateNodeAsync(n1);
-        var fetched = await this.Graph.GetNodeAsync<Class1>(n1.Id);
+        await this.Graph.CreateNodeAsync(n1, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.GetNodeAsync<Class1>(n1.Id, null, TestContext.Current.CancellationToken);
         Assert.Equal(n1.Property1, fetched.Property1);
         Assert.Equal(n1.Property2, fetched.Property2);
         Assert.Equal(n1.A?.Property1, fetched.A?.Property1);
@@ -80,7 +80,7 @@ public abstract class ComplexObjectGraphSerializationTestsBase : ITestBase
         n1.A.B = new ComplexClassB { Property1 = "Nested B1" };
         n1.A.B.A = n1.A; // Cycle
 
-        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNodeAsync(n1));
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNodeAsync(n1, null, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -97,8 +97,8 @@ public abstract class ComplexObjectGraphSerializationTestsBase : ITestBase
         n1.A[1].B = n1.A[0].B; // Share B between A[0] and A[1]
         n1.B[0].A = n1.A[0]; // Share A[0] with B[0]
 
-        await this.Graph.CreateNodeAsync(n1);
-        var fetched = await this.Graph.GetNodeAsync<Class2>(n1.Id);
+        await this.Graph.CreateNodeAsync(n1, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.GetNodeAsync<Class2>(n1.Id, null, TestContext.Current.CancellationToken);
 
         Assert.Equal(n1.Property1, fetched.Property1);
         Assert.Equal(n1.Property2, fetched.Property2);

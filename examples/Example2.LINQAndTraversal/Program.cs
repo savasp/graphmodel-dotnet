@@ -132,7 +132,7 @@ try
 
     // Find people who know someone in San Francisco
     var peopleWhoKnowSomeoneInSF = await graph.Nodes<Person>()
-        .PathSegments<Knows, Person>()
+        .PathSegments<Person, Knows, Person>()
         .Where(p => p.EndNode.City == "San Francisco")
         .Select(p => p.StartNode)
         .Distinct()
@@ -222,7 +222,7 @@ try
 
     // Get all connections as path segments
     var allConnections = await graph.Nodes<Person>()
-        .PathSegments<Knows, Person>()
+        .PathSegments<Person, Knows, Person>()
         .ToListAsync();
 
     // Group by person to get their connections

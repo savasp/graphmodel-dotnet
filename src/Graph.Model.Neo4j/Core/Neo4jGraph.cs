@@ -48,7 +48,7 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+    public IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
         where N : INode
     {
         try
@@ -72,7 +72,7 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+    public IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
         where R : IRelationship
     {
         try
