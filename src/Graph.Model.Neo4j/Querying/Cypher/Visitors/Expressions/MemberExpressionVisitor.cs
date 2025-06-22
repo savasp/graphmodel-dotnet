@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
+using static Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders.CypherQueryBuilder;
 
 /// <summary>
 /// Handles member access expressions and enables complex property loading when needed.
@@ -49,40 +50,55 @@ internal class MemberExpressionVisitor(string? alias, CypherQueryContext context
         {
             Logger.LogDebug("Path segment property access: {MemberName}", node.Member.Name);
 
-            // Map path segment properties to the correct aliases
-            var propertyMapping = node.Member.Name switch
+            // Check if this is actually a path segment property (StartNode, EndNode, Relationship)
+            if (node.Member.Name is nameof(IGraphPathSegment.StartNode) or
+                                    nameof(IGraphPathSegment.EndNode) or
+                                    nameof(IGraphPathSegment.Relationship))
             {
-                nameof(IGraphPathSegment.StartNode) => Context.Builder.PathSegmentSourceAlias ?? "src",
-                nameof(IGraphPathSegment.EndNode) => Context.Builder.PathSegmentTargetAlias ?? "tgt",
-                nameof(IGraphPathSegment.Relationship) => Context.Builder.PathSegmentRelationshipAlias ?? "r",
-                _ => throw new NotSupportedException($"Path segment property '{node.Member.Name}' is not supported")
-            };
+                // Map path segment properties to the correct aliases
+                var propertyMapping = node.Member.Name switch
+                {
+                    nameof(IGraphPathSegment.StartNode) => Context.Builder.PathSegmentSourceAlias ?? "src",
+                    nameof(IGraphPathSegment.EndNode) => Context.Builder.PathSegmentTargetAlias ?? "tgt",
+                    nameof(IGraphPathSegment.Relationship) => Context.Builder.PathSegmentRelationshipAlias ?? "r",
+                    _ => throw new NotSupportedException($"Path segment property '{node.Member.Name}' is not supported")
+                };
 
-            Logger.LogDebug("Mapped path segment property {Property} to alias {Alias}", node.Member.Name, propertyMapping);
-            return propertyMapping;
+                Logger.LogDebug("Mapped path segment property {Property} to alias {Alias}", node.Member.Name, propertyMapping);
+                return propertyMapping;
+            }
+            else
+            {
+                // This is a regular property access on a projected node/relationship
+                // Use the current context alias (which should be set by the projection)
+                var currentAlias = Context.Scope.CurrentAlias;
+                if (string.IsNullOrEmpty(currentAlias))
+                {
+                    Logger.LogWarning("No current alias available for property access: {Property}", node.Member.Name);
+                    // Fall back to determining alias based on projection context
+                    currentAlias = DetermineAliasFromProjectionContext();
+                }
+
+                Logger.LogDebug("Using current alias {Alias} for property {Property}", currentAlias, node.Member.Name);
+                return $"{currentAlias}.{node.Member.Name}";
+            }
         }
 
-        // Check if this is accessing a complex property chain
-        if (IsComplexPropertyNavigation(node))
+        // Handle other member expressions using the next visitor in the chain
+        return NextVisitor?.VisitMember(node) ?? HandleComplexPropertyNavigation(node);
+    }
+
+    private string DetermineAliasFromProjectionContext()
+    {
+        // Check what was projected in the path segment context
+        var projection = Context.Builder.PathSegmentProjection;
+        return projection switch
         {
-            Logger.LogDebug("Complex property navigation detected: {Expression}", node);
-            return HandleComplexPropertyNavigation(node);
-        }
-
-        // If this is a simple property access on the root parameter, use the alias
-        if (node.Expression is ParameterExpression && !string.IsNullOrEmpty(_alias))
-        {
-            Logger.LogDebug("Simple property access on root parameter: {MemberName}", node.Member.Name);
-            Logger.LogDebug("Using alias: {Alias}", _alias);
-            Logger.LogDebug("Final result: {Result}", $"{_alias}.{node.Member.Name}");
-            return $"{_alias}.{node.Member.Name}";
-        }
-
-        // Delegate to the next visitor for other cases
-        Logger.LogDebug("Delegating to next visitor because no conditions matched");
-        Logger.LogDebug("_alias is: {Alias}", _alias);
-        Logger.LogDebug("node.Expression is ParameterExpression: {IsParam}", node.Expression is ParameterExpression);
-        return NextVisitor?.VisitMember(node) ?? throw new InvalidOperationException("No next visitor available for member expression");
+            PathSegmentProjectionEnum.EndNode => Context.Builder.PathSegmentTargetAlias ?? "tgt",
+            PathSegmentProjectionEnum.StartNode => Context.Builder.PathSegmentSourceAlias ?? "src",
+            PathSegmentProjectionEnum.Relationship => Context.Builder.PathSegmentRelationshipAlias ?? "r",
+            _ => "src" // Default fallback
+        };
     }
 
     public override string VisitBinary(BinaryExpression node) =>
