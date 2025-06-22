@@ -76,18 +76,39 @@ internal record ToListMethodHandler : MethodHandlerBase
 
         var rootType = context.Scope.RootType;
 
-        // For path segments, always enable complex property loading regardless of return clauses
+        // If the root type is a scalar/primitive, skip complex property loading entirely
+        if (IsScalarOrPrimitive(rootType))
+        {
+            logger?.LogDebug("Root type is scalar/primitive, skipping complex property loading");
+            var builderType = context.Builder.GetType();
+            builderType.GetField("_includeComplexProperties", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(context.Builder, false);
+            builderType.GetField("_loadPathSegment", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(context.Builder, false);
+            return;
+        }
+
+        // For path segments, only enable complex property loading if the projection is a node, path segment, or relationship
         if (typeof(IGraphPathSegment).IsAssignableFrom(rootType))
         {
-            logger?.LogDebug("Enabling complex property loading for path segment query");
-            context.Builder.EnablePathSegmentLoading();
+            logger?.LogDebug("Root type is IGraphPathSegment, checking for user projections...");
+
+            // Only enable complex property loading if there are no user projections (i.e., returning the full path segment)
+            if (!context.Builder.HasUserProjections)
+            {
+                logger?.LogDebug("Enabling complex property loading for path segment query (no user projections)");
+                context.Builder.EnablePathSegmentLoading();
+            }
+            else
+            {
+                logger?.LogDebug("Skipping complex property loading for path segment query (user projections present)");
+            }
             return;
         }
 
         // For regular node queries, only enable if no explicit user projections
         if (typeof(INode).IsAssignableFrom(rootType))
         {
-            // Check if there are user-defined projections (vs infrastructure return clauses)
             if (context.Builder.NeedsComplexProperties(rootType))
             {
                 logger?.LogDebug("Enabling complex property loading for node query");
@@ -101,5 +122,21 @@ internal record ToListMethodHandler : MethodHandlerBase
         }
 
         logger?.LogDebug("Root type is not a node or path segment, skipping complex property loading");
+    }
+
+    private static bool IsScalarOrPrimitive(Type type)
+    {
+        // Covers primitives, enums, strings, Guids, DateTime, etc.
+        if (type.IsPrimitive || type.IsEnum)
+            return true;
+
+        if (type == typeof(string) || type == typeof(Guid) || type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(decimal))
+            return true;
+
+        // Nullable<T> where T is scalar
+        if (Nullable.GetUnderlyingType(type) is { } underlying)
+            return IsScalarOrPrimitive(underlying);
+
+        return false;
     }
 }

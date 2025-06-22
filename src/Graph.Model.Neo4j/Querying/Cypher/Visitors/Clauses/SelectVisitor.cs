@@ -177,14 +177,27 @@ internal sealed class SelectVisitor(CypherQueryContext context) : ClauseVisitorB
             current = current.Expression as MemberExpression;
         }
 
-        // Check if the root is a parameter expression to add the alias
-        if (node.Expression is ParameterExpression ||
-            (node.Expression is MemberExpression memberExpr && GetRootExpression(memberExpr) is ParameterExpression))
+        // Try to resolve the alias from the parameter or root expression
+        string? alias = null;
+
+        // Always resolve the alias for the parameter's type using the scope
+        if (node.Expression is ParameterExpression param)
         {
-            return $"{Scope.CurrentAlias}.{string.Join(".", parts)}";
+            alias = Scope.GetAliasForType(param.Type) ?? Scope.CurrentAlias;
+        }
+        else if (node.Expression is MemberExpression memberExpr && GetRootExpression(memberExpr) is ParameterExpression param2)
+        {
+            alias = Scope.GetAliasForType(param2.Type) ?? Scope.CurrentAlias;
+        }
+        else
+        {
+            alias = Scope.CurrentAlias;
         }
 
-        return string.Join(".", parts);
+        // If we still don't have an alias, fallback to "src" (shouldn't really happen)
+        alias ??= "src";
+
+        return $"{alias}.{string.Join(".", parts)}";
     }
 
     private static Expression? GetRootExpression(Expression? expression)

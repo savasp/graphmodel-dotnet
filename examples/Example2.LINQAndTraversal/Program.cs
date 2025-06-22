@@ -14,7 +14,7 @@
 
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j;
-using Cvoya.Graph.Model.Neo4j.Linq;
+using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
 
 // Example 2: LINQ and Traversal
@@ -34,10 +34,16 @@ await using (var session = driver.AsyncSession())
 
 Console.WriteLine($"✓ Created database: {databaseName}");
 
+// Create graph instance
+var loggerFactory = LoggerFactory.Create(builder =>
+{
+    builder.AddConsole().SetMinimumLevel(LogLevel.Debug);
+});
+
 // We start with the Neo4j Graph Provider here
 
 // Create graph instance with Neo4j provider
-var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, loggerFactory);
 var graph = store.Graph;
 
 
@@ -282,7 +288,7 @@ finally
     await graph.DisposeAsync();
     await using (var session = driver.AsyncSession())
     {
-        await session.RunAsync($"DROP DATABASE {databaseName}");
+        // await session.RunAsync($"DROP DATABASE {databaseName}");
     }
     await driver.DisposeAsync();
 }

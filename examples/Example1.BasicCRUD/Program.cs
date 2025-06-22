@@ -119,9 +119,9 @@ try
     }
 
     // Find specific person by name
-    var foundAlice = graph.Nodes<Person>()
+    var foundAlice = await graph.Nodes<Person>()
         .Where(p => p.Name == "Alice Johnson")
-        .FirstOrDefault();
+        .FirstOrDefaultAsync();
 
     if (foundAlice != null)
     {
@@ -129,9 +129,9 @@ try
     }
 
     // Find company
-    var foundCompany = graph.Nodes<Company>()
+    var foundCompany = await graph.Nodes<Company>()
         .Where(c => c.Name == "TechCorp")
-        .FirstOrDefault();
+        .FirstOrDefaultAsync();
 
     if (foundCompany != null)
     {
@@ -139,9 +139,9 @@ try
     }
 
     // Find relationships
-    var paths = graph.Nodes<Person>()
+    var paths = await graph.Nodes<Person>()
         .PathSegments<Person, WorksFor, Company>()
-        .ToList();
+        .ToListAsync();
     Console.WriteLine($"\nFound {paths.Count} work relationships:");
     foreach (var path in paths)
     {
@@ -161,11 +161,11 @@ try
     }
 
     // Update Bob's salary
-    var bobRelationship = graph.Nodes<Person>()
+    var bobRelationship = await graph.Nodes<Person>()
         .PathSegments<Person, WorksFor, Company>()
         .Where(r => r.StartNode.Name == "Bob Smith")
         .Select(r => r.Relationship)
-        .FirstOrDefault();
+        .FirstOrDefaultAsync();
 
     if (bobRelationship != null)
     {
@@ -177,9 +177,9 @@ try
     // ==== VERIFY UPDATES ====
     Console.WriteLine("\n5. Verifying updates...");
 
-    var updatedAlice = graph.Nodes<Person>()
+    var updatedAlice = await graph.Nodes<Person>()
         .Where(p => p.Name == "Alice Johnson")
-        .FirstOrDefault();
+        .FirstOrDefaultAsync();
 
     if (updatedAlice != null)
     {
@@ -206,9 +206,9 @@ try
     Console.WriteLine($"✓ Deleted temporary employee: {tempPerson.Name}");
 
     // Verify deletion
-    var deletedPerson = graph.Nodes<Person>()
+    var deletedPerson = await graph.Nodes<Person>()
         .Where(p => p.Name == "Temporary Employee")
-        .FirstOrDefault();
+        .FirstOrDefaultAsync();
 
     Console.WriteLine(deletedPerson == null
         ? "✓ Confirmed: Temporary employee was successfully deleted"

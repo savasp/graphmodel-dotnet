@@ -759,6 +759,39 @@ public abstract class QueryTraversalTestsBase : ITestBase
         Assert.Equal("Bob", techFriends[0].FirstName);
     }
 
+    [Fact]
+    public async Task CanTraverseMultipleRelationshipsFromTheSameNode()
+    {
+        var alice = new Person { FirstName = "Alice", Age = 30 };
+        var bob = new Person { FirstName = "Bob", Age = 28 };
+        var charlie = new Person { FirstName = "Charlie", Age = 35 };
+        var diana = new Person { FirstName = "Diana", Age = 32 };
+        var eve = new Person { FirstName = "Eve", Age = 29 };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(diana, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(eve, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows(alice.Id, bob.Id) { Since = DateTime.UtcNow.AddYears(-5) }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice.Id, charlie.Id) { Since = DateTime.UtcNow.AddYears(-3) }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(bob.Id, diana.Id) { Since = DateTime.UtcNow.AddYears(-2) }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(charlie.Id, eve.Id) { Since = DateTime.UtcNow.AddYears(-1) }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(diana.Id, eve.Id) { Since = DateTime.UtcNow.AddMonths(-6) }, null, TestContext.Current.CancellationToken);
+
+        var aliceConnections = await Graph.Nodes<Person>()
+            .Where(p => p.Id == alice.Id)
+            .Traverse<Person, Knows, Person>()
+            .Select(p => p.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert: Alice should have connections to Bob and Charlie
+        Assert.Equal(2, aliceConnections.Count);
+        Assert.Contains(aliceConnections, id => id == bob.Id);
+        Assert.Contains(aliceConnections, id => id == charlie.Id);
+    }
+
     #endregion
 
     #region Error Handling Tests

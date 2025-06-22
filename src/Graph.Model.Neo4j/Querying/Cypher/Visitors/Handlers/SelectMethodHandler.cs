@@ -147,26 +147,32 @@ internal record SelectMethodHandler : MethodHandlerBase
                 // Set the projection type on the builder
                 context.Builder.PathSegmentProjection = pathSegmentProjection;
 
-                context.Builder.HasUserProjections = true;
-
-                // Update the scope to reflect what we're now returning
-                var targetType = pathSegmentProjection switch
+                // IMPORTANT: Update the current alias based on what we're selecting
+                var newAlias = pathSegmentProjection switch
                 {
-                    CypherQueryBuilder.PathSegmentProjectionEnum.EndNode => context.Scope.TraversalInfo?.TargetNodeType,
-                    CypherQueryBuilder.PathSegmentProjectionEnum.StartNode => context.Scope.TraversalInfo?.SourceNodeType,
-                    CypherQueryBuilder.PathSegmentProjectionEnum.Relationship => context.Scope.TraversalInfo?.RelationshipType,
-                    _ => null
+                    CypherQueryBuilder.PathSegmentProjectionEnum.EndNode => "tgt",
+                    CypherQueryBuilder.PathSegmentProjectionEnum.StartNode => "src",
+                    CypherQueryBuilder.PathSegmentProjectionEnum.Relationship => "r",
+                    _ => context.Scope.CurrentAlias
                 };
 
-                if (targetType != null)
+                // Update the current alias so subsequent projections use the correct alias
+                context.Scope.CurrentAlias = newAlias;
+
+                // Update the root type to match what we're projecting
+                if (member.Type != null)
                 {
-                    context.Scope.CurrentType = targetType;
+                    context.Scope.CurrentType = member.Type;
                 }
+
+                // Mark that we're no longer in a path segment context since we've projected to a specific node
+                context.Scope.IsPathSegmentContext = false;
 
                 return true;
             }
         }
 
+        // Rest of the method...
         context.Builder.AddUserProjection(projection);
         return true;
     }

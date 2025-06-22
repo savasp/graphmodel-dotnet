@@ -556,8 +556,16 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         }
         else
         {
-            // Default return - let the complex property handling take care of structured returns
-            query.Append(_mainNodeAlias ?? "src");
+            // Only use the fallback Node structure if there are no projections or aggregations
+
+            // If we're returning a node or set of nodes (and not handling complex properties),
+            // wrap it in the required structure.
+            var alias = _mainNodeAlias ?? "src";
+            query.AppendLine($@"{{
+                Node: {alias},
+                ComplexProperties: []
+            }} AS Node");
+            return;
         }
 
         query.AppendLine();
@@ -724,24 +732,24 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         if (needsSourceProps)
         {
             query.AppendLine($@"
-        // Complex properties from source node
-        OPTIONAL MATCH src_path = ({src})-[rels*1..]->(prop)
-        WHERE ALL(rel in rels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
-        WITH {currentWith},
-            CASE 
-                WHEN src_path IS NULL THEN []
-                ELSE [i IN range(0, size(rels)-1) | {{
-                    ParentNode: CASE 
-                        WHEN i = 0 THEN {src}
-                        ELSE nodes(src_path)[i]
-                    END,
-                    Relationship: rels[i],
-                    Property: nodes(src_path)[i+1]
-                }}]
-            END AS src_flat_property
-        WITH {currentWith},
-            reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
-        WITH {currentWith}, apoc.coll.toSet(src_flat_properties) AS src_flat_properties");
+                // Complex properties from source node
+                OPTIONAL MATCH src_path = ({src})-[rels*1..]->(prop)
+                WHERE ALL(rel in rels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
+                WITH {currentWith},
+                    CASE 
+                        WHEN src_path IS NULL THEN []
+                        ELSE [i IN range(0, size(rels)-1) | {{
+                            ParentNode: CASE 
+                                WHEN i = 0 THEN {src}
+                                ELSE nodes(src_path)[i]
+                            END,
+                            Relationship: rels[i],
+                            Property: nodes(src_path)[i+1]
+                        }}]
+                    END AS src_flat_property
+                WITH {currentWith},
+                    reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
+                WITH {currentWith}, apoc.coll.toSet(src_flat_properties) AS src_flat_properties");
 
             currentWith += ", src_flat_properties";
         }
@@ -749,66 +757,66 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         if (needsTargetProps)
         {
             query.AppendLine($@"
-        // Complex properties from target node
-        OPTIONAL MATCH tgt_path = ({tgt})-[trels*1..]->(tprop)
-        WHERE ALL(rel in trels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
-        WITH {currentWith},
-            CASE 
-                WHEN tgt_path IS NULL THEN []
-                ELSE [i IN range(0, size(trels)-1) | {{
-                    ParentNode: CASE 
-                        WHEN i = 0 THEN {tgt}
-                        ELSE nodes(tgt_path)[i]
-                    END,
-                    Relationship: trels[i],
-                    Property: nodes(tgt_path)[i+1]
-                }}]
-            END AS tgt_flat_property
-        WITH {currentWith},
-            reduce(flat = [], l IN collect(tgt_flat_property) | flat + l) AS tgt_flat_properties
-        WITH {currentWith}, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties");
+                // Complex properties from target node
+                OPTIONAL MATCH tgt_path = ({tgt})-[trels*1..]->(tprop)
+                WHERE ALL(rel in trels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
+                WITH {currentWith},
+                    CASE 
+                        WHEN tgt_path IS NULL THEN []
+                        ELSE [i IN range(0, size(trels)-1) | {{
+                            ParentNode: CASE 
+                                WHEN i = 0 THEN {tgt}
+                                ELSE nodes(tgt_path)[i]
+                            END,
+                            Relationship: trels[i],
+                            Property: nodes(tgt_path)[i+1]
+                        }}]
+                    END AS tgt_flat_property
+                WITH {currentWith},
+                    reduce(flat = [], l IN collect(tgt_flat_property) | flat + l) AS tgt_flat_properties
+                WITH {currentWith}, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties");
         }
 
         // Build the return clause based on what we loaded
         var returnClause = PathSegmentProjection switch
         {
             PathSegmentProjectionEnum.EndNode => $@"
-        RETURN {{
-            Node: {tgt},
-            ComplexProperties: tgt_flat_properties
-        }} AS Node",
+                RETURN {{
+                    Node: {tgt},
+                    ComplexProperties: tgt_flat_properties
+                }} AS Node",
 
             PathSegmentProjectionEnum.StartNode => $@"
-        RETURN {{
-            Node: {src},
-            ComplexProperties: src_flat_properties
-        }} AS Node",
+                RETURN {{
+                    Node: {src},
+                    ComplexProperties: src_flat_properties
+                }} AS Node",
 
             PathSegmentProjectionEnum.Relationship => $@"
-        RETURN {{
-            Relationship: {rel},
-            StartNode: {{
-                Node: {src},
-                ComplexProperties: src_flat_properties
-            }},
-            EndNode: {{
-                Node: {tgt},
-                ComplexProperties: tgt_flat_properties
-            }}
-        }} AS PathSegment",
+                RETURN {{
+                    Relationship: {rel},
+                    StartNode: {{
+                        Node: {src},
+                        ComplexProperties: src_flat_properties
+                    }},
+                    EndNode: {{
+                        Node: {tgt},
+                        ComplexProperties: tgt_flat_properties
+                    }}
+                }} AS PathSegment",
 
             PathSegmentProjectionEnum.Full => $@"
-        RETURN {{
-            StartNode: {{
-                Node: {src},
-                ComplexProperties: src_flat_properties
-            }},
-            Relationship: {rel},
-            EndNode: {{
-                Node: {tgt},
-                ComplexProperties: tgt_flat_properties
-            }}
-        }} AS PathSegment",
+                RETURN {{
+                    StartNode: {{
+                        Node: {src},
+                        ComplexProperties: src_flat_properties
+                    }},
+                    Relationship: {rel},
+                    EndNode: {{
+                        Node: {tgt},
+                        ComplexProperties: tgt_flat_properties
+                    }}
+                }} AS PathSegment",
 
             _ => throw new ArgumentOutOfRangeException(nameof(PathSegmentProjection), PathSegmentProjection, "Unknown path segment projection")
         };
@@ -824,6 +832,9 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         var sourceLabel = Labels.GetLabelFromType(p.SourceType);
         var relLabel = Labels.GetLabelFromType(p.RelType);
         var targetLabel = Labels.GetLabelFromType(p.TargetType);
+
+        // Process any pending WHERE clauses BEFORE building the pattern
+        FinalizeWhereClause();
 
         // Determine direction
         var direction = TraversalDirection ?? GraphTraversalDirection.Outgoing;
