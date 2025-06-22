@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
@@ -35,7 +36,11 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
 
         var loggerFactory = LoggerFactory.Create(builder =>
         {
-            builder.AddConsole();
+            builder.AddSimpleConsole(options =>
+            {
+                options.IncludeScopes = true;
+                options.ColorBehavior = LoggerColorBehavior.Enabled;
+            });
             builder.SetMinimumLevel(LogLevel.Debug);
         });
         provider = new Neo4jGraphStore(connectionString, username, password, testDatabase.DatabaseName, loggerFactory);

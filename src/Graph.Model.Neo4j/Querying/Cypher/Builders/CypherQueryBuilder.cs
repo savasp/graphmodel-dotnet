@@ -73,9 +73,6 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     private bool _loadPathSegment;
     private PathSegmentProjection _pathSegmentProjection = PathSegmentProjection.Full;
 
-    private LambdaExpression? _pendingWhereLambda;
-    private string? _pendingWhereAlias;
-
     public bool HasAppliedRootWhere { get; set; }
     public string? RootNodeAlias { get; set; }
 
