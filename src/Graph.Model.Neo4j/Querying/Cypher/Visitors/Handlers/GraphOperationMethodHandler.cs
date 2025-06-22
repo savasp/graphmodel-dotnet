@@ -36,6 +36,7 @@ internal record GraphOperationMethodHandler : MethodHandlerBase
             "PathSegments" => HandlePathSegments(context, node),
             "WithTransaction" => HandleWithTransaction(context, node),
             "WithDepth" => HandleWithDepth(context, node),
+            "Direction" => HandleDirection(context, node),
             _ => false
         };
     }
@@ -107,5 +108,13 @@ internal record GraphOperationMethodHandler : MethodHandlerBase
 
         logger?.LogWarning("Could not extract depth parameters from WithDepth method call");
         return false;
+    }
+
+    private static bool HandleDirection(CypherQueryContext context, MethodCallExpression node)
+    {
+        // For now, just mark as handled. You can add logic here later if needed.
+        var logger = context.LoggerFactory?.CreateLogger(nameof(GraphOperationMethodHandler));
+        logger?.LogDebug("HandleDirection called");
+        return true;
     }
 }

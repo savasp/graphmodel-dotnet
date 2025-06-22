@@ -405,14 +405,47 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         {
             _logger.LogDebug("Processing pending WHERE clause with alias: {Alias}", alias);
 
+            // Map the original alias to the actual alias used in the pattern
+            var actualAlias = GetActualAlias(alias);
+            _logger.LogDebug("Mapped alias {Original} to {Actual}", alias, actualAlias);
+
             // Use the factory to create the proper visitor chain with the specific alias
             var expressionVisitor = new ExpressionVisitorChainFactory(context)
-                .CreateWhereClauseChain(alias);
+                .CreateWhereClauseChain(actualAlias);
             var whereExpression = expressionVisitor.Visit(lambda.Body);
             AddWhere(whereExpression);
         }
 
         _pendingWhereClauses.Clear();
+    }
+
+    private string GetActualAlias(string originalAlias)
+    {
+        // Map the aliases based on the path segment context
+        if (_pendingPathSegmentPattern != null)
+        {
+            return originalAlias switch
+            {
+                "src" => _pendingPathSegmentPattern.SourceAlias,
+                "tgt" => _pendingPathSegmentPattern.TargetAlias,
+                "r" => _pendingPathSegmentPattern.RelAlias,
+                _ => originalAlias
+            };
+        }
+
+        // For path segments that have already been built
+        if (_loadPathSegment)
+        {
+            return originalAlias switch
+            {
+                "src" => PathSegmentSourceAlias ?? originalAlias,
+                "tgt" => PathSegmentTargetAlias ?? originalAlias,
+                "r" => PathSegmentRelationshipAlias ?? originalAlias,
+                _ => originalAlias
+            };
+        }
+
+        return originalAlias;
     }
 
     private static bool NeedsComplexPropertiesRecursive(Type type, HashSet<Type> visited)
@@ -798,6 +831,11 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
         ClearMatches(); // Clear any existing matches
         AddMatchPattern(pattern);
+
+        // Update the path segment aliases to match what we actually used in the pattern
+        PathSegmentSourceAlias = p.SourceAlias;
+        PathSegmentRelationshipAlias = p.RelAlias;
+        PathSegmentTargetAlias = p.TargetAlias;
 
         _pendingPathSegmentPattern = null; // Clear the pending pattern
     }
