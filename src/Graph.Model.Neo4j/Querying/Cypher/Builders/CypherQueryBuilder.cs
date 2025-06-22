@@ -799,7 +799,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                 Node: {tgt},
                 ComplexProperties: tgt_flat_properties
             }}
-        }} AS RelationshipWithNodes",
+        }} AS PathSegment",
 
             PathSegmentProjection.Full => $@"
         RETURN {{
@@ -812,7 +812,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                 Node: {tgt},
                 ComplexProperties: tgt_flat_properties
             }}
-        }} AS path_segment",
+        }} AS PathSegment",
 
             _ => throw new ArgumentOutOfRangeException(nameof(_pathSegmentProjection), _pathSegmentProjection, "Unknown path segment projection")
         };

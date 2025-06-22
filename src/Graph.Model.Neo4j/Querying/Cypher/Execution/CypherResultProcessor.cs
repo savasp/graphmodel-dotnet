@@ -129,7 +129,7 @@ internal sealed class CypherResultProcessor
 
         foreach (var record in records)
         {
-            var pathSegment = DeserializePathSegment(record["path_segment"].As<Dictionary<string, object>>())
+            var pathSegment = DeserializePathSegment(record["PathSegment"].As<Dictionary<string, object>>())
                 ?? throw new GraphException("Failed to deserialize path segment from record.");
 
             // Process each component
@@ -157,9 +157,9 @@ internal sealed class CypherResultProcessor
         foreach (var record in records)
         {
             // Both old and new formats now go through the same path segment deserialization
-            if (record.Keys.Contains("path_segment"))
+            if (record.Keys.Contains("PathSegment"))
             {
-                var pathSegment = DeserializePathSegment(record["path_segment"].As<Dictionary<string, object>>())
+                var pathSegment = DeserializePathSegment(record["PathSegment"].As<Dictionary<string, object>>())
                     ?? throw new GraphException("Failed to deserialize relationship from record.");
 
                 // For relationships, we only care about the relationship part
