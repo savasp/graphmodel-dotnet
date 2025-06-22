@@ -29,7 +29,8 @@ internal class CollectionMethodVisitor(
         {
             Logger.LogDebug("Processing conversion operator: {Method}", node.Method.Name);
             // Just visit the argument, ignoring the conversion
-            return NextVisitor!.Visit(node.Arguments[0]);
+            return NextVisitor?.Visit(node.Arguments[0])
+                ?? throw new NotSupportedException($"Conversion operator {node.Method.Name} is not supported");
         }
 
         // Check if it's a Contains method on a collection
@@ -40,8 +41,11 @@ internal class CollectionMethodVisitor(
             // Handle instance Contains method (e.g., list.Contains(item))
             if (node.Object != null)
             {
-                var collection = NextVisitor!.Visit(node.Object);
-                var value = NextVisitor!.Visit(node.Arguments[0]);
+                var collection = NextVisitor?.Visit(node.Object)
+                    ?? throw new NotSupportedException("Cannot process Contains without a collection argument");
+
+                var value = NextVisitor?.Visit(node.Arguments[0])
+                    ?? throw new NotSupportedException("Cannot process Contains without a value argument");
 
                 Logger.LogDebug("Generating IN expression for Contains: {Value} IN {Collection}", value, collection);
                 return $"{value} IN {collection}";
@@ -49,8 +53,10 @@ internal class CollectionMethodVisitor(
             // Handle static Contains method (e.g., Enumerable.Contains(list, item))
             else if (node.Arguments.Count == 2)
             {
-                var collection = NextVisitor!.Visit(node.Arguments[0]);
-                var value = NextVisitor!.Visit(node.Arguments[1]);
+                var collection = NextVisitor?.Visit(node.Arguments[0])
+                    ?? throw new NotSupportedException("Cannot process Contains without a collection argument");
+                var value = NextVisitor?.Visit(node.Arguments[1])
+                    ?? throw new NotSupportedException("Cannot process Contains without a value argument");
 
                 Logger.LogDebug("Generating IN expression for static Contains: {Value} IN {Collection}", value, collection);
                 return $"{value} IN {collection}";
@@ -60,16 +66,19 @@ internal class CollectionMethodVisitor(
         // Check for other Enumerable methods
         if (node.Method.DeclaringType != typeof(Enumerable))
         {
-            return NextVisitor!.VisitMethodCall(node);
+            return NextVisitor?.VisitMethodCall(node)
+                ?? throw new NotSupportedException($"Method {node.Method.Name} is not supported");
         }
 
         Logger.LogDebug("Visiting collection method: {MethodName}", node.Method.Name);
 
-        var collectionArg = NextVisitor!.Visit(node.Arguments[0]);
+        var collectionArg = NextVisitor?.Visit(node.Arguments[0])
+            ?? throw new NotSupportedException("Cannot process collection argument");
 
         if (node.Arguments.Count > 1)
         {
-            var predicate = NextVisitor!.Visit(node.Arguments[1]);
+            var predicate = NextVisitor?.Visit(node.Arguments[1])
+                ?? throw new NotSupportedException("Cannot process predicate argument");
 
             var expression = node.Method.Name switch
             {
@@ -97,9 +106,18 @@ internal class CollectionMethodVisitor(
         }
     }
 
-    public override string VisitBinary(BinaryExpression node) => NextVisitor!.VisitBinary(node);
-    public override string VisitUnary(UnaryExpression node) => NextVisitor!.VisitUnary(node);
-    public override string VisitMember(MemberExpression node) => NextVisitor!.VisitMember(node);
-    public override string VisitConstant(ConstantExpression node) => NextVisitor!.VisitConstant(node);
-    public override string VisitParameter(ParameterExpression node) => NextVisitor!.VisitParameter(node);
+    public override string VisitBinary(BinaryExpression node) => NextVisitor?.VisitBinary(node)
+        ?? throw new NotSupportedException($"Binary expression {node.NodeType} is not supported");
+
+    public override string VisitUnary(UnaryExpression node) => NextVisitor?.VisitUnary(node)
+        ?? throw new NotSupportedException($"Unary expression {node.NodeType} is not supported");
+
+    public override string VisitMember(MemberExpression node) => NextVisitor?.VisitMember(node)
+        ?? throw new NotSupportedException($"Member expression {node.NodeType} is not supported");
+
+    public override string VisitConstant(ConstantExpression node) => NextVisitor?.VisitConstant(node)
+        ?? throw new NotSupportedException($"Constant expression {node.NodeType} is not supported");
+
+    public override string VisitParameter(ParameterExpression node) => NextVisitor?.VisitParameter(node)
+        ?? throw new NotSupportedException($"Parameter expression {node.NodeType} is not supported");
 }

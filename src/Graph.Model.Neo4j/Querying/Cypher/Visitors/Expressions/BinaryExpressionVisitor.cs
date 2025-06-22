@@ -29,28 +29,9 @@ internal class BinaryExpressionVisitor(
         Logger.LogDebug("Left expression type: {LeftType}, Node: {LeftNode}", node.Left?.GetType().FullName, node.Left);
         Logger.LogDebug("Right expression type: {RightType}, Node: {RightNode}", node.Right?.GetType().FullName, node.Right);
 
-        // Get the root visitor to ensure we go through the entire chain
-        var rootVisitor = GetRootVisitor();
-
-        // Get the root visitor from context or use ourselves
-        var visitor = Context.RootExpressionVisitor ?? this;
-
-        // Use the root visitor to process sub-expressions
-        string left = "NULL";
-        if (node.Left != null)
-        {
-            Logger.LogDebug("Visiting left expression of type: {Type}", node.Left.GetType().Name);
-            Logger.LogDebug("Expression: {Expression}", node.Left);
-            left = visitor.Visit(node.Left);
-        }
-
-        string right = "NULL";
-        if (node.Right != null)
-        {
-            Logger.LogDebug("Visiting right expression of type: {Type}", node.Right.GetType().Name);
-            Logger.LogDebug("Expression: {Expression}", node.Right);
-            right = visitor.Visit(node.Right);
-        }
+        // Use the current visitor chain for sub-expressions
+        var left = node.Left is not null ? Visit(node.Left) : "NULL";
+        var right = node.Right is not null ? Visit(node.Right) : "NULL";
 
         Logger.LogDebug("Binary expression left: {Left}, right: {Right}", left, right);
 
@@ -103,42 +84,18 @@ internal class BinaryExpressionVisitor(
         return expression;
     }
 
-    public override string VisitUnary(UnaryExpression node) => NextVisitor!.VisitUnary(node);
-    public override string VisitMember(MemberExpression node) => NextVisitor!.VisitMember(node);
-    public override string VisitMethodCall(MethodCallExpression node) => NextVisitor!.VisitMethodCall(node);
-    public override string VisitConstant(ConstantExpression node) => NextVisitor!.VisitConstant(node);
-    public override string VisitParameter(ParameterExpression node) => NextVisitor!.VisitParameter(node);
+    public override string VisitUnary(UnaryExpression node) => NextVisitor?.VisitUnary(node)
+        ?? throw new NotSupportedException("UnaryExpression not supported in BinaryExpressionVisitor");
 
-    private ICypherExpressionVisitor GetRootVisitor()
-    {
-        // Walk back through the chain to find the root visitor
-        var current = this as ICypherExpressionVisitor;
-        var visited = new HashSet<ICypherExpressionVisitor>();
+    public override string VisitMember(MemberExpression node) => NextVisitor?.VisitMember(node)
+        ?? throw new NotSupportedException("MemberExpression not supported in BinaryExpressionVisitor");
 
-        while (current != null)
-        {
-            if (!visited.Add(current))
-                break; // Prevent infinite loops
+    public override string VisitMethodCall(MethodCallExpression node) => NextVisitor?.VisitMethodCall(node)
+        ?? throw new NotSupportedException("MethodCallExpression not supported in BinaryExpressionVisitor");
 
-            var next = current switch
-            {
-                MemberExpressionVisitor m => m.NextVisitor,
-                BinaryExpressionVisitor b => b.NextVisitor,
-                BaseExpressionVisitor b => null, // Base is the end
-                _ => null
-            };
+    public override string VisitConstant(ConstantExpression node) => NextVisitor?.VisitConstant(node)
+        ?? throw new NotSupportedException("ConstantExpression not supported in BinaryExpressionVisitor");
 
-            if (next == null)
-                break;
-
-            // Check if next is a MemberExpressionVisitor - if so, that's our root
-            if (next is MemberExpressionVisitor)
-                return next;
-
-            current = next;
-        }
-
-        // If we can't find a MemberExpressionVisitor, use ourselves
-        return this;
-    }
+    public override string VisitParameter(ParameterExpression node) => NextVisitor?.VisitParameter(node)
+        ?? throw new NotSupportedException("ParameterExpression not supported in BinaryExpressionVisitor");
 }

@@ -25,13 +25,17 @@ internal class StringMethodVisitor(CypherQueryContext context, ICypherExpression
     {
         if (node.Method.DeclaringType != typeof(string))
         {
-            return NextVisitor!.VisitMethodCall(node);
+            return NextVisitor?.VisitMethodCall(node)
+                ?? throw new NotSupportedException($"String method {node.Method.Name} is not supported");
         }
 
         Logger.LogDebug("Visiting string method: {MethodName}", node.Method.Name);
 
-        var target = NextVisitor!.Visit(node.Object!);
-        var arguments = node.Arguments.Select(arg => NextVisitor!.Visit(arg)).ToList();
+        var target = NextVisitor?.Visit(node.Object!)
+            ?? throw new NotSupportedException("Cannot process string target");
+
+        var arguments = node.Arguments.Select(arg => NextVisitor?.Visit(arg)
+            ?? throw new NotSupportedException("Cannot process string argument")).ToList();
 
         var expression = node.Method.Name switch
         {
@@ -55,9 +59,18 @@ internal class StringMethodVisitor(CypherQueryContext context, ICypherExpression
         return expression;
     }
 
-    public override string VisitBinary(BinaryExpression node) => NextVisitor!.VisitBinary(node);
-    public override string VisitUnary(UnaryExpression node) => NextVisitor!.VisitUnary(node);
-    public override string VisitMember(MemberExpression node) => NextVisitor!.VisitMember(node);
-    public override string VisitConstant(ConstantExpression node) => NextVisitor!.VisitConstant(node);
-    public override string VisitParameter(ParameterExpression node) => NextVisitor!.VisitParameter(node);
+    public override string VisitBinary(BinaryExpression node) => NextVisitor?.VisitBinary(node)
+        ?? throw new NotSupportedException($"Binary expression {node.NodeType} is not supported");
+
+    public override string VisitUnary(UnaryExpression node) => NextVisitor?.VisitUnary(node)
+        ?? throw new NotSupportedException($"Unary expression {node.NodeType} is not supported");
+
+    public override string VisitMember(MemberExpression node) => NextVisitor?.VisitMember(node)
+        ?? throw new NotSupportedException($"Member expression {node.NodeType} is not supported");
+
+    public override string VisitConstant(ConstantExpression node) => NextVisitor?.VisitConstant(node)
+        ?? throw new NotSupportedException($"Constant expression {node.NodeType} is not supported");
+
+    public override string VisitParameter(ParameterExpression node) => NextVisitor?.VisitParameter(node)
+        ?? throw new NotSupportedException($"Parameter expression {node.NodeType} is not supported");
 }

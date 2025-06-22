@@ -68,9 +68,18 @@ internal class AggregationMethodVisitor(
         return $"{cypherFunction}({target})";
     }
 
-    public override string VisitBinary(BinaryExpression node) => NextVisitor!.VisitBinary(node);
-    public override string VisitUnary(UnaryExpression node) => NextVisitor!.VisitUnary(node);
-    public override string VisitMember(MemberExpression node) => NextVisitor!.VisitMember(node);
-    public override string VisitConstant(ConstantExpression node) => NextVisitor!.VisitConstant(node);
-    public override string VisitParameter(ParameterExpression node) => NextVisitor!.VisitParameter(node);
+    public override string VisitBinary(BinaryExpression node) => NextVisitor?.VisitBinary(node)
+        ?? throw new NotSupportedException($"Binary expression {node.NodeType} not supported");
+
+    public override string VisitUnary(UnaryExpression node) => NextVisitor?.VisitUnary(node)
+        ?? throw new NotSupportedException($"Unary expression {node.NodeType} not supported");
+
+    public override string VisitMember(MemberExpression node) => NextVisitor?.VisitMember(node)
+        ?? throw new NotSupportedException($"Member expression {node.NodeType} not supported");
+
+    public override string VisitConstant(ConstantExpression node) => NextVisitor?.VisitConstant(node)
+        ?? throw new NotSupportedException($"Constant expression {node.NodeType} not supported");
+
+    public override string VisitParameter(ParameterExpression node) => NextVisitor?.VisitParameter(node)
+        ?? throw new NotSupportedException($"Parameter expression {node.NodeType} not supported");
 }

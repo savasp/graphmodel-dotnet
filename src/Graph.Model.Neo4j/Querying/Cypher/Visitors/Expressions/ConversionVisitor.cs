@@ -30,7 +30,8 @@ internal class ConversionVisitor(
         {
             Logger.LogDebug("Visiting conversion operator: {MethodName}", node.Method.Name);
             // For conversion operators, just visit the operand and ignore the conversion
-            return NextVisitor!.Visit(node.Arguments[0]);
+            return NextVisitor?.Visit(node.Arguments[0])
+                ?? throw new NotSupportedException($"Conversion operator {node.Method.Name} is not supported");
         }
 
         // Handle Convert.* methods
@@ -47,7 +48,8 @@ internal class ConversionVisitor(
             return HandleConversionMethod(node);
         }
 
-        return NextVisitor!.VisitMethodCall(node);
+        return NextVisitor?.VisitMethodCall(node)
+            ?? throw new NotSupportedException($"Method {node.Method.Name} is not supported");
     }
 
     public override string VisitUnary(UnaryExpression node)
@@ -59,12 +61,14 @@ internal class ConversionVisitor(
             return HandleCastOperation(node);
         }
 
-        return NextVisitor!.VisitUnary(node);
+        return NextVisitor?.VisitUnary(node)
+            ?? throw new NotSupportedException($"Unary expression {node.NodeType} is not supported");
     }
 
     private string HandleConvertMethod(MethodCallExpression node)
     {
-        var argument = NextVisitor!.Visit(node.Arguments[0]);
+        var argument = NextVisitor?.Visit(node.Arguments[0])
+            ?? throw new NotSupportedException("Cannot process Convert argument");
 
         var expression = node.Method.Name switch
         {
@@ -88,14 +92,16 @@ internal class ConversionVisitor(
         // Handle ToString() calls on various types
         if (methodName == "ToString" && node.Object != null)
         {
-            var target = NextVisitor!.Visit(node.Object);
+            var target = NextVisitor?.Visit(node.Object)
+                ?? throw new NotSupportedException("Cannot process ToString argument");
             return $"toString({target})";
         }
 
         // Handle Parse methods: int.Parse, double.Parse, etc.
         if (methodName == "Parse" && node.Method.IsStatic)
         {
-            var argument = NextVisitor!.Visit(node.Arguments[0]);
+            var argument = NextVisitor?.Visit(node.Arguments[0])
+                ?? throw new NotSupportedException("Cannot process Parse argument");
 
             var expression = declaringType?.Name switch
             {
@@ -114,7 +120,8 @@ internal class ConversionVisitor(
 
     private string HandleCastOperation(UnaryExpression node)
     {
-        var operand = NextVisitor!.Visit(node.Operand);
+        var operand = NextVisitor?.Visit(node.Operand)
+            ?? throw new NotSupportedException("Cannot process cast operand");
         var targetType = node.Type;
 
         // Handle nullable types
@@ -148,8 +155,15 @@ internal class ConversionVisitor(
         };
     }
 
-    public override string VisitBinary(BinaryExpression node) => NextVisitor!.VisitBinary(node);
-    public override string VisitMember(MemberExpression node) => NextVisitor!.VisitMember(node);
-    public override string VisitConstant(ConstantExpression node) => NextVisitor!.VisitConstant(node);
-    public override string VisitParameter(ParameterExpression node) => NextVisitor!.VisitParameter(node);
+    public override string VisitBinary(BinaryExpression node) => NextVisitor?.VisitBinary(node)
+        ?? throw new NotSupportedException($"Binary expression {node.NodeType} is not supported");
+
+    public override string VisitMember(MemberExpression node) => NextVisitor?.VisitMember(node)
+        ?? throw new NotSupportedException($"Member expression {node.NodeType} is not supported");
+
+    public override string VisitConstant(ConstantExpression node) => NextVisitor?.VisitConstant(node)
+        ?? throw new NotSupportedException($"Constant expression {node.NodeType} is not supported");
+
+    public override string VisitParameter(ParameterExpression node) => NextVisitor?.VisitParameter(node)
+        ?? throw new NotSupportedException($"Parameter expression {node.NodeType} is not supported");
 }
