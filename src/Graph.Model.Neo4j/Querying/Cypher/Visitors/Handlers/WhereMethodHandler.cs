@@ -18,6 +18,7 @@ using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 /// <summary>
 /// Handles the Where LINQ method by generating appropriate WHERE clauses.
@@ -50,50 +51,58 @@ internal record WhereMethodHandler : MethodHandlerBase
         return true;
     }
 
-    private static string DetermineWhereAlias(CypherQueryContext context)
+    // ...existing code...
+
+    private string DetermineWhereAlias(CypherQueryContext context)
     {
-        var logger = context.LoggerFactory?.CreateLogger<WhereMethodHandler>();
+        var logger = context.LoggerFactory?.CreateLogger<WhereMethodHandler>()
+            ?? NullLogger<WhereMethodHandler>.Instance;
 
-        logger?.LogDebug("DetermineWhereAlias called");
-        logger?.LogDebug("IsPathSegmentContext: {IsPathSegment}", context.Scope.IsPathSegmentContext);
-        logger?.LogDebug("HasUserProjections: {HasProjections}", context.Builder.HasUserProjections);
+        logger.LogDebug("DetermineWhereAlias called");
+        logger.LogDebug("IsPathSegmentContext: {IsPathSegmentContext}", context.Scope.IsPathSegmentContext);
+        logger.LogDebug("HasUserProjections: {HasUserProjections}", context.Builder.HasUserProjections);
 
-        // Check if this is a relationship query
-        if (context.Scope.RootType != null && typeof(Model.IRelationship).IsAssignableFrom(context.Scope.RootType))
-        {
-            logger?.LogDebug("Relationship query detected, using relationship alias: r");
-            return "r";
-        }
-
-        // If we're in a path segment context and have user projections,
-        // use the alias based on what we're projecting
-        if (context.Scope.IsPathSegmentContext && context.Builder.HasUserProjections)
-        {
-            var projection = context.Builder.GetPathSegmentProjection();
-            logger?.LogDebug("PathSegmentProjection: {Projection}", projection);
-            var alias = projection switch
-            {
-                CypherQueryBuilder.PathSegmentProjection.EndNode => context.Builder.PathSegmentTargetAlias ?? "tgt",
-                CypherQueryBuilder.PathSegmentProjection.StartNode => context.Builder.PathSegmentSourceAlias ?? "src",
-                CypherQueryBuilder.PathSegmentProjection.Relationship => context.Builder.PathSegmentRelationshipAlias ?? "r",
-                _ => context.Builder.PathSegmentSourceAlias ?? "src"
-            };
-
-            logger?.LogDebug("Selected alias for path segment projection: {Alias}", alias);
-            return alias;
-        }
-
-        // If we're in path segment context but no projections yet, use source
+        // For path segment contexts, we need to check if we're filtering before or after the PathSegments call
         if (context.Scope.IsPathSegmentContext)
         {
-            var alias = context.Builder.PathSegmentSourceAlias ?? "src";
-            logger?.LogDebug("Path segment context, no projections, using source alias: {Alias}", alias);
-            return alias;
+            // If this Where clause comes before PathSegments in the chain, use the source alias
+            // If it comes after, we need to determine based on the projection
+            var rootType = context.Scope.RootType;
+
+            // Check if we have a projection that would change the context
+            if (context.Builder.HasUserProjections)
+            {
+                // User has projected something specific - use the appropriate alias based on projection
+                if (typeof(IRelationship).IsAssignableFrom(rootType))
+                {
+                    logger.LogDebug("Path segment context with relationship projection, using relationship alias: r");
+                    return "r";
+                }
+                else if (typeof(INode).IsAssignableFrom(rootType))
+                {
+                    logger.LogDebug("Path segment context with node projection, using source alias: src");
+                    return context.Scope.CurrentAlias ?? "src";
+                }
+            }
+
+            // Default to source alias for path segment filtering
+            logger.LogDebug("Path segment context, using source alias: src");
+            return context.Scope.CurrentAlias ?? "src";
         }
 
-        // Regular node query
-        var regularAlias = context.Builder.RootNodeAlias ?? "src";
-        logger?.LogDebug("Regular node query, using root alias: {Alias}", regularAlias);
-        return regularAlias;
+        // Rest of existing logic...
+        if (context.Builder.HasUserProjections)
+        {
+            var rootType = context.Scope.RootType;
+            if (typeof(IRelationship).IsAssignableFrom(rootType))
+            {
+                logger.LogDebug("Root type is relationship, using relationship alias: r");
+                return "r";
+            }
+        }
+
+        var alias = context.Scope.CurrentAlias ?? "src";
+        logger.LogDebug("Using alias '{Alias}' for Where method", alias);
+        return alias;
     }
 }

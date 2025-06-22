@@ -38,6 +38,7 @@ internal class BaseExpressionVisitor(
         return $"NOT ({operand})";
     }
 
+    // ...existing code...
     public override string VisitMember(MemberExpression node)
     {
         Logger.LogDebug("Visiting member: {Member}", node.Member.Name);
@@ -57,6 +58,34 @@ internal class BaseExpressionVisitor(
                 return paramRef;
             }
 
+            // Check if this is path segment property access (e.g., k.Relationship.Since)
+            if (nestedMember.Expression is ParameterExpression p &&
+                typeof(IGraphPathSegment).IsAssignableFrom(p.Type))
+            {
+                Logger.LogDebug("Processing path segment property access: {Expression}", node);
+
+                // Handle k.Relationship.PropertyName
+                if (nestedMember.Member.Name == nameof(IGraphPathSegment.Relationship))
+                {
+                    Logger.LogDebug("Mapping path segment relationship property {Property} to r.{Property}", node.Member.Name, node.Member.Name);
+                    return $"r.{node.Member.Name}";
+                }
+
+                // Handle k.StartNode.PropertyName
+                if (nestedMember.Member.Name == nameof(IGraphPathSegment.StartNode))
+                {
+                    Logger.LogDebug("Mapping path segment start node property {Property} to src.{Property}", node.Member.Name, node.Member.Name);
+                    return $"src.{node.Member.Name}";
+                }
+
+                // Handle k.EndNode.PropertyName
+                if (nestedMember.Member.Name == nameof(IGraphPathSegment.EndNode))
+                {
+                    Logger.LogDebug("Mapping path segment end node property {Property} to tgt.{Property}", node.Member.Name, node.Member.Name);
+                    return $"tgt.{node.Member.Name}";
+                }
+            }
+
             // Regular nested member access
             var parent = VisitMember(nestedMember);
             return $"{parent}.{node.Member.Name}";
@@ -67,6 +96,24 @@ internal class BaseExpressionVisitor(
         {
             Logger.LogDebug("Processing parameter {ParamName} of type {ParamType}, RootType is {RootType}, CurrentAlias is {CurrentAlias}",
                 param.Name, param.Type.Name, Scope.RootType?.Name, Scope.CurrentAlias);
+
+            // Special handling for path segment parameters
+            if (typeof(IGraphPathSegment).IsAssignableFrom(param.Type))
+            {
+                Logger.LogDebug("Processing path segment parameter property: {Property}", node.Member.Name);
+
+                // Map path segment properties to the correct aliases
+                var propertyMapping = node.Member.Name switch
+                {
+                    nameof(IGraphPathSegment.StartNode) => "src",
+                    nameof(IGraphPathSegment.EndNode) => "tgt",
+                    nameof(IGraphPathSegment.Relationship) => "r",
+                    _ => throw new NotSupportedException($"Path segment property '{node.Member.Name}' is not supported")
+                };
+
+                Logger.LogDebug("Mapped path segment property {Property} to alias {Alias}", node.Member.Name, propertyMapping);
+                return propertyMapping;
+            }
 
             // Special handling for relationship StartNodeId and EndNodeId properties
             if (typeof(Model.IRelationship).IsAssignableFrom(param.Type))
@@ -151,6 +198,26 @@ internal class BaseExpressionVisitor(
             return Visit(node.Arguments[0]);
         }
 
+        // Check if this is a method call that should be evaluated as a closure variable
+        // This includes DateTime methods, string methods, etc. that don't reference graph data
+        if (IsEvaluableMethodCall(node))
+        {
+            Logger.LogDebug("Evaluating method call as closure variable: {Method}", node.Method.Name);
+            try
+            {
+                var lambda = Expression.Lambda(node);
+                var compiled = lambda.Compile();
+                var result = compiled.DynamicInvoke();
+                var paramRef = Builder.AddParameter(result);
+                Logger.LogDebug("Evaluated method call {Method} to parameter reference: {ParamRef}", node.Method.Name, paramRef);
+                return paramRef;
+            }
+            catch (Exception ex)
+            {
+                throw new GraphException($"Failed to evaluate method call '{node}': {ex.Message}", ex);
+            }
+        }
+
         throw new NotSupportedException($"Method {node.Method.Name} is not supported in base visitor");
     }
 
@@ -181,6 +248,55 @@ internal class BaseExpressionVisitor(
         var result = Scope.CurrentAlias ?? throw new InvalidOperationException("No current alias set");
         Logger.LogDebug("Parameter expression result: {Result}", result);
         return result;
+    }
+
+    private static bool IsEvaluableMethodCall(MethodCallExpression node)
+    {
+        // Methods that should be evaluated at compile time rather than translated to Cypher
+        var evaluableMethods = new[]
+        {
+        // DateTime methods
+        "AddYears", "AddMonths", "AddDays", "AddHours", "AddMinutes", "AddSeconds", "AddMilliseconds",
+        "Date", "TimeOfDay", "Year", "Month", "Day", "Hour", "Minute", "Second", "Millisecond",
+        
+        // String methods (that don't need Cypher translation)
+        "Concat", "Join", "Format",
+        
+        // Math methods
+        "Abs", "Max", "Min", "Round", "Floor", "Ceiling",
+        
+        // Guid methods
+        "NewGuid"
+    };
+
+        // Check if this is a method we should evaluate
+        if (evaluableMethods.Contains(node.Method.Name))
+        {
+            return true;
+        }
+
+        // Also check for static DateTime properties like UtcNow, Now
+        if (node.Method.DeclaringType == typeof(DateTime) &&
+            (node.Method.Name == "get_UtcNow" || node.Method.Name == "get_Now"))
+        {
+            return true;
+        }
+
+        // Check if this method call doesn't reference any parameters (making it evaluable)
+        var parameterFinder = new ParameterExpressionFinder();
+        parameterFinder.Visit(node);
+        return !parameterFinder.HasParameters;
+    }
+
+    private sealed class ParameterExpressionFinder : ExpressionVisitor
+    {
+        public bool HasParameters { get; private set; }
+
+        protected override Expression VisitParameter(ParameterExpression node)
+        {
+            HasParameters = true;
+            return base.VisitParameter(node);
+        }
     }
 
     private bool IsClosureVariableChain(MemberExpression node)

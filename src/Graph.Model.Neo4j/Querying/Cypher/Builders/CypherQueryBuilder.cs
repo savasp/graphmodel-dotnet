@@ -791,11 +791,11 @@ internal class CypherQueryBuilder(CypherQueryContext context)
             PathSegmentProjection.Relationship => $@"
         RETURN {{
             Relationship: {rel},
-            SourceNode: {{
+            StartNode: {{
                 Node: {src},
                 ComplexProperties: src_flat_properties
             }},
-            TargetNode: {{
+            EndNode: {{
                 Node: {tgt},
                 ComplexProperties: tgt_flat_properties
             }}
