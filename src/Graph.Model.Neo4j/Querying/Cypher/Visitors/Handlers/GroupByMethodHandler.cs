@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Handles GroupBy LINQ method by generating appropriate WITH and GROUP BY clauses.
@@ -25,27 +26,31 @@ internal record GroupByMethodHandler : MethodHandlerBase
 {
     public override bool Handle(CypherQueryContext context, MethodCallExpression node, Expression result)
     {
+        var logger = context.LoggerFactory?.CreateLogger(nameof(GroupByMethodHandler));
+        logger?.LogDebug("GroupByMethodHandler called");
+
         if (node.Method.Name != "GroupBy" || node.Arguments.Count < 2)
         {
+            logger?.LogDebug("GroupByMethodHandler: not a GroupBy method or wrong arguments");
             return false;
         }
 
-        // Get the key selector (lambda expression)
-        if (node.Arguments[1] is not UnaryExpression { Operand: LambdaExpression keySelector })
+        // Extract the key selector expression
+        var keySelectorExpression = node.Arguments[1];
+        if (keySelectorExpression is not UnaryExpression { Operand: LambdaExpression keySelector })
         {
-            throw new GraphException("GroupBy method requires a lambda expression key selector");
+            logger?.LogDebug("Could not extract key selector lambda from GroupBy");
+            return false;
         }
 
-        // Create expression visitor chain to process the key selector
-        var expressionVisitor = CreateExpressionVisitor(context);
-
-        // Process the lambda body to generate the grouping key expression
-        var keyExpression = expressionVisitor.Visit(keySelector.Body);
-
-        // In Neo4j, grouping is typically done with aggregate functions in RETURN
-        // Add the grouping key to WITH clause first, then to RETURN
         var currentAlias = context.Scope.CurrentAlias
             ?? throw new InvalidOperationException("No current alias set when building GroupBy clause");
+
+        var expressionVisitor = CreateExpressionVisitor(context);
+        var keyExpression = expressionVisitor.Visit(keySelector.Body);
+
+        // GroupBy returns a grouping, not nodes, so disable complex property loading
+        context.Builder.DisableComplexPropertyLoading();
 
         // Handle element selector if present (3-argument form)
         if (node.Arguments.Count >= 3 && node.Arguments[2] is UnaryExpression { Operand: LambdaExpression elementSelector })

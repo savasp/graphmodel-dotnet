@@ -127,6 +127,9 @@ internal record AggregationMethodHandler : MethodHandlerBase
         var alias = context.Scope.CurrentAlias
             ?? throw new InvalidOperationException("No current alias set when handling Count()");
 
+        // Disable complex property loading for scalar results
+        context.Builder.DisableComplexPropertyLoading();
+
         if (node.Arguments.Count == 1)
         {
             // Simple count
@@ -151,6 +154,9 @@ internal record AggregationMethodHandler : MethodHandlerBase
     {
         var alias = context.Scope.CurrentAlias
             ?? throw new InvalidOperationException("No current alias set when handling Any()");
+
+        // Disable complex property loading for scalar results
+        context.Builder.DisableComplexPropertyLoading();
 
         if (node.Arguments.Count == 1)
         {
@@ -179,6 +185,9 @@ internal record AggregationMethodHandler : MethodHandlerBase
             return false;
         }
 
+        // Disable complex property loading for scalar results
+        context.Builder.DisableComplexPropertyLoading();
+
         if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
         {
             var expressionVisitor = CreateExpressionVisitor(context);
@@ -199,6 +208,8 @@ internal record AggregationMethodHandler : MethodHandlerBase
         var alias = context.Scope.CurrentAlias
             ?? throw new InvalidOperationException("No current alias set when handling Sum()");
 
+        // Disable complex property loading for scalar results
+        context.Builder.DisableComplexPropertyLoading();
 
         if (node.Arguments.Count == 1)
         {
@@ -225,6 +236,9 @@ internal record AggregationMethodHandler : MethodHandlerBase
         var alias = context.Scope.CurrentAlias
             ?? throw new InvalidOperationException("No current alias set when handling Average()");
 
+        // Disable complex property loading for scalar results
+        context.Builder.DisableComplexPropertyLoading();
+
         if (node.Arguments.Count == 1)
         {
             // Direct average on numeric queryable
@@ -250,6 +264,9 @@ internal record AggregationMethodHandler : MethodHandlerBase
         var alias = context.Scope.CurrentAlias
             ?? throw new InvalidOperationException("No current alias set when handling Min()");
 
+        // Disable complex property loading for scalar results
+        context.Builder.DisableComplexPropertyLoading();
+
         if (node.Arguments.Count == 1)
         {
             // Direct min on comparable queryable
@@ -274,6 +291,9 @@ internal record AggregationMethodHandler : MethodHandlerBase
     {
         var alias = context.Scope.CurrentAlias
             ?? throw new InvalidOperationException("No current alias set when handling Max()");
+
+        // Disable complex property loading for scalar results
+        context.Builder.DisableComplexPropertyLoading();
 
         if (node.Arguments.Count == 1)
         {
@@ -301,6 +321,9 @@ internal record AggregationMethodHandler : MethodHandlerBase
         {
             return false;
         }
+
+        // Disable complex property loading for scalar results
+        context.Builder.DisableComplexPropertyLoading();
 
         var alias = context.Scope.CurrentAlias
             ?? throw new InvalidOperationException("No current alias set when handling Contains()");

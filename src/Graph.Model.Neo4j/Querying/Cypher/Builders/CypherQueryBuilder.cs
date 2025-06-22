@@ -113,6 +113,12 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         };
     }
 
+    public void DisableComplexPropertyLoading()
+    {
+        _includeComplexProperties = false;
+        _loadPathSegment = false;
+    }
+
     public void SetDepth(int minDepth, int maxDepth)
     {
         _minDepth = minDepth;
