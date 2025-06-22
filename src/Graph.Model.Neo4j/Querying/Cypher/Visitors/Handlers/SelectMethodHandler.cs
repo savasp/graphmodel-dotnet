@@ -136,25 +136,25 @@ internal record SelectMethodHandler : MethodHandlerBase
         {
             var pathSegmentProjection = member.Member.Name switch
             {
-                nameof(IGraphPathSegment.EndNode) => CypherQueryBuilder.PathSegmentProjection.EndNode,
-                nameof(IGraphPathSegment.StartNode) => CypherQueryBuilder.PathSegmentProjection.StartNode,
-                nameof(IGraphPathSegment.Relationship) => CypherQueryBuilder.PathSegmentProjection.Relationship,
-                _ => CypherQueryBuilder.PathSegmentProjection.Full
+                nameof(IGraphPathSegment.EndNode) => CypherQueryBuilder.PathSegmentProjectionEnum.EndNode,
+                nameof(IGraphPathSegment.StartNode) => CypherQueryBuilder.PathSegmentProjectionEnum.StartNode,
+                nameof(IGraphPathSegment.Relationship) => CypherQueryBuilder.PathSegmentProjectionEnum.Relationship,
+                _ => CypherQueryBuilder.PathSegmentProjectionEnum.Full
             };
 
-            if (pathSegmentProjection != CypherQueryBuilder.PathSegmentProjection.Full)
+            if (pathSegmentProjection != CypherQueryBuilder.PathSegmentProjectionEnum.Full)
             {
                 // Set the projection type on the builder
-                context.Builder.SetPathSegmentProjection(pathSegmentProjection);
+                context.Builder.PathSegmentProjection = pathSegmentProjection;
 
                 context.Builder.HasUserProjections = true;
 
                 // Update the scope to reflect what we're now returning
                 var targetType = pathSegmentProjection switch
                 {
-                    CypherQueryBuilder.PathSegmentProjection.EndNode => context.Scope.TraversalInfo?.TargetNodeType,
-                    CypherQueryBuilder.PathSegmentProjection.StartNode => context.Scope.TraversalInfo?.SourceNodeType,
-                    CypherQueryBuilder.PathSegmentProjection.Relationship => context.Scope.TraversalInfo?.RelationshipType,
+                    CypherQueryBuilder.PathSegmentProjectionEnum.EndNode => context.Scope.TraversalInfo?.TargetNodeType,
+                    CypherQueryBuilder.PathSegmentProjectionEnum.StartNode => context.Scope.TraversalInfo?.SourceNodeType,
+                    CypherQueryBuilder.PathSegmentProjectionEnum.Relationship => context.Scope.TraversalInfo?.RelationshipType,
                     _ => null
                 };
 

@@ -71,7 +71,8 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     private string? _mainNodeAlias;
     private int _parameterCounter;
     private bool _loadPathSegment;
-    private PathSegmentProjection _pathSegmentProjection = PathSegmentProjection.Full;
+
+    public PathSegmentProjectionEnum PathSegmentProjection = PathSegmentProjectionEnum.Full;
 
     public bool HasAppliedRootWhere { get; set; }
     public string? RootNodeAlias { get; set; }
@@ -130,17 +131,12 @@ internal class CypherQueryBuilder(CypherQueryContext context)
             sourceType, relType, targetType, sourceAlias, relAlias, targetAlias);
     }
 
-    public enum PathSegmentProjection
+    public enum PathSegmentProjectionEnum
     {
         Full,        // Return the whole path segment
         StartNode,   // Return only the start node  
         EndNode,     // Return only the end node
         Relationship // Return only the relationship
-    }
-
-    public void SetPathSegmentProjection(PathSegmentProjection projection)
-    {
-        _pathSegmentProjection = projection;
     }
 
     public void SetPendingWhere(LambdaExpression lambda, string? alias)
@@ -321,9 +317,9 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     public bool HasOrderBy => _orderByClauses.Any();
 
-    public PathSegmentProjection GetPathSegmentProjection()
+    public PathSegmentProjectionEnum GetPathSegmentProjection()
     {
-        return _pathSegmentProjection;
+        return PathSegmentProjection;
     }
 
     public void AddOptionalMatch(string pattern)
@@ -702,19 +698,19 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     private void AppendComplexPropertyMatchesForPathSegment(StringBuilder query)
     {
-        _logger.LogDebug("Appending complex property matches for path segment with projection: {Projection}", _pathSegmentProjection);
+        _logger.LogDebug("Appending complex property matches for path segment with projection: {Projection}", PathSegmentProjection);
 
         var src = PathSegmentSourceAlias ?? "src";
         var rel = PathSegmentRelationshipAlias ?? "r";
         var tgt = PathSegmentTargetAlias ?? "tgt";
 
         // Determine what complex properties we need based on projection
-        var (needsSourceProps, needsTargetProps) = _pathSegmentProjection switch
+        var (needsSourceProps, needsTargetProps) = PathSegmentProjection switch
         {
-            PathSegmentProjection.StartNode => (true, false),   // Only source
-            PathSegmentProjection.EndNode => (false, true),    // Only target
-            PathSegmentProjection.Relationship => (true, true), // Both for relationship navigation
-            PathSegmentProjection.Full => (true, true),        // Both for full path
+            PathSegmentProjectionEnum.StartNode => (true, false),   // Only source
+            PathSegmentProjectionEnum.EndNode => (false, true),    // Only target
+            PathSegmentProjectionEnum.Relationship => (true, true), // Both for relationship navigation
+            PathSegmentProjectionEnum.Full => (true, true),        // Both for full path
             _ => (false, false)
         };
 
@@ -774,21 +770,21 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         }
 
         // Build the return clause based on what we loaded
-        var returnClause = _pathSegmentProjection switch
+        var returnClause = PathSegmentProjection switch
         {
-            PathSegmentProjection.EndNode => $@"
+            PathSegmentProjectionEnum.EndNode => $@"
         RETURN {{
             Node: {tgt},
             ComplexProperties: tgt_flat_properties
         }} AS Node",
 
-            PathSegmentProjection.StartNode => $@"
+            PathSegmentProjectionEnum.StartNode => $@"
         RETURN {{
             Node: {src},
             ComplexProperties: src_flat_properties
         }} AS Node",
 
-            PathSegmentProjection.Relationship => $@"
+            PathSegmentProjectionEnum.Relationship => $@"
         RETURN {{
             Relationship: {rel},
             StartNode: {{
@@ -801,7 +797,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
             }}
         }} AS PathSegment",
 
-            PathSegmentProjection.Full => $@"
+            PathSegmentProjectionEnum.Full => $@"
         RETURN {{
             StartNode: {{
                 Node: {src},
@@ -814,7 +810,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
             }}
         }} AS PathSegment",
 
-            _ => throw new ArgumentOutOfRangeException(nameof(_pathSegmentProjection), _pathSegmentProjection, "Unknown path segment projection")
+            _ => throw new ArgumentOutOfRangeException(nameof(PathSegmentProjection), PathSegmentProjection, "Unknown path segment projection")
         };
 
         query.AppendLine(returnClause);
