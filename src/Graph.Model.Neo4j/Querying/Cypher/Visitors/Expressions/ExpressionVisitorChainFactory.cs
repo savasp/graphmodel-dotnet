@@ -25,13 +25,13 @@ internal class ExpressionVisitorChainFactory(CypherQueryContext context)
     // Define standard chains that can be reused
     public ICypherExpressionVisitor CreateStandardChain() =>
         new ExpressionVisitorChainBuilder(context)
-            .AddMemberExpressions() // Add member expression handling early to detect complex property access
-            .AddConversions()       // Handle conversions first (op_Implicit, etc.)
+            .AddMemberExpressions()
             .AddCollectionMethods()
             .AddDateTimeMethods()
             .AddStringMethods()
+            .AddConversions()
             .AddBinary()
-            .AddBase()             // Base should be last as the fallback
+            .AddBase()
             .Build();
 
     public ICypherExpressionVisitor CreateWhereClauseChain(string alias)
@@ -41,10 +41,10 @@ internal class ExpressionVisitorChainFactory(CypherQueryContext context)
 
         var chain = new ExpressionVisitorChainBuilder(context)
                 .AddMemberExpressions(alias)
-                .AddConversions()
                 .AddCollectionMethods()
                 .AddDateTimeMethods()
                 .AddStringMethods()
+                .AddConversions()
                 .AddBinary()
                 .AddBase(alias)
                 .Build();
@@ -55,11 +55,11 @@ internal class ExpressionVisitorChainFactory(CypherQueryContext context)
     public ICypherExpressionVisitor CreateSelectClauseChain(string alias) =>
         new ExpressionVisitorChainBuilder(context)
             .AddMemberExpressions(alias) // Especially important for SELECT to detect complex property access
-            .AddConversions()
-            .AddAggregations()      // SELECT might need aggregation support
+            .AddAggregations()
             .AddCollectionMethods()
             .AddDateTimeMethods()
             .AddStringMethods()
+            .AddConversions()
             .AddBinary()
             .AddBase()
             .Build();
@@ -67,8 +67,8 @@ internal class ExpressionVisitorChainFactory(CypherQueryContext context)
     public ICypherExpressionVisitor CreateOrderByChain() =>
         new ExpressionVisitorChainBuilder(context)
             .AddMemberExpressions() // ORDER BY often accesses properties
-            .AddConversions()
             .AddStringMethods()     // Often need string operations in ORDER BY
+            .AddConversions()
             .AddBinary()
             .AddBase()
             .Build();

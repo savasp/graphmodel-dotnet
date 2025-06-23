@@ -43,6 +43,21 @@ internal class BaseExpressionVisitor(
     {
         Logger.LogDebug("Visiting member: {Member}", node.Member.Name);
 
+        // Handle static DateTime properties
+        if (node.Expression == null && node.Member.DeclaringType == typeof(DateTime))
+        {
+            var expression = node.Member.Name switch
+            {
+                "Now" => "datetime()",
+                "UtcNow" => "datetime.realtime()",
+                "Today" => "date()",
+                _ => throw new NotSupportedException($"DateTime static property {node.Member.Name} is not supported")
+            };
+
+            Logger.LogDebug("Translated DateTime.{Property} to {Expression}", node.Member.Name, expression);
+            return expression;
+        }
+
         // Handle nested member access - check if this is a closure variable chain
         if (node.Expression is MemberExpression nestedMember)
         {

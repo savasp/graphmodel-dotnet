@@ -290,7 +290,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         }
 
         // Handle complex properties if needed
-        if (_includeComplexProperties)
+        if (_includeComplexProperties && !HasUserProjections)
         {
             FinalizeWhereClause();
 

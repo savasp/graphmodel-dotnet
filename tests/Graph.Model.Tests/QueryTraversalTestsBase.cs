@@ -731,7 +731,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
     }
 
     [Fact]
-    public async Task CanUseTraversalWithComplexPredicates()
+    public async Task CanUseTraversalWithStringAndDateTimePredicates()
     {
         // Setup: Create a social network
         var alice = new Person { FirstName = "Alice", LastName = "Smith", Age = 25, Bio = "Engineer" };
@@ -745,18 +745,19 @@ public abstract class QueryTraversalTestsBase : ITestBase
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow.AddYears(-2) }, null, TestContext.Current.CancellationToken);
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow.AddMonths(-6) }, null, TestContext.Current.CancellationToken);
 
-        // Act: Find people Alice has known for over a year who are developers or engineers
-        var techFriends = await Graph.Nodes<Person>()
+        // Act: Find people Alice has known for over a year who are developers or engineers and a custom project
+        var techFriendsBios = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .Where(k => k.Relationship.Since < DateTime.UtcNow.AddYears(-1))
             .Where(p => p.EndNode.Bio.Contains("Developer") || p.EndNode.Bio.Contains("Engineer"))
-            .Select(p => p.EndNode)
+            .Select(p => new { Name = p.EndNode.FirstName, Bio = p.EndNode.Bio })
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Single(techFriends);
-        Assert.Equal("Bob", techFriends[0].FirstName);
+        Assert.Single(techFriendsBios);
+        Assert.Equal("Bob", techFriendsBios[0].Name);
+        Assert.Equal("Developer", techFriendsBios[0].Bio);
     }
 
     [Fact]
