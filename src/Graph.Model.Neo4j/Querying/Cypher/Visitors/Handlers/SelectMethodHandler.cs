@@ -172,7 +172,6 @@ internal record SelectMethodHandler : MethodHandlerBase
             }
         }
 
-        // Rest of the method...
         context.Builder.AddUserProjection(projection);
         return true;
     }

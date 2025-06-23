@@ -247,8 +247,6 @@ public static class QueryableAsyncExtensions
         return await Task.Run(() => source.First(), cancellationToken);
     }
 
-    // ...existing code...
-
     /// <summary>
     /// Asynchronously executes the query and returns the results as an array.
     /// </summary>

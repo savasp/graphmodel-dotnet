@@ -52,8 +52,6 @@ internal record WhereMethodHandler : MethodHandlerBase
         return true;
     }
 
-    // ...existing code...
-
     private string DetermineWhereAlias(CypherQueryContext context)
     {
         var logger = context.LoggerFactory?.CreateLogger(nameof(WhereMethodHandler));
@@ -99,7 +97,6 @@ internal record WhereMethodHandler : MethodHandlerBase
             return context.Scope.CurrentAlias ?? "src";
         }
 
-        // Rest of existing logic for non-path segment contexts...
         if (context.Builder.HasUserProjections)
         {
             var rootType = context.Scope.RootType;
