@@ -45,52 +45,62 @@ internal class MemberExpressionVisitor(string? alias, CypherQueryContext context
         Logger.LogDebug("Node.Expression type: {Type}, IsParameterExpression: {IsParam}", node.Expression?.GetType(), node.Expression is ParameterExpression);
         Logger.LogDebug("IsPathSegmentContext: {IsPathSegment}", Context.Scope.IsPathSegmentContext);
 
-        // Check if this is accessing a path segment property
+        // Handle path segment property access first
         if (node.Expression is ParameterExpression param && Context.Scope.IsPathSegmentContext)
         {
             Logger.LogDebug("Path segment property access: {MemberName}", node.Member.Name);
-
-            // Check if this is actually a path segment property (StartNode, EndNode, Relationship)
-            if (node.Member.Name is nameof(IGraphPathSegment.StartNode) or
-                                    nameof(IGraphPathSegment.EndNode) or
-                                    nameof(IGraphPathSegment.Relationship))
-            {
-                // Map path segment properties to the correct aliases
-                var propertyMapping = node.Member.Name switch
-                {
-                    nameof(IGraphPathSegment.StartNode) => Context.Builder.PathSegmentSourceAlias ?? "src",
-                    nameof(IGraphPathSegment.EndNode) => Context.Builder.PathSegmentTargetAlias ?? "tgt",
-                    nameof(IGraphPathSegment.Relationship) => Context.Builder.PathSegmentRelationshipAlias ?? "r",
-                    _ => throw new NotSupportedException($"Path segment property '{node.Member.Name}' is not supported")
-                };
-
-                Logger.LogDebug("Mapped path segment property {Property} to alias {Alias}", node.Member.Name, propertyMapping);
-                return propertyMapping;
-            }
-            else
-            {
-                // This is a regular property access on a projected node/relationship
-                // Use the current context alias (which should be set by the projection)
-                var currentAlias = Context.Scope.CurrentAlias;
-                if (string.IsNullOrEmpty(currentAlias))
-                {
-                    Logger.LogWarning("No current alias available for property access: {Property}", node.Member.Name);
-                    // Fall back to determining alias based on projection context
-                    currentAlias = DetermineAliasFromProjectionContext();
-                }
-
-                Logger.LogDebug("Using current alias {Alias} for property {Property}", currentAlias, node.Member.Name);
-                return $"{currentAlias}.{node.Member.Name}";
-            }
+            return HandlePathSegmentPropertyAccess(node);
         }
 
-        // Handle other member expressions using the next visitor in the chain
-        return NextVisitor?.VisitMember(node) ?? HandleComplexPropertyNavigation(node);
+        // Check if this is a complex property navigation (nested member access)
+        if (HasComplexPropertyNavigation(node))
+        {
+            Logger.LogDebug("Complex property navigation detected, delegating to next visitor");
+            // Delegate to the next visitor in the chain (should be BaseExpressionVisitor)
+            return NextVisitor?.VisitMember(node) ?? throw new InvalidOperationException("No next visitor available for complex property navigation");
+        }
+
+        // Handle regular property access
+        return HandleRegularPropertyAccess(node);
+    }
+
+    private bool HasComplexPropertyNavigation(MemberExpression node)
+    {
+        // Check if the expression involves nested member access beyond a parameter
+        // This would be something like p.Address.City where node.Expression is p.Address (another MemberExpression)
+        return node.Expression is MemberExpression memberExpr &&
+               memberExpr.Expression is not null; // Make sure we have a deeper expression
+    }
+
+    private string HandlePathSegmentPropertyAccess(MemberExpression node)
+    {
+        // Map path segment properties (StartNode, EndNode, Relationship) to aliases
+        return node.Member.Name switch
+        {
+            nameof(IGraphPathSegment.StartNode) => Context.Builder.PathSegmentSourceAlias ?? "src",
+            nameof(IGraphPathSegment.EndNode) => Context.Builder.PathSegmentTargetAlias ?? "tgt",
+            nameof(IGraphPathSegment.Relationship) => Context.Builder.PathSegmentRelationshipAlias ?? "r",
+            _ => throw new NotSupportedException($"Path segment property '{node.Member.Name}' is not supported")
+        };
+    }
+
+    private string HandleRegularPropertyAccess(MemberExpression node)
+    {
+        // Use the current alias for regular property access
+        var currentAlias = Context.Scope.CurrentAlias;
+        if (string.IsNullOrEmpty(currentAlias))
+        {
+            Logger.LogWarning("No current alias available for property access: {Property}", node.Member.Name);
+            currentAlias = DetermineAliasFromProjectionContext();
+        }
+
+        Logger.LogDebug("Using current alias {Alias} for property {Property}", currentAlias, node.Member.Name);
+        return $"{currentAlias}.{node.Member.Name}";
     }
 
     private string DetermineAliasFromProjectionContext()
     {
-        // Check what was projected in the path segment context
+        // Determine alias based on the projection context
         var projection = Context.Builder.PathSegmentProjection;
         return projection switch
         {
@@ -116,27 +126,4 @@ internal class MemberExpressionVisitor(string? alias, CypherQueryContext context
     public override string VisitParameter(ParameterExpression node) =>
         NextVisitor?.VisitParameter(node) ?? throw new InvalidOperationException("No next visitor available for parameter expression");
 
-    private bool IsComplexPropertyNavigation(MemberExpression node)
-    {
-        // Check if we're navigating through a complex property
-        // This would be something like p.Address.Street where Address is a complex property
-
-        if (node.Expression is not MemberExpression parentMember)
-            return false;
-
-        // Check if the parent member is a complex property
-        var parentPropertyType = parentMember.Type;
-        return !GraphDataModel.IsSimple(parentPropertyType);
-    }
-
-    private string HandleComplexPropertyNavigation(MemberExpression node)
-    {
-        // TODO: implement complex property navigation handling
-
-        // For now, throw an exception to clearly indicate this needs implementation
-        // In the future, this will generate the appropriate MATCH patterns and joins
-        throw new NotSupportedException(
-            $"Complex property navigation '{node}' is not yet supported. " +
-            "This will be implemented to generate appropriate MATCH patterns for complex property relationships.");
-    }
 }

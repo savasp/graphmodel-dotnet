@@ -408,6 +408,11 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         }
     }
 
+    public void AddMatchClause(string matchClause)
+    {
+        _matchClauses.Add(matchClause);
+    }
+
     private void FinalizeWhereClause()
     {
         foreach (var (lambda, alias) in _pendingWhereClauses)

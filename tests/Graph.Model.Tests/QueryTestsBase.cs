@@ -37,6 +37,103 @@ public abstract class QueryTestsBase : ITestBase
     }
 
     [Fact]
+    public async Task CanQueryNodesByMultipleProperties()
+    {
+        var p1 = new Person { FirstName = "Alice", LastName = "Smith" };
+        var p2 = new Person { FirstName = "Bob", LastName = "Smith" };
+        var p3 = new Person { FirstName = "Charlie", LastName = "Jones" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
+
+        var smiths = await this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == "Smith" && p.FirstName.StartsWith("A"))
+            .ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Single(smiths);
+        Assert.Equal("Alice", smiths[0].FirstName);
+    }
+
+    [Fact]
+    public async Task CanQueryNodesWithComplexPropertyInWhere()
+    {
+        var p1 = new PersonWithComplexProperties { FirstName = "Alice", LastName = "Smith", Age = 30, Address = new AddressValue { City = "New York", Street = "123 Main St" } };
+        var p2 = new PersonWithComplexProperties { FirstName = "Bob", LastName = "Smith", Age = 25, Address = new AddressValue { City = "Los Angeles", Street = "456 Elm St" } };
+        var p3 = new PersonWithComplexProperties { FirstName = "Charlie", LastName = "Jones", Age = 35, Address = new AddressValue { City = "Chicago", Street = "789 Oak St" } };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
+
+        var youngSmiths = await this.Graph.Nodes<PersonWithComplexProperties>()
+            .Where(p => p.LastName == "Smith" && p.Age < 30 && p.Address.City == "Los Angeles")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(youngSmiths);
+        Assert.Equal("Bob", youngSmiths[0].FirstName);
+    }
+
+    [Fact]
+    public async Task CanQueryNodesWithComplexPropertyInSelect()
+    {
+        var p1 = new PersonWithComplexProperties { FirstName = "Alice", LastName = "Smith", Age = 30, Address = new AddressValue { City = "New York", Street = "123 Main St" } };
+        var p2 = new PersonWithComplexProperties { FirstName = "Bob", LastName = "Smith", Age = 25, Address = new AddressValue { City = "Los Angeles", Street = "456 Elm St" } };
+        var p3 = new PersonWithComplexProperties { FirstName = "Charlie", LastName = "Jones", Age = 35, Address = new AddressValue { City = "Chicago", Street = "789 Oak St" } };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
+
+        var peopleAndCities = await this.Graph.Nodes<PersonWithComplexProperties>()
+            .Select(p => new { p.FirstName, p.Address.City })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, peopleAndCities.Count);
+        Assert.Contains(peopleAndCities, pc => pc.FirstName == "Alice" && pc.City == "New York");
+        Assert.Contains(peopleAndCities, pc => pc.FirstName == "Bob" && pc.City == "Los Angeles");
+        Assert.Contains(peopleAndCities, pc => pc.FirstName == "Charlie" && pc.City == "Chicago");
+    }
+
+    [Fact]
+    public async Task CanQueryNodesByMultipleComplexPropertiesInSequence()
+    {
+        var c1 = new Class1
+        {
+            Property1 = "Value1",
+            Property2 = "Value2",
+            A = new ComplexClassA
+            {
+                Property1 = "A1",
+                Property2 = "A2",
+                B = new ComplexClassB { Property1 = "B1" }
+            },
+            B = new ComplexClassB { Property1 = "B2" }
+        };
+
+        var c2 = new Class2
+        {
+            Property1 = "Value3",
+            Property2 = "Value4",
+            A = new List<ComplexClassA>
+            {
+                new ComplexClassA { Property1 = "A3", Property2 = "A4" }
+            },
+            B = new List<ComplexClassB>
+            {
+                new ComplexClassB { Property1 = "B3" }
+            }
+        };
+
+        await this.Graph.CreateNodeAsync(c1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(c2, null, TestContext.Current.CancellationToken);
+
+        var results = await this.Graph.Nodes<Class1>()
+            .Where(c => c.A!.B!.Property1 == "B1" || c.B!.Property1 == "B2")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("Value1", results[0].Property1);
+        Assert.Equal("B2", results[0].B!.Property1);
+    }
+
+    [Fact]
     public async Task CanQueryAllNodes()
     {
         var p1 = new Person { FirstName = "A" };

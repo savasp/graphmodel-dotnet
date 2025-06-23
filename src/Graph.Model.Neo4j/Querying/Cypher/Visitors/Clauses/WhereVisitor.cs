@@ -50,8 +50,13 @@ internal sealed class WhereVisitor(string alias, CypherQueryContext context) : C
 
     protected override Expression VisitMember(MemberExpression node)
     {
-        _expressionVisitor.VisitMember(node);
-        return node;
+        Logger.LogDebug("Visiting member expression in WHERE clause: {Expression}", node);
+
+        // Use the MemberExpressionVisitor to handle complex property navigation
+        var alias = _expressionVisitor.VisitMember(node);
+
+        // Return the alias for further processing
+        return Expression.Constant(alias);
     }
 
     protected override Expression VisitMethodCall(MethodCallExpression node)

@@ -38,10 +38,16 @@ internal class BaseExpressionVisitor(
         return $"NOT ({operand})";
     }
 
-    // ...existing code...
     public override string VisitMember(MemberExpression node)
     {
         Logger.LogDebug("Visiting member: {Member}", node.Member.Name);
+
+        // Check if this is a complex property navigation (has nested member access)
+        if (HasComplexPropertyNavigation(node))
+        {
+            var (alias, propertyName) = HandleComplexPropertyNavigation(node);
+            return $"{alias}.{propertyName}";
+        }
 
         // Handle static DateTime properties
         if (node.Expression == null && node.Member.DeclaringType == typeof(DateTime))
@@ -347,5 +353,68 @@ internal class BaseExpressionVisitor(
         {
             throw new GraphException($"Failed to evaluate closure expression '{node}': {ex.Message}", ex);
         }
+    }
+
+    private (string alias, string? propertyName) HandleComplexPropertyNavigation(MemberExpression node)
+    {
+        var propertyChain = new Stack<string>();
+        var current = node;
+
+        // Build the property chain (e.g., Address.City -> [City, Address])
+        while (current != null)
+        {
+            propertyChain.Push(current.Member.Name);
+            current = current.Expression as MemberExpression;
+        }
+
+        // Use the current alias from the context scope
+        var currentAlias = Context.Scope.CurrentAlias ?? "src";
+        var parentAlias = currentAlias;
+
+        Logger.LogDebug("HandleComplexPropertyNavigation: Starting with alias {Alias}, property chain: [{Chain}]",
+            currentAlias, string.Join(", ", propertyChain.Reverse()));
+
+        // Generate MATCH clauses for all but the last property
+        while (propertyChain.Count > 1)
+        {
+            var propertyName = propertyChain.Pop();
+            var propertyAlias = $"{parentAlias}_{propertyName.ToLower()}";
+
+            Logger.LogDebug("Adding MATCH clause for complex property: {Property} -> {Alias}", propertyName, propertyAlias);
+
+            // Add a MATCH clause for the complex property
+            Context.Builder.AddMatchClause($"({parentAlias})-[:{GraphDataModel.PropertyNameToRelationshipTypeName(propertyName)}]->({propertyAlias})");
+
+            parentAlias = propertyAlias;
+        }
+
+        // Return the alias of the last complex property and its final property name
+        var lastPropertyName = propertyChain.Pop();
+        Logger.LogDebug("HandleComplexPropertyNavigation result: alias={Alias}, property={Property}", parentAlias, lastPropertyName);
+
+        return (parentAlias, lastPropertyName);
+    }
+
+    private bool HasComplexPropertyNavigation(MemberExpression node)
+    {
+        // Check if we have nested member access like p.Address.City
+        if (node.Expression is not MemberExpression parentMember)
+            return false;
+
+        // The parent member should be accessing a parameter (like p.Address where p is the parameter)
+        if (parentMember.Expression is not ParameterExpression)
+            return false;
+
+        // Check if the parent member is actually a complex property
+        return IsComplexPropertyNavigation(parentMember);
+    }
+
+    private bool IsComplexPropertyNavigation(MemberExpression node)
+    {
+        // Check if we're navigating through a complex property
+        // This would be something like p.Address.Street where Address is a complex property
+
+        // Exclude IEntity types
+        return !GraphDataModel.IsSimple(node.Type) && !node.Type.IsAssignableTo(typeof(Model.IEntity));
     }
 }
