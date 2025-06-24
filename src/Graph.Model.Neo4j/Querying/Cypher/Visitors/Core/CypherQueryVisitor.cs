@@ -229,9 +229,33 @@ internal class CypherQueryVisitor : ExpressionVisitor
             _context.Builder.AddReturn(alias);
             _context.Builder.EnableComplexPropertyLoading();
         }
+        else if (lambda.Body is NewExpression newExpr)
+        {
+            // Anonymous type projection - handle each property individually
+            _logger.LogDebug("Processing anonymous type projection with {PropertyCount} properties", newExpr.Arguments.Count);
+
+            // For projections, disable complex property loading since we're not returning full entities
+            _context.Builder.DisableComplexPropertyLoading();
+
+            // Process each property in the anonymous type
+            for (int i = 0; i < newExpr.Arguments.Count; i++)
+            {
+                var propertyExpr = newExpr.Arguments[i];
+                var propertyName = newExpr.Members?[i].Name ?? $"Property{i}";
+
+                // Visit the property expression to process complex property navigation
+                Visit(propertyExpr);
+
+                // Now translate the expression to Cypher
+                var cypherExpr = _expressionVisitor.VisitAndReturnCypher(propertyExpr);
+                _context.Builder.AddUserProjection(cypherExpr, propertyName);
+
+                _logger.LogDebug("Added projection: {Property} = {Expression}", propertyName, cypherExpr);
+            }
+        }
         else
         {
-            // Complex projection - translate the expression
+            // Single expression projection - translate the expression
             var selectExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
             _context.Builder.AddReturn(selectExpression);
 
@@ -410,6 +434,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleCount(MethodCallExpression node, Expression? result)
     {
+        // Disable complex property loading for aggregation queries
+        _context.Builder.DisableComplexPropertyLoading();
+
         // Handle optional where clause
         if (node.Arguments.Count == 2)
         {
@@ -430,6 +457,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleSum(MethodCallExpression node, Expression? result)
     {
+        // Disable complex property loading for aggregation queries
+        _context.Builder.DisableComplexPropertyLoading();
+
         if (node.Arguments.Count != 2)
             throw new GraphException("Sum method must have exactly 2 arguments");
 
@@ -448,6 +478,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleAverage(MethodCallExpression node, Expression? result)
     {
+        // Disable complex property loading for aggregation queries
+        _context.Builder.DisableComplexPropertyLoading();
+
         if (node.Arguments.Count != 2)
             throw new GraphException("Average method must have exactly 2 arguments");
 
@@ -466,6 +499,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleMin(MethodCallExpression node, Expression? result)
     {
+        // Disable complex property loading for aggregation queries
+        _context.Builder.DisableComplexPropertyLoading();
+
         if (node.Arguments.Count != 2)
             throw new GraphException("Min method must have exactly 2 arguments");
 
@@ -484,6 +520,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleMax(MethodCallExpression node, Expression? result)
     {
+        // Disable complex property loading for aggregation queries
+        _context.Builder.DisableComplexPropertyLoading();
+
         if (node.Arguments.Count != 2)
             throw new GraphException("Max method must have exactly 2 arguments");
 
