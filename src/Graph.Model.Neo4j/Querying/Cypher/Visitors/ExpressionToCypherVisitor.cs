@@ -339,13 +339,6 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
     {
         _logger.LogDebug("Visiting member: {Member}", node.Member.Name);
 
-        // Check if this is a complex property navigation (has nested member access)
-        if (HasComplexPropertyNavigation(node))
-        {
-            var (alias, propertyName) = HandleComplexPropertyNavigation(node);
-            return Expression.Constant($"{alias}.{propertyName}");
-        }
-
         // Handle static DateTime properties
         if (node.Expression == null && node.Member.DeclaringType == typeof(DateTime))
         {
@@ -398,6 +391,13 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
                     _logger.LogDebug("Mapping path segment end node property {Property} to tgt.{Property}", node.Member.Name, node.Member.Name);
                     return Expression.Constant($"tgt.{node.Member.Name}");
                 }
+            }
+
+            // Check if this is a complex property navigation (has nested member access)
+            if (HasComplexPropertyNavigation(node))
+            {
+                var (alias, propertyName) = HandleComplexPropertyNavigation(node);
+                return Expression.Constant($"{alias}.{propertyName}");
             }
 
             // Regular nested member access
