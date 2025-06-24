@@ -400,6 +400,19 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
                 return Expression.Constant($"{alias}.{propertyName}");
             }
 
+            // Check if this is a string property access that needs special handling
+            if (node.Member.DeclaringType == typeof(string))
+            {
+                var prnt = VisitAndReturnCypher(nestedMember);
+                var cypherExpression = node.Member.Name switch
+                {
+                    "Length" => $"size({prnt})",
+                    _ => $"{prnt}.{node.Member.Name}" // Default to property access for unsupported properties
+                };
+                _logger.LogDebug("Translated string property {Property} to {Expression}", node.Member.Name, cypherExpression);
+                return Expression.Constant(cypherExpression);
+            }
+
             // Regular nested member access
             var parent = VisitAndReturnCypher(nestedMember);
             return Expression.Constant($"{parent}.{node.Member.Name}");
@@ -465,6 +478,24 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
                 (param.Type == _scope.RootType || _scope.CurrentAlias != null
                     ? (_scope.CurrentAlias ?? _scope.GetOrCreateAlias(param.Type, "src"))
                     : _scope.GetOrCreateAlias(param.Type));
+
+            // Check if this is a string property access that needs special handling
+            if (node.Member.DeclaringType == typeof(string))
+            {
+                // We need to get the property being accessed on the parameter, not the string property itself
+                // For example, if we have p.Bio.Length, we need to get "Bio" not "Length"
+                var baseProperty = node.Expression;
+                if (baseProperty is MemberExpression baseMember)
+                {
+                    var cypherExpression = node.Member.Name switch
+                    {
+                        "Length" => $"size({alias}.{baseMember.Member.Name})",
+                        _ => $"{alias}.{node.Member.Name}" // Default to property access for unsupported properties
+                    };
+                    _logger.LogDebug("Translated string property {Property} to {Expression}", node.Member.Name, cypherExpression);
+                    return Expression.Constant(cypherExpression);
+                }
+            }
 
             _logger.LogDebug("Found parameter member access: {Alias}.{Member}", alias, node.Member.Name);
             return Expression.Constant($"{alias}.{node.Member.Name}");
@@ -681,6 +712,20 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         var result = _scope.CurrentAlias ?? throw new InvalidOperationException("No current alias set");
         _logger.LogDebug("Parameter expression result: {Result}", result);
         return Expression.Constant(result);
+    }
+
+    protected override Expression VisitConditional(ConditionalExpression node)
+    {
+        _logger.LogDebug("Visiting conditional expression (ternary operator)");
+
+        var test = VisitAndReturnCypher(node.Test);
+        var ifTrue = VisitAndReturnCypher(node.IfTrue);
+        var ifFalse = VisitAndReturnCypher(node.IfFalse);
+
+        var cypherExpression = $"CASE WHEN {test} THEN {ifTrue} ELSE {ifFalse} END";
+
+        _logger.LogDebug("Translated conditional expression to: {Expression}", cypherExpression);
+        return Expression.Constant(cypherExpression);
     }
 
     // Helper methods moved from BaseExpressionVisitor

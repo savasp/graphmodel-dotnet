@@ -777,7 +777,7 @@ public abstract class AdvancedQueryTestsBase : ITestBase
     }
 
     [Fact]
-    public async Task CanQueryWithFullTextSearch()
+    public async Task CanQueryWithFullTextSearch_SimpleContains()
     {
         // Arrange: Create nodes with text content for full-text search
         var person1 = new Person { FirstName = "Alice", LastName = "Smith", Bio = "Software engineer passionate about artificial intelligence and machine learning" };
@@ -790,69 +790,146 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
-        // Act & Assert: Test various full-text search scenarios
-
-        // Test 1: Simple text contains search
+        // Simple text contains search
         var engineerResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.Contains("engineer"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        // Let's also check all people in the database
-        var allPeople = await this.Graph.Nodes<Person>().ToListAsync(TestContext.Current.CancellationToken);
-
         Assert.Equal(2, engineerResults.Count);
         Assert.Contains(engineerResults, p => p.FirstName == "Alice");
         Assert.Contains(engineerResults, p => p.FirstName == "Diana");
+    }
 
-        // Test 2: Case-insensitive search
+    [Fact]
+    public async Task CanQueryWithFullTextSearch_CaseInsensitive()
+    {
+        // Arrange: Create nodes with text content for full-text search
+        var person1 = new Person { FirstName = "Alice", LastName = "Smith", Bio = "Software engineer passionate about artificial intelligence and machine learning" };
+        var person2 = new Person { FirstName = "Bob", LastName = "Johnson", Bio = "Data scientist working on natural language processing and text analytics" };
+        var person3 = new Person { FirstName = "Charlie", LastName = "Brown", Bio = "Product manager focused on user experience and interface design" };
+        var person4 = new Person { FirstName = "Diana", LastName = "Wilson", Bio = "DevOps engineer specializing in cloud infrastructure and automation" };
+
+        await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
+
+        // Case-insensitive search
         var aiResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLower().Contains("artificial intelligence"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(aiResults);
         Assert.Equal("Alice", aiResults[0].FirstName);
+    }
 
-        // Test 3: Multiple word search with AND logic
+    [Fact]
+    public async Task CanQueryWithFullTextSearch_MultipleWords()
+    {
+        // Arrange: Create nodes with text content for full-text search
+        var person1 = new Person { FirstName = "Alice", LastName = "Smith", Bio = "Software engineer passionate about artificial intelligence and machine learning" };
+        var person2 = new Person { FirstName = "Bob", LastName = "Johnson", Bio = "Data scientist working on natural language processing and text analytics" };
+        var person3 = new Person { FirstName = "Charlie", LastName = "Brown", Bio = "Product manager focused on user experience and interface design" };
+        var person4 = new Person { FirstName = "Diana", LastName = "Wilson", Bio = "DevOps engineer specializing in cloud infrastructure and automation" };
+
+        await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
+
+        // Multiple word search with AND logic
         var techResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLower().Contains("data") && p.Bio.ToLower().Contains("scientist"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(techResults);
         Assert.Equal("Bob", techResults[0].FirstName);
+    }
 
-        // Test 4: Multiple word search with OR logic
-        var designOrCloudResults = await this.Graph.Nodes<Person>()
-            .Where(p => p.Bio.Contains("design") || p.Bio.Contains("cloud"))
-            .ToListAsync(TestContext.Current.CancellationToken);
+    [Fact]
+    public async Task CanQueryWithFullTextSearch_StartsWith()
+    {
+        // Arrange: Create nodes with text content for full-text search
+        var person1 = new Person { FirstName = "Alice", LastName = "Smith", Bio = "Software engineer passionate about artificial intelligence and machine learning" };
+        var person2 = new Person { FirstName = "Bob", LastName = "Johnson", Bio = "Data scientist working on natural language processing and text analytics" };
+        var person3 = new Person { FirstName = "Charlie", LastName = "Brown", Bio = "Product manager focused on user experience and interface design" };
+        var person4 = new Person { FirstName = "Diana", LastName = "Wilson", Bio = "DevOps engineer specializing in cloud infrastructure and automation" };
 
-        Assert.Equal(2, designOrCloudResults.Count);
-        Assert.Contains(designOrCloudResults, p => p.FirstName == "Charlie");
-        Assert.Contains(designOrCloudResults, p => p.FirstName == "Diana");
+        await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
-        // Test 5: StartsWith and EndsWith for prefix/suffix matching
+        // StartsWith for prefix/suffix matching
         var startsWithResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.StartsWith("Software"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(startsWithResults);
         Assert.Equal("Alice", startsWithResults[0].FirstName);
+    }
 
+    [Fact]
+    public async Task CanQueryWithFullTextSearch_EndsWith()
+    {
+        // Arrange: Create nodes with text content for full-text search
+        var person1 = new Person { FirstName = "Alice", LastName = "Smith", Bio = "Software engineer passionate about artificial intelligence and machine learning" };
+        var person2 = new Person { FirstName = "Bob", LastName = "Johnson", Bio = "Data scientist working on natural language processing and text analytics" };
+        var person3 = new Person { FirstName = "Charlie", LastName = "Brown", Bio = "Product manager focused on user experience and interface design" };
+        var person4 = new Person { FirstName = "Diana", LastName = "Wilson", Bio = "DevOps engineer specializing in cloud infrastructure and automation" };
+
+        await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
+
+        // EndsWith for prefix/suffix matching
         var endsWithResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.EndsWith("automation"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(endsWithResults);
         Assert.Equal("Diana", endsWithResults[0].FirstName);
+    }
 
-        // Test 6: Combine text search with other filters
+    [Fact]
+    public async Task CanQueryWithFullTextSearch_WithOtherFilters()
+    {
+        // Arrange: Create nodes with text content for full-text search
+        var person1 = new Person { FirstName = "Alice", LastName = "Smith", Bio = "Software engineer passionate about artificial intelligence and machine learning" };
+        var person2 = new Person { FirstName = "Bob", LastName = "Johnson", Bio = "Data scientist working on natural language processing and text analytics" };
+        var person3 = new Person { FirstName = "Charlie", LastName = "Brown", Bio = "Product manager focused on user experience and interface design" };
+        var person4 = new Person { FirstName = "Diana", LastName = "Wilson", Bio = "DevOps engineer specializing in cloud infrastructure and automation" };
+
+        await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
+
+        // Combine text search with other filters
         var filteredResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.Contains("engineer") && p.FirstName.StartsWith("A"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(filteredResults);
         Assert.Equal("Alice", filteredResults[0].FirstName);
+    }
 
-        // Test 7: Project results with text matching
+    [Fact]
+    public async Task CanQueryWithFullTextSearch_Project()
+    {
+        // Arrange: Create nodes with text content for full-text search
+        var person1 = new Person { FirstName = "Alice", LastName = "Smith", Bio = "Software engineer passionate about artificial intelligence and machine learning" };
+        var person2 = new Person { FirstName = "Bob", LastName = "Johnson", Bio = "Data scientist working on natural language processing and text analytics" };
+        var person3 = new Person { FirstName = "Charlie", LastName = "Brown", Bio = "Product manager focused on user experience and interface design" };
+        var person4 = new Person { FirstName = "Diana", LastName = "Wilson", Bio = "DevOps engineer specializing in cloud infrastructure and automation" };
+
+        await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
+
+        // Project results with text matching
         var projectedResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLower().Contains("data") || p.Bio.ToLower().Contains("user"))
             .Select(p => new
