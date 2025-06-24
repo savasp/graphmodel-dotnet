@@ -393,8 +393,18 @@ internal class CypherQueryVisitor : ExpressionVisitor
         var resultType = node.Type.GetGenericArguments().FirstOrDefault();
         if (resultType != null && !IsScalarOrPrimitive(resultType))
         {
-            _context.Builder.EnableComplexPropertyLoading();
-            _logger.LogDebug("Enabled complex property loading for node query");
+            // Only enable if it hasn't been explicitly disabled (e.g., by JOIN operations)
+            // Check the current state - if it's already disabled, respect that
+            var currentType = _context.Scope.CurrentType;
+            if (currentType != null && _context.Builder.NeedsComplexProperties(currentType))
+            {
+                _context.Builder.EnableComplexPropertyLoading();
+                _logger.LogDebug("Enabled complex property loading for node query of type {Type}", currentType.Name);
+            }
+            else
+            {
+                _logger.LogDebug("Complex property loading disabled or not needed for current type");
+            }
         }
         else
         {
@@ -696,8 +706,173 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleJoin(MethodCallExpression node, Expression? result)
     {
-        // Join is complex - for now, provide a basic implementation or throw
-        throw new GraphException("Join operations are not yet fully implemented in the refactored architecture");
+        _logger.LogDebug("Processing JOIN clause - building query manually to avoid path segment mode");
+
+        // Arguments: [0] = outer source, [1] = inner source, [2] = outer key selector, [3] = inner key selector, [4] = result selector
+        if (node.Arguments.Count != 5)
+        {
+            throw new GraphException("Join method must have exactly 5 arguments");
+        }
+
+        // For JOINs, we need to manually construct the query instead of processing the full expression tree
+        // This avoids triggering path segment mode from relationship queries
+
+        // Clear any existing state and build fresh
+        _context.Builder.ClearMatches();
+        _context.Builder.ClearWhere();
+        _context.Builder.DisableComplexPropertyLoading();
+
+        // Extract the outer source (relationship queryable) manually
+        var outerSource = node.Arguments[0];
+        var outerQueryable = ExtractQueryableFromExpression(outerSource);
+
+        // Extract the inner source (node queryable)
+        var innerSource = node.Arguments[1];
+        var innerQueryable = ExtractQueryableFromExpression(innerSource);
+
+        string? outerAlias = null;
+        string? innerAlias = null;
+
+        // Add MATCH clause for the outer source (relationships)
+        if (outerQueryable is IGraphRelationshipQueryable)
+        {
+            var relType = outerQueryable.ElementType;
+            var relLabel = Labels.GetLabelFromType(relType);
+            outerAlias = "r";
+
+            // Add a simple relationship pattern without enabling path segments
+            _context.Builder.AddMatchPattern($"(src)-[{outerAlias}:{relLabel}]->(tgt)");
+            _context.Scope.CurrentAlias = outerAlias;
+            _context.Scope.CurrentType = relType;
+            _logger.LogDebug("Added outer relationship MATCH: (src)-[{Alias}:{Label}]->(tgt)", outerAlias, relLabel);
+        }
+
+        // Add MATCH clause for the inner source (nodes)
+        if (innerQueryable is IGraphNodeQueryable)
+        {
+            var nodeType = innerQueryable.ElementType;
+            var nodeLabel = Labels.GetLabelFromType(nodeType);
+            innerAlias = _context.Scope.GetOrCreateAlias(nodeType, "joined");
+
+            _context.Builder.AddMatch(innerAlias, nodeLabel);
+            _logger.LogDebug("Added inner node MATCH: ({Alias}:{Label})", innerAlias, nodeLabel);
+        }
+
+        // Process any WHERE conditions from the outer source
+        ExtractAndProcessWhereConditions(outerSource);
+
+        // Process the JOIN condition
+        var outerKeySelector = ExtractLambda(node.Arguments[2]);
+        var innerKeySelector = ExtractLambda(node.Arguments[3]);
+
+        if (outerKeySelector != null && innerKeySelector != null)
+        {
+            // Set context for outer key (relationship context)
+            _context.Scope.CurrentAlias = outerAlias;
+            var outerKey = _expressionVisitor.VisitAndReturnCypher(outerKeySelector.Body);
+
+            // Set context for inner key (node context)
+            _context.Scope.CurrentAlias = innerAlias;
+            var innerKey = _expressionVisitor.VisitAndReturnCypher(innerKeySelector.Body);
+
+            // Add the JOIN condition
+            var joinCondition = $"{outerKey} = {innerKey}";
+            _context.Builder.AddWhere(joinCondition);
+            _logger.LogDebug("Added JOIN condition: {Condition}", joinCondition);
+        }
+
+        // Handle the result selector
+        var resultSelector = ExtractLambda(node.Arguments[4]);
+        if (resultSelector != null && resultSelector.Body is ParameterExpression param)
+        {
+            var paramIndex = resultSelector.Parameters.IndexOf(param);
+            if (paramIndex == 1 && innerAlias != null) // Selecting the inner (second) parameter
+            {
+                // Set up the context for returning the joined entity
+                _context.Scope.CurrentAlias = innerAlias;
+                if (innerQueryable != null)
+                {
+                    _context.Scope.CurrentType = innerQueryable.ElementType;
+                }
+
+                // Set the main node alias in the builder so RETURN uses the correct alias
+                _context.Builder.SetMainNodeAlias(innerAlias);
+                _logger.LogDebug("JOIN result: selecting joined entity with alias {Alias}", innerAlias);
+            }
+            else if (paramIndex == 0 && outerAlias != null) // Selecting the outer (first) parameter
+            {
+                _context.Scope.CurrentAlias = outerAlias;
+                if (outerQueryable != null)
+                {
+                    _context.Scope.CurrentType = outerQueryable.ElementType;
+                }
+
+                // Set the main node alias in the builder
+                _context.Builder.SetMainNodeAlias(outerAlias);
+                _logger.LogDebug("JOIN result: selecting outer entity with alias {Alias}", outerAlias);
+            }
+        }
+
+        _logger.LogDebug("Completed JOIN processing with manual query construction");
+        return result ?? node.Arguments[0];
+    }
+
+    private IQueryable? ExtractQueryableFromExpression(Expression expression)
+    {
+        // Traverse the expression tree to find the queryable
+        if (expression is ConstantExpression { Value: IQueryable queryable })
+        {
+            return queryable;
+        }
+
+        if (expression is MethodCallExpression methodCall)
+        {
+            // For chained method calls, recursively look for the queryable
+            for (int i = 0; i < methodCall.Arguments.Count; i++)
+            {
+                var arg = methodCall.Arguments[i];
+                if (arg is ConstantExpression { Value: IQueryable q })
+                {
+                    return q;
+                }
+
+                // Recursively search method call arguments
+                var nested = ExtractQueryableFromExpression(arg);
+                if (nested != null)
+                {
+                    return nested;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private void ExtractAndProcessWhereConditions(Expression expression)
+    {
+        // Look for WHERE conditions in the outer source expression chain
+        if (expression is MethodCallExpression methodCall && methodCall.Method.Name == "Where")
+        {
+            var whereClause = ExtractLambda(methodCall.Arguments[1]);
+            if (whereClause != null)
+            {
+                var whereCondition = _expressionVisitor.VisitAndReturnCypher(whereClause.Body);
+                _context.Builder.AddWhere(whereCondition);
+                _logger.LogDebug("Added WHERE condition from outer source: {Condition}", whereCondition);
+            }
+        }
+
+        // Recursively process nested method calls
+        if (expression is MethodCallExpression nestedCall)
+        {
+            foreach (var arg in nestedCall.Arguments)
+            {
+                if (arg is MethodCallExpression)
+                {
+                    ExtractAndProcessWhereConditions(arg);
+                }
+            }
+        }
     }
 
     private Expression HandleUnion(MethodCallExpression node, Expression? result)
