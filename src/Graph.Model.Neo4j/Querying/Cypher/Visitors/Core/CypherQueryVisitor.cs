@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -134,6 +135,10 @@ internal class CypherQueryVisitor : ExpressionVisitor
             case "SingleOrDefaultAsyncMarker":
                 return HandleSingle(node, result, methodName);
 
+            case "LastAsyncMarker":
+            case "LastOrDefaultAsyncMarker":
+                return HandleLast(node, result, methodName);
+
             case "AnyAsyncMarker":
                 return HandleAny(node, result);
 
@@ -183,6 +188,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
             case "Direction":
                 return HandleDirection(node, result);
+
+            case "WithDepth":
+                return HandleWithDepth(node, result);
 
             default:
                 throw new GraphException(
@@ -255,12 +263,35 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
         else
         {
-            // Single expression projection - translate the expression
-            var selectExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
-            _context.Builder.AddReturn(selectExpression);
+            // Check if this is a path segment property access
+            if (lambda.Body is MemberExpression memberExpr &&
+                memberExpr.Expression is ParameterExpression param &&
+                typeof(IGraphPathSegment).IsAssignableFrom(param.Type))
+            {
+                // This is accessing a path segment property - set the appropriate projection
+                var projection = memberExpr.Member.Name switch
+                {
+                    nameof(IGraphPathSegment.StartNode) => CypherQueryBuilder.PathSegmentProjectionEnum.StartNode,
+                    nameof(IGraphPathSegment.EndNode) => CypherQueryBuilder.PathSegmentProjectionEnum.EndNode,
+                    nameof(IGraphPathSegment.Relationship) => CypherQueryBuilder.PathSegmentProjectionEnum.Relationship,
+                    _ => CypherQueryBuilder.PathSegmentProjectionEnum.Full
+                };
 
-            // For projections, disable complex property loading since we're not returning full entities
-            _context.Builder.DisableComplexPropertyLoading();
+                _context.Builder.SetPathSegmentProjection(projection);
+                _logger.LogDebug("Set path segment projection to {Projection} for property {Property}", projection, memberExpr.Member.Name);
+
+                // For path segment projections, ensure we have complex property loading enabled for the projected part
+                _context.Builder.EnableComplexPropertyLoading();
+            }
+            else
+            {
+                // Single expression projection - translate the expression
+                var selectExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
+                _context.Builder.AddReturn(selectExpression);
+
+                // For projections, disable complex property loading since we're not returning full entities
+                _context.Builder.DisableComplexPropertyLoading();
+            }
         }
 
         _logger.LogDebug("Added SELECT projection");
@@ -391,6 +422,30 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
 
         _logger.LogDebug("Added LIMIT 1 for {Method}", methodName);
+        return result ?? node.Arguments[0];
+    }
+
+    private Expression HandleLast(MethodCallExpression node, Expression? result, string methodName)
+    {
+        // Set limit to 1 for Last operations
+        _context.Builder.SetLimit(1);
+
+        // For Last, we need to reverse the order to get the last element
+        // This should be done after any existing ORDER BY clauses have been processed
+        _context.Builder.ReverseOrderBy();
+
+        // Handle optional where clause
+        if (node.Arguments.Count == 2)
+        {
+            var lambda = ExtractLambda(node.Arguments[1]);
+            if (lambda != null)
+            {
+                var whereCondition = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
+                _context.Builder.AddWhere(whereCondition);
+            }
+        }
+
+        _logger.LogDebug("Added LIMIT 1 and reversed ORDER BY for {Method}", methodName);
         return result ?? node.Arguments[0];
     }
 
@@ -657,6 +712,18 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 // Set up path segment context in the scope
                 _context.Scope.SetTraversalInfo(sourceType, relationshipType, targetType);
                 _context.Builder.EnablePathSegmentLoading();
+
+                // Set up the pending path segment pattern with appropriate aliases
+                var sourceAlias = _context.Scope.GetOrCreateAlias(sourceType, "src");
+                var relAlias = _context.Scope.GetOrCreateAlias(relationshipType, "r");
+                var targetAlias = _context.Scope.GetOrCreateAlias(targetType, "tgt");
+
+                _context.Builder.SetPendingPathSegmentPattern(
+                    sourceType, relationshipType, targetType,
+                    sourceAlias, relAlias, targetAlias);
+
+                _logger.LogDebug("Set up pending path segment pattern: ({Source}:{SourceType})-[{Rel}:{RelType}]->({Target}:{TargetType})",
+                    sourceAlias, sourceType.Name, relAlias, relationshipType.Name, targetAlias, targetType.Name);
             }
         }
 
@@ -677,6 +744,39 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 _context.Builder.SetTraversalDirection(direction);
                 _logger.LogDebug("Set traversal direction: {Direction}", direction);
             }
+        }
+
+        return result ?? node.Arguments[0];
+    }
+
+    private Expression HandleWithDepth(MethodCallExpression node, Expression? result)
+    {
+        _logger.LogDebug("Processing WithDepth method call");
+
+        if (node.Arguments.Count == 3)
+        {
+            // Extract min and max depth arguments
+            var minDepthArg = node.Arguments[1];
+            var maxDepthArg = node.Arguments[2];
+
+            var minDepth = EvaluateConstantExpression<int>(minDepthArg);
+            var maxDepth = EvaluateConstantExpression<int>(maxDepthArg);
+
+            _context.Builder.SetDepth(minDepth, maxDepth);
+            _logger.LogDebug("Set traversal depth: min={MinDepth}, max={MaxDepth}", minDepth, maxDepth);
+        }
+        else if (node.Arguments.Count == 2)
+        {
+            // Single argument means max depth only
+            var maxDepthArg = node.Arguments[1];
+            var maxDepth = EvaluateConstantExpression<int>(maxDepthArg);
+
+            _context.Builder.SetDepth(maxDepth);
+            _logger.LogDebug("Set traversal max depth: {MaxDepth}", maxDepth);
+        }
+        else
+        {
+            throw new GraphException("WithDepth method must have 1 or 2 depth arguments");
         }
 
         return result ?? node.Arguments[0];

@@ -295,6 +295,12 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         return PathSegmentProjection;
     }
 
+    public void SetPathSegmentProjection(PathSegmentProjectionEnum projection)
+    {
+        PathSegmentProjection = projection;
+        _logger.LogDebug("Set path segment projection: {Projection}", projection);
+    }
+
     public void AddOptionalMatch(string pattern)
     {
         _logger.LogDebug("AddOptionalMatch called with pattern: '{Pattern}'", pattern);

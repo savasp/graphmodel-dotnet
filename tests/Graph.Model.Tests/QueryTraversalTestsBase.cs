@@ -139,7 +139,7 @@ public abstract class QueryTraversalTestsBase : ITestBase
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = david.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
-        // Act: Traverse with depth range 2-3 (should get Charlie and David, but not Bob)
+        // Act: Traverse with depth range 2-3 (should get Charlie and David)
         var results = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Traverse<Person, Knows, Person>()
@@ -148,9 +148,24 @@ public abstract class QueryTraversalTestsBase : ITestBase
 
         // Assert
         Assert.Equal(2, results.Count);
+        Assert.Contains(results, p => p.FirstName == "David");
+        Assert.Contains(results, p => p.FirstName == "Charlie");
+        Assert.DoesNotContain(results, p => p.FirstName == "Bob");
+        Assert.DoesNotContain(results, p => p.FirstName == "Alice");
+
+        // Act: Traverse with depth range 1-3 (should get Bob, Charlie, and David)
+        results = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .Traverse<Person, Knows, Person>()
+            .WithDepth(1, 3)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(3, results.Count);
+        Assert.Contains(results, p => p.FirstName == "Bob");
         Assert.Contains(results, p => p.FirstName == "Charlie");
         Assert.Contains(results, p => p.FirstName == "David");
-        Assert.DoesNotContain(results, p => p.FirstName == "Bob");
+        Assert.DoesNotContain(results, p => p.FirstName == "Alice");
     }
 
     #endregion
