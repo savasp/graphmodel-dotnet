@@ -285,4 +285,49 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }
 
+    [Fact]
+    public async Task CanQueryOverAnyRelationship()
+    {
+        // Setup
+        var alice = new Person { FirstName = "Alice" };
+        var bob = new Person { FirstName = "Bob" };
+        var charlie = new Person { FirstName = "Charlie" };
+        var dave = new Person { FirstName = "Dave" };
+
+        await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
+
+        // Alice knows everyone, Bob knows 2, Charlie knows 1, Dave knows none
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(bob, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(alice, bob), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(bob, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
+
+        // Get Alice's relationships
+        var connectionStats = await this.Graph.Nodes<Person>()
+            .PathSegments<Person, IRelationship, Person>()
+            .GroupBy(ks => ks.StartNode)
+            .Select(g => new
+            {
+                Name = g.Key.FirstName,
+                OutgoingCount = g.Count(),
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(9, connectionStats.Count);
+
+        var aliceStats = connectionStats.First(s => s.Name == "Alice");
+        Assert.Equal(4, aliceStats.OutgoingCount);
+
+        var daveStats = connectionStats.First(s => s.Name == "Dave");
+        Assert.Equal(0, daveStats.OutgoingCount);
+    }
 }

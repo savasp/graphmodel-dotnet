@@ -44,6 +44,28 @@ public class AddressValue
     public string City { get; set; } = string.Empty;
 }
 
+[Relationship(Label = "FRIENDOF")]
+public class Friend : IRelationship
+{
+    public Friend() { }
+    public Friend(string startNodeId, string endNodeId)
+    {
+        this.StartNodeId = startNodeId;
+        this.EndNodeId = endNodeId;
+    }
+    public Friend(INode source, INode target)
+    {
+        this.StartNodeId = source.Id;
+        this.EndNodeId = target.Id;
+    }
+
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+    public string StartNodeId { get; init; } = string.Empty;
+    public string EndNodeId { get; init; } = string.Empty;
+    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
+    public DateTime Since { get; set; } = DateTime.UtcNow;
+}
+
 [Relationship(Label = "KNOWS")]
 public class Knows : IRelationship
 {
