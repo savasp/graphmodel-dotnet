@@ -280,6 +280,21 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 _context.Builder.SetPathSegmentProjection(projection);
                 _logger.LogDebug("Set path segment projection to {Projection} for property {Property}", projection, memberExpr.Member.Name);
 
+                // Update the current alias based on the projection
+                var newAlias = projection switch
+                {
+                    CypherQueryBuilder.PathSegmentProjectionEnum.StartNode => "src",
+                    CypherQueryBuilder.PathSegmentProjectionEnum.EndNode => "tgt",
+                    CypherQueryBuilder.PathSegmentProjectionEnum.Relationship => "r",
+                    _ => _context.Scope.CurrentAlias
+                };
+
+                if (newAlias != null)
+                {
+                    _context.Scope.CurrentAlias = newAlias;
+                    _logger.LogDebug("Updated current alias to {Alias} for path segment projection {Projection}", newAlias, projection);
+                }
+
                 // For path segment projections, ensure we have complex property loading enabled for the projected part
                 _context.Builder.EnableComplexPropertyLoading();
             }
