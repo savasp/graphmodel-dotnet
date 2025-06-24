@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
 using System.Collections;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
+using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
@@ -157,11 +158,17 @@ internal sealed class ResultMaterializer
             var singleProperty = entityInfo.SimpleProperties.First().Value;
             if (singleProperty.Value is SimpleValue simpleValue)
             {
-                return Convert.ChangeType(simpleValue.Object, targetType);
+                return ConvertValueToTargetType(simpleValue.Object, targetType);
             }
         }
 
         return GetDefaultValue(targetType);
+    }
+
+    private static object? ConvertValueToTargetType(object? value, Type targetType)
+    {
+        // Delegate all conversions to SerializationBridge for consistency
+        return SerializationBridge.FromNeo4jValue(value, targetType);
     }
 
     private object? CreateComplexObject(EntityInfo entityInfo, Type targetType)
@@ -209,11 +216,8 @@ internal sealed class ResultMaterializer
 
     private static object? ConvertToParameterType(object? value, Type targetType)
     {
-        if (value is null) return GetDefaultValue(targetType);
-        if (targetType.IsAssignableFrom(value.GetType())) return value;
-        if (targetType.IsEnum) return Enum.ToObject(targetType, value);
-
-        return Convert.ChangeType(value, targetType);
+        // Delegate all conversions to SerializationBridge for consistency
+        return SerializationBridge.FromNeo4jValue(value, targetType);
     }
 
     private static bool IsPathSegmentType(Type type) =>
