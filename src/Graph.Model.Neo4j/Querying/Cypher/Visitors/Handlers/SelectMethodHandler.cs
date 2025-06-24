@@ -24,35 +24,28 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 /// <summary>
 /// Handles the Select LINQ method by generating appropriate RETURN clauses.
+/// Refactored to eliminate duplication and use centralized logic.
 /// </summary>
 internal record SelectMethodHandler : MethodHandlerBase
 {
     public override bool Handle(CypherQueryContext context, MethodCallExpression node, Expression result)
     {
-        var logger = context.LoggerFactory?.CreateLogger<SelectMethodHandler>()
-            ?? NullLogger<SelectMethodHandler>.Instance;
+        var logger = CreateLogger(context, nameof(SelectMethodHandler));
 
-        logger.LogDebug("SelectMethodHandler called");
-
-        if (node.Method.Name != "Select" || node.Arguments.Count != 2)
+        // Validate this is a SELECT method call
+        if (!ValidateMethodCall(node, "Select", 2))
         {
-            logger.LogDebug("SelectMethodHandler: not a Select method or wrong arguments");
+            logger.LogDebug("Not a SELECT method call or wrong argument count");
             return false;
         }
 
-        var selectorExpression = node.Arguments[1];
+        logger.LogDebug("Processing SELECT method call");
 
-        // Extract the lambda expression
-        var lambda = selectorExpression switch
+        // Extract the lambda expression using centralized logic
+        var lambda = ExtractLambda(node.Arguments[1]);
+        if (lambda == null)
         {
-            LambdaExpression directLambda => directLambda,
-            UnaryExpression { Operand: LambdaExpression unaryLambda } => unaryLambda,
-            _ => null
-        };
-
-        if (lambda is null)
-        {
-            logger?.LogDebug("Could not extract lambda expression from selector");
+            logger.LogDebug("Could not extract lambda expression from selector");
             return false;
         }
 
@@ -62,7 +55,7 @@ internal record SelectMethodHandler : MethodHandlerBase
             var rootType = context.Scope.RootType;
             if (context.Builder.NeedsComplexProperties(rootType))
             {
-                logger?.LogDebug("Identity selection detected - enabling complex property loading");
+                logger.LogDebug("Identity selection detected - enabling complex property loading");
                 context.Builder.EnableComplexPropertyLoading();
             }
         }
@@ -86,8 +79,8 @@ internal record SelectMethodHandler : MethodHandlerBase
 
     private static bool HandleProjection(CypherQueryContext context, LambdaExpression lambda, Expression? result)
     {
-        var alias = context.Scope.CurrentAlias
-            ?? throw new InvalidOperationException("No current alias set in the scope for Select method");
+        // Use centralized alias resolution instead of direct access
+        var alias = DetermineContextAlias(context, "Select");
 
         var expressionVisitorFactory = new ExpressionVisitorChainFactory(context);
         var expressionVisitor = expressionVisitorFactory.CreateSelectClauseChain(alias);

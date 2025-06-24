@@ -23,12 +23,20 @@ using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+/// <summary>
+/// Refactored CypherQueryBuilder that uses focused query parts to eliminate duplication.
+/// </summary>
 internal class CypherQueryBuilder(CypherQueryContext context)
 {
     private readonly ILogger<CypherQueryBuilder> _logger = context.LoggerFactory?.CreateLogger<CypherQueryBuilder>()
         ?? NullLogger<CypherQueryBuilder>.Instance;
 
-    private readonly List<(LambdaExpression Lambda, string Alias)> _pendingWhereClauses = [];
+    // Focused query parts that handle specific responsibilities
+    private readonly MatchQueryPart _matchPart = new();
+    private readonly WhereQueryPart _wherePart = new(context);
+    private readonly ReturnQueryPart _returnPart = new();
+    private readonly OrderByQueryPart _orderByPart = new();
+    private readonly PaginationQueryPart _paginationPart = new();
 
     private record PendingPathSegmentPattern(
         Type SourceType,
@@ -48,25 +56,11 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         typeof(IGraphPathSegment)
     ];
 
-    private readonly List<string> _matchClauses = [];
-    private readonly List<string> _whereClauses = [];
-    private readonly List<string> _returnClauses = [];
-    private readonly List<(string Expression, bool IsDescending)> _orderByClauses = [];
     private readonly Dictionary<string, object?> _parameters = [];
-    private readonly List<string> _optionalMatchClauses = [];
-    private readonly List<string> _withClauses = [];
-    private readonly List<string> _unwindClauses = [];
-    private readonly List<string> _groupByClauses = [];
-    private int? _limit;
-    private int? _skip;
-    private bool _isDistinct;
     private bool _isRelationshipQuery;
     private int? _minDepth;
     private int? _maxDepth;
 
-    private string? _aggregation;
-    private bool _isExistsQuery;
-    private bool _isNotExistsQuery;
     private bool _includeComplexProperties;
     private string? _mainNodeAlias;
     private int _parameterCounter;
@@ -81,9 +75,9 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     public string? PathSegmentRelationshipAlias { get; set; }
     public string? PathSegmentTargetAlias { get; set; }
 
-    public bool HasUserProjections { get; set; } = false;
-
-    public bool HasExplicitReturn => _returnClauses.Count > 0 || _aggregation != null || _isExistsQuery || _isNotExistsQuery;
+    // Delegate to the focused query parts
+    public bool HasUserProjections => _returnPart.HasUserProjections;
+    public bool HasExplicitReturn => _returnPart.HasExplicitReturn;
 
     public bool IsRelationshipQuery => _isRelationshipQuery;
 
@@ -147,20 +141,17 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     public void SetPendingWhere(LambdaExpression lambda, string? alias)
     {
-        if (!string.IsNullOrEmpty(alias))
-        {
-            _pendingWhereClauses.Add((lambda, alias));
-        }
+        _wherePart.SetPendingWhere(lambda, alias);
     }
 
     public void SetExistsQuery()
     {
-        _isExistsQuery = true;
+        _returnPart.SetExistsQuery();
     }
 
     public void SetNotExistsQuery()
     {
-        _isNotExistsQuery = true;
+        _returnPart.SetNotExistsQuery();
     }
 
     public void AddMatch(string alias, string? label = null, string? pattern = null)
@@ -170,34 +161,16 @@ internal class CypherQueryBuilder(CypherQueryContext context)
             RootNodeAlias = alias;
         }
 
-        var match = new StringBuilder($"({alias}");
-
-        if (!string.IsNullOrEmpty(label))
-        {
-            match.Append($":{label}");
-        }
-
-        match.Append(')');
-
-        if (!string.IsNullOrEmpty(pattern))
-        {
-            match.Append(pattern);
-        }
-
-        _matchClauses.Add(match.ToString());
+        _matchPart.AddMatch(alias, label, pattern);
 
         // Keep track of the main node alias
         _mainNodeAlias ??= alias;
+        _returnPart.SetMainNodeAlias(_mainNodeAlias);
     }
 
     public void AddMatchPattern(string fullPattern)
     {
-        // For relationship patterns, ensure we don't duplicate them
-        if (fullPattern.Contains("-[") && _matchClauses.Any(c => c.Contains("-[") && c.Contains("]->")))
-        {
-            return; // Skip if we already have a relationship pattern
-        }
-        _matchClauses.Add(fullPattern);
+        _matchPart.AddMatchPattern(fullPattern);
     }
 
     public void EnableComplexPropertyLoading()
@@ -213,32 +186,27 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     public void ClearMatches()
     {
-        _matchClauses.Clear();
+        _matchPart.ClearMatches();
     }
 
     public void ClearUserProjections()
     {
-        HasUserProjections = false;
-        ClearReturn();
+        _returnPart.ClearUserProjections();
     }
 
     public void ClearWhere()
     {
-        _whereClauses.Clear();
+        _wherePart.ClearWhere();
     }
 
     public void AddWhere(string condition)
     {
-        // Don't add duplicate WHERE clauses
-        if (!_whereClauses.Contains(condition))
-        {
-            _whereClauses.Add(condition);
-        }
+        _wherePart.AddWhere(condition);
     }
 
     public void ClearReturn()
     {
-        _returnClauses.Clear();
+        _returnPart.ClearReturn();
     }
 
     public void SetMainNodeAlias(string alias)
@@ -248,12 +216,12 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     public void AddOrderBy(string expression, bool isDescending = false)
     {
-        _orderByClauses.Add((expression, isDescending));
+        _orderByPart.AddOrderBy(expression, isDescending);
     }
 
-    public void SetSkip(int skip) => _skip = skip;
-    public void SetLimit(int limit) => _limit = limit;
-    public void SetAggregation(string function, string expression) => _aggregation = $"{function}({expression})";
+    public void SetSkip(int skip) => _paginationPart.SetSkip(skip);
+    public void SetLimit(int limit) => _paginationPart.SetLimit(limit);
+    public void SetAggregation(string function, string expression) => _returnPart.SetAggregation(function, expression);
 
     public string AddParameter(object? value)
     {
@@ -279,12 +247,12 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         BuildPendingPathSegmentPattern();
 
         // Handle special query types first
-        if (_isExistsQuery)
+        if (_returnPart.IsExistsQuery)
         {
             return BuildExistsQuery();
         }
 
-        if (_isNotExistsQuery)
+        if (_returnPart.IsNotExistsQuery)
         {
             return BuildNotExistsQuery();
         }
@@ -297,7 +265,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
             return BuildWithComplexProperties();
         }
 
-        // Otherwise build a simple query
+        // Build a simple query using the focused query parts
         return BuildSimpleQuery();
     }
 
@@ -311,9 +279,9 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     {
         _logger.LogDebug("AddRelationshipMatch called with type: {Type}", relationshipType);
 
-        // Use the same pattern as path segments
-        _matchClauses.Add($"(src)-[r:{relationshipType}]->(tgt)");
+        _matchPart.AddRelationshipMatch(relationshipType, TraversalDirection, _minDepth, _maxDepth);
         _mainNodeAlias = "r"; // Set main alias to the relationship
+        _returnPart.SetMainNodeAlias(_mainNodeAlias);
 
         _isRelationshipQuery = true;
 
@@ -321,7 +289,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         EnablePathSegmentLoading();
     }
 
-    public bool HasOrderBy => _orderByClauses.Any();
+    public bool HasOrderBy => _orderByPart.HasOrderBy;
 
     public PathSegmentProjectionEnum GetPathSegmentProjection()
     {
@@ -331,106 +299,78 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     public void AddOptionalMatch(string pattern)
     {
         _logger.LogDebug("AddOptionalMatch called with pattern: '{Pattern}'", pattern);
-        _optionalMatchClauses.Add(pattern);
+        _matchPart.AddOptionalMatch(pattern);
     }
 
     public void AddLimit(int limit)
     {
         _logger.LogDebug("AddLimit called with value: {Limit}", limit);
-        _limit = limit;
+        _paginationPart.AddLimit(limit);
     }
 
     public void AddSkip(int skip)
     {
         _logger.LogDebug("AddSkip called with value: {Skip}", skip);
-        _skip = skip;
+        _paginationPart.AddSkip(skip);
     }
 
     public void AddWith(string expression)
     {
         _logger.LogDebug("AddWith called with expression: '{Expression}'", expression);
-        _withClauses.Add(expression);
+        _returnPart.AddWith(expression);
     }
 
     public void AddUnwind(string expression)
     {
         _logger.LogDebug("AddUnwind called with expression: '{Expression}'", expression);
-        _unwindClauses.Add(expression);
+        _returnPart.AddUnwind(expression);
     }
 
     public void AddGroupBy(string expression)
     {
         _logger.LogDebug("AddGroupBy called with expression: '{Expression}'", expression);
-        _groupByClauses.Add(expression);
+        _returnPart.AddGroupBy(expression);
     }
 
     public void SetDistinct(bool distinct)
     {
         _logger.LogDebug("SetDistinct called with value: {Value}", distinct);
-        _isDistinct = distinct;
+        _returnPart.SetDistinct(distinct);
     }
 
-    public bool HasReturnClause => _returnClauses.Any();
+    public bool HasReturnClause => _returnPart.HasContent;
 
     public void AddReturn(string expression, string? alias = null)
     {
-        if (!string.IsNullOrWhiteSpace(alias))
-        {
-            _returnClauses.Add($"{expression} AS {alias}");
-        }
-        else
-        {
-            _returnClauses.Add(expression);
-        }
+        _returnPart.AddReturn(expression, alias);
     }
 
     public void AddUserProjection(string expression, string? alias = null)
     {
-        HasUserProjections = true;
-        AddReturn(expression, alias);
+        _returnPart.AddUserProjection(expression, alias);
     }
 
     public void AddInfrastructureReturn(string expression, string? alias = null)
     {
-        // This is for infrastructure returns like path segments - don't mark as user projection
-        AddReturn(expression, alias);
+        _returnPart.AddInfrastructureReturn(expression, alias);
     }
 
     public void ReverseOrderBy()
     {
         _logger.LogDebug("Reversing ORDER BY clauses");
-
-        // Flip the IsDescending flag for all order clauses
-        for (int i = 0; i < _orderByClauses.Count; i++)
-        {
-            var (expression, isDescending) = _orderByClauses[i];
-            _orderByClauses[i] = (expression, !isDescending);
-        }
+        _orderByPart.ReverseOrderBy();
     }
 
     public void AddMatchClause(string matchClause)
     {
-        _matchClauses.Add(matchClause);
+        _matchPart.AddMatchPattern(matchClause);
     }
 
     private void FinalizeWhereClause()
     {
-        foreach (var (lambda, alias) in _pendingWhereClauses)
-        {
-            _logger.LogDebug("Processing pending WHERE clause with alias: {Alias}", alias);
-
-            // Map the original alias to the actual alias used in the pattern
-            var actualAlias = GetActualAlias(alias);
-            _logger.LogDebug("Mapped alias {Original} to {Actual}", alias, actualAlias);
-
-            // Use the factory to create the proper visitor chain with the specific alias
-            var expressionVisitor = new ExpressionVisitorChainFactory(context)
-                .CreateWhereClauseChain(actualAlias);
-            var whereExpression = expressionVisitor.Visit(lambda.Body);
-            AddWhere(whereExpression);
-        }
-
-        _pendingWhereClauses.Clear();
+        // The WhereQueryPart now handles pending WHERE clauses internally
+        // This method is kept for compatibility but delegates to the focused part
+        _logger.LogDebug("FinalizeWhereClause called - delegating to WhereQueryPart");
     }
 
     private string GetActualAlias(string originalAlias)
@@ -491,142 +431,36 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     private CypherQuery BuildSimpleQuery()
     {
-        _logger.LogDebug("Building simple query");
+        _logger.LogDebug("Building simple query using focused query parts");
 
         var query = new StringBuilder();
 
-        // Build the main query structure
-        AppendMatchClauses(query);
-        AppendWhereClauses(query);
-        AppendReturnClause(query);
-        AppendOrderByClauses(query);
-        AppendPaginationClauses(query);
+        // IMPORTANT: Process WHERE expressions first to ensure any complex property 
+        // MATCH clauses are added before we write the MATCH section
+        _wherePart.FinalizePendingClauses();
+
+        // Build the query using the focused query parts
+        var parts = new List<ICypherQueryPart> { _matchPart, _wherePart, _returnPart, _orderByPart, _paginationPart };
+
+        foreach (var part in parts.Where(p => p.HasContent).OrderBy(p => p.Order))
+        {
+            part.AppendTo(query, _parameters);
+        }
 
         return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
     }
 
-    private void AppendMatchClauses(StringBuilder query)
-    {
-        _logger.LogDebug("Appending MATCH clauses");
-
-        if (_matchClauses.Count > 0)
-        {
-            query.Append("MATCH ");
-            query.AppendJoin(", ", _matchClauses);
-            query.AppendLine();
-        }
-
-        // Add optional matches if any
-        foreach (var optionalMatch in _optionalMatchClauses)
-        {
-            query.AppendLine($"OPTIONAL MATCH {optionalMatch}");
-        }
-    }
-
-    private void AppendWhereClauses(StringBuilder query)
-    {
-        _logger.LogDebug("Appending WHERE clauses");
-
-        if (_whereClauses.Count > 0)
-        {
-            query.Append("WHERE ");
-            query.AppendJoin(" AND ", _whereClauses);
-            query.AppendLine();
-        }
-    }
-
-    private void AppendReturnClause(StringBuilder query)
-    {
-        _logger.LogDebug("Appending RETURN clause");
-
-        // Handle WITH clauses first
-        foreach (var withClause in _withClauses)
-        {
-            query.AppendLine($"WITH {withClause}");
-        }
-
-        // Handle UNWIND clauses
-        foreach (var unwindClause in _unwindClauses)
-        {
-            query.AppendLine($"UNWIND {unwindClause}");
-        }
-
-        // Build the RETURN clause
-        query.Append("RETURN ");
-
-        if (_aggregation != null)
-        {
-            query.Append(_aggregation);
-        }
-        else if (_returnClauses.Count > 0)
-        {
-            var returnExpression = _isDistinct
-                ? $"DISTINCT {string.Join(", ", _returnClauses)}"
-                : string.Join(", ", _returnClauses);
-            query.Append(returnExpression);
-        }
-        else
-        {
-            // Only use the fallback Node structure if there are no projections or aggregations
-
-            // If we're returning a node or set of nodes (and not handling complex properties),
-            // wrap it in the required structure.
-            var alias = _mainNodeAlias ?? "src";
-            query.AppendLine($@"{{
-                Node: {alias},
-                ComplexProperties: []
-            }} AS Node");
-            return;
-        }
-
-        query.AppendLine();
-
-        // Add GROUP BY if needed
-        if (_groupByClauses.Count > 0)
-        {
-            query.Append("GROUP BY ");
-            query.AppendJoin(", ", _groupByClauses);
-            query.AppendLine();
-        }
-    }
-
-    private void AppendOrderByClauses(StringBuilder query)
-    {
-        _logger.LogDebug("Appending ORDER BY clauses");
-
-        if (_orderByClauses.Count > 0)
-        {
-            query.Append("ORDER BY ");
-            var orderByParts = _orderByClauses.Select(o =>
-                o.IsDescending ? $"{o.Expression} DESC" : o.Expression);
-            query.AppendJoin(", ", orderByParts);
-            query.AppendLine();
-        }
-    }
-
-    private void AppendPaginationClauses(StringBuilder query)
-    {
-        _logger.LogDebug("Appending pagination clauses");
-
-        if (_skip.HasValue)
-        {
-            query.AppendLine($"SKIP {_skip.Value}");
-        }
-
-        if (_limit.HasValue)
-        {
-            query.AppendLine($"LIMIT {_limit.Value}");
-        }
-    }
+    // Old private methods removed - functionality now handled by focused query parts
 
     private CypherQuery BuildExistsQuery()
     {
-        _logger.LogDebug("Building EXISTS query");
+        _logger.LogDebug("Building EXISTS query using focused query parts");
 
         var query = new StringBuilder();
 
-        AppendMatchClauses(query);
-        AppendWhereClauses(query);
+        // Use focused query parts for EXISTS queries
+        _matchPart.AppendTo(query, _parameters);
+        _wherePart.AppendTo(query, _parameters);
 
         // For EXISTS queries, we return a count > 0
         query.AppendLine($"RETURN COUNT({_mainNodeAlias ?? "src"}) > 0 AS exists");
@@ -636,12 +470,13 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     private CypherQuery BuildNotExistsQuery()
     {
-        _logger.LogDebug("Building NOT EXISTS query");
+        _logger.LogDebug("Building NOT EXISTS query using focused query parts");
 
         var query = new StringBuilder();
 
-        AppendMatchClauses(query);
-        AppendWhereClauses(query);
+        // Use focused query parts for NOT EXISTS queries
+        _matchPart.AppendTo(query, _parameters);
+        _wherePart.AppendTo(query, _parameters);
 
         // For NOT EXISTS queries (used by All), return true if no matching nodes exist
         query.AppendLine($"RETURN COUNT({_mainNodeAlias ?? "src"}) = 0 AS all");
@@ -651,13 +486,17 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     private CypherQuery BuildWithComplexProperties()
     {
-        _logger.LogDebug("Building query with complex properties");
+        _logger.LogDebug("Building query with complex properties using focused query parts");
 
         var query = new StringBuilder();
 
-        // First part: get the main nodes
-        AppendMatchClauses(query);
-        AppendWhereClauses(query);
+        // IMPORTANT: Process WHERE expressions first to ensure any complex property 
+        // MATCH clauses are added before we write the MATCH section
+        _wherePart.FinalizePendingClauses();
+
+        // First part: get the main nodes using focused query parts
+        _matchPart.AppendTo(query, _parameters);
+        _wherePart.AppendTo(query, _parameters);
 
         // For path segments, we don't need the intermediate WITH clause
         if (_loadPathSegment)
@@ -668,8 +507,8 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         else if (!string.IsNullOrEmpty(_mainNodeAlias))
         {
             // For regular node queries, collect main nodes with ordering and pagination
-            AppendOrderByClauses(query);
-            AppendPaginationClauses(query);
+            _orderByPart.AppendTo(query, _parameters);
+            _paginationPart.AppendTo(query, _parameters);
             AppendComplexPropertyMatchesForSingleNode(query);
         }
         else
