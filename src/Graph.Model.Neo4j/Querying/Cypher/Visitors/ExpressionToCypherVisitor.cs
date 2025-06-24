@@ -97,6 +97,12 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
             return VisitCollectionMethod(node);
         }
 
+        // Handle aggregation methods (Count, Sum, Average, Min, Max)
+        if (IsAggregationMethod(node))
+        {
+            return VisitAggregationMethod(node);
+        }
+
         // Handle conversion operators (op_Implicit, op_Explicit)
         if (node.Method.Name.StartsWith("op_") && node.Arguments.Count == 1)
         {
@@ -443,6 +449,26 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
                 return Expression.Constant(propertyMapping);
             }
 
+            // Special handling for IGrouping.Key in GROUP BY scenarios
+            if (param.Type.IsGenericType && param.Type.GetGenericTypeDefinition() == typeof(IGrouping<,>))
+            {
+                if (node.Member.Name == "Key")
+                {
+                    // In GROUP BY scenarios, g.Key should reference the grouped field expression
+                    var groupByExpression = _scope.GroupByExpression;
+                    if (!string.IsNullOrEmpty(groupByExpression))
+                    {
+                        _logger.LogDebug("Mapping IGrouping.Key to stored GROUP BY expression: {Expression}", groupByExpression);
+                        return Expression.Constant(groupByExpression);
+                    }
+
+                    // Fallback if no GROUP BY expression was stored
+                    var a = _contextAlias ?? _scope.CurrentAlias ?? "src";
+                    _logger.LogDebug("No GROUP BY expression stored, falling back to alias: {Alias}", a);
+                    return Expression.Constant(a);
+                }
+            }
+
             // Special handling for relationship StartNodeId and EndNodeId properties
             if (typeof(Model.IRelationship).IsAssignableFrom(param.Type))
             {
@@ -585,6 +611,81 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         }
 
         throw new NotSupportedException($"Collection method {node.Method.DeclaringType?.Name}.{node.Method.Name} is not supported in Cypher expressions");
+    }
+
+    private static bool IsAggregationMethod(MethodCallExpression node)
+    {
+        if (node.Method.DeclaringType == null)
+            return false;
+
+        // Check for LINQ aggregation methods from Enumerable
+        if (node.Method.DeclaringType == typeof(Enumerable))
+        {
+            return node.Method.Name is "Count" or "Sum" or "Average" or "Min" or "Max";
+        }
+
+        return false;
+    }
+
+    private Expression VisitAggregationMethod(MethodCallExpression node)
+    {
+        _logger.LogDebug("Visiting aggregation method: {Method}", node.Method.Name);
+
+        var alias = _contextAlias ?? _scope.CurrentAlias ?? "src";
+
+        string cypherExpression;
+
+        if (node.Method.Name == "Count" && node.Arguments.Count == 1)
+        {
+            cypherExpression = $"count({alias})";
+        }
+        else if (node.Method.Name == "Count" && node.Arguments.Count == 2)
+        {
+            var lambda = ExtractLambda(node.Arguments[1]);
+            if (lambda == null)
+                throw new GraphException("Count with predicate requires a lambda expression");
+            var predicate = VisitAndReturnCypher(lambda.Body);
+            cypherExpression = $"count(CASE WHEN {predicate} THEN 1 END)";
+        }
+        else if (node.Method.Name == "Sum" && node.Arguments.Count == 2)
+        {
+            var lambda = ExtractLambda(node.Arguments[1]);
+            if (lambda == null)
+                throw new GraphException("Sum requires a lambda expression");
+            var sumExpr = VisitAndReturnCypher(lambda.Body);
+            cypherExpression = $"sum({sumExpr})";
+        }
+        else if (node.Method.Name == "Average" && node.Arguments.Count == 2)
+        {
+            var lambda = ExtractLambda(node.Arguments[1]);
+            if (lambda == null)
+                throw new GraphException("Average requires a lambda expression");
+            var avgExpr = VisitAndReturnCypher(lambda.Body);
+            cypherExpression = $"avg({avgExpr})";
+        }
+        else if (node.Method.Name == "Min" && node.Arguments.Count == 2)
+        {
+            var lambda = ExtractLambda(node.Arguments[1]);
+            if (lambda == null)
+                throw new GraphException("Min requires a lambda expression");
+            var minExpr = VisitAndReturnCypher(lambda.Body);
+            cypherExpression = $"min({minExpr})";
+        }
+        else if (node.Method.Name == "Max" && node.Arguments.Count == 2)
+        {
+            var lambda = ExtractLambda(node.Arguments[1]);
+            if (lambda == null)
+                throw new GraphException("Max requires a lambda expression");
+            var maxExpr = VisitAndReturnCypher(lambda.Body);
+            cypherExpression = $"max({maxExpr})";
+        }
+        else
+        {
+            throw new NotSupportedException($"Aggregation method {node.Method.Name} with {node.Arguments.Count} arguments is not supported");
+        }
+
+        _logger.LogDebug("Translated aggregation method {Method} to {CypherExpression}", node.Method.Name, cypherExpression);
+        return Expression.Constant(cypherExpression);
     }
 
     /// <summary>
@@ -733,19 +834,19 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
     {
         var evaluableMethods = new[]
         {
-            // DateTime methods
-            "AddYears", "AddMonths", "AddDays", "AddHours", "AddMinutes", "AddSeconds", "AddMilliseconds",
-            "Date", "TimeOfDay", "Year", "Month", "Day", "Hour", "Minute", "Second", "Millisecond",
-            
-            // String methods (that don't need Cypher translation)
-            "Concat", "Join", "Format",
-            
-            // Math methods
-            "Abs", "Max", "Min", "Round", "Floor", "Ceiling",
-            
-            // Guid methods
-            "NewGuid"
-        };
+                // DateTime methods
+                "AddYears", "AddMonths", "AddDays", "AddHours", "AddMinutes", "AddSeconds", "AddMilliseconds",
+                "Date", "TimeOfDay", "Year", "Month", "Day", "Hour", "Minute", "Second", "Millisecond",
+                
+                // String methods (that don't need Cypher translation)
+                "Concat", "Join", "Format",
+                
+                // Math methods
+                "Abs", "Max", "Min", "Round", "Floor", "Ceiling",
+                
+                // Guid methods
+                "NewGuid"
+            };
 
         if (evaluableMethods.Contains(node.Method.Name))
         {
@@ -847,6 +948,16 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         }
 
         return false;
+    }
+
+    private static LambdaExpression? ExtractLambda(Expression expression)
+    {
+        return expression switch
+        {
+            LambdaExpression lambda => lambda,
+            UnaryExpression { NodeType: ExpressionType.Quote, Operand: LambdaExpression quotedLambda } => quotedLambda,
+            _ => null
+        };
     }
 
     private sealed class ParameterExpressionFinder : ExpressionVisitor

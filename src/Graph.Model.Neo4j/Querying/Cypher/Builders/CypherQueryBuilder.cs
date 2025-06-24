@@ -33,6 +33,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     // Focused query parts that handle specific responsibilities
     private readonly MatchQueryPart _matchPart = new();
     private readonly WhereQueryPart _wherePart = new(context);
+    private readonly GroupByQueryPart _groupByPart = new();
     private readonly ReturnQueryPart _returnPart = new();
     private readonly OrderByQueryPart _orderByPart = new();
     private readonly PaginationQueryPart _paginationPart = new();
@@ -334,7 +335,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     public void AddGroupBy(string expression)
     {
         _logger.LogDebug("AddGroupBy called with expression: '{Expression}'", expression);
-        _returnPart.AddGroupBy(expression);
+        _groupByPart.AddGroupBy(expression);
     }
 
     public void SetDistinct(bool distinct)
@@ -445,7 +446,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         _wherePart.FinalizePendingClauses();
 
         // Build the query using the focused query parts
-        var parts = new List<ICypherQueryPart> { _matchPart, _wherePart, _returnPart, _orderByPart, _paginationPart };
+        var parts = new List<ICypherQueryPart> { _matchPart, _wherePart, _groupByPart, _returnPart, _orderByPart, _paginationPart };
 
         foreach (var part in parts.Where(p => p.HasContent).OrderBy(p => p.Order))
         {

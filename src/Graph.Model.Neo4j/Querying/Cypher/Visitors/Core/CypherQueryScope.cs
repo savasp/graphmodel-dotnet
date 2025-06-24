@@ -66,6 +66,11 @@ internal sealed class CypherQueryScope(Type rootType)
     public TraversalInfo? TraversalInfo { get; private set; }
 
     /// <summary>
+    /// Gets the GROUP BY expression for use in g.Key references.
+    /// </summary>
+    public string? GroupByExpression { get; private set; }
+
+    /// <summary>
     /// Sets the traversal depth constraints for path patterns.
     /// </summary>
     public void SetTraversalDepth(int minDepth, int maxDepth)
@@ -147,6 +152,14 @@ internal sealed class CypherQueryScope(Type rootType)
     public void SetTraversalInfo(Type sourceType, Type relationshipType, Type targetNodeType)
     {
         TraversalInfo = new TraversalInfo(sourceType, relationshipType, targetNodeType);
+    }
+
+    /// <summary>
+    /// Sets the GROUP BY expression for later use in g.Key references.
+    /// </summary>
+    public void SetGroupByExpression(string expression)
+    {
+        GroupByExpression = expression;
     }
 
     private string GenerateAlias(Type type)

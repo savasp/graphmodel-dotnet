@@ -251,8 +251,12 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 var propertyExpr = newExpr.Arguments[i];
                 var propertyName = newExpr.Members?[i].Name ?? $"Property{i}";
 
-                // Visit the property expression to process complex property navigation
-                Visit(propertyExpr);
+                // Only visit for complex property navigation, skip for method calls which are handled by ExpressionToCypherVisitor
+                if (propertyExpr is not MethodCallExpression)
+                {
+                    // Visit the property expression to process complex property navigation
+                    Visit(propertyExpr);
+                }
 
                 // Now translate the expression to Cypher
                 var cypherExpr = _expressionVisitor.VisitAndReturnCypher(propertyExpr);
@@ -680,9 +684,13 @@ internal class CypherQueryVisitor : ExpressionVisitor
         _logger.LogDebug("Processing GROUP BY method");
 
         var groupByExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
-        _context.Builder.AddGroupBy(groupByExpression);
 
-        _logger.LogDebug("Added GROUP BY");
+        // Store the group by expression for later use in g.Key references
+        // But don't add an explicit GROUP BY clause since Neo4j handles grouping implicitly
+        // when there are aggregation functions in the RETURN clause
+        _context.Scope.SetGroupByExpression(groupByExpression);
+
+        _logger.LogDebug("Stored GROUP BY expression for implicit grouping: {Expression}", groupByExpression);
         return result ?? node.Arguments[0];
     }
 

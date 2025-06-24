@@ -25,7 +25,6 @@ internal class ReturnQueryPart : ICypherQueryPart
     private readonly List<string> _returnClauses = [];
     private readonly List<string> _withClauses = [];
     private readonly List<string> _unwindClauses = [];
-    private readonly List<string> _groupByClauses = [];
     private string? _aggregation;
     private bool _isDistinct;
     private bool _isExistsQuery;
@@ -136,13 +135,7 @@ internal class ReturnQueryPart : ICypherQueryPart
         _unwindClauses.Add(expression);
     }
 
-    /// <summary>
-    /// Adds a GROUP BY clause.
-    /// </summary>
-    public void AddGroupBy(string expression)
-    {
-        _groupByClauses.Add(expression);
-    }
+
 
     /// <summary>
     /// Clears all return-related clauses.
@@ -221,13 +214,5 @@ internal class ReturnQueryPart : ICypherQueryPart
         }
 
         builder.AppendLine();
-
-        // Add GROUP BY if needed
-        if (_groupByClauses.Count > 0)
-        {
-            builder.Append("GROUP BY ");
-            builder.AppendJoin(", ", _groupByClauses);
-            builder.AppendLine();
-        }
     }
 }
