@@ -14,8 +14,9 @@
 
 using System.Linq.Expressions;
 using System.Text;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
+using Microsoft.Extensions.Logging;
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 
@@ -110,16 +111,21 @@ internal class WhereQueryPart : ICypherQueryPart
     }
 
     /// <summary>
-    /// Processes a single WHERE clause using the expression visitor pattern.
+    /// Processes a single WHERE clause using the unified expression visitor.
     /// </summary>
     private void ProcessWhereClause(LambdaExpression lambda, string alias)
     {
-        // Create expression visitor for this specific WHERE clause
-        var expressionVisitor = new ExpressionVisitorChainFactory(_context)
-            .CreateWhereClauseChain(alias);
+        // Create the unified expression visitor
+        var logger = _context.LoggerFactory?.CreateLogger<ExpressionToCypherVisitor>()
+            ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ExpressionToCypherVisitor>.Instance;
+        var expressionVisitor = new ExpressionToCypherVisitor(
+            _context.Builder,
+            _context.Scope,
+            logger,
+            alias);
 
         // Visit the lambda body to get the Cypher expression
-        var expression = expressionVisitor.Visit(lambda.Body);
+        var expression = expressionVisitor.VisitAndReturnCypher(lambda.Body);
 
         // Add the resulting condition
         AddWhere(expression);

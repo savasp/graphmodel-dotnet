@@ -34,7 +34,7 @@ internal class ReturnQueryPart : ICypherQueryPart
 
     public int Order => 6; // RETURN comes near the end
 
-    public bool HasContent => HasExplicitReturn;
+    public bool HasContent => HasExplicitReturn || _mainNodeAlias != null;
 
     public bool HasUserProjections { get; set; } = false;
 

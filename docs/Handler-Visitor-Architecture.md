@@ -1,82 +1,79 @@
-# Handler vs Visitor Architecture
+# Unified Expression Visitor Architecture
 
-This document clarifies the intended architecture for the Cypher query generation system.
+This document describes the current architecture for the Cypher query generation system after the refactoring.
 
 ## Architecture Overview
 
-The system uses **both** the Visitor pattern and the Handler pattern working together:
+The system now uses a **unified, two-layer approach** based on .NET's `ExpressionVisitor` pattern:
 
-1. **Main Query Visitor** (`CypherQueryVisitor`) orchestrates the translation
-2. **Method Handlers** handle top-level LINQ query structure operations
-3. **Expression Visitors** handle method calls within expressions
+1. **Main Query Orchestrator** (`CypherQueryVisitor`) - Handles LINQ method calls and query structure
+2. **Expression Translator** (`ExpressionToCypherVisitor`) - Converts expressions to Cypher strings
 
-## Handler Responsibilities
+## CypherQueryVisitor Responsibilities
 
-**Method Handlers** (in `Handlers/` folder) are responsible for:
+**CypherQueryVisitor** (inherits from .NET's `ExpressionVisitor`) is responsible for:
 
 - **LINQ Query Structure Operations** that build the overall query
+- Direct handling of LINQ methods: Where, Select, OrderBy, Take, Skip, etc.
 - Adding clauses to the `CypherQueryBuilder` (WHERE, RETURN, ORDER BY, etc.)
 - Operations that change the query's structure or flow
+- Orchestrating the overall query building process
 
-### Current Handlers:
+### Handled Operations:
 
-- `WhereMethodHandler` - Adds WHERE clauses
-- `SelectMethodHandler` - Adds RETURN clauses with projections
-- `SelectManyMethodHandler` - Handles graph traversals and collection flattening
-- `OrderByMethodHandler` / `ThenByMethodHandler` - Add ORDER BY clauses
-- `LimitMethodHandler` - Adds LIMIT/SKIP clauses
-- `AggregationMethodHandler` - Handles Count, Any, All, First, Single, etc.
-- `DistinctMethodHandler` - Adds DISTINCT to queries
-- `GroupByMethodHandler` - Handles grouping with collect() functions
-- `JoinMethodHandler` - Handles joins using MATCH clauses
-- `UnionMethodHandler` - Handles Union/Concat operations
-- `GraphOperationMethodHandler` - Handles Include, Traverse, etc.
+- `Where` - Adds WHERE clauses using expression translation
+- `Select` - Adds RETURN clauses with projections
+- `OrderBy`/`OrderByDescending` - Add ORDER BY clauses
+- `ThenBy`/`ThenByDescending` - Add secondary sorting
+- `Take`/`Skip` - Adds LIMIT/SKIP clauses
+- `FirstAsync`/`SingleAsync`/etc. - Handles terminating operations with aggregation
+- `AnyAsync`/`AllAsync`/`CountAsync` - Handles boolean and count aggregations
+- `Distinct` - Adds DISTINCT to queries
+- `GroupBy` - Handles grouping with collect() functions
+- `Union` - Handles Union/Concat operations
 
-## Visitor Responsibilities
+## ExpressionToCypherVisitor Responsibilities
 
-**Expression Visitors** (in `Expressions/` folder) are responsible for:
+**ExpressionToCypherVisitor** (also inherits from .NET's `ExpressionVisitor`) is responsible for:
 
-- **Method calls within expressions** (e.g., in WHERE conditions)
-- Converting method calls to Cypher expressions
-- Processing the content of lambda expressions
+- **Expression-to-Cypher Translation** within lambda expressions
+- Converting method calls to Cypher expressions (DateTime, String, Math methods)
+- Processing the content of lambda expressions used in WHERE, SELECT, etc.
+- Handling member access, constants, parameters, and binary operations
 
-### Current Expression Visitors:
+### Handled Expression Types:
 
-- `StringMethodVisitor` - Handles string methods like Contains, StartsWith, ToLower
-- `CollectionMethodVisitor` - Handles collection methods like Any, All within expressions
-- `DateTimeMethodVisitor` - Handles DateTime methods like AddDays, Year property
-- `BinaryExpressionVisitor` - Handles binary operations
-- `BaseExpressionVisitor` - Handles basic expressions
+- **DateTime Methods** - `DateTime.Now`, `AddDays()`, `Year` property, etc.
+- **String Methods** - `Contains()`, `StartsWith()`, `ToLower()`, etc.
+- **Math Methods** - `Math.Abs()`, `Math.Round()`, etc.
+- **Member Access** - Property navigation, complex property handling
+- **Binary/Unary Operations** - Comparisons, logical operations
+- **Constants and Parameters** - Literal values and lambda parameters
 
-## Flow Example
+## Example Flow
 
 ```csharp
-// LINQ Query:
-persons.Where(p => p.Name.Contains("John")).Select(p => p.Name).OrderBy(p => p.Age)
-
-// Processing Flow:
-1. CypherQueryVisitor.VisitMethodCall("OrderBy")
-   -> OrderByMethodHandler.Handle() -> adds "ORDER BY p.Age"
-
-2. CypherQueryVisitor.VisitMethodCall("Select")
-   -> SelectMethodHandler.Handle() -> adds "RETURN p.Name"
-
-3. CypherQueryVisitor.VisitMethodCall("Where")
-   -> WhereMethodHandler.Handle()
-   -> Uses StringMethodVisitor to process "p.Name.Contains("John")"
-   -> StringMethodVisitor converts to "p.Name CONTAINS 'John'"
-   -> Adds "WHERE p.Name CONTAINS 'John'"
+query.Where(p => p.Age > 18 && p.Name.Contains("John"))
+     .OrderBy(p => p.Name)
+     .Select(p => p.Name)
 ```
 
-## Key Principles
+**Processing Flow:**
 
-1. **Handlers are for query structure** - they modify the CypherQueryBuilder
-2. **Visitors are for expressions** - they return Cypher expression strings
-3. **Handlers coordinate with visitors** - handlers use visitor chains to process lambda expressions
-4. **Clear separation of concerns** - top-level operations vs. expression processing
+1. `CypherQueryVisitor.VisitMethodCall()` - Handles "Where"
+   - Uses `ExpressionToCypherVisitor` to translate `p.Age > 18 && p.Name.Contains("John")`
+   - Adds WHERE clause to query builder
+2. `CypherQueryVisitor.VisitMethodCall()` - Handles "OrderBy"
+   - Uses `ExpressionToCypherVisitor` to translate `p.Name`
+   - Adds ORDER BY clause to query builder
+3. `CypherQueryVisitor.VisitMethodCall()` - Handles "Select"
+   - Uses `ExpressionToCypherVisitor` to translate `p.Name`
+   - Adds RETURN clause to query builder
 
-## Integration Points
+## Benefits of Unified Architecture
 
-- Handlers create expression visitor chains using the existing visitors
-- The `CypherQueryVisitor` tries handlers first, then falls back to base visitor behavior
-- Expression visitors remain unchanged and continue to handle method calls within expressions
+- **Simplified Design**: Two clear responsibilities instead of fragmented handlers/visitors
+- **Standard .NET Pattern**: Uses built-in `ExpressionVisitor` base class
+- **Better Performance**: Eliminates visitor chaining and handler lookup overhead
+- **Easier Maintenance**: Single points of responsibility for each concern
+- **Consistent API**: All expression handling follows the same pattern

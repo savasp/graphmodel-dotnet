@@ -19,7 +19,6 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 

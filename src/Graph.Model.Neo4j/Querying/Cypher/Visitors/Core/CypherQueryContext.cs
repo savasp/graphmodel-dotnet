@@ -15,30 +15,23 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Expressions;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Handlers;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Context for Cypher query generation that encapsulates all necessary state and services.
+/// Simplified version that removes method handler dependency in favor of unified expression visitor.
 /// </summary>
 internal record CypherQueryContext
 {
     public CypherQueryScope Scope { get; }
     public CypherQueryBuilder Builder { get; }
     public ILoggerFactory? LoggerFactory { get; }
-    public MethodHandlerRegistry MethodHandlers { get; }
-    public ICypherExpressionVisitor? RootExpressionVisitor { get; set; }
 
     public CypherQueryContext(Type rootType, ILoggerFactory? loggerFactory = null)
     {
         LoggerFactory = loggerFactory;
         Scope = new CypherQueryScope(rootType);
         Builder = new CypherQueryBuilder(this);
-
-        // Set these last in case they access the previous properties in their constructors
-        MethodHandlers = MethodHandlerRegistry.Instance;
-        MethodHandlers.SetLoggerFactory(loggerFactory);
     }
 
     /// <summary>
