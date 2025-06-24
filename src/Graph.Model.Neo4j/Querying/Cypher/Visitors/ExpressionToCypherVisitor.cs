@@ -301,7 +301,7 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
             "Round" when arguments.Count == 2 => $"round({arguments[0]}, {arguments[1]})",
             "Min" when arguments.Count == 2 => $"min({arguments[0]}, {arguments[1]})",
             "Max" when arguments.Count == 2 => $"max({arguments[0]}, {arguments[1]})",
-            "Pow" when arguments.Count == 2 => $"pow({arguments[0]}, {arguments[1]})",
+            "Pow" when arguments.Count == 2 => $"({arguments[0]} ^ {arguments[1]})",
             "Sqrt" when arguments.Count == 1 => $"sqrt({arguments[0]})",
             "Sign" when arguments.Count == 1 => $"sign({arguments[0]})",
             "Sin" when arguments.Count == 1 => $"sin({arguments[0]})",
