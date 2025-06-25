@@ -31,7 +31,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         ?? NullLogger<CypherQueryBuilder>.Instance;
 
     // Focused query parts that handle specific responsibilities
-    private readonly MatchQueryPart _matchPart = new();
+    private readonly MatchQueryPart _matchPart = new(context);
     private readonly WhereQueryPart _wherePart = new(context);
     private readonly GroupByQueryPart _groupByPart = new();
     private readonly ReturnQueryPart _returnPart = new();
@@ -178,6 +178,11 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         _includeComplexProperties = true;
     }
 
+    public bool IsComplexPropertyLoadingEnabled()
+    {
+        return _includeComplexProperties;
+    }
+
     public void EnablePathSegmentLoading()
     {
         _includeComplexProperties = true;
@@ -263,6 +268,14 @@ internal class CypherQueryBuilder(CypherQueryContext context)
             FinalizeWhereClause();
 
             return BuildWithComplexProperties();
+        }
+
+        // Handle mixed projections with special types that need complex properties
+        if (_includeComplexProperties && HasUserProjections && _loadPathSegment)
+        {
+            FinalizeWhereClause();
+
+            return BuildMixedProjectionWithComplexProperties();
         }
 
         // Build a simple query using the focused query parts
@@ -680,14 +693,83 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         query.AppendLine(returnClause);
     }
 
+    private CypherQuery BuildMixedProjectionWithComplexProperties()
+    {
+        _logger.LogDebug("Building mixed projection query with complex properties");
+
+        var query = new StringBuilder();
+
+        // Start with the basic MATCH and WHERE
+        _matchPart.AppendTo(query, _parameters);
+        _wherePart.AppendTo(query, _parameters);
+
+        // Add complex property loading for both source and target nodes
+        var src = PathSegmentSourceAlias ?? "src";
+        var rel = PathSegmentRelationshipAlias ?? "r";
+        var tgt = PathSegmentTargetAlias ?? "tgt";
+
+        // Load complex properties for source node
+        query.AppendLine($@"
+            // Complex properties from source node
+            OPTIONAL MATCH src_path = ({src})-[rels*1..]->(prop)
+            WHERE ALL(rel in rels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
+            WITH {src}, {rel}, {tgt},
+                CASE 
+                    WHEN src_path IS NULL THEN []
+                    ELSE [i IN range(0, size(rels)-1) | {{
+                        ParentNode: CASE 
+                            WHEN i = 0 THEN {src}
+                            ELSE nodes(src_path)[i]
+                        END,
+                        Relationship: rels[i],
+                        Property: nodes(src_path)[i+1]
+                    }}]
+                END AS src_flat_property
+            WITH {src}, {rel}, {tgt},
+                reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
+            WITH {src}, {rel}, {tgt}, apoc.coll.toSet(src_flat_properties) AS src_flat_properties");
+
+        // Load complex properties for target node
+        query.AppendLine($@"
+            // Complex properties from target node
+            OPTIONAL MATCH tgt_path = ({tgt})-[trels*1..]->(tprop)
+            WHERE ALL(rel in trels WHERE type(rel) STARTS WITH '{GraphDataModel.PropertyRelationshipTypeNamePrefix}')
+            WITH {src}, {rel}, {tgt}, src_flat_properties,
+                CASE 
+                    WHEN tgt_path IS NULL THEN []
+                    ELSE [i IN range(0, size(trels)-1) | {{
+                        ParentNode: CASE 
+                            WHEN i = 0 THEN {tgt}
+                            ELSE nodes(tgt_path)[i]
+                        END,
+                        Relationship: trels[i],
+                        Property: nodes(tgt_path)[i+1]
+                    }}]
+                END AS tgt_flat_property
+            WITH {src}, {rel}, {tgt}, src_flat_properties,
+                reduce(flat = [], l IN collect(tgt_flat_property) | flat + l) AS tgt_flat_properties
+            WITH {src}, {rel}, {tgt}, src_flat_properties, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties");
+
+        // Use the user projections with complex property structures for special types
+        _returnPart.AppendTo(query, _parameters);
+
+        return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
+    }
+
     private void BuildPendingPathSegmentPattern()
     {
         if (_pendingPathSegmentPattern is null) return;
 
         var p = _pendingPathSegmentPattern;
-        var sourceLabel = Labels.GetLabelFromType(p.SourceType);
-        var relLabel = Labels.GetLabelFromType(p.RelType);
-        var targetLabel = Labels.GetLabelFromType(p.TargetType);
+
+        // Get compatible labels for inheritance support
+        var sourceLabels = Labels.GetCompatibleLabels(p.SourceType);
+        var relLabels = Labels.GetCompatibleLabels(p.RelType);
+        var targetLabels = Labels.GetCompatibleLabels(p.TargetType);
+
+        var sourceLabel = sourceLabels.Count == 1 ? sourceLabels[0] : string.Join("|", sourceLabels);
+        var relLabel = relLabels.Count == 1 ? relLabels[0] : string.Join("|", relLabels);
+        var targetLabel = targetLabels.Count == 1 ? targetLabels[0] : string.Join("|", targetLabels);
 
         // Process any pending WHERE clauses BEFORE building the pattern
         FinalizeWhereClause();
@@ -713,7 +795,8 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
         _logger.LogDebug($"Building deferred path segment pattern with direction {direction}: {pattern}");
 
-        ClearMatches();
+        // Only clear the main match clauses, not the additional match statements (complex properties)
+        _matchPart.ClearMainMatches();
         AddMatchPattern(pattern);
 
         PathSegmentSourceAlias = p.SourceAlias;

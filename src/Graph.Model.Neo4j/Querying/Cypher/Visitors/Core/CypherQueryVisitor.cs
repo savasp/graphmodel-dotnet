@@ -129,6 +129,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
             case "FirstAsyncMarker":
             case "FirstOrDefaultAsyncMarker":
+            case "First":
+            case "FirstOrDefault":
                 return HandleFirst(node, result, methodName);
 
             case "SingleAsyncMarker":
@@ -242,8 +244,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
             // Anonymous type projection - handle each property individually
             _logger.LogDebug("Processing anonymous type projection with {PropertyCount} properties", newExpr.Arguments.Count);
 
-            // For projections, disable complex property loading since we're not returning full entities
-            _context.Builder.DisableComplexPropertyLoading();
+            // Check if any projection contains special types that require complex property loading
+            bool requiresComplexPropertyLoading = false;
 
             // Process each property in the anonymous type
             for (int i = 0; i < newExpr.Arguments.Count; i++)
@@ -251,18 +253,63 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 var propertyExpr = newExpr.Arguments[i];
                 var propertyName = newExpr.Members?[i].Name ?? $"Property{i}";
 
-                // Only visit for complex property navigation, skip for method calls which are handled by ExpressionToCypherVisitor
-                if (propertyExpr is not MethodCallExpression)
+                // Check if this property is a special type that requires complex property loading
+                if (IsSpecialTypeProjection(propertyExpr))
                 {
-                    // Visit the property expression to process complex property navigation
-                    Visit(propertyExpr);
+                    requiresComplexPropertyLoading = true;
+                    _logger.LogDebug("Projection {Property} contains special type requiring complex property loading", propertyName);
                 }
 
-                // Now translate the expression to Cypher
-                var cypherExpr = _expressionVisitor.VisitAndReturnCypher(propertyExpr);
-                _context.Builder.AddUserProjection(cypherExpr, propertyName);
+                // Handle special case: direct path segment parameter projection (ps => ps)
+                if (propertyExpr is ParameterExpression paramExpr &&
+                    typeof(IGraphPathSegment).IsAssignableFrom(paramExpr.Type))
+                {
+                    // This is projecting the entire path segment - we need to return structured data
+                    _logger.LogDebug("Processing direct path segment projection for property {Property}", propertyName);
 
-                _logger.LogDebug("Added projection: {Property} = {Expression}", propertyName, cypherExpr);
+                    // For path segments, return a structured object containing all components
+                    // This will be handled by the CypherResultProcessor to create a proper path segment
+                    var pathSegmentExpr = "{ StartNode: src, Relationship: r, EndNode: tgt }";
+                    _context.Builder.AddUserProjection(pathSegmentExpr, propertyName);
+
+                    _logger.LogDebug("Added path segment projection: {Property} = {Expression}", propertyName, pathSegmentExpr);
+                }
+                else
+                {
+                    // Only visit for complex property navigation, skip for method calls which are handled by ExpressionToCypherVisitor
+                    if (propertyExpr is not MethodCallExpression)
+                    {
+                        // Visit the property expression to process complex property navigation
+                        Visit(propertyExpr);
+                    }
+
+                    // Check if this is a special type projection that needs complex property structure
+                    if (IsSpecialTypeProjection(propertyExpr))
+                    {
+                        var cypherExpr = GenerateSpecialTypeProjection(propertyExpr);
+                        _context.Builder.AddUserProjection(cypherExpr, propertyName);
+                        _logger.LogDebug("Added special type projection: {Property} = {Expression}", propertyName, cypherExpr);
+                    }
+                    else
+                    {
+                        // Regular projection - translate the expression to Cypher
+                        var cypherExpr = _expressionVisitor.VisitAndReturnCypher(propertyExpr);
+                        _context.Builder.AddUserProjection(cypherExpr, propertyName);
+                        _logger.LogDebug("Added projection: {Property} = {Expression}", propertyName, cypherExpr);
+                    }
+                }
+            }
+
+            // Enable or disable complex property loading based on whether special types are projected
+            if (requiresComplexPropertyLoading)
+            {
+                _context.Builder.EnableComplexPropertyLoading();
+                _logger.LogDebug("Enabled complex property loading due to special types in projections");
+            }
+            else
+            {
+                // For projections without special types, disable complex property loading since we're not returning full entities
+                _context.Builder.DisableComplexPropertyLoading();
             }
         }
         else
@@ -389,7 +436,16 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         _logger.LogDebug("Processing ToList method");
 
-        // Check if we need to enable complex property loading
+        // Check if complex property loading has been explicitly enabled (e.g., by projection processing)
+        if (_context.Builder.IsComplexPropertyLoadingEnabled())
+        {
+            _logger.LogDebug("Complex property loading already enabled - preserving setting");
+            return result ?? node.Arguments[0];
+        }
+
+
+
+        // Check if we need to enable complex property loading based on the result type
         var resultType = node.Type.GetGenericArguments().FirstOrDefault();
         if (resultType != null && !IsScalarOrPrimitive(resultType))
         {
@@ -992,7 +1048,13 @@ internal class CypherQueryVisitor : ExpressionVisitor
             // Check if this is a relationship queryable
             if (node.Value is IGraphRelationshipQueryable)
             {
-                var relLabel = Labels.GetLabelFromType(queryable.ElementType);
+                // Get all compatible labels to support inheritance hierarchies
+                var compatibleLabels = Labels.GetCompatibleLabels(queryable.ElementType);
+                var relLabel = compatibleLabels.Count == 1
+                    ? compatibleLabels[0]
+                    : string.Join("|", compatibleLabels);
+
+                _logger.LogDebug("Adding relationship match with label(s): {RelLabel}", relLabel);
                 _context.Builder.AddRelationshipMatch(relLabel);
                 _context.Scope.CurrentAlias = "r";
 
@@ -1004,9 +1066,23 @@ internal class CypherQueryVisitor : ExpressionVisitor
             {
                 // For nodes, generate the MATCH clause using the queryable's element type
                 var alias = _context.Scope.GetOrCreateAlias(queryable.ElementType, "src");
-                var label = Labels.GetLabelFromType(queryable.ElementType);
-                _logger.LogDebug("Adding MATCH clause: ({Alias}:{Label})", alias, label);
-                _context.Builder.AddMatch(alias, label);
+
+                // Get all compatible labels to support inheritance hierarchies
+                var compatibleLabels = Labels.GetCompatibleLabels(queryable.ElementType);
+                if (compatibleLabels.Count == 1)
+                {
+                    // Single label - use traditional syntax
+                    var label = compatibleLabels[0];
+                    _logger.LogDebug("Adding MATCH clause: ({Alias}:{Label})", alias, label);
+                    _context.Builder.AddMatch(alias, label);
+                }
+                else
+                {
+                    // Multiple labels - use label union syntax for inheritance support
+                    var labelUnion = string.Join("|", compatibleLabels);
+                    _logger.LogDebug("Adding MATCH clause with inheritance support: ({Alias}:{LabelUnion})", alias, labelUnion);
+                    _context.Builder.AddMatch(alias, labelUnion);
+                }
 
                 // Check if this node type needs complex property loading
                 if (_context.Builder.NeedsComplexProperties(queryable.ElementType))
@@ -1067,6 +1143,109 @@ internal class CypherQueryVisitor : ExpressionVisitor
                (node.Method.DeclaringType?.Name?.Contains("GraphNodeQueryableExtensions") ?? false) ||
                (node.Method.DeclaringType?.Name?.Contains("GraphRelationshipQueryableExtensions") ?? false) ||
                (node.Method.DeclaringType?.Name?.Contains("GraphTraversalExtensions") ?? false);
+    }
+
+    private bool IsSpecialTypeProjection(Expression expression)
+    {
+        // Check if this expression represents a projection of a special type that requires complex property loading
+
+        // Case 1: Direct parameter access to path segment properties (e.g., ps.StartNode, ps.Relationship)
+        if (expression is MemberExpression memberExpr &&
+            memberExpr.Expression is ParameterExpression param &&
+            typeof(IGraphPathSegment).IsAssignableFrom(param.Type))
+        {
+            var memberName = memberExpr.Member.Name;
+            if (memberName == nameof(IGraphPathSegment.StartNode) ||
+                memberName == nameof(IGraphPathSegment.EndNode) ||
+                memberName == nameof(IGraphPathSegment.Relationship))
+            {
+                return true;
+            }
+        }
+
+        // Case 2: Parameter access that represents a node or relationship type
+        if (expression is ParameterExpression paramExpr)
+        {
+            return typeof(Model.INode).IsAssignableFrom(paramExpr.Type) ||
+                   typeof(Model.IRelationship).IsAssignableFrom(paramExpr.Type) ||
+                   typeof(IGraphPathSegment).IsAssignableFrom(paramExpr.Type);
+        }
+
+        // Case 3: Member access that results in a node or relationship type
+        if (expression is MemberExpression memberAccess)
+        {
+            var memberType = memberAccess.Type;
+            return typeof(Model.INode).IsAssignableFrom(memberType) ||
+                   typeof(Model.IRelationship).IsAssignableFrom(memberType) ||
+                   typeof(IGraphPathSegment).IsAssignableFrom(memberType);
+        }
+
+        return false;
+    }
+
+    private string GenerateSpecialTypeProjection(Expression expression)
+    {
+        // Generate complex property structure for special types (INode, IRelationship, IGraphPathSegment)
+
+        // Case 1: Direct parameter access to path segment properties (e.g., ps.StartNode, ps.Relationship)
+        if (expression is MemberExpression memberExpr &&
+            memberExpr.Expression is ParameterExpression param &&
+            typeof(IGraphPathSegment).IsAssignableFrom(param.Type))
+        {
+            var memberName = memberExpr.Member.Name;
+            return memberName switch
+            {
+                nameof(IGraphPathSegment.StartNode) => "{ Node: src, ComplexProperties: src_flat_properties }",
+                nameof(IGraphPathSegment.EndNode) => "{ Node: tgt, ComplexProperties: tgt_flat_properties }",
+                nameof(IGraphPathSegment.Relationship) => "r", // Relationships don't need complex property structure in this context
+                _ => _expressionVisitor.VisitAndReturnCypher(expression)
+            };
+        }
+
+        // Case 2: Parameter access that represents a node or relationship type
+        if (expression is ParameterExpression paramExpr)
+        {
+            if (typeof(Model.INode).IsAssignableFrom(paramExpr.Type))
+            {
+                // This is a direct node parameter - use the current alias with complex properties
+                var alias = _context.Scope.CurrentAlias ?? "src";
+                return $"{{ Node: {alias}, ComplexProperties: {alias}_flat_properties }}";
+            }
+
+            if (typeof(Model.IRelationship).IsAssignableFrom(paramExpr.Type))
+            {
+                // This is a direct relationship parameter
+                return "r";
+            }
+
+            if (typeof(IGraphPathSegment).IsAssignableFrom(paramExpr.Type))
+            {
+                // This is a direct path segment parameter - return structured object
+                return "{ StartNode: { Node: src, ComplexProperties: src_flat_properties }, Relationship: r, EndNode: { Node: tgt, ComplexProperties: tgt_flat_properties } }";
+            }
+        }
+
+        // Case 3: Member access that results in a node or relationship type
+        if (expression is MemberExpression memberAccess)
+        {
+            var memberType = memberAccess.Type;
+            if (typeof(Model.INode).IsAssignableFrom(memberType))
+            {
+                // Get the base expression and determine the appropriate alias
+                var baseExpr = _expressionVisitor.VisitAndReturnCypher(memberAccess.Expression!);
+                var alias = baseExpr; // This should be something like "src" or "tgt"
+                return $"{{ Node: {alias}, ComplexProperties: {alias}_flat_properties }}";
+            }
+
+            if (typeof(Model.IRelationship).IsAssignableFrom(memberType))
+            {
+                // Relationships typically map to "r"
+                return "r";
+            }
+        }
+
+        // Fallback to regular expression translation
+        return _expressionVisitor.VisitAndReturnCypher(expression);
     }
 
     private static bool IsScalarOrPrimitive(Type type)

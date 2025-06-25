@@ -226,17 +226,78 @@ public static class Labels
         }
 
         // First try to get the type directly from the label (this uses caching internally)
-        var typeFromLabel = GetTypeFromLabel(label);
+        Type? typeFromLabel = null;
+        try
+        {
+            typeFromLabel = GetTypeFromLabel(label);
+        }
+        catch (GraphException)
+        {
+            // Label not found, return null
+            MostDerivedTypeCache[cacheKey] = null;
+            return null;
+        }
 
         // Check if this type is assignable to our target type
-        if (targetType.IsAssignableFrom(typeFromLabel))
+        if (typeFromLabel != null && targetType.IsAssignableFrom(typeFromLabel))
         {
             MostDerivedTypeCache[cacheKey] = typeFromLabel;
             return typeFromLabel;
         }
 
         // Not assignable, cache null result
-        MostDerivedTypeCache[cacheKey] = targetType;
-        return targetType;
+        MostDerivedTypeCache[cacheKey] = null;
+        return null;
+    }
+
+    /// <summary>
+    /// Gets all labels that are compatible with the target type, considering inheritance hierarchies.
+    /// This includes the target type's label and all labels of types that derive from the target type.
+    /// </summary>
+    /// <param name="targetType">The base type to find compatible labels for</param>
+    /// <returns>A list of labels that represent types assignable to the target type</returns>
+    public static List<string> GetCompatibleLabels(Type targetType)
+    {
+        ArgumentNullException.ThrowIfNull(targetType);
+
+        var labels = new List<string>();
+
+        // Always include the target type's own label
+        labels.Add(GetLabelFromType(targetType));
+
+        // Find all types in loaded assemblies that derive from the target type
+        var derivedTypes = AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(assembly =>
+            {
+                try
+                {
+                    return assembly.GetTypes();
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    // Handle cases where some types can't be loaded
+                    return ex.Types.Where(t => t != null).Cast<Type>();
+                }
+                catch
+                {
+                    return Enumerable.Empty<Type>();
+                }
+            })
+            .Where(t => t.IsClass && !t.IsAbstract &&
+                       targetType.IsAssignableFrom(t) &&
+                       t != targetType) // Exclude the target type itself since we already added it
+            .ToList();
+
+        // Add labels for all derived types
+        foreach (var derivedType in derivedTypes)
+        {
+            var derivedLabel = GetLabelFromType(derivedType);
+            if (!labels.Contains(derivedLabel))
+            {
+                labels.Add(derivedLabel);
+            }
+        }
+
+        return labels;
     }
 }

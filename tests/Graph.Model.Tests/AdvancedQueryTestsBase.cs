@@ -1189,7 +1189,6 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
 
-        // Alice knows everyone, Bob knows 2, Charlie knows 1, Dave knows none
         await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
         await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
         await this.Graph.CreateRelationshipAsync(new Knows(alice, dave), null, TestContext.Current.CancellationToken);
@@ -1223,4 +1222,127 @@ public abstract class AdvancedQueryTestsBase : ITestBase
         Assert.Equal(0, daveStats.OutgoingCount);
         Assert.Equal(3, daveStats.IncomingCount);
     }
+
+    [Fact]
+    public async Task CanRecognizeSpecialTypesAsNonComplexProperties_Node()
+    {
+        // Setup
+        var alice = new Person { FirstName = "Alice" };
+        var bob = new Person { FirstName = "Bob" };
+        var charlie = new Person { FirstName = "Charlie" };
+        var dave = new Person { FirstName = "Dave" };
+
+        await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
+
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(bob, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(alice, bob), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(bob, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
+
+        // Get Alice's relationships
+        var connectionStats = await this.Graph.Nodes<Person>()
+            .PathSegments<Person, IRelationship, Person>()
+            .Select(ps => new
+            {
+                Name = ps.StartNode.FirstName,
+                Node = ps.StartNode,
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, connectionStats.Where(cs => cs.Name == "Alice").Count());
+        Assert.Equal(3, connectionStats.Where(cs => cs.Name == "Bob").Count());
+        Assert.Equal(2, connectionStats.Where(cs => cs.Name == "Charlie").Count());
+        Assert.DoesNotContain(connectionStats, cs => cs.Name == "Dave");
+    }
+
+    [Fact]
+    public async Task CanRecognizeSpecialTypesAsNonComplexProperties_Relationship()
+    {
+        // Setup
+        var alice = new Person { FirstName = "Alice" };
+        var bob = new Person { FirstName = "Bob" };
+        var charlie = new Person { FirstName = "Charlie" };
+        var dave = new Person { FirstName = "Dave" };
+
+        await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
+
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(bob, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(alice, bob), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(bob, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
+
+        // Get Alice's relationships
+        var connectionStats = await this.Graph.Nodes<Person>()
+            .PathSegments<Person, IRelationship, Person>()
+            .Select(ps => new
+            {
+                Id = ps.StartNode.Id,
+                Name = ps.StartNode.FirstName,
+                Relationship = ps.Relationship,
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, connectionStats.Where(cs => cs.Name == "Alice").Count());
+        Assert.Equal(3, connectionStats.Where(cs => cs.Name == "Bob").Count());
+        Assert.Equal(2, connectionStats.Where(cs => cs.Name == "Charlie").Count());
+        Assert.DoesNotContain(connectionStats, cs => cs.Name == "Dave");
+    }
+
+    [Fact]
+    public async Task CanRecognizeSpecialTypesAsNonComplexProperties_PathSegment()
+    {
+        // Setup
+        var alice = new Person { FirstName = "Alice" };
+        var bob = new Person { FirstName = "Bob" };
+        var charlie = new Person { FirstName = "Charlie" };
+        var dave = new Person { FirstName = "Dave" };
+
+        await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
+
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(bob, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(alice, bob), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(bob, charlie), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
+
+        // Get Alice's relationships
+        var connectionStats = await this.Graph.Nodes<Person>()
+            .PathSegments<Person, IRelationship, Person>()
+            .Select(ps => new
+            {
+                StartNode = ps.StartNode,
+                PathSegment = ps,
+                EndNode = ps.EndNode
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, connectionStats.Where(cs => cs.StartNode.FirstName == "Alice").Count());
+        Assert.Equal(3, connectionStats.Where(cs => cs.StartNode.FirstName == "Bob").Count());
+        Assert.Equal(2, connectionStats.Where(cs => cs.StartNode.FirstName == "Charlie").Count());
+        Assert.DoesNotContain(connectionStats, cs => cs.StartNode.FirstName == "Dave");
+    }
+
 }

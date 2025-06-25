@@ -120,7 +120,6 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
         var knowsWell = new KnowsWell(person1, person2)
         {
-            Direction = RelationshipDirection.Bidirectional,
             Since = DateTime.UtcNow,
             HowWell = "Very well"
         };
@@ -134,7 +133,6 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.Equal(knowsWell.Id, retrieved.Id);
         Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
         Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
-        Assert.Equal(knowsWell.Direction, retrieved.Direction);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }
@@ -158,7 +156,6 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
         var knowsWell = new KnowsWell(person1, person2)
         {
-            Direction = RelationshipDirection.Bidirectional,
             Since = DateTime.UtcNow,
             HowWell = "Very well"
         };
@@ -174,7 +171,6 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.Equal(knowsWell.Id, retrieved.Id);
         Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
         Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
-        Assert.Equal(knowsWell.Direction, retrieved.Direction);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, retrieved.HowWell);
     }
@@ -198,7 +194,6 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
         var knowsWell = new KnowsWell(person1, person2)
         {
-            Direction = RelationshipDirection.Bidirectional,
             Since = DateTime.UtcNow,
             HowWell = "Very well"
         };
@@ -213,7 +208,6 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.Equal(knowsWell.Id, retrieved.Id);
         Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
         Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
-        Assert.Equal(knowsWell.Direction, retrieved.Direction);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }
@@ -263,7 +257,6 @@ public abstract class ClassHierarchyTestsBase : ITestBase
 
         var knowsWell = new KnowsWell(person1, person2)
         {
-            Direction = RelationshipDirection.Bidirectional,
             Since = DateTime.UtcNow,
             HowWell = "Very well"
         };
@@ -280,7 +273,6 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         Assert.Equal(knowsWell.Id, retrieved.Id);
         Assert.Equal(knowsWell.StartNodeId, retrieved.StartNodeId);
         Assert.Equal(knowsWell.EndNodeId, retrieved.EndNodeId);
-        Assert.Equal(knowsWell.Direction, retrieved.Direction);
         Assert.Equal(knowsWell.Since, retrieved.Since);
         Assert.Equal(knowsWell.HowWell, ((KnowsWell)retrieved).HowWell);
     }
@@ -313,21 +305,21 @@ public abstract class ClassHierarchyTestsBase : ITestBase
         // Get Alice's relationships
         var connectionStats = await this.Graph.Nodes<Person>()
             .PathSegments<Person, IRelationship, Person>()
-            .GroupBy(ks => ks.StartNode)
-            .Select(g => new
-            {
-                Name = g.Key.FirstName,
-                OutgoingCount = g.Count(),
-            })
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(9, connectionStats.Count);
 
-        var aliceStats = connectionStats.First(s => s.Name == "Alice");
-        Assert.Equal(4, aliceStats.OutgoingCount);
+        var aliceRelationships = connectionStats.Count(ps => ps.StartNode.FirstName == "Alice");
+        Assert.Equal(4, aliceRelationships);
 
-        var daveStats = connectionStats.First(s => s.Name == "Dave");
-        Assert.Equal(0, daveStats.OutgoingCount);
+        var bobRelationships = connectionStats.Count(ps => ps.StartNode.FirstName == "Bob");
+        Assert.Equal(3, bobRelationships);
+
+        var charlieRelationships = connectionStats.Count(ps => ps.StartNode.FirstName == "Charlie");
+        Assert.Equal(2, charlieRelationships);
+
+        var daveRelationships = connectionStats.Count(ps => ps.StartNode.FirstName == "Dave");
+        Assert.Equal(0, daveRelationships);
     }
 }

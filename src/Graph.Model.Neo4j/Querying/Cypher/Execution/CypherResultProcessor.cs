@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
+using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
@@ -260,7 +261,7 @@ internal sealed class CypherResultProcessor
         string endNodeId)
     {
         var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
-        EnhanceRelationshipEntityInfo(entityInfo, targetType, startNodeId, endNodeId);
+        EnhanceRelationshipEntityInfo(entityInfo, relationship, targetType, startNodeId, endNodeId);
         return entityInfo;
     }
 
@@ -280,33 +281,176 @@ internal sealed class CypherResultProcessor
     private EntityInfo CreateEntityInfoFromProjection(IRecord record, Type targetType)
     {
         var simpleProperties = new Dictionary<string, Property>();
+        var complexProperties = new Dictionary<string, Property>();
 
-        // Extract all values from the record as simple properties
+        // Extract all values from the record as simple or complex properties
         foreach (var key in record.Keys)
         {
             var value = record[key];
-            // Do all the value conversion here once, not again in the materializer
-            var convertedValue = SerializationBridge.FromNeo4jValue(value, typeof(object))
-                ?? throw new InvalidOperationException($"Failed to convert value for property '{key}'");
 
-            // Create a simple property info (we don't have real PropertyInfo for projections)
-            simpleProperties[key] = new Property(
-                PropertyInfo: null!, // We'll handle this differently for projections
-                Label: key,
-                IsNullable: true, // Assume nullable for projections
-                Value: new SimpleValue(convertedValue, convertedValue.GetType())
-            );
+            // Handle Neo4j nodes specially - convert them to EntityInfo
+            if (value is INode n)
+            {
+                // Create EntityInfo for the node and store as complex property
+                var nodeEntityInfo = CreateEntityInfoFromNode(n, typeof(Model.INode));
+                complexProperties[key] = new Property(
+                    PropertyInfo: null!, // We'll handle this differently for projections
+                    Label: key,
+                    IsNullable: true, // Assume nullable for projections
+                    Value: nodeEntityInfo
+                );
+                continue;
+            }
+
+            // Handle Neo4j relationships specially - convert them to EntityInfo
+            if (value is IRelationship rel)
+            {
+                // Create EntityInfo for the relationship and store as complex property
+                var relEntityInfo = CreateEntityInfoFromRelationship(rel, typeof(Model.IRelationship));
+                complexProperties[key] = new Property(
+                    PropertyInfo: null!, // We'll handle this differently for projections
+                    Label: key,
+                    IsNullable: true, // Assume nullable for projections
+                    Value: relEntityInfo
+                );
+                continue;
+            }
+
+            // Handle complex property structures with Node and ComplexProperties (e.g., { Node: src, ComplexProperties: [...] })
+            if (value is IReadOnlyDictionary<string, object> complexPropStructure &&
+                complexPropStructure.ContainsKey("Node") &&
+                complexPropStructure.ContainsKey("ComplexProperties"))
+            {
+                // This is a complex property structure - deserialize it properly
+                var node = complexPropStructure["Node"] as INode;
+                var complexProps = complexPropStructure["ComplexProperties"] as IList<object>;
+
+                if (node != null)
+                {
+                    // Debug: Log the node properties to see what we have
+                    _logger.LogDebug("Complex property structure node has {PropertyCount} properties: [{Properties}]",
+                        node.Properties.Count,
+                        string.Join(", ", node.Properties.Select(kv => $"{kv.Key}={kv.Value}")));
+
+                    // Create the base EntityInfo from the node
+                    var nodeEntityInfo = CreateEntityInfoFromNode(node, typeof(Model.INode));
+
+                    // Debug: Log the created EntityInfo
+                    _logger.LogDebug("Created EntityInfo with {SimpleCount} simple properties: [{SimpleProps}]",
+                        nodeEntityInfo.SimpleProperties.Count,
+                        string.Join(", ", nodeEntityInfo.SimpleProperties.Select(kv => $"{kv.Key}={kv.Value.Value}")));
+
+                    // Add complex properties if they exist
+                    if (complexProps != null && complexProps.Count > 0)
+                    {
+                        // TODO: Process the complex properties from the flat list
+                        // For now, we'll just use the base node EntityInfo
+                        _logger.LogDebug("Complex properties found: {Count} items", complexProps.Count);
+                    }
+
+                    complexProperties[key] = new Property(
+                        PropertyInfo: null!, // We'll handle this differently for projections
+                        Label: key,
+                        IsNullable: true, // Assume nullable for projections
+                        Value: nodeEntityInfo
+                    );
+                    continue;
+                }
+            }
+
+            // Handle structured path segment objects (e.g., { StartNode: src, Relationship: r, EndNode: tgt })
+            if (value is IReadOnlyDictionary<string, object> structuredObject &&
+                structuredObject.ContainsKey("StartNode") &&
+                structuredObject.ContainsKey("Relationship") &&
+                structuredObject.ContainsKey("EndNode"))
+            {
+                // Check if this is a complex path segment with nested structures
+                var startNodeObj = structuredObject["StartNode"];
+                var relationshipObj = structuredObject["Relationship"];
+                var endNodeObj = structuredObject["EndNode"];
+
+                // Handle complex property structures within path segments
+                INode? startNode = null;
+                IRelationship? relationship = null;
+                INode? endNode = null;
+
+                // Extract start node (could be a complex structure or direct node)
+                if (startNodeObj is IReadOnlyDictionary<string, object> startNodeStruct &&
+                    startNodeStruct.ContainsKey("Node"))
+                {
+                    startNode = startNodeStruct["Node"] as INode;
+                }
+                else if (startNodeObj is INode directStartNode)
+                {
+                    startNode = directStartNode;
+                }
+
+                // Extract relationship
+                relationship = relationshipObj as IRelationship;
+
+                // Extract end node (could be a complex structure or direct node)
+                if (endNodeObj is IReadOnlyDictionary<string, object> endNodeStruct &&
+                    endNodeStruct.ContainsKey("Node"))
+                {
+                    endNode = endNodeStruct["Node"] as INode;
+                }
+                else if (endNodeObj is INode directEndNode)
+                {
+                    endNode = directEndNode;
+                }
+
+                if (startNode != null && relationship != null && endNode != null)
+                {
+                    var startNodeEntityInfo = CreateEntityInfoFromNode(startNode, typeof(Model.INode));
+                    var relEntityInfo = CreateEntityInfoFromRelationship(relationship, typeof(Model.IRelationship));
+                    var endNodeEntityInfo = CreateEntityInfoFromNode(endNode, typeof(Model.INode));
+
+                    var pathSegmentEntityInfo = CreatePathSegmentEntityInfo(
+                        startNodeEntityInfo,
+                        relEntityInfo,
+                        endNodeEntityInfo,
+                        typeof(IGraphPathSegment<Model.INode, Model.IRelationship, Model.INode>)
+                    );
+
+                    complexProperties[key] = new Property(
+                        PropertyInfo: null!, // We'll handle this differently for projections
+                        Label: key,
+                        IsNullable: true, // Assume nullable for projections
+                        Value: pathSegmentEntityInfo
+                    );
+                    continue;
+                }
+            }
+
+            // Handle regular values
+            try
+            {
+                var convertedValue = SerializationBridge.FromNeo4jValue(value, typeof(object))
+                    ?? throw new InvalidOperationException($"Failed to convert value for property '{key}'");
+
+                // Create a simple property info (we don't have real PropertyInfo for projections)
+                simpleProperties[key] = new Property(
+                    PropertyInfo: null!, // We'll handle this differently for projections
+                    Label: key,
+                    IsNullable: true, // Assume nullable for projections
+                    Value: new SimpleValue(convertedValue, convertedValue.GetType())
+                );
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to convert value for property '{key}' of type {value?.GetType().Name ?? "null"}: {ex.Message}", ex);
+            }
         }
 
         return new EntityInfo(
             ActualType: targetType,
             Label: targetType.Name,
             SimpleProperties: simpleProperties,
-            ComplexProperties: new Dictionary<string, Property>()
+            ComplexProperties: complexProperties
         );
     }
 
-    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, Type targetType, string startNodeId, string endNodeId)
+    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, IRelationship relationship, Type targetType, string startNodeId, string endNodeId)
     {
         // Add StartNodeId as a simple property
         if (targetType.GetProperty(nameof(Model.IRelationship.StartNodeId)) != null)
@@ -333,7 +477,7 @@ internal sealed class CypherResultProcessor
         // Add Direction
         if (targetType.GetProperty(nameof(Model.IRelationship.Direction)) != null)
         {
-            var direction = GetRelationshipDirection(targetType);
+            var direction = GetRelationshipDirection(relationship, targetType);
             entityInfo.SimpleProperties[nameof(Model.IRelationship.Direction)] = new Property(
                 PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.Direction))!,
                 Label: nameof(Model.IRelationship.Direction),
@@ -358,9 +502,24 @@ internal sealed class CypherResultProcessor
         return node.ElementId;
     }
 
-    private static RelationshipDirection GetRelationshipDirection(Type targetType)
+    private static RelationshipDirection GetRelationshipDirection(IRelationship relationship, Type targetType)
     {
-        // TODO: We are treating all relationships as outgoing by default for now. We may need to fix this.
+        // Try to get the direction from the relationship properties
+        if (relationship.Properties.TryGetValue(nameof(Model.IRelationship.Direction), out var directionValue))
+        {
+            if (directionValue is RelationshipDirection direction)
+            {
+                return direction;
+            }
+
+            // Try to parse if it's stored as a string or number
+            if (Enum.TryParse<RelationshipDirection>(directionValue.ToString(), out var parsedDirection))
+            {
+                return parsedDirection;
+            }
+        }
+
+        // Default to Outgoing if no direction is found
         return RelationshipDirection.Outgoing;
     }
 
@@ -427,8 +586,11 @@ internal sealed class CypherResultProcessor
         return results;
     }
 
-    private EntityInfo CreateEntityInfoFromNode(INode node, Type actualType)
+    private EntityInfo CreateEntityInfoFromNode(INode node, Type targetType)
     {
+        // Discover the actual type from metadata, labels, or fall back to target type
+        var actualType = DiscoverActualNodeType(node, targetType);
+
         var label = node.Labels.FirstOrDefault() ?? actualType.Name;
         var simpleProperties = ExtractSimpleProperties(node.Properties, actualType);
 
@@ -454,8 +616,11 @@ internal sealed class CypherResultProcessor
         );
     }
 
-    private EntityInfo CreateEntityInfoFromRelationship(IRelationship relationship, Type actualType)
+    private EntityInfo CreateEntityInfoFromRelationship(IRelationship relationship, Type targetType)
     {
+        // Discover the actual type from metadata, type, or fall back to target type
+        var actualType = DiscoverActualRelationshipType(relationship, targetType);
+
         var label = relationship.Type ?? actualType.Name;
         var simpleProperties = ExtractSimpleProperties(relationship.Properties, actualType);
 
@@ -476,6 +641,191 @@ internal sealed class CypherResultProcessor
             SimpleProperties: simpleProperties,
             ComplexProperties: new Dictionary<string, Property>()
         );
+    }
+
+    /// <summary>
+    /// Discovers the actual type of a node using metadata, labels, and compatibility checks.
+    /// </summary>
+    private Type DiscoverActualNodeType(INode node, Type targetType)
+    {
+        // Step 1: Try to get type from stored metadata
+        var metadataType = SerializationBridge.GetTypeFromMetadata(node.Properties);
+        if (metadataType != null && IsCompatibleType(metadataType, targetType))
+        {
+            _logger.LogDebug("Using metadata type {MetadataType} for target type {TargetType}",
+                metadataType.Name, targetType.Name);
+            return metadataType;
+        }
+
+        // Step 2: Try to discover from node labels
+        var labelType = DiscoverTypeFromNodeLabels(node.Labels, targetType);
+        if (labelType != null)
+        {
+            _logger.LogDebug("Using label-based type {LabelType} for target type {TargetType}",
+                labelType.Name, targetType.Name);
+            return labelType;
+        }
+
+        // Step 3: Fall back to target type
+        _logger.LogDebug("Falling back to target type {TargetType} for node with labels [{Labels}]",
+            targetType.Name, string.Join(", ", node.Labels));
+        return targetType;
+    }
+
+    /// <summary>
+    /// Discovers the actual type of a relationship using metadata, type, and compatibility checks.
+    /// </summary>
+    private Type DiscoverActualRelationshipType(IRelationship relationship, Type targetType)
+    {
+        // Step 1: Try to get type from stored metadata
+        var metadataType = SerializationBridge.GetTypeFromMetadata(relationship.Properties);
+        if (metadataType != null && IsCompatibleType(metadataType, targetType))
+        {
+            _logger.LogDebug("Using metadata type {MetadataType} for target type {TargetType}",
+                metadataType.Name, targetType.Name);
+            return metadataType;
+        }
+
+        // Step 2: Try to discover from relationship type/label
+        var labelType = DiscoverTypeFromRelationshipType(relationship.Type, targetType);
+        if (labelType != null)
+        {
+            _logger.LogDebug("Using relationship type-based type {LabelType} for target type {TargetType}",
+                labelType.Name, targetType.Name);
+            return labelType;
+        }
+
+        // Step 3: Fall back to target type
+        _logger.LogDebug("Falling back to target type {TargetType} for relationship with type {RelType}",
+            targetType.Name, relationship.Type ?? "null");
+        return targetType;
+    }
+
+    /// <summary>
+    /// Checks if a discovered type is compatible with the target type (same or derived).
+    /// </summary>
+    private static bool IsCompatibleType(Type discoveredType, Type targetType)
+    {
+        // The discovered type must be assignable to the target type
+        // This means discoveredType is the same as targetType or derives from it
+        return targetType.IsAssignableFrom(discoveredType);
+    }
+
+    /// <summary>
+    /// Attempts to discover a more specific type from node labels.
+    /// </summary>
+    private Type? DiscoverTypeFromNodeLabels(IReadOnlyList<string> labels, Type targetType)
+    {
+        if (!labels.Any())
+            return null;
+
+        // Get all types that are assignable to the target type
+        var candidateTypes = GetKnownNodeTypes()
+            .Where(t => targetType.IsAssignableFrom(t))
+            .ToList();
+
+        // Try to find a type that matches one of the labels
+        foreach (var label in labels)
+        {
+            var matchingType = candidateTypes.FirstOrDefault(t =>
+                string.Equals(t.Name, label, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(GetTypeLabel(t), label, StringComparison.OrdinalIgnoreCase));
+
+            if (matchingType != null)
+                return matchingType;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Attempts to discover a more specific type from relationship type.
+    /// </summary>
+    private Type? DiscoverTypeFromRelationshipType(string? relationshipType, Type targetType)
+    {
+        if (string.IsNullOrEmpty(relationshipType))
+            return null;
+
+        // Get all types that are assignable to the target type
+        var candidateTypes = GetKnownRelationshipTypes()
+            .Where(t => targetType.IsAssignableFrom(t))
+            .ToList();
+
+        // Try to find a type that matches the relationship type
+        var matchingType = candidateTypes.FirstOrDefault(t =>
+            string.Equals(GetTypeLabel(t), relationshipType, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(t.Name, relationshipType, StringComparison.OrdinalIgnoreCase));
+
+        return matchingType;
+    }
+
+    /// <summary>
+    /// Gets the label for a type, checking for attributes first.
+    /// </summary>
+    private static string GetTypeLabel(Type type)
+    {
+        // Check for NodeAttribute or RelationshipAttribute
+        var nodeAttr = type.GetCustomAttribute<NodeAttribute>();
+        if (nodeAttr != null)
+            return nodeAttr.Label ?? type.Name;
+
+        var relAttr = type.GetCustomAttribute<RelationshipAttribute>();
+        if (relAttr != null)
+            return relAttr.Label ?? type.Name;
+
+        return type.Name;
+    }
+
+    /// <summary>
+    /// Gets all known node types from loaded assemblies.
+    /// </summary>
+    private IEnumerable<Type> GetKnownNodeTypes()
+    {
+        // Get types from the current app domain that implement INode
+        return AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(assembly =>
+            {
+                try
+                {
+                    return assembly.GetTypes();
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    // Handle cases where some types can't be loaded
+                    return ex.Types.Where(t => t != null).Cast<Type>();
+                }
+                catch
+                {
+                    return Enumerable.Empty<Type>();
+                }
+            })
+            .Where(t => t.IsClass && !t.IsAbstract && typeof(Model.INode).IsAssignableFrom(t));
+    }
+
+    /// <summary>
+    /// Gets all known relationship types from loaded assemblies.
+    /// </summary>
+    private IEnumerable<Type> GetKnownRelationshipTypes()
+    {
+        // Get types from the current app domain that implement IRelationship
+        return AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(assembly =>
+            {
+                try
+                {
+                    return assembly.GetTypes();
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    // Handle cases where some types can't be loaded
+                    return ex.Types.Where(t => t != null).Cast<Type>();
+                }
+                catch
+                {
+                    return Enumerable.Empty<Type>();
+                }
+            })
+            .Where(t => t.IsClass && !t.IsAbstract && typeof(Model.IRelationship).IsAssignableFrom(t));
     }
 
     private Dictionary<string, Property> ExtractSimpleProperties(

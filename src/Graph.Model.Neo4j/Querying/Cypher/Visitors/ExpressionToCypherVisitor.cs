@@ -399,6 +399,28 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
                 }
             }
 
+            // Check if this is IGrouping.Key property access (e.g., g.Key.FirstName)
+            if (nestedMember.Expression is ParameterExpression groupParam &&
+                groupParam.Type.IsGenericType &&
+                groupParam.Type.GetGenericTypeDefinition() == typeof(IGrouping<,>) &&
+                nestedMember.Member.Name == "Key")
+            {
+                _logger.LogDebug("Processing IGrouping.Key property access: {Expression}", node);
+
+                // Get the GROUP BY expression (what g.Key represents)
+                var groupByExpression = _scope.GroupByExpression;
+                if (!string.IsNullOrEmpty(groupByExpression))
+                {
+                    _logger.LogDebug("Mapping IGrouping.Key.{Property} to {GroupByExpression}.{Property}", node.Member.Name, groupByExpression, node.Member.Name);
+                    return Expression.Constant($"{groupByExpression}.{node.Member.Name}");
+                }
+
+                // Fallback if no GROUP BY expression was stored
+                var alias = _contextAlias ?? _scope.CurrentAlias ?? "src";
+                _logger.LogDebug("No GROUP BY expression stored, falling back to {Alias}.{Property}", alias, node.Member.Name);
+                return Expression.Constant($"{alias}.{node.Member.Name}");
+            }
+
             // Check if this is a complex property navigation (has nested member access)
             if (HasComplexPropertyNavigation(node))
             {

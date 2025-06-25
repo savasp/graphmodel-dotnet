@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
 using System.Collections;
+using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
@@ -95,7 +96,14 @@ internal sealed class ResultMaterializer
         if (entityInfo is null)
             return default(TResult);
 
-        var result = _entityFactory.CanDeserialize(elementType)
+        // Check if we should use the actual type from EntityInfo instead of elementType
+        var typeToDeserialize = entityInfo.ActualType ?? elementType;
+        var canDeserialize = _entityFactory.CanDeserialize(typeToDeserialize);
+
+        _logger.LogDebug("MaterializeSingleElement: ElementType={ElementType}, ActualType={ActualType}, CanDeserialize={CanDeserialize}",
+            elementType.Name, entityInfo.ActualType?.Name ?? "null", canDeserialize);
+
+        var result = canDeserialize
             ? _entityFactory.Deserialize(entityInfo)
             : CreateObjectFromEntityInfo(entityInfo, elementType);
 
@@ -173,30 +181,73 @@ internal sealed class ResultMaterializer
 
     private object? CreateComplexObject(EntityInfo entityInfo, Type targetType)
     {
-        var constructor = targetType.GetConstructors()
+        // Use the actual type from EntityInfo instead of the target type
+        // This allows interfaces like IRelationship to be materialized as their concrete types (e.g., Knows, Friend)
+        var typeToInstantiate = entityInfo.ActualType ?? targetType;
+
+        _logger.LogDebug("CreateComplexObject: Creating {TypeName} from EntityInfo with {SimpleCount} simple properties, {ComplexCount} complex properties",
+            typeToInstantiate.Name, entityInfo.SimpleProperties.Count, entityInfo.ComplexProperties.Count);
+
+        _logger.LogDebug("CreateComplexObject: Simple properties: [{SimpleProps}]",
+            string.Join(", ", entityInfo.SimpleProperties.Select(kvp => $"{kvp.Key}={kvp.Value.Value}")));
+        _logger.LogDebug("CreateComplexObject: Complex properties: [{ComplexProps}]",
+            string.Join(", ", entityInfo.ComplexProperties.Select(kvp => $"{kvp.Key}={kvp.Value.Value?.GetType().Name}")));
+
+        var constructors = typeToInstantiate.GetConstructors()
             .OrderByDescending(c => c.GetParameters().Length)
-            .FirstOrDefault()
-            ?? throw new InvalidOperationException($"Type {targetType.Name} has no accessible constructors");
+            .ToList();
 
-        var parameters = constructor.GetParameters();
-        var values = new object?[parameters.Length];
+        if (constructors.Count == 0)
+            throw new InvalidOperationException($"Type {typeToInstantiate.Name} has no accessible constructors");
 
-        for (int i = 0; i < parameters.Length; i++)
+        // Try each constructor until we find one that works
+        foreach (var constructor in constructors)
         {
-            var param = parameters[i];
-            var paramName = param.Name ?? $"param{i}";
-            var matchingProperty = FindPropertyInEntityInfo(entityInfo, paramName);
-
-            values[i] = matchingProperty?.Value switch
+            try
             {
-                SimpleValue simpleValue => ConvertToParameterType(simpleValue.Object, param.ParameterType),
-                EntityInfo complexEntityInfo => CreateObjectFromEntityInfo(complexEntityInfo, param.ParameterType),
-                _ => param.HasDefaultValue ? param.DefaultValue : GetDefaultValue(param.ParameterType)
-            };
+                var parameters = constructor.GetParameters();
+                var values = new object?[parameters.Length];
+
+                _logger.LogDebug("CreateComplexObject: Trying constructor with {ParamCount} parameters: [{Params}]",
+                    parameters.Length, string.Join(", ", parameters.Select(p => $"{p.Name}:{p.ParameterType.Name}")));
+
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    var param = parameters[i];
+                    var paramName = param.Name ?? $"param{i}";
+                    var matchingProperty = FindPropertyInEntityInfo(entityInfo, paramName);
+
+                    _logger.LogDebug("CreateComplexObject: Parameter {ParamName} -> Property {PropertyFound} (Type: {PropertyType})",
+                        paramName, matchingProperty != null ? "FOUND" : "NOT_FOUND",
+                        matchingProperty?.Value?.GetType().Name ?? "null");
+
+                    values[i] = matchingProperty?.Value switch
+                    {
+                        SimpleValue simpleValue => ConvertToParameterType(simpleValue.Object, param.ParameterType),
+                        EntityInfo complexEntityInfo => MaterializeSingleElement<object>(complexEntityInfo, param.ParameterType),
+                        _ => param.HasDefaultValue ? param.DefaultValue : GetDefaultValue(param.ParameterType)
+                    };
+
+                    _logger.LogDebug("CreateComplexObject: Parameter {ParamName} set to: {Value}",
+                        paramName, values[i]?.ToString() ?? "null");
+                }
+
+                // Use constructor.Invoke instead of Activator.CreateInstance to avoid ambiguity
+                var result = constructor.Invoke(values);
+                _logger.LogDebug("CreateComplexObject: Successfully created {TypeName} instance", typeToInstantiate.Name);
+                return result;
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is AmbiguousMatchException || ex is TargetParameterCountException)
+            {
+                _logger.LogDebug("CreateComplexObject: Constructor failed: {Exception}", ex.Message);
+                // Try the next constructor
+                continue;
+            }
         }
 
-        return Activator.CreateInstance(targetType, values);
+        throw new InvalidOperationException($"Could not find a suitable constructor for type {typeToInstantiate.Name}");
     }
+
 
     private static Property? FindPropertyInEntityInfo(EntityInfo entityInfo, string paramName)
     {
