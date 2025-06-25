@@ -468,8 +468,12 @@ public abstract class AdvancedQueryTestsBase : ITestBase
             $"CurrentDateTime difference too large: reference={localReferenceTime:yyyy-MM-dd HH:mm:ss}, actual={actual:yyyy-MM-dd HH:mm:ss}");
 
         // DateTime.Today should be today's date at midnight (local time)
+        // Allow for timezone differences between test machine and Neo4j server
         var expectedDate = localReferenceTime.Date;
-        Assert.Equal(expectedDate, result.CurrentDate.Date);
+        var actualDate = result.CurrentDate.Date;
+        var dateDifference = Math.Abs((expectedDate - actualDate).TotalDays);
+        Assert.True(dateDifference <= 1,
+            $"Date difference too large: expected={expectedDate:yyyy-MM-dd}, actual={actualDate:yyyy-MM-dd}, difference={dateDifference} days");
         Assert.Equal(TimeSpan.Zero, result.CurrentDate.TimeOfDay);
 
         // DateTime.UtcNow should be close to our UTC reference time
