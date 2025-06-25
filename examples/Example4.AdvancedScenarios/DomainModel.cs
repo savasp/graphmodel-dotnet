@@ -31,13 +31,12 @@ public record Content : Node
     public string Title { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
     public string Author { get; set; } = string.Empty;
-    public List<ContainedIn> ContainedIn { get; set; } = new List<ContainedIn>();
-    public List<TaggedWith> Tags { get; set; } = new List<TaggedWith>();
 }
 
-[Relationship(Label = "CONTAINS")]
+[Relationship(Label = "CONTAINED_IN")]
 public record ContainedIn(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
+    public ContainedIn() : this(string.Empty, string.Empty) { }
 }
 
 [Node(Label = "Article")]
@@ -45,7 +44,6 @@ public record Article : Content
 {
     public DateTime PublishedDate { get; set; }
     public int WordCount { get; set; }
-    public List<Reference> References { get; set; } = new List<Reference>();
 }
 
 [Node(Label = "Video")]
@@ -58,11 +56,13 @@ public record Video : Content
 [Relationship(Label = "CONTAINS")]
 public record Contains(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
+    public Contains() : this(string.Empty, string.Empty) { }
 }
 
 [Relationship(Label = "REFERENCES")]
 public record References(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
+    public References() : this(string.Empty, string.Empty) { }
     public string Context { get; set; } = string.Empty;
 }
 
@@ -75,17 +75,13 @@ public record Tag : Node
 [Relationship(Label = "REFERENCE")]
 public record Reference(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
+    public Reference() : this(string.Empty, string.Empty) { }
     public string Context { get; set; } = string.Empty;
 }
 
 [Relationship(Label = "TAGGED_WITH")]
 public record TaggedContent(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
-    public string TagName { get; set; } = string.Empty;
-}
-
-[Relationship(Label = "TAGGED_WITH")]
-public record TaggedWith(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
-{
+    public TaggedContent() : this(string.Empty, string.Empty) { }
     public string TagName { get; set; } = string.Empty;
 }

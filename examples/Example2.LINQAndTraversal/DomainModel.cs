@@ -27,9 +27,13 @@ public record Person : Node
 
 
 [Relationship(Label = "KNOWS")]
-public record Knows(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
+public record Knows : Relationship
 {
+    public Knows() : base(string.Empty, string.Empty) { }
+
+    public Knows(string startNodeId, string endNodeId) : base(startNodeId, endNodeId)
+    {
+    }
+
     public DateTime Since { get; set; }
 }
-
-public record PersonConnections(string PersonId, List<string> KnowsIds);

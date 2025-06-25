@@ -247,6 +247,8 @@ public class GM002_PropertyMustHavePublicAccessorsTests
     public async Task ClassNotImplementingGraphInterface_NoDiagnostic()
     {
         var test = """
+            using Cvoya.Graph.Model;
+            
             public class RegularClass
             {
                 public string Name { get; private set; } = string.Empty;
@@ -256,7 +258,24 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         await VerifyAnalyzerAsync(test);
     }
 
+    [Fact]
+    public async Task RecordWithEqualityContract_NoDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph.Model;
+            
+            [Node(Label = "Person")]
+            public record PersonRecord : Node
+            {
+                public string Name { get; set; } = string.Empty;
+                public int Age { get; set; }
+            }
+            """;
 
+        // Records have an auto-generated EqualityContract property that should be ignored
+        // even though it has protected virtual getter and setter
+        await VerifyAnalyzerAsync(test);
+    }
 }
 
 // Helper typedef for cleaner syntax

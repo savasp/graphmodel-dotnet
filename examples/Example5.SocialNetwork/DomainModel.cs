@@ -26,21 +26,57 @@ public record User : Node
 }
 
 [Relationship(Label = "FOLLOWS")]
-public record Follows(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
+public record Follows : Relationship
 {
     public DateTime Since { get; set; }
+
+    public Follows() : base(string.Empty, string.Empty)
+    {
+    }
+
+    public Follows(string startNodeId, string endNodeId, DateTime since) : base(startNodeId, endNodeId)
+    {
+        Since = since;
+    }
+
+    public Follows(string startNodeId, string endNodeId) : base(startNodeId, endNodeId)
+    {
+    }
 }
 
 [Relationship(Label = "LIKED_BY")]
-public record LikedBy(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId);
+public record LikedBy : Relationship
+{
+    public LikedBy() : base(string.Empty, string.Empty) { }
+
+    public LikedBy(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+}
 
 [Relationship(Label = "POSTED")]
-public record Posted(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId);
+public record Posted : Relationship
+{
+    public Posted() : base(string.Empty, string.Empty) { }
+
+    public Posted(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+}
 
 [Relationship(Label = "LIKES")]
-public record Likes(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
+public record Likes : Relationship
 {
     public DateTime LikedAt { get; set; }
+
+    public Likes() : base(string.Empty, string.Empty)
+    {
+    }
+
+    public Likes(string startNodeId, string endNodeId, DateTime likedAt) : base(startNodeId, endNodeId)
+    {
+        LikedAt = likedAt;
+    }
+
+    public Likes(string startNodeId, string endNodeId) : base(startNodeId, endNodeId)
+    {
+    }
 }
 
 [Node(Label = "Comment")]
@@ -51,28 +87,69 @@ public record Comment : Node
 }
 
 [Relationship(Label = "REPLY_TO")]
-public record ReplyTo(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId);
+public record ReplyTo : Relationship
+{
+    public ReplyTo() : base(string.Empty, string.Empty) { }
+
+    public ReplyTo(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+}
 
 [Relationship(Label = "COMMENTED_ON")]
-public record CommentedOn(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId);
+public record CommentedOn : Relationship
+{
+    public CommentedOn() : base(string.Empty, string.Empty) { }
+
+    public CommentedOn(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+}
 
 [Relationship(Label = "WROTE")]
-public record Wrote(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
+public record Wrote : Relationship
 {
     public DateTime WrittenAt { get; set; }
+
+    public Wrote() : base(string.Empty, string.Empty)
+    {
+    }
+
+    public Wrote(string startNodeId, string endNodeId, DateTime writtenAt) : base(startNodeId, endNodeId)
+    {
+        WrittenAt = writtenAt;
+    }
+
+    public Wrote(string startNodeId, string endNodeId) : base(startNodeId, endNodeId)
+    {
+    }
 }
 
 [Relationship(Label = "AUTHORED_BY")]
-public record Author(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
+public record Author : Relationship
 {
     public DateTime PublishedDate { get; set; }
     public int Likes { get; set; }
+
+    // Parameterless constructor required by IRelationship
+    public Author() : base(string.Empty, string.Empty)
+    {
+    }
+
+    // Constructor to initialize all properties
+    public Author(string startNodeId, string endNodeId, DateTime publishedDate, int likes)
+        : base(startNodeId, endNodeId)
+    {
+        PublishedDate = publishedDate;
+        Likes = likes;
+    }
+
+    // Constructor for just start and end node IDs
+    public Author(string startNodeId, string endNodeId)
+        : base(startNodeId, endNodeId)
+    {
+    }
 }
 
 [Node(Label = "Post")]
 public record Post : Node
 {
-    public required Author Author { get; init; }
     public DateTime PostedAt { get; set; }
     public string Content { get; set; } = string.Empty;
 }

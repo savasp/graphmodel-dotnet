@@ -390,6 +390,95 @@ public class GM010_CircularReferenceWithoutNullableTests
 
         await VerifyAnalyzerAsync(test, expected);
     }
+
+    [Fact]
+    public async Task RecordWithEqualityContract_NoDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph.Model;
+            
+            public class Address
+            {
+                public string Street { get; set; } = string.Empty;
+                public string City { get; set; } = string.Empty;
+            }
+            
+            [Node(Label = "Person")]
+            public record PersonRecord : Node
+            {
+                public string Name { get; set; } = string.Empty;
+                public Address HomeAddress { get; set; } = new();
+                public Address? WorkAddress { get; set; }
+            }
+            """;
+
+        // Records have an auto-generated EqualityContract property that should be ignored
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task ComplexTypeWithoutCircularReference_NoDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph.Model;
+            using System.Collections.Generic;
+            
+            public class Address
+            {
+                public string Street { get; set; } = string.Empty;
+                public string City { get; set; } = string.Empty;
+                public string Country { get; set; } = string.Empty;
+            }
+            
+            public class Contact
+            {
+                public string Email { get; set; } = string.Empty;
+                public string Phone { get; set; } = string.Empty;
+            }
+            
+            public class PersonNode : INode
+            {
+                public string Id { get; init; } = string.Empty;
+                public Address HomeAddress { get; set; } = new();
+                public Address? WorkAddress { get; set; }
+                public List<Address> PreviousAddresses { get; set; } = new();
+                public Contact ContactInfo { get; set; } = new();
+            }
+            """;
+
+        // Complex types like Address and Contact should not trigger circular reference warnings
+        // when they don't actually have circular references
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task RecordWithComplexNestedTypes_NoDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph.Model;
+            
+            public class Nested1
+            {
+                public string Value1 { get; set; } = string.Empty;
+            }
+            
+            public class Nested2
+            {
+                public string Value2 { get; set; } = string.Empty;
+                public Nested1 NestedProperty { get; set; } = new();
+            }
+            
+            [Node(Label = "ComplexRecord")]
+            public record ComplexRecord : Node
+            {
+                public string Name { get; set; } = string.Empty;
+                public Nested2 ComplexData { get; set; } = new();
+            }
+            """;
+
+        // Records with complex nested types should work fine
+        await VerifyAnalyzerAsync(test);
+    }
 }
 
 
