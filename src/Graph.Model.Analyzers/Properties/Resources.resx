@@ -7,64 +7,119 @@
     <value>2.0</value>
   </resheader>
   <resheader name="reader">
-    <value>System.Resources.ResXResourceReader, System.Windows.Forms, ...</value>
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <resheader name="writer">
-    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, ...</value>
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
 
-  <!-- GM001 -->
+  <!-- GM001: Missing parameterless constructor or constructor that initializes properties -->
   <data name="GM001_Title" xml:space="preserve">
-    <value>Structs cannot implement INode or IRelationship</value>
+    <value>Missing parameterless constructor or constructor that initializes properties</value>
   </data>
   <data name="GM001_MessageFormat" xml:space="preserve">
-    <value>Struct '{0}' cannot implement {1}. Only classes are supported.</value>
+    <value>Type '{0}' implementing {1} must have a parameterless constructor or constructors that initialize all properties</value>
   </data>
   <data name="GM001_Description" xml:space="preserve">
-    <value>INode and IRelationship can only be implemented by classes, not structs.</value>
+    <value>Types implementing INode or IRelationship must have a parameterless constructor or constructors that initialize their (get/set) properties.</value>
   </data>
 
-  <!-- GM002 -->
+  <!-- GM002: Property must have public getters and setters or initializers -->
   <data name="GM002_Title" xml:space="preserve">
-    <value>Missing parameterless constructor</value>
+    <value>Property must have public getters and setters or initializers</value>
   </data>
   <data name="GM002_MessageFormat" xml:space="preserve">
-    <value>Type '{0}' must have a parameterless constructor (public or internal)</value>
+    <value>Property '{0}' in type '{1}' must have public getter and either public setter or public init accessor</value>
   </data>
   <data name="GM002_Description" xml:space="preserve">
-    <value>Types implementing INode or IRelationship must have a parameterless constructor.</value>
+    <value>Properties in INode and IRelationship implementations must have public getters and either public setters or public property initializers.</value>
   </data>
 
-  <!-- GM003 -->
+  <!-- GM003: Property cannot be INode or IRelationship type -->
   <data name="GM003_Title" xml:space="preserve">
-    <value>Property must have public getter and setter</value>
+    <value>Property cannot be INode or IRelationship type</value>
   </data>
   <data name="GM003_MessageFormat" xml:space="preserve">
-    <value>Property '{0}' must have public getter and setter</value>
+    <value>Property '{0}' in type '{1}' cannot be of type '{2}' which implements INode or IRelationship</value>
   </data>
   <data name="GM003_Description" xml:space="preserve">
-    <value>All properties in INode and IRelationship implementations must have public getters and setters.</value>
+    <value>Properties of types implementing INode or IRelationship cannot be INode or IRelationship or collections of them.</value>
   </data>
 
-  <!-- GM004 -->
+  <!-- GM004: Invalid property type for INode implementation -->
   <data name="GM004_Title" xml:space="preserve">
-    <value>Unsupported property type</value>
+    <value>Invalid property type for INode implementation</value>
   </data>
   <data name="GM004_MessageFormat" xml:space="preserve">
-    <value>Property '{0}' has unsupported type '{1}'</value>
+    <value>Property '{0}' in INode type '{1}' has invalid type '{2}'. Properties must be simple types, complex types, collections of simple types, or collections of complex types</value>
   </data>
   <data name="GM004_Description" xml:space="preserve">
-    <value>Properties can only be of supported types (primitives, string, date/time, Point, collections).</value>
+    <value>Properties of INode implementations must be simple types, complex types, collections of simple types, or collections of complex types, applied recursively.</value>
   </data>
 
-  <!-- GM005 -->
+  <!-- GM005: Invalid property type for IRelationship implementation -->
   <data name="GM005_Title" xml:space="preserve">
-    <value>Invalid complex type property</value>
+    <value>Invalid property type for IRelationship implementation</value>
   </data>
   <data name="GM005_MessageFormat" xml:space="preserve">
-    <value>Property '{0}' of type '{1}' is not a valid complex type for INode implementations</value>
+    <value>Property '{0}' in IRelationship type '{1}' has invalid type '{2}'. Properties must be simple types or collections of simple types</value>
   </data>
   <data name="GM005_Description" xml:space="preserve">
-    <value>Complex type properties in INode implementations must be classes with parameterless constructors and only simple properties.</value>
+    <value>Properties of IRelationship implementations must be simple types or collections of simple types.</value>
+  </data>
+
+  <!-- GM006: Complex type property contains graph interface types -->
+  <data name="GM006_Title" xml:space="preserve">
+    <value>Complex type property contains graph interface types</value>
+  </data>
+  <data name="GM006_MessageFormat" xml:space="preserve">
+    <value>Complex type '{0}' used by property '{1}' in type '{2}' contains properties of INode or IRelationship types</value>
+  </data>
+  <data name="GM006_Description" xml:space="preserve">
+    <value>Properties of complex properties cannot be INode or IRelationship or collections of them. This rule is applied recursively.</value>
+  </data>
+
+  <!-- GM007: Duplicate PropertyAttribute label in type hierarchy -->
+  <data name="GM007_Title" xml:space="preserve">
+    <value>Duplicate PropertyAttribute label in type hierarchy</value>
+  </data>
+  <data name="GM007_MessageFormat" xml:space="preserve">
+    <value>Property '{0}' in type '{1}' uses PropertyAttribute label '{2}' which is already used by property '{3}' in base type '{4}'</value>
+  </data>
+  <data name="GM007_Description" xml:space="preserve">
+    <value>A type hierarchy cannot have PropertyAttribute annotations with the same Label value across all properties in that type hierarchy.</value>
+  </data>
+
+  <!-- GM008: Duplicate RelationshipAttribute label in type hierarchy -->
+  <data name="GM008_Title" xml:space="preserve">
+    <value>Duplicate RelationshipAttribute label in type hierarchy</value>
+  </data>
+  <data name="GM008_MessageFormat" xml:space="preserve">
+    <value>Type '{0}' uses RelationshipAttribute label '{1}' which is already used by base type '{2}'</value>
+  </data>
+  <data name="GM008_Description" xml:space="preserve">
+    <value>A type hierarchy cannot have RelationshipAttribute annotations with the same Label value across all types in that type hierarchy.</value>
+  </data>
+
+  <!-- GM009: Duplicate NodeAttribute label in type hierarchy -->
+  <data name="GM009_Title" xml:space="preserve">
+    <value>Duplicate NodeAttribute label in type hierarchy</value>
+  </data>
+  <data name="GM009_MessageFormat" xml:space="preserve">
+    <value>Type '{0}' uses NodeAttribute label '{1}' which is already used by base type '{2}'</value>
+  </data>
+  <data name="GM009_Description" xml:space="preserve">
+    <value>A type hierarchy cannot have NodeAttribute annotations with the same Label value across all types in that type hierarchy.</value>
+  </data>
+
+  <!-- GM010: Circular reference without nullable type -->
+  <data name="GM010_Title" xml:space="preserve">
+    <value>Circular reference without nullable type</value>
+  </data>
+  <data name="GM010_MessageFormat" xml:space="preserve">
+    <value>Property '{0}' in type '{1}' creates a circular reference to type '{2}' without using a nullable type</value>
+  </data>
+  <data name="GM010_Description" xml:space="preserve">
+    <value>A type implementing INode or IRelationship cannot contain a type reference cycle without a nullable type.</value>
   </data>
 </root>

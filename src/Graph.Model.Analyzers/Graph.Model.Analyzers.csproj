@@ -2,6 +2,7 @@
 
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
+        <TargetFrameworkOverride>netstandard2.0</TargetFrameworkOverride>
         <RootNamespace>Cvoya.Graph.Model.Analyzers</RootNamespace>
         <AssemblyName>Cvoya.Graph.Model.Analyzers</AssemblyName>
 
@@ -40,6 +41,6 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
-        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.0.0-1.25277.114" PrivateAssets="all" />
     </ItemGroup>
 </Project>

@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
+using System.Linq;
+
 namespace Cvoya.Graph.Model;
 
 /// <summary>
@@ -38,8 +41,52 @@ namespace Cvoya.Graph.Model;
 public class RelationshipAttribute() : Attribute
 {
     /// <summary>
+    /// Initializes a new instance of the RelationshipAttribute class with the specified label.
+    /// </summary>
+    /// <param name="label">The label to apply to the relationship.</param>
+    public RelationshipAttribute(string label) : this()
+    {
+        Label = label;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the RelationshipAttribute class with multiple labels.
+    /// </summary>
+    /// <param name="labels">The labels to apply to the relationship.</param>
+    public RelationshipAttribute(params string[] labels) : this()
+    {
+        if (labels.Length > 0)
+        {
+            Label = labels[0]; // Primary label
+            AdditionalLabels = labels.Skip(1).ToArray();
+        }
+    }
+
+    /// <summary>
     /// Gets or sets the label to apply to the relationship. If null, the name of the class is used.
     /// </summary>
     /// <value>The relationship label used for graph storage.</value>
     public string? Label { get; set; } = null;
+
+    /// <summary>
+    /// Gets additional labels for the relationship.
+    /// </summary>
+    /// <value>Additional labels used for graph storage.</value>
+    public string[] AdditionalLabels { get; private set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets all labels (primary + additional) for the relationship.
+    /// </summary>
+    /// <returns>All labels for this relationship.</returns>
+    public IEnumerable<string> GetAllLabels()
+    {
+        if (!string.IsNullOrEmpty(Label))
+            yield return Label;
+
+        foreach (var additionalLabel in AdditionalLabels)
+        {
+            if (!string.IsNullOrEmpty(additionalLabel))
+                yield return additionalLabel;
+        }
+    }
 }

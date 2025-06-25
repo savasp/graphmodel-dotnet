@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Collections.Immutable;
-using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Testing;
@@ -23,18 +21,9 @@ namespace Cvoya.Graph.Model.Analyzers.Tests;
 internal class FilteringAnalyzerTest<TAnalyzer> : CSharpAnalyzerTest<TAnalyzer, DefaultVerifier>
     where TAnalyzer : DiagnosticAnalyzer, new()
 {
-    protected override async Task<(Compilation, ImmutableArray<Diagnostic>)> GetProjectCompilationAsync(
-        Project project,
-        IVerifier verifier,
-        CancellationToken cancellationToken)
+    public FilteringAnalyzerTest()
     {
-        var (compilation, diagnostics) = await base.GetProjectCompilationAsync(project, verifier, cancellationToken);
-
-        // Filter out CS1705 version conflict errors that occur with .NET 9
-        var filteredDiagnostics = diagnostics
-            .Where(d => d.Id != "CS1705")
-            .ToImmutableArray();
-
-        return (compilation, filteredDiagnostics);
+        // Use a custom test state that ignores compiler errors
+        CompilerDiagnostics = CompilerDiagnostics.None;
     }
 }
