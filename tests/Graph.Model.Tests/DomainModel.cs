@@ -124,7 +124,6 @@ public class PersonWithComplexProperties : INode
     //public Dictionary<string, object> Metadata { get; set; } = new Dictionary<string, object>();
 }
 
-
 public record Class1 : Node
 {
     public string Property1 { get; set; } = string.Empty;

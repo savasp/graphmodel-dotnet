@@ -27,6 +27,7 @@
     <ProjectReference Include="../../src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj" />
     <ProjectReference Include="../Graph.Model.Tests/Graph.Model.Tests.csproj" />
     <ProjectReference Include="../../src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

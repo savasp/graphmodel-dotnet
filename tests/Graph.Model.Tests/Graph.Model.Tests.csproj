@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Graph.Model/Graph.Model.csproj" />
+    <ProjectReference Include="../../src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>
