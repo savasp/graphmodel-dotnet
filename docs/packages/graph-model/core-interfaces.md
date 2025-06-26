@@ -1,3 +1,8 @@
+---
+title: Core Interfaces and Type System
+layout: default
+---
+
 # Core Interfaces and Type System
 
 This document provides a comprehensive guide to the core interfaces and type system that form the foundation of Graph Model. Understanding these interfaces is essential for effective use of the library.

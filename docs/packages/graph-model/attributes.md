@@ -1,3 +1,8 @@
+---
+title: Attributes and Configuration
+layout: default
+---
+
 # Attributes and Configuration
 
 Graph Model uses attributes to provide declarative configuration for how your domain classes map to graph elements. This approach offers clean, type-safe configuration with support for indexing, custom labeling, and property control.

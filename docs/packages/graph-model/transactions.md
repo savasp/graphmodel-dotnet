@@ -1,3 +1,8 @@
+---
+title: Transaction Management
+layout: default
+---
+
 # Transaction Management
 
 Graph Model provides comprehensive transaction support with full async/await patterns to ensure ACID properties and data consistency in your graph operations.

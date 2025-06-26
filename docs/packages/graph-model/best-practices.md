@@ -1,3 +1,8 @@
+---
+title: Best Practices
+layout: default
+---
+
 # Best Practices
 
 This guide covers best practices for using Graph Model effectively in your applications.

@@ -1,3 +1,8 @@
+---
+title: Enhanced Querying with LINQ
+layout: default
+---
+
 # Enhanced Querying with LINQ
 
 Graph Model provides powerful querying capabilities through enhanced LINQ support via `IGraphQueryable<T>`. This extends standard LINQ with graph-specific operations for traversal, performance optimization, and advanced query patterns.

@@ -1,3 +1,8 @@
+---
+title: Getting Started with Graph Model
+layout: default
+---
+
 # Getting Started with Graph Model
 
 This guide will walk you through the basics of using Graph Model in your .NET applications, covering installation, domain modeling, basic operations, and key concepts.
