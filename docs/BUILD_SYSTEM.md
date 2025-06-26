@@ -10,6 +10,9 @@ This document explains the GraphModel build configurations, version management, 
 # Development build (fastest, project references)
 dotnet build --configuration Debug
 
+# Test package references locally
+dotnet build --configuration LocalFeed
+
 # Create a release version
 dotnet msbuild -target:CreateRelease -p:ReleaseVersion=1.2.3
 
@@ -22,12 +25,13 @@ dotnet build --configuration Release
 
 ## 📦 Build Configurations
 
-GraphModel uses **three distinct build configurations** optimized for different scenarios:
+GraphModel uses **four distinct build configurations** optimized for different scenarios:
 
 | Configuration | Project Refs | Optimizations | Packages | VERSION Required | Use Case                |
 | ------------- | ------------ | ------------- | -------- | ---------------- | ----------------------- |
 | **Debug**     | ✅ Yes       | ❌ No         | ❌ No    | ❌ No            | Development & debugging |
 | **Benchmark** | ✅ Yes       | ✅ Yes        | ❌ No    | ❌ No            | Performance testing     |
+| **LocalFeed** | ✅ Yes       | ✅ Yes        | ✅ Yes   | ❌ No            | Local package testing   |
 | **Release**   | ❌ No        | ✅ Yes        | ✅ Yes   | ✅ Yes           | Production builds       |
 
 ### Configuration Details
@@ -47,6 +51,14 @@ GraphModel uses **three distinct build configurations** optimized for different 
 - **Dependencies**: Direct project references (fast rebuilds)
 - **Packages**: None generated
 - **Usage**: `dotnet msbuild -target:BuildBenchmark`
+
+#### LocalFeed Configuration
+
+- **Purpose**: Testing package references locally before publishing
+- **Speed**: Optimized builds with fast project references
+- **Dependencies**: Direct project references (fast builds)
+- **Packages**: Generated and published to local NuGet feed
+- **Usage**: `dotnet build --configuration LocalFeed`
 
 #### Release Configuration
 
@@ -143,6 +155,39 @@ git tag v1.2.3
 
 ### Package Testing Workflow
 
+For testing package references locally before publishing to NuGet.org:
+
+#### Method 1: Using LocalFeed Configuration (Recommended)
+
+```bash
+# 1. Build packages and set up local feed
+dotnet build --configuration LocalFeed
+
+# 2. Test Release configuration with package references
+dotnet build --configuration Release
+
+# 3. Run tests with package references
+dotnet test --configuration Release
+
+# 4. Clean up when done
+dotnet msbuild -target:CleanLocalFeed
+```
+
+#### Method 2: Using Helper Script
+
+```bash
+# 1. Set up local feed using script
+./scripts/setup-local-feed-msbuild.sh
+
+# 2. Test Release configuration
+dotnet build --configuration Release
+
+# 3. Clean up
+dotnet msbuild -target:CleanLocalFeed
+```
+
+#### Method 3: Legacy Manual Testing
+
 ```bash
 # 1. Create test version
 dotnet msbuild -target:CreateRelease -p:ReleaseVersion=1.2.3-test
@@ -173,6 +218,19 @@ dotnet msbuild -target:ShowVersion
 dotnet build --configuration Debug
 dotnet build --configuration Benchmark
 dotnet build --configuration Release
+```
+
+### Local Package Testing
+
+```bash
+# Set up local NuGet feed (builds LocalFeed configuration)
+dotnet build --configuration LocalFeed
+
+# Test complete workflow (LocalFeed + Release)
+dotnet msbuild -target:TestLocalFeed
+
+# Clean up local feed
+dotnet msbuild -target:CleanLocalFeed
 ```
 
 ### Cleanup Commands

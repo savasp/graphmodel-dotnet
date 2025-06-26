@@ -43,26 +43,27 @@ For comprehensive build system documentation, see: **[docs/BUILD_SYSTEM.md](../d
 
 ## 📦 Build Configurations
 
-| Configuration | Project Refs | Optimizations | Packages | VERSION Required | Use Case            |
-| ------------- | ------------ | ------------- | -------- | ---------------- | ------------------- |
-| **Debug**     | ✅ Yes       | ❌ No         | ❌ No    | ❌ No            | Development         |
-| **Benchmark** | ✅ Yes       | ✅ Yes        | ❌ No    | ❌ No            | Performance testing |
-| **Release**   | ❌ No        | ✅ Yes        | ✅ Yes   | ✅ Yes           | Production builds   |
+| Configuration | Project Refs | Optimizations | Packages | VERSION Required | Use Case              |
+| ------------- | ------------ | ------------- | -------- | ---------------- | --------------------- |
+| **Debug**     | ✅ Yes       | ❌ No         | ❌ No    | ❌ No            | Development           |
+| **Benchmark** | ✅ Yes       | ✅ Yes        | ❌ No    | ❌ No            | Performance testing   |
+| **LocalFeed** | ✅ Yes       | ✅ Yes        | ✅ Yes   | ❌ No            | Local package testing |
+| **Release**   | ❌ No        | ✅ Yes        | ✅ Yes   | ✅ Yes           | Production builds     |
 
 ## Local NuGet Feed Scripts
 
 For testing Release configuration with local packages before publishing:
 
-### `setup-local-feed-msbuild.sh` / `setup-local-feed-msbuild.ps1` ⭐ **Recommended**
+### `setup-local-feed-msbuild.sh` ⭐ **Recommended**
 
 Uses MSBuild integration to automatically create a local NuGet feed with all GraphModel packages:
 
 ```bash
-# Bash
+# Set up local feed using script
 ./scripts/setup-local-feed-msbuild.sh
 
-# PowerShell
-./scripts/setup-local-feed-msbuild.ps1
+# Or build directly with LocalFeed configuration
+dotnet build --configuration LocalFeed
 
 # Test Release configuration
 dotnet build --configuration Release
@@ -94,11 +95,12 @@ dotnet build --configuration Release
 
 2. **MSBuild Targets**: Automatic local feed management:
 
-   - `SetupLocalFeed`: Creates local feed directory and NuGet source
+   - `SetupLocalFeed`: Creates local feed directory and NuGet source (runs before LocalFeed builds)
+   - `PublishToLocalFeed`: Copies packages to local feed after packaging
    - `CleanLocalFeed`: Removes local feed and cleans up
-   - Runs before/after build as needed
+   - `TestLocalFeed`: Complete end-to-end testing workflow
 
-3. **Smart Package Versioning**: Uses stable `1.0.0` version for consistency
+3. **Smart Package Versioning**: Uses automatic versioning with timestamp suffix
 
 4. **Sentinel File System**: Prevents duplicate NuGet source registration
 
@@ -113,7 +115,9 @@ dotnet msbuild -target:CleanLocalFeed
 ✅ All 5 packages created successfully  
 ✅ Local feed setup works automatically  
 ✅ Release configuration builds with package references  
-✅ MSBuild integration prevents conflicts
+✅ MSBuild integration prevents conflicts  
+✅ LocalFeed configuration implemented and working  
+✅ Automatic package publishing to local feed
 
 ### `setup-local-feed-simple.sh` / `setup-local-feed.ps1` (Legacy)
 

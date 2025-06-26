@@ -197,6 +197,40 @@ Explore comprehensive examples in the [`examples/`](examples/) directory:
 - **[Advanced Scenarios](examples/Example4.AdvancedScenarios/)** - Complex patterns and optimizations
 - **[Social Network](examples/Example5.SocialNetwork/)** - Real-world social graph implementation
 
+## 🏗️ Building & Testing
+
+### Build Configurations
+
+GraphModel supports multiple build configurations for different scenarios:
+
+```bash
+# Development (fastest, project references)
+dotnet build --configuration Debug
+
+# Local package testing (test package references before publishing)
+dotnet build --configuration LocalFeed
+
+# Production builds (package references, requires VERSION file)
+dotnet build --configuration Release
+```
+
+For testing package references locally before publishing to NuGet:
+
+```bash
+# Method 1: Direct LocalFeed build
+dotnet build --configuration LocalFeed
+dotnet build --configuration Release
+
+# Method 2: Using helper script
+./scripts/setup-local-feed-msbuild.sh
+dotnet build --configuration Release
+
+# Cleanup when done
+dotnet msbuild -target:CleanLocalFeed
+```
+
+See **[Build System Documentation](docs/BUILD_SYSTEM.md)** for complete details.
+
 ## 🏗️ Architecture
 
 GraphModel follows a clean, layered architecture:

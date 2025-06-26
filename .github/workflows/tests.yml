@@ -22,8 +22,12 @@ jobs:
       run: dotnet restore
       working-directory: .
     
+    - name: Set up local feed
+      run: dotnet build --configuration LocalFeed --no-restore
+      working-directory: .
+
     - name: Build
-      run: dotnet build --no-restore
+      run: dotnet build --no-restore --configuration Release
       working-directory: .
     
     - name: Test Analyzers

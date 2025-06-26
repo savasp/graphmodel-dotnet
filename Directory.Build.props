@@ -35,9 +35,14 @@
         <!-- Development mode uses project references by default -->
         <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Debug'">true</UseProjectReferences>
         <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Benchmark'">true</UseProjectReferences>
+        <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'LocalFeed'">true</UseProjectReferences>
         <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Release'">false</UseProjectReferences>
 
-        <!-- Only generate packages in Release mode or when explicitly requested -->
+        <!-- LocalFeed configuration: Release optimizations + project references + package generation -->
+        <Optimize Condition="'$(Configuration)' == 'LocalFeed'">true</Optimize>
+        <GeneratePackageOnBuild Condition="'$(Configuration)' == 'LocalFeed'">true</GeneratePackageOnBuild>
+        
+        <!-- Only generate packages in Release/LocalFeed mode or when explicitly requested -->
         <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release' OR '$(ForcePackageGeneration)' == 'true'">true</GeneratePackageOnBuild>
         <GeneratePackageOnBuild Condition="'$(GeneratePackageOnBuild)' == ''">false</GeneratePackageOnBuild>
     </PropertyGroup>
@@ -84,5 +89,72 @@
         </PropertyGroup>
         <Message Text="Current version: $(CurrentVersion)" Importance="high" Condition="'$(CurrentVersion)' != ''" />
         <Message Text="No VERSION file found" Importance="high" Condition="'$(CurrentVersion)' == ''" />
+    </Target>
+
+    <!-- Local NuGet Feed Management Targets -->
+    <PropertyGroup>
+        <LocalFeedPath>$(MSBuildThisFileDirectory)local-nuget-feed</LocalFeedPath>
+        <LocalFeedSourceName>GraphModel-LocalFeed</LocalFeedSourceName>
+        <LocalFeedSentinelFile>$(LocalFeedPath)/.feed-setup-complete</LocalFeedSentinelFile>
+    </PropertyGroup>
+
+    <Target Name="SetupLocalFeed" BeforeTargets="Build" Condition="'$(Configuration)' == 'LocalFeed'">
+        <Message Text="🚀 Setting up local NuGet feed for GraphModel..." Importance="high" />
+        
+        <!-- Create local feed directory -->
+        <MakeDir Directories="$(LocalFeedPath)" />
+        
+        <!-- Add NuGet source if not already added -->
+        <Exec Command="dotnet nuget list source | grep '$(LocalFeedSourceName)' || dotnet nuget add source '$(LocalFeedPath)' --name '$(LocalFeedSourceName)'" 
+              ContinueOnError="true" />
+        
+        <!-- Create sentinel file -->
+        <WriteLinesToFile File="$(LocalFeedSentinelFile)" Lines="Local feed setup completed at $([System.DateTime]::Now)" Overwrite="true" />
+        
+        <Message Text="✅ Local NuGet feed ready at: $(LocalFeedPath)" Importance="high" />
+    </Target>
+
+    <Target Name="PublishToLocalFeed" AfterTargets="Pack" Condition="'$(Configuration)' == 'LocalFeed' AND '$(IsPackable)' != 'false'">
+        <ItemGroup>
+            <PackageFiles Include="$(PackageOutputPath)\*.nupkg" />
+        </ItemGroup>
+        
+        <Copy SourceFiles="@(PackageFiles)" DestinationFolder="$(LocalFeedPath)" Condition="@(PackageFiles) != ''" />
+        
+        <Message Text="📦 Published $(MSBuildProjectName) to local feed" Importance="high" Condition="@(PackageFiles) != ''" />
+    </Target>
+
+    <Target Name="CleanLocalFeed">
+        <Message Text="🧹 Cleaning up GraphModel local NuGet feed..." Importance="high" />
+        
+        <!-- Remove NuGet source -->
+        <Exec Command="dotnet nuget remove source '$(LocalFeedSourceName)'" ContinueOnError="true" />
+        
+        <!-- Clean directories -->
+        <RemoveDir Directories="$(LocalFeedPath)" />
+        <RemoveDir Directories="$(PackageOutputPath)" />
+        
+        <!-- Clear NuGet cache -->
+        <Exec Command="dotnet nuget locals all --clear" ContinueOnError="true" />
+        
+        <Message Text="✅ Cleanup complete! You can now build normally with project references." Importance="high" />
+    </Target>
+
+    <Target Name="TestLocalFeed" DependsOnTargets="CleanLocalFeed">
+        <Message Text="🧪 Testing local NuGet feed workflow..." Importance="high" />
+        
+        <!-- Build with LocalFeed configuration to generate packages -->
+        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" 
+                 Properties="Configuration=LocalFeed" 
+                 Targets="Build" />
+        
+        <!-- Test Release configuration with package references -->
+        <Message Text="🔄 Testing Release build with package references..." Importance="high" />
+        <Exec Command="dotnet restore --force" />
+        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" 
+                 Properties="Configuration=Release" 
+                 Targets="Build" />
+        
+        <Message Text="✅ Local feed test completed successfully!" Importance="high" />
     </Target>
 </Project>
