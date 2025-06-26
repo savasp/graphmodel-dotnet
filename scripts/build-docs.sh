@@ -66,50 +66,11 @@ else
     exit 1
 fi
 
-# Create _site directory for GitHub Pages
-echo ""
-echo "📁 Creating _site directory for GitHub Pages..."
-rm -rf _site
-mkdir -p _site
-
-# Copy all documentation files
-echo "📋 Copying documentation files to _site..."
-cp -r docs/* _site/
-cp README.md _site/
-
-# Create index.html that redirects to index.md (for GitHub Pages)
-echo "📄 Creating index.html redirect..."
-cat > _site/index.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>GraphModel Documentation</title>
-    <meta http-equiv="refresh" content="0; url=./index.md">
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 50px; }
-        .container { max-width: 600px; margin: 0 auto; }
-        h1 { color: #333; }
-        .loading { animation: pulse 1.5s ease-in-out infinite alternate; }
-        @keyframes pulse { from { opacity: 1; } to { opacity: 0.5; } }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>GraphModel Documentation</h1>
-        <p class="loading">Loading documentation...</p>
-        <p>If you're not redirected automatically, <a href="./index.md">click here</a>.</p>
-    </div>
-</body>
-</html>
-EOF
-
 echo ""
 echo "✅ Documentation build completed!"
 echo "📂 XML files available in: docs/api/"
-echo "🌐 GitHub Pages site ready in: _site/"
 echo ""
 echo "💡 Usage:"
-echo "   - Local testing: python3 -m http.server 8000 (from _site/ directory)"
-echo "   - GitHub Pages: Push changes to deploy automatically"
+echo "   - GitHub Pages: Jekyll will process files automatically"
+echo "   - Local testing: bundle exec jekyll serve (requires Jekyll setup)"
 echo "   - DocFX: Use XML files in docs/api/ as input" 

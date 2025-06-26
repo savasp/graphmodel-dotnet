@@ -5,6 +5,9 @@ description: A powerful, type-safe .NET library ecosystem for working with graph
 baseurl: "/graphmodel"
 url: "https://savasp.github.io"
 
+# Source configuration
+source: docs
+
 # Build settings
 markdown: kramdown
 highlighter: rouge
