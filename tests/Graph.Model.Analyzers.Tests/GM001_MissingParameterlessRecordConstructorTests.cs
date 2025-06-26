@@ -20,7 +20,7 @@ using Xunit;
 using static Cvoya.Graph.Model.Analyzers.Tests.TestHelpers.AnalyzerTestHelpers;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerVerifier<Cvoya.Graph.Model.Analyzers.GraphModelAnalyzer, Microsoft.CodeAnalysis.Testing.DefaultVerifier>;
 
-public class GM001_MissingParameterlessConstructorTests
+public class GM001_MissingParameterlessRecordConstructorTests
 {
     [Fact]
     public async Task ValidNodeWithParameterlessConstructor_NoDiagnostic()
@@ -28,7 +28,7 @@ public class GM001_MissingParameterlessConstructorTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public record TestNode : INode
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -44,7 +44,7 @@ public class GM001_MissingParameterlessConstructorTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public record TestNode : INode
             {
                 public TestNode() { }
                 
@@ -62,7 +62,7 @@ public class GM001_MissingParameterlessConstructorTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public record TestNode : INode
             {
                 public TestNode(string id, string name)
                 {
@@ -84,7 +84,7 @@ public class GM001_MissingParameterlessConstructorTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class {|#0:TestNode|} : INode
+            public record {|#0:TestNode|} : INode
             {
                 public TestNode(string id)
                 {
@@ -109,7 +109,7 @@ public class GM001_MissingParameterlessConstructorTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class {|#0:TestRelationship|} : IRelationship
+            public record {|#0:TestRelationship|} : IRelationship
             {
                 public TestRelationship(string id)
                 {
@@ -137,7 +137,7 @@ public class GM001_MissingParameterlessConstructorTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestRelationship : IRelationship
+            public record TestRelationship : IRelationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -156,7 +156,7 @@ public class GM001_MissingParameterlessConstructorTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class {|#0:TestNode|} : INode
+            public record {|#0:TestNode|} : INode
             {
                 private TestNode() { }
                 
@@ -183,7 +183,7 @@ public class GM001_MissingParameterlessConstructorTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public record TestNode : INode
             {
                 internal TestNode() { }
                 
@@ -199,9 +199,9 @@ public class GM001_MissingParameterlessConstructorTests
     public async Task ClassNotImplementingGraphInterface_NoDiagnostic()
     {
         var test = """
-            public class RegularClass
+            public record RegularRecord
             {
-                public RegularClass(string name)
+                public RegularRecord(string name)
                 {
                     Name = name;
                 }
