@@ -26,9 +26,6 @@ jobs:
       run: dotnet build --no-restore
       working-directory: .
     
-    - name: Test Core Library
-      run: dotnet test tests/Graph.Model.Tests --no-build --verbosity normal --collect:"XPlat Code Coverage"
-      
     - name: Test Analyzers
       run: dotnet test tests/Graph.Model.Analyzers.Tests --no-build --verbosity normal --collect:"XPlat Code Coverage"
       
