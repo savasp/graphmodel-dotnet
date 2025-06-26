@@ -1,3 +1,8 @@
+---
+title: Graph Querying Usage Examples
+layout: default
+---
+
 # Graph Querying Usage Patterns and Examples
 
 This document provides concrete examples and usage patterns for the recommended graph querying interface evolution, demonstrating how the proposed changes would improve upon the current implementation.

@@ -1,3 +1,8 @@
+---
+title: GraphModel Documentation
+layout: default
+---
+
 # GraphModel Documentation
 
 Welcome to the comprehensive documentation for **GraphModel** - a powerful, type-safe .NET library ecosystem for working with graph data structures and graph databases.

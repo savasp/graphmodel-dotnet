@@ -1,3 +1,8 @@
+---
+title: Performance Guide
+layout: default
+---
+
 # 🚀 Performance Guide
 
 This guide provides best practices and optimization techniques for maximizing performance when using GraphModel.

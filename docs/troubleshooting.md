@@ -1,3 +1,8 @@
+---
+title: Troubleshooting Guide
+layout: default
+---
+
 # 🔧 Troubleshooting Guide
 
 This guide helps you diagnose and resolve common issues when working with GraphModel.

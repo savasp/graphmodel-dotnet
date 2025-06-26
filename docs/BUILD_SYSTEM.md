@@ -1,3 +1,8 @@
+---
+title: Build System Guide
+layout: default
+---
+
 # GraphModel Build System Guide
 
 This document explains the GraphModel build configurations, version management, and development workflows.

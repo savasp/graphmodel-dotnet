@@ -1,0 +1,52 @@
+# GraphModel Documentation Site Configuration
+
+title: GraphModel Documentation
+description: A powerful, type-safe .NET library ecosystem for working with graph data structures and graph databases.
+baseurl: "/graphmodel"
+url: "https://savasp.github.io"
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+theme: minima
+
+# GitHub Pages settings
+repository: savasp/graphmodel
+
+# Plugins
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+
+# Exclude from processing
+exclude:
+  - src/
+  - tests/
+  - examples/
+  - scripts/
+  - obj/
+  - bin/
+  - local-nuget-feed/
+  - artifacts/
+  - "*.sln"
+  - "*.csproj"
+  - "*.cs"
+  - dotnet.config
+  - Directory.Build.props
+  - VERSION
+  - LICENSE
+  - SECURITY.md
+  - CHANGELOG.md
+  - CONTRIBUTING.md
+  - RELEASE_CHECKLIST.md
+  - codecov.yml
+
+# Include files that start with underscores
+include:
+  - _site
+
+# Kramdown settings
+kramdown:
+  input: GFM
+  hard_wrap: false
+  syntax_highlighter: rouge 
