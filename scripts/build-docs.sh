@@ -8,7 +8,7 @@ set -e
 echo "🔨 Building GraphModel documentation..."
 
 # Configuration to use (default: Release for documentation)
-CONFIG=${1:-Release}
+CONFIG=${1:-Debug}
 
 echo "📋 Using configuration: $CONFIG"
 

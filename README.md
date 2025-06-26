@@ -1,7 +1,7 @@
 # GraphModel
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![.NET](https://img.shields.io/badge/.NET-8.0+-purple.svg)](https://dotnet.microsoft.com/download)
+[![.NET](https://img.shields.io/badge/.NET-10.0+-purple.svg)](https://dotnet.microsoft.com/download)
 [![GitHub release](https://img.shields.io/github/release/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel/releases)
 [![Build Status](https://github.com/savasp/graphmodel/workflows/🧪%20Tests/badge.svg)](https://github.com/savasp/graphmodel/actions/workflows/tests.yml)
 [![Coverage](https://github.com/savasp/graphmodel/workflows/📊%20Code%20Coverage/badge.svg)](https://github.com/savasp/graphmodel/actions/workflows/coverage.yml)
