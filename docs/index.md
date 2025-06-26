@@ -11,46 +11,46 @@ Welcome to the comprehensive documentation for **GraphModel** - a powerful, type
 
 ### 📖 Getting Started
 
-- **[README & Overview](../README.md)** - Project overview, features, and quick start guide
-- **[Build System](BUILD_SYSTEM.md)** - Build configurations, version management, and workflows
+- **[README & Overview]({{ site.baseurl }}/README.html)** - Project overview, features, and quick start guide
+- **[Build System]({{ site.baseurl }}/BUILD_SYSTEM.html)** - Build configurations, version management, and workflows
 
 ### 🧠 Core Concepts
 
-- **[Graph Querying - Usage Examples](graph-querying-usage-examples.md)** - Practical examples and patterns
-- **[Graph Querying - Interface Recommendations](graph-querying-interface-recommendations.md)** - Best practices for interface design
-- **[Graph Querying - Direct Responses](graph-querying-direct-responses.md)** - Working with query results
-- **[Handler-Visitor Architecture](Handler-Visitor-Architecture.md)** - Understanding the architectural patterns
+- **[Graph Querying - Usage Examples]({{ site.baseurl }}/graph-querying-usage-examples.html)** - Practical examples and patterns
+- **[Graph Querying - Interface Recommendations]({{ site.baseurl }}/graph-querying-interface-recommendations.html)** - Best practices for interface design
+- **[Graph Querying - Direct Responses]({{ site.baseurl }}/graph-querying-direct-responses.html)** - Working with query results
+- **[Handler-Visitor Architecture]({{ site.baseurl }}/Handler-Visitor-Architecture.html)** - Understanding the architectural patterns
 
 ### ⚡ Performance & Operations
 
-- **[Performance Guide](performance.md)** - Optimization tips and benchmarking
-- **[Troubleshooting](troubleshooting.md)** - Common issues and solutions
+- **[Performance Guide]({{ site.baseurl }}/performance.html)** - Optimization tips and benchmarking
+- **[Troubleshooting]({{ site.baseurl }}/troubleshooting.html)** - Common issues and solutions
 
 ### 💡 Examples
 
 Comprehensive examples demonstrating real-world usage:
 
-- **[Basic Serialization](../examples/Example0.BasicSerialization/README.md)** - CRUD operations and complex object handling
-- **[Basic CRUD Operations](../examples/Example1.BasicCRUD/README.md)** - Fundamental create, read, update, delete operations
-- **[LINQ and Traversal](../examples/Example2.LINQAndTraversal/README.md)** - Advanced querying and graph navigation
-- **[Transaction Management](../examples/Example3.TransactionManagement/README.md)** - ACID transactions and rollback scenarios
-- **[Advanced Scenarios](../examples/Example4.AdvancedScenarios/README.md)** - Complex patterns and optimizations
-- **[Social Network Example](../examples/Example5.SocialNetwork/README.md)** - Real-world social graph implementation
+- **[Basic Serialization]({{ site.baseurl }}/examples/Example0.BasicSerialization/README.html)** - CRUD operations and complex object handling
+- **[Basic CRUD Operations]({{ site.baseurl }}/examples/Example1.BasicCRUD/README.html)** - Fundamental create, read, update, delete operations
+- **[LINQ and Traversal]({{ site.baseurl }}/examples/Example2.LINQAndTraversal/README.html)** - Advanced querying and graph navigation
+- **[Transaction Management]({{ site.baseurl }}/examples/Example3.TransactionManagement/README.html)** - ACID transactions and rollback scenarios
+- **[Advanced Scenarios]({{ site.baseurl }}/examples/Example4.AdvancedScenarios/README.html)** - Complex patterns and optimizations
+- **[Social Network Example]({{ site.baseurl }}/examples/Example5.SocialNetwork/README.html)** - Real-world social graph implementation
 
 ### 📚 API Reference
 
-- **[XML Documentation Files](api-xml/)** - Generated from XML documentation comments
+- **[XML Documentation Files]({{ site.baseurl }}/api/)** - Generated from XML documentation comments
 
 ## 🏗️ Project Structure
 
 GraphModel consists of several packages working together:
 
-| Package                           | Description                      | Documentation                                                    |
-| --------------------------------- | -------------------------------- | ---------------------------------------------------------------- |
-| `Cvoya.Graph.Model`               | Core abstractions and interfaces | [XML Documentation](api-xml/Cvoya.Graph.Model.xml)               |
-| `Cvoya.Graph.Model.Neo4j`         | Neo4j provider implementation    | [XML Documentation](api-xml/Cvoya.Graph.Model.Neo4j.xml)         |
-| `Cvoya.Graph.Model.Serialization` | Object serialization framework   | [XML Documentation](api-xml/Cvoya.Graph.Model.Serialization.xml) |
-| `Cvoya.Graph.Model.Analyzers`     | Compile-time code analyzers      | [XML Documentation](api-xml/Cvoya.Graph.Model.Analyzers.xml)     |
+| Package                           | Description                      | Documentation                                                                   |
+| --------------------------------- | -------------------------------- | ------------------------------------------------------------------------------- |
+| `Cvoya.Graph.Model`               | Core abstractions and interfaces | [XML Documentation]({{ site.baseurl }}/api/Cvoya.Graph.Model.xml)               |
+| `Cvoya.Graph.Model.Neo4j`         | Neo4j provider implementation    | [XML Documentation]({{ site.baseurl }}/api/Cvoya.Graph.Model.Neo4j.xml)         |
+| `Cvoya.Graph.Model.Serialization` | Object serialization framework   | [XML Documentation]({{ site.baseurl }}/api/Cvoya.Graph.Model.Serialization.xml) |
+| `Cvoya.Graph.Model.Analyzers`     | Compile-time code analyzers      | [XML Documentation]({{ site.baseurl }}/api/Cvoya.Graph.Model.Analyzers.xml)     |
 
 ## 🔗 External Links
 
