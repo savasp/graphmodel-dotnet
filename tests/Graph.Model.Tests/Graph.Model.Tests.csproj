@@ -1,15 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>Library</OutputType>
     <IsPackable>false</IsPackable>
-    <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
-    <TestingPlatformOutputType>Exe</TestingPlatformOutputType>
-    <RuntimeIdentifiers>osx-arm64;win-x64;linux-x64</RuntimeIdentifiers>
+    <IsTestProject>false</IsTestProject>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="xunit.v3" Version="3.0.0-pre.25" />
+    <PackageReference Include="xunit.v3.assert" Version="3.0.0-pre.25" />
+    <PackageReference Include="xunit.v3.extensibility.core" Version="3.0.0-pre.25" />
     <PackageReference Include="coverlet.collector" Version="6.0.4">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
