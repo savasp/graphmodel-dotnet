@@ -131,11 +131,15 @@ jobs:
 
     - name: 📦 Install Jekyll Dependencies
       run: |
-        echo "gem 'jekyll', '~> 4.3'" > Gemfile
-        echo "gem 'minima', '~> 2.5'" >> Gemfile
-        echo "gem 'jekyll-feed', '~> 0.15'" >> Gemfile
-        echo "gem 'jekyll-sitemap', '~> 1.4'" >> Gemfile
-        echo "gem 'kramdown-parser-gfm', '~> 1.1'" >> Gemfile
+        cat > Gemfile << 'EOF'
+        source "https://rubygems.org"
+        
+        gem "jekyll", "~> 4.3"
+        gem "minima", "~> 2.5"
+        gem "jekyll-feed", "~> 0.15"
+        gem "jekyll-sitemap", "~> 1.4"
+        gem "kramdown-parser-gfm", "~> 1.1"
+        EOF
         bundle install
 
     - name: 🏗️ Build Jekyll Site
