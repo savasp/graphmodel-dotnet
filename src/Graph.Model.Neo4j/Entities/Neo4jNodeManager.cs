@@ -157,6 +157,33 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
         try
         {
+            if (!cascadeDelete)
+            {
+                // First check if the node has any business relationships (non-complex properties)
+                var checkCypher = @"
+                    MATCH (n {Id: $nodeId})
+                    OPTIONAL MATCH (n)-[r]-()
+                    WHERE NOT type(r) STARTS WITH $propertyPrefix
+                    RETURN COUNT(r) AS businessRelationshipCount";
+
+                var checkResult = await transaction.Transaction.RunAsync(checkCypher, new
+                {
+                    nodeId,
+                    propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix
+                });
+
+                var checkRecord = await checkResult.SingleAsync(cancellationToken);
+                var businessRelationshipCount = checkRecord["businessRelationshipCount"].As<int>();
+
+                if (businessRelationshipCount > 0)
+                {
+                    throw new GraphException(
+                        $"Cannot delete node {nodeId} because it has {businessRelationshipCount} relationship(s). " +
+                        "Use cascadeDelete=true to force deletion or delete the relationships first.");
+                }
+            }
+
+            // Now perform the deletion
             var cypher = cascadeDelete
                 ? @"MATCH (n {Id: $nodeId})
                     OPTIONAL MATCH (n)--(connected)
@@ -190,7 +217,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             _logger.LogInformation("Deleted node with ID {NodeId}", nodeId);
             return true;
         }
-        catch (Exception ex) when (ex is not KeyNotFoundException)
+        catch (Exception ex) when (ex is not KeyNotFoundException && ex is not GraphException)
         {
             _logger.LogError(ex, "Error deleting node with ID: {NodeId}", nodeId);
             throw new GraphException($"Failed to delete node: {ex.Message}", ex);

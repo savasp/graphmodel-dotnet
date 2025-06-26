@@ -729,6 +729,17 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         var left = VisitAndReturnCypher(node.Left);
         var right = VisitAndReturnCypher(node.Right);
 
+        // Handle null comparisons specially
+        if ((left == "null" || right == "null") &&
+            (node.NodeType == ExpressionType.Equal || node.NodeType == ExpressionType.NotEqual))
+        {
+            var nonNullOperand = left == "null" ? right : left;
+            var cypherOperator = node.NodeType == ExpressionType.Equal ? "IS NULL" : "IS NOT NULL";
+
+            _logger.LogDebug("Translated null comparison: {Operand} {Operator}", nonNullOperand, cypherOperator);
+            return Expression.Constant($"{nonNullOperand} {cypherOperator}");
+        }
+
         // Handle DateTime comparisons specifically
         if (node.Left.Type == typeof(DateTime) || node.Right.Type == typeof(DateTime))
         {

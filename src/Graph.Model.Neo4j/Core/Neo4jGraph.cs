@@ -14,7 +14,6 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Core;
 
-using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 
@@ -28,13 +27,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// </summary>
 internal class Neo4jGraph : IGraph
 {
-    private readonly IDriver _driver;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
     private readonly GraphContext _graphContext;
 
     public Neo4jGraph(IDriver driver, string databaseName, ILoggerFactory? loggerFactory = null)
     {
-        _driver = driver ?? throw new ArgumentNullException(nameof(driver));
         _logger = loggerFactory?.CreateLogger<Neo4jGraph>() ?? NullLogger<Neo4jGraph>.Instance;
 
         ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
@@ -96,7 +93,8 @@ internal class Neo4jGraph : IGraph
     public async Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where N : Model.INode
     {
-        ArgumentNullException.ThrowIfNull(id);
+        if (string.IsNullOrEmpty(id))
+            throw new ArgumentException("Node ID cannot be null or empty.", nameof(id));
 
         try
         {
@@ -129,7 +127,8 @@ internal class Neo4jGraph : IGraph
     public async Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : Model.IRelationship
     {
-        ArgumentNullException.ThrowIfNull(id);
+        if (string.IsNullOrEmpty(id))
+            throw new ArgumentException("Node ID cannot be null or empty.", nameof(id));
 
         try
         {
@@ -162,7 +161,11 @@ internal class Neo4jGraph : IGraph
     public async Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where N : Model.INode
     {
-        ArgumentNullException.ThrowIfNull(node);
+        if (node is null)
+            throw new ArgumentException(nameof(node), "Node cannot be null.");
+
+        if (string.IsNullOrEmpty(node.Id))
+            throw new ArgumentException("Node ID cannot be null or empty.", nameof(node.Id));
 
         try
         {
@@ -188,7 +191,11 @@ internal class Neo4jGraph : IGraph
     public async Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : Model.IRelationship
     {
-        ArgumentNullException.ThrowIfNull(relationship);
+        if (relationship is null)
+            throw new ArgumentException(nameof(relationship), "Relationship cannot be null.");
+
+        if (string.IsNullOrEmpty(relationship.Id))
+            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship.Id));
 
         try
         {
@@ -218,7 +225,11 @@ internal class Neo4jGraph : IGraph
     public async Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where N : Model.INode
     {
-        ArgumentNullException.ThrowIfNull(node);
+        if (node is null)
+            throw new ArgumentException(nameof(node), "Node cannot be null.");
+
+        if (string.IsNullOrEmpty(node.Id))
+            throw new ArgumentException("Node ID cannot be null or empty.", nameof(node.Id));
 
         GraphDataModel.EnforceGraphConstraintsForNode(node);
 
@@ -250,7 +261,11 @@ internal class Neo4jGraph : IGraph
     public async Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : Model.IRelationship
     {
-        ArgumentNullException.ThrowIfNull(relationship);
+        if (relationship is null)
+            throw new ArgumentException(nameof(relationship), "Relationship cannot be null.");
+
+        if (string.IsNullOrEmpty(relationship.Id))
+            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship.Id));
 
         GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
 
@@ -303,7 +318,8 @@ internal class Neo4jGraph : IGraph
     /// <inheritdoc />
     public async Task DeleteNodeAsync(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(id);
+        if (string.IsNullOrEmpty(id))
+            throw new ArgumentException("Node ID cannot be null or empty.", nameof(id));
 
         try
         {
@@ -332,7 +348,8 @@ internal class Neo4jGraph : IGraph
     /// <inheritdoc />
     public async Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(id);
+        if (string.IsNullOrEmpty(id))
+            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(id));
 
         try
         {

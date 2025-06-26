@@ -80,7 +80,7 @@ public abstract class BasicTestsBase : ITestBase
         var person = new Person { FirstName = "ToDelete" };
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         await this.Graph.DeleteNodeAsync(person.Id, false, null, TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public abstract class BasicTestsBase : ITestBase
 
         await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
         await this.Graph.DeleteRelationshipAsync(knows.Id, null, TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -159,7 +159,7 @@ public abstract class BasicTestsBase : ITestBase
         var person = new Person { FirstName = "TxTest" };
         await this.Graph.CreateNodeAsync(person, tx, TestContext.Current.CancellationToken);
         await tx.DisposeAsync(); // Rollback
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
     }
 
     public record PersonWithCycle : Node

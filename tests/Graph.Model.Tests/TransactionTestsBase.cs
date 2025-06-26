@@ -41,7 +41,7 @@ public abstract class TransactionTestsBase : ITestBase
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
         await transaction.Rollback();
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
     }
 
@@ -56,7 +56,7 @@ public abstract class TransactionTestsBase : ITestBase
             // Dispose without commit should rollback
         }
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
     }
 
@@ -112,7 +112,7 @@ public abstract class TransactionTestsBase : ITestBase
         await Graph.DeleteNodeAsync(person.Id, false, transaction, TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
     }
 
@@ -131,9 +131,9 @@ public abstract class TransactionTestsBase : ITestBase
         await Graph.DeleteNodeAsync(person1.Id, true, transaction, TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => Graph.GetNodeAsync<Person>(person1.Id, null, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<KeyNotFoundException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => Graph.GetRelationshipAsync<Friend>(relationship.Id, null, TestContext.Current.CancellationToken));
     }
 
@@ -197,7 +197,7 @@ public abstract class TransactionTestsBase : ITestBase
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
 
         // Outside the transaction, the node should not be visible
-        await Assert.ThrowsAsync<KeyNotFoundException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
 
         // But inside the transaction, it should be visible

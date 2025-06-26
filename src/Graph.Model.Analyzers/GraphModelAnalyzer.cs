@@ -561,79 +561,105 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
         // This dictionary will track property labels across the entire inheritance hierarchy
         var propertyLabels = new Dictionary<string, (IPropertySymbol Property, INamedTypeSymbol ContainingType)>(StringComparer.OrdinalIgnoreCase);
 
-        // Walk through the inheritance hierarchy
-        var currentType = namedType;
-
-        while (currentType != null)
+        // First, collect all properties from base types (to check against)
+        var baseType = namedType.BaseType;
+        while (baseType != null)
         {
-            var properties = GetAllProperties(currentType);
+            var baseProperties = GetAllProperties(baseType);
 
-            foreach (var property in properties)
+            foreach (var property in baseProperties)
             {
                 var propertyAttr = property.GetAttributes()
                     .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute");
 
                 if (propertyAttr != null)
                 {
-                    // Try to extract the label from NamedArguments first
-                    var namedArg = propertyAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "Label");
-                    string? label = null;
-
-                    if (!namedArg.Equals(default(KeyValuePair<string, TypedConstant>)))
-                    {
-                        // Handle TypedConstant properly - check if it's an array
-                        if (namedArg.Value.Kind == TypedConstantKind.Array)
-                        {
-                            // For arrays, take the first value
-                            var firstValue = namedArg.Value.Values.FirstOrDefault();
-                            label = firstValue.Value?.ToString();
-                        }
-                        else
-                        {
-                            label = namedArg.Value.Value?.ToString();
-                        }
-                    }
-
-                    // If NamedArguments doesn't work (common in test frameworks), 
-                    // try to extract from source code
-                    if (string.IsNullOrEmpty(label))
-                    {
-                        label = ExtractLabelFromSource(property);
-                    }
-
-                    // Fallback to property name if no label found
-                    if (string.IsNullOrEmpty(label))
-                    {
-                        label = property.Name;
-                    }
+                    var label = ExtractPropertyLabel(property, propertyAttr);
 
                     // Only proceed if we have a valid label
                     if (!string.IsNullOrEmpty(label))
                     {
-                        if (propertyLabels.TryGetValue(label!, out var existing))
-                        {
-                            // Use the proper 5-argument diagnostic as intended by the descriptor
-                            var diagnostic = Diagnostic.Create(
-                                DiagnosticDescriptors.DuplicatePropertyAttributeLabel,
-                                property.Locations.FirstOrDefault(),
-                                property.Name,
-                                currentType.Name,
-                                label,
-                                existing.Property.Name,
-                                existing.ContainingType.Name);
-
-                            context.ReportDiagnostic(diagnostic);
-                        }
-                        else
-                        {
-                            propertyLabels[label!] = (property, currentType);
-                        }
+                        propertyLabels[label!] = (property, baseType);
                     }
                 }
             }
 
-            currentType = currentType.BaseType;
+            baseType = baseType.BaseType;
         }
+
+        // Now check properties in the current type being analyzed
+        var currentTypeProperties = GetAllProperties(namedType);
+
+        foreach (var property in currentTypeProperties)
+        {
+            var propertyAttr = property.GetAttributes()
+                .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute");
+
+            if (propertyAttr != null)
+            {
+                var label = ExtractPropertyLabel(property, propertyAttr);
+
+                // Only proceed if we have a valid label
+                if (!string.IsNullOrEmpty(label))
+                {
+                    if (propertyLabels.TryGetValue(label!, out var existing))
+                    {
+                        // Report diagnostic only for properties in the current type being analyzed
+                        var diagnostic = Diagnostic.Create(
+                            DiagnosticDescriptors.DuplicatePropertyAttributeLabel,
+                            property.Locations.FirstOrDefault(),
+                            property.Name,
+                            namedType.Name,
+                            label,
+                            existing.Property.Name,
+                            existing.ContainingType.Name);
+
+                        context.ReportDiagnostic(diagnostic);
+                    }
+                    else
+                    {
+                        propertyLabels[label!] = (property, namedType);
+                    }
+                }
+            }
+        }
+    }
+
+    private static string ExtractPropertyLabel(IPropertySymbol property, AttributeData propertyAttr)
+    {
+        // Try to extract the label from NamedArguments first
+        var namedArg = propertyAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "Label");
+        string? label = null;
+
+        if (!namedArg.Equals(default(KeyValuePair<string, TypedConstant>)))
+        {
+            // Handle TypedConstant properly - check if it's an array
+            if (namedArg.Value.Kind == TypedConstantKind.Array)
+            {
+                // For arrays, take the first value
+                var firstValue = namedArg.Value.Values.FirstOrDefault();
+                label = firstValue.Value?.ToString();
+            }
+            else
+            {
+                label = namedArg.Value.Value?.ToString();
+            }
+        }
+
+        // If NamedArguments doesn't work (common in test frameworks), 
+        // try to extract from source code
+        if (string.IsNullOrEmpty(label))
+        {
+            label = ExtractLabelFromSource(property);
+        }
+
+        // Fallback to property name if no label found
+        if (string.IsNullOrEmpty(label))
+        {
+            label = property.Name;
+        }
+
+        return label ?? string.Empty;
     }
 
     private static string ExtractLabelFromSource(IPropertySymbol property)

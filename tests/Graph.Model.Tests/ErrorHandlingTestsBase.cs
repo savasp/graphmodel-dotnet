@@ -35,47 +35,47 @@ public abstract class ErrorHandlingTestsBase : ITestBase
     }
 
     [Fact]
-    public async Task GetNodeAsync_NonExistentId_ThrowsKeyNotFoundException()
+    public async Task GetNodeAsync_NonExistentId_ThrowsGraphException()
     {
         var nonExistentId = Guid.NewGuid().ToString("N");
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+        await Assert.ThrowsAsync<GraphException>(async () =>
         {
             await Graph.GetNodeAsync<TestNode>(nonExistentId, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task GetRelationshipAsync_NonExistentId_ThrowsKeyNotFoundException()
+    public async Task GetRelationshipAsync_NonExistentId_ThrowsGraphException()
     {
         var nonExistentId = Guid.NewGuid().ToString("N");
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+        await Assert.ThrowsAsync<GraphException>(async () =>
         {
             await Graph.GetRelationshipAsync<TestRelationship>(nonExistentId, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task CreateNodeAsync_NullNode_ThrowsArgumentNullException()
+    public async Task CreateNodeAsync_NullNode_ThrowsArgumentException()
     {
-        await Assert.ThrowsAsync<ArgumentNullException>(async () =>
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
         {
             await Graph.CreateNodeAsync<TestNode>(null!, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task CreateRelationshipAsync_NullRelationship_ThrowsArgumentNullException()
+    public async Task CreateRelationshipAsync_NullRelationship_ThrowsArgumentException()
     {
-        await Assert.ThrowsAsync<ArgumentNullException>(async () =>
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
         {
             await Graph.CreateRelationshipAsync<TestRelationship>(null!, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task UpdateNodeAsync_NonExistentNode_ThrowsKeyNotFoundException()
+    public async Task UpdateNodeAsync_NonExistentNode_ThrowsGraphException()
     {
         var nonExistentNode = new TestNode
         {
@@ -83,14 +83,14 @@ public abstract class ErrorHandlingTestsBase : ITestBase
             Name = "NonExistent"
         };
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+        await Assert.ThrowsAsync<GraphException>(async () =>
         {
             await Graph.UpdateNodeAsync(nonExistentNode, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task UpdateRelationshipAsync_NonExistentRelationship_ThrowsKeyNotFoundException()
+    public async Task UpdateRelationshipAsync_NonExistentRelationship_ThrowsGraphException()
     {
         var nonExistentRel = new TestRelationship
         {
@@ -100,14 +100,14 @@ public abstract class ErrorHandlingTestsBase : ITestBase
             Type = "NonExistent"
         };
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+        await Assert.ThrowsAsync<GraphException>(async () =>
         {
             await Graph.UpdateRelationshipAsync(nonExistentRel, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task CreateRelationshipAsync_NonExistentStartNode_ThrowsKeyNotFoundException()
+    public async Task CreateRelationshipAsync_NonExistentStartNode_ThrowsGraphException()
     {
         var endNode = new TestNode { Name = "EndNode" };
         await Graph.CreateNodeAsync(endNode, null, TestContext.Current.CancellationToken);
@@ -119,14 +119,14 @@ public abstract class ErrorHandlingTestsBase : ITestBase
             Type = "TestRel"
         };
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+        await Assert.ThrowsAsync<GraphException>(async () =>
         {
             await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task CreateRelationshipAsync_NonExistentEndNode_ThrowsKeyNotFoundException()
+    public async Task CreateRelationshipAsync_NonExistentEndNode_ThrowsGraphException()
     {
         var startNode = new TestNode { Name = "StartNode" };
         await Graph.CreateNodeAsync(startNode, null, TestContext.Current.CancellationToken);
@@ -138,36 +138,36 @@ public abstract class ErrorHandlingTestsBase : ITestBase
             Type = "TestRel"
         };
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+        await Assert.ThrowsAsync<GraphException>(async () =>
         {
             await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task DeleteNodeAsync_NonExistentId_ThrowsKeyNotFoundException()
+    public async Task DeleteNodeAsync_NonExistentId_ThrowsGraphException()
     {
         var nonExistentId = Guid.NewGuid().ToString("N");
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+        await Assert.ThrowsAsync<GraphException>(async () =>
         {
             await Graph.DeleteNodeAsync(nonExistentId, false, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task DeleteRelationshipAsync_NonExistentId_ThrowsKeyNotFoundException()
+    public async Task DeleteRelationshipAsync_NonExistentId_ThrowsGraphException()
     {
         var nonExistentId = Guid.NewGuid().ToString("N");
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(async () =>
+        await Assert.ThrowsAsync<GraphException>(async () =>
         {
             await Graph.DeleteRelationshipAsync(nonExistentId, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task CreateNodeAsync_EmptyId_HandledGracefully()
+    public async Task CreateNodeAsync_EmptyId_ThrowsArgumentException()
     {
         var nodeWithEmptyId = new TestNode
         {
@@ -175,27 +175,15 @@ public abstract class ErrorHandlingTestsBase : ITestBase
             Name = "EmptyId"
         };
 
-        // Should either throw an exception or handle gracefully
-        // The behavior may vary by implementation
-        try
+        // Should  throw an exception
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
         {
             await Graph.CreateNodeAsync(nodeWithEmptyId, null, TestContext.Current.CancellationToken);
-
-            // If it succeeds, verify it was handled properly
-            Assert.False(string.IsNullOrEmpty(nodeWithEmptyId.Id));
-        }
-        catch (ArgumentException)
-        {
-            // This is also acceptable behavior
-        }
-        catch (GraphException)
-        {
-            // This is also acceptable behavior
-        }
+        });
     }
 
     [Fact]
-    public async Task CreateNodeAsync_NullId_HandledGracefully()
+    public async Task CreateNodeAsync_NullId_ThrowsArgumentException()
     {
         var nodeWithNullId = new TestNode
         {
@@ -203,22 +191,10 @@ public abstract class ErrorHandlingTestsBase : ITestBase
             Name = "NullId"
         };
 
-        // Should either throw an exception or handle gracefully
-        try
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
         {
             await Graph.CreateNodeAsync(nodeWithNullId, null, TestContext.Current.CancellationToken);
-
-            // If it succeeds, verify it was handled properly
-            Assert.False(string.IsNullOrEmpty(nodeWithNullId.Id));
-        }
-        catch (ArgumentException)
-        {
-            // This is acceptable behavior
-        }
-        catch (GraphException)
-        {
-            // This is acceptable behavior
-        }
+        });
     }
 
     [Fact]
@@ -301,14 +277,14 @@ public abstract class ErrorHandlingTestsBase : ITestBase
     }
 
     [Fact]
-    public async Task CancelledOperation_ThrowsOperationCancelledException()
+    public async Task CancelledOperation_ThrowsGraphException()
     {
         var node = new TestNode { Name = "CancelTest" };
 
         using var cts = new CancellationTokenSource();
         cts.Cancel(); // Cancel immediately
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        await Assert.ThrowsAnyAsync<GraphException>(async () =>
         {
             await Graph.CreateNodeAsync(node, null, cts.Token);
         });
