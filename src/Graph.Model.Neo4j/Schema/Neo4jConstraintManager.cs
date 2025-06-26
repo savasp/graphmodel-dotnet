@@ -25,7 +25,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// </summary>
 internal class Neo4jConstraintManager
 {
-    private readonly HashSet<string> _constrainedLabels = [];
+    private readonly HashSet<string> _processedTypes = [];
     private readonly object _constraintLock = new();
     private bool _constraintsLoaded = false;
     private readonly GraphContext _context;
@@ -40,38 +40,44 @@ internal class Neo4jConstraintManager
     /// <summary>
     /// Ensures that all necessary constraints exist for the specified label.
     /// </summary>
-    /// <param name="label">The node label</param>
-    /// <param name="properties">The properties to constrain</param>
-    public async Task EnsureConstraintsForLabel(string label, IEnumerable<PropertyInfo> properties)
+    public async Task EnsureConstraintsForType<T>(T entity)
+        where T : Model.IEntity
     {
+        var type = entity.GetType();
+        ArgumentNullException.ThrowIfNull(type.FullName);
+
         await LoadExistingConstraints();
 
         lock (_constraintLock)
         {
-            if (_constrainedLabels.Contains(label))
+            if (_processedTypes.Contains(type.FullName))
                 return;
-            _constrainedLabels.Add(label);
+            _processedTypes.Add(type.FullName);
         }
+
+        var label = Labels.GetLabelFromType(type);
 
         // Create the session and transaction outside the provider
-        var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        await using var _ = session;
-
-        var tx = await session.BeginTransactionAsync();
-        await using var __ = tx;
+        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        using var tx = await session.BeginTransactionAsync();
 
         // Always add unique constraint for the identifier property
-        var cypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{nameof(Model.INode.Id)} IS UNIQUE";
+        var cypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{nameof(Model.IEntity.Id)} IS UNIQUE";
         await tx.RunAsync(cypher);
 
-        foreach (var prop in properties)
-        {
-            if (prop.Name == nameof(Model.INode.Id)) continue;
-            var name = prop.GetCustomAttribute<PropertyAttribute>()?.Label ?? prop.Name;
-            var propCypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{name} IS NOT NULL";
-            await tx.RunAsync(propCypher);
-        }
+        // TODO: Introduce property-specific attributes to control indexing
+        // and other constraints/behaviors.
+        /*
+                var properties = // Get simple properties
 
+                foreach (var prop in properties)
+                {
+                    if (prop.Name == nameof(Model.IEntity.Id)) continue;
+                    var name = prop.GetCustomAttribute<PropertyAttribute>()?.Label ?? prop.Name;
+                    var propCypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{name} IS NOT NULL";
+                    await tx.RunAsync(propCypher);
+                }
+        */
         await tx.CommitAsync();
     }
 
@@ -107,7 +113,7 @@ internal class Neo4jConstraintManager
                     {
                         if (label is string s)
                         {
-                            _constrainedLabels.Add(s);
+                            _processedTypes.Add(s);
                         }
                     }
                 }

@@ -28,7 +28,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     private readonly EntityFactory _serializer = new EntityFactory();
     private readonly ComplexPropertyManager _complexPropertyManager = new(context);
 
-    public async Task<TNode?> GetNodeAsync<TNode>(
+    public async Task<TNode> GetNodeAsync<TNode>(
         string nodeId,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
@@ -41,11 +41,11 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         try
         {
             // Just use LINQ! The visitor pattern handles everything including complex properties
-            var query = context.Graph.Nodes<TNode>()
-                .Where(n => n.Id == nodeId)
-                .WithTransaction(transaction);
+            var query = context.Graph.Nodes<TNode>(transaction)
+                .Where(n => n.Id == nodeId);
 
-            return await query.FirstOrDefaultAsync(cancellationToken);
+            return await query.FirstOrDefaultAsync(cancellationToken)
+                ?? throw new KeyNotFoundException($"Node with ID {nodeId} not found");
         }
         catch (Exception ex)
         {
@@ -68,6 +68,9 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         {
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(node);
+
+            // Ensure we have the constraints for the node type
+            await context.ConstraintManager.EnsureConstraintsForType(node);
 
             // Serialize the node
             var entity = _serializer.Serialize(node);

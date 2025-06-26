@@ -38,7 +38,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         nameof(Model.IRelationship.Direction)
     ];
 
-    public async Task<TRelationship?> GetRelationshipAsync<TRelationship>(
+    public async Task<TRelationship> GetRelationshipAsync<TRelationship>(
         string relationshipId,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
@@ -52,11 +52,11 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         try
         {
             // Use LINQ with the relationship queryable
-            var query = context.Graph.Relationships<TRelationship>()
-                .Where(r => r.Id == relationshipId)
-                .WithTransaction(transaction);
+            var query = context.Graph.Relationships<TRelationship>(transaction)
+                .Where(r => r.Id == relationshipId);
 
-            return await query.FirstOrDefaultAsync(cancellationToken);
+            return await query.FirstOrDefaultAsync(cancellationToken)
+                ?? throw new KeyNotFoundException($"Relationship with ID {relationshipId} not found");
         }
         catch (Exception ex)
         {
@@ -81,6 +81,9 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         {
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
+
+            // Ensure we have the constraints for the relationship type
+            await context.ConstraintManager.EnsureConstraintsForType(relationship);
 
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);

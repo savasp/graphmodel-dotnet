@@ -153,9 +153,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 return HandleCount(node, result);
 
             case "SumAsyncMarker":
+            case "SumAsync":
                 return HandleSum(node, result);
 
             case "AverageAsyncMarker":
+            case "AverageAsync":
                 return HandleAverage(node, result);
 
             case "MinAsyncMarker":
@@ -182,9 +184,6 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
             case "Union":
                 return HandleUnion(node, result);
-
-            case "WithTransaction":
-                return HandleWithTransaction(node, result);
 
             case "PathSegments":
                 return HandlePathSegments(node, result);
@@ -600,20 +599,34 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         // Disable complex property loading for aggregation queries
         _context.Builder.DisableComplexPropertyLoading();
+        _context.Builder.SetAggregationQuery();
 
-        if (node.Arguments.Count != 2)
-            throw new GraphException("Sum method must have exactly 2 arguments");
+        _logger.LogDebug("Processing SUM aggregation with {ArgCount} arguments", node.Arguments.Count);
 
-        var lambda = ExtractLambda(node.Arguments[1]);
-        if (lambda == null)
-            throw new GraphException("Sum method requires a lambda expression");
+        if (node.Arguments.Count == 1)
+        {
+            // Direct aggregation: SumAsync() on IGraphQueryable<int>, IGraphQueryable<double>, etc.
+            var alias = _context.Scope.CurrentAlias ?? "src";
+            _context.Builder.AddReturn($"sum({alias})");
+            _logger.LogDebug("Added direct SUM aggregation");
+        }
+        else if (node.Arguments.Count == 2 || node.Arguments.Count == 3)
+        {
+            // Aggregation with selector: SumAsync(x => x.Property)
+            var lambdaArgIndex = node.Arguments.Count == 2 ? 1 : 1; // Skip cancellationToken if present
+            var lambda = ExtractLambda(node.Arguments[lambdaArgIndex]);
+            if (lambda == null)
+                throw new GraphException("Sum method requires a lambda expression when using a selector");
 
-        _logger.LogDebug("Processing SUM aggregation");
+            var sumExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
+            _context.Builder.AddReturn($"sum({sumExpression})");
+            _logger.LogDebug("Added SUM aggregation with selector");
+        }
+        else
+        {
+            throw new GraphException($"Sum method has unexpected number of arguments: {node.Arguments.Count}");
+        }
 
-        var sumExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
-        _context.Builder.AddReturn($"sum({sumExpression})");
-
-        _logger.LogDebug("Added SUM aggregation");
         return result ?? node.Arguments[0];
     }
 
@@ -621,20 +634,34 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         // Disable complex property loading for aggregation queries
         _context.Builder.DisableComplexPropertyLoading();
+        _context.Builder.SetAggregationQuery();
 
-        if (node.Arguments.Count != 2)
-            throw new GraphException("Average method must have exactly 2 arguments");
+        _logger.LogDebug("Processing AVERAGE aggregation with {ArgCount} arguments", node.Arguments.Count);
 
-        var lambda = ExtractLambda(node.Arguments[1]);
-        if (lambda == null)
-            throw new GraphException("Average method requires a lambda expression");
+        if (node.Arguments.Count == 1)
+        {
+            // Direct aggregation: AverageAsync() on IGraphQueryable<int>, IGraphQueryable<double>, etc.
+            var alias = _context.Scope.CurrentAlias ?? "src";
+            _context.Builder.AddReturn($"avg({alias})");
+            _logger.LogDebug("Added direct AVERAGE aggregation");
+        }
+        else if (node.Arguments.Count == 2 || node.Arguments.Count == 3)
+        {
+            // Aggregation with selector: AverageAsync(x => x.Property)
+            var lambdaArgIndex = node.Arguments.Count == 2 ? 1 : 1; // Skip cancellationToken if present
+            var lambda = ExtractLambda(node.Arguments[lambdaArgIndex]);
+            if (lambda == null)
+                throw new GraphException("Average method requires a lambda expression when using a selector");
 
-        _logger.LogDebug("Processing AVERAGE aggregation");
+            var avgExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
+            _context.Builder.AddReturn($"avg({avgExpression})");
+            _logger.LogDebug("Added AVERAGE aggregation with selector");
+        }
+        else
+        {
+            throw new GraphException($"Average method has unexpected number of arguments: {node.Arguments.Count}");
+        }
 
-        var avgExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
-        _context.Builder.AddReturn($"avg({avgExpression})");
-
-        _logger.LogDebug("Added AVERAGE aggregation");
         return result ?? node.Arguments[0];
     }
 
@@ -642,6 +669,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         // Disable complex property loading for aggregation queries
         _context.Builder.DisableComplexPropertyLoading();
+        _context.Builder.SetAggregationQuery();
 
         if (node.Arguments.Count != 2)
             throw new GraphException("Min method must have exactly 2 arguments");
@@ -663,6 +691,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         // Disable complex property loading for aggregation queries
         _context.Builder.DisableComplexPropertyLoading();
+        _context.Builder.SetAggregationQuery();
 
         if (node.Arguments.Count != 2)
             throw new GraphException("Max method must have exactly 2 arguments");
@@ -936,14 +965,6 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         // Union is complex - for now, provide a basic implementation or throw
         throw new GraphException("Union operations are not yet fully implemented in the refactored architecture");
-    }
-
-    private Expression HandleWithTransaction(MethodCallExpression node, Expression? result)
-    {
-        // WithTransaction just sets up the transaction context and doesn't affect the Cypher query
-        // We simply pass through to the source expression
-        _logger.LogDebug("Ignoring WithTransaction method (transaction context handled elsewhere)");
-        return result ?? node.Arguments[0];
     }
 
     private Expression HandlePathSegments(MethodCallExpression node, Expression? result)

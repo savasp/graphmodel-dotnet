@@ -14,8 +14,8 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 
+using System.Collections;
 using System.Linq.Expressions;
-using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 
@@ -26,24 +26,42 @@ internal sealed class GraphNodeQueryable<TNode> :
     IOrderedGraphNodeQueryable<TNode>
     where TNode : INode
 {
-    private string? _label;
-
-    public GraphNodeQueryable(GraphQueryProvider provider, GraphContext graphContext)
-        : this(provider, graphContext, expression: null)
+    public GraphNodeQueryable(GraphQueryProvider provider, GraphTransaction transaction, GraphContext graphContext)
+        : base(typeof(TNode), provider, graphContext, transaction, CreateRootExpression())
     {
     }
 
-    public GraphNodeQueryable(GraphQueryProvider provider, GraphContext graphContext, Expression? expression)
-        : base(typeof(TNode), provider, graphContext, expression ?? Expression.Constant(null, typeof(IGraphNodeQueryable<TNode>)))
+    public GraphNodeQueryable(
+        GraphQueryProvider provider,
+        GraphContext graphContext,
+        GraphTransaction transaction,
+        Expression expression)
+        : base(typeof(TNode), provider, graphContext, transaction, expression)
     {
-        // Extract label from TNode type if it has a NodeAttribute
-        var nodeAttribute = typeof(TNode).GetCustomAttribute<NodeAttribute>();
-        _label = nodeAttribute?.Label;
     }
 
-    #region IGraphNodeQueryable Implementation
+    private static Expression CreateRootExpression()
+    {
+        // For the root queryable, we'll create a placeholder that gets replaced during LINQ processing
+        // The CypherQueryVisitor will use the elementType from the expression type to generate the MATCH clause
+        return Expression.Constant(CreatePlaceholderQueryable(), typeof(IGraphNodeQueryable<TNode>));
+    }
 
-    public string? Label => _label;
+    private static IGraphNodeQueryable<TNode> CreatePlaceholderQueryable()
+    {
+        // This is a minimal placeholder that provides the element type information
+        return new PlaceholderNodeQueryable<TNode>();
+    }
 
-    #endregion
+    private sealed class PlaceholderNodeQueryable<T> : IGraphNodeQueryable<T> where T : INode
+    {
+        public Type ElementType => typeof(T);
+        public Expression Expression => throw new NotSupportedException("Placeholder queryable");
+        public IGraphQueryProvider Provider => throw new NotSupportedException("Placeholder queryable");
+        public IGraph Graph => throw new NotSupportedException("Placeholder queryable");
+        IQueryProvider IQueryable.Provider => throw new NotSupportedException("Placeholder queryable");
+        public IEnumerator<T> GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
+        IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
+        public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) => throw new NotSupportedException("Placeholder queryable");
+    }
 }

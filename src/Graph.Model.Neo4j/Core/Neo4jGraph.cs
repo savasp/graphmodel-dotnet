@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Neo4j.Core;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
+
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -27,23 +28,22 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// </summary>
 internal class Neo4jGraph : IGraph
 {
+    private readonly IDriver _driver;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
-    private readonly GraphQueryProvider _graphQueryProvider;
     private readonly GraphContext _graphContext;
 
     public Neo4jGraph(IDriver driver, string databaseName, ILoggerFactory? loggerFactory = null)
     {
-        ArgumentNullException.ThrowIfNull(driver);
-        ArgumentNullException.ThrowIfNull(databaseName);
+        _driver = driver ?? throw new ArgumentNullException(nameof(driver));
         _logger = loggerFactory?.CreateLogger<Neo4jGraph>() ?? NullLogger<Neo4jGraph>.Instance;
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
 
         _graphContext = new GraphContext(
             this,
             driver,
             databaseName,
             loggerFactory);
-
-        _graphQueryProvider = new GraphQueryProvider(_graphContext);
 
         _logger.LogInformation("Graph initialized for database '{0}'", databaseName);
     }
@@ -56,13 +56,11 @@ internal class Neo4jGraph : IGraph
         {
             _logger.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
 
-            var queryable = new GraphNodeQueryable<N>(_graphQueryProvider, _graphContext, null);
-            var expression = Expression.Constant(queryable, typeof(IGraphNodeQueryable<N>));
-
-            var query = _graphQueryProvider.CreateNodeQuery<N>(expression);
-
             var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true).Result;
-            return query.WithTransaction(neo4jTx);
+
+            // Create a provider scoped to this specific transaction
+            var provider = new GraphQueryProvider(_graphContext, neo4jTx);
+            return new GraphNodeQueryable<N>(provider, neo4jTx, _graphContext);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
@@ -80,13 +78,11 @@ internal class Neo4jGraph : IGraph
         {
             _logger.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
 
-            var queryable = new GraphRelationshipQueryable<R>(_graphQueryProvider, _graphContext, null);
-            var expression = Expression.Constant(queryable, typeof(IGraphRelationshipQueryable<R>));
-
-            var query = _graphQueryProvider.CreateRelationshipQuery<R>(expression);
-
             var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true).Result;
-            return query.WithTransaction(neo4jTx);
+
+            // Create a provider scoped to this specific transaction
+            var provider = new GraphQueryProvider(_graphContext, neo4jTx);
+            return new GraphRelationshipQueryable<R>(provider, _graphContext, neo4jTx);
         }
         catch (Exception ex) when (ex is not GraphException)
         {
@@ -296,11 +292,11 @@ internal class Neo4jGraph : IGraph
             _logger.LogDebug("Successfully began transaction");
             return graphTransaction;
         }
-        catch (Exception ex) when (ex is not GraphTransactionException)
+        catch (Exception ex)
         {
             const string message = "Failed to begin transaction";
             _logger.LogError(ex, message);
-            throw new GraphTransactionException(message, ex);
+            throw new GraphException(message, ex);
         }
     }
 

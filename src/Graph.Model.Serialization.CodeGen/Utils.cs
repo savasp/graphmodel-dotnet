@@ -97,7 +97,18 @@ internal static class Utils
 
         if (propertyAttribute?.ConstructorArguments.Length > 0)
         {
-            return propertyAttribute.ConstructorArguments[0].Value?.ToString() ?? property.Name;
+            var arg = propertyAttribute.ConstructorArguments[0];
+            // Handle TypedConstant properly - check if it's an array
+            if (arg.Kind == TypedConstantKind.Array)
+            {
+                // For arrays, take the first value
+                var firstValue = arg.Values.FirstOrDefault();
+                return firstValue.Value?.ToString() ?? property.Name;
+            }
+            else
+            {
+                return arg.Value?.ToString() ?? property.Name;
+            }
         }
 
         return property.Name;
@@ -144,16 +155,44 @@ internal static class Utils
 
         if (nodeAttribute?.ConstructorArguments.Length > 0)
         {
-            var label = nodeAttribute.ConstructorArguments[0].Value?.ToString();
-            if (label is not null && !string.IsNullOrEmpty(label))
-                return label;
+            var arg = nodeAttribute.ConstructorArguments[0];
+            // Handle TypedConstant properly - check if it's an array
+            if (arg.Kind == TypedConstantKind.Array)
+            {
+                // For arrays, take the first value
+                var firstValue = arg.Values.FirstOrDefault();
+                var label = firstValue.Value?.ToString();
+                if (label is not null && !string.IsNullOrEmpty(label))
+                    return label;
+            }
+            else
+            {
+                var label = arg.Value?.ToString();
+                if (label is not null && !string.IsNullOrEmpty(label))
+                    return label;
+            }
         }
 
         // Check for Label property on Node attribute
         var labelArg = nodeAttribute?.NamedArguments
             .FirstOrDefault(na => na.Key == "Label");
-        if (labelArg?.Value.Value is string labelValue && !string.IsNullOrEmpty(labelValue))
-            return labelValue;
+        if (labelArg.HasValue && !labelArg.Equals(default(KeyValuePair<string, TypedConstant>)))
+        {
+            var typedConstant = labelArg.Value.Value;
+            // Handle TypedConstant properly - check if it's an array
+            if (typedConstant.Kind == TypedConstantKind.Array)
+            {
+                // For arrays, take the first value
+                var firstValue = typedConstant.Values.FirstOrDefault();
+                if (firstValue.Value is string labelValue && !string.IsNullOrEmpty(labelValue))
+                    return labelValue;
+            }
+            else
+            {
+                if (typedConstant.Value is string labelValue && !string.IsNullOrEmpty(labelValue))
+                    return labelValue;
+            }
+        }
 
         // Check for custom label from Relationship attribute
         var relationshipAttribute = type.GetAttributes()
@@ -162,16 +201,44 @@ internal static class Utils
 
         if (relationshipAttribute?.ConstructorArguments.Length > 0)
         {
-            var label = relationshipAttribute.ConstructorArguments[0].Value?.ToString();
-            if (label is not null && !string.IsNullOrEmpty(label))
-                return label;
+            var arg = relationshipAttribute.ConstructorArguments[0];
+            // Handle TypedConstant properly - check if it's an array
+            if (arg.Kind == TypedConstantKind.Array)
+            {
+                // For arrays, take the first value
+                var firstValue = arg.Values.FirstOrDefault();
+                var label = firstValue.Value?.ToString();
+                if (label is not null && !string.IsNullOrEmpty(label))
+                    return label;
+            }
+            else
+            {
+                var label = arg.Value?.ToString();
+                if (label is not null && !string.IsNullOrEmpty(label))
+                    return label;
+            }
         }
 
         // Check for Label property on Relationship attribute
         var relLabelArg = relationshipAttribute?.NamedArguments
             .FirstOrDefault(na => na.Key == "Label");
-        if (relLabelArg?.Value.Value is string relLabelValue && !string.IsNullOrEmpty(relLabelValue))
-            return relLabelValue;
+        if (relLabelArg.HasValue && !relLabelArg.Equals(default(KeyValuePair<string, TypedConstant>)))
+        {
+            var typedConstant = relLabelArg.Value.Value;
+            // Handle TypedConstant properly - check if it's an array
+            if (typedConstant.Kind == TypedConstantKind.Array)
+            {
+                // For arrays, take the first value
+                var firstValue = typedConstant.Values.FirstOrDefault();
+                if (firstValue.Value is string relLabelValue && !string.IsNullOrEmpty(relLabelValue))
+                    return relLabelValue;
+            }
+            else
+            {
+                if (typedConstant.Value is string relLabelValue && !string.IsNullOrEmpty(relLabelValue))
+                    return relLabelValue;
+            }
+        }
 
         // Fall back to the type name with backticks removed
         return type.Name.Replace("`", "");

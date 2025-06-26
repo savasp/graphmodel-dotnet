@@ -45,7 +45,7 @@ public interface IGraphTransaction : IAsyncDisposable, IDisposable
     /// Commits the transaction, making all changes permanent.
     /// </summary>
     /// <returns>A task representing the asynchronous commit operation.</returns>
-    /// <exception cref="GraphTransactionException">Thrown if the commit fails.</exception>
+    /// <exception cref="GraphException">Thrown if the commit fails.</exception>
     /// <remarks>
     /// After calling Commit, the transaction is considered complete and cannot be used further.
     /// </remarks>
@@ -55,7 +55,7 @@ public interface IGraphTransaction : IAsyncDisposable, IDisposable
     /// Rolls back the transaction, discarding all pending changes.
     /// </summary>
     /// <returns>A task representing the asynchronous rollback operation.</returns>
-    /// <exception cref="GraphTransactionException">Thrown if the rollback fails.</exception>
+    /// <exception cref="GraphException">Thrown if the rollback fails.</exception>
     /// <remarks>
     /// After calling Rollback, the transaction is considered complete and cannot be used further.
     /// </remarks>

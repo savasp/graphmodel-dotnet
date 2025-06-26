@@ -14,8 +14,8 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 
+using System.Collections;
 using System.Linq.Expressions;
-using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 
@@ -25,13 +25,38 @@ internal sealed class GraphRelationshipQueryable<TRel> : GraphQueryableBase<TRel
     IOrderedGraphRelationshipQueryable<TRel>
     where TRel : IRelationship
 {
-    public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext)
-        : this(provider, graphContext, expression: null)
+    public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext, GraphTransaction transaction)
+        : base(typeof(TRel), provider, graphContext, transaction, CreateRootExpression())
     {
     }
 
-    public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext, Expression? expression)
-        : base(typeof(TRel), provider, graphContext, expression ?? Expression.Constant(null, typeof(IGraphRelationshipQueryable<TRel>)))
+    public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext, GraphTransaction transaction, Expression expression)
+        : base(typeof(TRel), provider, graphContext, transaction, expression)
     {
+    }
+
+    private static Expression CreateRootExpression()
+    {
+        // For the root queryable, we'll create a placeholder that gets replaced during LINQ processing
+        // The CypherQueryVisitor will use the elementType from the expression type to generate the MATCH clause
+        return Expression.Constant(CreatePlaceholderQueryable(), typeof(IGraphRelationshipQueryable<TRel>));
+    }
+
+    private static IGraphRelationshipQueryable<TRel> CreatePlaceholderQueryable()
+    {
+        // This is a minimal placeholder that provides the element type information
+        return new PlaceholderRelationshipQueryable<TRel>();
+    }
+
+    private sealed class PlaceholderRelationshipQueryable<T> : IGraphRelationshipQueryable<T> where T : IRelationship
+    {
+        public Type ElementType => typeof(T);
+        public Expression Expression => throw new NotSupportedException("Placeholder queryable");
+        public IGraphQueryProvider Provider => throw new NotSupportedException("Placeholder queryable");
+        public IGraph Graph => throw new NotSupportedException("Placeholder queryable");
+        IQueryProvider IQueryable.Provider => throw new NotSupportedException("Placeholder queryable");
+        public IEnumerator<T> GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
+        IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
+        public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) => throw new NotSupportedException("Placeholder queryable");
     }
 }

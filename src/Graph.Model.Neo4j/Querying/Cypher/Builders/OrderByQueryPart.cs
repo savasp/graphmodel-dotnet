@@ -24,10 +24,11 @@ using System.Text;
 internal class OrderByQueryPart : ICypherQueryPart
 {
     private readonly List<(string Expression, bool IsDescending)> _orderByClauses = [];
+    private bool _isAggregationQuery;
 
     public int Order => 7; // ORDER BY comes near the end
 
-    public bool HasContent => _orderByClauses.Count > 0;
+    public bool HasContent => _orderByClauses.Count > 0 && !_isAggregationQuery;
 
     public bool HasOrderBy => _orderByClauses.Count > 0;
 
@@ -49,6 +50,14 @@ internal class OrderByQueryPart : ICypherQueryPart
             var (expression, isDescending) = _orderByClauses[i];
             _orderByClauses[i] = (expression, !isDescending);
         }
+    }
+
+    /// <summary>
+    /// Disables ORDER BY clauses for aggregation queries where they would be invalid.
+    /// </summary>
+    public void SetAggregationQuery()
+    {
+        _isAggregationQuery = true;
     }
 
     public void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters)

@@ -12,17 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
+namespace Cvoya.Graph.Model.Neo4j.Tests;
 
-using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Core;
-using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
-
-
-internal sealed class GraphQueryable<T> : GraphQueryableBase<T>, IGraphQueryable<T>, IOrderedGraphQueryable<T>
+public class ErrorHandlingTests : Model.Tests.ErrorHandlingTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
 {
-    public GraphQueryable(GraphQueryProvider provider, GraphContext context, GraphTransaction transaction, Expression expression)
-        : base(typeof(T), provider, context, transaction, expression)
+    private readonly TestInfrastructureFixture fixture;
+
+    public ErrorHandlingTests(TestInfrastructureFixture fixture)
     {
+        this.fixture = fixture;
+    }
+
+    public override IGraph Graph => fixture.TestInfrastructure.GraphStore.Graph;
+
+    public async ValueTask InitializeAsync()
+    {
+        await fixture.TestInfrastructure.ResetDatabase();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        return ValueTask.CompletedTask;
     }
 }

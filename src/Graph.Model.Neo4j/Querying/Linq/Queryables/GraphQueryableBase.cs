@@ -35,12 +35,14 @@ internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGrap
         Type elementType,
         GraphQueryProvider provider,
         GraphContext graphContext,
+        GraphTransaction transaction,
         Expression expression)
     {
         ElementType = elementType;
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
         Context = graphContext ?? throw new ArgumentNullException(nameof(graphContext));
         Expression = expression ?? throw new ArgumentNullException(nameof(expression));
+        _transaction = transaction;
     }
 
     protected GraphTransaction? Transaction => _transaction;
@@ -57,32 +59,6 @@ internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGrap
 
     public IGraph Graph => Context.Graph;
     IGraphQueryProvider IGraphQueryable<T>.Provider => Provider;
-
-    public IGraphQueryable<T> WithTransaction(GraphTransaction transaction)
-    {
-        ArgumentNullException.ThrowIfNull(transaction);
-
-        _transaction = transaction;
-
-        // Create a method call expression for WithTransaction
-        var methodCall = Expression.Call(
-            null,
-            typeof(GraphQueryableExtensions)
-                .GetMethod(nameof(GraphQueryableExtensions.WithTransaction))!
-                .MakeGenericMethod(typeof(T)),
-            Expression,
-            Expression.Constant(transaction));
-
-        // Create a new instance of the same type with the new expression
-        var newQueryable = (GraphQueryableBase<T>)Activator.CreateInstance(
-            GetType(),
-            Provider,
-            Context,
-            methodCall)!;
-
-        newQueryable._transaction = transaction;
-        return newQueryable;
-    }
 
     #endregion
 

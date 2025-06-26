@@ -36,33 +36,6 @@ public interface IGraphQueryProvider : IQueryProvider
     new IGraphQueryable<T> CreateQuery<T>(Expression expression);
 
     /// <summary>
-    /// Creates a new relationship query with the specified expression
-    /// </summary>
-    /// <param name="expression">The expression representing the query</param>
-    /// <returns>A new query with the specified expression</returns>
-    IGraphRelationshipQueryable<TRel> CreateRelationshipQuery<TRel>(Expression expression) where TRel : IRelationship;
-
-    /// <summary>
-    /// Creates a new node query with the specified expression
-    /// </summary>
-    /// <param name="expression">The expression representing the query</param>
-    /// <returns>A new query with the specified expression</returns>
-    IGraphNodeQueryable<TNode> CreateNodeQuery<TNode>(Expression expression) where TNode : INode;
-
-    /// <summary>
-    /// Creates a new path segment query for traversing paths in the graph.
-    /// </summary>
-    /// <typeparam name="TSource">The type of the source node, which must be an <see cref="INode"/>-derived type.</typeparam>
-    /// <typeparam name="TRel">The type of the relationship, which must be an <see cref="IRelationship"/>-derived type.</typeparam>
-    /// <typeparam name="TTarget">The type of the target node, which must be an <see cref="INode"/>-derived type.</typeparam>
-    /// <param name="expression">The expression representing the path segment query.</param>
-    /// <returns>An <see cref="IGraphQueryable{T}"/> where T is <see cref="IGraphPathSegment{TSource, TRel, TTarget}"/> for querying path segments.</returns>
-    IGraphQueryable<IGraphPathSegment<TSource, TRel, TTarget>> CreatePathSegmentQuery<TSource, TRel, TTarget>(Expression expression)
-        where TSource : INode
-        where TRel : IRelationship
-        where TTarget : INode;
-
-    /// <summary>
     /// Asynchronously executes the expression and returns the result.
     /// </summary>
     /// <typeparam name="TResult">The type of the result.</typeparam>

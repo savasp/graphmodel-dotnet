@@ -558,13 +558,15 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeDuplicatePropertyAttributeLabels(SymbolAnalysisContext context, INamedTypeSymbol namedType)
     {
-        var propertyLabels = new Dictionary<string, (IPropertySymbol Property, INamedTypeSymbol ContainingType)>();
+        // This dictionary will track property labels across the entire inheritance hierarchy
+        var propertyLabels = new Dictionary<string, (IPropertySymbol Property, INamedTypeSymbol ContainingType)>(StringComparer.OrdinalIgnoreCase);
 
-        // Walk up the type hierarchy
+        // Walk through the inheritance hierarchy
         var currentType = namedType;
+
         while (currentType != null)
         {
-            var properties = currentType.GetMembers().OfType<IPropertySymbol>();
+            var properties = GetAllProperties(currentType);
 
             foreach (var property in properties)
             {
@@ -574,8 +576,23 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
                 if (propertyAttr != null)
                 {
                     // Try to extract the label from NamedArguments first
-                    var label = propertyAttr.NamedArguments
-                        .FirstOrDefault(arg => arg.Key == "Label").Value.Value?.ToString();
+                    var namedArg = propertyAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "Label");
+                    string? label = null;
+
+                    if (!namedArg.Equals(default(KeyValuePair<string, TypedConstant>)))
+                    {
+                        // Handle TypedConstant properly - check if it's an array
+                        if (namedArg.Value.Kind == TypedConstantKind.Array)
+                        {
+                            // For arrays, take the first value
+                            var firstValue = namedArg.Value.Values.FirstOrDefault();
+                            label = firstValue.Value?.ToString();
+                        }
+                        else
+                        {
+                            label = namedArg.Value.Value?.ToString();
+                        }
+                    }
 
                     // If NamedArguments doesn't work (common in test frameworks), 
                     // try to extract from source code
@@ -675,8 +692,24 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
                 var labels = new List<string>();
 
                 // Try to extract labels from NamedArguments first
-                var namedLabel = relationshipAttr.NamedArguments
-                    .FirstOrDefault(arg => arg.Key == "Label").Value.Value?.ToString();
+                var namedArg = relationshipAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "Label");
+                string? namedLabel = null;
+
+                if (!namedArg.Equals(default(KeyValuePair<string, TypedConstant>)))
+                {
+                    // Handle TypedConstant properly - check if it's an array
+                    if (namedArg.Value.Kind == TypedConstantKind.Array)
+                    {
+                        // For arrays, take the first value
+                        var firstValue = namedArg.Value.Values.FirstOrDefault();
+                        namedLabel = firstValue.Value?.ToString();
+                    }
+                    else
+                    {
+                        namedLabel = namedArg.Value.Value?.ToString();
+                    }
+                }
+
                 if (!string.IsNullOrEmpty(namedLabel))
                 {
                     labels.Add(namedLabel!);
@@ -687,10 +720,26 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
                 {
                     foreach (var arg in relationshipAttr.ConstructorArguments)
                     {
-                        var label = arg.Value?.ToString();
-                        if (!string.IsNullOrEmpty(label))
+                        // Handle TypedConstant properly - check if it's an array
+                        if (arg.Kind == TypedConstantKind.Array)
                         {
-                            labels.Add(label!);
+                            // For arrays, extract all values
+                            foreach (var arrayValue in arg.Values)
+                            {
+                                var label = arrayValue.Value?.ToString();
+                                if (!string.IsNullOrEmpty(label))
+                                {
+                                    labels.Add(label!);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var label = arg.Value?.ToString();
+                            if (!string.IsNullOrEmpty(label))
+                            {
+                                labels.Add(label!);
+                            }
                         }
                     }
                 }
@@ -831,8 +880,24 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
                 var labels = new List<string>();
 
                 // Try to extract labels from NamedArguments first
-                var namedLabel = nodeAttr.NamedArguments
-                    .FirstOrDefault(arg => arg.Key == "Label").Value.Value?.ToString();
+                var namedArg = nodeAttr.NamedArguments.FirstOrDefault(arg => arg.Key == "Label");
+                string? namedLabel = null;
+
+                if (!namedArg.Equals(default(KeyValuePair<string, TypedConstant>)))
+                {
+                    // Handle TypedConstant properly - check if it's an array
+                    if (namedArg.Value.Kind == TypedConstantKind.Array)
+                    {
+                        // For arrays, take the first value
+                        var firstValue = namedArg.Value.Values.FirstOrDefault();
+                        namedLabel = firstValue.Value?.ToString();
+                    }
+                    else
+                    {
+                        namedLabel = namedArg.Value.Value?.ToString();
+                    }
+                }
+
                 if (!string.IsNullOrEmpty(namedLabel))
                 {
                     labels.Add(namedLabel!);
@@ -843,10 +908,26 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
                 {
                     foreach (var arg in nodeAttr.ConstructorArguments)
                     {
-                        var label = arg.Value?.ToString();
-                        if (!string.IsNullOrEmpty(label))
+                        // Handle TypedConstant properly - check if it's an array
+                        if (arg.Kind == TypedConstantKind.Array)
                         {
-                            labels.Add(label!);
+                            // For arrays, extract all values
+                            foreach (var arrayValue in arg.Values)
+                            {
+                                var label = arrayValue.Value?.ToString();
+                                if (!string.IsNullOrEmpty(label))
+                                {
+                                    labels.Add(label!);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var label = arg.Value?.ToString();
+                            if (!string.IsNullOrEmpty(label))
+                            {
+                                labels.Add(label!);
+                            }
                         }
                     }
                 }

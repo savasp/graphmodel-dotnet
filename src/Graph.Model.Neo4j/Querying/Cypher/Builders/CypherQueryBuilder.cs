@@ -114,6 +114,12 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         _loadPathSegment = false;
     }
 
+    public void SetAggregationQuery()
+    {
+        _orderByPart.SetAggregationQuery();
+        _logger.LogDebug("Query marked as aggregation query - ORDER BY clauses will be disabled");
+    }
+
     public void SetDepth(int minDepth, int maxDepth)
     {
         _minDepth = minDepth;

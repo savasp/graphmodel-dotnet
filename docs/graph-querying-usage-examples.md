@@ -134,23 +134,12 @@ var relationships = graph.Relationships<Knows>(transaction: tx).ToList();
 
 // Recommended approach - fluent transaction context
 using var tx = await graph.BeginTransaction();
-var result = graph.Nodes<Person>()
-    .InTransaction(tx)
+var result = graph.Nodes<Person>(transaction)
     .Where(p => p.Age > 30)
     .TraverseTo<Company>()
     .Via<WorksFor>()
     .Select(company => new { company.Name, company.Industry })
     .ToList();
-
-// Or with automatic transaction scoping
-var result = await graph.WithTransaction(async tx => {
-    return graph.Nodes<Person>()
-        .Where(p => p.Age > 30)
-        .TraverseTo<Company>()
-        .Via<WorksFor>()
-        .Select(company => new { company.Name, company.Industry })
-        .ToListAsync();
-});
 ```
 
 ## Advanced Usage Patterns

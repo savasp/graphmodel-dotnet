@@ -51,7 +51,6 @@ public interface IGraphQueryable<T> : IQueryable<T>
 
     // Enhanced graph operations
     IGraphQueryable<T> WithOptions(GraphOperationOptions options);
-    IGraphQueryable<T> WithTransaction(IGraphTransaction transaction);
 
     // Graph pattern matching
     IGraphPattern<T> Match(string pattern);

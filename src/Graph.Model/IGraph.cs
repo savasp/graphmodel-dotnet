@@ -28,7 +28,6 @@ public interface IGraph : IAsyncDisposable
     /// <typeparam name="N">The type of the nodes to query</typeparam>
     /// <returns>A queryable interface to the nodes</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
-    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
         where N : INode;
 
@@ -40,7 +39,6 @@ public interface IGraph : IAsyncDisposable
     /// <typeparam name="R">The type of the relationships to query</typeparam>
     /// <returns>A queryable interface to the relationships</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
-    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
         where R : IRelationship;
 
@@ -55,7 +53,6 @@ public interface IGraph : IAsyncDisposable
     /// <returns>The node with the specified ID</returns>
     /// <exception cref="KeyNotFoundException">Thrown when the node is not found</exception>
     /// <exception cref="GraphException">Thrown when the node cannot be retrieved or there is another issue</exception>
-    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where N : INode;
 
@@ -70,7 +67,6 @@ public interface IGraph : IAsyncDisposable
     /// <returns>The relationship with the specified ID</returns>
     /// <exception cref="KeyNotFoundException">Thrown when any of the relationship is not found</exception>
     /// <exception cref="GraphException">Thrown when the relationship cannot be retrieved or there is another issue</exception>
-    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : IRelationship;
 
@@ -83,7 +79,6 @@ public interface IGraph : IAsyncDisposable
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <typeparam name="N">The type of the node</typeparam>
     /// <exception cref="GraphException">Thrown when the node cannot be created or there is another issue</exception>
-    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where N : INode;
 
@@ -96,7 +91,6 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <exception cref="GraphException">Thrown when the relationship cannot be created or there is another issue</exception>
-    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : IRelationship;
 
@@ -109,7 +103,6 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <exception cref="GraphException">Thrown when the update cannot be performed or there is another issue</exception>
-    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where N : INode;
 
@@ -122,7 +115,6 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <exception cref="GraphException">Thrown when the relationship cannot be updated or there is another issue</exception>
-    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : IRelationship;
 
@@ -130,7 +122,6 @@ public interface IGraph : IAsyncDisposable
     /// Gets a new transaction that can be used for multiple operations
     /// </summary>
     /// <returns>An <see cref="IGraphTransaction"/> instance</returns>
-    /// <exception cref="GraphTransactionException">Thrown when the transaction cannot be created</exception>
     Task<IGraphTransaction> GetTransactionAsync();
 
     /// <summary>
@@ -143,7 +134,6 @@ public interface IGraph : IAsyncDisposable
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>A task representing the asynchronous operation</returns>
     /// <exception cref="GraphException">Thrown when the node cannot be deleted or there is another issue</exception>
-    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task DeleteNodeAsync(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -155,6 +145,5 @@ public interface IGraph : IAsyncDisposable
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>A task representing the asynchronous operation</returns>
     /// <exception cref="GraphException">Thrown when the relationship cannot be deleted or there is another issue</exception>
-    /// <exception cref="GraphTransactionException">Thrown when there is an issue with the given or automatically created transaction</exception>
     Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
 }

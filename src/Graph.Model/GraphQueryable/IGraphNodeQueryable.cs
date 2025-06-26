@@ -19,8 +19,4 @@ namespace Cvoya.Graph.Model;
 /// </summary>
 public interface IGraphNodeQueryable : IGraphQueryable
 {
-    /// <summary>
-    /// Gets the label filter applied to this node query, if any.
-    /// </summary>
-    string? Label { get; }
 }

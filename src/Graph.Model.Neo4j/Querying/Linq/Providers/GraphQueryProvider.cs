@@ -18,22 +18,25 @@ using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Linq.Helpers;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-
+/// <summary>
+/// Provides LINQ query execution capabilities for graph operations.
+/// </summary>
 internal sealed class GraphQueryProvider : IGraphQueryProvider
 {
     private readonly GraphContext _graphContext;
+    private readonly GraphTransaction _transaction;
     private readonly ILogger<GraphQueryProvider> _logger;
     private readonly CypherEngine _cypherEngine;
-    public GraphQueryProvider(GraphContext context)
+
+    public GraphQueryProvider(GraphContext context, GraphTransaction transaction)
     {
         _graphContext = context ?? throw new ArgumentNullException(nameof(context));
-        _logger = context.LoggerFactory?.CreateLogger<GraphQueryProvider>()
-            ?? NullLogger<GraphQueryProvider>.Instance;
+        _transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
+        _logger = context.LoggerFactory?.CreateLogger<GraphQueryProvider>() ?? NullLogger<GraphQueryProvider>.Instance;
         _cypherEngine = new CypherEngine(context.EntityFactory, context.LoggerFactory);
     }
 
@@ -64,7 +67,10 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
     {
         ArgumentNullException.ThrowIfNull(expression);
 
-        // Check if this is a node type
+        // Use the transaction from the provider context - no need to extract from expression
+        var transaction = _transaction;
+
+        // Determine the queryable type based on TElement
         if (typeof(INode).IsAssignableFrom(typeof(TElement)))
         {
             var nodeQueryableType = typeof(GraphNodeQueryable<>).MakeGenericType(typeof(TElement));
@@ -72,10 +78,10 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
                 nodeQueryableType,
                 this,
                 _graphContext,
+                transaction,
                 expression)!;
         }
 
-        // Check if this is a relationship type
         if (typeof(IRelationship).IsAssignableFrom(typeof(TElement)))
         {
             var relQueryableType = typeof(GraphRelationshipQueryable<>).MakeGenericType(typeof(TElement));
@@ -83,28 +89,12 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
                 relQueryableType,
                 this,
                 _graphContext,
+                transaction,
                 expression)!;
         }
 
-        // Handle PathSegments extension method calls
-        if (expression is MethodCallExpression methodCall &&
-            methodCall.Method.DeclaringType == typeof(GraphTraversalExtensions) &&
-            methodCall.Method.Name == nameof(GraphTraversalExtensions.PathSegments))
-        {
-            var genericArgs = methodCall.Method.GetGenericArguments();
-            var sourceType = genericArgs[0];
-            var relType = genericArgs[1];
-            var targetType = genericArgs[2];
-
-            var createMethod = this.GetType()
-                .GetMethod(nameof(CreatePathSegmentQuery), 3, [typeof(Expression)])!
-                .MakeGenericMethod(sourceType, relType, targetType);
-            return (IGraphQueryable<TElement>)createMethod
-                .Invoke(this, [expression])!;
-        }
-
-        // For other types (projections, anonymous types, path segments, etc.)
-        return new GraphQueryable<TElement>(this, _graphContext, expression);
+        // For other types (projections, anonymous types, etc.)
+        return new GraphQueryable<TElement>(this, _graphContext, transaction, expression);
     }
 
     public object? Execute(Expression expression)
@@ -119,35 +109,10 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
 
     #endregion
 
-    #region IGraphQueryProvider Implementation
-
-    public IGraphRelationshipQueryable<TRel> CreateRelationshipQuery<TRel>(Expression expression)
-        where TRel : IRelationship
-    {
-        return new GraphRelationshipQueryable<TRel>(this, _graphContext, expression);
-    }
-
-    public IGraphNodeQueryable<TNode> CreateNodeQuery<TNode>(Expression expression)
-        where TNode : INode
-    {
-        return new GraphNodeQueryable<TNode>(this, _graphContext, expression);
-    }
-
-    public IGraphQueryable<IGraphPathSegment<TSource, TRel, TTarget>> CreatePathSegmentQuery<TSource, TRel, TTarget>(
-        Expression expression)
-        where TSource : INode
-        where TRel : IRelationship
-        where TTarget : INode
-    {
-        return new GraphQueryable<IGraphPathSegment<TSource, TRel, TTarget>>(this, _graphContext, expression);
-    }
-
     public Task<object?> ExecuteAsync(Expression expression, CancellationToken cancellationToken = default)
     {
         return ExecuteAsync<object?>(expression, cancellationToken);
     }
-
-    // In GraphQueryProvider.cs, update the ExecuteAsync method:
 
     public async Task<TResult> ExecuteAsync<TResult>(
         Expression expression,
@@ -161,30 +126,24 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         // Log the expression tree for debugging
         LogExpressionTree(expression);
 
-        GraphTransaction? transaction = null;
-        var shouldDisposeTransaction = false;
-
         try
         {
-            // Extract transaction if present in the expression
-            transaction = ExtractTransaction(expression);
+            // Use the transaction from the provider context
+            var transaction = _transaction;
 
-            // If no transaction was provided, create one for this query
-            if (transaction is null)
-            {
-                transaction = await TransactionHelpers.GetOrCreateTransactionAsync(
-                    _graphContext,
-                    transaction: null,
-                    isReadOnly: true); // Queries are read-only by default
-                shouldDisposeTransaction = true;
-                _logger.LogDebug("Created read-only transaction for query execution");
-            }
-
-            // Execute using the CypherEngine
-            var result = await _cypherEngine.ExecuteAsync<TResult>(
-                expression,
+            var result = await TransactionHelpers.ExecuteInTransactionAsync(
+                _graphContext,
                 transaction,
-                cancellationToken);
+                tx =>
+                {
+                    // Execute using the CypherEngine
+                    return _cypherEngine.ExecuteAsync<TResult>(
+                        expression,
+                        tx,
+                        cancellationToken);
+                },
+                "Error executing query",
+                _logger);
 
             return result!;
         }
@@ -192,45 +151,8 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         {
             _logger.LogError(ex, "Error executing query");
 
-            // If we created the transaction, try to roll it back
-            if (shouldDisposeTransaction && transaction != null)
-            {
-                try
-                {
-                    await transaction.Rollback();
-                }
-                catch (Exception rollbackEx)
-                {
-                    _logger.LogError(rollbackEx, "Failed to rollback transaction after error");
-                }
-            }
-
             throw;
         }
-        finally
-        {
-            // Clean up the transaction if we created it
-            if (shouldDisposeTransaction && transaction != null)
-            {
-                await transaction.DisposeAsync();
-            }
-        }
-    }
-
-    private GraphTransaction? ExtractTransaction(Expression expression)
-    {
-        var visitor = new TransactionExtractionVisitor();
-        visitor.Visit(expression);
-
-        // Check if we found multiple transactions - that's not allowed!
-        if (visitor.Transactions.Count > 1)
-        {
-            throw new InvalidOperationException(
-                $"Multiple transactions found in query expression. Found {visitor.Transactions.Count} transactions, but only one is allowed per query.");
-        }
-
-        // Return the single transaction if found, or null if none
-        return visitor.Transactions.SingleOrDefault();
     }
 
     private bool IsSingleResultExpected(Expression expression)
@@ -244,8 +166,6 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
 
         return false;
     }
-
-    #endregion
 
     private TResult ExecuteInternal<TResult>(Expression expression)
     {

@@ -230,15 +230,6 @@ catch
     await transaction.Rollback();
     throw;
 }
-
-// Automatic transaction management
-await store.Graph.WithTransactionAsync(async (graph, tx) =>
-{
-    await graph.CreateNodeAsync(person, transaction: tx);
-    await graph.CreateNodeAsync(company, transaction: tx);
-    await graph.CreateRelationshipAsync(employment, transaction: tx);
-    // Transaction is automatically committed if no exception occurs
-});
 ```
 
 ### Complex Object Serialization

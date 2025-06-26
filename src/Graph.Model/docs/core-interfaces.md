@@ -482,7 +482,6 @@ public interface IGraphQueryable<T> : IQueryable<T>, IAsyncEnumerable<T>
     new IGraphQueryProvider Provider { get; }
 
     // Graph-specific extensions
-    IGraphQueryable<T> WithTransaction(IGraphTransaction transaction);
     IGraphQueryable<T> WithDepth(int maxDepth);
     IGraphQueryable<T> WithDepth(int minDepth, int maxDepth);
     IGraphQueryable<T> Direction(GraphTraversalDirection direction);
@@ -553,14 +552,6 @@ await using var transaction = await graph.GetTransactionAsync();
 await graph.CreateNodeAsync(node, transaction: transaction);
 await graph.CreateRelationshipAsync(relationship, transaction: transaction);
 await transaction.Commit(); // Must explicitly commit
-
-// Pattern 3: Extension method for convenience (if available)
-await graph.WithTransactionAsync(async (g, tx) =>
-{
-    await g.CreateNodeAsync(node, transaction: tx);
-    await g.CreateRelationshipAsync(relationship, transaction: tx);
-    // Automatically committed if no exception
-});
 ```
 
 ## 🔍 Path Segments
