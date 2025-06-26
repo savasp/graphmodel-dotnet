@@ -68,3 +68,6 @@ nunit-*.xml
 # Benchmarks
 benchmarks/
 BenchmarkDotNet.Artifacts/
+
+# Generated documentation site
+_site/

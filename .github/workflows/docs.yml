@@ -42,7 +42,9 @@ jobs:
       run: dotnet restore
 
     - name: 🔨 Build XML Documentation
-      run: ./scripts/build-docs.sh Debug
+      run: |
+        echo "🏗️ Building projects and generating XML documentation..."
+        ./scripts/build-docs.sh Debug
 
     - name: 📊 Upload Documentation Artifacts
       uses: actions/upload-artifact@v4
@@ -50,6 +52,7 @@ jobs:
         name: xml-documentation
         path: docs/api/
         retention-days: 30
+        if-no-files-found: error
 
     - name: 📝 Validate XML Documentation
       run: |
@@ -99,8 +102,8 @@ jobs:
           printf '  - %s\n' "${missing_files[@]}"
         fi
 
-  generate-docfx:
-    name: 🏗️ Generate DocFX Site
+  deploy-docs:
+    name: 🚀 Deploy Documentation
     runs-on: ubuntu-latest
     needs: build-docs
     if: github.ref == 'refs/heads/main'
@@ -114,30 +117,49 @@ jobs:
     - name: 📦 Checkout
       uses: actions/checkout@v4
 
-    - name: ⚙️ Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '10.0.x'
-
     - name: 📥 Download API Documentation
       uses: actions/download-artifact@v4
       with:
         name: xml-documentation
         path: docs/api/
 
-    - name: 📦 Install DocFX
-      run: dotnet tool install -g docfx
-
-    - name: 🔨 Build Documentation Site
+    - name: 🏗️ Prepare Documentation Site
       run: |
-        echo "🏗️ Building DocFX documentation site..."
-        docfx docfx.json --serve false
+        echo "📋 Creating documentation site structure..."
         
-        # Copy artifacts to _site for deployment
-        if [ -d "docs/api" ]; then
-          echo "📋 Copying XML documentation to site..."
-          cp -r docs/api _site/api-xml/
-        fi
+        # Create site directory
+        mkdir -p _site
+        
+        # Copy all documentation
+        cp -r docs/* _site/
+        cp README.md _site/
+        cp -r examples _site/
+        
+        # Create a simple index.html that redirects to docs/index.md
+        cat > _site/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>GraphModel Documentation</title>
+            <meta http-equiv="refresh" content="0; url=./index.html">
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 50px; }
+                .container { max-width: 600px; margin: 0 auto; }
+                h1 { color: #333; }
+                .loading { animation: pulse 1.5s ease-in-out infinite alternate; }
+                @keyframes pulse { from { opacity: 1; } to { opacity: 0.5; } }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>GraphModel Documentation</h1>
+                <p class="loading">Loading documentation...</p>
+                <p>If you're not redirected automatically, <a href="./index.html">click here</a>.</p>
+            </div>
+        </body>
+        </html>
+        EOF
 
     - name: 🔧 Setup GitHub Pages
       uses: actions/configure-pages@v4

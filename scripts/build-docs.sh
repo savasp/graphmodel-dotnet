@@ -23,17 +23,46 @@ for project in src/*/; do
     fi
 done
 
+# Create docs/api directory if it doesn't exist
+echo ""
+echo "📁 Creating docs/api directory..."
+mkdir -p docs/api
+
+# Copy XML documentation files from build outputs
+echo "📋 Copying XML documentation files..."
+copied_count=0
+
+for project in src/*/; do
+    if [ -f "$project"*.csproj ]; then
+        project_name=$(basename "$project")
+        
+        # Look for XML files in the build output
+        xml_files=$(find "$project" -name "*.xml" -path "*/bin/$CONFIG/*" 2>/dev/null || true)
+        
+        for xml_file in $xml_files; do
+            if [ -f "$xml_file" ]; then
+                filename=$(basename "$xml_file")
+                cp "$xml_file" "docs/api/$filename"
+                echo "  📄 Copied $filename"
+                copied_count=$((copied_count + 1))
+            fi
+        done
+    fi
+done
+
 # Verify XML files were copied
 echo ""
 echo "📚 Generated XML documentation files:"
-if [ -d "docs/api" ]; then
+if [ -d "docs/api" ] && [ "$(ls -A docs/api/*.xml 2>/dev/null)" ]; then
     ls -la docs/api/*.xml | while read -r line; do
         filename=$(basename "$(echo "$line" | awk '{print $9}')")
         size=$(echo "$line" | awk '{print $5}')
         echo "  ✅ $filename ($size bytes)"
     done
+    echo "  📊 Total files copied: $copied_count"
 else
-    echo "  ❌ No docs/api directory found"
+    echo "  ❌ No XML documentation files found"
+    echo "  💡 Make sure projects have <GenerateDocumentationFile>true</GenerateDocumentationFile>"
     exit 1
 fi
 

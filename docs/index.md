@@ -34,18 +34,18 @@ Comprehensive examples demonstrating real-world usage:
 
 ### 📚 API Reference
 
-- **[Complete API Documentation](api/)** - Generated from XML documentation comments
+- **[XML Documentation Files](api-xml/)** - Generated from XML documentation comments
 
 ## 🏗️ Project Structure
 
 GraphModel consists of several packages working together:
 
-| Package                           | Description                      | Documentation                                            |
-| --------------------------------- | -------------------------------- | -------------------------------------------------------- |
-| `Cvoya.Graph.Model`               | Core abstractions and interfaces | [API Reference](api/Cvoya.Graph.Model.yml)               |
-| `Cvoya.Graph.Model.Neo4j`         | Neo4j provider implementation    | [API Reference](api/Cvoya.Graph.Model.Neo4j.yml)         |
-| `Cvoya.Graph.Model.Serialization` | Object serialization framework   | [API Reference](api/Cvoya.Graph.Model.Serialization.yml) |
-| `Cvoya.Graph.Model.Analyzers`     | Compile-time code analyzers      | [API Reference](api/Cvoya.Graph.Model.Analyzers.yml)     |
+| Package                           | Description                      | Documentation                                                    |
+| --------------------------------- | -------------------------------- | ---------------------------------------------------------------- |
+| `Cvoya.Graph.Model`               | Core abstractions and interfaces | [XML Documentation](api-xml/Cvoya.Graph.Model.xml)               |
+| `Cvoya.Graph.Model.Neo4j`         | Neo4j provider implementation    | [XML Documentation](api-xml/Cvoya.Graph.Model.Neo4j.xml)         |
+| `Cvoya.Graph.Model.Serialization` | Object serialization framework   | [XML Documentation](api-xml/Cvoya.Graph.Model.Serialization.xml) |
+| `Cvoya.Graph.Model.Analyzers`     | Compile-time code analyzers      | [XML Documentation](api-xml/Cvoya.Graph.Model.Analyzers.xml)     |
 
 ## 🔗 External Links
 

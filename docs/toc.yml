@@ -34,5 +34,6 @@
   - name: Social Network
     href: ../examples/Example5.SocialNetwork/README.md
 - name: API Reference
-  href: api/
-  homepage: api/index.md 
+  items:
+  - name: XML Documentation Files
+    href: ../api-xml/ 
