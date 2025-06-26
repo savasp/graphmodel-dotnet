@@ -28,7 +28,6 @@ public class GM007_DuplicatePropertyAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             public class TestNode : INode
             {
@@ -52,7 +51,6 @@ public class GM007_DuplicatePropertyAttributeLabelTests
     public async Task NodeWithDuplicatePropertyLabels_ProducesDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             public class TestNode : INode
@@ -79,26 +77,25 @@ public class GM007_DuplicatePropertyAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             public class BaseNode : INode
             {
                 public string Id { get; init; } = string.Empty;
                 
                 [Property(Label = "name")]
-                public string {|#0:Name|} { get; set; } = string.Empty;
+                public string Name { get; set; } = string.Empty;
             }
             
             public class DerivedNode : BaseNode
             {
                 [Property(Label = "name")]
-                public string DisplayName { get; set; } = string.Empty;
+                public string {|#0:DisplayName|} { get; set; } = string.Empty;
             }
             """;
 
         var expected = VerifyCS.Diagnostic("GM007")
             .WithLocation(0)
-            .WithArguments("Name", "BaseNode", "name", "DisplayName", "DerivedNode");
+            .WithArguments("DisplayName", "DerivedNode", "name", "Name", "BaseNode");
 
         await VerifyAnalyzerAsync(test, expected);
     }
@@ -107,7 +104,6 @@ public class GM007_DuplicatePropertyAttributeLabelTests
     public async Task NodeWithMultipleDuplicateLabels_ProducesMultipleDiagnostics()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             public class TestNode : INode
@@ -142,36 +138,35 @@ public class GM007_DuplicatePropertyAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             public class BaseNode : INode
             {
                 public string Id { get; init; } = string.Empty;
                 
                 [Property(Label = "name")]
-                public string {|#0:Name|} { get; set; } = string.Empty;
+                public string Name { get; set; } = string.Empty;
             }
             
             public class MiddleNode : BaseNode
             {
                 [Property(Label = "description")]
-                public string {|#1:Description|} { get; set; } = string.Empty;
+                public string Description { get; set; } = string.Empty;
             }
             
             public class DerivedNode : MiddleNode
             {
                 [Property(Label = "name")]
-                public string DisplayName { get; set; } = string.Empty;
+                public string {|#0:DisplayName|} { get; set; } = string.Empty;
                 
                 [Property(Label = "description")]
-                public string DetailedDescription { get; set; } = string.Empty;
+                public string {|#1:DetailedDescription|} { get; set; } = string.Empty;
             }
             """;
 
         var expected = new[]
         {
-            VerifyCS.Diagnostic("GM007").WithLocation(0).WithArguments("Name", "BaseNode", "name", "DisplayName", "DerivedNode"),
-            VerifyCS.Diagnostic("GM007").WithLocation(1).WithArguments("Description", "MiddleNode", "description", "DetailedDescription", "DerivedNode")
+            VerifyCS.Diagnostic("GM007").WithLocation(0).WithArguments("DisplayName", "DerivedNode", "name", "Name", "BaseNode"),
+            VerifyCS.Diagnostic("GM007").WithLocation(1).WithArguments("DetailedDescription", "DerivedNode", "description", "Description", "MiddleNode")
         };
 
         await VerifyAnalyzerAsync(test, expected);
@@ -181,7 +176,6 @@ public class GM007_DuplicatePropertyAttributeLabelTests
     public async Task RelationshipWithDuplicatePropertyLabels_ProducesDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             public class TestRelationship : IRelationship
@@ -211,7 +205,6 @@ public class GM007_DuplicatePropertyAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             public class TestNode : INode
             {
@@ -233,7 +226,6 @@ public class GM007_DuplicatePropertyAttributeLabelTests
     public async Task NodeWithPropertiesWithoutAttributes_NoDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             public class TestNode : INode
@@ -258,7 +250,6 @@ public class GM007_DuplicatePropertyAttributeLabelTests
     public async Task SeparateTypesWithSamePropertyLabels_NoDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             public class PersonNode : INode
@@ -285,7 +276,6 @@ public class GM007_DuplicatePropertyAttributeLabelTests
     public async Task NodeWithEmptyPropertyLabel_NoDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             public class TestNode : INode

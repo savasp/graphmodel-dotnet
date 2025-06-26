@@ -56,7 +56,6 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
             public class FollowsRelationship : IRelationship
@@ -89,7 +88,6 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
             public class BaseFollowsRelationship : IRelationship
@@ -119,7 +117,6 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
             public class BaseFollowsRelationship : IRelationship
@@ -144,7 +141,6 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
     public async Task RelationshipWithCaseSensitiveDuplicates_ProducesDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
@@ -178,7 +174,6 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
     public async Task ComplexInheritanceHierarchyWithDuplicates_ProducesDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             [Relationship("SOCIAL")]
@@ -218,7 +213,6 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
             public class FollowsRelationship : IRelationship
@@ -246,7 +240,6 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
     public async Task MultipleRelationshipsWithSameLabel_ProducesMultipleDiagnostics()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
@@ -290,7 +283,6 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
     public async Task RelationshipWithEmptyLabel_NoDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             [Relationship("")]

@@ -25,9 +25,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// </summary>
 internal class Neo4jConstraintManager
 {
-    private readonly HashSet<string> _processedTypes = [];
+    private readonly HashSet<string> _processedConstraints = [];
     private readonly object _constraintLock = new();
-    private bool _constraintsLoaded = false;
     private readonly GraphContext _context;
     private readonly ILogger _logger;
 
@@ -46,24 +45,44 @@ internal class Neo4jConstraintManager
         var type = entity.GetType();
         ArgumentNullException.ThrowIfNull(type.FullName);
 
-        await LoadExistingConstraints();
+        var label = Labels.GetLabelFromType(type);
+
+        // Create a more specific cache key that includes database name to avoid cross-test pollution
+        var cacheKey = $"constraint_{_context.DatabaseName}_{label}_Id";
 
         lock (_constraintLock)
         {
-            if (_processedTypes.Contains(type.FullName))
+            if (_processedConstraints.Contains(cacheKey))
                 return;
-            _processedTypes.Add(type.FullName);
+            _processedConstraints.Add(cacheKey);
         }
-
-        var label = Labels.GetLabelFromType(type);
 
         // Create the session and transaction outside the provider
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         using var tx = await session.BeginTransactionAsync();
 
-        // Always add unique constraint for the identifier property
-        var cypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{nameof(Model.IEntity.Id)} IS UNIQUE";
-        await tx.RunAsync(cypher);
+        try
+        {
+            // Use CREATE CONSTRAINT IF NOT EXISTS - this is idempotent and won't fail if constraint already exists
+            var cypher = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{nameof(Model.IEntity.Id)} IS UNIQUE";
+            await tx.RunAsync(cypher);
+            await tx.CommitAsync();
+
+            _logger.LogDebug("Ensured unique constraint exists for label: {Label}", label);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create constraint for label: {Label}", label);
+            await tx.RollbackAsync();
+
+            // Remove from cache on failure so we can retry
+            lock (_constraintLock)
+            {
+                _processedConstraints.Remove(cacheKey);
+            }
+
+            throw new GraphException($"Failed to create constraint for label: {label}", ex);
+        }
 
         // TODO: Introduce property-specific attributes to control indexing
         // and other constraints/behaviors.
@@ -78,53 +97,5 @@ internal class Neo4jConstraintManager
                     await tx.RunAsync(propCypher);
                 }
         */
-        await tx.CommitAsync();
-    }
-
-    /// <summary>
-    /// Loads the existing constraints from Neo4j
-    /// </summary>
-    public async Task LoadExistingConstraints()
-    {
-        if (_constraintsLoaded) return;
-        lock (_constraintLock)
-        {
-            if (_constraintsLoaded) return;
-            _constraintsLoaded = true;
-        }
-
-        var cypher = "SHOW CONSTRAINTS";
-        var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        await using var _ = session;
-
-        var tx = await session.BeginTransactionAsync();
-        await using var __ = tx;
-
-        try
-        {
-            var cursor = await tx.RunAsync(cypher);
-            while (await cursor.FetchAsync())
-            {
-                var record = cursor.Current;
-                if (record.Values.TryGetValue("labelsOrTypes", out var labelsOrTypesObj) &&
-                    labelsOrTypesObj is IEnumerable<object> labelsOrTypes)
-                {
-                    foreach (var label in labelsOrTypes)
-                    {
-                        if (label is string s)
-                        {
-                            _processedTypes.Add(s);
-                        }
-                    }
-                }
-            }
-
-            await tx.CommitAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to load existing constraints from Neo4j.");
-            throw new GraphException("Failed to load existing constraints from Neo4j.", ex);
-        }
     }
 }

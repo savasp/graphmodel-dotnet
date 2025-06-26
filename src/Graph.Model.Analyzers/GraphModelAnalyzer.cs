@@ -559,13 +559,14 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeDuplicatePropertyAttributeLabels(SymbolAnalysisContext context, INamedTypeSymbol namedType)
     {
         // This dictionary will track property labels across the entire inheritance hierarchy
-        var propertyLabels = new Dictionary<string, (IPropertySymbol Property, INamedTypeSymbol ContainingType)>(StringComparer.OrdinalIgnoreCase);
+        var propertyLabels = new Dictionary<string, (IPropertySymbol Property, INamedTypeSymbol ContainingType)>(StringComparer.Ordinal);
 
         // First, collect all properties from base types (to check against)
         var baseType = namedType.BaseType;
         while (baseType != null)
         {
-            var baseProperties = GetAllProperties(baseType);
+            // Get only properties directly declared in this base type
+            var baseProperties = baseType.GetMembers().OfType<IPropertySymbol>();
 
             foreach (var property in baseProperties)
             {
@@ -587,8 +588,8 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
             baseType = baseType.BaseType;
         }
 
-        // Now check properties in the current type being analyzed
-        var currentTypeProperties = GetAllProperties(namedType);
+        // Now check properties directly declared in the current type being analyzed
+        var currentTypeProperties = namedType.GetMembers().OfType<IPropertySymbol>();
 
         foreach (var property in currentTypeProperties)
         {
@@ -604,7 +605,8 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
                 {
                     if (propertyLabels.TryGetValue(label!, out var existing))
                     {
-                        // Report diagnostic only for properties in the current type being analyzed
+                        // Always report diagnostic on the conflicting property (better UX)
+                        // The message will indicate which property it conflicts with
                         var diagnostic = Diagnostic.Create(
                             DiagnosticDescriptors.DuplicatePropertyAttributeLabel,
                             property.Locations.FirstOrDefault(),

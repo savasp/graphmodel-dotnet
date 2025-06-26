@@ -28,7 +28,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             [Node("Person")]
             public class PersonNode : INode
@@ -52,7 +51,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     public async Task NodeWithDuplicateLabels_ProducesDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             [Node("Person")]
@@ -82,7 +80,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             [Node("Person")]
             public class BasePersonNode : INode
@@ -110,7 +107,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             [Node("Person")]
             public class BasePersonNode : INode
@@ -133,7 +129,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     public async Task NodeWithCaseSensitiveDuplicates_ProducesDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             [Node("Person")]
@@ -163,7 +158,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     public async Task ComplexInheritanceHierarchyWithDuplicates_ProducesDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             [Node("Entity")]
@@ -198,7 +192,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             [Node("Person")]
             public class PersonNode : INode
@@ -222,7 +215,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     public async Task MultipleNodesWithSameLabel_ProducesMultipleDiagnostics()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             [Node("Person")]
@@ -261,7 +253,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     {
         var test = """
             using Cvoya.Graph.Model;
-            using Cvoya.Graph.Model;
             
             [Node("")]
             public class EmptyLabelNode1 : INode
@@ -286,7 +277,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     public async Task NodeWithMultipleLabels_ChecksAllLabels()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             [Node("Person", "Individual")]
@@ -316,7 +306,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     public async Task NodeWithUniqueMultipleLabels_NoDiagnostic()
     {
         var test = """
-            using Cvoya.Graph.Model;
             using Cvoya.Graph.Model;
             
             [Node("Person", "Individual")]

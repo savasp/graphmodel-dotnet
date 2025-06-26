@@ -41,7 +41,8 @@ public class TestDatabase
     {
         using var session = driver.AsyncSession(builder => builder.WithDatabase(this.databaseName));
         await session.RunAsync("MATCH (n) DETACH DELETE n");
-        await session.RunAsync("CALL apoc.schema.assert({}, {})");
+        // Don't drop constraints - they are part of the schema, not data
+        // await session.RunAsync("CALL apoc.schema.assert({}, {})");
     }
 
     public async ValueTask DisposeAsync()
