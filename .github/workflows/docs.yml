@@ -42,7 +42,7 @@ jobs:
       run: dotnet restore
 
     - name: 🔨 Build XML Documentation
-      run: ./scripts/build-docs.sh Release
+      run: ./scripts/build-docs.sh Debug
 
     - name: 📊 Upload Documentation Artifacts
       uses: actions/upload-artifact@v4
