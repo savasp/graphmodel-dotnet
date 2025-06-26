@@ -24,6 +24,7 @@ using global::Neo4j.Driver;
 public class Neo4jGraphStore : IAsyncDisposable
 {
     private readonly IDriver _driver;
+    private readonly string _databaseName;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Neo4jGraph"/> class.
@@ -50,11 +51,11 @@ public class Neo4jGraphStore : IAsyncDisposable
         uri ??= Environment.GetEnvironmentVariable("NEO4J_URI") ?? "bolt://localhost:7687";
         username ??= Environment.GetEnvironmentVariable("NEO4J_USER") ?? "neo4j";
         password ??= Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "password";
-        databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
+        _databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
 
         // Create the Neo4j driver
         _driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
-        Graph = new Neo4jGraph(_driver, databaseName, loggerFactory);
+        Graph = new Neo4jGraph(_driver, _databaseName, loggerFactory);
     }
 
     /// <summary>
@@ -73,7 +74,7 @@ public class Neo4jGraphStore : IAsyncDisposable
         Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
     {
         ArgumentNullException.ThrowIfNull(driver, nameof(driver));
-        databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
+        _databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
         _driver = driver;
         Graph = new Neo4jGraph(driver, databaseName, loggerFactory);
     }
@@ -94,6 +95,14 @@ public class Neo4jGraphStore : IAsyncDisposable
     {
         using var session = driver.AsyncSession(o => o.WithDatabase("system"));
         await session.RunAsync($"CREATE DATABASE `{databaseName}` IF NOT EXISTS");
+    }
+
+    /// <summary>
+    /// Creates the Neo4j database if it does not already exist.
+    /// </summary>
+    public Task CreateDatabaseIfNotExistsAsync()
+    {
+        return CreateDatabaseIfNotExistsAsync(_driver, _databaseName);
     }
 
     /// <summary>
