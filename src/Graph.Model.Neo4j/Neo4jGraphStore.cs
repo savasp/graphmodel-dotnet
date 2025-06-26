@@ -51,7 +51,9 @@ public class Neo4jGraphStore : IAsyncDisposable
         uri ??= Environment.GetEnvironmentVariable("NEO4J_URI") ?? "bolt://localhost:7687";
         username ??= Environment.GetEnvironmentVariable("NEO4J_USER") ?? "neo4j";
         password ??= Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "password";
-        _databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
+        databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
+
+        _databaseName = databaseName;
 
         // Create the Neo4j driver
         _driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));

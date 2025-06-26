@@ -71,3 +71,6 @@ BenchmarkDotNet.Artifacts/
 
 # Generated documentation site
 _site/
+
+# Jekyll
+.jekyll-cache
