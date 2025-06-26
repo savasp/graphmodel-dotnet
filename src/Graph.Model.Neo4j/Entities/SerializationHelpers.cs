@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Neo4j.Entities;
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
 
+
 internal static class SerializationHelpers
 {
     public static Dictionary<string, object?> SerializeSimpleProperties(EntityInfo entity)

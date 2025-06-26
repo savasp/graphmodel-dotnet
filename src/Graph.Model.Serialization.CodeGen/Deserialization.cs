@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model.Serialization.CodeGen;
+
 using System.Text;
 using Microsoft.CodeAnalysis;
 
-namespace Cvoya.Graph.Model.Serialization.CodeGen;
 
 internal static class Deserialization
 {

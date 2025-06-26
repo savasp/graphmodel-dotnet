@@ -17,6 +17,8 @@ namespace Cvoya.Graph.Model.Analyzers.Tests;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Testing;
 using Xunit;
+
+
 using static Cvoya.Graph.Model.Analyzers.Tests.TestHelpers.AnalyzerTestHelpers;
 
 public class GM010_CircularReferenceWithoutNullableTests

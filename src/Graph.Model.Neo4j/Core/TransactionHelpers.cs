@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Neo4j.Core;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 
+
 internal static class TransactionHelpers
 {
     public static async Task<T> ExecuteInTransactionAsync<T>(
@@ -33,7 +34,7 @@ internal static class TransactionHelpers
 
             if (transaction == null)
             {
-                await tx.Commit();
+                await tx.CommitAsync();
             }
 
             return result;

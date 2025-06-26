@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model;
 
 using System.Linq.Expressions;
 
+
 /// <summary>
 /// Extension methods for graph traversal operations built on top of PathSegments.
 /// These methods provide convenient ways to traverse relationships and get target nodes or relationships.

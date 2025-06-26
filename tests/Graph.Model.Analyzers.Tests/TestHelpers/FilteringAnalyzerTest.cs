@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model.Analyzers.Tests;
+
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Testing;
 
-namespace Cvoya.Graph.Model.Analyzers.Tests;
 
 internal class FilteringAnalyzerTest<TAnalyzer> : CSharpAnalyzerTest<TAnalyzer, DefaultVerifier>
     where TAnalyzer : DiagnosticAnalyzer, new()

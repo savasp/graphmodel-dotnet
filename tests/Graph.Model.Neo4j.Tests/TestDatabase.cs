@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Neo4j.Driver;
+namespace Cvoya.Graph.Model.Neo4j.Tests;
+
+using global::Neo4j.Driver;
 
 public class TestDatabase
 {

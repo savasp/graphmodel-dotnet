@@ -12,20 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model;
+using System.Diagnostics.CodeAnalysis;
 
-/// <summary>
-/// Represents a complete path through the graph including source, relationship, and target
-/// </summary>
-public interface IGraphPath : IReadOnlyList<IRelationship>
-{
-    /// <summary>
-    /// Gets the first node in the path (start node).
-    /// </summary>
-    INode StartNode { get; }
-
-    /// <summary>
-    /// Gets the last node in the path (end node).
-    /// </summary>
-    INode EndNode { get; }
-}
+// Suppress analyzer rules that are not applicable to benchmark/performance test projects
+[assembly: SuppressMessage("MicrosoftCodeAnalysisCorrectness", "RS1035:Do not use APIs banned for analyzers", Justification = "This is a benchmark project, not an analyzer")]

@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model.Neo4j;
+
 using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Cvoya.Graph.Model.Neo4j;
 
 /// <summary>
 /// Manages Neo4j constraints to ensure data integrity.

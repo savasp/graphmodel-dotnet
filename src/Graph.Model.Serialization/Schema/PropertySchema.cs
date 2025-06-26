@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model.Serialization;
+
 using System.Reflection;
 
-namespace Cvoya.Graph.Model.Serialization;
 
 /// <summary>
 /// Schema information for a property within an entity or relationship.

@@ -15,6 +15,8 @@
 namespace Cvoya.Graph.Model.Analyzers.Tests;
 
 using Xunit;
+
+
 using static Cvoya.Graph.Model.Analyzers.Tests.TestHelpers.AnalyzerTestHelpers;
 using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerVerifier<Cvoya.Graph.Model.Analyzers.GraphModelAnalyzer, Microsoft.CodeAnalysis.Testing.DefaultVerifier>;
 

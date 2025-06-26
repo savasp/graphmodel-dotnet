@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+    
+    <!-- Enable XML documentation for performance tests but suppress missing doc warnings -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    
+    <!-- Suppress analyzer rules not applicable to benchmark projects -->
+    <NoWarn>$(NoWarn);RS1035;CS1591</NoWarn>
+    <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.2" />
+    <PackageReference Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.2" />
+    <PackageReference Include="Bogus" Version="35.6.3" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Use project references for development and benchmarking -->
+  <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
+    <ProjectReference Include="../../src/Graph.Model/Graph.Model.csproj" />
+    <ProjectReference Include="../../src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj" />
+    <ProjectReference Include="../../src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Use package references for releases -->
+  <ItemGroup Condition="'$(UseProjectReferences)' != 'true'">
+    <PackageReference Include="Cvoya.Graph.Model" Version="$(Version)" />
+    <PackageReference Include="Cvoya.Graph.Model.Neo4j" Version="$(Version)" />
+    <PackageReference Include="Cvoya.Graph.Model.Serialization" Version="$(Version)" />
+    <PackageReference Include="Cvoya.Graph.Model.Serialization.CodeGen" Version="$(Version)" />
+  </ItemGroup>
+
+</Project> 

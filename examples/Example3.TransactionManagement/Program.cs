@@ -91,7 +91,7 @@ try
             await graph.CreateRelationshipAsync(transfer, transaction: transaction);
 
             // Commit transaction
-            await transaction.Commit();
+            await transaction.CommitAsync();
             Console.WriteLine("✓ Transaction committed successfully");
         }
         catch
@@ -132,7 +132,7 @@ try
 
             await graph.UpdateNodeAsync(aliceAccount, transaction: transaction);
             await graph.UpdateNodeAsync(bobAccount, transaction: transaction);
-            await transaction.Commit();
+            await transaction.CommitAsync();
         }
         catch (Exception ex)
         {
@@ -195,7 +195,7 @@ try
                 Description = "Welcome gift"
             }, transaction: transaction);
 
-            await transaction.Commit();
+            await transaction.CommitAsync();
             Console.WriteLine("✓ Complex transaction completed successfully");
             Console.WriteLine($"✓ Created new account for Charlie with balance: ${charlie.Balance}");
         }

@@ -49,7 +49,7 @@ public interface IGraphTransaction : IAsyncDisposable, IDisposable
     /// <remarks>
     /// After calling Commit, the transaction is considered complete and cannot be used further.
     /// </remarks>
-    Task Commit();
+    Task CommitAsync();
 
     /// <summary>
     /// Rolls back the transaction, discarding all pending changes.

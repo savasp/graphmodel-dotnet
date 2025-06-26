@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Analyzers;
 using Cvoya.Graph.Model.Analyzers.Properties;
 using Microsoft.CodeAnalysis;
 
+
 /// <summary>
 /// Diagnostic descriptors for Graph.Model analyzer rules.
 /// </summary>

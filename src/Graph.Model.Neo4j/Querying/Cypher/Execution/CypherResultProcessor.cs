@@ -22,6 +22,7 @@ using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+
 internal sealed class CypherResultProcessor
 {
     private readonly EntityFactory _entityFactory;

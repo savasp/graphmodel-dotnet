@@ -19,6 +19,7 @@ using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+
 internal abstract class CypherVisitorBase<T> : ExpressionVisitor
 {
     protected CypherQueryScope Scope { get; }

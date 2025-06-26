@@ -1,278 +1,450 @@
-# Graph Model Analyzers
+# Graph.Model.Analyzers
 
-Roslyn analyzers to enforce the Graph Model's data model rules for types implementing `INode` and `IRelationship` interfaces.
+[![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Analyzers.svg)](https://www.nuget.org/packages/Cvoya.Graph.Model.Analyzers/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-## Supported Rules
+Compile-time code analyzers for Graph.Model that ensure proper implementation of `INode` and `IRelationship` interfaces, helping catch common errors during development.
 
-### GM001: Missing parameterless constructor or constructor that initializes properties
+## 🌟 Overview
 
-**Severity**: Error  
-**Description**: Types implementing INode or IRelationship must have a parameterless constructor or constructors that initialize their (get/set) properties.
+Graph.Model.Analyzers provides Roslyn-based code analyzers that validate your graph domain model at compile time. These analyzers help prevent runtime errors by catching common mistakes in node and relationship definitions before your code is deployed.
 
-**Examples**:
+## 🚀 Features
+
+- **🔍 Compile-Time Validation** - Catch errors before runtime
+- **🛡️ Interface Compliance** - Ensure proper `INode` and `IRelationship` implementation
+- **⚡ Property Validation** - Verify property types and accessibility
+- **🎯 Attribute Validation** - Check proper usage of `[Node]`, `[Relationship]`, and `[Property]` attributes
+- **🔧 Constructor Requirements** - Enforce parameterless constructor availability
+- **♻️ Circular Reference Detection** - Prevent infinite loops in complex properties
+- **💡 Helpful Diagnostics** - Clear error messages with suggested fixes
+
+## 📦 Installation
+
+```bash
+dotnet add package Cvoya.Graph.Model.Analyzers
+```
+
+The analyzers are automatically included when you build your project. No additional configuration is required.
+
+## 🔧 Analyzer Rules
+
+### GM001: Missing Parameterless Constructor
+
+**Problem**: Classes implementing `INode` or `IRelationship` must have a parameterless constructor.
 
 ```csharp
-// ✅ Valid - has parameterless constructor
-public class MyNode : INode
+// ❌ This will trigger GM001
+[Node("Person")]
+public class Person : INode
 {
+    public Person(string name) { ... } // Only constructor with parameters
     public string Id { get; set; }
     public string Name { get; set; }
 }
 
-// ✅ Valid - constructor initializes all properties
-public class MyNode : INode
+// ✅ Correct implementation
+[Node("Person")]
+public class Person : INode
 {
-    public MyNode(string id, string name)
-    {
-        Id = id;
-        Name = name;
-    }
+    public Person() { } // Parameterless constructor
+    public Person(string name) : this() { Name = name; }
 
-    public string Id { get; set; }
-    public string Name { get; set; }
-}
-
-// ❌ Invalid - no parameterless constructor and doesn't initialize all properties
-public class MyNode : INode
-{
-    public MyNode(string id) => Id = id; // Missing Name initialization
-
-    public string Id { get; set; }
-    public string Name { get; set; }
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Name { get; set; } = string.Empty;
 }
 ```
 
-### GM002: Property must have public getters and setters or initializers
+### GM002: Property Must Have Public Accessors
 
-**Severity**: Error  
-**Description**: Properties in INode and IRelationship implementations must have public getters and either public setters or public property initializers.
-
-**Examples**:
+**Problem**: Properties used in graph entities must have public getters and setters.
 
 ```csharp
-// ✅ Valid - public getter and setter
-public class MyNode : INode
+// ❌ This will trigger GM002
+[Node("Person")]
+public class Person : INode
 {
     public string Id { get; set; }
-    public string Name { get; set; }
+    private string Name { get; set; } // Private property
+    public string Email { get; private set; } // Private setter
 }
 
-// ✅ Valid - public getter with init-only setter
-public class MyNode : INode
-{
-    public string Id { get; init; }
-    public string Name { get; init; }
-}
-
-// ❌ Invalid - private setter
-public class MyNode : INode
+// ✅ Correct implementation
+[Node("Person")]
+public class Person : INode
 {
     public string Id { get; set; }
-    public string Name { get; private set; } // Error
+    public string Name { get; set; } // Public getter and setter
+    public string Email { get; set; } // Public getter and setter
 }
 ```
 
-### GM003: Property cannot be INode or IRelationship type
+### GM003: Property Cannot Be Graph Interface Type
 
-**Severity**: Error  
-**Description**: Properties of types implementing INode or IRelationship cannot be INode or IRelationship or collections of them.
-
-**Examples**:
+**Problem**: Properties cannot be of type `INode`, `IRelationship`, or their generic variants.
 
 ```csharp
-// ❌ Invalid - property is INode type
-public class MyNode : INode
+// ❌ This will trigger GM003
+[Node("Person")]
+public class Person : INode
 {
     public string Id { get; set; }
-    public INode Parent { get; set; } // Error
+    public INode Friend { get; set; } // Cannot use interface type
+    public List<IRelationship> Relationships { get; set; } // Cannot use interface type
 }
 
-// ❌ Invalid - property is collection of IRelationship
-public class MyNode : INode
+// ✅ Correct implementation
+[Node("Person")]
+public class Person : INode
 {
     public string Id { get; set; }
-    public List<IRelationship> Relationships { get; set; } // Error
+    public Person Friend { get; set; } // Use concrete type
+    public List<Knows> Relationships { get; set; } // Use concrete relationship type
 }
 ```
 
-### GM004: Invalid property type for INode implementation
+### GM004: Invalid Property Type for Node
 
-**Severity**: Error  
-**Description**: Properties of INode implementations must be simple types, complex types, collections of simple types, or collections of complex types, applied recursively.
-
-**Examples**:
+**Problem**: Node properties must be of supported types (primitives, enums, complex objects, collections).
 
 ```csharp
-// ✅ Valid - simple types and collections
-public class MyNode : INode
+// ❌ This will trigger GM004
+[Node("Person")]
+public class Person : INode
 {
-    public string Id { get; set; }           // Simple type
-    public List<string> Tags { get; set; }   // Collection of simple type
-    public Address Location { get; set; }    // Complex type
-    public List<Address> Addresses { get; set; } // Collection of complex type
+    public string Id { get; set; }
+    public Task<string> AsyncProperty { get; set; } // Unsupported type
+    public Action Callback { get; set; } // Unsupported type
 }
 
-public class Address // Complex type
+// ✅ Correct implementation
+[Node("Person")]
+public class Person : INode
 {
-    public string Street { get; set; }
-    public string City { get; set; }
+    public string Id { get; set; }
+    public string Name { get; set; } // Primitive type
+    public Address HomeAddress { get; set; } // Complex object
+    public List<string> Skills { get; set; } // Collection
 }
 ```
 
-### GM005: Invalid property type for IRelationship implementation
+### GM005: Invalid Property Type for Relationship
 
-**Severity**: Error  
-**Description**: Properties of IRelationship implementations must be simple types or collections of simple types.
-
-**Examples**:
+**Problem**: Relationship properties must be of supported types, with additional restrictions.
 
 ```csharp
-// ✅ Valid - simple types only
-public class MyRelationship : IRelationship
+// ❌ This will trigger GM005
+[Relationship("KNOWS")]
+public class Knows : IRelationship<Person, Person>
 {
     public string Id { get; set; }
     public string StartNodeId { get; set; }
     public string EndNodeId { get; set; }
-    public bool IsBidirectional { get; set; }
-    public List<string> Tags { get; set; }   // Collection of simple type
+    public RelationshipDirection Direction { get; init; }
+
+    public Person Source { get; set; }
+    public Person Target { get; set; }
+
+    public Stream DataStream { get; set; } // Unsupported type
 }
 
-// ❌ Invalid - complex type not allowed in IRelationship
-public class MyRelationship : IRelationship
+// ✅ Correct implementation
+[Relationship("KNOWS")]
+public class Knows : IRelationship<Person, Person>
 {
     public string Id { get; set; }
     public string StartNodeId { get; set; }
     public string EndNodeId { get; set; }
-    public bool IsBidirectional { get; set; }
-    public Address Location { get; set; }    // Error - complex type
+    public RelationshipDirection Direction { get; init; }
+
+    public Person Source { get; set; }
+    public Person Target { get; set; }
+
+    public DateTime Since { get; set; } // Supported type
+    public int Strength { get; set; } // Supported type
 }
 ```
 
-### GM006: Complex type property contains graph interface types
+### GM006: Complex Type Contains Graph Interface Types
 
-**Severity**: Error  
-**Description**: Properties of complex properties cannot be INode or IRelationship or collections of them. This rule is applied recursively.
-
-**Examples**:
+**Problem**: Complex properties cannot contain graph interface types anywhere in their object graph.
 
 ```csharp
-// ❌ Invalid - complex type contains INode property
+// ❌ This will trigger GM006
 public class Address
 {
     public string Street { get; set; }
-    public INode OwnerNode { get; set; }     // Error
+    public INode ClosestLandmark { get; set; } // Cannot contain graph interface
 }
 
-public class MyNode : INode
+[Node("Person")]
+public class Person : INode
 {
     public string Id { get; set; }
-    public Address Location { get; set; }    // This will trigger GM006
+    public Address HomeAddress { get; set; } // This address type is invalid
+}
+
+// ✅ Correct implementation
+public class Address
+{
+    public string Street { get; set; }
+    public string City { get; set; }
+    public string Country { get; set; }
+}
+
+[Node("Person")]
+public class Person : INode
+{
+    public string Id { get; set; }
+    public Address HomeAddress { get; set; } // Valid complex type
 }
 ```
 
-### GM007: Duplicate PropertyAttribute label in type hierarchy
+### GM007: Duplicate Property Attribute Label
 
-**Severity**: Error  
-**Description**: A type hierarchy cannot have PropertyAttribute annotations with the same Label value across all properties in that type hierarchy.
-
-**Examples**:
+**Problem**: Multiple properties cannot have the same custom label within the same entity.
 
 ```csharp
-// ❌ Invalid - duplicate property labels in hierarchy
-public class BaseNode : INode
+// ❌ This will trigger GM007
+[Node("Person")]
+public class Person : INode
 {
     public string Id { get; set; }
 
     [Property("name")]
-    public string Name { get; set; }
+    public string FirstName { get; set; }
+
+    [Property("name")] // Duplicate label
+    public string LastName { get; set; }
 }
 
-public class DerivedNode : BaseNode
-{
-    [Property("name")]                       // Error - duplicate label
-    public string DisplayName { get; set; }
-}
-```
-
-### GM008: Duplicate RelationshipAttribute label in type hierarchy
-
-**Severity**: Error  
-**Description**: A type hierarchy cannot have RelationshipAttribute annotations with the same Label value across all types in that type hierarchy.
-
-**Examples**:
-
-```csharp
-// ❌ Invalid - duplicate relationship labels in hierarchy
-[Relationship("CONNECTS")]
-public class BaseRelationship : IRelationship
-{
-    public string Id { get; set; }
-    public string StartNodeId { get; set; }
-    public string EndNodeId { get; set; }
-    public bool IsBidirectional { get; set; }
-}
-
-[Relationship("CONNECTS")]                   // Error - duplicate label
-public class SpecificConnection : BaseRelationship
-{
-    public string ConnectionType { get; set; }
-}
-```
-
-### GM009: Duplicate NodeAttribute label in type hierarchy
-
-**Severity**: Error  
-**Description**: A type hierarchy cannot have NodeAttribute annotations with the same Label value across all types in that type hierarchy.
-
-**Examples**:
-
-```csharp
-// ❌ Invalid - duplicate node labels in hierarchy
+// ✅ Correct implementation
 [Node("Person")]
-public class BasePerson : INode
+public class Person : INode
 {
     public string Id { get; set; }
-    public string Name { get; set; }
-}
 
-[Node("Person")]                             // Error - duplicate label
-public class Employee : BasePerson
-{
-    public string Department { get; set; }
+    [Property("first_name")]
+    public string FirstName { get; set; }
+
+    [Property("last_name")]
+    public string LastName { get; set; }
 }
 ```
 
-### GM010: Circular reference without nullable type
+### GM008: Duplicate Relationship Attribute Label
 
-**Severity**: Error  
-**Description**: A type implementing INode or IRelationship cannot contain a type reference cycle without a nullable type.
-
-**Examples**:
+**Problem**: Multiple relationship types cannot have the same label.
 
 ```csharp
-// ❌ Invalid - circular reference without nullable
+// ❌ This will trigger GM008
+[Relationship("KNOWS")]
+public class Friendship : IRelationship<Person, Person> { ... }
+
+[Relationship("KNOWS")] // Duplicate relationship label
+public class Acquaintance : IRelationship<Person, Person> { ... }
+
+// ✅ Correct implementation
+[Relationship("FRIENDSHIP")]
+public class Friendship : IRelationship<Person, Person> { ... }
+
+[Relationship("ACQUAINTANCE")]
+public class Acquaintance : IRelationship<Person, Person> { ... }
+```
+
+### GM009: Duplicate Node Attribute Label
+
+**Problem**: Multiple node types cannot have the same primary label.
+
+```csharp
+// ❌ This will trigger GM009
+[Node("Person")]
+public class Employee : INode { ... }
+
+[Node("Person")] // Duplicate node label
+public class Customer : INode { ... }
+
+// ✅ Correct implementation
+[Node("Employee", "Person")]
+public class Employee : INode { ... }
+
+[Node("Customer", "Person")]
+public class Customer : INode { ... }
+```
+
+### GM010: Circular Reference Without Nullable
+
+**Problem**: Complex properties with circular references must use nullable types to prevent infinite loops.
+
+```csharp
+// ❌ This will trigger GM010
 public class Person : INode
 {
     public string Id { get; set; }
-    public string Name { get; set; }
-    public Person Spouse { get; set; }       // Error - circular reference
+    public Person Manager { get; set; } // Should be nullable
 }
 
-// ✅ Valid - circular reference with nullable
+public class Department
+{
+    public List<Person> Employees { get; set; }
+    public Department ParentDepartment { get; set; } // Should be nullable
+}
+
+// ✅ Correct implementation
 public class Person : INode
 {
     public string Id { get; set; }
-    public string Name { get; set; }
-    public Person? Spouse { get; set; }      // OK - nullable breaks the cycle
+    public Person? Manager { get; set; } // Nullable prevents infinite loops
+}
+
+public class Department
+{
+    public List<Person> Employees { get; set; }
+    public Department? ParentDepartment { get; set; } // Nullable
 }
 ```
 
-## Installation
+## 🎯 Integration
 
-Add the analyzer package to your project:
+### MSBuild Integration
+
+The analyzers automatically integrate with MSBuild and will run during compilation:
 
 ```xml
-<PackageReference Include="Cvoya.Graph.Model.Analyzers" Version="1.0.0-alpha" PrivateAssets="all" />
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+
+  <PackageReference Include="Cvoya.Graph.Model" Version="1.0.0" />
+  <PackageReference Include="Cvoya.Graph.Model.Analyzers" Version="1.0.0">
+    <PrivateAssets>all</PrivateAssets>
+    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+  </PackageReference>
+</Project>
 ```
 
-The analyzers will automatically run during compilation and provide real-time feedback in your IDE.
+### IDE Support
+
+The analyzers work with all major IDEs:
+
+- **Visual Studio**: Errors appear in Error List and with red squigglies
+- **Visual Studio Code**: Integration via C# extension
+- **JetBrains Rider**: Native Roslyn analyzer support
+- **Visual Studio for Mac**: Full analyzer support
+
+### CI/CD Integration
+
+Analyzer violations will cause build failures in CI/CD pipelines:
+
+```bash
+# This will fail if analyzer rules are violated
+dotnet build --configuration Release --no-restore
+```
+
+## ⚙️ Configuration
+
+### Disabling Specific Rules
+
+You can disable specific analyzer rules in your project:
+
+```xml
+<PropertyGroup>
+  <NoWarn>$(NoWarn);GM001;GM002</NoWarn>
+</PropertyGroup>
+```
+
+### Rule Severity
+
+Configure rule severity levels:
+
+```xml
+<PropertyGroup>
+  <WarningsAsErrors />
+  <WarningsNotAsErrors>GM010</WarningsNotAsErrors>
+</PropertyGroup>
+```
+
+### EditorConfig Support
+
+Configure rules via `.editorconfig`:
+
+```ini
+[*.cs]
+# Make GM001 a warning instead of error
+dotnet_diagnostic.GM001.severity = warning
+
+# Disable GM010 completely
+dotnet_diagnostic.GM010.severity = none
+```
+
+## 🧪 Testing
+
+The analyzers include comprehensive tests to ensure reliability:
+
+```csharp
+[Fact]
+public async Task GM001_MissingParameterlessConstructor_ShouldTriggerDiagnostic()
+{
+    var test = @"
+        using Cvoya.Graph.Model;
+
+        [Node(""Person"")]
+        public class Person : INode
+        {
+            public Person(string name) { }
+            public string Id { get; set; }
+        }";
+
+    var expected = new DiagnosticResult
+    {
+        Id = "GM001",
+        Message = "Class 'Person' implementing INode must have a parameterless constructor",
+        Severity = DiagnosticSeverity.Error,
+        Locations = new[] { new DiagnosticResultLocation("Test0.cs", 4, 22) }
+    };
+
+    await VerifyCSharpDiagnosticAsync(test, expected);
+}
+```
+
+## 🚀 Development
+
+### Building
+
+```bash
+dotnet build src/Graph.Model.Analyzers
+```
+
+### Running Tests
+
+```bash
+dotnet test src/Graph.Model.Analyzers.Tests
+```
+
+### Adding New Rules
+
+1. Create a new diagnostic descriptor in `DiagnosticDescriptors.cs`
+2. Implement the analyzer in `GraphModelAnalyzer.cs`
+3. Add comprehensive tests in the test project
+4. Update documentation
+
+## 📚 Documentation
+
+- **[Core Interfaces](../Graph.Model/docs/core-interfaces.md)** - Understanding the Graph Model type system
+- **[Best Practices](../Graph.Model/docs/best-practices.md)** - Guidelines for proper implementation
+- **[Getting Started](../Graph.Model/docs/getting-started.md)** - Basic usage examples
+
+## 🔧 Requirements
+
+- **.NET 8.0** or later
+- **C# 12** language features
+- **Roslyn 4.0+** for analyzer infrastructure
+
+## 📄 License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](../../LICENSE) for details.
+
+---
+
+**Built with ❤️ to help you write better graph code**

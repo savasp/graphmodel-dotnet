@@ -1,0 +1,40 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 70%          # Minimum coverage target
+        threshold: 1%        # Allow 1% drop
+    patch:
+      default:
+        target: 70%          # New code should have 70% coverage
+        threshold: 1%
+
+  ignore:
+    - "tests/**"            # Ignore test projects
+    - "examples/**"         # Ignore example projects
+    - "**/bin/**"           # Ignore build artifacts
+    - "**/obj/**"           # Ignore build artifacts
+    - "**/*.Designer.cs"    # Ignore generated designer files
+    - "**/AssemblyInfo.cs"  # Ignore assembly info files
+    - "**/Program.cs"       # Ignore simple program entry points
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+
+github_checks:
+  annotations: true
+
+flags:
+  unittests:
+    paths:
+      - src/
+
+parsers:
+  gcov:
+    branch_detection:
+      conditional: yes
+      loop: yes
+      method: no
+      macro: no 

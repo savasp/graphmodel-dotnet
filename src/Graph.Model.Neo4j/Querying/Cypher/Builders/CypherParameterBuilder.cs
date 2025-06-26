@@ -19,6 +19,7 @@ using Cvoya.Graph.Model.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+
 /// <summary>
 /// Builds parameters for Cypher queries from entities and values.
 /// </summary>

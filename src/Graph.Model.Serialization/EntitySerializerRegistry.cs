@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Serialization;
 
 using System.Collections.Concurrent;
 
+
 /// <summary>
 /// Registry for entity serializers
 /// </summary>

@@ -1,0 +1,144 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: 
+  - "bug"
+  - "triage"
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a bug! Please fill out this form with as much detail as possible.
+
+  - type: checkboxes
+    id: existing-issues
+    attributes:
+      label: "🔍 Before submitting"
+      options:
+        - label: "I've searched for existing issues and confirmed this is not a duplicate"
+          required: true
+        - label: "I've checked the documentation and troubleshooting guide"
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "📝 Bug Description"
+      description: "A clear and concise description of what the bug is"
+      placeholder: "Describe the bug..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "🔄 Steps to Reproduce"
+      description: "Detailed steps to reproduce the behavior"
+      placeholder: |
+        1. Create a node with...
+        2. Execute query...
+        3. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "✅ Expected Behavior"
+      description: "What should have happened?"
+      placeholder: "Describe what you expected to happen..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: "❌ Actual Behavior"
+      description: "What actually happened?"
+      placeholder: "Describe what actually happened..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: code-sample
+    attributes:
+      label: "💻 Code Sample"
+      description: "Minimal code sample that reproduces the issue"
+      render: csharp
+      placeholder: |
+        // Your code here
+        var graph = new Neo4jGraphStore(...);
+        // ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: error
+    attributes:
+      label: "🔥 Error Messages / Stack Trace"
+      description: "Full error messages or stack traces"
+      render: text
+      placeholder: "Paste error messages here..."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: "📦 Package"
+      description: "Which GraphModel package is affected?"
+      options:
+        - Graph.Model (Core)
+        - Graph.Model.Neo4j (Neo4j Provider)
+        - Graph.Model.Analyzers (Code Analyzers)
+        - Graph.Model.Serialization (Serialization)
+        - Multiple packages
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: "🏷️ Package Version"
+      description: "Which version of GraphModel are you using?"
+      placeholder: "e.g. 1.0.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: "🌍 Environment"
+      description: "Information about your environment"
+      value: |
+        - **OS**: [e.g. Windows 11, macOS 14, Ubuntu 22.04]
+        - **.NET Version**: [e.g. .NET 8.0]
+        - **Neo4j Version**: [e.g. 5.15.0]
+        - **IDE**: [e.g. Visual Studio 2022, VS Code, Rider]
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: "📋 Additional Context"
+      description: "Any other context, screenshots, or information that might be helpful"
+      placeholder: "Add any additional context here..."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: "⚡ Severity"
+      description: "How severe is this bug?"
+      options:
+        - "🔴 Critical - Blocks development/production"
+        - "🟠 High - Significant impact on functionality"
+        - "🟡 Medium - Workaround available"
+        - "🟢 Low - Minor issue"
+    validations:
+      required: true 

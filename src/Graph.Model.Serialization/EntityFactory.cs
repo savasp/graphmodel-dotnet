@@ -18,6 +18,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+
 /// <summary>
 /// Represents the serialization/deserialization logic for the graph model.
 /// </summary>

@@ -2,6 +2,15 @@
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
         <TargetFrameworkOverride>netstandard2.0</TargetFrameworkOverride>
+        <AssemblyName>Graph.Model.Serialization.CodeGen</AssemblyName>
+        <RootNamespace>Graph.Model.Serialization.CodeGen</RootNamespace>
+    </PropertyGroup>
+
+    <!-- Package Information -->
+    <PropertyGroup>
+        <PackageId>Cvoya.Graph.Model.Serialization.CodeGen</PackageId>
+        <Description>Code generation for Graph Data Model serialization.</Description>
+        <PackageTags>graph;database;neo4j;codegen;serialization</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>

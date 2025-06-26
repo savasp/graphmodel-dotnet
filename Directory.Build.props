@@ -34,6 +34,7 @@
 
         <!-- Development mode uses project references by default -->
         <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Debug'">true</UseProjectReferences>
+        <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Benchmark'">true</UseProjectReferences>
         <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Release'">false</UseProjectReferences>
 
         <!-- Only generate packages in Release mode or when explicitly requested -->
@@ -60,4 +61,28 @@
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
         <IsPackable>false</IsPackable>
     </PropertyGroup>
+
+    <!-- Version Management -->
+    <PropertyGroup>
+        <VersionFile>$(MSBuildThisFileDirectory)VERSION</VersionFile>
+        <Version Condition="Exists('$(VersionFile)')">$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</Version>
+    </PropertyGroup>
+
+    <!-- Version Management Targets -->
+    <Target Name="CreateRelease">
+        <Error Text="Please specify a release version: -p:ReleaseVersion=1.2.3" 
+               Condition="'$(ReleaseVersion)' == ''" />
+        <WriteLinesToFile File="$(VersionFile)" 
+                          Lines="$(ReleaseVersion)" 
+                          Overwrite="true" />
+        <Message Text="Release version $(ReleaseVersion) created" Importance="high" />
+    </Target>
+
+    <Target Name="ShowVersion">
+        <PropertyGroup Condition="Exists('$(VersionFile)')">
+            <CurrentVersion>$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</CurrentVersion>
+        </PropertyGroup>
+        <Message Text="Current version: $(CurrentVersion)" Importance="high" Condition="'$(CurrentVersion)' != ''" />
+        <Message Text="No VERSION file found" Importance="high" Condition="'$(CurrentVersion)' == ''" />
+    </Target>
 </Project>

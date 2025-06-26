@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Neo4j.Linq;
 
 using System.Reflection;
 
+
 /// <summary>
 /// Helper methods for handling complex properties in queries.
 /// </summary>

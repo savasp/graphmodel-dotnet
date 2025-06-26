@@ -26,8 +26,13 @@ jobs:
       run: dotnet build --no-restore
       working-directory: .
     
-    - name: Test with Docker containers
+    - name: Test Core Library
+      run: dotnet test tests/Graph.Model.Tests --no-build --verbosity normal --collect:"XPlat Code Coverage"
+      
+    - name: Test Analyzers
+      run: dotnet test tests/Graph.Model.Analyzers.Tests --no-build --verbosity normal --collect:"XPlat Code Coverage"
+      
+    - name: Test Neo4j Provider with Docker containers
       env:
         USE_NEO4J_CONTAINERS: true
-      run: dotnet test --no-build --verbosity normal
-      working-directory: tests/Graph.Provider.Neo4j.Tests
+      run: dotnet test tests/Graph.Model.Neo4j.Tests --no-build --verbosity normal --collect:"XPlat Code Coverage"

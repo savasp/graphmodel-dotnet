@@ -1,0 +1,59 @@
+name: 🔒 CodeQL Analysis
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly on Mondays at 6 AM UTC
+
+jobs:
+  analyze:
+    name: 🔍 Analyze Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'csharp' ]
+
+    steps:
+    - name: 📦 Checkout
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: 🔧 Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+        queries: +security-and-quality
+
+    - name: 🗂️ Cache Dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: 📋 Restore Dependencies
+      run: dotnet restore
+
+    - name: 🔨 Build Solution
+      run: dotnet build --configuration Release --no-restore
+
+    - name: 🔍 Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{matrix.language}}"
+        upload: true 

@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model;
+
 using System.Collections.Concurrent;
 using System.Reflection;
 
-namespace Cvoya.Graph.Model;
 
 /// <summary>
 /// Manages type-related operations for Neo4j entities.

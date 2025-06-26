@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Microsoft.Extensions.Logging;
 
+
 /// <summary>
 /// Context for Cypher query generation that encapsulates all necessary state and services.
 /// Simplified version that removes method handler dependency in favor of unified expression visitor.

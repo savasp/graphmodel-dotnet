@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Neo4j.Linq.Helpers;
 using System.Collections;
 using System.Runtime.CompilerServices;
 
+
 internal static class TypeHelpers
 {
     /// <summary>

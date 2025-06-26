@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Analyzers;
 
 using Microsoft.CodeAnalysis;
 
+
 /// <summary>
 /// Helper class for type checking and validation in the Graph Model analyzer.
 /// </summary>

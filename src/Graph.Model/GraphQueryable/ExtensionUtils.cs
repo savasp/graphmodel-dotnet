@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model;
 
 using System.Reflection;
 
+
 internal static class ExtensionUtils
 {
     public static MethodInfo GetGenericExtensionMethod(Type type, string name, int genericArgCount, int paramCount)

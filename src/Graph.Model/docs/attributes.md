@@ -55,13 +55,13 @@ public class Person : INode
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
 
-    [Property("full_name")]
+    [Property(Label = "full_name")]
     public string FullName { get; set; } = string.Empty;
 
-    [Property(Index = true)]
+    [Property]
     public string Email { get; set; } = string.Empty;
 
-    [Property("birth_date", Index = true)]
+    [Property(Label = "birth_date")]
     public DateTime DateOfBirth { get; set; }
 
     [Property(Ignore = true)]
@@ -73,33 +73,14 @@ public class Person : INode
 
 ### Property Configuration Options
 
-| Option   | Description                           | Example                     |
-| -------- | ------------------------------------- | --------------------------- |
-| `Label`  | Custom property name in graph storage | `[Property("full_name")]`   |
-| `Index`  | Create database index for performance | `[Property(Index = true)]`  |
-| `Ignore` | Exclude from graph persistence        | `[Property(Ignore = true)]` |
+| Option   | Description                           | Example                           |
+| -------- | ------------------------------------- | --------------------------------- |
+| `Label`  | Custom property name in graph storage | `[Property(Label = "full_name")]` |
+| `Ignore` | Exclude from graph persistence        | `[Property(Ignore = true)]`       |
 
-### Indexing Strategy
+**Note**: Indexing is handled automatically by the Neo4j provider based on usage patterns and constraints, not through PropertyAttribute.
 
-Use indexing strategically for properties that are frequently queried:
-
-```csharp
-[Node("Person")]
-public class Person : INode
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-
-    [Property(Index = true)] // Frequently searched
-    public string Email { get; set; } = string.Empty;
-
-    [Property(Index = true)] // Used in range queries
-    public DateTime DateOfBirth { get; set; }
-
-    [Property] // Regular property, no index needed
-    public string Bio { get; set; } = string.Empty;
-}
-}
-```
+````
 
 ### Property Types
 
@@ -125,7 +106,7 @@ public class Person : INode
     public List<string> Emails { get; set; }
     public Point Location { get; set; } // Spatial data
 }
-```
+````
 
 ## Relationship Configuration
 

@@ -18,6 +18,7 @@ using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 
+
 /// <summary>
 /// Analyzer for enforcing Graph.Model implementation rules.
 /// </summary>

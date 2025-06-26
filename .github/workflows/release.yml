@@ -1,0 +1,119 @@
+name: 🚀 Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    name: 🚀 Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    
+    steps:
+    - name: 📦 Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 🏷️ Extract Version
+      id: version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: ⚙️ Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: 🗂️ Cache Dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: 📋 Restore Dependencies
+      run: dotnet restore
+
+    - name: 🔨 Build Release
+      run: |
+        dotnet build --configuration Release --no-restore \
+          -p:Version=${{ steps.version.outputs.version }} \
+          -p:AssemblyVersion=${{ steps.version.outputs.version }} \
+          -p:FileVersion=${{ steps.version.outputs.version }}
+
+    - name: 🧪 Run Tests
+      run: |
+        # Run core tests (no external dependencies)
+        dotnet test tests/Graph.Model.Tests --configuration Release --no-build --verbosity normal
+        dotnet test tests/Graph.Model.Analyzers.Tests --configuration Release --no-build --verbosity normal
+
+    - name: 📦 Pack NuGet Packages
+      run: |
+        dotnet pack src/Graph.Model/Graph.Model.csproj \
+          --configuration Release --no-build --output ./artifacts \
+          -p:PackageVersion=${{ steps.version.outputs.version }}
+        
+        dotnet pack src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj \
+          --configuration Release --no-build --output ./artifacts \
+          -p:PackageVersion=${{ steps.version.outputs.version }}
+        
+        dotnet pack src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj \
+          --configuration Release --no-build --output ./artifacts \
+          -p:PackageVersion=${{ steps.version.outputs.version }}
+        
+        dotnet pack src/Graph.Model.Serialization/Graph.Model.Serialization.csproj \
+          --configuration Release --no-build --output ./artifacts \
+          -p:PackageVersion=${{ steps.version.outputs.version }}
+
+    - name: 📋 Generate Release Notes
+      id: release-notes
+      run: |
+        # Extract changelog for this version
+        if [ -f CHANGELOG.md ]; then
+          awk '/^## \['${{ steps.version.outputs.version }}'\]/,/^## \[/{if(/^## \[/ && !/^## \['${{ steps.version.outputs.version }}'\]/) exit; print}' CHANGELOG.md > release-notes.md
+        else
+          echo "### Changes in ${{ steps.version.outputs.tag }}" > release-notes.md
+          echo "" >> release-notes.md
+          echo "See [commit history](https://github.com/${{ github.repository }}/commits/${{ steps.version.outputs.tag }}) for details." >> release-notes.md
+        fi
+
+    - name: 🎉 Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.tag }}
+        name: Release ${{ steps.version.outputs.tag }}
+        body_path: release-notes.md
+        files: |
+          ./artifacts/*.nupkg
+          ./artifacts/*.snupkg
+        draft: false
+        prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 📤 Publish to NuGet
+      run: |
+        for package in ./artifacts/*.nupkg; do
+          echo "Publishing $package..."
+          dotnet nuget push "$package" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+        done
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+    - name: 📊 Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: packages-${{ steps.version.outputs.version }}
+        path: ./artifacts/
+        retention-days: 30 

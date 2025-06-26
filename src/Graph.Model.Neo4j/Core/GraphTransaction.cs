@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Neo4j.Driver;
-
 namespace Cvoya.Graph.Model.Neo4j.Core;
+
+using global::Neo4j.Driver;
+
 
 /// <summary>
 /// Represents a Neo4j graph transaction that implements the <see cref="IGraphTransaction"/> interface.
@@ -61,7 +62,7 @@ internal class GraphTransaction : IGraphTransaction
     /// Commits the transaction.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown if the transaction is not active</exception>
-    public async Task Commit()
+    public async Task CommitAsync()
     {
         if (_transaction == null || _committed || _rolledBack)
             throw new InvalidOperationException("Transaction is not active.");

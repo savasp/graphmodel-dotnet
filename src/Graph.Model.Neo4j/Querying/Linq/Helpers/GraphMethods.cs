@@ -18,6 +18,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Core;
 
+
 /// <summary>
 /// Provides method information for graph-specific LINQ operations.
 /// </summary>

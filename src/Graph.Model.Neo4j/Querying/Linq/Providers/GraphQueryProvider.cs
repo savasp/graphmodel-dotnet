@@ -23,6 +23,7 @@ using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+
 internal sealed class GraphQueryProvider : IGraphQueryProvider
 {
     private readonly GraphContext _graphContext;

@@ -18,6 +18,7 @@ using Cvoya.Graph.Model;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Testing;
 
+
 /// <summary>
 /// Helper methods and extensions for analyzer tests
 /// </summary>

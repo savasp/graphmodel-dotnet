@@ -23,6 +23,7 @@ using Cvoya.Graph.Model.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+
 internal sealed class CypherEngine
 {
     private readonly EntityFactory _entityFactory;

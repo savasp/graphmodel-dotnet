@@ -21,6 +21,7 @@ using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+
 /// <summary>
 /// Handles the creation and management of complex properties as separate nodes in the graph.
 /// </summary>

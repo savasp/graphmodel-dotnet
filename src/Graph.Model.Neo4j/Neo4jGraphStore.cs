@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model.Neo4j;
 
 using Cvoya.Graph.Model.Neo4j.Core;
-using Neo4j.Driver;
+using global::Neo4j.Driver;
 
-namespace Cvoya.Graph.Model.Neo4j;
 
 /// <summary>
 /// Represents a Neo4j graph.

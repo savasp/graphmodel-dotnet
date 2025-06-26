@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model.Serialization.CodeGen;
+
 using System.Collections.Immutable;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Cvoya.Graph.Model.Serialization.CodeGen;
 
 [Generator]
 internal class EntitySerializerGenerator : IIncrementalGenerator

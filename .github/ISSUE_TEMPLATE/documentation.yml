@@ -1,0 +1,110 @@
+name: 📖 Documentation Issue
+description: Report documentation issues or suggest improvements
+title: "[Docs]: "
+labels: 
+  - "documentation"
+  - "triage"
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve our documentation! Please provide details about the documentation issue.
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: "📝 Issue Type"
+      description: "What type of documentation issue is this?"
+      options:
+        - "❌ Error or inaccuracy"
+        - "❓ Missing information"
+        - "🔀 Unclear or confusing"
+        - "💡 Improvement suggestion"
+        - "🆕 New documentation needed"
+        - "🔗 Broken link"
+        - "📋 Outdated content"
+    validations:
+      required: true
+
+  - type: textarea
+    id: location
+    attributes:
+      label: "📍 Documentation Location"
+      description: "Where is the documentation issue located?"
+      placeholder: |
+        - File: src/Graph.Model/README.md
+        - Section: "Getting Started"
+        - URL: https://github.com/user/repo/blob/main/docs/...
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: "📄 Current Content"
+      description: "What does the documentation currently say? (copy/paste the problematic text)"
+      render: markdown
+      placeholder: "Current documentation text..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: "❗ Issue Description"
+      description: "What's wrong with the current documentation?"
+      placeholder: "The documentation states... but actually... / This section is missing..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested
+    attributes:
+      label: "✏️ Suggested Content"
+      description: "What should the documentation say instead?"
+      render: markdown
+      placeholder: "Suggested documentation text..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: "🎯 User Context"
+      description: "What were you trying to accomplish when you found this issue?"
+      placeholder: "I was trying to... / As a new user, I expected..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: "👥 Target Audience"
+      description: "Who would benefit most from this documentation fix?"
+      options:
+        - "🆕 New users / Getting started"
+        - "👨‍💻 Developers / API reference"
+        - "🏗️ Advanced users / Complex scenarios"
+        - "🔧 Contributors / Development setup"
+        - "📊 All users"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: "📋 Additional Context"
+      description: "Any other context, examples, or information that would be helpful"
+      placeholder: "Add any additional context here..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: "🤝 Contribution"
+      options:
+        - label: "I'd be willing to contribute to fixing this documentation issue"
+          required: false 

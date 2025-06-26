@@ -19,6 +19,7 @@ using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 
+
 internal sealed class GraphRelationshipQueryable<TRel> : GraphQueryableBase<TRel>,
     IGraphRelationshipQueryable<TRel>,
     IOrderedGraphRelationshipQueryable<TRel>

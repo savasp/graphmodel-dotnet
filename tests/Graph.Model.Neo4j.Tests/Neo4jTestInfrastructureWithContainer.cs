@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model.Neo4j.Tests;
+
 using DotNet.Testcontainers.Containers;
 using Testcontainers.Neo4j;
 
-namespace Cvoya.Graph.Model.Neo4j.Tests;
 
 internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
 {
@@ -91,5 +92,4 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
             testDatabase = null;
         }
     }
-
 }

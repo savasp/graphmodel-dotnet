@@ -1,0 +1,171 @@
+name: 📊 Code Coverage
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  coverage:
+    name: 📈 Generate Coverage Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      neo4j:
+        image: neo4j:5.17
+        ports:
+          - 7687:7687
+          - 7474:7474
+        env:
+          NEO4J_AUTH: neo4j/password
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+
+    steps:
+    - name: 📦 Checkout
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: 🗂️ Cache Dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: 📋 Restore Dependencies
+      run: dotnet restore
+
+    - name: 🔨 Build Solution
+      run: dotnet build --configuration Release --no-restore
+
+    - name: ⏳ Wait for Neo4j
+      run: |
+        echo "Waiting for Neo4j to be ready..."
+        timeout 300 bash -c 'until wget --no-verbose --tries=1 --spider http://localhost:7474; do sleep 5; done'
+        echo "Neo4j is ready!"
+
+    - name: 🧪 Run Tests with Coverage
+      run: |
+        # Create coverage directory
+        mkdir -p coverage
+        
+        # Run core tests
+        dotnet test tests/Graph.Model.Tests \
+          --configuration Release --no-build \
+          --collect:"XPlat Code Coverage" \
+          --results-directory ./coverage/core \
+          --verbosity normal
+        
+        # Run analyzer tests  
+        dotnet test tests/Graph.Model.Analyzers.Tests \
+          --configuration Release --no-build \
+          --collect:"XPlat Code Coverage" \
+          --results-directory ./coverage/analyzers \
+          --verbosity normal
+        
+        # Run Neo4j integration tests
+        dotnet test tests/Graph.Model.Neo4j.Tests \
+          --configuration Release --no-build \
+          --collect:"XPlat Code Coverage" \
+          --results-directory ./coverage/neo4j \
+          --verbosity normal
+      env:
+        NEO4J_URI: bolt://localhost:7687
+        NEO4J_USER: neo4j
+        NEO4J_PASSWORD: password
+        USE_NEO4J_CONTAINERS: false
+
+    - name: 📊 Install ReportGenerator
+      run: dotnet tool install -g dotnet-reportgenerator-globaltool
+
+    - name: 📈 Generate Coverage Report
+      run: |
+        reportgenerator \
+          -reports:"./coverage/**/coverage.cobertura.xml" \
+          -targetdir:"./coverage/report" \
+          -reporttypes:"Html;Cobertura;lcov;JsonSummary" \
+          -verbosity:"Info" \
+          -title:"GraphModel Coverage Report" \
+          -tag:"${{ github.sha }}"
+
+    - name: 📝 Coverage Summary
+      run: |
+        echo "## 📊 Code Coverage Report" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Extract coverage percentage from summary
+        if [ -f "./coverage/report/Summary.json" ]; then
+          COVERAGE=$(cat ./coverage/report/Summary.json | jq -r '.summary.linecoverage')
+          echo "**Overall Line Coverage:** ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Add link to detailed report
+        echo "📋 [View Detailed Coverage Report](../coverage/report/index.html)" >> $GITHUB_STEP_SUMMARY
+
+    - name: 📤 Upload Coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage/report/Cobertura.xml
+        directory: ./coverage/
+        flags: unittests
+        name: graphmodel-coverage
+        fail_ci_if_error: false
+        verbose: true
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+    - name: 📊 Upload Coverage Reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report-${{ github.sha }}
+        path: ./coverage/report/
+        retention-days: 30
+
+    - name: 💬 Coverage Comment (PR)
+      if: github.event_name == 'pull_request'
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        recreate: true
+        message: |
+          ## 📊 Code Coverage Report
+          
+          Coverage reports have been generated for this PR.
+          
+          📋 [View Full Coverage Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          The coverage data will be available in Codecov shortly after the workflow completes.
+
+    - name: 🔍 Coverage Threshold Check
+      run: |
+        # Extract coverage percentage and check against threshold
+        if [ -f "./coverage/report/Summary.json" ]; then
+          COVERAGE=$(cat ./coverage/report/Summary.json | jq -r '.summary.linecoverage')
+          THRESHOLD=70  # Set minimum coverage threshold
+          
+          echo "Coverage: ${COVERAGE}%"
+          echo "Threshold: ${THRESHOLD}%"
+          
+          # Convert to integer for comparison (remove decimal)
+          COVERAGE_INT=$(echo "$COVERAGE" | cut -d'.' -f1)
+          
+          if [ "$COVERAGE_INT" -lt "$THRESHOLD" ]; then
+            echo "❌ Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
+            echo "::warning::Code coverage ${COVERAGE}% is below the minimum threshold of ${THRESHOLD}%"
+          else
+            echo "✅ Coverage ${COVERAGE}% meets threshold ${THRESHOLD}%"
+          fi
+        else
+          echo "⚠️ Coverage summary not found"
+        fi 

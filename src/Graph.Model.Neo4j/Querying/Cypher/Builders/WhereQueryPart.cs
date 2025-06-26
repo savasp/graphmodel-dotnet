@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+
 using System.Linq.Expressions;
 using System.Text;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 
 /// <summary>
 /// Handles WHERE clause construction for Cypher queries.

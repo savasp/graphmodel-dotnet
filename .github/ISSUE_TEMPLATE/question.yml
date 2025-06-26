@@ -1,0 +1,120 @@
+name: ❓ Question / Support
+description: Ask a question or get help with GraphModel
+title: "[Question]: "
+labels: 
+  - "question"
+  - "support"
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question about GraphModel? We're here to help! Please provide as much context as possible.
+
+  - type: checkboxes
+    id: existing-resources
+    attributes:
+      label: "🔍 Before asking"
+      options:
+        - label: "I've checked the documentation and examples"
+          required: true
+        - label: "I've searched for existing issues and discussions"
+          required: true
+        - label: "I've looked at the troubleshooting guide"
+          required: true
+
+  - type: dropdown
+    id: question-type
+    attributes:
+      label: "❓ Question Type"
+      description: "What type of question is this?"
+      options:
+        - "🚀 Getting started / Setup"
+        - "💻 How to implement something"
+        - "🔍 Best practices / Recommendations"
+        - "⚡ Performance / Optimization"
+        - "🐛 Debugging / Troubleshooting"
+        - "🔧 Configuration / Setup"
+        - "📊 Architecture / Design patterns"
+        - "🔗 Integration with other tools"
+        - "📖 Understanding behavior"
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: "❓ Your Question"
+      description: "What would you like to know?"
+      placeholder: "I'm trying to... / How can I... / What's the best way to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: "🎯 Context"
+      description: "What are you trying to accomplish? What's your use case?"
+      placeholder: "I'm building... / I need to... / My goal is to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: "🔄 What You've Tried"
+      description: "What have you already attempted?"
+      placeholder: "I've tried... / I've looked at... / I've implemented..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: code
+    attributes:
+      label: "💻 Relevant Code"
+      description: "Share any relevant code, configuration, or examples"
+      render: csharp
+      placeholder: |
+        // Your code here
+        var graph = new Neo4jGraphStore(...);
+        // What you're trying to do...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: "📦 Package"
+      description: "Which GraphModel package is your question about?"
+      options:
+        - Graph.Model (Core)
+        - Graph.Model.Neo4j (Neo4j Provider)
+        - Graph.Model.Analyzers (Code Analyzers)
+        - Graph.Model.Serialization (Serialization)
+        - General / Multiple packages
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: "🌍 Environment"
+      description: "Information about your environment (if relevant)"
+      value: |
+        - **OS**: [e.g. Windows 11, macOS 14, Ubuntu 22.04]
+        - **.NET Version**: [e.g. .NET 8.0]
+        - **Neo4j Version**: [e.g. 5.15.0]
+        - **GraphModel Version**: [e.g. 1.0.0]
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: "📋 Additional Context"
+      description: "Any other information that might be helpful"
+      placeholder: "Add any additional context here..."
+    validations:
+      required: false 

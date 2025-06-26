@@ -28,6 +28,12 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
+# Generated XML documentation
+docs/api/
+
+# Local NuGet feed for testing
+local-nuget-feed/
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 
@@ -58,3 +64,7 @@ nunit-*.xml
 
 #Mac OS
 .DS_Store
+
+# Benchmarks
+benchmarks/
+BenchmarkDotNet.Artifacts/

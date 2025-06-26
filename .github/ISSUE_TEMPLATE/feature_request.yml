@@ -1,0 +1,123 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: 
+  - "enhancement"
+  - "triage"
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a new feature! Please provide as much detail as possible to help us understand your request.
+
+  - type: checkboxes
+    id: existing-issues
+    attributes:
+      label: "🔍 Before submitting"
+      options:
+        - label: "I've searched for existing issues and confirmed this feature hasn't been requested"
+          required: true
+        - label: "I've checked the documentation to see if this feature already exists"
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "🎯 Problem Description"
+      description: "What problem does this feature solve? What use case does it address?"
+      placeholder: "I'm always frustrated when... / I need to be able to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: "💡 Proposed Solution"
+      description: "Describe the solution you'd like to see"
+      placeholder: "I would like to see... / This could work by..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "🔄 Alternatives Considered"
+      description: "Describe any alternative solutions or workarounds you've considered"
+      placeholder: "I've considered... / Current workaround is..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: code-example
+    attributes:
+      label: "💻 Code Example"
+      description: "Show how you'd like to use this feature"
+      render: csharp
+      placeholder: |
+        // Example of how the feature would be used
+        var result = graph.NewFeature()
+            .WithOption(...)
+            .Execute();
+    validations:
+      required: false
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: "📦 Package"
+      description: "Which GraphModel package would this feature affect?"
+      options:
+        - Graph.Model (Core)
+        - Graph.Model.Neo4j (Neo4j Provider)
+        - Graph.Model.Analyzers (Code Analyzers)
+        - Graph.Model.Serialization (Serialization)
+        - New package needed
+        - Multiple packages
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: "📈 Priority"
+      description: "How important is this feature to you?"
+      options:
+        - "🔴 Critical - Blocking major use case"
+        - "🟠 High - Important for adoption"
+        - "🟡 Medium - Nice to have"
+        - "🟢 Low - Future enhancement"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: "💥 Breaking Change"
+      description: "Would this be a breaking change?"
+      options:
+        - "No - Additive feature only"
+        - "Yes - Would require API changes"
+        - "Maybe - Depends on implementation"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: "📋 Additional Context"
+      description: "Any other context, mockups, or information that would be helpful"
+      placeholder: "Add any additional context here..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: "🤝 Contribution"
+      options:
+        - label: "I'd be willing to contribute to implementing this feature"
+          required: false 

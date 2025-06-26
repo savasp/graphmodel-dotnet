@@ -7,16 +7,13 @@
         <AssemblyName>Cvoya.Graph.Model.Analyzers</AssemblyName>
 
         <!-- The rest of the package-related properties come from the Directory.Build.props file -->
-        <IncludeBuildOutput>false</IncludeBuildOutput>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <PackageId>Cvoya.Graph.Model.Analyzers</PackageId>
         <Description>Roslyn analyzer for enforcing implementation constraints on INode and IRelationship interfaces.</Description>
         <PackageTags>roslyn;analyzer;graph;codeanalysis</PackageTags>
         <DevelopmentDependency>true</DevelopmentDependency>
-        <PackageId>Cvoya.Graph.Model.Analyzers</PackageId>
 
         <!-- Force resource generation -->
         <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
-        <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
 
         <!-- Critical for analyzer packaging -->
         <NoPackageAnalysis>true</NoPackageAnalysis>

@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model;
+
 using System;
 using System.Linq;
 
-namespace Cvoya.Graph.Model;
 
 /// <summary>
 /// Attribute to customize aspects of a relationship in the graph.

@@ -22,6 +22,7 @@ using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+
 /// <summary>
 /// Refactored CypherQueryBuilder that uses focused query parts to eliminate duplication.
 /// </summary>

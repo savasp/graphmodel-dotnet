@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model.Neo4j.Core;
+
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Neo4j.Driver;
 
-namespace Cvoya.Graph.Model.Neo4j.Core;
 
 /// <summary>
 /// Neo4j implementation of the IGraph interface using a modular design with IGraphQueryable support.
@@ -49,7 +50,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
-        where N : INode
+        where N : Model.INode
     {
         try
         {
@@ -73,7 +74,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
-        where R : IRelationship
+        where R : Model.IRelationship
     {
         try
         {
@@ -97,7 +98,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : INode
+        where N : Model.INode
     {
         ArgumentNullException.ThrowIfNull(id);
 
@@ -130,7 +131,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : IRelationship
+        where R : Model.IRelationship
     {
         ArgumentNullException.ThrowIfNull(id);
 
@@ -163,7 +164,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : INode
+        where N : Model.INode
     {
         ArgumentNullException.ThrowIfNull(node);
 
@@ -189,7 +190,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : IRelationship
+        where R : Model.IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
@@ -219,7 +220,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : INode
+        where N : Model.INode
     {
         ArgumentNullException.ThrowIfNull(node);
 
@@ -251,7 +252,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : IRelationship
+        where R : Model.IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
 

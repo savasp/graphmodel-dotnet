@@ -1,0 +1,99 @@
+name: 🗃️ Neo4j Compatibility Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 4 * * 1'  # Weekly on Mondays at 4 AM UTC
+
+jobs:
+  test-neo4j-versions:
+    name: 🧪 Test Neo4j ${{ matrix.neo4j-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        neo4j-version: 
+          - "5.13"
+          - "5.14" 
+          - "5.15"
+          - "5.16"
+          - "5.17"
+          - "latest"
+
+    services:
+      neo4j:
+        image: neo4j:${{ matrix.neo4j-version }}
+        ports:
+          - 7687:7687
+          - 7474:7474
+        env:
+          NEO4J_AUTH: neo4j/password
+          NEO4J_PLUGINS: '["apoc"]'
+          NEO4J_dbms_security_procedures_unrestricted: apoc.*
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+
+    steps:
+    - name: 📦 Checkout
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: 🗂️ Cache Dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: 📋 Restore Dependencies
+      run: dotnet restore
+
+    - name: 🔨 Build Solution
+      run: dotnet build --configuration Release --no-restore
+
+    - name: ⏳ Wait for Neo4j
+      run: |
+        echo "Waiting for Neo4j to be ready..."
+        timeout 300 bash -c 'until wget --no-verbose --tries=1 --spider http://localhost:7474; do sleep 5; done'
+        echo "Neo4j is ready!"
+
+    - name: 🧪 Run Neo4j Integration Tests
+      run: |
+        dotnet test tests/Graph.Model.Neo4j.Tests \
+          --configuration Release --no-build \
+          --verbosity normal \
+          --logger "trx;LogFileName=neo4j-${{ matrix.neo4j-version }}.trx"
+      env:
+        NEO4J_URI: bolt://localhost:7687
+        NEO4J_USER: neo4j
+        NEO4J_PASSWORD: password
+        USE_NEO4J_CONTAINERS: false
+
+    - name: 📊 Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-neo4j-${{ matrix.neo4j-version }}
+        path: "**/TestResults/*.trx"
+        retention-days: 7
+
+    - name: 📝 Report Test Summary
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Neo4j ${{ matrix.neo4j-version }} Tests
+        path: "**/TestResults/*.trx"
+        reporter: dotnet-trx 
