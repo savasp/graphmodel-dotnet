@@ -1,0 +1,38 @@
+- name: Getting Started
+  href: ../README.md
+  homepage: ../README.md
+- name: Build System
+  href: BUILD_SYSTEM.md
+- name: Core Concepts
+  items:
+  - name: Graph Querying - Usage Examples
+    href: graph-querying-usage-examples.md
+  - name: Graph Querying - Interface Recommendations
+    href: graph-querying-interface-recommendations.md
+  - name: Graph Querying - Direct Responses
+    href: graph-querying-direct-responses.md
+  - name: Handler-Visitor Architecture
+    href: Handler-Visitor-Architecture.md
+- name: Performance & Troubleshooting
+  items:
+  - name: Performance Guide
+    href: performance.md
+  - name: Troubleshooting
+    href: troubleshooting.md
+- name: Examples
+  items:
+  - name: Basic Serialization
+    href: ../examples/Example0.BasicSerialization/README.md
+  - name: Basic CRUD Operations
+    href: ../examples/Example1.BasicCRUD/README.md
+  - name: LINQ and Traversal
+    href: ../examples/Example2.LINQAndTraversal/README.md
+  - name: Transaction Management
+    href: ../examples/Example3.TransactionManagement/README.md
+  - name: Advanced Scenarios
+    href: ../examples/Example4.AdvancedScenarios/README.md
+  - name: Social Network
+    href: ../examples/Example5.SocialNetwork/README.md
+- name: API Reference
+  href: api/
+  homepage: api/index.md 
