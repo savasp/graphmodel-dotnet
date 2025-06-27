@@ -1,24 +1,22 @@
 - name: Getting Started
   href: ../README.md
   homepage: ../README.md
-- name: Build System
-  href: BUILD_SYSTEM.md
 - name: Core Concepts
   items:
-  - name: Graph Querying - Usage Examples
-    href: graph-querying-usage-examples.md
-  - name: Graph Querying - Interface Recommendations
-    href: graph-querying-interface-recommendations.md
-  - name: Graph Querying - Direct Responses
-    href: graph-querying-direct-responses.md
-  - name: Handler-Visitor Architecture
-    href: Handler-Visitor-Architecture.md
-- name: Performance & Troubleshooting
-  items:
-  - name: Performance Guide
-    href: performance.md
-  - name: Troubleshooting
-    href: troubleshooting.md
+  - name: LINQ Querying - Usage Examples
+    href: docs/querying.md
+  - name: Transaction Management
+    href: docs/transactions.md
+  - name: Attributes & Configuration
+    href: docs/attributes.md
+  - name: Best Practices
+    href: docs/best-practices.md
+- name: Neo4j Provider
+  href: src/Graph.Model.Neo4j/README.md
+- name: Code Analyzers
+  href: src/Graph.Model.Analyzers/README.md
+- name: Code Generation
+  href: src/Graph.Model.Serialization.CodeGen/README.md
 - name: Examples
   items:
   - name: Basic Serialization
@@ -37,3 +35,7 @@
   items:
   - name: XML Documentation Files
     href: ../api-xml/ 
+- name: Troubleshooting
+  href: docs/troubleshooting.md
+- name: Building Graph Model
+  href: docs/graph-model-developers.md

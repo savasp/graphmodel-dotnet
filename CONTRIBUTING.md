@@ -6,7 +6,7 @@ Thank you for your interest in contributing to GraphModel! This document provide
 
 ### Prerequisites
 
-- .NET 8.0 SDK or later
+- .NET 10.0 SDK or later
 - Docker (for running Neo4j tests)
 - Git
 
@@ -34,11 +34,8 @@ Thank you for your interest in contributing to GraphModel! This document provide
 4. **Run tests**
 
    ```bash
-   # Unit tests
-   dotnet test tests/Graph.Model.Tests
-
    # Integration tests (requires Docker)
-   dotnet test tests/Graph.Model.Neo4j.Tests
+   CI=true dotnet test tests/Graph.Model.Neo4j.Tests
    ```
 
 ## 🐛 Reporting Issues
@@ -91,8 +88,16 @@ When reporting issues, please include:
 
 3. **Test Thoroughly**
 
+   Test with a local Neo4j instance (e.g. Neo4j Desktop):
+
    ```bash
    dotnet test
+   ```
+
+   Test using docker containers. The neo4j container will be automatically downloaded:
+
+   ```bash
+   CI=true dotnet test
    ```
 
 4. **Commit with Clear Messages**
@@ -119,7 +124,7 @@ We follow conventional commits:
 
 ## 🏗️ Project Structure
 
-```
+```text
 src/
 ├── Graph.Model/                 # Core abstractions
 ├── Graph.Model.Neo4j/          # Neo4j provider

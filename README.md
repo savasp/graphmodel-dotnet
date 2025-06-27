@@ -22,18 +22,19 @@ A powerful, type-safe .NET library ecosystem for working with graph data structu
 - **⚡ Transaction Management** - Full ACID transaction support with async/await patterns
 - **🎯 Provider Architecture** - Clean abstraction supporting multiple graph database backends
 - **📊 Neo4j Integration** - Complete Neo4j implementation with LINQ-to-Cypher translation
-- **🛡️ Compile-Time Validation** - Code analyzers ensure proper implementation of graph interfaces
+- **🛡️ Compile-Time Validation** - Code analyzers ensure that the data model requirements
 - **🏗️ Complex Object Serialization** - Automatic handling of complex properties and circular references
-- **📈 Performance Optimized** - Query caching, connection pooling, and bulk operations
+- **📈 Build-time code generation** - Automatic code generation for efficient serialization/deserialization of domain data types
 - **🎨 Attribute-Based Configuration** - Configure nodes and relationships using intuitive attributes
 
 ## 📦 Packages
 
-| Package                       | Description                      | NuGet                                                                    |
-| ----------------------------- | -------------------------------- | ------------------------------------------------------------------------ |
-| `Cvoya.Graph.Model`           | Core abstractions and interfaces | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.svg)           |
-| `Cvoya.Graph.Model.Neo4j`     | Neo4j provider implementation    | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Neo4j.svg)     |
-| `Cvoya.Graph.Model.Analyzers` | Compile-time code analyzers      | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Analyzers.svg) |
+| Package                                   | Description                      | NuGet                                                                                |
+| ----------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------ |
+| `Cvoya.Graph.Model`                       | Core abstractions and interfaces | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.svg)                       |
+| `Cvoya.Graph.Model.Neo4j`                 | Neo4j provider implementation    | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Neo4j.svg)                 |
+| `Cvoya.Graph.Model.Analyzers`             | Compile-time code analyzers      | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Analyzers.svg)             |
+| `Cvoya.Graph.Model.Serialization.CodeGen` | Compile-time code generation     | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Serialization.CodeGen.svg) |
 
 ## 🏃‍♂️ Quick Start
 
@@ -43,11 +44,15 @@ A powerful, type-safe .NET library ecosystem for working with graph data structu
 # Core library
 dotnet add package Cvoya.Graph.Model
 
-# Neo4j provider (optional)
+# Neo4j provider
 dotnet add package Cvoya.Graph.Model.Neo4j
 
-# Code analyzers (recommended)
+# Code analyzers (highly recommended)
 dotnet add package Cvoya.Graph.Model.Analyzers
+
+# Code generator (optional) (this is automatically included
+# as a dependency via the Neo4j package)
+dotnet add package Cvoya.Graph.Model.Serialization.CodeGen
 ```
 
 ### 2. Define Your Domain Model
@@ -71,6 +76,7 @@ public class Person : INode
     public Address? HomeAddress { get; set; } // Complex types supported
 }
 
+// When used as the type of a property, it makes that property a "complex property"
 public class Address
 {
     public string Street { get; set; } = string.Empty;
@@ -80,17 +86,42 @@ public class Address
 }
 
 [Relationship("KNOWS")]
-public class Knows : IRelationship<Person, Person>
+public class Knows : IRelationship
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string StartNodeId { get; set; } = string.Empty;
     public string EndNodeId { get; set; } = string.Empty;
     public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
 
-    public Person? Source { get; set; }
-    public Person? Target { get; set; }
+    public DateTime Since { get; set; }
 
-    [Property]
+    // Relationships cannot have complex properties
+}
+```
+
+For your convenience, the `Cvoya.Graph.Model` package also offers `Node` and `Relationship` records so that you only have to focus on your domain-specific properties:
+
+```csharp
+public record Person : Node
+{
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public int Age { get; set; }
+    public Address? HomeAddress { get; set; }
+}
+
+public record Knows : Relationship
+{
+    public DateTime Since { get; set; }
+}
+
+// or
+
+public record Knows : Relationship
+{
+    public Knows() : base(Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N")) { }
+    public Knows(Person p1, Person p2) : base(p1.Id, p2.Id) {}
+
     public DateTime Since { get; set; }
 }
 ```
@@ -133,10 +164,8 @@ await graph.CreateNodeAsync(alice);
 var bob = new Person { FirstName = "Bob", LastName = "Jones", Age = 25 };
 await graph.CreateNodeAsync(bob);
 
-var friendship = new Knows
+var friendship = new Knows(alice, bob)
 {
-    StartNodeId = alice.Id,
-    EndNodeId = bob.Id,
     Since = DateTime.UtcNow.AddYears(-2)
 };
 await graph.CreateRelationshipAsync(friendship);
@@ -176,15 +205,17 @@ catch
 
 ## 📚 Documentation
 
-- **[Getting Started Guide](src/Graph.Model/docs/getting-started.md)** - Complete walkthrough with examples
-- **[Core Concepts](src/Graph.Model/docs/core-interfaces.md)** - Understanding nodes, relationships, and entities
-- **[LINQ Querying](src/Graph.Model/docs/querying.md)** - Advanced query patterns and graph traversal
-- **[Transaction Management](src/Graph.Model/docs/transactions.md)** - Working with ACID transactions
-- **[Attributes & Configuration](src/Graph.Model/docs/attributes.md)** - Customizing nodes and relationships
-- **[Best Practices](src/Graph.Model/docs/best-practices.md)** - Performance tips and patterns
+- **[Core Concepts](docs/core-interfaces.md)** - Understanding nodes, relationships, and entities
+- **[LINQ Querying](docs/querying.md)** - Advanced query patterns and graph traversal
+- **[Transaction Management](docs/transactions.md)** - Working with ACID transactions
+- **[Attributes & Configuration](docs/attributes.md)** - Customizing nodes and relationships
+- **[Best Practices](docs/best-practices.md)** - Performance tips and patterns
 - **[Neo4j Provider](src/Graph.Model.Neo4j/README.md)** - Neo4j-specific features and configuration
 - **[Code Analyzers](src/Graph.Model.Analyzers/README.md)** - Compile-time validation rules
+- **[Code Generation](src/Graph.Model.Serialization.CodeGen/README.md)** - Compile-time validation rules
 - **[API Reference](docs/api)** - API documentation generated from the source code
+- **[Troubleshooting](docs/troubleshooting.md)** - In case you encounter issues
+- **[Building Graph Model](docs/graph-model-developers.md)** - Building the projects in this repository
 
 ## 💡 Examples
 

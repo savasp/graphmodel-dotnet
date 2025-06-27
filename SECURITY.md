@@ -15,7 +15,7 @@ We actively support the following versions with security updates:
 
 ### How to Report
 
-1. **Email**: Send details to [security@your-domain.com] (replace with actual email)
+1. **Email**: Send details to [savas@parastatidis.name]
 2. **Include**:
    - Description of the vulnerability
    - Steps to reproduce
@@ -24,8 +24,10 @@ We actively support the following versions with security updates:
 
 ### What to Expect
 
-- **Acknowledgment**: Within 48 hours
-- **Initial Assessment**: Within 1 week
+This is not a supported product but we will do our best to provide:
+
+- **Acknowledgment**: Within a week
+- **Initial Assessment**: Within 2 weeks
 - **Regular Updates**: Every 1-2 weeks until resolved
 - **Resolution Timeline**: Varies by severity (see below)
 
@@ -58,32 +60,6 @@ We actively support the following versions with security updates:
 - Use environment variables for sensitive configuration
 - Follow least-privilege principles
 - Regularly rotate credentials
-
-## 🏆 Severity Levels
-
-### Critical (CVSS 9.0-10.0)
-
-- **Response Time**: 24 hours
-- **Resolution Target**: 7 days
-- **Examples**: Remote code execution, data breach
-
-### High (CVSS 7.0-8.9)
-
-- **Response Time**: 48 hours
-- **Resolution Target**: 14 days
-- **Examples**: Authentication bypass, privilege escalation
-
-### Medium (CVSS 4.0-6.9)
-
-- **Response Time**: 1 week
-- **Resolution Target**: 30 days
-- **Examples**: Information disclosure, DoS attacks
-
-### Low (CVSS 0.1-3.9)
-
-- **Response Time**: 2 weeks
-- **Resolution Target**: 60 days
-- **Examples**: Minor information leaks
 
 ## 🔧 Best Practices for Users
 
@@ -157,9 +133,9 @@ Before deploying to production:
 
 For security-related questions or concerns:
 
-- **Security Email**: [security@your-domain.com]
-- **General Issues**: GitHub Issues
-- **Documentation**: GitHub Discussions
+- **Security Email**: [savas@parastatidis.name]
+- **General Issues**: [GitHub Issues](https://github.com/savasp/graphmodel/issues)
+- **Documentation**: [GitHub Discussions](https://github.com/savasp/graphmodel/discussions/)
 
 ---
 
