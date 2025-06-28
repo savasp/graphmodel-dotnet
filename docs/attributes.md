@@ -1,8 +1,3 @@
----
-title: Attributes and Configuration
-layout: default
----
-
 # Attributes and Configuration
 
 Graph Model uses attributes to provide declarative configuration for how your domain classes map to graph elements. This approach offers clean, type-safe configuration with support for indexing, custom labeling, and property control.
@@ -14,7 +9,7 @@ Graph Model uses attributes to provide declarative configuration for how your do
 The `[Node]` attribute specifies how a class maps to a graph node with custom labeling support.
 
 ```csharp
-[Node("Person")]
+[Node(Label = "Person")]
 public class Person : INode
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -32,22 +27,6 @@ public class Employee : INode
 }
 ```
 
-### Multiple Labels
-
-Graph providers that support multiple labels can use multiple `[Node]` attributes:
-
-```csharp
-[Node("Person")]
-[Node("Employee")]
-[Node("Manager")]
-public class Manager : INode
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string Name { get; set; } = string.Empty;
-    public string Department { get; set; } = string.Empty;
-}
-```
-
 ## Property Configuration
 
 ### PropertyAttribute
@@ -55,7 +34,7 @@ public class Manager : INode
 The `[Property]` attribute provides fine-grained control over property mapping, including custom names, indexing, and serialization behavior:
 
 ```csharp
-[Node("Person")]
+[Node(Label = "Person")]
 public class Person : INode
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -63,7 +42,6 @@ public class Person : INode
     [Property(Label = "full_name")]
     public string FullName { get; set; } = string.Empty;
 
-    [Property]
     public string Email { get; set; } = string.Empty;
 
     [Property(Label = "birth_date")]
@@ -74,6 +52,7 @@ public class Person : INode
 
     // This property uses its own name in the graph
     public int Age { get; set; }
+}
 ```
 
 ### Property Configuration Options
@@ -83,9 +62,7 @@ public class Person : INode
 | `Label`  | Custom property name in graph storage | `[Property(Label = "full_name")]` |
 | `Ignore` | Exclude from graph persistence        | `[Property(Ignore = true)]`       |
 
-**Note**: Indexing is handled automatically by the Neo4j provider based on usage patterns and constraints, not through PropertyAttribute.
-
-````
+**Note**: Indexing is handled automatically by the Neo4j provider based on usage patterns and constraints, not through PropertyAttribute. However, attribute-based configuration of indexing behavior is a possible future feature.
 
 ### Property Types
 
@@ -93,10 +70,13 @@ Supported property types:
 
 - Primitive types: `int`, `long`, `float`, `double`, `decimal`, `bool`
 - `string`
-- `DateTime`, `DateTimeOffset`
+- `DateTime`, `DateTimeOffset`, `DateOnly`, `TimeOnly`
 - `Guid`
+- `Uri`
+- Enums
 - Arrays and lists of primitive types
 - Spatial types (with provider support): `Point`
+- "Complex" (as defined by the Graph Model)
 
 ```csharp
 public class Person : INode
@@ -111,7 +91,7 @@ public class Person : INode
     public List<string> Emails { get; set; }
     public Point Location { get; set; } // Spatial data
 }
-````
+```
 
 ## Relationship Configuration
 
@@ -120,22 +100,16 @@ public class Person : INode
 The `[Relationship]` attribute configures how relationship classes map to graph edges, with support for directionality and custom labeling:
 
 ```csharp
-[Relationship("KNOWS", Direction = RelationshipDirection.Bidirectional)]
-public class Knows : IRelationship<Person, Person>
+[Relationship(Label = "KNOWS", Direction = RelationshipDirection.Bidirectional)]
+public class Knows : IRelationship
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string StartNodeId { get; set; } = string.Empty;
     public string EndNodeId { get; set; } = string.Empty;
     public bool IsBidirectional { get; set; } = true;
 
-    public Person? Source { get; set; }
-    public Person? Target { get; set; }
-
-    [Property("since_date", Index = true)]
+    [Property(Label = "since_date", Index = true)]
     public DateTime Since { get; set; }
-
-    [Property]
-    public string Relationship { get; set; } = string.Empty;
 }
 ```
 
@@ -156,305 +130,65 @@ public enum RelationshipDirection
 
 ```csharp
 // Unidirectional: Person follows another Person
-[Relationship("FOLLOWS", Direction = RelationshipDirection.Outgoing)]
-public class Follows : IRelationship<Person, Person>
+[Relationship(Label = "FOLLOWS", Direction = RelationshipDirection.Outgoing)]
+public class Follows : IRelationship
 {
     // Implementation...
 }
 
 // Bidirectional: Person is friends with another Person
-[Relationship("FRIENDS_WITH", Direction = RelationshipDirection.Bidirectional)]
-public class FriendsWith : IRelationship<Person, Person>
+[Relationship(Label = "FRIENDS_WITH", Direction = RelationshipDirection.Bidirectional)]
+public class FriendsWith : IRelationship
 {
     public bool IsBidirectional { get; set; } = true;
     // Implementation...
 }
 
 // Incoming relationship (less common)
-[Relationship("REPORTS_TO", Direction = RelationshipDirection.Incoming)]
-public class ReportsTo : IRelationship<Person, Person>
+[Relationship(Label = "REPORTS_TO", Direction = RelationshipDirection.Incoming)]
+public class ReportsTo : IRelationship
 {
     // Implementation...
 }
-```
-
-```csharp
-[Relationship("FRIEND_OF")]
-public class FriendOf : IRelationship<Person, Person>
-{
-    public string Id { get; set; }
-    public string StartNodeId { get; set; }
-    public string EndNodeId { get; set; }
-    public bool IsBidirectional { get; set; } = true; // Bidirectional
-
-    public Person Source { get; set; }
-    public Person Target { get; set; }
-}
-```
-
-### Relationship Direction
-
-Control how relationships are interpreted:
-
-```csharp
-[Relationship("MANAGES", Direction = RelationshipDirection.Outgoing)]
-public class Manages : IRelationship<Manager, Employee>
-{
-    // Manager -> Employee
-}
-
-[Relationship("REPORTS_TO", Direction = RelationshipDirection.Incoming)]
-public class ReportsTo : IRelationship<Employee, Manager>
-{
-    // Employee -> Manager (but stored as Manager <- Employee)
-}
-```
-
-## Navigation Properties
-
-### Collection Navigation
-
-Define collections for relationship navigation:
-
-```csharp
-[Node("Person")]
-public class Person : INode
-{
-    public string Id { get; set; }
-    public string Name { get; set; }
-
-    // Navigation properties
-    public IList<Knows> KnowsRelationships { get; set; } = new List<Knows>();
-    public IList<WorksAt> Employment { get; set; } = new List<WorksAt>();
-}
-```
-
-### Lazy Loading Configuration
-
-Control when navigation properties are loaded:
-
-```csharp
-[Node("Department")]
-public class Department : INode
-{
-    public string Id { get; set; }
-    public string Name { get; set; }
-
-    [LazyLoad] // Only loaded when accessed
-    public IList<Employee> Employees { get; set; }
-}
-```
-
-## Advanced Configuration
-
-### Composite Keys
-
-For scenarios requiring composite unique constraints:
-
-```csharp
-[Node("Product")]
-[CompositeKey(nameof(SKU), nameof(WarehouseId))]
-public class InventoryItem : INode
-{
-    public string Id { get; set; }
-    public string SKU { get; set; }
-    public string WarehouseId { get; set; }
-    public int Quantity { get; set; }
-}
-```
-
-### Indexes
-
-Specify properties that should be indexed:
-
-```csharp
-[Node("Person")]
-public class Person : INode
-{
-    public string Id { get; set; }
-
-    [Index]
-    public string Email { get; set; }
-
-    [Index]
-    public string PhoneNumber { get; set; }
-
-    [Index(IsUnique = true)]
-    public string SocialSecurityNumber { get; set; }
-}
-```
-
-### Constraints
-
-Add constraints to your model:
-
-```csharp
-[Node("User")]
-public class User : INode
-{
-    public string Id { get; set; }
-
-    [Required]
-    [MinLength(3)]
-    [MaxLength(50)]
-    public string Username { get; set; }
-
-    [Required]
-    [EmailAddress]
-    public string Email { get; set; }
-
-    [Range(0, 150)]
-    public int Age { get; set; }
-}
-```
-
-## Custom Type Mappings
-
-### Type Converters
-
-For custom type conversions:
-
-```csharp
-[Node("Event")]
-public class Event : INode
-{
-    public string Id { get; set; }
-    public string Name { get; set; }
-
-    [TypeConverter(typeof(JsonTypeConverter))]
-    public EventMetadata Metadata { get; set; }
-}
-
-public class JsonTypeConverter : ITypeConverter<EventMetadata>
-{
-    public string Convert(EventMetadata value)
-    {
-        return JsonSerializer.Serialize(value);
-    }
-
-    public EventMetadata ConvertBack(string value)
-    {
-        return JsonSerializer.Deserialize<EventMetadata>(value);
-    }
-}
-```
-
-### Spatial Data
-
-Working with geographic data:
-
-```csharp
-[Node("Location")]
-public class Location : INode
-{
-    public string Id { get; set; }
-    public string Name { get; set; }
-
-    [Property("coordinates")]
-    public Point Coordinates { get; set; }
-
-    // Calculate distance using provider-specific functions
-    public double DistanceTo(Point other)
-    {
-        // Implementation depends on provider
-    }
-}
-
-// Usage
-var location = new Location
-{
-    Name = "Seattle",
-    Coordinates = new Point { X = -122.3321, Y = 47.6062 }
-};
 ```
 
 ## Inheritance and Polymorphism
 
 ### Base Classes
 
+The Graph Model requires provider implementors to support, if possible, the materialization of object instances to the type that was used during serialization. Consider the following type hierarchy:
+
 ```csharp
-[Node("Asset")]
-public abstract class Asset : INode
+[Node(Label = "Asset")]
+public record Asset : Node
 {
-    public string Id { get; set; }
     public string Name { get; set; }
     public decimal Value { get; set; }
 }
 
-[Node("Vehicle")]
-public class Vehicle : Asset
+[Node(Label = "Vehicle")]
+public record Vehicle : Asset
 {
     public string VIN { get; set; }
     public int Year { get; set; }
 }
 
-[Node("RealEstate")]
-public class RealEstate : Asset
+[Node(Label = "RealEstate")]
+public record RealEstate : Asset
 {
     public string Address { get; set; }
     public double SquareFeet { get; set; }
 }
 ```
 
-### Discriminators
-
-For single-table inheritance:
+We can store a `RealEstate` instance even though the variable that holds it is of type `Asset`.
 
 ```csharp
-[Node("Animal")]
-[Discriminator("AnimalType")]
-public abstract class Animal : INode
-{
-    public string Id { get; set; }
-    public string Name { get; set; }
-}
-
-[DiscriminatorValue("Dog")]
-public class Dog : Animal
-{
-    public string Breed { get; set; }
-}
-
-[DiscriminatorValue("Cat")]
-public class Cat : Animal
-{
-    public bool IsIndoor { get; set; }
-}
+Asset realEstate = new RealEstate { ... }
+await graph.CreateNodeAsync(realEstate)
 ```
 
-## Validation Attributes
-
-Combine with validation frameworks:
-
-```csharp
-[Node("Product")]
-public class Product : INode, IValidatableObject
-{
-    public string Id { get; set; }
-
-    [Required]
-    [StringLength(100)]
-    public string Name { get; set; }
-
-    [Required]
-    [Range(0.01, double.MaxValue)]
-    public decimal Price { get; set; }
-
-    [Url]
-    public string ProductUrl { get; set; }
-
-    public IEnumerable<ValidationResult> Validate(ValidationContext context)
-    {
-        if (Price < Cost)
-        {
-            yield return new ValidationResult(
-                "Price must be greater than cost",
-                new[] { nameof(Price) }
-            );
-        }
-    }
-}
-```
+The underlying provider serializes the instance of the actual instance, which in this case is `RealEstate`. It stores enough metadata to know the type to be used when retrieving the node from the graph. If a different process, with a completely different type hierarchy is used to retrieve the graph node, the node's label is used in an attempt to identify the right type. In the above case, a type which has been annotated with the attribute `Node(Label = "RealEstate")` will be discovered and the deserialization will be attempted. If the type isn't compatible or a type annotated with that specific label isn't discovered, that is considered a runtime exception.
 
 ## Best Practices
 
@@ -463,26 +197,3 @@ public class Product : INode, IValidatableObject
 3. **Document Relationships**: Use XML comments to document complex relationships
 4. **Avoid Over-Attribution**: Only add attributes when the default behavior isn't sufficient
 5. **Consider Performance**: Indexes and constraints can significantly impact performance
-
-```csharp
-/// <summary>
-/// Represents a person in the social network
-/// </summary>
-[Node("Person")]
-public class Person : INode
-{
-    public string Id { get; set; }
-
-    /// <summary>
-    /// The person's display name
-    /// </summary>
-    [Property("display_name")]
-    [Required]
-    public string DisplayName { get; set; }
-
-    /// <summary>
-    /// Relationships to other people this person knows
-    /// </summary>
-    public IList<Knows> Connections { get; set; } = new List<Knows>();
-}
-```

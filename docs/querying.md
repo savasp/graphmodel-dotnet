@@ -1,8 +1,3 @@
----
-title: Enhanced Querying with LINQ
-layout: default
----
-
 # Enhanced Querying with LINQ
 
 Graph Model provides powerful querying capabilities through enhanced LINQ support via `IGraphQueryable<T>`. This extends standard LINQ with graph-specific operations for traversal, performance optimization, and advanced query patterns.
@@ -102,6 +97,48 @@ var results = await graph.Nodes<Person>()
 await transaction.Commit();
 ```
 
+## Working with "complex" types
+
+The Graph Model supports "complex" properties. These are properties whose type isn't one of the primitive types. Neo4j doesn't natively support such properties on graph nodes. The Graph Model requires implementing providers to support them. Consider this example:
+
+```csharp
+public record Address
+{
+    public string Street { get; set; }
+    public string City { get; set; }
+    public StateEnum State { get; set; }
+    public CountryEnum Country { get; set; }
+}
+
+public record Person : Node
+{
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public Address HomeAddress { get; set; }
+    public Address WorkAddress { get; set; }
+}
+```
+
+The addresses could have been modelled as separate nodes, which is a great way to model this information. The `Address` would have had to implement `INode`. In this case, however, the developer decided to model the home and work addresses as properties on `Person`. The Graph Model supports this data modeling choice and requires providers to support it. Indeed, the Neo4j implementation of the Graph Model automatically creates a separate graph node for an `Address` using private relationships. Queries that access the members of `Address` properties are supported...
+
+```csharp
+// Automatically creates two separate graph nodes for the "HomeAddress" and "WorkAddress" properties
+// The relationship between the Person node and its complex properties isn't discoverable. It's considered
+// a private implementation detail. The Neo4j provider translates the LINQ query below to the appropriate Cypher
+// query so that these private relationships are considered as one would have expected.
+
+// Create many people nodes...
+var tx = graph.GetTransactionAsync();
+foreach (var p in people)
+  await graph.CreateNodeAsync(p);
+await tx.CommitAsync();
+
+// Query for those who live in WA state
+var waStateResidents = await graph.Nodes<Person>()
+    .Where(p => p.HomeAddress.State == StateEnum.WA)
+    .ToListAsync();
+```
+
 ## Advanced Graph Traversal
 
 ### Graph Traversal Queries
@@ -110,41 +147,10 @@ await transaction.Commit();
 // Multi-hop traversal with relationship filtering
 var friendsOfFriends = await graph.Nodes<Person>()
     .Where(p => p.FirstName == "Alice")
-    .Traverse<Person, Knows>()
-    .InDirection(TraversalDirection.Outgoing)
+    .Traverse<Person, Knows, Person>()
     .WhereRelationship(k => k.Since > DateTime.Now.AddYears(-1)) // Recent friendships only
     .WithDepth(1, 2) // 1-2 hops away
-    .ToTarget<Person>()
     .Where(p => p.Age > 25) // Filter target nodes
-    .ToListAsync();
-
-// Complex traversal with multiple relationship types
-var socialNetwork = await graph.Nodes<Person>()
-    .Where(p => p.Id == "alice-123")
-    .Traverse<Person, Knows>()
-    .InDirection(TraversalDirection.Bidirectional)
-    .WithDepth(2)
-    .Union(
-        graph.Nodes<Person>()
-            .Where(p => p.Id == "alice-123")
-            .Traverse<Person, WorksWith>()
-            .InDirection(TraversalDirection.Outgoing)
-            .WithDepth(1)
-    )
-    .ToListAsync();
-```
-
-### Pattern Matching
-
-```csharp
-// Find triangular relationships (mutual friends)
-var triangles = await graph.Nodes<Person>()
-    .Match<Person>("(a:Person)-[:KNOWS]->(b:Person)-[:KNOWS]->(c:Person)-[:KNOWS]->(a)")
-    .ToListAsync();
-
-// Complex patterns with property constraints
-var complexPattern = await graph.Nodes<Person>()
-    .Match<Person>("(senior:Person {Age > 50})-[:MENTORS]->(junior:Person {Age < 30})")
     .ToListAsync();
 ```
 
@@ -231,24 +237,20 @@ var stats = await graph.Nodes<Person>()
         Count = g.Count()
     })
     .FirstAsync();
-```
-
-    .First();
 
 // Get single (throws if multiple)
 var theAlice = graph.Nodes<Person>()
-.Single(p => p.FirstName == "Alice");
+    .SingleAsync(p => p.FirstName == "Alice");
 
 // Get last
 var youngest = graph.Nodes<Person>()
-.OrderBy(p => p.Age)
-.Last();
+    .OrderBy(p => p.Age)
+    .LastAsync();
 
 // Safe versions that return null
 var maybeAlice = graph.Nodes<Person>()
-.FirstOrDefault(p => p.FirstName == "Alice");
-
-````
+    .FirstOrDefault(p => p.FirstName == "Alice");
+```
 
 ### GroupBy and Aggregates
 
@@ -261,7 +263,7 @@ var byLastName = graph.Nodes<Person>()
         LastName = g.Key,
         Count = g.Count()
     })
-    .ToList();
+    .ToListAsync();
 
 // Multiple aggregations
 var ageStats = graph.Nodes<Person>()
@@ -274,8 +276,8 @@ var ageStats = graph.Nodes<Person>()
         MinAge = g.Min(p => p.Age),
         MaxAge = g.Max(p => p.Age)
     })
-    .ToList();
-````
+    .ToListAsync();
+```
 
 ## Working with Relationships
 
@@ -296,54 +298,6 @@ var aliceKnows = graph.Relationships<Knows>()
 var connectedToAlice = graph.Relationships<Knows>()
     .Where(k => k.StartNodeId == aliceId || k.EndNodeId == aliceId)
     .ToList();
-```
-
-### Traversal with Navigation Properties
-
-When using `GraphOperationOptions` with `TraversalDepth`, navigation properties are populated:
-
-```csharp
-var options = new GraphOperationOptions { TraversalDepth = 1 };
-
-var peopleWithFriends = graph.Nodes<Person>(options)
-    .Where(p => p.Department == "Engineering")
-    .ToList();
-
-// Navigation properties are loaded
-foreach (var person in peopleWithFriends)
-{
-    var friendNames = person.Knows
-        .Select(k => k.Target?.FirstName)
-        .Where(name => name != null)
-        .ToList();
-}
-```
-
-### Pattern Comprehension
-
-Complex queries using navigation properties:
-
-```csharp
-var options = new GraphOperationOptions { TraversalDepth = 2 };
-
-var socialNetwork = graph.Nodes<Person>(options)
-    .Where(p => p.FirstName == "Alice")
-    .Select(p => new
-    {
-        PersonName = p.FirstName,
-        DirectFriends = p.Knows.Select(k => k.Target!.FirstName).ToList(),
-        FriendsOfFriends = p.Knows
-            .SelectMany(k => k.Target!.Knows.Select(k2 => k2.Target!.FirstName))
-            .Distinct()
-            .ToList(),
-        FriendCount = p.Knows.Count,
-        OldestFriendship = p.Knows.Min(k => k.Since),
-        FriendsWithSameName = p.Knows
-            .Where(k => k.Target!.FirstName == p.FirstName)
-            .Select(k => k.Target!.LastName)
-            .ToList()
-    })
-    .FirstOrDefault();
 ```
 
 ## Full-Text Search
@@ -429,23 +383,5 @@ var categorized = graph.Nodes<Person>()
                    "Senior",
         Discount = p.Age < 18 || p.Age >= 65 ? 0.2 : 0.0
     })
-    .ToList();
-```
-
-### Complex Aggregations
-
-```csharp
-var stats = graph.Nodes<Person>()
-    .Where(p => p.Department != null)
-    .GroupBy(p => new { p.Department, AgeGroup = p.Age / 10 * 10 })
-    .Select(g => new
-    {
-        g.Key.Department,
-        g.Key.AgeGroup,
-        Count = g.Count(),
-        Names = g.Select(p => p.FirstName).ToList()
-    })
-    .OrderBy(x => x.Department)
-    .ThenBy(x => x.AgeGroup)
     .ToList();
 ```

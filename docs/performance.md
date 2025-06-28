@@ -14,7 +14,6 @@ This guide provides best practices and optimization techniques for maximizing pe
 - **Use specific queries** instead of loading large datasets
 - **Project only needed properties** to reduce data transfer
 - **Use pagination** for large result sets
-- **Leverage indices** on frequently queried properties
 
 ### 2. Connection Management
 
@@ -52,17 +51,16 @@ var emails = users.Select(u => u.Email).ToList();
 // ✅ Good - depth-limited traversal
 var nearbyFriends = await graph.Nodes<User>()
     .Where(u => u.Id == userId)
-    .Traverse<FriendOf>(direction: TraversalDirection.Outgoing)
+    .Traverse<Person, FriendOf, Person>()
     .WithDepth(1, 2)  // Limit to 2 degrees of separation
-    .Target<User>()
     .Where(friend => friend.City == "Seattle")
     .ToListAsync();
 
 // ❌ Avoid - unlimited depth traversal
 var allConnections = await graph.Nodes<User>()
     .Where(u => u.Id == userId)
-    .Traverse<FriendOf>()  // No depth limit!
-    .Target<User>()
+    .Traverse<Person, FriendOf, Person>()  // By default, Traverse() only traverses 1 hop
+    .WithDepth(1, 100) // Large depth limit
     .ToListAsync();
 ```
 
@@ -88,23 +86,6 @@ var users = await graph.Nodes<User>()
 ```
 
 ## 🔧 Neo4j-Specific Optimizations
-
-### Index Usage
-
-```csharp
-// Ensure indices exist for frequently queried properties
-[Node("User")]
-public class User : INode
-{
-    public string Id { get; set; }
-
-    [Property(IsIndexed = true)]  // Creates index
-    public string Email { get; set; }
-
-    [Property(IsIndexed = true)]  // Creates index
-    public DateTime CreatedDate { get; set; }
-}
-```
 
 ### Connection Configuration
 
@@ -152,7 +133,6 @@ foreach (var user in users)
 
 ```csharp
 // For large complex objects, consider splitting into separate nodes
-[Node("User")]
 public class User : INode
 {
     public string Id { get; set; }
@@ -167,7 +147,6 @@ public class User : INode
 }
 
 // ✅ Better - separate related entities
-[Node("UserProfile")]
 public class UserProfile : INode
 {
     public string Id { get; set; }
@@ -182,11 +161,8 @@ public class UserProfile : INode
 
 ```csharp
 // Enable query logging for development
-var graph = new Neo4jGraph(connectionString, username, password, new ConfigurationOptions
-{
-    Logger = new ConsoleLogger(),  // Log queries to console
-    LogLevel = LogLevel.Debug
-});
+var loggerFactory = new LoggerFactory() { ... }
+var graph = new Neo4jGraph(connectionString, username, password, loggerFactory);
 
 // Time critical operations
 var stopwatch = Stopwatch.StartNew();
@@ -272,7 +248,6 @@ public async Task<User> GetUserAsync(string userId)
 
 ### Before Going to Production
 
-- [ ] **Index all frequently queried properties**
 - [ ] **Profile query performance** with realistic data volumes
 - [ ] **Test connection pool settings** under load
 - [ ] **Set appropriate timeouts** for your use case
@@ -284,8 +259,7 @@ public async Task<User> GetUserAsync(string userId)
 ### Common Performance Issues
 
 - [ ] **Loading too much data** at once
-- [ ] **Missing indices** on query fields
-- [ ] **Unlimited depth traversals**
+- [ ] **Large depth traversals**
 - [ ] **Too many small transactions** instead of batching
 - [ ] **Connection pool exhaustion**
 - [ ] **Memory leaks** from undisposed resources
@@ -296,25 +270,23 @@ public async Task<User> GetUserAsync(string userId)
 ### 1. Enable Query Logging
 
 ```csharp
-var config = new ConfigurationOptions
-{
-    Logger = new ConsoleLogger(),
-    LogLevel = LogLevel.Debug  // Will log generated Cypher queries
-};
+var loggerFactory = new LoggerFactory { ... }
+var graph = new Neo4jGraph(connectionString, username, password, loggerFactory);
 ```
 
 ### 2. Analyze Generated Cypher
 
 Review the generated Cypher queries in logs:
 
-- Are the queries using indices?
 - Are there unnecessary data transfers?
 - Can queries be simplified?
 
 ### 3. Use Neo4j Query Profiling
 
 ```cypher
-PROFILE MATCH (u:User {email: $email}) RETURN u
+PROFILE MATCH (u:User) RETURN u
+WHERE u.email = $p0
+RETURN ...
 ```
 
 ### 4. Common Query Patterns to Avoid
@@ -371,7 +343,7 @@ public class GraphModelBenchmarks
 
 Remember: **Measure first, optimize second**. Use profiling tools to identify actual bottlenecks rather than guessing.
 
-# Performance Testing and Benchmarking
+## Performance Testing and Benchmarking
 
 GraphModel includes comprehensive performance testing infrastructure using BenchmarkDotNet to ensure consistent performance across releases and detect regressions.
 

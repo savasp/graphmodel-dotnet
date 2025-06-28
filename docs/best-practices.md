@@ -1,8 +1,3 @@
----
-title: Best Practices
-layout: default
----
-
 # Best Practices
 
 This guide covers best practices for using Graph Model effectively in your applications.
@@ -15,14 +10,14 @@ This guide covers best practices for using Graph Model effectively in your appli
 
 ```csharp
 // Good: Separate entities for different concerns
-[Node("Person")]
+[Node(Label = "Person")]
 public class Person : INode
 {
     public string Id { get; set; }
     public string Name { get; set; }
 }
 
-[Node("Address")]
+[Node(Label = "Address")]
 public class Address : INode
 {
     public string Id { get; set; }
@@ -30,7 +25,7 @@ public class Address : INode
     public string City { get; set; }
 }
 
-[Relationship("LIVES_AT")]
+[Relationship(Label = "LIVES_AT")]
 public class LivesAt : IRelationship<Person, Address>
 {
     public DateTime Since { get; set; }
@@ -53,10 +48,10 @@ public class Person : INode
 **Do**: Use descriptive, domain-specific relationship names
 
 ```csharp
-[Relationship("REPORTS_TO")]
+[Relationship(Label = "REPORTS_TO")]
 public class ReportsTo : IRelationship<Employee, Manager> { }
 
-[Relationship("PURCHASED")]
+[Relationship(Label = "PURCHASED")]
 public class Purchased : IRelationship<Customer, Product>
 {
     public DateTime PurchaseDate { get; set; }
@@ -68,7 +63,7 @@ public class Purchased : IRelationship<Customer, Product>
 
 ```csharp
 // Avoid: Too generic
-[Relationship("RELATED_TO")]
+[Relationship(Label = "RELATED_TO")]
 public class RelatedTo : IRelationship<INode, INode> { }
 ```
 
@@ -77,7 +72,7 @@ public class RelatedTo : IRelationship<INode, INode> { }
 **Do**: Add temporal properties to relationships when needed
 
 ```csharp
-[Relationship("WORKED_AT")]
+[Relationship(Label = "WORKED_AT")]
 public class WorkedAt : IRelationship<Person, Company>
 {
     public DateTime StartDate { get; set; }
@@ -248,27 +243,7 @@ public async Task ImportPeople(List<PersonData> peopleData)
 }
 ```
 
-### 2. Use Indexes Appropriately
-
-**Do**: Index frequently queried properties
-
-```csharp
-[Node("User")]
-public class User : INode
-{
-    public string Id { get; set; }
-
-    [Index]
-    public string Email { get; set; } // Frequently searched
-
-    [Index]
-    public string Username { get; set; } // Frequently searched
-
-    public string Bio { get; set; } // Rarely searched - no index
-}
-```
-
-### 3. Optimize Relationship Queries
+### 2. Optimize Relationship Queries
 
 **Do**: Query relationships efficiently
 
@@ -298,11 +273,6 @@ var personRelationships = allPeople
 try
 {
     await graph.CreateNode(node);
-}
-catch (GraphTransactionException ex)
-{
-    // Handle transaction-specific errors
-    logger.LogError("Transaction failed: {Message}", ex.Message);
 }
 catch (GraphException ex)
 {

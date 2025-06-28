@@ -1,8 +1,3 @@
----
-title: Core Interfaces and Type System
-layout: default
----
-
 # Core Interfaces and Type System
 
 This document provides a comprehensive guide to the core interfaces and type system that form the foundation of Graph Model. Understanding these interfaces is essential for effective use of the library.
@@ -11,7 +6,7 @@ This document provides a comprehensive guide to the core interfaces and type sys
 
 Graph Model follows a layered architecture with clean abstractions:
 
-```
+```text
 ┌─────────────────────────┐
 │    Your Domain Model    │  ← Your nodes and relationships
 ├─────────────────────────┤
@@ -42,13 +37,13 @@ public interface IEntity
 }
 ```
 
-### Key Points:
+### Key Points
 
 - **Immutable after persistence**: Once saved to the graph, the `Id` should not change
 - **String-based**: Uses strings for maximum flexibility across different graph databases
 - **Required for all entities**: Both nodes and relationships must have unique identifiers
 
-### Example Implementation:
+### Example Implementation
 
 ```csharp
 public class Person : INode
@@ -78,13 +73,12 @@ public interface INode : IEntity
 }
 ```
 
-### Design Philosophy:
+### Design Philosophy
 
 - **Marker Interface**: `INode` doesn't add properties, it just identifies node types
-- **Composition over Inheritance**: Add behavior through properties, not inheritance
 - **Domain-Focused**: Your node classes represent your actual business entities
 
-### Node Implementation Patterns:
+### Node Implementation Patterns
 
 #### 1. Simple Node
 
@@ -100,7 +94,7 @@ public class Person : INode
     [Property("last_name", Index = true)]
     public string LastName { get; set; } = string.Empty;
 
-    [Property]
+    // The Property attribute is optional
     public int Age { get; set; }
 
     // Computed property - excluded from persistence
@@ -117,20 +111,13 @@ public class Company : INode
 {
     public string Id { get; init; } = Guid.NewGuid().ToString();
 
-    [Property]
     public string Name { get; set; } = string.Empty;
-
-    [Property]
     public Address Headquarters { get; set; } = new(); // Complex type
-
-    [Property]
     public List<Address> Offices { get; set; } = new(); // Collection
-
-    [Property]
     public Dictionary<string, object> Metadata { get; set; } = new(); // Dynamic data
 }
 
-public class Address // Not a node - just a value object
+public class Address // Not a node - just a value object from the Graph Model's perspective
 {
     public string Street { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
@@ -139,6 +126,8 @@ public class Address // Not a node - just a value object
 ```
 
 #### 3. Node Inheritance Hierarchy
+
+Implementations of the Graph Model must support polymorphic behavior.
 
 ```csharp
 [Node("Person")]
@@ -151,33 +140,33 @@ public abstract class Person : INode
 
     [Property("last_name")]
     public string LastName { get; set; } = string.Empty;
-
-    [Property]
     public DateTime DateOfBirth { get; set; }
 }
 
-[Node("Employee", "Person")]
+[Node("Employee")]
 public class Employee : Person
 {
     [Property("employee_id", Index = true)]
     public string EmployeeId { get; set; } = string.Empty;
-
-    [Property]
     public string Department { get; set; } = string.Empty;
-
-    [Property]
     public decimal Salary { get; set; }
 }
 
-[Node("Manager", "Employee", "Person")]
+[Node("Manager")]
 public class Manager : Employee
 {
-    [Property]
-    public List<string> TeamMemberIds { get; set; } = new();
-
-    [Property]
     public string ManagementLevel { get; set; } = string.Empty;
 }
+```
+
+If you add a manager to the graph via an employee variable, you will get back a manager even if you ask for an Employee...
+
+```csharp
+Employee employee = new Manager { ... }
+await graph.CreateNodeAsync(employee);
+
+Person person = await graph.GetNodeAsync<Employee>(employee.Id)
+Assert.Equal(typeof(Manager), person.GetType())
 ```
 
 ## 🔗 Relationships: IRelationship Interfaces
@@ -256,23 +245,15 @@ public enum RelationshipDirection
 }
 ```
 
-### Relationship Implementation Patterns:
+### Relationship Implementation Patterns
 
 #### 1. Simple Relationship
 
 ```csharp
 [Relationship("KNOWS")]
-public class Knows : IRelationship
+public record Knows : Relationship   // Convenience record offered by the core library
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString();
-    public string StartNodeId { get; init; } = string.Empty;
-    public string EndNodeId { get; init; } = string.Empty;
-    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
-
-    [Property]
     public DateTime Since { get; set; }
-
-    [Property]
     public string Type { get; set; } = "acquaintance";
 }
 ```
@@ -288,14 +269,10 @@ public class Knows : IRelationship<Person, Person>
     public string EndNodeId { get; init; } = string.Empty;
     public RelationshipDirection Direction { get; init; } = RelationshipDirection.Bidirectional;
 
-    // Navigation properties
-    public Person? Source { get; set; }
-    public Person? Target { get; set; }
+    public Person Source { get; set; }
+    public Person Target { get; set; }
 
-    [Property]
     public DateTime Since { get; set; }
-
-    [Property]
     public int Strength { get; set; } = 1; // 1-10 scale
 }
 ```
@@ -304,29 +281,12 @@ public class Knows : IRelationship<Person, Person>
 
 ```csharp
 [Relationship("EMPLOYS")]
-public class Employment : IRelationship<Company, Person>
+public record Employment : Relationship
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString();
-    public string StartNodeId { get; init; } = string.Empty;
-    public string EndNodeId { get; init; } = string.Empty;
-    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
-
-    public Company? Source { get; set; }  // Employer
-    public Person? Target { get; set; }   // Employee
-
-    [Property]
     public string Position { get; set; } = string.Empty;
-
-    [Property]
     public DateTime StartDate { get; set; }
-
-    [Property]
     public DateTime? EndDate { get; set; }
-
-    [Property]
     public decimal Salary { get; set; }
-
-    [Property]
     public EmploymentType Type { get; set; } = EmploymentType.FullTime;
 
     // Computed property
@@ -359,20 +319,14 @@ Graph Model uses attributes to configure how entities are mapped to the graph da
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false, Inherited = true)]
 public class NodeAttribute : Attribute
 {
-    public NodeAttribute(string label) { }
-    public NodeAttribute(params string[] labels) { } // Multiple labels
-
     public string Label { get; set; }
-    public string[] AdditionalLabels { get; private set; }
 }
 ```
 
 Examples:
 
 ```csharp
-[Node("Person")]                    // Single label
-[Node("Employee", "Person")]        // Multiple labels
-[Node("Manager", "Employee", "Person")] // Hierarchy
+[Node(Label = "Person")]
 public class Manager : INode { }
 ```
 
@@ -386,10 +340,8 @@ public class Manager : INode { }
 public class RelationshipAttribute : Attribute
 {
     public RelationshipAttribute(string label) { }
-    public RelationshipAttribute(params string[] labels) { }
 
     public string? Label { get; set; }
-    public string[] AdditionalLabels { get; private set; }
 }
 ```
 
@@ -397,9 +349,7 @@ Examples:
 
 ```csharp
 [Relationship("KNOWS")]
-[Relationship("MANAGES")]
-[Relationship("REPORTS_TO")]
-public class ReportsTo : IRelationship<Person, Person> { }
+public record ReportsTo : Relationship { }
 ```
 
 ### Property Attribute
@@ -472,7 +422,7 @@ public interface IGraph : IAsyncDisposable
 
 ## 📊 Query Interfaces
 
-### IGraphQueryable<T>
+### IGraphQueryable&lt;T&gt;
 
 The foundation of LINQ support in Graph Model:
 
@@ -502,7 +452,6 @@ public interface IGraphQueryable<T> : IQueryable<T>, IAsyncEnumerable<T>
 public interface IGraphNodeQueryable<TNode> : IGraphQueryable<TNode>, IGraphNodeQueryable
     where TNode : INode
 {
-    // Node-specific operations will be added here
 }
 
 /// <summary>
@@ -511,7 +460,6 @@ public interface IGraphNodeQueryable<TNode> : IGraphQueryable<TNode>, IGraphNode
 public interface IGraphRelationshipQueryable<TRelationship> : IGraphQueryable<TRelationship>, IGraphRelationshipQueryable
     where TRelationship : IRelationship
 {
-    // Relationship-specific operations will be added here
 }
 ```
 
@@ -535,7 +483,7 @@ public interface IGraphTransaction : IAsyncDisposable
 }
 ```
 
-### Transaction Usage Patterns:
+### Transaction Usage Patterns
 
 ```csharp
 // Pattern 1: Explicit transaction management
@@ -621,12 +569,5 @@ var connectionAnalysis = await graph.Nodes<Person>()
 
 - Proper disposal patterns
 - Transaction scope management
-
-## 📚 Next Steps
-
-- **[Getting Started](getting-started.md)** - Practical examples using these interfaces
-- **[Advanced Querying](querying.md)** - LINQ patterns and graph traversal
-- **[Transaction Management](transactions.md)** - Advanced transaction patterns
-- **[Best Practices](best-practices.md)** - Design and performance guidelines
 
 Understanding these core interfaces is essential for building robust graph applications with Graph Model. Each interface is designed with specific concerns in mind, enabling clean, maintainable, and performant graph operations.

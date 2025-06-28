@@ -1,8 +1,3 @@
----
-title: Build System Guide
-layout: default
----
-
 # GraphModel Build System Guide
 
 This document explains the GraphModel build configurations, version management, and development workflows.
@@ -81,7 +76,7 @@ GraphModel uses a **VERSION file-based system** that ensures consistent versioni
 
 The `VERSION` file contains a single line with the version:
 
-```
+```text
 # Stable release
 1.2.3
 
@@ -94,6 +89,8 @@ The `VERSION` file contains a single line with the version:
 ### Creating Releases
 
 #### Method 1: MSBuild Target (Recommended)
+
+These update the VERSION file.
 
 ```bash
 # Create stable release
@@ -250,7 +247,7 @@ dotnet nuget locals all --clear
 
 ## 📁 Directory Structure
 
-```
+```text
 graphmodel/
 ├── VERSION                    # Current release version
 ├── Directory.Build.props      # MSBuild configuration

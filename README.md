@@ -205,7 +205,7 @@ catch
 
 ## 📚 Documentation
 
-- **[Core Concepts](docs/core-interfaces.md)** - Understanding nodes, relationships, and entities
+- **[Core Concepts](docs/core-concepts.md)** - Understanding nodes, relationships, and entities
 - **[LINQ Querying](docs/querying.md)** - Advanced query patterns and graph traversal
 - **[Transaction Management](docs/transactions.md)** - Working with ACID transactions
 - **[Attributes & Configuration](docs/attributes.md)** - Customizing nodes and relationships

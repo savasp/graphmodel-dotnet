@@ -1,8 +1,3 @@
----
-title: Troubleshooting Guide
-layout: default
----
-
 # 🔧 Troubleshooting Guide
 
 This guide helps you diagnose and resolve common issues when working with GraphModel.
@@ -13,7 +8,7 @@ This guide helps you diagnose and resolve common issues when working with GraphM
 
 #### Problem: "Unable to connect to Neo4j database"
 
-```
+```text
 Neo4jException: Could not perform discovery for server neo4j://localhost:7687
 ```
 
@@ -44,6 +39,7 @@ Neo4jException: Could not perform discovery for server neo4j://localhost:7687
    ```
 
 3. **Check credentials**
+
    ```csharp
    // Default Neo4j credentials are neo4j/neo4j
    // You must change the password on first login
@@ -52,7 +48,7 @@ Neo4jException: Could not perform discovery for server neo4j://localhost:7687
 
 #### Problem: "Connection timeout"
 
-```
+```text
 TimeoutException: The request timed out after 30 seconds
 ```
 
@@ -70,80 +66,11 @@ TimeoutException: The request timed out after 30 seconds
    ```
 
 2. **Check network connectivity**
+
    ```bash
    telnet your-server 7687
    # Should connect if Neo4j is accessible
    ```
-
-### Serialization Issues
-
-#### Problem: "Entity does not have a parameterless constructor"
-
-```
-GraphException: Type 'MyEntity' must have a public parameterless constructor
-```
-
-**Solution:**
-
-```csharp
-// ❌ Missing parameterless constructor
-[Node("User")]
-public class User : INode
-{
-    public User(string id, string name) // Only parameterized constructor
-    {
-        Id = id;
-        Name = name;
-    }
-
-    public string Id { get; set; }
-    public string Name { get; set; }
-}
-
-// ✅ Add parameterless constructor
-[Node("User")]
-public class User : INode
-{
-    public User() { }  // Required for GraphModel
-
-    public User(string id, string name)
-    {
-        Id = id;
-        Name = name;
-    }
-
-    public string Id { get; set; }
-    public string Name { get; set; }
-}
-```
-
-#### Problem: "Property accessor is not public"
-
-```
-GraphException: Property 'Name' must have public getter and setter
-```
-
-**Solution:**
-
-```csharp
-// ❌ Private/protected accessors
-[Node("User")]
-public class User : INode
-{
-    public string Id { get; set; }
-    public string Name { get; private set; }  // Private setter
-    internal string Email { get; set; }        // Internal property
-}
-
-// ✅ Public accessors
-[Node("User")]
-public class User : INode
-{
-    public string Id { get; set; }
-    public string Name { get; set; }          // Public getter and setter
-    public string Email { get; set; }         // Public property
-}
-```
 
 ### Query Issues
 
@@ -166,30 +93,28 @@ var users = await graph.Nodes<User>().ToListAsync();
 2. **Verify entity class labels**
 
    ```csharp
-   [Node("User")]  // Must match label in database
+   [Node(Label = "User")]  // Must match label in database
    public class User : INode
    ```
 
 3. **Check case sensitivity**
 
    ```csharp
-   [Node("user")]     // Lowercase
+   [Node(Label = "user")]     // Lowercase
    vs
-   [Node("User")]     // Uppercase - these are different!
+   [Node(Label = "User")]     // Uppercase - these are different!
    ```
 
 4. **Enable query logging**
+
    ```csharp
-   var config = new ConfigurationOptions
-   {
-       Logger = new ConsoleLogger(),
-       LogLevel = LogLevel.Debug  // Shows generated Cypher
-   };
+   var loggerFactory = new LoggerFactory { ... }
+   var neo4jGraphStore = new Neo4jGraphStore(..., loggerFactory)
    ```
 
 #### Problem: "Invalid cast" when querying
 
-```
+```text
 InvalidCastException: Unable to cast object of type 'System.String' to type 'System.Int32'
 ```
 
@@ -199,7 +124,6 @@ InvalidCastException: Unable to cast object of type 'System.String' to type 'Sys
 
    ```csharp
    // If database has string IDs but your model expects int:
-   [Node("User")]
    public class User : INode
    {
        public string Id { get; set; }  // Use string if Neo4j stores as string
@@ -208,8 +132,8 @@ InvalidCastException: Unable to cast object of type 'System.String' to type 'Sys
    ```
 
 2. **Use nullable types for optional properties**
+
    ```csharp
-   [Node("User")]
    public class User : INode
    {
        public string Id { get; set; }
@@ -222,7 +146,7 @@ InvalidCastException: Unable to cast object of type 'System.String' to type 'Sys
 
 #### Problem: "Transaction already committed/rolled back"
 
-```
+```text
 InvalidOperationException: Cannot execute query on committed/rolled back transaction
 ```
 
@@ -231,20 +155,20 @@ InvalidOperationException: Cannot execute query on committed/rolled back transac
 ```csharp
 // ❌ Reusing disposed transaction
 using var transaction = await graph.BeginTransactionAsync();
-await graph.CreateNode(user, transaction);
+await graph.CreateNodeAsync(user, transaction);
 await transaction.CommitAsync();
 await graph.CreateNode(anotherUser, transaction);  // Error - transaction already committed
 
 // ✅ Create new transaction or don't commit until all operations complete
 using var transaction = await graph.BeginTransactionAsync();
-await graph.CreateNode(user, transaction);
-await graph.CreateNode(anotherUser, transaction);
+await graph.CreateNodeAsync(user, transaction);
+await graph.CreateNodeAsync(anotherUser, transaction);
 await transaction.CommitAsync();  // Commit both operations
 ```
 
 #### Problem: "Deadlock detected"
 
-```
+```text
 TransientException: Deadlock detected
 ```
 
@@ -255,17 +179,18 @@ TransientException: Deadlock detected
    ```csharp
    // ✅ Short transaction
    using var transaction = await graph.BeginTransactionAsync();
-   await graph.CreateNode(user, transaction);
+   await graph.CreateNodeAsync(user, transaction);
    await transaction.CommitAsync();
 
    // ❌ Long-running transaction
    using var transaction = await graph.BeginTransactionAsync();
    await SomeLongRunningOperation();  // Holds locks too long
-   await graph.CreateNode(user, transaction);
+   await graph.CreateNodeAsync(user, transaction);
    await transaction.CommitAsync();
    ```
 
 2. **Retry logic for deadlocks**
+
    ```csharp
    public async Task<T> ExecuteWithRetry<T>(Func<Task<T>> operation, int maxRetries = 3)
    {
@@ -294,44 +219,30 @@ TransientException: Deadlock detected
 1. **Enable query profiling**
 
    ```csharp
-   var config = new ConfigurationOptions
-   {
-       Logger = new ConsoleLogger(),
-       LogLevel = LogLevel.Debug
-   };
+   var loggerFactory = new LoggerFactory { ... }
+   var neo4jGraphStore = new Neo4jGraphStore(..., loggerFactory)
    ```
 
-2. **Check for missing indices**
-
-   ```cypher
-   // In Neo4j Browser - show existing indices:
-   SHOW INDEXES
-
-   // Create missing indices:
-   CREATE INDEX user_email IF NOT EXISTS FOR (u:User) ON (u.email)
-   ```
-
-3. **Look for full table scans**
+2. **Look for full table scans**
 
    ```cypher
    // Profile a slow query:
    PROFILE MATCH (u:User) WHERE u.email = 'test@example.com' RETURN u
    ```
 
-4. **Check for unlimited traversals**
+3. **Check for unlimited traversals**
 
    ```csharp
-   // ❌ Unlimited depth - could traverse entire graph
+   // ❌ Large depth - could traverse a large path of the graph
    var connections = await graph.Nodes<User>()
-       .Traverse<FriendOf>()  // No depth limit!
-       .Target<User>()
+       .Traverse<User, FriendOf, User>()
+       .WithDepth(1, 100)
        .ToListAsync();
 
    // ✅ Limited depth
    var connections = await graph.Nodes<User>()
-       .Traverse<FriendOf>()
+       .Traverse<User, FriendOf, User>()
        .WithDepth(1, 3)  // Max 3 hops
-       .Target<User>()
        .ToListAsync();
    ```
 
@@ -363,13 +274,14 @@ TransientException: Deadlock detected
    ```
 
 2. **Use streaming**
-   ```csharp
+
+```csharp
    // ✅ Process one at a time
    await foreach (var user in graph.Nodes<User>().AsAsyncEnumerable())
    {
        ProcessUser(user);
    }
-   ```
+```
 
 ### Analyzer Issues
 
@@ -393,11 +305,8 @@ See the [Analyzers README](../src/Graph.Model.Analyzers/README.md) for detailed 
 ### 1. Enable Detailed Logging
 
 ```csharp
-var config = new ConfigurationOptions
-{
-    Logger = new ConsoleLogger(),
-    LogLevel = LogLevel.Trace  // Most detailed logging
-};
+var loggerFactory = new LoggerFactory { ... }
+var neo4jGraphStore = new Neo4jGraphStore(..., loggerFactory)
 ```
 
 ### 2. Inspect Generated Cypher
@@ -458,20 +367,19 @@ When reporting issues, include:
 
 ### 2. Check Documentation
 
-- [Getting Started Guide](../src/Graph.Model/docs/getting-started.md)
-- [Core Interfaces](../src/Graph.Model/docs/core-interfaces.md)
+- [Getting Started Guide](../README.md)
+- [Core Concepts](./core-concepts.md)
 - [Performance Guide](./performance.md)
 
 ### 3. Search Existing Issues
 
-- Check [GitHub Issues](https://github.com/your-org/GraphModel/issues)
+- Check [GitHub Issues](https://github.com/savasp/graphmodel/issues)
 - Look for similar problems and solutions
 
 ### 4. Create Minimal Reproduction
 
 ```csharp
 // Example minimal reproduction case:
-[Node("TestNode")]
 public class TestNode : INode
 {
     public string Id { get; set; }
