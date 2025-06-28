@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional
 from graph_model import (
     Node,
     Relationship,
-    RelationshipDirection,
     embedded_field,
     node,
     property_field,
@@ -41,7 +40,7 @@ class Address:
 # APPROACH 1: EMBEDDED AS JSON STRING (with APOC support)
 # ============================================================================
 
-@node(label="PersonJsonEmbedded")
+@node("PersonJsonEmbedded")
 class PersonJsonEmbedded(Node):
     first_name: str = property_field(index=True)
     last_name: str = property_field(index=True)
@@ -55,7 +54,7 @@ class PersonJsonEmbedded(Node):
 # APPROACH 2: EMBEDDED AS FLATTENED PROPERTIES
 # ============================================================================
 
-@node(label="PersonFlattened")
+@node("PersonFlattened")
 class PersonFlattened(Node):
     first_name: str = property_field(index=True)
     last_name: str = property_field(index=True)
@@ -69,7 +68,7 @@ class PersonFlattened(Node):
 # APPROACH 3: EMBEDDED AS CYPHER MAP (limited querying)
 # ============================================================================
 
-@node(label="PersonMapEmbedded")
+@node("PersonMapEmbedded")
 class PersonMapEmbedded(Node):
     first_name: str = property_field(index=True)
     last_name: str = property_field(index=True)
@@ -83,7 +82,7 @@ class PersonMapEmbedded(Node):
 # APPROACH 4: RELATED NODES (full graph capabilities)
 # ============================================================================
 
-@node(label="PersonRelated")
+@node("PersonRelated")
 class PersonRelated(Node):
     first_name: str = property_field(index=True)
     last_name: str = property_field(index=True)

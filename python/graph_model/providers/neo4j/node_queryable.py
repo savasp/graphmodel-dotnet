@@ -8,6 +8,8 @@ interface, translating LINQ-style operations to Cypher queries.
 import asyncio
 from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union
 
+from graph_model.attributes.decorators import get_relationship_label
+
 from ...core.entity import IEntity
 from ...core.node import INode
 from ...querying.queryable import IGraphNodeQueryable, IOrderedGraphNodeQueryable
@@ -127,18 +129,23 @@ class Neo4jNodeQueryable(IOrderedGraphNodeQueryable[N], Generic[N]):
         self._select_projection = selector
         return self
     
-    def traverse(self, relationship_type: str, target_type: Type) -> "Neo4jNodeQueryable[N]":
+    def traverse(self, relationship_type, target_type: Type) -> "Neo4jNodeQueryable[N]":
         """
         Traverse relationships to target nodes.
         
         Args:
-            relationship_type: Type of relationship to traverse.
+            relationship_type: Type of relationship to traverse (class or string).
             target_type: Type of target nodes.
         
         Returns:
             Self for method chaining.
         """
-        self._traversal_relationship = relationship_type
+        # Accept either a class or a string for relationship_type
+        if isinstance(relationship_type, str):
+            rel_label = relationship_type
+        else:
+            rel_label = get_relationship_label(relationship_type)
+        self._traversal_relationship = rel_label
         self._traversal_target_type = target_type
         return self
     

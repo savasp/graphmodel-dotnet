@@ -7,42 +7,31 @@ without requiring a database connection. It shows the fluent interface and metho
 
 from typing import Any, Dict, List, Optional
 
-from graph_model.attributes.decorators import node, property_field, relationship
-from graph_model.core.entity import IEntity
-from graph_model.core.node import INode
-from graph_model.core.relationship import IRelationship
+from graph_model import (
+    Node,
+    Relationship,
+    node,
+    relationship,
+)
 
 
 @node("Person")
-class Person(IEntity, INode):
-    def __init__(self, name: str, age: int, city: str = None):
-        self.name = name
-        self.age = age
-        self.city = city
-    
-    name: str = property_field()
-    age: int = property_field()
-    city: Optional[str] = property_field()
+class Person(Node):
+    name: str
+    age: int
+    city: Optional[str] = None
 
 
 @node("Company")
-class Company(IEntity, INode):
-    def __init__(self, name: str, industry: str):
-        self.name = name
-        self.industry = industry
-    
-    name: str = property_field()
-    industry: str = property_field()
+class Company(Node):
+    name: str
+    industry: str
 
 
 @relationship("WORKS_FOR")
-class WorksFor(IEntity, IRelationship):
-    def __init__(self, position: str, salary: int):
-        self.position = position
-        self.salary = salary
-    
-    position: str = property_field()
-    salary: int = property_field()
+class WorksFor(Relationship):
+    position: str
+    salary: int
 
 
 def demonstrate_queryable_api_structure():

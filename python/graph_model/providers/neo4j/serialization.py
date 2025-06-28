@@ -8,43 +8,103 @@ using .NET-compatible conventions for relationship naming and complex properties
 import json
 from dataclasses import dataclass
 from datetime import date, datetime, time
-from typing import Any, Dict, List, Optional, Type, get_args, get_origin
+from enum import Enum
+from typing import Any, Dict, List, Optional, Type, Union, get_args, get_origin
 
 from neo4j import Record
 from pydantic import BaseModel
 
-from graph_model.attributes.fields import (
-    PropertyFieldInfo,
-    PropertyFieldType,
-    determine_field_type_from_annotation,
-    get_field_info,
-    get_relationship_type_for_field,
-)
-from graph_model.core.entity import IEntity
-from graph_model.core.graph import GraphDataModel
-from graph_model.core.node import INode, Node
-from graph_model.core.relationship import IRelationship, Relationship
+from ...attributes.fields import PropertyFieldType, get_field_info
+from ...core.graph import GraphDataModel
+from ...core.node import INode
+from ...core.relationship import IRelationship
 
 
-@dataclass
+def get_relationship_type_for_field(
+    field_name: str, 
+    custom_type: Optional[str] = None
+) -> str:
+    """
+    Get the relationship type for a complex property field.
+    
+    Uses .NET-compatible naming convention for full interoperability.
+    
+    Args:
+        field_name: The name of the property field.
+        custom_type: Optional custom relationship type.
+        
+    Returns:
+        The relationship type string compatible with .NET implementation.
+    """
+    if custom_type:
+        return custom_type
+    
+    # Use the exact .NET GraphDataModel naming convention
+    return GraphDataModel.property_name_to_relationship_type_name(field_name)
+
+
+def _convert_enum_values(value: Any) -> Any:
+    """Convert enum values to their string representation for Neo4j storage."""
+    if hasattr(value, '__class__') and hasattr(value.__class__, '__bases__'):
+        # Check if it's an enum
+        for base in value.__class__.__bases__:
+            if base.__name__ == 'Enum':
+                return value.value
+    
+    if isinstance(value, (list, tuple)):
+        return [_convert_enum_values(item) for item in value]
+    elif isinstance(value, dict):
+        return {k: _convert_enum_values(v) for k, v in value.items()}
+    
+    return value
+
+
+@dataclass(frozen=True)
 class SerializedNode:
-    """Represents a serialized node with its properties and metadata."""
+    """
+    Represents a serialized node in .NET-compatible format.
+    
+    This format matches the .NET EntityInfo structure for full interoperability.
+    """
     
     id: str
+    """The unique identifier of the node."""
+    
     labels: List[str]
+    """The labels assigned to the node."""
+    
     properties: Dict[str, Any]
-    complex_properties: Dict[str, Any]  # For related node properties
+    """Simple properties that can be stored directly on the node."""
+    
+    complex_properties: Dict[str, Any]
+    """Complex properties that need to be stored as separate nodes with relationships."""
 
 
-@dataclass
+@dataclass(frozen=True)
 class SerializedRelationship:
-    """Represents a serialized relationship with its properties."""
+    """
+    Represents a serialized relationship in .NET-compatible format.
+    
+    This format matches the .NET EntityInfo structure for full interoperability.
+    """
     
     id: str
+    """The unique identifier of the relationship."""
+    
     type: str
+    """The type/label of the relationship."""
+    
     start_node_id: str
+    """The ID of the starting node."""
+    
     end_node_id: str
+    """The ID of the ending node."""
+    
     properties: Dict[str, Any]
+    """Simple properties that can be stored directly on the relationship."""
+    
+    complex_properties: Dict[str, Any]
+    """Complex properties that need to be stored as separate nodes with relationships."""
 
 
 class Neo4jSerializer:
@@ -52,12 +112,13 @@ class Neo4jSerializer:
     Handles serialization and deserialization of graph entities to/from Neo4j.
     
     Uses .NET-compatible conventions for relationship naming and complex properties.
+    Ensures full interoperability with .NET GraphModel implementation.
     """
     
     @staticmethod
     def serialize_node(node: INode) -> SerializedNode:
         """
-        Serialize a node to Neo4j format.
+        Serialize a node to Neo4j format with .NET compatibility.
         
         Args:
             node: The node to serialize.
@@ -69,38 +130,47 @@ class Neo4jSerializer:
         node_type = type(node)
         labels = getattr(node_type, '__graph_labels__', [node_type.__name__])
         
-        # Separate simple and complex properties
-        simple_props = {}
-        complex_props = {}
+        # Use GraphDataModel to separate simple and complex properties (.NET compatible)
+        simple_props, complex_props = GraphDataModel.get_simple_and_complex_properties(node)
         
-        for field_name, field_value in node.model_dump().items():
+        # Process simple properties - convert enums and handle field metadata
+        processed_simple = {}
+        for field_name, field_value in simple_props.items():
             if field_value is None:
                 continue
                 
             field_info = get_field_info(node.model_fields[field_name])
             
             if field_info is None:
-                # No field info - treat as simple property
-                simple_props[field_name] = field_value
+                # No field info - treat as simple property with field name as label
+                processed_simple[field_name] = _convert_enum_values(field_value)
                 continue
                 
             if field_info.field_type == PropertyFieldType.SIMPLE:
-                # Simple property - store directly
+                # Simple property - use label or field name
                 prop_name = field_info.label or field_name
-                simple_props[prop_name] = field_value
+                processed_simple[prop_name] = _convert_enum_values(field_value)
                 
             elif field_info.field_type == PropertyFieldType.EMBEDDED:
-                # Embedded property - serialize as JSON
+                # Embedded property - serialize as JSON (matches .NET behavior)
                 prop_name = field_info.label or field_name
                 if field_info.storage_type == "json":
-                    simple_props[prop_name] = json.dumps(field_value, default=str)
+                    processed_simple[prop_name] = json.dumps(_convert_enum_values(field_value), default=str)
                 else:
-                    simple_props[prop_name] = field_value
-                    
-            elif field_info.field_type == PropertyFieldType.RELATED_NODE:
+                    processed_simple[prop_name] = _convert_enum_values(field_value)
+        
+        # Process complex properties - store metadata for relationship creation
+        processed_complex = {}
+        for field_name, field_value in complex_props.items():
+            if field_value is None:
+                continue
+                
+            field_info = get_field_info(node.model_fields[field_name])
+            
+            if field_info and field_info.field_type == PropertyFieldType.RELATED_NODE:
                 # Related node property - store metadata for later processing
-                complex_props[field_name] = {
-                    'value': field_value,
+                processed_complex[field_name] = {
+                    'value': _convert_enum_values(field_value),
                     'relationship_type': get_relationship_type_for_field(
                         field_name, 
                         field_info.relationship_type
@@ -112,51 +182,78 @@ class Neo4jSerializer:
         return SerializedNode(
             id=node.id,
             labels=labels,
-            properties=simple_props,
-            complex_properties=complex_props
+            properties=processed_simple,
+            complex_properties=processed_complex
         )
     
     @staticmethod
     def serialize_relationship(relationship: IRelationship) -> SerializedRelationship:
         """
-        Serialize a relationship to Neo4j format.
+        Serialize a relationship to Neo4j format with .NET compatibility.
         
         Args:
             relationship: The relationship to serialize.
             
         Returns:
-            SerializedRelationship with properties.
+            SerializedRelationship with properties and complex property metadata.
         """
         # Get relationship metadata
-        rel_type = getattr(type(relationship), '__graph_label__', type(relationship).__name__)
+        rel_type = type(relationship)
+        metadata = getattr(rel_type, '__graph_relationship_metadata__', None)
+        if metadata:
+            type_name = metadata['label']
+        else:
+            type_name = rel_type.__name__
         
-        # Serialize properties
-        properties = {}
-        for field_name, field_value in relationship.model_dump().items():
+        # Use GraphDataModel to separate simple and complex properties (.NET compatible)
+        simple_props, complex_props = GraphDataModel.get_simple_and_complex_properties(relationship)
+        
+        # Process simple properties
+        processed_simple = {}
+        for field_name, field_value in simple_props.items():
             if field_value is None:
                 continue
                 
             field_info = get_field_info(relationship.model_fields[field_name])
             
-            if field_info is None or field_info.field_type == PropertyFieldType.SIMPLE:
-                # Simple property or no field info
-                prop_name = field_info.label if field_info else field_name
-                properties[prop_name] = field_value
-                
-            elif field_info.field_type == PropertyFieldType.EMBEDDED:
+            if field_info and field_info.field_type == PropertyFieldType.EMBEDDED:
                 # Embedded property - serialize as JSON
                 prop_name = field_info.label or field_name
                 if field_info.storage_type == "json":
-                    properties[prop_name] = json.dumps(field_value, default=str)
+                    processed_simple[prop_name] = json.dumps(_convert_enum_values(field_value), default=str)
                 else:
-                    properties[prop_name] = field_value
+                    processed_simple[prop_name] = _convert_enum_values(field_value)
+            else:
+                # Simple property
+                prop_name = field_info.label if field_info else field_name
+                processed_simple[prop_name or field_name] = _convert_enum_values(field_value)
+        
+        # Process complex properties
+        processed_complex = {}
+        for field_name, field_value in complex_props.items():
+            if field_value is None:
+                continue
+                
+            field_info = get_field_info(relationship.model_fields[field_name])
+            
+            if field_info and field_info.field_type == PropertyFieldType.RELATED_NODE:
+                processed_complex[field_name] = {
+                    'value': _convert_enum_values(field_value),
+                    'relationship_type': get_relationship_type_for_field(
+                        field_name, 
+                        field_info.relationship_type
+                    ),
+                    'private': field_info.private_relationship,
+                    'field_info': field_info
+                }
         
         return SerializedRelationship(
             id=relationship.id,
-            type=rel_type,
+            type=type_name,
             start_node_id=relationship.start_node_id,
             end_node_id=relationship.end_node_id,
-            properties=properties
+            properties=processed_simple,
+            complex_properties=processed_complex
         )
     
     @staticmethod
@@ -166,7 +263,7 @@ class Neo4jSerializer:
         complex_properties: Optional[Dict[str, Any]] = None
     ) -> INode:
         """
-        Deserialize a Neo4j record to a node.
+        Deserialize a Neo4j record to a node with .NET compatibility.
         
         Args:
             record: The Neo4j record containing node data.
@@ -192,6 +289,20 @@ class Neo4jSerializer:
                         # Related node property - should be handled separately
                         node_data[field_name] = complex_data
         
+        # Deserialize embedded JSON properties
+        for field_name, field_info in node_type.model_fields.items():
+            if field_name in node_data:
+                field_meta = get_field_info(field_info)
+                if (field_meta and 
+                    field_meta.field_type == PropertyFieldType.EMBEDDED and 
+                    field_meta.storage_type == "json" and
+                    isinstance(node_data[field_name], str)):
+                    try:
+                        node_data[field_name] = json.loads(node_data[field_name])
+                    except (json.JSONDecodeError, TypeError):
+                        # If JSON parsing fails, keep the original value
+                        pass
+        
         # Create node instance
         return node_type(**node_data)
     
@@ -201,7 +312,7 @@ class Neo4jSerializer:
         relationship_type: Type[IRelationship]
     ) -> IRelationship:
         """
-        Deserialize a Neo4j record to a relationship.
+        Deserialize a Neo4j record to a relationship with .NET compatibility.
         
         Args:
             record: The Neo4j record containing relationship data.
@@ -214,11 +325,18 @@ class Neo4jSerializer:
         rel_data = dict(record)
         
         # Handle embedded properties
-        for field_name, field_value in rel_data.items():
-            field_info = get_field_info(relationship_type.model_fields[field_name])
-            if field_info and field_info.field_type == PropertyFieldType.EMBEDDED:
-                if field_info.storage_type == "json":
-                    rel_data[field_name] = json.loads(field_value)
+        for field_name, field_info in relationship_type.model_fields.items():
+            if field_name in rel_data:
+                field_meta = get_field_info(field_info)
+                if (field_meta and 
+                    field_meta.field_type == PropertyFieldType.EMBEDDED and 
+                    field_meta.storage_type == "json" and
+                    isinstance(rel_data[field_name], str)):
+                    try:
+                        rel_data[field_name] = json.loads(rel_data[field_name])
+                    except (json.JSONDecodeError, TypeError):
+                        # If JSON parsing fails, keep the original value
+                        pass
         
         # Create relationship instance
         return relationship_type(**rel_data)
@@ -231,7 +349,9 @@ class Neo4jSerializer:
         target_alias: str = None
     ) -> str:
         """
-        Generate Cypher for loading complex properties.
+        Generate Cypher for loading complex properties with .NET compatibility.
+        
+        Uses the same pattern as .NET CypherQueryBuilder for complex property loading.
         
         Args:
             parent_alias: The alias of the parent node.
@@ -245,8 +365,10 @@ class Neo4jSerializer:
         if target_alias is None:
             target_alias = f"{field_name}_node"
             
+        # Use the .NET pattern for complex property loading
         return f"""
         OPTIONAL MATCH ({parent_alias})-[{field_name}_rel:{relationship_type}]->({target_alias})
+        WHERE type({field_name}_rel) STARTS WITH '{GraphDataModel.PROPERTY_RELATIONSHIP_TYPE_NAME_PREFIX}'
         """
     
     @staticmethod

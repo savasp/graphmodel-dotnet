@@ -59,7 +59,7 @@ class Skill:
 # APPROACH 1: Using auto_field (Recommended for most cases)
 # ============================================================================
 
-@node(label="Person")
+@node("Person")
 class Person(Node):
     """
     Person entity using auto_field for automatic field type detection.
@@ -98,7 +98,7 @@ class Person(Node):
 # APPROACH 2: Explicit field types (For fine-grained control)
 # ============================================================================
 
-@node(label="PersonExplicit")
+@node("PersonExplicit")
 class PersonExplicit(Node):
     """
     Person entity using explicit field types for maximum control.
@@ -140,7 +140,7 @@ class PersonExplicit(Node):
 # APPROACH 3: Mixed approach (Best of both worlds)
 # ============================================================================
 
-@node(label="PersonMixed")
+@node("PersonMixed")
 class PersonMixed(Node):
     """
     Person entity using a mixed approach.
@@ -169,7 +169,7 @@ class PersonMixed(Node):
 # RELATIONSHIP EXAMPLE
 # ============================================================================
 
-@relationship(label="KNOWS", direction=RelationshipDirection.BIDIRECTIONAL)
+@relationship("KNOWS")
 class Knows(Relationship):
     """Relationship between people."""
     
@@ -216,7 +216,7 @@ def demonstrate_auto_field_benefits():
     
     print("WITH auto_field:")
     print("""
-    @node(label="Person")
+    @node("Person")
     class Person(Node):
         name: str = auto_field(index=True)
         age: int = auto_field(default=0)
@@ -226,7 +226,7 @@ def demonstrate_auto_field_benefits():
     
     print("WITH explicit fields:")
     print("""
-    @node(label="Person")
+    @node("Person")
     class Person(Node):
         name: str = property_field(index=True)
         age: int = property_field(default=0)

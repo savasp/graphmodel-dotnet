@@ -14,11 +14,14 @@ from graph_model.core.graph import IGraph, IGraphTransaction
 from graph_model.core.node import INode, Node
 from graph_model.core.relationship import IRelationship, Relationship
 
+from .aggregation_executor import Neo4jAggregationExecutor
+from .async_queryable import Neo4jAsyncNodeQueryable
 from .driver import Neo4jDriver
 from .node_queryable import Neo4jNodeQueryable
 from .relationship_queryable import Neo4jRelationshipQueryable
 from .serialization import Neo4jSerializer, SerializedNode, SerializedRelationship
 from .transaction import Neo4jTransaction
+from .traversal_executor import Neo4jTraversalExecutor
 
 TNode = TypeVar('TNode', bound=INode)
 TRelationship = TypeVar('TRelationship', bound=IRelationship)
@@ -35,6 +38,21 @@ class Neo4jGraph(IGraph[TNode, TRelationship]):
     def __init__(self):
         """Initialize the Neo4j graph instance."""
         self._serializer = Neo4jSerializer()
+        self._driver = Neo4jDriver()
+        self._traversal_executor = None  # Lazy initialization
+        self._aggregation_executor = None  # Lazy initialization
+    
+    def _get_traversal_executor(self, session) -> Neo4jTraversalExecutor:
+        """Get or create traversal executor with session."""
+        if self._traversal_executor is None:
+            self._traversal_executor = Neo4jTraversalExecutor(session, self._serializer)
+        return self._traversal_executor
+    
+    def _get_aggregation_executor(self, session) -> Neo4jAggregationExecutor:
+        """Get or create aggregation executor with session."""
+        if self._aggregation_executor is None:
+            self._aggregation_executor = Neo4jAggregationExecutor(session, self._serializer)
+        return self._aggregation_executor
     
     async def create_node(
         self, 
@@ -407,11 +425,13 @@ class Neo4jGraph(IGraph[TNode, TRelationship]):
     
     def nodes(self, node_type: Type[TNode]) -> 'IGraphNodeQueryable[TNode]':
         """Get a queryable for nodes of the specified type."""
-        return Neo4jNodeQueryable(node_type)
+        session = Neo4jDriver.session()
+        return Neo4jNodeQueryable(node_type, session)
     
     def relationships(self, relationship_type: Type[TRelationship]) -> 'IGraphRelationshipQueryable[TRelationship]':
         """Get a queryable for relationships of the specified type."""
-        return Neo4jRelationshipQueryable(relationship_type)
+        session = Neo4jDriver.session()
+        return Neo4jRelationshipQueryable(relationship_type, session)
     
     async def _create_complex_properties(
         self, 

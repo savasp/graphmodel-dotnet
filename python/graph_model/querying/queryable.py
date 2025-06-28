@@ -2,7 +2,9 @@
 
 from abc import ABC, abstractmethod
 from typing import (
+    TYPE_CHECKING,
     Any,
+    AsyncIterator,
     Awaitable,
     Callable,
     Generic,
@@ -16,6 +18,11 @@ from typing import (
 from ..core.node import INode
 from ..core.relationship import IRelationship
 from ..core.transaction import IGraphTransaction
+
+# Forward declarations to avoid circular imports
+if TYPE_CHECKING:
+    from .aggregation import AggregationBuilder, GroupByResult
+    from .async_streaming import IAsyncGraphQueryable
 
 # Type variables for generic types
 T = TypeVar("T")
@@ -165,6 +172,45 @@ class IGraphQueryable(Protocol[T]):
         
         Returns:
             True if all elements satisfy the condition, False otherwise.
+        """
+        ...
+    
+    def group_by(self, key_selector: Callable[[T], Any]) -> "IGraphQueryable[GroupByResult[Any, T]]":
+        """
+        Groups elements by a key selector function.
+        
+        Args:
+            key_selector: A function that extracts the grouping key from each element.
+        
+        Returns:
+            A new queryable of grouped results.
+        """
+        ...
+    
+    def aggregate(self) -> "AggregationBuilder":
+        """
+        Creates an aggregation builder for this queryable.
+        
+        Returns:
+            An AggregationBuilder for constructing aggregation queries.
+        """
+        ...
+    
+    def as_async_queryable(self) -> "IAsyncGraphQueryable[T]":
+        """
+        Converts this queryable to an async queryable for streaming operations.
+        
+        Returns:
+            An async queryable for streaming query execution.
+        """
+        ...
+    
+    def __aiter__(self) -> AsyncIterator[T]:
+        """
+        Returns an async iterator for streaming query results.
+        
+        Returns:
+            Async iterator over query results.
         """
         ...
 

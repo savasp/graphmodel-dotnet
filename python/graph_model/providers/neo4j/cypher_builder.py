@@ -292,7 +292,7 @@ class CypherBuilder:
         complex_collections = []
         for field_name in self.complex_properties.keys():
             target_alias = f"{field_name}_node"
-            complex_collections.append(f"{field_name}: {target_alias}")
+            complex_collections.append(f"{target_alias} AS {field_name}")
         
         complex_part = ", ".join(complex_collections)
         return f"WITH {self.node_alias}, {complex_part}"

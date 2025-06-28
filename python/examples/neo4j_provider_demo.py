@@ -18,11 +18,8 @@ from typing import List, Optional
 from graph_model import (
     Node,
     Relationship,
-    RelationshipDirection,
     auto_field,
     node,
-    property_field,
-    related_node_field,
     relationship,
 )
 from graph_model.providers.neo4j import Neo4jDriver, Neo4jGraph
@@ -48,7 +45,7 @@ class ContactInfo:
     preferences: dict = None
 
 
-@node(label="Person")
+@node("Person")
 class Person(Node):
     """Person entity using auto_field for automatic field type detection."""
     
@@ -72,7 +69,7 @@ class Person(Node):
     previous_addresses: List[Address] = auto_field(default_factory=list)
 
 
-@relationship(label="KNOWS", direction=RelationshipDirection.BIDIRECTIONAL)
+@relationship("KNOWS")
 class Knows(Relationship):
     """Relationship between people."""
     

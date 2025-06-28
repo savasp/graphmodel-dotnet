@@ -1,58 +1,102 @@
-"""Graph traversal functionality and utilities."""
+"""
+Graph traversal functionality with PathSegments support.
 
+This module provides the foundational PathSegments method that matches the .NET implementation,
+along with other traversal operations built on top of it.
+"""
+
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, List, Optional, Protocol, Type, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Protocol, Type, TypeVar, Union
 
 from ..core.node import INode
 from ..core.relationship import IRelationship
 
-N = TypeVar("N", bound=INode)
-R = TypeVar("R", bound=IRelationship)
+TStartNode = TypeVar('TStartNode', bound=INode)
+TRelationship = TypeVar('TRelationship', bound=IRelationship)
+TEndNode = TypeVar('TEndNode', bound=INode)
 
 
-class TraversalDirection(Enum):
-    """Defines the direction for graph traversal operations."""
+class GraphTraversalDirection(Enum):
+    """
+    Represents the direction of graph traversal.
+    
+    Matches the .NET GraphTraversalDirection enum.
+    """
     
     OUTGOING = "outgoing"
-    """Traverse in the outgoing direction (follow relationship arrows)"""
+    """Follow relationships in the outgoing direction."""
     
     INCOMING = "incoming"
-    """Traverse in the incoming direction (reverse relationship arrows)"""
+    """Follow relationships in the incoming direction."""
     
     BOTH = "both"
-    """Traverse in both directions (ignore relationship direction)"""
+    """Follow relationships in both directions."""
+
+
+class IGraphPathSegment(Protocol):
+    """
+    Base interface for graph path segments.
+    
+    Matches the .NET IGraphPathSegment interface.
+    """
+    
+    @property
+    def start_node(self) -> INode:
+        """Gets the starting node of the path segment."""
+        ...
+    
+    @property
+    def end_node(self) -> INode:
+        """Gets the ending node of the path segment."""
+        ...
+    
+    @property
+    def relationship(self) -> IRelationship:
+        """Gets the relationship connecting the start and end nodes."""
+        ...
+
+
+class IGraphPathSegmentTyped(Protocol, Generic[TStartNode, TRelationship, TEndNode]):
+    """
+    Strongly-typed interface for graph path segments.
+    
+    Matches the .NET IGraphPathSegment<TSource, TRel, TTarget> interface.
+    """
+    
+    @property
+    def start_node(self) -> TStartNode:
+        """Gets the strongly-typed starting node of the path segment."""
+        ...
+    
+    @property
+    def end_node(self) -> TEndNode:
+        """Gets the strongly-typed ending node of the path segment."""
+        ...
+    
+    @property
+    def relationship(self) -> TRelationship:
+        """Gets the strongly-typed relationship connecting the nodes."""
+        ...
 
 
 @dataclass(frozen=True)
-class TraversalStep:
+class GraphPathSegment(Generic[TStartNode, TRelationship, TEndNode]):
     """
-    Represents a single step in a graph traversal operation.
+    Concrete implementation of a graph path segment.
     
-    Defines what relationship type to follow and what target node type to find.
+    Matches the .NET GraphPathSegment<TSource, TRel, TTarget> record.
     """
     
-    relationship_type: Type[IRelationship]
-    """The type of relationship to traverse."""
+    start_node: TStartNode
+    """The starting node of the path segment."""
     
-    target_node_type: Type[INode]
-    """The expected type of target nodes."""
+    relationship: TRelationship
+    """The relationship connecting the start and end nodes."""
     
-    direction: TraversalDirection = TraversalDirection.OUTGOING
-    """The direction to traverse the relationship."""
-    
-    min_depth: int = 1
-    """Minimum depth for this traversal step."""
-    
-    max_depth: int = 1
-    """Maximum depth for this traversal step."""
-    
-    def __post_init__(self) -> None:
-        """Validate traversal step parameters."""
-        if self.min_depth < 0:
-            raise ValueError("Minimum depth must be non-negative")
-        if self.max_depth < self.min_depth:
-            raise ValueError("Maximum depth must be greater than or equal to minimum depth")
+    end_node: TEndNode
+    """The ending node of the path segment."""
 
 
 @dataclass(frozen=True)
@@ -75,163 +119,323 @@ class TraversalPath:
             raise ValueError("Path must contain at least one node")
         if len(self.relationships) != len(self.nodes) - 1:
             raise ValueError("Path must have exactly one fewer relationship than nodes")
+    
+    @property
+    def length(self) -> int:
+        """Get the length of the path (number of relationships)."""
+        return len(self.relationships)
+    
+    def get_path_segments(self) -> List[GraphPathSegment[INode, IRelationship, INode]]:
+        """
+        Convert this path to a list of path segments.
+        
+        Returns:
+            List of GraphPathSegment objects representing each step in the path.
+        """
+        segments = []
+        for i in range(len(self.relationships)):
+            segment = GraphPathSegment(
+                start_node=self.nodes[i],
+                relationship=self.relationships[i],
+                end_node=self.nodes[i + 1]
+            )
+            segments.append(segment)
+        return segments
 
 
 class IGraphTraversal(Protocol):
     """
-    Protocol for graph traversal operations.
+    Interface for graph traversal operations.
     
-    Provides methods for configuring and executing complex graph traversals
-    with multiple steps and depth controls.
+    Provides methods for configuring and executing graph traversals.
     """
     
-    def add_step(
-        self,
-        relationship_type: Type[R],
-        target_node_type: Type[N],
-        direction: TraversalDirection = TraversalDirection.OUTGOING,
-        min_depth: int = 1,
-        max_depth: int = 1
-    ) -> "IGraphTraversal":
-        """
-        Add a traversal step to the path.
-        
-        Args:
-            relationship_type: The type of relationship to traverse.
-            target_node_type: The expected type of target nodes.
-            direction: The direction to traverse.
-            min_depth: Minimum depth for this step.
-            max_depth: Maximum depth for this step.
-        
-        Returns:
-            The traversal instance for method chaining.
-        """
+    def with_direction(self, direction: GraphTraversalDirection) -> "IGraphTraversal":
+        """Set the traversal direction."""
         ...
     
-    def with_depth_limit(self, max_total_depth: int) -> "IGraphTraversal":
-        """
-        Set the maximum total depth for the entire traversal.
-        
-        Args:
-            max_total_depth: The maximum total depth allowed.
-        
-        Returns:
-            The traversal instance for method chaining.
-        """
+    def with_depth(self, min_depth: int, max_depth: Optional[int] = None) -> "IGraphTraversal":
+        """Set the traversal depth constraints."""
         ...
     
-    def include_paths(self) -> "IGraphTraversal":
-        """
-        Configure the traversal to return full path information.
-        
-        Returns:
-            The traversal instance for method chaining.
-        """
+    def where(self, predicate: str) -> "IGraphTraversal":
+        """Add a WHERE clause to filter traversal results."""
         ...
     
-    async def execute(self) -> List[INode]:
-        """
-        Execute the traversal and return the target nodes.
-        
-        Returns:
-            A list of nodes found at the end of the traversal paths.
-        """
+    async def to_path_segments(self) -> List[GraphPathSegment[INode, IRelationship, INode]]:
+        """Execute traversal and return path segments."""
         ...
     
-    async def execute_with_paths(self) -> List[TraversalPath]:
-        """
-        Execute the traversal and return full path information.
-        
-        Returns:
-            A list of complete paths through the graph.
-        """
+    async def to_nodes(self) -> List[INode]:
+        """Execute traversal and return target nodes."""
+        ...
+    
+    async def to_relationships(self) -> List[IRelationship]:
+        """Execute traversal and return relationships."""
+        ...
+    
+    async def to_paths(self) -> List[TraversalPath]:
+        """Execute traversal and return complete paths."""
         ...
 
 
 class GraphTraversal:
     """
-    Base implementation of graph traversal functionality.
+    Concrete implementation of graph traversal.
     
-    Provides a fluent interface for building complex graph traversal queries.
+    This class provides the foundational PathSegments functionality that matches
+    the .NET GraphTraversalExtensions.PathSegments method.
     """
     
-    def __init__(self, start_nodes: List[INode]) -> None:
-        """
-        Initialize a traversal from the given start nodes.
-        
-        Args:
-            start_nodes: The nodes to start traversal from.
-        """
+    def __init__(
+        self,
+        start_nodes: List[INode],
+        relationship_type: Optional[Type[IRelationship]] = None,
+        target_node_type: Optional[Type[INode]] = None
+    ):
         self._start_nodes = start_nodes
-        self._steps: List[TraversalStep] = []
-        self._max_total_depth: Optional[int] = None
+        self._relationship_type = relationship_type
+        self._target_node_type = target_node_type
+        self._direction = GraphTraversalDirection.OUTGOING
+        self._min_depth = 1
+        self._max_depth = 1
+        self._where_clauses: List[str] = []
         self._include_paths = False
     
-    def add_step(
-        self,
-        relationship_type: Type[R],
-        target_node_type: Type[N],
-        direction: TraversalDirection = TraversalDirection.OUTGOING,
-        min_depth: int = 1,
-        max_depth: int = 1
-    ) -> "GraphTraversal":
-        """Add a traversal step."""
-        step = TraversalStep(
-            relationship_type=relationship_type,
-            target_node_type=target_node_type,
-            direction=direction,
-            min_depth=min_depth,
-            max_depth=max_depth
-        )
+    def with_direction(self, direction: GraphTraversalDirection) -> "GraphTraversal":
+        """
+        Set the traversal direction.
         
-        new_traversal = GraphTraversal(self._start_nodes)
-        new_traversal._steps = self._steps + [step]
-        new_traversal._max_total_depth = self._max_total_depth
+        Args:
+            direction: The direction to traverse relationships.
+            
+        Returns:
+            New GraphTraversal instance with the specified direction.
+        """
+        new_traversal = GraphTraversal(
+            self._start_nodes, 
+            self._relationship_type, 
+            self._target_node_type
+        )
+        new_traversal._direction = direction
+        new_traversal._min_depth = self._min_depth
+        new_traversal._max_depth = self._max_depth
+        new_traversal._where_clauses = self._where_clauses.copy()
         new_traversal._include_paths = self._include_paths
         return new_traversal
     
-    def with_depth_limit(self, max_total_depth: int) -> "GraphTraversal":
-        """Set maximum total depth."""
-        if max_total_depth < 0:
-            raise ValueError("Maximum depth must be non-negative")
+    def with_depth(self, min_depth: int, max_depth: Optional[int] = None) -> "GraphTraversal":
+        """
+        Set the traversal depth constraints.
         
-        new_traversal = GraphTraversal(self._start_nodes)
-        new_traversal._steps = self._steps.copy()
-        new_traversal._max_total_depth = max_total_depth
+        Args:
+            min_depth: Minimum depth to traverse.
+            max_depth: Maximum depth to traverse (defaults to min_depth).
+            
+        Returns:
+            New GraphTraversal instance with the specified depth constraints.
+        """
+        new_traversal = GraphTraversal(
+            self._start_nodes, 
+            self._relationship_type, 
+            self._target_node_type
+        )
+        new_traversal._direction = self._direction
+        new_traversal._min_depth = min_depth
+        new_traversal._max_depth = max_depth if max_depth is not None else min_depth
+        new_traversal._where_clauses = self._where_clauses.copy()
+        new_traversal._include_paths = self._include_paths
+        return new_traversal
+    
+    def where(self, predicate: str) -> "GraphTraversal":
+        """
+        Add a WHERE clause to filter traversal results.
+        
+        Args:
+            predicate: Cypher predicate expression.
+            
+        Returns:
+            New GraphTraversal instance with the added WHERE clause.
+        """
+        new_traversal = GraphTraversal(
+            self._start_nodes, 
+            self._relationship_type, 
+            self._target_node_type
+        )
+        new_traversal._direction = self._direction
+        new_traversal._min_depth = self._min_depth
+        new_traversal._max_depth = self._max_depth
+        new_traversal._where_clauses = self._where_clauses + [predicate]
         new_traversal._include_paths = self._include_paths
         return new_traversal
     
     def include_paths(self) -> "GraphTraversal":
         """Enable path tracking."""
-        new_traversal = GraphTraversal(self._start_nodes)
-        new_traversal._steps = self._steps.copy()
-        new_traversal._max_total_depth = self._max_total_depth
+        new_traversal = GraphTraversal(
+            self._start_nodes, 
+            self._relationship_type, 
+            self._target_node_type
+        )
+        new_traversal._direction = self._direction
+        new_traversal._min_depth = self._min_depth
+        new_traversal._max_depth = self._max_depth
+        new_traversal._where_clauses = self._where_clauses.copy()
         new_traversal._include_paths = True
         return new_traversal
     
-    async def execute(self) -> List[INode]:
-        """Execute traversal and return target nodes."""
+    async def to_path_segments(self) -> List[GraphPathSegment[INode, IRelationship, INode]]:
+        """
+        Execute traversal and return path segments.
+        
+        This is the foundational method that matches .NET's PathSegments functionality.
+        All other traversal methods are built on top of this.
+        
+        Returns:
+            List of GraphPathSegment objects representing each traversal step.
+        """
         # This would be implemented by provider-specific subclasses
-        raise NotImplementedError("Traversal execution must be implemented by provider")
+        raise NotImplementedError("PathSegments execution must be implemented by provider")
     
-    async def execute_with_paths(self) -> List[TraversalPath]:
-        """Execute traversal and return full paths."""
+    async def to_nodes(self) -> List[INode]:
+        """
+        Execute traversal and return target nodes.
+        
+        This is equivalent to .NET's Traverse<TStartNode, TRelationship, TEndNode>()
+        which internally calls PathSegments().Select(ps => ps.EndNode).
+        
+        Returns:
+            List of target nodes reached through traversal.
+        """
+        path_segments = await self.to_path_segments()
+        return [segment.end_node for segment in path_segments]
+    
+    async def to_relationships(self) -> List[IRelationship]:
+        """
+        Execute traversal and return relationships.
+        
+        This is equivalent to .NET's TraverseRelationships<TStartNode, TRelationship, TEndNode>()
+        which internally calls PathSegments().Select(ps => ps.Relationship).
+        
+        Returns:
+            List of relationships traversed.
+        """
+        path_segments = await self.to_path_segments()
+        return [segment.relationship for segment in path_segments]
+    
+    async def to_paths(self) -> List[TraversalPath]:
+        """
+        Execute traversal and return complete paths.
+        
+        Returns:
+            List of TraversalPath objects representing complete paths from start to end.
+        """
         # This would be implemented by provider-specific subclasses
         raise NotImplementedError("Path traversal execution must be implemented by provider")
+    
+    def build_cypher_pattern(self) -> str:
+        """
+        Build the Cypher pattern for this traversal.
+        
+        Returns:
+            Cypher pattern string that can be used in MATCH clauses.
+        """
+        # Direction arrow
+        direction_pattern = {
+            GraphTraversalDirection.OUTGOING: "->",
+            GraphTraversalDirection.INCOMING: "<-",
+            GraphTraversalDirection.BOTH: "-"
+        }[self._direction]
+        
+        # Relationship type
+        rel_type = ""
+        if self._relationship_type:
+            # Get the relationship type from metadata
+            metadata = getattr(self._relationship_type, '__graph_relationship_metadata__', None)
+            if metadata:
+                rel_type = f":{metadata['label']}"
+            else:
+                rel_type = f":{self._relationship_type.__name__}"
+        
+        # Depth pattern
+        depth_pattern = ""
+        if self._min_depth == self._max_depth:
+            if self._min_depth != 1:
+                depth_pattern = f"*{self._min_depth}"
+        else:
+            depth_pattern = f"*{self._min_depth}..{self._max_depth}"
+        
+        # Build the pattern
+        if self._direction == GraphTraversalDirection.INCOMING:
+            pattern = f"<-[r{rel_type}{depth_pattern}]-"
+        elif self._direction == GraphTraversalDirection.BOTH:
+            pattern = f"-[r{rel_type}{depth_pattern}]-"
+        else:  # OUTGOING
+            pattern = f"-[r{rel_type}{depth_pattern}]->"
+        
+        return pattern
 
 
-def create_traversal_from_nodes(nodes: List[INode]) -> GraphTraversal:
+def path_segments(
+    start_nodes: List[TStartNode],
+    relationship_type: Type[TRelationship],
+    target_node_type: Type[TEndNode]
+) -> GraphTraversal:
     """
-    Create a new traversal starting from the given nodes.
+    Create a graph traversal that returns path segments.
+    
+    This is the foundational PathSegments method that matches the .NET implementation.
+    All other traversal operations are built on top of this method.
     
     Args:
-        nodes: The nodes to start traversal from.
-    
+        start_nodes: The starting nodes for traversal.
+        relationship_type: The type of relationships to traverse.
+        target_node_type: The type of target nodes to reach.
+        
     Returns:
-        A new GraphTraversal instance.
+        GraphTraversal configured for path segment traversal.
     """
-    return GraphTraversal(nodes)
+    return GraphTraversal(start_nodes, relationship_type, target_node_type)
 
 
-# Export for compatibility with main package imports
-GraphTraversalDirection = TraversalDirection 
+def traverse(
+    start_nodes: List[TStartNode],
+    relationship_type: Type[TRelationship],
+    target_node_type: Type[TEndNode]
+) -> GraphTraversal:
+    """
+    Create a graph traversal that returns target nodes.
+    
+    This is a convenience method built on top of PathSegments, matching the .NET
+    Traverse<TStartNode, TRelationship, TEndNode>() method.
+    
+    Args:
+        start_nodes: The starting nodes for traversal.
+        relationship_type: The type of relationships to traverse.
+        target_node_type: The type of target nodes to reach.
+        
+    Returns:
+        GraphTraversal configured for node traversal.
+    """
+    return path_segments(start_nodes, relationship_type, target_node_type)
+
+
+def traverse_relationships(
+    start_nodes: List[TStartNode],
+    relationship_type: Type[TRelationship],
+    target_node_type: Type[TEndNode]
+) -> GraphTraversal:
+    """
+    Create a graph traversal that returns relationships.
+    
+    This is a convenience method built on top of PathSegments, matching the .NET
+    TraverseRelationships<TStartNode, TRelationship, TEndNode>() method.
+    
+    Args:
+        start_nodes: The starting nodes for traversal.
+        relationship_type: The type of relationships to traverse.
+        target_node_type: The type of target nodes to reach.
+        
+    Returns:
+        GraphTraversal configured for relationship traversal.
+    """
+    return path_segments(start_nodes, relationship_type, target_node_type) 

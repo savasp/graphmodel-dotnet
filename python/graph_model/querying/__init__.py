@@ -8,7 +8,7 @@ from .queryable import (
     IGraphRelationshipQueryable,
     QueryableBase,
 )
-from .traversal import IGraphTraversal, TraversalDirection, TraversalStep
+from .traversal import GraphTraversal, GraphTraversalDirection, IGraphTraversal
 
 __all__ = [
     # Core queryable interfaces
@@ -22,7 +22,7 @@ __all__ = [
     "GraphRelationshipQueryable",
     
     # Traversal support
-    "TraversalDirection",
-    "TraversalStep",
+    "GraphTraversalDirection",
+    "GraphTraversal",
     "IGraphTraversal",
 ] 
