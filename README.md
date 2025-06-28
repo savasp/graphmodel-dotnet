@@ -294,6 +294,7 @@ GraphModel follows a clean, layered architecture:
 
 ## 📖 Related Resources
 
+- [Blog Post: GraphModel: A .NET Abstraction for Graphs](https://savas.me/2025/06/27/graphmodel-a-net-abstraction-for-graphs/)
 - [Blog Post: Playing with graphs and neo4j](https://savas.me/2025/05/23/playing-with-graphs-and-neo4j/) by [Savas Parastatidis](https://savas.me)
 - [Neo4j Documentation](https://neo4j.com/docs/)
 - [Graph Database Concepts](https://neo4j.com/developer/graph-database/)
