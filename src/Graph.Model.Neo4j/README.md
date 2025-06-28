@@ -52,34 +52,22 @@ This provider implements:
 var graph = new Neo4jGraph(
     connectionString: "neo4j+s://localhost:7687",
     username: "neo4j",
-    password: "password",
-    config: new ConfigurationOptions
-    {
-        MaxConnectionLifetime = TimeSpan.FromMinutes(30),
-        MaxConnectionPoolSize = 100,
-        ConnectionTimeout = TimeSpan.FromSeconds(30)
-    }
+    password: "password"
 );
 ```
 
 ## 📚 Documentation
 
-For comprehensive documentation and examples:
+For comprehensive documentation, examples, and best practices:
 
-**🌐 [Complete Documentation](https://savasp.github.io/graphmodel/)**
-
-### Key Sections
-
-- **[Neo4j Provider Guide](https://savasp.github.io/graphmodel/packages/neo4j/)** - Detailed setup and configuration
-- **[Performance Guide](https://savasp.github.io/graphmodel/guides/performance.html)** - Neo4j-specific optimizations
-- **[Connection Management](https://savasp.github.io/graphmodel/packages/neo4j/connections.html)** - Pool configuration
-- **[Cypher Generation](https://savasp.github.io/graphmodel/packages/neo4j/cypher.html)** - Understanding query translation
+**🌐 [Complete Documentation](https://github.com/savasp/graphmodel/)**
 
 ## 🔗 Related Packages
 
-- **[Cvoya.Graph.Model](https://www.nuget.org/packages/Cvoya.Graph.Model/)** - Core abstractions (required)
-- **[Cvoya.Graph.Model.Serialization](https://www.nuget.org/packages/Cvoya.Graph.Model.Serialization/)** - Object serialization
-- **[Cvoya.Graph.Model.Analyzers](https://www.nuget.org/packages/Cvoya.Graph.Model.Analyzers/)** - Compile-time validation
+- **[Cvoya.Graph.Model.Neo4j](https://www.nuget.org/packages/Cvoya.Graph.Model.Neo4j/)** - Neo4j database provider
+- **[Cvoya.Graph.Model.Serialization](https://www.nuget.org/packages/Cvoya.Graph.Model.Serialization/)** - Object serialization framework
+- **[Cvoya.Graph.Model.Serialization.CodeGen](https://www.nuget.org/packages/Cvoya.Graph.Model.Serialization.CodeGen/)** - Code generation for performant serialization/deserialization
+- **[Cvoya.Graph.Model.Analyzers](https://www.nuget.org/packages/Cvoya.Graph.Model.Analyzers/)** - Compile-time code analyzers
 
 ## 🤝 Contributing
 
@@ -91,4 +79,4 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](https:
 
 ---
 
-**Need help?** Check the [troubleshooting guide](https://savasp.github.io/graphmodel/guides/troubleshooting.html) or [open an issue](https://github.com/savasp/graphmodel/issues).
+**Need help?** Check the [troubleshooting guide](https://github.com/savasp/graphmodel/docs/troubleshooting.md) or [open an issue](https://github.com/savasp/graphmodel/issues).

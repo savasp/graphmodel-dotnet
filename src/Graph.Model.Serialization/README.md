@@ -7,97 +7,20 @@
 
 ## 🚀 Quick Start
 
-```bash
-dotnet add package Cvoya.Graph.Model.Serialization
-```
-
-```csharp
-using Cvoya.Graph.Model.Serialization;
-
-// Register custom serializers
-var registry = new EntitySerializerRegistry();
-registry.RegisterSerializer<CustomType>(new CustomTypeSerializer());
-
-// Use with GraphModel
-var graph = new Neo4jGraph(connectionString, registry);
-
-// Complex objects are automatically serialized
-public class User : INode
-{
-    public string Id { get; set; }
-
-    [Property]
-    public Address HomeAddress { get; set; } // Automatically serialized
-
-    [Property]
-    public List<ContactInfo> Contacts { get; set; } // Collections supported
-}
-```
-
-## 📦 Core Features
-
-- **Automatic complex type handling** - Seamless serialization of nested objects
-- **Collection support** - Lists, arrays, dictionaries, and custom collections
-- **Type safety** - Strongly-typed serialization with compile-time validation
-- **Performance optimized** - Efficient serialization with minimal allocations
-- **Extensible** - Custom serializers for domain-specific types
-- **Schema evolution** - Handles type changes and migrations gracefully
-
-## 🏗️ Architecture
-
-This package provides:
-
-- **`IEntitySerializer<T>`** - Custom serializer interface
-- **`EntitySerializerRegistry`** - Centralized serializer management
-- **`EntityFactory`** - Object creation and materialization
-- **Runtime representation** - Internal object graph representation
-
-## 🔧 Custom Serializers
-
-```csharp
-public class MoneySerializer : IEntitySerializer<Money>
-{
-    public Serialized Serialize(Money value, EntitySerializerRegistry registry)
-    {
-        return new SimpleValue(new Dictionary<string, object>
-        {
-            ["amount"] = value.Amount,
-            ["currency"] = value.Currency.Code
-        });
-    }
-
-    public Money Deserialize(Serialized data, EntitySerializerRegistry registry)
-    {
-        var dict = data.As<Dictionary<string, object>>();
-        return new Money(
-            (decimal)dict["amount"],
-            new Currency((string)dict["currency"])
-        );
-    }
-}
-
-// Register the serializer
-registry.RegisterSerializer<Money>(new MoneySerializer());
-```
+In the future, this package will be used to support the serialization/deserialization needs of Graph Model provider implementers. It uses an intermediate representation for in-memory object graphs.
 
 ## 📚 Documentation
 
-For comprehensive documentation and examples:
+For comprehensive documentation, examples, and best practices:
 
-**🌐 [Complete Documentation](https://savasp.github.io/graphmodel/)**
-
-### Key Sections
-
-- **[Serialization Guide](https://savasp.github.io/graphmodel/packages/serialization/)** - Detailed setup and usage
-- **[Custom Serializers](https://savasp.github.io/graphmodel/packages/serialization/custom-serializers.html)** - Building custom serializers
-- **[Performance](https://savasp.github.io/graphmodel/packages/serialization/performance.html)** - Optimization techniques
-- **[Schema Evolution](https://savasp.github.io/graphmodel/packages/serialization/schema-evolution.html)** - Handling type changes
+**🌐 [Complete Documentation](https://github.com/savasp/graphmodel/)**
 
 ## 🔗 Related Packages
 
-- **[Cvoya.Graph.Model](https://www.nuget.org/packages/Cvoya.Graph.Model/)** - Core abstractions (required)
-- **[Cvoya.Graph.Model.Neo4j](https://www.nuget.org/packages/Cvoya.Graph.Model.Neo4j/)** - Neo4j provider (uses this package)
-- **[Cvoya.Graph.Model.Serialization.CodeGen](https://www.nuget.org/packages/Cvoya.Graph.Model.Serialization.CodeGen/)** - Compile-time code generation
+- **[Cvoya.Graph.Model.Neo4j](https://www.nuget.org/packages/Cvoya.Graph.Model.Neo4j/)** - Neo4j database provider
+- **[Cvoya.Graph.Model.Serialization](https://www.nuget.org/packages/Cvoya.Graph.Model.Serialization/)** - Object serialization framework
+- **[Cvoya.Graph.Model.Serialization.CodeGen](https://www.nuget.org/packages/Cvoya.Graph.Model.Serialization.CodeGen/)** - Code generation for performant serialization/deserialization
+- **[Cvoya.Graph.Model.Analyzers](https://www.nuget.org/packages/Cvoya.Graph.Model.Analyzers/)** - Compile-time code analyzers
 
 ## 🤝 Contributing
 
@@ -109,4 +32,4 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](https:
 
 ---
 
-**Need help?** Check the [troubleshooting guide](https://savasp.github.io/graphmodel/guides/troubleshooting.html) or [open an issue](https://github.com/savasp/graphmodel/issues).
+**Need help?** Check the [troubleshooting guide](https://github.com/savasp/graphmodel/docs/troubleshooting.md) or [open an issue](https://github.com/savasp/graphmodel/issues).

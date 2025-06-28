@@ -113,31 +113,20 @@ public IGraph Graph => /* get from context */;
 
 ## 📚 Documentation
 
-For comprehensive documentation and examples:
+For comprehensive documentation, examples, and best practices:
 
-**🌐 [Complete Documentation](https://savasp.github.io/graphmodel/)**
-
-### Key Sections
-
-- **[Analyzer Rules](https://savasp.github.io/graphmodel/packages/analyzers/)** - Complete rule reference
-- **[Best Practices](https://savasp.github.io/graphmodel/packages/graph-model/best-practices.html)** - Avoiding common issues
-- **[Configuration](https://savasp.github.io/graphmodel/packages/analyzers/configuration.html)** - Customizing analyzer behavior
+**🌐 [Complete Documentation](https://github.com/savasp/graphmodel/)**
 
 ## 🔗 Related Packages
 
-- **[Cvoya.Graph.Model](https://www.nuget.org/packages/Cvoya.Graph.Model/)** - Core abstractions (analyzed by this package)
-- **[Cvoya.Graph.Model.Serialization.CodeGen](https://www.nuget.org/packages/Cvoya.Graph.Model.Serialization.CodeGen/)** - Compile-time code generation
+- **[Cvoya.Graph.Model.Neo4j](https://www.nuget.org/packages/Cvoya.Graph.Model.Neo4j/)** - Neo4j database provider
+- **[Cvoya.Graph.Model.Serialization](https://www.nuget.org/packages/Cvoya.Graph.Model.Serialization/)** - Object serialization framework
+- **[Cvoya.Graph.Model.Serialization.CodeGen](https://www.nuget.org/packages/Cvoya.Graph.Model.Serialization.CodeGen/)** - Code generation for performant serialization/deserialization
+- **[Cvoya.Graph.Model.Analyzers](https://www.nuget.org/packages/Cvoya.Graph.Model.Analyzers/)** - Compile-time code analyzers
 
 ## 🤝 Contributing
 
 Contributions are welcome! Please see our [Contributing Guide](https://github.com/savasp/graphmodel/blob/main/CONTRIBUTING.md).
-
-### Adding New Rules
-
-1. Add diagnostic descriptor in `DiagnosticDescriptors.cs`
-2. Implement analyzer logic in `GraphModelAnalyzer.cs`
-3. Add unit tests in `Graph.Model.Analyzers.Tests`
-4. Update documentation
 
 ## 📄 License
 
@@ -145,4 +134,4 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](https:
 
 ---
 
-**Need help?** Check the [troubleshooting guide](https://savasp.github.io/graphmodel/guides/troubleshooting.html) or [open an issue](https://github.com/savasp/graphmodel/issues).
+**Need help?** Check the [troubleshooting guide](https://github.com/savasp/graphmodel/docs/troubleshooting.md) or [open an issue](https://github.com/savasp/graphmodel/issues).
