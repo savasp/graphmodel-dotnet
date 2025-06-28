@@ -33,7 +33,7 @@
     <ItemGroup Condition="'$(UseProjectReferences)' != 'true'">
         <PackageReference Include="Cvoya.Graph.Model" Version="$(Version)" />
         <PackageReference Include="Cvoya.Graph.Model.Serialization" Version="$(Version)" />
-        <PackageReference Include="Cvoya.Graph.Model.Serialization.CodeGen" Version="$(Version)" PrivateAssets="all" />
+        <PackageReference Include="Cvoya.Graph.Model.Serialization.CodeGen" Version="$(Version)" IncludeAssets="analyzers;buildtransitive" />
     </ItemGroup>
 
 </Project>

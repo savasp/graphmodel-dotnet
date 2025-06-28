@@ -23,18 +23,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <EmbeddedResource Include="Properties/Resources.resx" />
+        <None Include="$(TargetPath)" Pack="true" PackagePath="analyzers/dotnet/cs" />
     </ItemGroup>
 
-    <!-- Package the analyzer properly -->
-    <Target Name="PackAnalyzer" BeforeTargets="GenerateNuspec">
-        <ItemGroup>
-            <_AnalyzerFiles Include="$(OutputPath)$(AssemblyName).dll" />
-        </ItemGroup>
-        <ItemGroup>
-            <TfmSpecificPackageFile Include="@(_AnalyzerFiles)" PackagePath="analyzers\dotnet\cs\%(Filename)%(Extension)" />
-        </ItemGroup>
-    </Target>
+    <ItemGroup>
+        <EmbeddedResource Include="Properties/Resources.resx" />
+    </ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
