@@ -115,7 +115,7 @@ public IGraph Graph => /* get from context */;
 
 For comprehensive documentation, examples, and best practices:
 
-**🌐 [Complete Documentation](https://github.com/savasp/graphmodel/)**
+**🌐 [Complete Documentation](https://github.com/savasp/graphmodel-dotnet/)**
 
 ## 🔗 Related Packages
 
@@ -126,12 +126,12 @@ For comprehensive documentation, examples, and best practices:
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see our [Contributing Guide](https://github.com/savasp/graphmodel/blob/main/CONTRIBUTING.md).
+Contributions are welcome! Please see our [Contributing Guide](https://github.com/savasp/graphmodel-dotnet/blob/main/CONTRIBUTING.md).
 
 ## 📄 License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/savasp/graphmodel/blob/main/LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/savasp/graphmodel-dotnet/blob/main/LICENSE) file for details.
 
 ---
 
-**Need help?** Check the [troubleshooting guide](https://github.com/savasp/graphmodel/docs/troubleshooting.md) or [open an issue](https://github.com/savasp/graphmodel/issues).
+**Need help?** Check the [troubleshooting guide](https://github.com/savasp/graphmodel-dotnet/docs/troubleshooting.md) or [open an issue](https://github.com/savasp/graphmodel-dotnet/issues).

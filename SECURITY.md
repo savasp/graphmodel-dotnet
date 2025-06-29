@@ -134,8 +134,8 @@ Before deploying to production:
 For security-related questions or concerns:
 
 - **Security Email**: [savas@parastatidis.name]
-- **General Issues**: [GitHub Issues](https://github.com/savasp/graphmodel/issues)
-- **Documentation**: [GitHub Discussions](https://github.com/savasp/graphmodel/discussions/)
+- **General Issues**: [GitHub Issues](https://github.com/savasp/graphmodel-dotnet/issues)
+- **Documentation**: [GitHub Discussions](https://github.com/savasp/graphmodel-dotnet/discussions/)
 
 ---
 

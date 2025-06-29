@@ -373,7 +373,7 @@ When reporting issues, include:
 
 ### 3. Search Existing Issues
 
-- Check [GitHub Issues](https://github.com/savasp/graphmodel/issues)
+- Check [GitHub Issues](https://github.com/savasp/graphmodel-dotnet/issues)
 - Look for similar problems and solutions
 
 ### 4. Create Minimal Reproduction

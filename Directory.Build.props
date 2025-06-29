@@ -26,8 +26,8 @@
         <VersionSuffix>alpha-$([System.DateTime]::Now.ToString('yyyyMMddHHmmss'))</VersionSuffix>
         <Company>Cvoya</Company>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/savasp/graphmodel</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/savasp/graphmodel</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/savasp/graphmodel-dotnet</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/savasp/graphmodel-dotnet</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageOutputPath>$(MSBuildThisFileDirectory)artifacts</PackageOutputPath>
         <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -41,7 +41,7 @@
         <!-- LocalFeed configuration: Release optimizations + project references + package generation -->
         <Optimize Condition="'$(Configuration)' == 'LocalFeed'">true</Optimize>
         <GeneratePackageOnBuild Condition="'$(Configuration)' == 'LocalFeed'">true</GeneratePackageOnBuild>
-        
+
         <!-- Only generate packages in Release/LocalFeed mode or when explicitly requested -->
         <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release' OR '$(ForcePackageGeneration)' == 'true'">true</GeneratePackageOnBuild>
         <GeneratePackageOnBuild Condition="'$(GeneratePackageOnBuild)' == ''">false</GeneratePackageOnBuild>
@@ -75,11 +75,8 @@
 
     <!-- Version Management Targets -->
     <Target Name="CreateRelease">
-        <Error Text="Please specify a release version: -p:ReleaseVersion=1.2.3" 
-               Condition="'$(ReleaseVersion)' == ''" />
-        <WriteLinesToFile File="$(VersionFile)" 
-                          Lines="$(ReleaseVersion)" 
-                          Overwrite="true" />
+        <Error Text="Please specify a release version: -p:ReleaseVersion=1.2.3" Condition="'$(ReleaseVersion)' == ''" />
+        <WriteLinesToFile File="$(VersionFile)" Lines="$(ReleaseVersion)" Overwrite="true" />
         <Message Text="Release version $(ReleaseVersion) created" Importance="high" />
     </Target>
 
@@ -100,17 +97,16 @@
 
     <Target Name="SetupLocalFeed" BeforeTargets="Build" Condition="'$(Configuration)' == 'LocalFeed'">
         <Message Text="🚀 Setting up local NuGet feed for GraphModel..." Importance="high" />
-        
+
         <!-- Create local feed directory -->
         <MakeDir Directories="$(LocalFeedPath)" />
-        
+
         <!-- Add NuGet source if not already added -->
-        <Exec Command="dotnet nuget list source | grep '$(LocalFeedSourceName)' || dotnet nuget add source '$(LocalFeedPath)' --name '$(LocalFeedSourceName)'" 
-              ContinueOnError="true" />
-        
+        <Exec Command="dotnet nuget list source | grep '$(LocalFeedSourceName)' || dotnet nuget add source '$(LocalFeedPath)' --name '$(LocalFeedSourceName)'" ContinueOnError="true" />
+
         <!-- Create sentinel file -->
         <WriteLinesToFile File="$(LocalFeedSentinelFile)" Lines="Local feed setup completed at $([System.DateTime]::Now)" Overwrite="true" />
-        
+
         <Message Text="✅ Local NuGet feed ready at: $(LocalFeedPath)" Importance="high" />
     </Target>
 
@@ -118,43 +114,39 @@
         <ItemGroup>
             <PackageFiles Include="$(PackageOutputPath)\*.nupkg" />
         </ItemGroup>
-        
+
         <Copy SourceFiles="@(PackageFiles)" DestinationFolder="$(LocalFeedPath)" Condition="@(PackageFiles) != ''" />
-        
+
         <Message Text="📦 Published $(MSBuildProjectName) to local feed" Importance="high" Condition="@(PackageFiles) != ''" />
     </Target>
 
     <Target Name="CleanLocalFeed">
         <Message Text="🧹 Cleaning up GraphModel local NuGet feed..." Importance="high" />
-        
+
         <!-- Remove NuGet source -->
         <Exec Command="dotnet nuget remove source '$(LocalFeedSourceName)'" ContinueOnError="true" />
-        
+
         <!-- Clean directories -->
         <RemoveDir Directories="$(LocalFeedPath)" />
         <RemoveDir Directories="$(PackageOutputPath)" />
-        
+
         <!-- Clear NuGet cache -->
         <Exec Command="dotnet nuget locals all --clear" ContinueOnError="true" />
-        
+
         <Message Text="✅ Cleanup complete! You can now build normally with project references." Importance="high" />
     </Target>
 
     <Target Name="TestLocalFeed" DependsOnTargets="CleanLocalFeed">
         <Message Text="🧪 Testing local NuGet feed workflow..." Importance="high" />
-        
+
         <!-- Build with LocalFeed configuration to generate packages -->
-        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" 
-                 Properties="Configuration=LocalFeed" 
-                 Targets="Build" />
-        
+        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" Properties="Configuration=LocalFeed" Targets="Build" />
+
         <!-- Test Release configuration with package references -->
         <Message Text="🔄 Testing Release build with package references..." Importance="high" />
         <Exec Command="dotnet restore --force" />
-        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" 
-                 Properties="Configuration=Release" 
-                 Targets="Build" />
-        
+        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" Properties="Configuration=Release" Targets="Build" />
+
         <Message Text="✅ Local feed test completed successfully!" Importance="high" />
     </Target>
 </Project>

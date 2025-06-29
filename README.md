@@ -2,15 +2,15 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![.NET](https://img.shields.io/badge/.NET-10.0+-purple.svg)](https://dotnet.microsoft.com/download)
-[![GitHub release](https://img.shields.io/github/release/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel/releases)
-[![Build Status](https://github.com/savasp/graphmodel/workflows/🧪%20Tests/badge.svg)](https://github.com/savasp/graphmodel/actions/workflows/tests.yml)
-[![Coverage](https://github.com/savasp/graphmodel/workflows/📊%20Code%20Coverage/badge.svg)](https://github.com/savasp/graphmodel/actions/workflows/coverage.yml)
+[![GitHub release](https://img.shields.io/github/release/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel-dotnet/releases)
+[![Build Status](https://github.com/savasp/graphmodel-dotnet/workflows/🧪%20Tests/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/tests.yml)
+[![Coverage](https://github.com/savasp/graphmodel-dotnet/workflows/📊%20Code%20Coverage/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/coverage.yml)
 [![Codecov](https://codecov.io/gh/savasp/graphmodel/branch/main/graph/badge.svg)](https://codecov.io/gh/savasp/graphmodel)
-[![CodeQL](https://github.com/savasp/graphmodel/workflows/🔒%20CodeQL%20Analysis/badge.svg)](https://github.com/savasp/graphmodel/actions/workflows/codeql.yml)
-[![Neo4j Compatibility](https://github.com/savasp/graphmodel/workflows/🗃️%20Neo4j%20Compatibility%20Tests/badge.svg)](https://github.com/savasp/graphmodel/actions/workflows/neo4j-compatibility.yml)
-[![Contributors](https://img.shields.io/github/contributors/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel/graphs/contributors)
-[![Issues](https://img.shields.io/github/issues/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel/issues)
-[![Stars](https://img.shields.io/github/stars/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel/stargazers)
+[![CodeQL](https://github.com/savasp/graphmodel-dotnet/workflows/🔒%20CodeQL%20Analysis/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/codeql.yml)
+[![Neo4j Compatibility](https://github.com/savasp/graphmodel-dotnet/workflows/🗃️%20Neo4j%20Compatibility%20Tests/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/neo4j-compatibility.yml)
+[![Contributors](https://img.shields.io/github/contributors/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel-dotnet/graphs/contributors)
+[![Issues](https://img.shields.io/github/issues/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel-dotnet/issues)
+[![Stars](https://img.shields.io/github/stars/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel-dotnet/stargazers)
 
 A powerful, type-safe .NET library ecosystem for working with graph data structures and graph databases. GraphModel provides a clean abstraction layer over graph databases with advanced LINQ querying, transaction management, and relationship traversal capabilities.
 
@@ -31,13 +31,13 @@ A powerful, type-safe .NET library ecosystem for working with graph data structu
 
 You only need the Neo4j package to get started. Optionally but highly recommended, you can add the Analyzers.
 
-| Package                                   | Description                      | NuGet                                                                                |
-| ----------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------ |
-| `Cvoya.Graph.Model.Neo4j`                 | Neo4j provider implementation    | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Neo4j.svg)                 |
-| `Cvoya.Graph.Model`                       | Core abstractions and interfaces | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.svg)                       |
-| `Cvoya.Graph.Model.Analyzers`             | Compile-time code analyzers      | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Analyzers.svg)             |
-| `Cvoya.Graph.Model.Serialization.CodeGen` | Compile-time code generation     | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Serialization.CodeGen.svg) |
-| `Cvoya.Graph.Model.Serialization` | Serialization-related functionality     | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Serialization.svg) |
+| Package                                   | Description                         | NuGet                                                                                |
+| ----------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------ |
+| `Cvoya.Graph.Model.Neo4j`                 | Neo4j provider implementation       | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Neo4j.svg)                 |
+| `Cvoya.Graph.Model`                       | Core abstractions and interfaces    | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.svg)                       |
+| `Cvoya.Graph.Model.Analyzers`             | Compile-time code analyzers         | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Analyzers.svg)             |
+| `Cvoya.Graph.Model.Serialization.CodeGen` | Compile-time code generation        | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Serialization.CodeGen.svg) |
+| `Cvoya.Graph.Model.Serialization`         | Serialization-related functionality | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Serialization.svg)         |
 
 ## 🏃‍♂️ Quick Start
 
