@@ -597,4 +597,4 @@ class RelationshipCypherBuilder:
             return f"RETURN {self.rel_alias}"
         except Exception as e:
             print(f"DEBUG: projection error: {e}")
-            return f"RETURN {self.rel_alias}" 
+            return f"RETURN {self.rel_alias}"

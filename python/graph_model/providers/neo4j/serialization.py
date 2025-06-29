@@ -164,8 +164,8 @@ class Neo4jSerializer:
         for field_name, field_value in complex_props.items():
             if field_value is None:
                 continue
-                
-            field_info = get_field_info(node.model_fields[field_name])
+            
+            field_info = get_field_info(type(node).model_fields[field_name])
             
             if field_info and field_info.field_type == PropertyFieldType.RELATED_NODE:
                 # Related node property - store metadata for later processing
@@ -213,8 +213,8 @@ class Neo4jSerializer:
         for field_name, field_value in simple_props.items():
             if field_value is None:
                 continue
-                
-            field_info = get_field_info(relationship.model_fields[field_name])
+            
+            field_info = get_field_info(type(relationship).model_fields[field_name])
             
             if field_info and field_info.field_type == PropertyFieldType.EMBEDDED:
                 # Embedded property - serialize as JSON
@@ -233,8 +233,8 @@ class Neo4jSerializer:
         for field_name, field_value in complex_props.items():
             if field_value is None:
                 continue
-                
-            field_info = get_field_info(relationship.model_fields[field_name])
+            
+            field_info = get_field_info(type(relationship).model_fields[field_name])
             
             if field_info and field_info.field_type == PropertyFieldType.RELATED_NODE:
                 processed_complex[field_name] = {
@@ -389,4 +389,4 @@ class Neo4jSerializer:
         if target_alias is None:
             target_alias = f"{field_name}_node"
             
-        return f"{field_name}: {target_alias}" 
+        return f"{field_name}: {target_alias}"

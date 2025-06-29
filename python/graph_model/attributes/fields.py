@@ -174,8 +174,8 @@ def embedded_field(
     return Field(
         default=default,
         default_factory=default_factory,
-        **kwargs,
-        json_schema_extra={"graph_field_info": field_info}
+        **{k: v for k, v in kwargs.items() if k not in ("storage_type", "private_relationship")},
+        json_schema_extra={"graph_field_info": field_info, "storage_type": storage}
     )
 
 
@@ -234,8 +234,8 @@ def related_node_field(
     return Field(
         default=default,
         default_factory=default_factory,
-        **kwargs,
-        json_schema_extra={"graph_field_info": field_info}
+        **{k: v for k, v in kwargs.items() if k not in ("storage_type", "private_relationship")},
+        json_schema_extra={"graph_field_info": field_info, "private_relationship": private}
     )
 
 
@@ -309,8 +309,8 @@ def auto_field(
     return Field(
         default=default,
         default_factory=default_factory,
-        **kwargs,
-        json_schema_extra={"graph_field_info": field_info, "auto_detect": True}
+        **{k: v for k, v in kwargs.items() if k not in ("storage_type", "private_relationship")},
+        json_schema_extra={"graph_field_info": field_info, "auto_detect": True, "storage_type": ("auto" if prefer_embedded else None)}
     )
 
 
@@ -370,4 +370,4 @@ def get_relationship_type_for_field(field_name: str, custom_type: Optional[str] 
         return custom_type
     
     # Use .NET convention: "__PROPERTY__{fieldName}__"
-    return GraphDataModel.property_name_to_relationship_type_name(field_name) 
+    return GraphDataModel.property_name_to_relationship_type_name(field_name)

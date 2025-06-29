@@ -366,22 +366,23 @@ class GraphDataModel:
 
         Matches .NET GraphDataModel.GetSimpleProperties() functionality.
         """
-        if not hasattr(obj, 'model_fields'):
+        cls = type(obj)
+        if not hasattr(cls, 'model_fields'):
             return {}
 
         simple_props = {}
-        for field_name, field_value in obj.model_dump().items():
-            if field_value is None:
+        for field_name, field_info in cls.model_fields.items():
+            value = getattr(obj, field_name, None)
+            if value is None:
                 continue
-
-            field_info = obj.model_fields[field_name]
             field_type = field_info.annotation
 
             # Check if it's a simple type, collection of simple types, or embedded field
             if (GraphDataModel.is_simple_type(field_type) or
                 GraphDataModel.is_collection_of_simple(field_type) or
                 GraphDataModel._is_embedded_field(field_info)):
-                simple_props[field_name] = field_value
+                # If simple, store the value, not the field_info
+                simple_props[field_name] = value
 
         return simple_props
 
@@ -401,21 +402,22 @@ class GraphDataModel:
 
         Matches .NET GraphDataModel.GetComplexProperties() functionality.
         """
-        if not hasattr(obj, 'model_fields'):
+        cls = type(obj)
+        if not hasattr(cls, 'model_fields'):
             return {}
 
         complex_props = {}
-        for field_name, field_value in obj.model_dump().items():
-            if field_value is None:
+        for field_name in cls.model_fields:
+            field_info = obj.__dict__.get(field_name, None)
+            if field_info is None:
                 continue
 
-            field_info = obj.model_fields[field_name]
             field_type = field_info.annotation
 
             # Check if it's a complex type or related_node field
             if (GraphDataModel.is_complex_type(field_type) or
                 GraphDataModel._is_related_node_field(field_info)):
-                complex_props[field_name] = field_value
+                complex_props[field_name] = field_info
 
         return complex_props
 
@@ -435,7 +437,28 @@ class GraphDataModel:
 
         Matches .NET GraphDataModel.GetSimpleAndComplexProperties() functionality.
         """
-        return (
-            GraphDataModel.get_simple_properties(obj),
-            GraphDataModel.get_complex_properties(obj)
-        )
+        # Use the class to access model_fields
+        cls = type(obj)
+        if not hasattr(cls, 'model_fields'):
+            return {}, {}
+
+        simple_props = {}
+        complex_props = {}
+        for field_name, field_info in cls.model_fields.items():
+            value = getattr(obj, field_name, None)
+            if value is None:
+                continue
+
+            field_type = field_info.annotation
+
+            # Check if it's a simple type, collection of simple types, or embedded field
+            if (GraphDataModel.is_simple_type(field_type) or
+                GraphDataModel.is_collection_of_simple(field_type) or
+                GraphDataModel._is_embedded_field(field_info)):
+                simple_props[field_name] = value
+            # Check if it's a complex type or related_node field
+            elif (GraphDataModel.is_complex_type(field_type) or
+                  GraphDataModel._is_related_node_field(field_info)):
+                complex_props[field_name] = value
+
+        return simple_props, complex_props

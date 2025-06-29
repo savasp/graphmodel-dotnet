@@ -322,27 +322,31 @@ class TestAsyncStreaming:
             for item in test_data:
                 yield item
         
-        queryable = create_async_queryable(data_generator)
-        
-        # Test to_list_async
-        results = await queryable.to_list_async()
+        # Use a fresh generator for each operation and close it after use
+        gen1 = data_generator()
+        results = await create_async_queryable(lambda: gen1).to_list_async()
         assert len(results) == 10
+        await gen1.aclose()
         
-        # Test first_async
-        first = await queryable.first_async()
+        gen2 = data_generator()
+        first = await create_async_queryable(lambda: gen2).first_async()
         assert first.name == "Person0"
+        await gen2.aclose()
         
-        # Test count_async
-        count = await queryable.count_async()
+        gen3 = data_generator()
+        count = await create_async_queryable(lambda: gen3).count_async()
         assert count == 10
+        await gen3.aclose()
         
-        # Test any_async
-        has_any = await queryable.any_async()
+        gen4 = data_generator()
+        has_any = await create_async_queryable(lambda: gen4).any_async()
         assert has_any is True
+        await gen4.aclose()
         
-        # Test all_async
-        all_have_name = await queryable.all_async(lambda p: p.name.startswith("Person"))
+        gen5 = data_generator()
+        all_have_name = await create_async_queryable(lambda: gen5).all_async(lambda p: p.name.startswith("Person"))
         assert all_have_name is True
+        await gen5.aclose()
     
     @pytest.mark.asyncio
     async def test_async_queryable_filtering_and_projection(self):
@@ -553,4 +557,4 @@ if __name__ == "__main__":
     path_test.test_cypher_pattern_generation()
     print("✅ PathSegments tests passed!")
     
-    print("✅ All basic tests passed! Run with pytest for async tests.") 
+    print("✅ All basic tests passed! Run with pytest for async tests.")

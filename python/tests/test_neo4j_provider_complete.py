@@ -197,7 +197,8 @@ class TestNeo4jProviderComplete:
             for item in data:
                 yield item
         
-        mock_result.__aiter__ = async_iterator
+        gen = async_iterator(mock_result)
+        mock_result.__aiter__ = lambda s=mock_result: gen
         mock_session.run.return_value = mock_result
         
         async_queryable = Neo4jAsyncNodeQueryable(
@@ -208,15 +209,27 @@ class TestNeo4jProviderComplete:
         results = await async_queryable.to_list_async()
         assert len(results) == 2
         
-        # Test first_async
-        first_person = await async_queryable.first_async()
+        # Properly close the async iterator to avoid RuntimeWarning
+        await gen.aclose()
+        
+        # Re-create async_queryable and async iterator for first_async to avoid generator exhaustion
+        mock_result2 = AsyncMock()
+        gen2 = async_iterator(mock_result2)
+        mock_result2.__aiter__ = lambda s=mock_result2: gen2
+        mock_session.run.return_value = mock_result2
+        async_queryable2 = Neo4jAsyncNodeQueryable(
+            Person, mock_session, serializer
+        )
+        first_person = await async_queryable2.first_async()
         assert first_person.name == "John Doe"
+        
+        # Properly close the async iterator to avoid RuntimeWarning
+        await gen2.aclose()
         
         # Test count_async with mock
         mock_count_result = AsyncMock()
         mock_count_result.single.return_value = {"count": 2}
         mock_session.run.return_value = mock_count_result
-        
         count = await async_queryable.count_async()
         assert count == 2
     
@@ -466,4 +479,4 @@ class TestNeo4jIntegration:
 
 if __name__ == "__main__":
     # Run tests
-    pytest.main([__file__, "-v"]) 
+    pytest.main([__file__, "-v"])
