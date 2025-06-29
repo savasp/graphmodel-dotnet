@@ -29,30 +29,26 @@ A powerful, type-safe .NET library ecosystem for working with graph data structu
 
 ## 📦 Packages
 
+You only need the Neo4j package to get started. Optionally but highly recommended, you can add the Analyzers.
+
 | Package                                   | Description                      | NuGet                                                                                |
 | ----------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------ |
-| `Cvoya.Graph.Model`                       | Core abstractions and interfaces | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.svg)                       |
 | `Cvoya.Graph.Model.Neo4j`                 | Neo4j provider implementation    | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Neo4j.svg)                 |
+| `Cvoya.Graph.Model`                       | Core abstractions and interfaces | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.svg)                       |
 | `Cvoya.Graph.Model.Analyzers`             | Compile-time code analyzers      | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Analyzers.svg)             |
 | `Cvoya.Graph.Model.Serialization.CodeGen` | Compile-time code generation     | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Serialization.CodeGen.svg) |
+| `Cvoya.Graph.Model.Serialization` | Serialization-related functionality     | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Serialization.svg) |
 
 ## 🏃‍♂️ Quick Start
 
 ### 1. Installation
 
 ```bash
-# Core library
-dotnet add package Cvoya.Graph.Model
-
 # Neo4j provider
 dotnet add package Cvoya.Graph.Model.Neo4j
 
 # Code analyzers (highly recommended)
 dotnet add package Cvoya.Graph.Model.Analyzers
-
-# Code generator (optional) (this is automatically included
-# as a dependency via the Neo4j package)
-dotnet add package Cvoya.Graph.Model.Serialization.CodeGen
 ```
 
 ### 2. Define Your Domain Model
