@@ -1,5 +1,7 @@
 # Graph Model - Python Implementation
 
+**DISCLAIMER**: This Python package is still very much work in progress!
+
 A powerful, type-safe Python library for working with graph data structures and graph databases. This is the Python equivalent of the .NET GraphModel library, providing a clean abstraction layer over graph databases with advanced querying, transaction management, and relationship traversal capabilities.
 
 ## Features
