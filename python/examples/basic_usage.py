@@ -9,16 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 
-from graph_model import (
-    Node,
-    Relationship,
-    RelationshipDirection,
-    embedded_field,
-    node,
-    property_field,
-    related_node_field,
-    relationship,
-)
+from graph_model import Node, Relationship, node, relationship
 from graph_model.providers.neo4j import Neo4jDriver, Neo4jGraph
 
 
@@ -32,7 +23,7 @@ class Address:
     postal_code: str
 
 
-@dataclass 
+@dataclass
 class ContactInfo:
     """Another complex type for demonstration."""
     phone: Optional[str] = None
@@ -47,7 +38,7 @@ class Person(Node):
 
     # Simple properties
     first_name: str
-    last_name: str 
+    last_name: str
     age: int = 0
 
     # Optional email for indexing
@@ -114,7 +105,7 @@ class Manages(Relationship):
 async def example_usage():
     """
     Demonstrate how the graph model is used.
-    
+
     This example shows basic CRUD operations and querying.
     """
     print("=== Python Graph Model Basic Usage Example ===\n")
@@ -231,11 +222,11 @@ async def example_usage():
     # Test serialization compatibility
     print("\n=== .NET Compatibility Test ===")
     from graph_model.core.graph import GraphDataModel
-    
+
     # Test relationship naming
     home_rel_name = GraphDataModel.property_name_to_relationship_type_name("home_address")
     print(f"Home address relationship name: {home_rel_name}")
-    
+
     # Test property separation
     simple_props, complex_props = GraphDataModel.get_simple_and_complex_properties(alice)
     print(f"Alice simple properties: {list(simple_props.keys())}")
@@ -245,51 +236,51 @@ async def example_usage():
 
     # Note: Database operations require a running Neo4j instance
     # Uncomment the following section to test with actual Neo4j database:
-    
+
     try:
         print("\n=== Testing Neo4j Database Operations ===")
-        
+
         # Initialize Neo4j driver (adjust connection details as needed)
         await Neo4jDriver.initialize(
-            uri="bolt://localhost:7687", 
-            user="neo4j", 
+            uri="bolt://localhost:7687",
+            user="neo4j",
             password="password",
             database="PythonExamples"
         )
-        
+
         # Ensure database exists
         await Neo4jDriver.ensure_database_exists()
-        
+
         # Create graph instance
         graph = Neo4jGraph()
-        
+
         print("✅ Connected to Neo4j database")
-        
+
         # Test basic node creation and retrieval
         async with graph.transaction() as tx:
             # Create nodes
-            created_alice = await graph.create_node(alice, transaction=tx)
-            created_bob = await graph.create_node(bob, transaction=tx)
-            created_company = await graph.create_node(acme_corp, transaction=tx)
-            
-            print(f"✅ Created nodes in database")
-            
+            await graph.create_node(alice, transaction=tx)
+            await graph.create_node(bob, transaction=tx)
+            await graph.create_node(acme_corp, transaction=tx)
+
+            print("✅ Created nodes in database")
+
             # Create relationships
-            created_rel1 = await graph.create_relationship(alice_works_at_acme, transaction=tx)
-            created_rel2 = await graph.create_relationship(bob_works_at_acme, transaction=tx)
-            created_rel3 = await graph.create_relationship(alice_knows_bob, transaction=tx)
-            
-            print(f"✅ Created relationships in database")
-        
+            await graph.create_relationship(alice_works_at_acme, transaction=tx)
+            await graph.create_relationship(bob_works_at_acme, transaction=tx)
+            await graph.create_relationship(alice_knows_bob, transaction=tx)
+
+            print("✅ Created relationships in database")
+
         # Test node retrieval
         retrieved_alice = await graph.get_node(alice.id)
         if retrieved_alice:
             print(f"✅ Retrieved Alice from database: {retrieved_alice.first_name}")
-        
+
         # Test querying (basic functionality)
         # Note: Advanced querying requires full integration
         print("✅ Basic database operations completed successfully!")
-        
+
     except Exception as e:
         print(f"⚠️  Database operations skipped (Neo4j not available): {e}")
         print("   To test database operations:")

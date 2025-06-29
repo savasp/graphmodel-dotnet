@@ -55,4 +55,4 @@ class Neo4jDriver:
         session_kwargs = kwargs.copy()
         if cls._database is not None and 'database' not in session_kwargs:
             session_kwargs['database'] = cls._database
-        return cls.get_driver().session(**session_kwargs) 
+        return cls.get_driver().session(**session_kwargs)

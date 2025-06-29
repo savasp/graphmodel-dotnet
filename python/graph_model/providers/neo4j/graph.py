@@ -10,7 +10,7 @@ from typing import Any, List, Optional, Type, TypeVar
 from neo4j import AsyncSession, AsyncTransaction
 
 from graph_model.core.exceptions import GraphException
-from graph_model.core.graph import IGraph, IGraphTransaction
+from graph_model.core.graph import IGraph, IGraphNodeQueryable, IGraphRelationshipQueryable, IGraphTransaction
 from graph_model.core.node import INode, Node
 from graph_model.core.relationship import IRelationship, Relationship
 
@@ -423,12 +423,12 @@ class Neo4jGraph(IGraph[TNode, TRelationship]):
         session = Neo4jDriver.session()
         return Neo4jTransaction(session)
     
-    def nodes(self, node_type: Type[TNode]) -> 'IGraphNodeQueryable[TNode]':
+    def nodes(self, node_type: Type[TNode]) -> IGraphNodeQueryable[TNode]:
         """Get a queryable for nodes of the specified type."""
         session = Neo4jDriver.session()
         return Neo4jNodeQueryable(node_type, session)
     
-    def relationships(self, relationship_type: Type[TRelationship]) -> 'IGraphRelationshipQueryable[TRelationship]':
+    def relationships(self, relationship_type: Type[TRelationship]) -> IGraphRelationshipQueryable[TRelationship]:
         """Get a queryable for relationships of the specified type."""
         session = Neo4jDriver.session()
         return Neo4jRelationshipQueryable(relationship_type, session)

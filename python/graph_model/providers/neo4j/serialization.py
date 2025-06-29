@@ -139,8 +139,8 @@ class Neo4jSerializer:
             if field_value is None:
                 continue
                 
-            field_info = get_field_info(node.model_fields[field_name])
-            
+            field_info = get_field_info(type(node).model_fields[field_name])
+
             if field_info is None:
                 # No field info - treat as simple property with field name as label
                 processed_simple[field_name] = _convert_enum_values(field_value)
