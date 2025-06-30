@@ -564,6 +564,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                                 ELSE nodes(src_path)[i]
                             END,
                         Relationship: rels[i],
+                        SequenceNumber: rels[i].SequenceNumber,
                         Property: nodes(src_path)[i+1]
                     }}]
                 END AS src_flat_property
@@ -620,6 +621,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                                 ELSE nodes(src_path)[i]
                             END,
                             Relationship: rels[i],
+                            SequenceNumber: rels[i].SequenceNumber,
                             Property: nodes(src_path)[i+1]
                         }}]
                     END AS src_flat_property
@@ -645,6 +647,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                                 ELSE nodes(tgt_path)[i]
                             END,
                             Relationship: trels[i],
+                            SequenceNumber: trels[i].SequenceNumber,
                             Property: nodes(tgt_path)[i+1]
                         }}]
                     END AS tgt_flat_property
@@ -729,6 +732,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                             ELSE nodes(src_path)[i]
                         END,
                         Relationship: rels[i],
+                        SequenceNumber: rels[i].SequenceNumber,
                         Property: nodes(src_path)[i+1]
                     }}]
                 END AS src_flat_property
@@ -750,6 +754,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                             ELSE nodes(tgt_path)[i]
                         END,
                         Relationship: trels[i],
+                        SequenceNumber: trels[i].SequenceNumber,
                         Property: nodes(tgt_path)[i+1]
                     }}]
                 END AS tgt_flat_property

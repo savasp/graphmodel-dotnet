@@ -31,6 +31,7 @@ internal sealed class CypherResultProcessor
     private record ComplexProperty(
         INode ParentNode,
         IRelationship Relationship,
+        int SequenceNumber,
         INode Property);
     private record NodeResult(INode Node, List<ComplexProperty> ComplexProperties);
     private record PathSegmentResult(
@@ -115,8 +116,11 @@ internal sealed class CypherResultProcessor
             .Select(dict => new ComplexProperty(
                 ParentNode: dict["ParentNode"].As<INode>(),
                 Relationship: dict["Relationship"].As<IRelationship>(),
+                SequenceNumber: dict["SequenceNumber"].As<int>(),
                 Property: dict["Property"].As<INode>()
-        )).ToList();
+        ))
+        .OrderBy(cp => cp.SequenceNumber)
+        .ToList();
 
         return new NodeResult(node, complexProperties);
     }
