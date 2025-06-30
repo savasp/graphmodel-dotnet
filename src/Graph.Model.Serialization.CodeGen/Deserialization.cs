@@ -225,20 +225,34 @@ internal static class Deserialization
         sb.AppendLine("        {");
 
         // Handle missing init-only properties with proper defaults
-        var defaultValue = GetDefaultValueForProperty(propName, property.Type);
-        sb.AppendLine($"            {variableName} = {defaultValue};");
+        var defaultValue = GetDefaultValueForProperty(propName, property.Type, out var shouldThrow);
+
+        // Add a nullability check in the generated code
+        if (property.Type.NullableAnnotation != NullableAnnotation.Annotated && defaultValue == "null")
+        {
+            sb.AppendLine($"            throw new InvalidOperationException(\"Property '{propertyName}' is not nullable and no value was provided.\");");
+        }
+        else if (shouldThrow)
+        {
+            sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for property '{propertyName}' of type '{property.Type.ToDisplayString()}'.\");");
+        }
+        else
+        {
+            sb.AppendLine($"            {variableName} = {defaultValue};");
+        }
 
         sb.AppendLine("        }");
     }
 
-    private static string GetDefaultValueForProperty(string propertyName, ITypeSymbol propertyType)
+    private static string GetDefaultValueForProperty(string propertyName, ITypeSymbol propertyType, out bool shouldThrow)
     {
         // Handle known interface properties with sensible defaults
+        shouldThrow = false;
         return propertyName.ToLowerInvariant() switch
         {
             "direction" when propertyType.Name.Contains("RelationshipDirection") => "RelationshipDirection.Outgoing",
             "id" when propertyType.SpecialType == SpecialType.System_String => "Guid.NewGuid().ToString(\"N\")",
-            _ => GetTypeDefault(propertyType)
+            _ => GetTypeDefault(propertyType, out shouldThrow)
         };
     }
 
@@ -279,8 +293,15 @@ internal static class Deserialization
         else
         {
             // For required properties, use sensible defaults based on the property name and type
-            var defaultValue = GetDefaultValueForParameter(paramName!, parameter.Type);
-            sb.AppendLine($"            {paramName} = {defaultValue};");
+            var defaultValue = GetDefaultValueForParameter(paramName!, parameter.Type, out var shouldThrow);
+            if (shouldThrow)
+            {
+                sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for parameter '{paramName}' of type '{parameter.Type.ToDisplayString()}'.\");");
+            }
+            else
+            {
+                sb.AppendLine($"            {paramName} = {defaultValue};");
+            }
         }
 
         sb.AppendLine("        }");
@@ -503,45 +524,56 @@ internal static class Deserialization
             .FirstOrDefault();
     }
 
-    private static string GetDefaultValueForParameter(string paramName, ITypeSymbol paramType)
+    private static string GetDefaultValueForParameter(string paramName, ITypeSymbol paramType, out bool shouldThrow)
     {
         // Handle known graph model properties with sensible defaults
+        shouldThrow = false;
         return paramName.ToLowerInvariant() switch
         {
             "direction" when paramType.Name.Contains("RelationshipDirection") => "RelationshipDirection.Outgoing",
             "id" when paramType.SpecialType == SpecialType.System_String => "string.Empty",
             "startnodeid" when paramType.SpecialType == SpecialType.System_String => "string.Empty",
             "endnodeid" when paramType.SpecialType == SpecialType.System_String => "string.Empty",
-            _ => GetTypeDefault(paramType)
+            _ => GetTypeDefault(paramType, out shouldThrow)
         };
     }
 
-    private static string GetTypeDefault(ITypeSymbol type)
+    private static string GetTypeDefault(ITypeSymbol type, out bool shouldThrow)
     {
+        string? value = null;
+        shouldThrow = false;
         if (type.IsReferenceType)
         {
-            // Always return a valid default value, even for non-nullable reference types
-            // The null check should be handled separately in the generated code
-            return type.Name == "String" ? "String.Empty" : "default";
+            // Check if the reference type is nullable
+            value = type.NullableAnnotation == NullableAnnotation.Annotated ? "null" :
+                   type.Name == "String" ? "string.Empty" :
+                   type.Name == "Uri" ? "new System.Uri(\"about:blank\")" :
+                   null;
         }
-
-        // Use the unified simple type check from GraphDataModel
-        if (GraphDataModel.IsSimple(type))
+        else if (GraphDataModel.IsSimple(type))
         {
-            return type.SpecialType switch
+            // Use the unified simple type check from GraphDataModel
+            value = type.SpecialType switch
             {
                 SpecialType.System_String => "string.Empty",
                 SpecialType.System_Int32 => "0",
                 SpecialType.System_Int64 => "0L",
                 SpecialType.System_Double => "0.0",
                 SpecialType.System_Boolean => "false",
-                SpecialType.System_DateTime => "DateTime.MinValue",
+                SpecialType.System_DateTime => "System.DateTime.MinValue",
+                _ when type.Name == "Guid" => "System.Guid.NewGuid().ToString(\"N\")",
                 _ when type.TypeKind == TypeKind.Enum => $"default({type.ToDisplayString()})",
-                _ => $"default({type.ToDisplayString()})"
+                _ => null
             };
         }
 
-        return $"default({type.ToDisplayString()})";
+        if (value is null)
+        {
+            // If we couldn't determine a sensible default, we should throw
+            shouldThrow = true;
+        }
+
+        return value ?? string.Empty;
     }
 
     private static string FormatDefaultValue(object? defaultValue, ITypeSymbol type)
