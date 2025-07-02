@@ -43,7 +43,7 @@ var loggerFactory = LoggerFactory.Create(builder =>
 // We start with the Neo4j Graph Provider here
 
 // Create graph instance with Neo4j provider
-var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, loggerFactory);
+var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null, loggerFactory);
 var graph = store.Graph;
 
 

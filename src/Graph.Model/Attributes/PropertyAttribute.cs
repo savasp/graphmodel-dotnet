@@ -14,12 +14,15 @@
 
 namespace Cvoya.Graph.Model;
 
+using Cvoya.Graph.Model;
+
 /// <summary>
-/// Attribute to customize aspects of entity properties in the graph.
+/// Enhanced attribute to configure property behavior in the graph database.
 /// </summary>
 /// <remarks>
 /// Use this attribute on properties of classes implementing IEntity to control 
-/// how they are represented in the graph storage system.
+/// how they are represented in the graph storage system, including indexing,
+/// constraints, validation, and storage configuration.
 /// </remarks>
 /// <example>
 /// <code>
@@ -27,8 +30,11 @@ namespace Cvoya.Graph.Model;
 /// {
 ///     public string Id { get; set; } = Guid.NewGuid().ToString();
 ///     
-///     [Property("full_name")]
-///     public string FullName { get; set; } = string.Empty;
+///     [Property(Label = "email", IsUnique = true, IsIndexed = true, IsRequired = true)]
+///     public string Email { get; set; } = string.Empty;
+///     
+///     [Property(IsIndexed = true, Validation = new PropertyValidation { MinLength = 2, MaxLength = 50 })]
+///     public string FirstName { get; set; } = string.Empty;
 ///     
 ///     [Property(Ignore = true)]
 ///     public string TempCalculation { get; set; }
@@ -49,4 +55,64 @@ public class PropertyAttribute() : Attribute
     /// </summary>
     /// <value>True if the property should be ignored, otherwise false.</value>
     public bool Ignore { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets whether this property should be indexed for query performance.
+    /// </summary>
+    /// <value>True if the property should be indexed, otherwise false.</value>
+    public bool IsIndexed { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets whether this property should have unique values across entities with the same label/type.
+    /// </summary>
+    /// <value>True if the property should have unique values, otherwise false.</value>
+    public bool IsUnique { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets whether this property is required (cannot be null).
+    /// </summary>
+    /// <value>True if the property is required, otherwise false.</value>
+    public bool IsRequired { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets validation rules for this property.
+    /// </summary>
+    /// <value>The validation rules for this property.</value>
+    public PropertyValidation? Validation { get; set; } = null;
+}
+
+/// <summary>
+/// Defines validation rules for properties.
+/// </summary>
+public class PropertyValidation
+{
+    /// <summary>
+    /// Gets or sets the minimum length for string properties.
+    /// </summary>
+    /// <value>The minimum length for string properties, or null if not specified.</value>
+    public int? MinLength { get; set; } = null;
+
+    /// <summary>
+    /// Gets or sets the maximum length for string properties.
+    /// </summary>
+    /// <value>The maximum length for string properties, or null if not specified.</value>
+    public int? MaxLength { get; set; } = null;
+
+    /// <summary>
+    /// Gets or sets the minimum value for numeric properties.
+    /// </summary>
+    /// <value>The minimum value for numeric properties, or null if not specified.</value>
+    public object? MinValue { get; set; } = null;
+
+    /// <summary>
+    /// Gets or sets the maximum value for numeric properties.
+    /// </summary>
+    /// <value>The maximum value for numeric properties, or null if not specified.</value>
+    public object? MaxValue { get; set; } = null;
+
+    /// <summary>
+    /// Gets or sets a regular expression pattern for string validation.
+    /// </summary>
+    /// <value>The regular expression pattern for string validation, or null if not specified.</value>
+    public string? Pattern { get; set; } = null;
 }

@@ -42,7 +42,7 @@ var loggerFactory = LoggerFactory.Create(builder =>
     builder.AddConsole().SetMinimumLevel(LogLevel.Debug);
 });
 
-var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, loggerFactory);
+var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null, loggerFactory);
 var graph = store.Graph;
 
 try

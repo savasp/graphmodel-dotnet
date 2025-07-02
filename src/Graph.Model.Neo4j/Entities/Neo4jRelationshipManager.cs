@@ -82,8 +82,8 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
 
-            // Ensure we have the constraints for the relationship type
-            await context.ConstraintManager.EnsureConstraintsForType(relationship);
+            // Ensure we have the schema for the relationship type
+            await context.SchemaManager.EnsureSchemaForEntity(relationship);
 
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);
@@ -223,7 +223,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             CREATE (source)-[r:{entity.Label} $props]->(target)
             RETURN r IS NOT NULL AS created";
 
-        var properties = SerializeSimpleProperties(entity)
+        var properties = SerializationHelpers.SerializeSimpleProperties(entity)
             .Where(kv => !_ignoredProperties.Contains(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
 
@@ -246,7 +246,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     {
         var cypher = "MATCH ()-[r {Id: $relId}]->() SET r = $props RETURN r IS NOT NULL AS updated";
 
-        var properties = SerializeSimpleProperties(entity)
+        var properties = SerializationHelpers.SerializeSimpleProperties(entity)
             .Where(kv => !_ignoredProperties.Contains(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
 

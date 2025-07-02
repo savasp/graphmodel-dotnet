@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Core;
 
+using Cvoya.Graph.Model.Configuration;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 
@@ -29,10 +30,15 @@ internal class Neo4jGraph : IGraph
 {
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
     private readonly GraphContext _graphContext;
+    private readonly PropertyConfigurationRegistry _registry;
 
-    public Neo4jGraph(IDriver driver, string databaseName, ILoggerFactory? loggerFactory = null)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Neo4jGraph"/> class.
+    /// </summary>
+    public Neo4jGraph(IDriver driver, string databaseName, PropertyConfigurationRegistry? registry = null, ILoggerFactory? loggerFactory = null)
     {
         _logger = loggerFactory?.CreateLogger<Neo4jGraph>() ?? NullLogger<Neo4jGraph>.Instance;
+        _registry = registry ?? new PropertyConfigurationRegistry();
 
         ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
 
@@ -40,7 +46,8 @@ internal class Neo4jGraph : IGraph
             this,
             driver,
             databaseName,
-            loggerFactory);
+            loggerFactory,
+            _registry);
 
         _logger.LogInformation("Graph initialized for database '{0}'", databaseName);
     }

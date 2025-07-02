@@ -44,7 +44,7 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
             });
             builder.SetMinimumLevel(LogLevel.Debug);
         });
-        provider = new Neo4jGraphStore(connectionString, username, password, testDatabase.DatabaseName, loggerFactory);
+        provider = new Neo4jGraphStore(connectionString, username, password, testDatabase.DatabaseName, null, loggerFactory);
     }
 
     public async Task ResetDatabase()

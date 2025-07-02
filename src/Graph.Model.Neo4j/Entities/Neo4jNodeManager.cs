@@ -69,8 +69,8 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(node);
 
-            // Ensure we have the constraints for the node type
-            await context.ConstraintManager.EnsureConstraintsForType(node);
+            // Ensure we have the schema for the node type
+            await context.SchemaManager.EnsureSchemaForEntity(node);
 
             // Serialize the node
             var entity = _serializer.Serialize(node);

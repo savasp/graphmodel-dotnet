@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j;
 
+using Cvoya.Graph.Model.Configuration;
 using Cvoya.Graph.Model.Neo4j.Core;
 using global::Neo4j.Driver;
 
@@ -25,6 +26,7 @@ public class Neo4jGraphStore : IAsyncDisposable
 {
     private readonly IDriver _driver;
     private readonly string _databaseName;
+    private readonly PropertyConfigurationRegistry _propertyConfigurationRegistry;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Neo4jGraph"/> class.
@@ -33,6 +35,7 @@ public class Neo4jGraphStore : IAsyncDisposable
     /// <param name="username">The username for authentication.</param>
     /// <param name="password">The password for authentication.</param>
     /// <param name="databaseName">The name of the database.</param>
+    /// <param name="propertyConfigurationRegistry">Optional property configuration registry.</param>
     /// <param name="loggerFactory">The logger factory instance.</param>
     /// <remarks>
     /// The environment variables used for configuration, if not provided, are:
@@ -46,6 +49,7 @@ public class Neo4jGraphStore : IAsyncDisposable
         string? username,
         string? password,
         string? databaseName = "neo4j",
+        PropertyConfigurationRegistry? propertyConfigurationRegistry = null,
         Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
     {
         uri ??= Environment.GetEnvironmentVariable("NEO4J_URI") ?? "bolt://localhost:7687";
@@ -54,10 +58,11 @@ public class Neo4jGraphStore : IAsyncDisposable
         databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
 
         _databaseName = databaseName;
+        _propertyConfigurationRegistry = propertyConfigurationRegistry ?? new PropertyConfigurationRegistry();
 
         // Create the Neo4j driver
         _driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
-        Graph = new Neo4jGraph(_driver, _databaseName, loggerFactory);
+        Graph = new Neo4jGraph(_driver, _databaseName, _propertyConfigurationRegistry, loggerFactory);
     }
 
     /// <summary>
@@ -65,6 +70,7 @@ public class Neo4jGraphStore : IAsyncDisposable
     /// </summary>
     /// <param name="driver">The Neo4j driver instance.</param>
     /// <param name="databaseName">The name of the database.</param>
+    /// <param name="propertyConfigurationRegistry">Optional property configuration registry.</param>
     /// <param name="loggerFactory">The logger factory instance.</param>
     /// <remarks>
     /// The environment variable NEO4J_DATABASE can be used to specify the database name.
@@ -73,12 +79,14 @@ public class Neo4jGraphStore : IAsyncDisposable
     public Neo4jGraphStore(
         IDriver driver,
         string databaseName = "neo4j",
+        PropertyConfigurationRegistry? propertyConfigurationRegistry = null,
         Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
     {
         ArgumentNullException.ThrowIfNull(driver, nameof(driver));
         _databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
         _driver = driver;
-        Graph = new Neo4jGraph(driver, databaseName, loggerFactory);
+        _propertyConfigurationRegistry = propertyConfigurationRegistry ?? new PropertyConfigurationRegistry();
+        Graph = new Neo4jGraph(driver, databaseName, _propertyConfigurationRegistry, loggerFactory);
     }
 
     /// <inheritdoc />
