@@ -41,29 +41,22 @@ public class ConfigTestKnows : IRelationship
     public string? Notes { get; set; }
 }
 
-public abstract class PropertyConfigurationTestsBase : ITestBase
+public interface IPropertyConfigurationTests : IGraphModelTest
 {
-    private readonly PropertyConfigurationRegistry _registry;
-
-    public abstract IGraph Graph { get; }
-
-    protected PropertyConfigurationTestsBase()
-    {
-        _registry = new PropertyConfigurationRegistry();
-    }
+    PropertyConfigurationRegistry Registry => Graph.PropertyConfigurationRegistry;
 
     [Fact]
-    public void PropertyConfiguration_RegistryMethods_WorkCorrectly()
+    public void PropertyConfigurationRegistryMethods_WorkCorrectly()
     {
         // Arrange
-        _registry.ConfigureNode("TestNode", config =>
+        Registry.ConfigureNode("TestNode", config =>
         {
             config.Property("name", p => { p.IsIndexed = true; p.IsRequired = true; })
                  .Property("value", p => { p.IsUnique = true; });
         });
 
         // Act & Assert
-        var nodeConfig = _registry.GetNodeConfiguration("TestNode");
+        var nodeConfig = Registry.GetNodeConfiguration("TestNode");
         Assert.NotNull(nodeConfig);
         Assert.True(nodeConfig.Properties.ContainsKey("name"));
         Assert.True(nodeConfig.Properties.ContainsKey("value"));
@@ -76,13 +69,13 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public void PropertyConfiguration_WithIndexedProperty_ConfigurationStored()
     {
         // Arrange
-        _registry.ConfigureNode("IndexedNode", config =>
+        Registry.ConfigureNode("IndexedNode", config =>
         {
             config.Property("searchableField", p => { p.IsIndexed = true; });
         });
 
         // Act & Assert
-        var nodeConfig = _registry.GetNodeConfiguration("IndexedNode");
+        var nodeConfig = Registry.GetNodeConfiguration("IndexedNode");
         Assert.NotNull(nodeConfig);
         Assert.True(nodeConfig.Properties.ContainsKey("searchableField"));
         Assert.True(nodeConfig.Properties["searchableField"].IsIndexed);
@@ -92,13 +85,13 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public void PropertyConfiguration_WithUniqueProperty_ConfigurationStored()
     {
         // Arrange
-        _registry.ConfigureNode("UniqueNode", config =>
+        Registry.ConfigureNode("UniqueNode", config =>
         {
             config.Property("uniqueField", p => { p.IsUnique = true; });
         });
 
         // Act & Assert
-        var nodeConfig = _registry.GetNodeConfiguration("UniqueNode");
+        var nodeConfig = Registry.GetNodeConfiguration("UniqueNode");
         Assert.NotNull(nodeConfig);
         Assert.True(nodeConfig.Properties.ContainsKey("uniqueField"));
         Assert.True(nodeConfig.Properties["uniqueField"].IsUnique);
@@ -108,13 +101,13 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public void PropertyConfiguration_WithRequiredProperty_ConfigurationStored()
     {
         // Arrange
-        _registry.ConfigureNode("RequiredNode", config =>
+        Registry.ConfigureNode("RequiredNode", config =>
         {
             config.Property("requiredField", p => { p.IsRequired = true; });
         });
 
         // Act & Assert
-        var nodeConfig = _registry.GetNodeConfiguration("RequiredNode");
+        var nodeConfig = Registry.GetNodeConfiguration("RequiredNode");
         Assert.NotNull(nodeConfig);
         Assert.True(nodeConfig.Properties.ContainsKey("requiredField"));
         Assert.True(nodeConfig.Properties["requiredField"].IsRequired);
@@ -124,7 +117,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public void PropertyConfiguration_WithValidationRules_ValidatesCorrectly()
     {
         // Arrange
-        _registry.ConfigureNode("ValidationNode", config =>
+        Registry.ConfigureNode("ValidationNode", config =>
         {
             config.Property("name", p =>
             {
@@ -137,7 +130,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
         });
 
         // Act & Assert - For now, just test that the configuration is stored correctly
-        var nodeConfig = _registry.GetNodeConfiguration("ValidationNode");
+        var nodeConfig = Registry.GetNodeConfiguration("ValidationNode");
         Assert.NotNull(nodeConfig);
         var nameConfig = nodeConfig.Properties["name"];
         Assert.NotNull(nameConfig.Validation);
@@ -149,13 +142,13 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public void PropertyConfiguration_WithCustomPropertyName_WorksCorrectly()
     {
         // Arrange
-        _registry.ConfigureNode("CustomNode", config =>
+        Registry.ConfigureNode("CustomNode", config =>
         {
             config.Property("originalName", p => { p.CustomName = "custom_name"; p.IsIndexed = true; });
         });
 
         // Act & Assert
-        var nodeConfig = _registry.GetNodeConfiguration("CustomNode");
+        var nodeConfig = Registry.GetNodeConfiguration("CustomNode");
         Assert.NotNull(nodeConfig);
         Assert.True(nodeConfig.Properties.ContainsKey("originalName"));
         Assert.Equal("custom_name", nodeConfig.Properties["originalName"].CustomName);
@@ -166,7 +159,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public void PropertyConfiguration_WithMultipleConfigurations_WorksCorrectly()
     {
         // Arrange
-        _registry.ConfigureNode("MultiNode", config =>
+        Registry.ConfigureNode("MultiNode", config =>
         {
             config.Property("field1", p => { p.IsIndexed = true; })
                  .Property("field2", p => { p.IsUnique = true; })
@@ -174,7 +167,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
         });
 
         // Act & Assert
-        var nodeConfig = _registry.GetNodeConfiguration("MultiNode");
+        var nodeConfig = Registry.GetNodeConfiguration("MultiNode");
         Assert.NotNull(nodeConfig);
         Assert.True(nodeConfig.Properties.ContainsKey("field1"));
         Assert.True(nodeConfig.Properties.ContainsKey("field2"));
@@ -185,19 +178,19 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     }
 
     [Fact]
-    public void PropertyConfiguration_RegistryClear_WorksCorrectly()
+    public void PropertyConfigurationRegistryClear_WorksCorrectly()
     {
         // Arrange
-        _registry.ConfigureNode("TestNode", config =>
+        Registry.ConfigureNode("TestNode", config =>
         {
             config.Property("name", p => { p.IsIndexed = true; });
         });
 
         // Act
-        _registry.Clear();
+        Registry.Clear();
 
         // Assert
-        var nodeConfig = _registry.GetNodeConfiguration("TestNode");
+        var nodeConfig = Registry.GetNodeConfiguration("TestNode");
         Assert.Null(nodeConfig);
     }
 
@@ -205,14 +198,14 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public void PropertyConfiguration_RelationshipConfiguration_WorksCorrectly()
     {
         // Arrange
-        _registry.ConfigureRelationship("TestRel", config =>
+        Registry.ConfigureRelationship("TestRel", config =>
         {
             config.Property("since", p => { p.IsIndexed = true; })
                  .Property("strength", p => { p.IsUnique = true; });
         });
 
         // Act & Assert
-        var relConfig = _registry.GetRelationshipConfiguration("TestRel");
+        var relConfig = Registry.GetRelationshipConfiguration("TestRel");
         Assert.NotNull(relConfig);
         Assert.True(relConfig.Properties.ContainsKey("since"));
         Assert.True(relConfig.Properties.ContainsKey("strength"));
@@ -224,7 +217,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public void PropertyConfiguration_WithComplexValidation_ConfigurationStored()
     {
         // Arrange
-        _registry.ConfigureNode("ComplexValidationNode", config =>
+        Registry.ConfigureNode("ComplexValidationNode", config =>
         {
             config.Property("complexField", p =>
             {
@@ -240,7 +233,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
         });
 
         // Act & Assert
-        var nodeConfig = _registry.GetNodeConfiguration("ComplexValidationNode");
+        var nodeConfig = Registry.GetNodeConfiguration("ComplexValidationNode");
         Assert.NotNull(nodeConfig);
         var complexFieldConfig = nodeConfig.Properties["complexField"];
         Assert.NotNull(complexFieldConfig.Validation);
@@ -257,7 +250,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public async Task Graph_WithRequiredPropertyConfiguration_EnforcesRequiredFields()
     {
         // Arrange - Configure required properties
-        _registry.ConfigureNode("ConfigTestPerson", config =>
+        Registry.ConfigureNode("ConfigTestPerson", config =>
         {
             config.Property("FirstName", p => { p.IsRequired = true; })
                  .Property("Email", p => { p.IsRequired = true; });
@@ -281,7 +274,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public async Task Graph_WithUniquePropertyConfiguration_EnforcesUniqueness()
     {
         // Arrange - Configure unique properties
-        _registry.ConfigureNode("ConfigTestPerson", config =>
+        Registry.ConfigureNode("ConfigTestPerson", config =>
         {
             config.Property("Email", p => { p.IsUnique = true; });
         });
@@ -315,7 +308,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public async Task Graph_WithValidationRules_EnforcesValidationConstraints()
     {
         // Arrange - Configure validation rules
-        _registry.ConfigureNode("ConfigTestPerson", config =>
+        Registry.ConfigureNode("ConfigTestPerson", config =>
         {
             config.Property("Age", p =>
             {
@@ -370,7 +363,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public async Task Graph_WithPatternValidation_EnforcesRegexPattern()
     {
         // Arrange - Configure pattern validation
-        _registry.ConfigureNode("ConfigTestPerson", config =>
+        Registry.ConfigureNode("ConfigTestPerson", config =>
         {
             config.Property("Email", p =>
             {
@@ -401,7 +394,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public async Task Graph_WithRelationshipConfiguration_EnforcesRelationshipConstraints()
     {
         // Arrange - Configure relationship properties
-        _registry.ConfigureRelationship("ConfigTestKnows", config =>
+        Registry.ConfigureRelationship("ConfigTestKnows", config =>
         {
             config.Property("Strength", p =>
             {
@@ -450,7 +443,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public async Task Graph_WithValidConfiguration_AllowsValidEntities()
     {
         // Arrange - Configure reasonable validation rules
-        _registry.ConfigureNode("ConfigTestPerson", config =>
+        Registry.ConfigureNode("ConfigTestPerson", config =>
         {
             config.Property("FirstName", p =>
             {
@@ -503,7 +496,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public async Task Graph_WithIndexedProperties_CreatesIndexesForQueryPerformance()
     {
         // Arrange - Configure indexed properties
-        _registry.ConfigureNode("ConfigTestPerson", config =>
+        Registry.ConfigureNode("ConfigTestPerson", config =>
         {
             config.Property("Email", p => { p.IsIndexed = true; })
                  .Property("Age", p => { p.IsIndexed = true; });
@@ -537,7 +530,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public async Task Graph_WithCustomPropertyNames_UsesCustomNamesInDatabase()
     {
         // Arrange - Configure custom property names
-        _registry.ConfigureNode("ConfigTestPerson", config =>
+        Registry.ConfigureNode("ConfigTestPerson", config =>
         {
             config.Property("FirstName", p => { p.CustomName = "first_name"; })
                  .Property("LastName", p => { p.CustomName = "last_name"; })
@@ -566,7 +559,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public async Task Graph_WithComplexValidation_EnforcesMultipleConstraints()
     {
         // Arrange - Configure complex validation rules
-        _registry.ConfigureNode("ConfigTestPerson", config =>
+        Registry.ConfigureNode("ConfigTestPerson", config =>
         {
             config.Property("FirstName", p =>
             {
@@ -631,7 +624,7 @@ public abstract class PropertyConfigurationTestsBase : ITestBase
     public async Task Graph_WithUpdateOperations_EnforcesConfigurationOnUpdates()
     {
         // Arrange - Configure validation rules
-        _registry.ConfigureNode("ConfigTestPerson", config =>
+        Registry.ConfigureNode("ConfigTestPerson", config =>
         {
             config.Property("Email", p =>
             {

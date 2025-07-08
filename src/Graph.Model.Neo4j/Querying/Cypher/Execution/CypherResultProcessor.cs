@@ -190,19 +190,55 @@ internal sealed class CypherResultProcessor
     private EntityInfo ProcessSingleNodeResult(NodeResult nodeResult, Type targetType)
     {
         // Use the new recursive deserializer for complex properties
-        return DeserializeComplexPropertiesForNode(nodeResult.Node, nodeResult.ComplexProperties, targetType);
+        if (targetType.IsAssignableTo(typeof(IDynamicNode)))
+        {
+            // For dynamic nodes
+            return DeserializeComplexPropertiesForDynamicNode(nodeResult.Node, nodeResult.ComplexProperties, typeof(DynamicNode));
+        }
+
+        // For strongly-typed nodes
+        return DeserializeComplexPropertiesForTypedNode(nodeResult.Node, nodeResult.ComplexProperties, targetType);
     }
 
     /// <summary>
     /// Recursively reconstructs the object graph for a node and its complex properties.
     /// </summary>
-    private EntityInfo DeserializeComplexPropertiesForNode(
+    private EntityInfo DeserializeComplexPropertiesForTypedNode(
         INode node,
         List<ComplexProperty> allComplexProperties,
         Type nodeType)
     {
         // Create the base entity info for this node
-        var entityInfo = CreateEntityInfoFromNode(node, nodeType);
+        var actualType = DiscoverActualNodeType(node, nodeType);
+        Dictionary<string, Property> simpleProperties;
+        var label = node.Labels.FirstOrDefault() ?? actualType.Name;
+
+        // Use dynamic extraction for dynamic nodes (including complex property nodes)
+        if (typeof(Model.IDynamicNode).IsAssignableFrom(actualType))
+        {
+            simpleProperties = ExtractAllSimplePropertiesForDynamicNode(node.Properties);
+            if (!simpleProperties.ContainsKey(nameof(Model.IEntity.Id)) && node.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
+            {
+                simpleProperties[nameof(Model.IEntity.Id)] = new Property(
+                    PropertyInfo: default!,
+                    Label: nameof(Model.IEntity.Id),
+                    IsNullable: false,
+                    Value: new SimpleValue(idValue ?? string.Empty, typeof(string))
+                );
+            }
+        }
+        else
+        {
+            simpleProperties = ExtractSimpleProperties(node.Properties, actualType);
+        }
+
+        var entityInfo = new EntityInfo(
+            ActualType: actualType,
+            Label: label,
+            ActualLabels: node.Labels.ToList(),
+            SimpleProperties: simpleProperties,
+            ComplexProperties: new Dictionary<string, Property>()
+        );
 
         // Find all complex properties where this node is the parent
         var directComplexProps = allComplexProperties
@@ -213,8 +249,11 @@ internal sealed class CypherResultProcessor
             return entityInfo;
 
         var schema = _entityFactory.GetSchema(nodeType);
-        if (schema?.ComplexProperties == null)
+        if (schema == null)
+        {
+            _logger.LogWarning("No schema found for node type {NodeType}. Cannot deserialize complex properties.", nodeType.Name);
             return entityInfo;
+        }
 
         foreach (var (propertyName, propertySchema) in schema.ComplexProperties)
         {
@@ -235,7 +274,7 @@ internal sealed class CypherResultProcessor
             if (propertySchema.PropertyType == PropertyType.ComplexCollection)
             {
                 var children = matchingProps
-                    .Select(cp => DeserializeComplexPropertiesForNode(cp.Property, allComplexProperties, childType))
+                    .Select(cp => DeserializeComplexPropertiesForTypedNode(cp.Property, allComplexProperties, childType))
                     .ToList();
 
                 entityInfo.ComplexProperties[propertyName] = new Property(
@@ -246,7 +285,7 @@ internal sealed class CypherResultProcessor
             }
             else if (propertySchema.PropertyType == PropertyType.Complex)
             {
-                var child = DeserializeComplexPropertiesForNode(matchingProps[0].Property, allComplexProperties, childType);
+                var child = DeserializeComplexPropertiesForTypedNode(matchingProps[0].Property, allComplexProperties, childType);
 
                 entityInfo.ComplexProperties[propertyName] = new Property(
                     propertySchema.PropertyInfo,
@@ -254,6 +293,52 @@ internal sealed class CypherResultProcessor
                     propertySchema.IsNullable,
                     child);
             }
+        }
+
+        return entityInfo;
+    }
+
+    /// <summary>
+    /// Recursively reconstructs the object graph for a node and its complex properties.
+    /// </summary>
+    private EntityInfo DeserializeComplexPropertiesForDynamicNode(
+        INode node,
+        List<ComplexProperty> allComplexProperties,
+        Type nodeType)
+    {
+        // Create the base entity info for this node
+        Dictionary<string, Property> simpleProperties;
+
+        simpleProperties = ExtractAllSimplePropertiesForDynamicNode(node.Properties);
+
+        var entityInfo = new EntityInfo(
+            ActualType: nodeType,
+            Label: node.Labels.FirstOrDefault() ?? "",
+            ActualLabels: node.Labels.ToList(),
+            SimpleProperties: simpleProperties,
+            ComplexProperties: new Dictionary<string, Property>()
+        );
+
+        var directComplexProps = allComplexProperties
+            .Where(cp => cp.ParentNode.ElementId == node.ElementId)
+            .ToList();
+
+        // For dynamic nodes, attach all direct complex properties using the property name derived from the relationship type
+        foreach (var cp in directComplexProps)
+        {
+            var propertyName = cp.Relationship.Type;
+            // Remove __PROPERTY__ prefix and __ suffix if present
+            if (propertyName.StartsWith(GraphDataModel.PropertyRelationshipTypeNamePrefix) && propertyName.EndsWith(GraphDataModel.PropertyRelationshipTypeNameSuffix))
+            {
+                propertyName = propertyName.Substring(GraphDataModel.PropertyRelationshipTypeNamePrefix.Length, propertyName.Length - GraphDataModel.PropertyRelationshipTypeNamePrefix.Length - GraphDataModel.PropertyRelationshipTypeNameSuffix.Length);
+            }
+            var childEntity = DeserializeComplexPropertiesForDynamicNode(cp.Property, allComplexProperties, typeof(object));
+            entityInfo.ComplexProperties[propertyName] = new Property(
+                PropertyInfo: null!,
+                Label: propertyName,
+                IsNullable: true,
+                Value: childEntity
+            );
         }
 
         return entityInfo;
@@ -327,10 +412,7 @@ internal sealed class CypherResultProcessor
                 complexPropStructure.ContainsKey("ComplexProperties"))
             {
                 // This is a complex property structure - deserialize it properly
-                var node = complexPropStructure["Node"] as INode;
-                var complexProps = complexPropStructure["ComplexProperties"] as IList<object>;
-
-                if (node != null)
+                if (complexPropStructure["Node"] is INode node)
                 {
                     // Debug: Log the node properties to see what we have
                     _logger.LogDebug("Complex property structure node has {PropertyCount} properties: [{Properties}]",
@@ -346,7 +428,7 @@ internal sealed class CypherResultProcessor
                         string.Join(", ", nodeEntityInfo.SimpleProperties.Select(kv => $"{kv.Key}={kv.Value.Value}")));
 
                     // Add complex properties if they exist
-                    if (complexProps != null && complexProps.Count > 0)
+                    if (complexPropStructure["ComplexProperties"] is IList<object> complexProps && complexProps.Count > 0)
                     {
                         // TODO: Process the complex properties from the flat list
                         // For now, we'll just use the base node EntityInfo
@@ -450,6 +532,7 @@ internal sealed class CypherResultProcessor
         return new EntityInfo(
             ActualType: targetType,
             Label: targetType.Name,
+            ActualLabels: [],
             SimpleProperties: simpleProperties,
             ComplexProperties: complexProperties
         );
@@ -458,21 +541,27 @@ internal sealed class CypherResultProcessor
     private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, IRelationship relationship, Type targetType, string startNodeId, string endNodeId)
     {
         // Add StartNodeId as a simple property
-        if (targetType.GetProperty(nameof(Model.IRelationship.StartNodeId)) != null)
+        var startNodeIdProperty = targetType.IsInterface
+            ? targetType.GetInterface(typeof(Model.IRelationship).Name)?.GetProperty(nameof(Model.IRelationship.StartNodeId))
+            : targetType.GetProperty(nameof(Model.IRelationship.StartNodeId));
+        if (startNodeIdProperty != null)
         {
             entityInfo.SimpleProperties[nameof(Model.IRelationship.StartNodeId)] = new Property(
-                PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.StartNodeId))!,
+                PropertyInfo: startNodeIdProperty,
                 Label: nameof(Model.IRelationship.StartNodeId),
                 IsNullable: false,
                 Value: new SimpleValue(startNodeId, typeof(string))
             );
         }
 
-        // Add EndNodeId as a simple property  
-        if (targetType.GetProperty(nameof(Model.IRelationship.EndNodeId)) != null)
+        // Add EndNodeId as a simple property
+        var endNodeIdProperty = targetType.IsInterface
+            ? targetType.GetInterface(typeof(Model.IRelationship).Name)?.GetProperty(nameof(Model.IRelationship.EndNodeId))
+            : targetType.GetProperty(nameof(Model.IRelationship.EndNodeId));
+        if (endNodeIdProperty != null)
         {
             entityInfo.SimpleProperties[nameof(Model.IRelationship.EndNodeId)] = new Property(
-                PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.EndNodeId))!,
+                PropertyInfo: endNodeIdProperty,
                 Label: nameof(Model.IRelationship.EndNodeId),
                 IsNullable: false,
                 Value: new SimpleValue(endNodeId, typeof(string))
@@ -480,11 +569,14 @@ internal sealed class CypherResultProcessor
         }
 
         // Add Direction
-        if (targetType.GetProperty(nameof(Model.IRelationship.Direction)) != null)
+        var directionProperty = targetType.IsInterface
+            ? targetType.GetInterface(typeof(Model.IRelationship).Name)?.GetProperty(nameof(Model.IRelationship.Direction))
+            : targetType.GetProperty(nameof(Model.IRelationship.Direction));
+        if (directionProperty != null)
         {
             var direction = GetRelationshipDirection(relationship, targetType);
             entityInfo.SimpleProperties[nameof(Model.IRelationship.Direction)] = new Property(
-                PropertyInfo: targetType.GetProperty(nameof(Model.IRelationship.Direction))!,
+                PropertyInfo: directionProperty,
                 Label: nameof(Model.IRelationship.Direction),
                 IsNullable: false,
                 Value: new SimpleValue(direction, typeof(RelationshipDirection))
@@ -560,6 +652,7 @@ internal sealed class CypherResultProcessor
         return new EntityInfo(
             ActualType: pathSegmentType,
             Label: typeof(GraphPathSegment<,,>).Name,
+            ActualLabels: [],
             SimpleProperties: new Dictionary<string, Property>(),
             ComplexProperties: complexProperties
         );
@@ -591,31 +684,78 @@ internal sealed class CypherResultProcessor
         return results;
     }
 
+    // Add this method to extract all properties for dynamic nodes
+    private Dictionary<string, Property> ExtractAllSimplePropertiesForDynamicNode(IReadOnlyDictionary<string, object> properties)
+    {
+        var result = new Dictionary<string, Property>();
+        foreach (var (key, value) in properties)
+        {
+            if (key == SerializationBridge.MetadataPropertyName)
+                continue;
+            // Use SerializationBridge to convert Neo4j values to .NET types
+            object? convertedValue = value;
+            if (value is List<object> listValue)
+            {
+                // Try to infer element type from contents (string, int, etc.)
+                var elementType = listValue.FirstOrDefault()?.GetType() ?? typeof(object);
+                // If all elements are string, treat as List<string>
+                if (listValue.All(x => x is string || x == null))
+                {
+                    convertedValue = listValue.Cast<string?>().ToList();
+                }
+                else
+                {
+                    // Fallback: use SerializationBridge to convert to List<object>
+                    convertedValue = SerializationBridge.FromNeo4jValue(listValue, typeof(List<object>));
+                }
+            }
+            else
+            {
+                convertedValue = SerializationBridge.FromNeo4jValue(value, value?.GetType() ?? typeof(object));
+            }
+            result[key] = new Property(
+                PropertyInfo: null!,
+                Label: key,
+                IsNullable: value == null,
+                Value: new SimpleValue(convertedValue ?? string.Empty, convertedValue?.GetType() ?? typeof(object))
+            );
+        }
+        return result;
+    }
+
+    // In CreateEntityInfoFromNode, use this for dynamic nodes
     private EntityInfo CreateEntityInfoFromNode(INode node, Type targetType)
     {
         // Discover the actual type from metadata, labels, or fall back to target type
         var actualType = DiscoverActualNodeType(node, targetType);
 
+        Dictionary<string, Property> simpleProperties;
         var label = node.Labels.FirstOrDefault() ?? actualType.Name;
-        var simpleProperties = ExtractSimpleProperties(node.Properties, actualType);
 
-        // Add ElementId as a system property if the type has an Id property
-        if (actualType.GetProperty(nameof(Model.IEntity.Id)) != null)
+        // Handle dynamic nodes differently
+        if (typeof(Model.IDynamicNode).IsAssignableFrom(actualType))
         {
-            if (node.Properties.TryGetValue("Id", out var idValue))
+            simpleProperties = ExtractAllSimplePropertiesForDynamicNode(node.Properties);
+            // Add Id property if not present
+            if (!simpleProperties.ContainsKey(nameof(Model.IEntity.Id)) && node.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
             {
                 simpleProperties[nameof(Model.IEntity.Id)] = new Property(
-                    PropertyInfo: actualType.GetProperty(nameof(Model.IEntity.Id))!,
+                    PropertyInfo: default!, // null is expected for dynamic
                     Label: nameof(Model.IEntity.Id),
                     IsNullable: false,
-                    Value: new SimpleValue(idValue, typeof(string))
+                    Value: new SimpleValue(idValue ?? string.Empty, typeof(string))
                 );
             }
+        }
+        else
+        {
+            simpleProperties = ExtractSimpleProperties(node.Properties, actualType);
         }
 
         return new EntityInfo(
             ActualType: actualType,
             Label: label,
+            ActualLabels: node.Labels.ToList(),
             SimpleProperties: simpleProperties,
             ComplexProperties: new Dictionary<string, Property>()
         );
@@ -626,23 +766,60 @@ internal sealed class CypherResultProcessor
         // Discover the actual type from metadata, type, or fall back to target type
         var actualType = DiscoverActualRelationshipType(relationship, targetType);
 
-        var label = relationship.Type ?? actualType.Name;
-        var simpleProperties = ExtractSimpleProperties(relationship.Properties, actualType);
-
-        // Add ElementId as the Id property
-        if (actualType.GetProperty(nameof(Model.IEntity.Id)) != null)
+        var label = relationship.Type;
+        if (string.IsNullOrEmpty(label))
         {
-            simpleProperties[nameof(Model.IEntity.Id)] = new Property(
-                PropertyInfo: actualType.GetProperty(nameof(Model.IEntity.Id))!,
-                Label: nameof(Model.IEntity.Id),
-                IsNullable: false,
-                Value: new SimpleValue(relationship.Properties[nameof(Model.IEntity.Id)], typeof(string))
-            );
+            label = actualType.Name;
+        }
+        Dictionary<string, Property> simpleProperties;
+
+        // Handle dynamic relationships differently
+        if (typeof(Model.IDynamicRelationship).IsAssignableFrom(actualType))
+        {
+            simpleProperties = new Dictionary<string, Property>();
+            foreach (var (key, value) in relationship.Properties)
+            {
+                // Skip metadata properties
+                if (SerializationBridge.MetadataPropertyName == key)
+                    continue;
+                // Store all properties as SimpleValue
+                simpleProperties[key] = new Property(
+                    PropertyInfo: default!, // null is expected for dynamic
+                    Label: key,
+                    IsNullable: value == null,
+                    Value: new SimpleValue(value ?? string.Empty, value?.GetType() ?? typeof(object))
+                );
+            }
+            // Add Id property if not present
+            if (!simpleProperties.ContainsKey(nameof(Model.IEntity.Id)) && relationship.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
+            {
+                simpleProperties[nameof(Model.IEntity.Id)] = new Property(
+                    PropertyInfo: default!, // null is expected for dynamic
+                    Label: nameof(Model.IEntity.Id),
+                    IsNullable: false,
+                    Value: new SimpleValue(idValue ?? string.Empty, typeof(string))
+                );
+            }
+        }
+        else
+        {
+            simpleProperties = ExtractSimpleProperties(relationship.Properties, actualType);
+            // Add ElementId as the Id property
+            if (actualType.GetProperty(nameof(Model.IEntity.Id)) != null)
+            {
+                simpleProperties[nameof(Model.IEntity.Id)] = new Property(
+                    PropertyInfo: actualType.GetProperty(nameof(Model.IEntity.Id))!,
+                    Label: nameof(Model.IEntity.Id),
+                    IsNullable: false,
+                    Value: new SimpleValue(relationship.Properties[nameof(Model.IEntity.Id)], typeof(string))
+                );
+            }
         }
 
         return new EntityInfo(
             ActualType: actualType,
             Label: label,
+            ActualLabels: [label],
             SimpleProperties: simpleProperties,
             ComplexProperties: new Dictionary<string, Property>()
         );
@@ -653,6 +830,14 @@ internal sealed class CypherResultProcessor
     /// </summary>
     private Type DiscoverActualNodeType(INode node, Type targetType)
     {
+        // Special handling for dynamic entities
+        if (targetType == typeof(Model.IDynamicNode))
+        {
+            _logger.LogDebug("Using label-based type DynamicNode for target type {TargetType}",
+                targetType.Name);
+            return typeof(Model.IDynamicNode);
+        }
+
         // Step 1: Try to get type from stored metadata
         var metadataType = SerializationBridge.GetTypeFromMetadata(node.Properties);
         if (metadataType != null && IsCompatibleType(metadataType, targetType))
@@ -682,6 +867,14 @@ internal sealed class CypherResultProcessor
     /// </summary>
     private Type DiscoverActualRelationshipType(IRelationship relationship, Type targetType)
     {
+        // Special handling for dynamic entities
+        if (targetType == typeof(Model.IDynamicRelationship))
+        {
+            _logger.LogDebug("Using relationship type-based type DynamicRelationship for target type {TargetType}",
+                targetType.Name);
+            return typeof(Model.IDynamicRelationship);
+        }
+
         // Step 1: Try to get type from stored metadata
         var metadataType = SerializationBridge.GetTypeFromMetadata(relationship.Properties);
         if (metadataType != null && IsCompatibleType(metadataType, targetType))

@@ -14,7 +14,6 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Core;
 
-using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 
 
@@ -25,9 +24,10 @@ internal static class TransactionHelpers
         IGraphTransaction? transaction,
         Func<GraphTransaction, Task<T>> function,
         string errorMessage,
-        Microsoft.Extensions.Logging.ILogger? logger = null)
+        ILogger? logger = null)
     {
         var tx = await GetOrCreateTransactionAsync(graphContext, transaction);
+
         try
         {
             var result = await function(tx);
@@ -65,16 +65,14 @@ internal static class TransactionHelpers
     {
         if (transaction is null)
         {
-            var session = graphContext.Driver.AsyncSession(builder => builder
-                .WithDatabase(graphContext.DatabaseName)
-                .WithDefaultAccessMode(isReadOnly ? AccessMode.Read : AccessMode.Write));
-            var tx = await session.BeginTransactionAsync();
-            return new GraphTransaction(session, tx);
+            var tx = new GraphTransaction(graphContext, isReadOnly);
+            await tx.BeginTransactionAsync();
+            return tx;
         }
 
         if (transaction is not GraphTransaction graphTransaction)
         {
-            throw new InvalidOperationException(
+            throw new GraphException(
                 "The given transaction is not a valid Neo4j transaction. You need to use Neo4jStore.Graph.BeginTransaction() to create a transaction.");
         }
 

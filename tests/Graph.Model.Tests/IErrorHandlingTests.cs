@@ -14,10 +14,8 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class ErrorHandlingTestsBase : ITestBase
+public interface IErrorHandlingTests : IGraphModelTest
 {
-    public abstract IGraph Graph { get; }
-
     public class TestNode : INode
     {
         public string Id { get; init; } = Guid.NewGuid().ToString("N");

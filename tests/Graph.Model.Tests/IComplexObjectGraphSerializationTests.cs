@@ -14,10 +14,8 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class ComplexObjectGraphSerializationTestsBase : ITestBase
+public interface IComplexObjectGraphSerializationTests : IGraphModelTest
 {
-    public abstract IGraph Graph { get; }
-
     [Fact]
     public async Task CanCreateAndGetNodeWithComplexProperty()
     {

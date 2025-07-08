@@ -15,6 +15,8 @@
 namespace Cvoya.Graph.Model.Neo4j.Core;
 
 using global::Neo4j.Driver;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 
 /// <summary>
@@ -29,17 +31,21 @@ internal class GraphTransaction : IGraphTransaction
     private IAsyncTransaction? _transaction;
     private bool _committed;
     private bool _rolledBack;
+    private readonly ILogger<GraphTransaction> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="GraphTransaction"/> class.
     /// </summary>
-    /// <param name="session">The Neo4j driver session</param>
-    /// <param name="transaction">The Neo4j driver transaction</param>
+    /// <param name="context">The graph context containing the session.</param>
+    /// <param name="isReadOnly">Indicates whether the transaction is read-only.</param>
     /// <exception cref="ArgumentNullException">Thrown if either parameter is null</exception>
-    public GraphTransaction(IAsyncSession session, IAsyncTransaction transaction)
+    public GraphTransaction(GraphContext context, bool isReadOnly = false)
     {
-        _session = session ?? throw new ArgumentNullException(nameof(session));
-        _transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
+        _session = context.Driver.AsyncSession(c => c
+            .WithDatabase(context.DatabaseName)
+            .WithDefaultAccessMode(isReadOnly ? AccessMode.Read : AccessMode.Write));
+        _logger = context.LoggerFactory?.CreateLogger<GraphTransaction>()
+            ?? NullLogger<GraphTransaction>.Instance;
     }
 
     /// <summary>
@@ -56,41 +62,34 @@ internal class GraphTransaction : IGraphTransaction
     /// <summary>
     /// Gets the underlying Neo4j transaction.
     /// </summary>
-    internal IAsyncTransaction Transaction => _transaction ?? throw new InvalidOperationException("Transaction is not active.");
+    internal IAsyncTransaction Transaction => _transaction
+        ?? throw new GraphException($"The transaction has not started yet. Call {nameof(BeginTransactionAsync)} first.");
 
     /// <summary>
     /// Commits the transaction.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown if the transaction is not active</exception>
+    /// <exception cref="GraphException">Thrown if the transaction is not active</exception>
     public async Task CommitAsync()
     {
         if (_transaction == null || _committed || _rolledBack)
-            throw new InvalidOperationException("Transaction is not active.");
+            throw new GraphException("Transaction is not active.");
 
         await _transaction.CommitAsync();
         _committed = true;
-        _transaction = null;
     }
 
     /// <summary>
     /// Rolls back the transaction.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown if the transaction is not active</exception>
+    /// <exception cref="GraphException">Thrown if the transaction is not active</exception>
     public async Task Rollback()
     {
         if (_transaction == null || _committed || _rolledBack)
-            throw new InvalidOperationException("Transaction is not active.");
+            throw new GraphException("Transaction is not active.");
 
         await _transaction.RollbackAsync();
         _rolledBack = true;
-        _transaction = null;
     }
-
-    /// <summary>
-    /// Gets the underlying Neo4j transaction.
-    /// </summary>
-    /// <returns>The Neo4j transaction or null if not active</returns>
-    internal IAsyncTransaction? GetNeo4jTransaction() => _transaction;
 
     /// <summary>
     /// Disposes the transaction asynchronously.
@@ -103,15 +102,29 @@ internal class GraphTransaction : IGraphTransaction
             {
                 // Auto-rollback uncommitted transactions
                 await _transaction.RollbackAsync();
+                _transaction.Dispose();
+                _transaction = null;
             }
             catch
             {
                 // Ignore rollback errors during disposal
             }
-            _transaction = null;
         }
 
-        await _session.CloseAsync();
+        // Close the session
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await _session.CloseAsync().WaitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Closing session timed out. The session may not have been closed properly.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("An error occurred while closing the session: {Message}", ex.Message);
+        }
     }
 
     /// <summary>
@@ -120,5 +133,12 @@ internal class GraphTransaction : IGraphTransaction
     public void Dispose()
     {
         DisposeAsync().GetAwaiter().GetResult();
+    }
+
+    internal async Task BeginTransactionAsync()
+    {
+        _logger.LogDebug("Beginning new transaction");
+        _transaction = await _session.BeginTransactionAsync();
+        _logger.LogDebug("Successfully began transaction");
     }
 }

@@ -18,6 +18,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
+using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -432,6 +433,9 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     {
         if (type is null || !visited.Add(type))
             return false;
+
+        // Dynamic entity types can have complex properties, so we need to check them
+        // The old logic skipped them, but that's incorrect for dynamic entities with complex properties
 
         // Direct match
         if (ComplexPropertyInterfaces.Any(i => i.IsAssignableFrom(type)))

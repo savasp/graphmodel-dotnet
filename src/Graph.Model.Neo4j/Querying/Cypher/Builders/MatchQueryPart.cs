@@ -109,7 +109,9 @@ internal class MatchQueryPart : ICypherQueryPart
         var depthPattern = BuildDepthPattern(minDepth, maxDepth);
         var directionPattern = BuildDirectionPattern(direction);
 
-        var pattern = $"(src){directionPattern}[r:{relationshipType}{depthPattern}]{GetOppositeDirection(directionPattern)}(tgt)";
+        // Handle empty relationship type (for dynamic relationships that match any type)
+        var relTypeClause = string.IsNullOrEmpty(relationshipType) ? "r" : $"r:{relationshipType}";
+        var pattern = $"(src){directionPattern}[{relTypeClause}{depthPattern}]{GetOppositeDirection(directionPattern)}(tgt)";
         _matchClauses.Add(pattern);
     }
 

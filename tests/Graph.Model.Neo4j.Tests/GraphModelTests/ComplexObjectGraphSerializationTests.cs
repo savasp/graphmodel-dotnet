@@ -14,24 +14,8 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
-public class ComplexObjectGraphSerializationTests : Model.Tests.ComplexObjectGraphSerializationTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
+public class ComplexObjectGraphSerializationTests(TestInfrastructureFixture fixture) :
+    Neo4jTest(fixture),
+    Model.Tests.IComplexObjectGraphSerializationTests
 {
-    private readonly TestInfrastructureFixture fixture;
-
-    public ComplexObjectGraphSerializationTests(TestInfrastructureFixture fixture)
-    {
-        this.fixture = fixture;
-    }
-
-    public override IGraph Graph => fixture.TestInfrastructure.GraphStore.Graph;
-
-    public async ValueTask InitializeAsync()
-    {
-        await fixture.TestInfrastructure.ResetDatabase();
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
-    }
 }

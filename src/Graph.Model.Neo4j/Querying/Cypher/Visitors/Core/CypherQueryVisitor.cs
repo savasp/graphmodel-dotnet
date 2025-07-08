@@ -1070,40 +1070,67 @@ internal class CypherQueryVisitor : ExpressionVisitor
             // Check if this is a relationship queryable
             if (node.Value is IGraphRelationshipQueryable)
             {
-                // Get all compatible labels to support inheritance hierarchies
-                var compatibleLabels = Labels.GetCompatibleLabels(queryable.ElementType);
-                var relLabel = compatibleLabels.Count == 1
-                    ? compatibleLabels[0]
-                    : string.Join("|", compatibleLabels);
+                // Check if this is a dynamic relationship type
+                if (typeof(IDynamicRelationship).IsAssignableFrom(queryable.ElementType))
+                {
+                    // For dynamic relationships, match any relationship that has an Id property
+                    // This allows dynamic relationships to be queried regardless of their domain types
+                    _logger.LogDebug("Adding relationship match for dynamic relationship");
+                    _context.Builder.AddRelationshipMatch(""); // Match any relationship type (empty string means no type constraint)
+                    _context.Scope.CurrentAlias = "r";
+                }
+                else
+                {
+                    // Get all compatible labels to support inheritance hierarchies
+                    var compatibleLabels = Labels.GetCompatibleLabels(queryable.ElementType);
+                    var relLabel = compatibleLabels.Count == 1
+                        ? compatibleLabels[0]
+                        : string.Join("|", compatibleLabels);
 
-                _logger.LogDebug("Adding relationship match with label(s): {RelLabel}", relLabel);
-                _context.Builder.AddRelationshipMatch(relLabel);
-                _context.Scope.CurrentAlias = "r";
+                    _logger.LogDebug("Adding relationship match with label(s): {RelLabel}", relLabel);
+                    _context.Builder.AddRelationshipMatch(relLabel);
+                    _context.Scope.CurrentAlias = "r";
 
-                // Relationships are always treated as path segments, so they need complex property loading
-                _logger.LogDebug("Relationship type {Type} requires complex property loading", queryable.ElementType.Name);
-                _context.Builder.EnableComplexPropertyLoading();
+                    // Relationships are always treated as path segments, so they need complex property loading
+                    _logger.LogDebug("Relationship type {Type} requires complex property loading", queryable.ElementType.Name);
+                    _context.Builder.EnableComplexPropertyLoading();
+                }
             }
             else if (node.Value is IGraphNodeQueryable)
             {
                 // For nodes, generate the MATCH clause using the queryable's element type
                 var alias = _context.Scope.GetOrCreateAlias(queryable.ElementType, "src");
 
-                // Get all compatible labels to support inheritance hierarchies
-                var compatibleLabels = Labels.GetCompatibleLabels(queryable.ElementType);
-                if (compatibleLabels.Count == 1)
+                // Check if this is a dynamic entity type
+                if (typeof(IDynamicNode).IsAssignableFrom(queryable.ElementType))
                 {
-                    // Single label - use traditional syntax
-                    var label = compatibleLabels[0];
-                    _logger.LogDebug("Adding MATCH clause: ({Alias}:{Label})", alias, label);
-                    _context.Builder.AddMatch(alias, label);
+                    // For dynamic nodes, match any node that has an Id property
+                    // This allows dynamic nodes to be queried regardless of their domain labels
+                    _logger.LogDebug("Adding MATCH clause for dynamic node: ({Alias})", alias);
+                    _context.Builder.AddMatch(alias, null); // No label constraint for dynamic nodes
+
+                    // Add a WHERE condition to ensure we only match nodes that have an Id property
+                    // This is how dynamic nodes are identified
+                    _context.Builder.AddWhere($"{alias}.Id IS NOT NULL");
                 }
                 else
                 {
-                    // Multiple labels - use label union syntax for inheritance support
-                    var labelUnion = string.Join("|", compatibleLabels);
-                    _logger.LogDebug("Adding MATCH clause with inheritance support: ({Alias}:{LabelUnion})", alias, labelUnion);
-                    _context.Builder.AddMatch(alias, labelUnion);
+                    // Get all compatible labels to support inheritance hierarchies
+                    var compatibleLabels = Labels.GetCompatibleLabels(queryable.ElementType);
+                    if (compatibleLabels.Count == 1)
+                    {
+                        // Single label - use traditional syntax
+                        var label = compatibleLabels[0];
+                        _logger.LogDebug("Adding MATCH clause: ({Alias}:{Label})", alias, label);
+                        _context.Builder.AddMatch(alias, label);
+                    }
+                    else
+                    {
+                        // Multiple labels - use label union syntax for inheritance support
+                        var labelUnion = string.Join("|", compatibleLabels);
+                        _logger.LogDebug("Adding MATCH clause with inheritance support: ({Alias}:{LabelUnion})", alias, labelUnion);
+                        _context.Builder.AddMatch(alias, labelUnion);
+                    }
                 }
 
                 // Check if this node type needs complex property loading

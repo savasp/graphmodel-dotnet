@@ -14,9 +14,8 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class AdvancedQueryTestsBase : ITestBase
+public interface IAdvancedQueryTests : IGraphModelTest
 {
-    public abstract IGraph Graph { get; }
     [Fact]
     public async Task CanQueryWithMultipleConditions()
     {

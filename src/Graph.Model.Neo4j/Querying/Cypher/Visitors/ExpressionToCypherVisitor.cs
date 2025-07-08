@@ -104,6 +104,12 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
             return VisitAggregationMethod(node);
         }
 
+        // Handle dynamic entity extension methods
+        if (node.Method.DeclaringType?.Name == "DynamicEntityExtensions")
+        {
+            return VisitDynamicEntityMethod(node);
+        }
+
         // Handle conversion operators (op_Implicit, op_Explicit)
         if (node.Method.Name.StartsWith("op_") && node.Arguments.Count == 1)
         {
@@ -709,6 +715,39 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
 
         _logger.LogDebug("Translated aggregation method {Method} to {CypherExpression}", node.Method.Name, cypherExpression);
         return Expression.Constant(cypherExpression);
+    }
+
+    private Expression VisitDynamicEntityMethod(MethodCallExpression node)
+    {
+        _logger.LogDebug("Visiting dynamic entity method: {MethodName}", node.Method.Name);
+
+        if (node.Arguments.Count < 1)
+        {
+            throw new NotSupportedException($"Dynamic entity method {node.Method.Name} requires at least one argument");
+        }
+
+        var target = VisitAndReturnCypher(node.Arguments[0]);
+        var arguments = node.Arguments.Skip(1).ToList();
+
+        string expression = node.Method.Name switch
+        {
+            "HasLabel" when arguments.Count == 1 =>
+                $"{VisitAndReturnCypher(arguments[0])} IN labels({target})",
+            "HasType" when arguments.Count == 1 =>
+                $"type({target}) = {VisitAndReturnCypher(arguments[0])}",
+            "HasProperty" when arguments.Count == 1 =>
+                arguments[0] is ConstantExpression constExpr && constExpr.Value is string propName
+                    ? $"{target}.{propName} IS NOT NULL"
+                    : $"{target}.{{{VisitAndReturnCypher(arguments[0])}}} IS NOT NULL",
+            "GetProperty" when arguments.Count == 1 =>
+                arguments[0] is ConstantExpression constExpr && constExpr.Value is string propName
+                    ? $"{target}.{propName}"
+                    : $"{target}.{{{VisitAndReturnCypher(arguments[0])}}}",
+            _ => throw new NotSupportedException($"Dynamic entity method {node.Method.Name} is not supported")
+        };
+
+        _logger.LogDebug("Dynamic entity method result: {Expression}", expression);
+        return Expression.Constant(expression);
     }
 
     /// <summary>

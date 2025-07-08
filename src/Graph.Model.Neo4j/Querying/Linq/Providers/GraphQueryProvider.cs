@@ -155,18 +155,6 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         }
     }
 
-    private bool IsSingleResultExpected(Expression expression)
-    {
-        if (expression is MethodCallExpression methodCall)
-        {
-            var methodName = methodCall.Method.Name;
-            return methodName is "First" or "FirstOrDefault" or "Single" or "SingleOrDefault"
-                or "Last" or "LastOrDefault";
-        }
-
-        return false;
-    }
-
     private TResult ExecuteInternal<TResult>(Expression expression)
     {
         return ExecuteAsync<TResult>(expression, CancellationToken.None)

@@ -14,25 +14,15 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
-/// <summary>
-/// Interface for Neo4j test infrastructure.
-/// </summary>
-public interface ITestInfrastructure : IAsyncDisposable
+using System.Threading.Tasks;
+using Serilog.Core;
+using Serilog.Events;
+
+public class WithCustomInfoEnricher : ILogEventEnricher
 {
-    /// <summary>
-    /// Sets up the Neo4j test infrastructure.
-    /// </summary>
-    Task Setup();
-
-    /// <summary>
-    /// Gets the Neo4j graph store.
-    /// </summary>
-    /// <value>The Neo4j graph store.</value>
-    Neo4jGraphStore GraphStore { get; }
-
-    /// <summary>
-    /// Resets the Neo4j database to a clean state for testing purposes.
-    /// </summary>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    Task ResetDatabase();
+    public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)
+    {
+        var taskId = Task.CurrentId?.ToString() ?? "none";
+        logEvent.AddOrUpdateProperty(propertyFactory.CreateProperty("TaskId", taskId));
+    }
 }

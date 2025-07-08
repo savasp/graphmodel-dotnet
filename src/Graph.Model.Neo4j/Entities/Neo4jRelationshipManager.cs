@@ -38,34 +38,6 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         nameof(Model.IRelationship.Direction)
     ];
 
-    public async Task<TRelationship> GetRelationshipAsync<TRelationship>(
-        string relationshipId,
-        GraphTransaction transaction,
-        CancellationToken cancellationToken = default)
-        where TRelationship : Model.IRelationship
-    {
-        ArgumentException.ThrowIfNullOrEmpty(relationshipId);
-
-        _logger.LogDebug("Getting relationship of type {RelationshipType} with ID {RelationshipId}",
-            typeof(TRelationship).Name, relationshipId);
-
-        try
-        {
-            // Use LINQ with the relationship queryable
-            var query = context.Graph.Relationships<TRelationship>(transaction)
-                .Where(r => r.Id == relationshipId);
-
-            return await query.FirstOrDefaultAsync(cancellationToken)
-                ?? throw new KeyNotFoundException($"Relationship with ID {relationshipId} not found");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving relationship {RelationshipId} of type {RelationshipType}",
-                relationshipId, typeof(TRelationship).Name);
-            throw new GraphException($"Failed to retrieve relationship: {ex.Message}", ex);
-        }
-    }
-
     public async Task<TRelationship> CreateRelationshipAsync<TRelationship>(
         TRelationship relationship,
         GraphTransaction transaction,
@@ -82,8 +54,8 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
 
-            // Ensure we have the schema for the relationship type
-            await context.SchemaManager.EnsureSchemaForEntity(relationship);
+            // Validate property constraints at application level
+            ValidateRelationshipProperties(relationship);
 
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);
@@ -137,6 +109,9 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         {
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
+
+            // Validate property constraints at application level
+            ValidateRelationshipProperties(relationship);
 
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);
@@ -260,17 +235,87 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         return record["updated"].As<bool>();
     }
 
-    private static Dictionary<string, object> SerializeSimpleProperties(EntityInfo entity)
+    private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : Model.IRelationship
     {
-        return entity.SimpleProperties
-            .Where(kv => kv.Value.Value is not null)
-            .ToDictionary(
-                kv => kv.Key,
-                kv => kv.Value.Value switch
+        var type = Labels.GetLabelFromType(relationship.GetType());
+        var config = context.SchemaManager.GetRegistry().GetRelationshipConfiguration(type);
+
+        if (config == null) return;
+
+        foreach (var (propertyName, propertyConfig) in config.Properties)
+        {
+            if (propertyConfig.Validation == null) continue;
+
+            var property = relationship.GetType().GetProperty(propertyName);
+            if (property == null) continue;
+
+            var value = property.GetValue(relationship);
+            if (value == null) continue;
+
+            ValidatePropertyValue(propertyName, value, propertyConfig.Validation, type);
+        }
+    }
+
+    private void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
+    {
+        // MinValue validation
+        if (validation.MinValue is not null)
+        {
+            if (value is IComparable comparable)
+            {
+                if (comparable.CompareTo(validation.MinValue) < 0)
                 {
-                    SimpleValue simple => simple.Object,
-                    SimpleCollection collection => collection.Values.Select(v => v.Object),
-                    _ => throw new GraphException("Unexpected value type in simple properties")
-                });
+                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must be greater than or equal to {validation.MinValue}. Current value: {value}");
+                }
+            }
+        }
+
+        // MaxValue validation
+        if (validation.MaxValue is not null)
+        {
+            if (value is IComparable comparable)
+            {
+                if (comparable.CompareTo(validation.MaxValue) > 0)
+                {
+                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must be less than or equal to {validation.MaxValue}. Current value: {value}");
+                }
+            }
+        }
+
+        // MinLength validation
+        if (validation.MinLength is not null)
+        {
+            if (value is string stringValue)
+            {
+                if (stringValue.Length < validation.MinLength)
+                {
+                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must have a minimum length of {validation.MinLength.Value}. Current length: {stringValue.Length}");
+                }
+            }
+        }
+
+        // MaxLength validation
+        if (validation.MaxLength is not null)
+        {
+            if (value is string stringValue)
+            {
+                if (stringValue.Length > validation.MaxLength)
+                {
+                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must have a maximum length of {validation.MaxLength.Value}. Current length: {stringValue.Length}");
+                }
+            }
+        }
+
+        // Pattern validation
+        if (!string.IsNullOrEmpty(validation.Pattern))
+        {
+            if (value is string stringValue)
+            {
+                if (!System.Text.RegularExpressions.Regex.IsMatch(stringValue, validation.Pattern))
+                {
+                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must match the pattern '{validation.Pattern}'. Current value: {stringValue}");
+                }
+            }
+        }
     }
 }

@@ -49,6 +49,7 @@ internal static class Serialization
         sb.AppendLine($"        return new EntityInfo(");
         sb.AppendLine($"            ActualType: typeof({GetTypeOfName(type)}),");
         sb.AppendLine($"            Label: \"{Utils.GetLabelFromType(type)}\",");
+        sb.AppendLine($"            ActualLabels: [],");
         sb.AppendLine($"            SimpleProperties: simpleProperties,");
         sb.AppendLine($"            ComplexProperties: complexProperties");
         sb.AppendLine($"        );");

@@ -14,10 +14,8 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class QueryTraversalTestsBase : ITestBase
+public interface IQueryTraversalTests : IGraphModelTest
 {
-    public abstract IGraph Graph { get; }
-
     #region Basic Traversal Tests
 
     [Fact]
@@ -661,11 +659,6 @@ public abstract class QueryTraversalTestsBase : ITestBase
             .WithDepth(2)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        foreach (var person in aliceKnowsTransitively)
-        {
-            Console.WriteLine($"Alice knows {person.FirstName}");
-        }
-
         // Assert
         Assert.Equal(2, aliceKnowsTransitively.Count); // Alice->Bob and Alice->Bob->Charlie
         Assert.Contains(aliceKnowsTransitively, p => p.FirstName == "Bob");
@@ -832,6 +825,10 @@ public abstract class QueryTraversalTestsBase : ITestBase
     [Fact]
     public async Task TraversalFromNonExistentNodeReturnsEmpty()
     {
+        // Setup: Alice with no connections
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+
         // Act: Try to traverse from a non-existent person
         var results = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "NonExistent")

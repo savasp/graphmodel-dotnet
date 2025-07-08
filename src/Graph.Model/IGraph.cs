@@ -14,12 +14,68 @@
 
 namespace Cvoya.Graph.Model;
 
+using Cvoya.Graph.Model.Configuration;
+
 /// <summary>
 /// Interface for the Graph client. Provides CRUD operations for nodes and relationships, querying, and transaction management.
 /// All methods throw <see cref="GraphException"/> for underlying graph errors.
 /// </summary>
 public interface IGraph : IAsyncDisposable
 {
+    /// <summary>
+    /// Gets the property configuration registry for the graph.
+    /// This registry is used to manage property configurations for nodes and relationships.
+    /// </summary>
+    PropertyConfigurationRegistry PropertyConfigurationRegistry { get; }
+
+    /// <summary>
+    /// Gets a new transaction that can be used for multiple operations
+    /// </summary>
+    /// <returns>An <see cref="IGraphTransaction"/> instance</returns>
+    Task<IGraphTransaction> GetTransactionAsync();
+
+    /// <summary>
+    /// Gets a queryable interface to dynamic nodes in the graph
+    /// </summary>
+    /// <param name="transaction">The transaction to use.
+    /// If null, a new transaction will be automatically created and used.</param>
+    /// <returns>A queryable interface to the dynamic nodes</returns>
+    /// <exception cref="GraphException">Thrown when the query fails</exception>
+    IGraphNodeQueryable<IDynamicNode> DynamicNodes(IGraphTransaction? transaction = null);
+
+    /// <summary>
+    /// Gets a queryable interface to dynamic relationships in the graph
+    /// </summary>
+    /// <param name="transaction">The transaction to use.
+    /// If null, a new transaction will be automatically created and used.</param>
+    /// <returns>A queryable interface to the dynamic relationships</returns>
+    /// <exception cref="GraphException">Thrown when the query fails</exception>
+    IGraphRelationshipQueryable<IDynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null);
+
+    /// <summary>
+    /// Gets a dynamic node by ID
+    /// </summary>
+    /// <param name="id">The ID of the dynamic node</param>
+    /// <param name="transaction">The transaction to use.
+    /// If null, a new transaction will be automatically created and used.</param>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
+    /// <returns>The dynamic node with the specified ID</returns>
+    /// <exception cref="KeyNotFoundException">Thrown when the dynamic node is not found</exception>
+    /// <exception cref="GraphException">Thrown when the dynamic node cannot be retrieved or there is another issue</exception>
+    Task<IDynamicNode> GetDynamicNodeAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a dynamic relationship by ID
+    /// </summary>
+    /// <param name="id">The ID of the dynamic relationship</param>
+    /// <param name="transaction">The transaction to use.
+    /// If null, a new transaction will be automatically created and used.</param>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
+    /// <returns>The dynamic relationship with the specified ID</returns>
+    /// <exception cref="KeyNotFoundException">Thrown when the dynamic relationship is not found</exception>
+    /// <exception cref="GraphException">Thrown when the dynamic relationship cannot be retrieved or there is another issue</exception>
+    Task<IDynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Gets a queryable interface to nodes in the graph with options for relationship loading
     /// </summary>
@@ -117,12 +173,6 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="GraphException">Thrown when the relationship cannot be updated or there is another issue</exception>
     Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where R : IRelationship;
-
-    /// <summary>
-    /// Gets a new transaction that can be used for multiple operations
-    /// </summary>
-    /// <returns>An <see cref="IGraphTransaction"/> instance</returns>
-    Task<IGraphTransaction> GetTransactionAsync();
 
     /// <summary>
     /// Deletes a node from the graph by ID

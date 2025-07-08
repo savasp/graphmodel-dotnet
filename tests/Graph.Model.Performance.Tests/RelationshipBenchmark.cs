@@ -43,7 +43,8 @@ public class RelationshipBenchmark
         var driver = GraphDatabase.Driver(connectionString, AuthTokens.Basic(username, password));
         await using (var session = driver.AsyncSession())
         {
-            await session.RunAsync($"CREATE OR REPLACE DATABASE {"PerformanceBenchmark"}");
+            var result = await session.RunAsync($"CREATE OR REPLACE DATABASE {"PerformanceBenchmark"}");
+            await result.ConsumeAsync();
         }
 
         // Wait for database to be ready
@@ -56,7 +57,8 @@ public class RelationshipBenchmark
             try
             {
                 await using var testSession = driver.AsyncSession(o => o.WithDatabase("PerformanceBenchmark"));
-                await testSession.RunAsync("RETURN 1");
+                var result = await testSession.RunAsync("RETURN 1");
+                await result.ConsumeAsync();
                 break; // Database is ready
             }
             catch (Exception)

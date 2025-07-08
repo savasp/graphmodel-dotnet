@@ -14,24 +14,8 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
-public class AggregationTests : Model.Tests.AggregationTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
+public class AggregationTests(TestInfrastructureFixture fixture) :
+    Neo4jTest(fixture),
+    Model.Tests.IAggregationTests
 {
-    private readonly TestInfrastructureFixture fixture;
-
-    public AggregationTests(TestInfrastructureFixture fixture)
-    {
-        this.fixture = fixture;
-    }
-
-    public override IGraph Graph => fixture.TestInfrastructure.GraphStore.Graph;
-
-    public async ValueTask InitializeAsync()
-    {
-        await fixture.TestInfrastructure.ResetDatabase();
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
-    }
 }

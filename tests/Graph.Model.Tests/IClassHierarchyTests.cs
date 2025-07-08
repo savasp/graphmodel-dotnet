@@ -14,10 +14,8 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class ClassHierarchyTestsBase : ITestBase
+public interface IClassHierarchyTests : IGraphModelTest
 {
-    public abstract IGraph Graph { get; }
-
     [Fact]
     public async Task CanCreateAndRetrieveNodeViaBaseType()
     {

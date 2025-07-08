@@ -28,32 +28,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     private readonly EntityFactory _serializer = new EntityFactory();
     private readonly ComplexPropertyManager _complexPropertyManager = new(context);
 
-    public async Task<TNode> GetNodeAsync<TNode>(
-        string nodeId,
-        GraphTransaction transaction,
-        CancellationToken cancellationToken = default)
-        where TNode : Model.INode
-    {
-        ArgumentException.ThrowIfNullOrEmpty(nodeId);
-
-        _logger.LogDebug("Getting node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, nodeId);
-
-        try
-        {
-            // Just use LINQ! The visitor pattern handles everything including complex properties
-            var query = context.Graph.Nodes<TNode>(transaction)
-                .Where(n => n.Id == nodeId);
-
-            return await query.FirstOrDefaultAsync(cancellationToken)
-                ?? throw new KeyNotFoundException($"Node with ID {nodeId} not found");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving node {NodeId} of type {NodeType}", nodeId, typeof(TNode).Name);
-            throw new GraphException($"Failed to retrieve node: {ex.Message}", ex);
-        }
-    }
-
     public async Task<TNode> CreateNodeAsync<TNode>(
         TNode node,
         GraphTransaction transaction,
@@ -69,8 +43,8 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(node);
 
-            // Ensure we have the schema for the node type
-            await context.SchemaManager.EnsureSchemaForEntity(node);
+            // Validate property constraints at application level
+            ValidateNodeProperties(node);
 
             // Serialize the node
             var entity = _serializer.Serialize(node);
@@ -112,6 +86,9 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         {
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(node);
+
+            // Validate property constraints at application level
+            ValidateNodeProperties(node);
 
             // Serialize the node
             var entity = _serializer.Serialize(node);
@@ -229,7 +206,26 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         IAsyncTransaction transaction,
         CancellationToken cancellationToken)
     {
-        var cypher = $"CREATE (n:{entity.Label} $props) RETURN elementId(n) AS nodeId";
+        string cypher;
+
+        // For dynamic nodes, use the actual labels from ActualLabels
+        if (entity.ActualType.IsAssignableTo(typeof(Model.IDynamicNode)))
+        {
+            if (entity.ActualLabels != null && entity.ActualLabels.Count > 0)
+            {
+                var labels = string.Join(":", entity.ActualLabels);
+                cypher = $"CREATE (n:{labels} $props) RETURN elementId(n) AS nodeId";
+            }
+            else
+            {
+                // For dynamic nodes with no labels, create without any labels
+                cypher = "CREATE (n $props) RETURN elementId(n) AS nodeId";
+            }
+        }
+        else
+        {
+            cypher = $"CREATE (n:{entity.Label} $props) RETURN elementId(n) AS nodeId";
+        }
 
         var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
 
@@ -246,11 +242,120 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         IAsyncTransaction transaction,
         CancellationToken cancellationToken)
     {
-        var cypher = "MATCH (n {Id: $nodeId}) SET n = $props RETURN n";
-
+        string cypher;
         var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
+
+        // For dynamic nodes, update both properties and labels
+        if (entity.ActualType == typeof(Model.IDynamicNode) && entity.ActualLabels != null && entity.ActualLabels.Count > 0)
+        {
+            // First, get the current labels to remove them
+            var getLabelsCypher = "MATCH (n {Id: $nodeId}) RETURN labels(n) AS currentLabels";
+            var getLabelsResult = await transaction.RunAsync(getLabelsCypher, new { nodeId });
+            var getLabelsRecord = await getLabelsResult.SingleAsync(cancellationToken);
+            var currentLabels = getLabelsRecord["currentLabels"].As<List<string>>() ?? new List<string>();
+
+            // Build the REMOVE clause for current labels
+            var removeLabelsClause = currentLabels.Count > 0
+                ? $"REMOVE n:{string.Join(":n:", currentLabels)} "
+                : "";
+
+            // Build the SET clause for new labels
+            var newLabels = string.Join(":", entity.ActualLabels);
+            var setLabelsClause = $"SET n:{newLabels} ";
+
+            cypher = $"MATCH (n {{Id: $nodeId}}) {removeLabelsClause}SET n = $props {setLabelsClause}RETURN n";
+        }
+        else
+        {
+            // For non-dynamic nodes, just update properties
+            cypher = "MATCH (n {Id: $nodeId}) SET n = $props RETURN n";
+        }
 
         var result = await transaction.RunAsync(cypher, new { nodeId, props = simpleProperties });
         return await result.CountAsync(cancellationToken) > 0;
+    }
+
+    private void ValidateNodeProperties<TNode>(TNode node) where TNode : Model.INode
+    {
+        var label = Labels.GetLabelFromType(node.GetType());
+        var config = context.SchemaManager.GetRegistry().GetNodeConfiguration(label);
+
+        if (config == null) return;
+
+        foreach (var (propertyName, propertyConfig) in config.Properties)
+        {
+            if (propertyConfig.Validation == null) continue;
+
+            var property = node.GetType().GetProperty(propertyName);
+            if (property == null) continue;
+
+            var value = property.GetValue(node);
+            if (value == null) continue;
+
+            ValidatePropertyValue(propertyName, value, propertyConfig.Validation, label);
+        }
+    }
+
+    private void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
+    {
+        // MinValue validation
+        if (validation.MinValue is not null)
+        {
+            if (value is IComparable comparable)
+            {
+                if (comparable.CompareTo(validation.MinValue) < 0)
+                {
+                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must be greater than or equal to {validation.MinValue}. Current value: {value}");
+                }
+            }
+        }
+
+        // MaxValue validation
+        if (validation.MaxValue is not null)
+        {
+            if (value is IComparable comparable)
+            {
+                if (comparable.CompareTo(validation.MaxValue) > 0)
+                {
+                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must be less than or equal to {validation.MaxValue}. Current value: {value}");
+                }
+            }
+        }
+
+        // MinLength validation
+        if (validation.MinLength is not null)
+        {
+            if (value is string stringValue)
+            {
+                if (stringValue.Length < validation.MinLength)
+                {
+                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must have a minimum length of {validation.MinLength}. Current length: {stringValue.Length}");
+                }
+            }
+        }
+
+        // MaxLength validation
+        if (validation.MaxLength is not null)
+        {
+            if (value is string stringValue)
+            {
+                if (stringValue.Length > validation.MaxLength)
+                {
+                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must have a maximum length of {validation.MaxLength}. Current length: {stringValue.Length}");
+                }
+            }
+        }
+
+        // Pattern validation
+        if (!string.IsNullOrEmpty(validation.Pattern))
+        {
+            if (value is string stringValue)
+            {
+                if (!System.Text.RegularExpressions.Regex.IsMatch(stringValue, validation.Pattern))
+                {
+                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must match the pattern '{validation.Pattern}'. Current value: {stringValue}");
+                }
+            }
+        }
     }
 }

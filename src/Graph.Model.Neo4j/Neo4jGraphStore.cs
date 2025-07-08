@@ -61,8 +61,16 @@ public class Neo4jGraphStore : IAsyncDisposable
         _propertyConfigurationRegistry = propertyConfigurationRegistry ?? new PropertyConfigurationRegistry();
 
         // Create the Neo4j driver
-        _driver = GraphDatabase.Driver(uri, AuthTokens.Basic(username, password));
-        Graph = new Neo4jGraph(_driver, _databaseName, _propertyConfigurationRegistry, loggerFactory);
+        _driver = GraphDatabase.Driver(
+            uri,
+            AuthTokens.Basic(username, password),
+            cb => cb
+                .WithMaxConnectionPoolSize(50)
+                .WithMaxConnectionLifetime(TimeSpan.FromMinutes(5))
+                .WithConnectionAcquisitionTimeout(TimeSpan.FromSeconds(30))
+                .WithConnectionTimeout(TimeSpan.FromSeconds(30)));
+
+        Graph = new Neo4jGraph(this, _databaseName, _propertyConfigurationRegistry, loggerFactory);
     }
 
     /// <summary>
@@ -86,7 +94,7 @@ public class Neo4jGraphStore : IAsyncDisposable
         _databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
         _driver = driver;
         _propertyConfigurationRegistry = propertyConfigurationRegistry ?? new PropertyConfigurationRegistry();
-        Graph = new Neo4jGraph(driver, databaseName, _propertyConfigurationRegistry, loggerFactory);
+        Graph = new Neo4jGraph(this, databaseName, _propertyConfigurationRegistry, loggerFactory);
     }
 
     /// <inheritdoc />
@@ -104,7 +112,8 @@ public class Neo4jGraphStore : IAsyncDisposable
     public static async Task CreateDatabaseIfNotExistsAsync(IDriver driver, string databaseName)
     {
         using var session = driver.AsyncSession(o => o.WithDatabase("system"));
-        await session.RunAsync($"CREATE DATABASE `{databaseName}` IF NOT EXISTS");
+        var result = await session.RunAsync($"CREATE DATABASE `{databaseName}` IF NOT EXISTS");
+        await result.ConsumeAsync();
     }
 
     /// <summary>
@@ -123,4 +132,6 @@ public class Neo4jGraphStore : IAsyncDisposable
         await Graph.DisposeAsync();
         await _driver.DisposeAsync();
     }
+
+    internal IDriver Driver => _driver;
 }

@@ -14,10 +14,8 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class BasicTestsBase : ITestBase
+public interface IBasicTests : IGraphModelTest
 {
-    public abstract IGraph Graph { get; }
-
     [Fact]
     public async Task CanCreateAndGetNodeWithPrimitiveProperties()
     {
@@ -80,7 +78,7 @@ public abstract class BasicTestsBase : ITestBase
         var person = new Person { FirstName = "ToDelete" };
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         await this.Graph.DeleteNodeAsync(person.Id, false, null, TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<GraphException>(async () => await this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -95,7 +93,7 @@ public abstract class BasicTestsBase : ITestBase
 
         await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
         await this.Graph.DeleteRelationshipAsync(knows.Id, null, TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<GraphException>(async () => await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -159,7 +157,7 @@ public abstract class BasicTestsBase : ITestBase
         var person = new Person { FirstName = "TxTest" };
         await this.Graph.CreateNodeAsync(person, tx, TestContext.Current.CancellationToken);
         await tx.DisposeAsync(); // Rollback
-        await Assert.ThrowsAsync<GraphException>(() => this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<GraphException>(async () => await this.Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
     }
 
     public record PersonWithCycle : Node
@@ -183,7 +181,7 @@ public abstract class BasicTestsBase : ITestBase
             Bar = person.Foo
         };
 
-        await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<GraphException>(async () => await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken));
     }
 
     public record PersonWithGenericCollectionOfPrimitiveProperty : Node
@@ -205,24 +203,6 @@ public abstract class BasicTestsBase : ITestBase
         Assert.Equal(person.GenericProperty.Count, fetched.GenericProperty.Count);
         Assert.All(fetched.GenericProperty, item => Assert.Contains(item, person.GenericProperty));
     }
-
-    public record PersonWithGenericDictionaryProperty : Node
-    {
-        public string FirstName { get; set; } = string.Empty;
-        public string LastName { get; set; } = string.Empty;
-        // TODO: Add serialization support for dictionaries.
-        //public Dictionary<string, Person> GenericProperty { get; set; } = [];
-    }
-
-    /*
-        [Fact]
-        public async Task CannotAddNodeWithGenericDictionaryProperty()
-        {
-            var person = new PersonWithGenericDictionaryProperty { FirstName = "A", GenericProperty = new Dictionary<string, Person>() };
-
-            await Assert.ThrowsAsync<GraphException>(() => this.Graph.CreateNodeAsync(person));
-        }
-    */
 
     [Fact]
     public void CanQueryNodesLinq()

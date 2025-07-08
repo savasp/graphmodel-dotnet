@@ -12,11 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model;
 
-namespace Cvoya.Graph.Model.Neo4j.Tests;
-
-public class ClassHierarchyTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.IClassHierarchyTests
+/// <summary>
+/// Represents a dynamic node that can be created without predefined domain models.
+/// </summary>
+public interface IDynamicNode : INode
 {
+    /// <summary>
+    /// Gets the labels for this node.
+    /// </summary>
+    IReadOnlyList<string> Labels { get; }
+
+    /// <summary>
+    /// Gets the properties of this node.
+    /// </summary>
+    IReadOnlyDictionary<string, object?> Properties { get; }
 }

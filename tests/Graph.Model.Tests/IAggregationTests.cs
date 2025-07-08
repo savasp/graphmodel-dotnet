@@ -14,10 +14,8 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class AggregationTestsBase : ITestBase
+public interface IAggregationTests : IGraphModelTest
 {
-    public abstract IGraph Graph { get; }
-
     public class PersonWithNumbers : INode
     {
         public string Id { get; init; } = Guid.NewGuid().ToString("N");

@@ -17,13 +17,9 @@ namespace Cvoya.Graph.Model.Neo4j.Tests;
 using DotNet.Testcontainers.Containers;
 using Testcontainers.Neo4j;
 
-
 internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
 {
-    private static Neo4jContainer container;
-
-    private Neo4jGraphStore? store;
-    private TestDatabase? testDatabase;
+    private static Neo4jContainer? container;
 
     static Neo4jTestInfrastructureWithContainer()
     {
@@ -38,58 +34,45 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
             .WithEnvironment("NEO4JLABS_PLUGINS", "[\"apoc\"]")
             .WithEnvironment("NEO4J_dbms_security_procedures_unrestricted", "apoc.*")
             .WithEnvironment("NEO4J_dbms_security_procedures_allowlist", "apoc.*")
+            .WithEnvironment("apoc.trigger.enabled", "true")
             .Build();
     }
 
-    public Neo4jGraphStore GraphStore => store ?? throw new InvalidOperationException("Graph store is not initialized.");
+    public string ConnectionString => Active
+        ? container?.GetConnectionString().Replace("neo4j", "bolt") ?? throw new InvalidOperationException("Container hasn't been initialized. You must call InitializeAsync() first.")
+        : throw new InvalidOperationException("Container is not running");
 
-    public async Task Setup()
+    public string Username => "neo4j"; // Default username for Neo4j without authentication
+    public string Password => "password"; // Default password for Neo4j without authentication
+
+    public async ValueTask InitializeAsync()
     {
         // Ensure the container is running and ready
         await EnsureReady();
-
-        if (container == null)
-        {
-            throw new InvalidOperationException("Container is not initialized.");
-        }
-
-        // Create the test database and provider. The container is set up to not use authentication.
-        var connectionString = container.GetConnectionString().Replace("neo4j", "bolt");
-        this.testDatabase = new TestDatabase(connectionString);
-        await this.testDatabase.Setup();
-        this.store = new Neo4jGraphStore(connectionString, username: null, password: null, this.testDatabase.DatabaseName);
-    }
-
-    private async Task<string> EnsureReady()
-    {
-        if (container.State != TestcontainersStates.Running)
-        {
-            await container.StartAsync();
-        }
-
-        return container.GetConnectionString();
-    }
-
-    public async Task ResetDatabase()
-    {
-        if (testDatabase != null)
-        {
-            await testDatabase.Reset();
-        }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (store != null)
+        if (container != null)
         {
-            await store.DisposeAsync();
-            store = null;
+            await container.DisposeAsync();
+            container = null;
+        }
+    }
+
+    private bool Active => (container?.State ?? throw new InvalidOperationException("Container hasn't been initialized. You must call InitializeAsync() first."))
+        == TestcontainersStates.Running;
+
+    private async Task EnsureReady()
+    {
+        if (container is null)
+        {
+            throw new InvalidOperationException("Container hasn't been initialized. You must call InitializeAsync() first.");
         }
 
-        if (testDatabase != null)
+        if (container.State != TestcontainersStates.Running)
         {
-            await testDatabase.DisposeAsync();
-            testDatabase = null;
+            await container.StartAsync();
         }
     }
 }

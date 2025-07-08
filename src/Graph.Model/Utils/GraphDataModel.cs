@@ -251,11 +251,12 @@ public static class GraphDataModel
     /// </summary>
     public static bool IsCollectionOfSimple(Type type) =>
         type != typeof(string)
-        && typeof(IEnumerable).IsAssignableFrom(type)
+        && typeof(IEnumerable).IsAssignableFrom(type) is true
+        && typeof(IDictionary).IsAssignableFrom(type) is false // Exclude IDictionary as it is not a simple collection
         && type switch
         {
             { IsArray: true } => IsSimple(type.GetElementType()!),
-            { IsGenericType: true } => type.GetGenericTypeDefinition() is { } arg && IsSimple(arg),
+            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } arg && IsSimple(arg),
             _ => false
         };
 
@@ -264,7 +265,8 @@ public static class GraphDataModel
     /// </summary>
     public static bool IsCollectionOfComplex(Type type) =>
         type != typeof(string)
-        && typeof(IEnumerable).IsAssignableFrom(type)
+        && typeof(IEnumerable).IsAssignableFrom(type) is true
+        && typeof(IDictionary).IsAssignableFrom(type) is false // Exclude IDictionary as it is not a supported collection
         && type switch
         {
             { IsArray: true } => IsComplex(type.GetElementType()!),
@@ -303,6 +305,12 @@ public static class GraphDataModel
             return false;
         }
 
+        // Skip collections of simple types
+        if (IsCollectionOfSimple(type))
+        {
+            return false;
+        }
+
         // Skip system types that we know don't have cycles
         if (type.Namespace?.StartsWith("System") == true &&
             !type.Namespace.StartsWith("System.Collections"))
@@ -322,28 +330,37 @@ public static class GraphDataModel
 
         try
         {
-            // Check all properties recursively
-
-            foreach (var prop in type.GetProperties())
+            if (obj is IDictionary objDict)
             {
-                if (prop.CanRead && !prop.GetIndexParameters().Any())
+                // Handle IDictionary objects
+                foreach (var value in objDict.Values)
                 {
-                    var value = prop.GetValue(obj);
                     if (value != null && CheckForCycle(value, visited, currentPath))
                         return true;
                 }
             }
-
-            // Handle collections
-            if (obj is IEnumerable enumerable && !(obj is string))
+            else if (obj is IEnumerable enumerable && !(obj is string))
             {
+                // Handle IEnumerable objects
                 foreach (var item in enumerable)
                 {
                     if (item != null && CheckForCycle(item, visited, currentPath))
                         return true;
                 }
             }
-
+            else
+            {
+                // Check all properties recursively
+                foreach (var prop in type.GetProperties())
+                {
+                    if (prop.CanRead && !prop.GetIndexParameters().Any())
+                    {
+                        var value = prop.GetValue(obj);
+                        if (value != null && CheckForCycle(value, visited, currentPath))
+                            return true;
+                    }
+                }
+            }
             return false;
         }
         finally
@@ -360,8 +377,6 @@ public static class GraphDataModel
         bool IEqualityComparer<object>.Equals(object? x, object? y) => ReferenceEquals(x, y);
         public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
     }
-
-    private static readonly IEqualityComparer<object> ReferenceComparer = ReferenceEqualityComparer.Instance;
 
     private static bool IsComplex(Type type, int depth)
     {

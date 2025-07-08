@@ -14,24 +14,8 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
-public class AdvancedQueryTests : Model.Tests.AdvancedQueryTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
+public class AdvancedQueryTests(TestInfrastructureFixture fixture) :
+    Neo4jTest(fixture),
+    Model.Tests.IAdvancedQueryTests
 {
-    private readonly TestInfrastructureFixture fixture;
-
-    public AdvancedQueryTests(TestInfrastructureFixture fixture)
-    {
-        this.fixture = fixture;
-    }
-
-    public override IGraph Graph => fixture.TestInfrastructure.GraphStore.Graph;
-
-    public async ValueTask InitializeAsync()
-    {
-        await fixture.TestInfrastructure.ResetDatabase();
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
-    }
 }

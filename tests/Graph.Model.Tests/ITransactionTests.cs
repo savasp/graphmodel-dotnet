@@ -14,10 +14,8 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class TransactionTestsBase : ITestBase
+public interface ITransactionTests : IGraphModelTest
 {
-    public abstract IGraph Graph { get; }
-
     [Fact]
     public async Task TransactionCommit_PersistsChanges()
     {
@@ -214,45 +212,39 @@ public abstract class TransactionTestsBase : ITestBase
     [Fact]
     public async Task DoubleCommit_ThrowsException()
     {
-        var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync();
         var person = new Person { FirstName = "DoubleCommit", LastName = "Test" };
 
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => transaction.CommitAsync());
-
-        await transaction.DisposeAsync();
     }
 
     [Fact]
     public async Task CommitAfterRollback_ThrowsException()
     {
-        var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync();
         var person = new Person { FirstName = "CommitAfterRollback", LastName = "Test" };
 
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
         await transaction.Rollback();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => transaction.CommitAsync());
-
-        await transaction.DisposeAsync();
     }
 
     [Fact]
     public async Task RollbackAfterCommit_ThrowsException()
     {
-        var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync();
         var person = new Person { FirstName = "RollbackAfterCommit", LastName = "Test" };
 
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => transaction.Rollback());
-
-        await transaction.DisposeAsync();
     }
 }

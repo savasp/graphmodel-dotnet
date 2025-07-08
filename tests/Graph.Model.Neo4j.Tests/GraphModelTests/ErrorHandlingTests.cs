@@ -14,24 +14,8 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
-public class ErrorHandlingTests : Model.Tests.ErrorHandlingTestsBase, IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
+public class ErrorHandlingTests(TestInfrastructureFixture fixture) :
+    Neo4jTest(fixture),
+    Model.Tests.IErrorHandlingTests
 {
-    private readonly TestInfrastructureFixture fixture;
-
-    public ErrorHandlingTests(TestInfrastructureFixture fixture)
-    {
-        this.fixture = fixture;
-    }
-
-    public override IGraph Graph => fixture.TestInfrastructure.GraphStore.Graph;
-
-    public async ValueTask InitializeAsync()
-    {
-        await fixture.TestInfrastructure.ResetDatabase();
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
-    }
 }

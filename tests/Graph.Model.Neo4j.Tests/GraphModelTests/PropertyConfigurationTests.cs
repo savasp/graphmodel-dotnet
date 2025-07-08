@@ -14,28 +14,8 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
-using Cvoya.Graph.Model.Tests;
-using Xunit;
-
-public class PropertyConfigurationTests : PropertyConfigurationTestsBase, IClassFixture<TestInfrastructureFixture>
+public class PropertyConfigurationTests(TestInfrastructureFixture fixture) :
+    Neo4jTest(fixture, getNewDatabase: true),
+    Model.Tests.IPropertyConfigurationTests
 {
-    private readonly TestInfrastructureFixture _fixture;
-
-    public PropertyConfigurationTests(TestInfrastructureFixture fixture)
-    {
-        _fixture = fixture;
-    }
-
-    public override IGraph Graph => _fixture.TestInfrastructure.GraphStore.Graph;
-
-    public async ValueTask InitializeAsync()
-    {
-        await _fixture.TestInfrastructure.ResetDatabase();
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
-    }
-
 }

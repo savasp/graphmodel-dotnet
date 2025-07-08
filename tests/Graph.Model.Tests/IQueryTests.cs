@@ -14,10 +14,8 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class QueryTestsBase : ITestBase
+public interface IQueryTests : IGraphModelTest
 {
-    public abstract IGraph Graph { get; }
-
     [Fact]
     public async Task CanQueryNodesByProperty()
     {

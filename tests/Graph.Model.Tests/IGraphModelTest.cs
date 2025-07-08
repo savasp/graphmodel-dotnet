@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+namespace Cvoya.Graph.Model.Tests;
 
-namespace Cvoya.Graph.Model.Neo4j.Tests;
-
-public class ClassHierarchyTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.IClassHierarchyTests
+public interface IGraphModelTest
 {
+    IGraph Graph { get; }
 }

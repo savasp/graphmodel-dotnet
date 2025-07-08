@@ -16,7 +16,6 @@ namespace Cvoya.Graph.Model.Neo4j.Schema;
 
 using Cvoya.Graph.Model.Configuration;
 using Cvoya.Graph.Model.Neo4j.Core;
-using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
@@ -106,6 +105,7 @@ internal class Neo4jSchemaManager
         try
         {
             await CreateNodeConstraints(label);
+            await CreateNodeValidationTriggers(label);
             await CreateNodeIndexes(label);
 
             lock (_schemaLock)
@@ -142,6 +142,7 @@ internal class Neo4jSchemaManager
         try
         {
             await CreateRelationshipConstraints(type);
+            await CreateRelationshipValidationTriggers(type);
             await CreateRelationshipIndexes(type);
 
             lock (_schemaLock)
@@ -163,10 +164,12 @@ internal class Neo4jSchemaManager
         if (typeof(Model.INode).IsAssignableFrom(entityType))
         {
             await CreateNodeConstraints(label);
+            await CreateNodeValidationTriggers(label);
         }
         else if (typeof(Model.IRelationship).IsAssignableFrom(entityType))
         {
             await CreateRelationshipConstraints(label);
+            await CreateRelationshipValidationTriggers(label);
         }
     }
 
@@ -191,7 +194,8 @@ internal class Neo4jSchemaManager
         {
             // Always create unique constraint on Id
             var idConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{nameof(Model.IEntity.Id)} IS UNIQUE";
-            await tx.RunAsync(idConstraint);
+            var result = await tx.RunAsync(idConstraint);
+            await result.ConsumeAsync();
 
             // Create constraints based on property configurations
             var config = _registry.GetNodeConfiguration(label);
@@ -202,14 +206,16 @@ internal class Neo4jSchemaManager
                     if (propertyConfig.IsUnique)
                     {
                         var uniqueConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{propertyName} IS UNIQUE";
-                        await tx.RunAsync(uniqueConstraint);
+                        result = await tx.RunAsync(uniqueConstraint);
+                        await result.ConsumeAsync();
                         _logger.LogDebug("Created unique constraint for property {Property} on label {Label}", propertyName, label);
                     }
 
                     if (propertyConfig.IsRequired)
                     {
                         var notNullConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{propertyName} IS NOT NULL";
-                        await tx.RunAsync(notNullConstraint);
+                        result = await tx.RunAsync(notNullConstraint);
+                        await result.ConsumeAsync();
                         _logger.LogDebug("Created not null constraint for property {Property} on label {Label}", propertyName, label);
                     }
                 }
@@ -224,6 +230,45 @@ internal class Neo4jSchemaManager
         }
     }
 
+    private async Task CreateNodeValidationTriggers(string label)
+    {
+        // Create validation triggers for PropertyValidation rules
+        var config = _registry.GetNodeConfiguration(label);
+        if (config == null) return;
+
+        foreach (var (propertyName, propertyConfig) in config.Properties)
+        {
+            if (propertyConfig.Validation == null) continue;
+
+            var validationLogic = BuildValidationLogic(propertyConfig.Validation, propertyName, label);
+            if (string.IsNullOrEmpty(validationLogic)) continue;
+
+            var triggerName = $"validate_{label}_{propertyName}".ToLowerInvariant();
+            var createTrigger = $"CALL apoc.trigger.add('{triggerName}', '{validationLogic}', {{phase: 'before'}})";
+
+            try
+            {
+                using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+                using var tx = await session.BeginTransactionAsync();
+
+                var result = await tx.RunAsync(createTrigger);
+                await result.ConsumeAsync();
+                await tx.CommitAsync();
+
+                _logger.LogDebug("Created validation trigger {Trigger} for property {Property} on label {Label}", triggerName, propertyName, label);
+            }
+            catch (Exception ex) when (ex.Message.Contains("Triggers have not been enabled") || ex.Message.Contains("apoc.trigger.enabled"))
+            {
+                _logger.LogWarning("APOC triggers are not enabled. Property validation will not be enforced at the database level. " +
+                    "To enable triggers, set 'apoc.trigger.enabled=true' in your apoc.conf file. Error: {Error}", ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create validation trigger {Trigger} for property {Property} on label {Label}. APOC plugin might not be available or properly configured.", triggerName, propertyName, label);
+            }
+        }
+    }
+
     private async Task CreateRelationshipConstraints(string type)
     {
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
@@ -233,7 +278,8 @@ internal class Neo4jSchemaManager
         {
             // Always create unique constraint on Id for relationships
             var idConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:`{type}`]-() REQUIRE r.{nameof(Model.IEntity.Id)} IS UNIQUE";
-            await tx.RunAsync(idConstraint);
+            var result = await tx.RunAsync(idConstraint);
+            await result.ConsumeAsync();
 
             // Create constraints based on property configurations
             var config = _registry.GetRelationshipConfiguration(type);
@@ -244,13 +290,15 @@ internal class Neo4jSchemaManager
                     if (propertyConfig.IsUnique)
                     {
                         var uniqueConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:`{type}`]-() REQUIRE r.{propertyName} IS UNIQUE";
-                        await tx.RunAsync(uniqueConstraint);
+                        result = await tx.RunAsync(uniqueConstraint);
+                        await result.ConsumeAsync();
                     }
 
                     if (propertyConfig.IsRequired)
                     {
                         var notNullConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:`{type}`]-() REQUIRE r.{propertyName} IS NOT NULL";
-                        await tx.RunAsync(notNullConstraint);
+                        result = await tx.RunAsync(notNullConstraint);
+                        await result.ConsumeAsync();
                     }
                 }
             }
@@ -261,6 +309,45 @@ internal class Neo4jSchemaManager
         {
             await tx.RollbackAsync();
             throw;
+        }
+    }
+
+    private async Task CreateRelationshipValidationTriggers(string type)
+    {
+        // Create validation triggers for PropertyValidation rules
+        var config = _registry.GetRelationshipConfiguration(type);
+        if (config == null) return;
+
+        foreach (var (propertyName, propertyConfig) in config.Properties)
+        {
+            if (propertyConfig.Validation == null) continue;
+
+            var validationLogic = BuildValidationLogic(propertyConfig.Validation, propertyName, type);
+            if (string.IsNullOrEmpty(validationLogic)) continue;
+
+            var triggerName = $"validate_{type}_{propertyName}".ToLowerInvariant();
+            var createTrigger = $"CALL apoc.trigger.add('{triggerName}', '{validationLogic}', {{phase: 'before'}})";
+
+            try
+            {
+                using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+                using var tx = await session.BeginTransactionAsync();
+
+                var result = await tx.RunAsync(createTrigger);
+                await result.ConsumeAsync();
+                await tx.CommitAsync();
+
+                _logger.LogDebug("Created validation trigger {Trigger} for property {Property} on relationship type {Type}", triggerName, propertyName, type);
+            }
+            catch (Exception ex) when (ex.Message.Contains("Triggers have not been enabled") || ex.Message.Contains("apoc.trigger.enabled"))
+            {
+                _logger.LogWarning("APOC triggers are not enabled. Property validation will not be enforced at the database level. " +
+                    "To enable triggers, set 'apoc.trigger.enabled=true' in your apoc.conf file. Error: {Error}", ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create validation trigger {Trigger} for property {Property} on relationship type {Type}. APOC plugin might not be available or properly configured.", triggerName, propertyName, type);
+            }
         }
     }
 
@@ -280,7 +367,8 @@ internal class Neo4jSchemaManager
                     {
                         var indexName = $"idx_{type}_{propertyName}".ToLowerInvariant();
                         var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR ()-[r:`{type}`]-() ON (r.{propertyName})";
-                        await tx.RunAsync(createIndex);
+                        var result = await tx.RunAsync(createIndex);
+                        await result.ConsumeAsync();
                     }
                 }
             }
@@ -310,7 +398,8 @@ internal class Neo4jSchemaManager
                     {
                         var indexName = $"idx_{label}_{propertyName}".ToLowerInvariant();
                         var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR (n:`{label}`) ON (n.{propertyName})";
-                        await tx.RunAsync(createIndex);
+                        var result = await tx.RunAsync(createIndex);
+                        await result.ConsumeAsync();
                         _logger.LogDebug("Created index {Index} for property {Property} on label {Label}", indexName, propertyName, label);
                     }
                 }
@@ -341,7 +430,8 @@ internal class Neo4jSchemaManager
                     {
                         var indexName = $"idx_{type}_{propertyName}".ToLowerInvariant();
                         var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR ()-[r:`{type}`]-() ON (r.{propertyName})";
-                        await tx.RunAsync(createIndex);
+                        var result = await tx.RunAsync(createIndex);
+                        await result.ConsumeAsync();
                         _logger.LogDebug("Created index {Index} for property {Property} on relationship type {Type}", indexName, propertyName, type);
                     }
                 }
@@ -356,6 +446,43 @@ internal class Neo4jSchemaManager
         }
     }
 
+    // Helper to build Cypher validation logic for APOC trigger
+    private string BuildValidationLogic(Cvoya.Graph.Model.PropertyValidation validation, string propertyName, string label)
+    {
+        var checks = new List<string>();
+        // Numeric value checks
+        if (validation.MinValue != null)
+        {
+            checks.Add($"n.{propertyName} < {validation.MinValue}");
+        }
+        if (validation.MaxValue != null)
+        {
+            checks.Add($"n.{propertyName} > {validation.MaxValue}");
+        }
+        // String length checks
+        if (validation.MinLength != null)
+        {
+            checks.Add($"size(n.{propertyName}) < {validation.MinLength}");
+        }
+        if (validation.MaxLength != null)
+        {
+            checks.Add($"size(n.{propertyName}) > {validation.MaxLength}");
+        }
+        // Pattern check
+        if (!string.IsNullOrEmpty(validation.Pattern))
+        {
+            // Cypher =~ operator for regex
+            checks.Add($"NOT n.{propertyName} =~ '{validation.Pattern.Replace("'", "\\'")}'");
+        }
+        if (checks.Count == 0)
+            return string.Empty;
+        // APOC trigger script: fail if any check is true
+        var condition = string.Join(" OR ", checks);
+        // The trigger script must be a single-line string for apoc.trigger.add
+        var cypher = $@"UNWIND $createdNodes AS n WITH n WHERE n.{propertyName} IS NOT NULL AND ({condition}) CALL apoc.util.validate(true, 'Validation failed for {label}.{propertyName}', [n]) YIELD value RETURN value";
+        return cypher.Replace("\n", " ").Replace("\r", " ").Replace("'", "\\'");
+    }
+
     /// <summary>
     /// Clears the processed schemas cache.
     /// </summary>
@@ -366,6 +493,28 @@ internal class Neo4jSchemaManager
             _processedSchemas.Clear();
         }
         _logger.LogDebug("Cleared schema cache");
+    }
+
+    /// <summary>
+    /// Checks if a schema has already been processed.
+    /// </summary>
+    /// <param name="cacheKey">The cache key to check.</param>
+    /// <returns>True if the schema has been processed, false otherwise.</returns>
+    public bool IsSchemaProcessed(string cacheKey)
+    {
+        lock (_schemaLock)
+        {
+            return _processedSchemas.Contains(cacheKey);
+        }
+    }
+
+    /// <summary>
+    /// Gets the property configuration registry.
+    /// </summary>
+    /// <returns>The property configuration registry.</returns>
+    public PropertyConfigurationRegistry GetRegistry()
+    {
+        return _registry;
     }
 
     public async Task EnsureSchemaForNode<T>(T node) where T : Model.INode

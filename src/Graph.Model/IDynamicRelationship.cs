@@ -12,9 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model;
+namespace Cvoya.Graph.Model;
 
-public interface ITestBase
+/// <summary>
+/// Represents a dynamic relationship that can be created without predefined domain models.
+/// </summary>
+public interface IDynamicRelationship : IRelationship
 {
-    IGraph Graph { get; }
+    /// <summary>
+    /// Gets the type of this relationship.
+    /// </summary>
+    string Type { get; }
+
+    /// <summary>
+    /// Gets the properties of this relationship.
+    /// </summary>
+    IReadOnlyDictionary<string, object?> Properties { get; }
 }

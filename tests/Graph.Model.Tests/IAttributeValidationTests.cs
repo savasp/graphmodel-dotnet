@@ -14,10 +14,8 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-public abstract class AttributeValidationTestsBase : ITestBase
+public interface IAttributeValidationTests : IGraphModelTest
 {
-    public abstract IGraph Graph { get; }
-
     [Node("CustomPersonLabel")]
     public class PersonWithCustomLabel : INode
     {
