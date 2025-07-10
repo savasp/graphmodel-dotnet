@@ -21,7 +21,7 @@ namespace Cvoya.Graph.Model;
 /// This interface is designed to be used with graph databases and provides methods for traversing relationships
 /// </summary>
 /// <typeparam name="TNode">An <see cref="INode"/>-derived type.</typeparam>
-public interface IGraphNodeQueryable<TNode> : IGraphQueryable<TNode>, IGraphNodeQueryable
+public interface IGraphNodeQueryable<out TNode> : IGraphQueryable<TNode>, IGraphNodeQueryable
     where TNode : INode
 {
 }

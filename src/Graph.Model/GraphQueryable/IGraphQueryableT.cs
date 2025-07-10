@@ -19,7 +19,7 @@ namespace Cvoya.Graph.Model;
 /// This interface extends IQueryable&lt;T&gt; with graph-specific functionality.
 /// </summary>
 /// <typeparam name="T">The type of elements in the graph queryable</typeparam>
-public interface IGraphQueryable<T> : IQueryable<T>, IGraphQueryable
+public interface IGraphQueryable<out T> : IQueryable<T>, IGraphQueryable
 {
     /// <summary>
     /// Gets the graph instance associated with this queryable

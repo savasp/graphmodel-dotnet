@@ -21,7 +21,7 @@ namespace Cvoya.Graph.Model;
 /// This interface is designed to be used with graph databases and provides methods for traversing relationships.
 /// </summary>
 /// <typeparam name="TRel">An <see cref="IRelationship"/>-derived type.</typeparam>
-public interface IGraphRelationshipQueryable<TRel> : IGraphQueryable<TRel>, IGraphRelationshipQueryable
+public interface IGraphRelationshipQueryable<out TRel> : IGraphQueryable<TRel>, IGraphRelationshipQueryable
     where TRel : IRelationship
 {
 }

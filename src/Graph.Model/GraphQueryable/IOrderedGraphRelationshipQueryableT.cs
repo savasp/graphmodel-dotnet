@@ -18,7 +18,7 @@ namespace Cvoya.Graph.Model;
 /// Represents a sorted relationship queryable that supports additional ordering operations.
 /// </summary>
 /// <typeparam name="TRel">The type of relationship.</typeparam>
-public interface IOrderedGraphRelationshipQueryable<TRel> : IGraphRelationshipQueryable<TRel>, IOrderedQueryable<TRel>
+public interface IOrderedGraphRelationshipQueryable<out TRel> : IGraphRelationshipQueryable<TRel>, IOrderedQueryable<TRel>
     where TRel : IRelationship
 {
 }

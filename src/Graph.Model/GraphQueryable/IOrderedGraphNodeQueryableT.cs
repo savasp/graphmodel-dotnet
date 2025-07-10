@@ -18,7 +18,7 @@ namespace Cvoya.Graph.Model;
 /// Represents a sorted node queryable that supports additional ordering operations.
 /// </summary>
 /// <typeparam name="TNode">The type of node.</typeparam>
-public interface IOrderedGraphNodeQueryable<TNode> : IGraphNodeQueryable<TNode>, IOrderedQueryable<TNode>
+public interface IOrderedGraphNodeQueryable<out TNode> : IGraphNodeQueryable<TNode>, IOrderedQueryable<TNode>
     where TNode : INode
 {
 }

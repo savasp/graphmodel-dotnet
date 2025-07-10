@@ -18,6 +18,6 @@ namespace Cvoya.Graph.Model;
 /// Represents a sorted graph queryable that supports additional ordering operations
 /// </summary>
 /// <typeparam name="T">The type of elements in the graph queryable</typeparam>
-public interface IOrderedGraphQueryable<T> : IGraphQueryable<T>, IOrderedQueryable<T>
+public interface IOrderedGraphQueryable<out T> : IGraphQueryable<T>, IOrderedQueryable<T>
 {
 }
