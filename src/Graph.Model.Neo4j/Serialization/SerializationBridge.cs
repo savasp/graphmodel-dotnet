@@ -163,7 +163,7 @@ internal static class SerializationBridge
     {
         return value switch
         {
-            global::Neo4j.Driver.Point neo4jPoint => new Model.Point(neo4jPoint.X, neo4jPoint.Y, neo4jPoint.Z), // Note: Neo4j uses X=lon, Y=lat
+            global::Neo4j.Driver.Point neo4jPoint => new Model.Point { X = neo4jPoint.X, Y = neo4jPoint.Y, Z = neo4jPoint.Z }, // Note: Neo4j uses X=lon, Y=lat
             _ => throw new ArgumentException($"Cannot convert {value.GetType()} to Point")
         };
     }
@@ -218,7 +218,7 @@ internal static class SerializationBridge
         {
             DateTime dt => dt,
             DateTimeOffset dto => dto.UtcDateTime,
-            ZonedDateTime zdt => zdt.ToDateTimeOffset().UtcDateTime,
+            ZonedDateTime zdt => ConvertZonedDateTimeToDateTime(zdt),
             LocalDateTime ldt => ldt.ToDateTime(),
             string s => DateTime.Parse(s, CultureInfo.InvariantCulture),
             _ => Convert.ToDateTime(value)
@@ -231,7 +231,7 @@ internal static class SerializationBridge
         {
             DateTimeOffset dto => dto,
             DateTime dt => new DateTimeOffset(dt),
-            ZonedDateTime zdt => zdt.ToDateTimeOffset(),
+            ZonedDateTime zdt => ConvertZonedDateTimeToDateTimeOffset(zdt),
             string s => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture),
             _ => new DateTimeOffset(Convert.ToDateTime(value))
         };
@@ -247,6 +247,36 @@ internal static class SerializationBridge
             string s => TimeSpan.Parse(s, CultureInfo.InvariantCulture),
             _ => TimeSpan.FromMilliseconds(Convert.ToDouble(value))
         };
+    }
+
+    private static DateTime ConvertZonedDateTimeToDateTime(ZonedDateTime zdt)
+    {
+        try
+        {
+            return zdt.ToDateTimeOffset().UtcDateTime;
+        }
+        catch (ValueTruncationException)
+        {
+            // Handle nanosecond precision mismatch by using a different approach
+            // Convert to string and parse back to avoid precision issues
+            var zdtString = zdt.ToString();
+            return DateTime.Parse(zdtString, CultureInfo.InvariantCulture).ToUniversalTime();
+        }
+    }
+
+    private static DateTimeOffset ConvertZonedDateTimeToDateTimeOffset(ZonedDateTime zdt)
+    {
+        try
+        {
+            return zdt.ToDateTimeOffset();
+        }
+        catch (ValueTruncationException)
+        {
+            // Handle nanosecond precision mismatch by using a different approach
+            // Convert to string and parse back to avoid precision issues
+            var zdtString = zdt.ToString();
+            return DateTimeOffset.Parse(zdtString, CultureInfo.InvariantCulture);
+        }
     }
 
     private static object? ConvertDictionary(IDictionary dict)
