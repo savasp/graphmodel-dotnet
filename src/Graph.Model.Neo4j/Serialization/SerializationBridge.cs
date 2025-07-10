@@ -86,7 +86,6 @@ internal static class SerializationBridge
     /// </summary>
     public static object? FromNeo4jValue(object? value, Type targetType)
     {
-        Console.WriteLine("==========> " + value?.GetType().FullName + " -> " + targetType.Name);
         if (value == null)
             return targetType.IsValueType && Nullable.GetUnderlyingType(targetType) == null
                 ? Activator.CreateInstance(targetType)

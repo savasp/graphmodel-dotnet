@@ -33,15 +33,15 @@ public readonly record struct Point
     /// <summary>
     /// Gets or inits the Longitude coordinate of the point.
     /// </summary>
-    public required double Longitude { get; init; } = 0.0;
+    public double Longitude { get; init; } = 0.0;
 
     /// <summary>
     /// Gets or inits the Latitude coordinate of the point.
     /// </summary>
-    public required double Latitude { get; init; } = 0.0;
+    public double Latitude { get; init; } = 0.0;
 
     /// <summary>
     /// Gets or inits the Height coordinate of the point.
     /// </summary>
-    public required double Height { get; init; } = 0.0;
+    public double Height { get; init; } = 0.0;
 }
