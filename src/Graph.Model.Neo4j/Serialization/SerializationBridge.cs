@@ -86,6 +86,7 @@ internal static class SerializationBridge
     /// </summary>
     public static object? FromNeo4jValue(object? value, Type targetType)
     {
+        Console.WriteLine("==========> " + value?.GetType().FullName + " -> " + targetType.Name);
         if (value == null)
             return targetType.IsValueType && Nullable.GetUnderlyingType(targetType) == null
                 ? Activator.CreateInstance(targetType)
@@ -113,7 +114,7 @@ internal static class SerializationBridge
             _ when underlyingType.IsEnum => ConvertToEnum(value, underlyingType),
 
             // Graph.Model types
-            _ when underlyingType == typeof(Point) => ConvertToPoint(value),
+            _ when underlyingType == typeof(Model.Point) => ConvertToPoint(value),
 
             // Numeric conversions
             _ when underlyingType == typeof(sbyte) => Convert.ToSByte(value),

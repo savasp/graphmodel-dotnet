@@ -23,6 +23,7 @@ public class Person : INode
     public int Age { get; set; } = 30;
     public DateTime DateOfBirth { get; set; } = DateTime.UtcNow;
     public string Bio { get; set; } = string.Empty;
+    public Point Location { get; set; } = new Point { Longitude = 0.0, Latitude = 0.0, Height = 0.0 };
 }
 
 public class Manager : Person
