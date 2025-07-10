@@ -49,11 +49,11 @@ internal static class SerializationBridge
             Enum enumValue => enumValue.ToString(),
 
             // Graph.Model types
-            Point point => new global::Neo4j.Driver.Point(
-                srId: 4326, // WGS84 for lat/lon
-                x: point.X,
-                y: point.Y,
-                z: point.Z
+            Model.Point location => new global::Neo4j.Driver.Point(
+                srId: 4979, // WGS84 for lat/lon
+                x: location.Longitude,
+                y: location.Latitude,
+                z: location.Height
             ),
 
             // Temporal types
@@ -163,8 +163,8 @@ internal static class SerializationBridge
     {
         return value switch
         {
-            global::Neo4j.Driver.Point neo4jPoint => new Model.Point { X = neo4jPoint.X, Y = neo4jPoint.Y, Z = neo4jPoint.Z }, // Note: Neo4j uses X=lon, Y=lat
-            _ => throw new ArgumentException($"Cannot convert {value.GetType()} to Point")
+            global::Neo4j.Driver.Point neo4jPoint => new Model.Point { Longitude = neo4jPoint.X, Latitude = neo4jPoint.Y, Height = neo4jPoint.Z }, // Note: Neo4j uses X=lon, Y=lat, Z=height
+            _ => throw new ArgumentException($"Cannot convert {value.GetType()} to Location")
         };
     }
 

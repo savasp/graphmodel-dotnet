@@ -15,7 +15,8 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents a point in 3D space with X, Y, and Z coordinates.
+/// Represents a point in 3D space with Longitude, Latitude, and Height coordinates.
+/// It uses the WGS84 coordinate system, which is commonly used in GPS and mapping applications.
 /// </summary>
 public readonly record struct Point
 {
@@ -27,33 +28,20 @@ public readonly record struct Point
     /// <summary>
     /// Creates a new point at the origin (0,0,0).
     /// </summary>
-    public static Point Origin => new Point { X = 0.0, Y = 0.0, Z = 0.0 };
+    public static Point Origin => new() { Longitude = 0.0, Latitude = 0.0, Height = 0.0 };
 
     /// <summary>
-    /// Gets or inits the X coordinate of the point.
+    /// Gets or inits the Longitude coordinate of the point.
     /// </summary>
-    public required double X { get; init; } = 0.0;
+    public required double Longitude { get; init; } = 0.0;
 
     /// <summary>
-    /// Gets or inits the Y coordinate of the point.
+    /// Gets or inits the Latitude coordinate of the point.
     /// </summary>
-    public required double Y { get; init; } = 0.0;
+    public required double Latitude { get; init; } = 0.0;
 
     /// <summary>
-    /// Gets or inits the Z coordinate of the point.
+    /// Gets or inits the Height coordinate of the point.
     /// </summary>
-    public required double Z { get; init; } = 0.0;
-
-    /// <summary>
-    /// Calculates the Euclidean distance between this point and another point.
-    /// </summary>
-    /// <param name="other">The other point to calculate distance to.</param>
-    /// <returns>The Euclidean distance between the points.</returns>
-    public double DistanceTo(Point other)
-    {
-        double dx = X - other.X;
-        double dy = Y - other.Y;
-        double dz = Z - other.Z;
-        return Math.Sqrt(dx * dx + dy * dy + dz * dz);
-    }
+    public required double Height { get; init; } = 0.0;
 }
