@@ -18,6 +18,8 @@ using Cvoya.Graph.Model.Configuration;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Reflection;
+using global::Neo4j.Driver;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 /// <summary>
@@ -64,11 +66,13 @@ internal class Neo4jSchemaManager
             {
                 await CreateEntityConstraints(label, type);
                 await CreatePropertyIndexes(label, type);
+                await CreateFullTextIndexes(label, type);
             }
             else if (entity is Model.IRelationship)
             {
                 await CreateRelationshipConstraints(label);
                 await CreateRelationshipPropertyIndexes(label);
+                await CreateFullTextIndexes(label, type);
             }
 
             lock (_schemaLock)
@@ -577,5 +581,106 @@ internal class Neo4jSchemaManager
             _logger.LogError(ex, "Failed to create schema for relationship type: {Label}", label);
             throw new GraphException($"Failed to create schema for relationship type: {label}", ex);
         }
+    }
+
+    /// <summary>
+    /// Creates full text indexes for the given entity type.
+    /// </summary>
+    private async Task CreateFullTextIndexes(string label, Type entityType)
+    {
+        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        using var tx = await session.BeginTransactionAsync();
+
+        try
+        {
+            var isNode = typeof(Model.INode).IsAssignableFrom(entityType);
+            var isRelationship = typeof(Model.IRelationship).IsAssignableFrom(entityType);
+
+            if (isNode)
+            {
+                await CreateNodeFullTextIndex(tx, label, entityType);
+            }
+            else if (isRelationship)
+            {
+                await CreateRelationshipFullTextIndex(tx, label, entityType);
+            }
+
+            await tx.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            _logger.LogError(ex, "Failed to create full text indexes for {EntityType} with label {Label}", entityType.Name, label);
+            // Don't throw - full text search is optional functionality
+        }
+    }
+
+    private async Task CreateNodeFullTextIndex(IAsyncTransaction tx, string label, Type entityType)
+    {
+        var properties = GetFullTextSearchProperties(entityType);
+        if (!properties.Any()) return;
+
+        var indexName = $"nodes_{label.ToLowerInvariant()}_fulltext_index";
+        var propertyList = string.Join(", ", properties.Select(p => $"'{p}'"));
+        
+        var createIndexQuery = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR (n:`{label}`) ON EACH [{propertyList}]";
+        
+        var result = await tx.RunAsync(createIndexQuery);
+        await result.ConsumeAsync();
+        
+        _logger.LogDebug("Created full text index {IndexName} for node label {Label} on properties: {Properties}", 
+            indexName, label, string.Join(", ", properties));
+    }
+
+    private async Task CreateRelationshipFullTextIndex(IAsyncTransaction tx, string label, Type entityType)
+    {
+        var properties = GetFullTextSearchProperties(entityType);
+        if (!properties.Any()) return;
+
+        var indexName = $"relationships_{label.ToLowerInvariant()}_fulltext_index";
+        var propertyList = string.Join(", ", properties.Select(p => $"'{p}'"));
+        
+        var createIndexQuery = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR ()-[r:`{label}`]-() ON EACH [{propertyList}]";
+        
+        var result = await tx.RunAsync(createIndexQuery);
+        await result.ConsumeAsync();
+        
+        _logger.LogDebug("Created full text index {IndexName} for relationship type {Label} on properties: {Properties}", 
+            indexName, label, string.Join(", ", properties));
+    }
+
+    private List<string> GetFullTextSearchProperties(Type entityType)
+    {
+        var properties = new List<string>();
+        
+        foreach (var prop in entityType.GetProperties())
+        {
+            // Skip the base entity properties
+            if (prop.Name == nameof(Model.IEntity.Id)) continue;
+            if (typeof(Model.IRelationship).IsAssignableFrom(entityType))
+            {
+                if (prop.Name == nameof(Model.IRelationship.StartNodeId) ||
+                    prop.Name == nameof(Model.IRelationship.EndNodeId) ||
+                    prop.Name == nameof(Model.IRelationship.Direction)) 
+                    continue;
+            }
+
+            // Only include string properties by default
+            if (prop.PropertyType != typeof(string)) continue;
+
+            // Check for explicit inclusion/exclusion via PropertyAttribute
+            var propertyAttr = prop.GetCustomAttribute<PropertyAttribute>();
+            if (propertyAttr != null)
+            {
+                if (propertyAttr.Ignore) continue;
+                if (propertyAttr.IncludeInFullTextSearch == false) continue;
+            }
+
+            // Include by default for string properties
+            var propertyName = propertyAttr?.Label ?? prop.Name;
+            properties.Add(propertyName);
+        }
+        
+        return properties;
     }
 }

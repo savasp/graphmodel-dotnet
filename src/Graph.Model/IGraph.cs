@@ -196,4 +196,56 @@ public interface IGraph : IAsyncDisposable
     /// <returns>A task representing the asynchronous operation</returns>
     /// <exception cref="GraphException">Thrown when the relationship cannot be deleted or there is another issue</exception>
     Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Performs a full text search across all entities (nodes and relationships) in the graph
+    /// </summary>
+    /// <param name="query">The search query string</param>
+    /// <param name="transaction">The transaction to use.
+    /// If null, a new transaction will be automatically created and used.</param>
+    /// <returns>A queryable interface to the search results</returns>
+    /// <exception cref="GraphException">Thrown when the search fails</exception>
+    IGraphQueryable<IEntity> Search(string query, IGraphTransaction? transaction = null);
+
+    /// <summary>
+    /// Performs a full text search across all nodes in the graph
+    /// </summary>
+    /// <param name="query">The search query string</param>
+    /// <param name="transaction">The transaction to use.
+    /// If null, a new transaction will be automatically created and used.</param>
+    /// <returns>A queryable interface to the node search results</returns>
+    /// <exception cref="GraphException">Thrown when the search fails</exception>
+    IGraphNodeQueryable<INode> SearchNodes(string query, IGraphTransaction? transaction = null);
+
+    /// <summary>
+    /// Performs a full text search across all relationships in the graph
+    /// </summary>
+    /// <param name="query">The search query string</param>
+    /// <param name="transaction">The transaction to use.
+    /// If null, a new transaction will be automatically created and used.</param>
+    /// <returns>A queryable interface to the relationship search results</returns>
+    /// <exception cref="GraphException">Thrown when the search fails</exception>
+    IGraphRelationshipQueryable<IRelationship> SearchRelationships(string query, IGraphTransaction? transaction = null);
+
+    /// <summary>
+    /// Performs a full text search across nodes of a specific type in the graph
+    /// </summary>
+    /// <typeparam name="T">The type of the nodes to search</typeparam>
+    /// <param name="query">The search query string</param>
+    /// <param name="transaction">The transaction to use.
+    /// If null, a new transaction will be automatically created and used.</param>
+    /// <returns>A queryable interface to the typed node search results</returns>
+    /// <exception cref="GraphException">Thrown when the search fails</exception>
+    IGraphNodeQueryable<T> SearchNodes<T>(string query, IGraphTransaction? transaction = null) where T : INode;
+
+    /// <summary>
+    /// Performs a full text search across relationships of a specific type in the graph
+    /// </summary>
+    /// <typeparam name="T">The type of the relationships to search</typeparam>
+    /// <param name="query">The search query string</param>
+    /// <param name="transaction">The transaction to use.
+    /// If null, a new transaction will be automatically created and used.</param>
+    /// <returns>A queryable interface to the typed relationship search results</returns>
+    /// <exception cref="GraphException">Thrown when the search fails</exception>
+    IGraphRelationshipQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : IRelationship;
 }

@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -1310,5 +1311,66 @@ internal class CypherQueryVisitor : ExpressionVisitor
             return IsScalarOrPrimitive(underlying);
 
         return false;
+    }
+
+    protected override Expression VisitExtension(Expression node)
+    {
+        _logger.LogDebug("VisitExtension called with node type: {NodeType}", node.GetType().Name);
+
+        if (node is FullTextSearchExpression searchExpr)
+        {
+            _logger.LogDebug("Handling full text search expression for query: {Query}", searchExpr.SearchQuery);
+            
+            // Handle full text search by adding appropriate Cypher
+            HandleFullTextSearch(searchExpr);
+            return node;
+        }
+
+        return base.VisitExtension(node);
+    }
+
+    private void HandleFullTextSearch(FullTextSearchExpression searchExpr)
+    {
+        var indexName = GetFullTextIndexName(searchExpr.EntityType);
+        var paramName = _context.Builder.Parameters.AddParameter(searchExpr.SearchQuery);
+        
+        if (typeof(INode).IsAssignableFrom(searchExpr.EntityType))
+        {
+            // Node full text search
+            var alias = _context.Scope.GetNewAlias("n");
+            _context.Builder.AddFullTextNodeSearch(indexName, paramName, alias);
+            _context.Scope.CurrentAlias = alias;
+        }
+        else if (typeof(IRelationship).IsAssignableFrom(searchExpr.EntityType))
+        {
+            // Relationship full text search  
+            var alias = _context.Scope.GetNewAlias("r");
+            _context.Builder.AddFullTextRelationshipSearch(indexName, paramName, alias);
+            _context.Scope.CurrentAlias = alias;
+        }
+        else
+        {
+            // Entity search (both nodes and relationships)
+            var nodeAlias = _context.Scope.GetNewAlias("n");
+            var relAlias = _context.Scope.GetNewAlias("r");
+            _context.Builder.AddFullTextEntitySearch(indexName, paramName, nodeAlias, relAlias);
+            _context.Scope.CurrentAlias = nodeAlias; // Default to node alias
+        }
+    }
+
+    private static string GetFullTextIndexName(Type entityType)
+    {
+        if (typeof(INode).IsAssignableFrom(entityType))
+        {
+            return entityType == typeof(INode) ? "nodes_fulltext_index" : $"nodes_{entityType.Name.ToLowerInvariant()}_fulltext_index";
+        }
+        else if (typeof(IRelationship).IsAssignableFrom(entityType))
+        {
+            return entityType == typeof(IRelationship) ? "relationships_fulltext_index" : $"relationships_{entityType.Name.ToLowerInvariant()}_fulltext_index";
+        }
+        else
+        {
+            return "entities_fulltext_index";
+        }
     }
 }

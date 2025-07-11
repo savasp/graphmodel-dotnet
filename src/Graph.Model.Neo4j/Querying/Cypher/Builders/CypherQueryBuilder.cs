@@ -353,6 +353,28 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         _returnPart.AddUnwind(expression);
     }
 
+    public void AddFullTextNodeSearch(string indexName, string queryParam, string nodeAlias)
+    {
+        _logger.LogDebug("AddFullTextNodeSearch called with index: {IndexName}, query: {QueryParam}, alias: {NodeAlias}", indexName, queryParam, nodeAlias);
+        var searchPattern = $"CALL db.index.fulltext.queryNodes('{indexName}', ${queryParam}) YIELD node AS {nodeAlias}";
+        _matchPart.AddCallClause(searchPattern);
+    }
+
+    public void AddFullTextRelationshipSearch(string indexName, string queryParam, string relAlias)
+    {
+        _logger.LogDebug("AddFullTextRelationshipSearch called with index: {IndexName}, query: {QueryParam}, alias: {RelAlias}", indexName, queryParam, relAlias);
+        var searchPattern = $"CALL db.index.fulltext.queryRelationships('{indexName}', ${queryParam}) YIELD relationship AS {relAlias}";
+        _matchPart.AddCallClause(searchPattern);
+    }
+
+    public void AddFullTextEntitySearch(string indexName, string queryParam, string nodeAlias, string relAlias)
+    {
+        _logger.LogDebug("AddFullTextEntitySearch called with index: {IndexName}, query: {QueryParam}, nodeAlias: {NodeAlias}, relAlias: {RelAlias}", indexName, queryParam, nodeAlias, relAlias);
+        var nodeSearchPattern = $"CALL db.index.fulltext.queryNodes('{indexName}', ${queryParam}) YIELD node AS {nodeAlias}";
+        var relSearchPattern = $"CALL db.index.fulltext.queryRelationships('{indexName}', ${queryParam}) YIELD relationship AS {relAlias}";
+        _matchPart.AddCallClause($"{nodeSearchPattern} UNION {relSearchPattern}");
+    }
+
     public void AddGroupBy(string expression)
     {
         _logger.LogDebug("AddGroupBy called with expression: '{Expression}'", expression);

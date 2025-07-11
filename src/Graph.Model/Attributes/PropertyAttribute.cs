@@ -79,6 +79,13 @@ public class PropertyAttribute() : Attribute
     /// </summary>
     /// <value>The validation rules for this property.</value>
     public PropertyValidation? Validation { get; set; } = null;
+
+    /// <summary>
+    /// Gets or sets whether this property should be included in full text search indexes.
+    /// </summary>
+    /// <value>True if the property should be included in full text search, false to exclude it. 
+    /// If null (default), string properties are included by default.</value>
+    public bool? IncludeInFullTextSearch { get; set; } = null;
 }
 
 /// <summary>
