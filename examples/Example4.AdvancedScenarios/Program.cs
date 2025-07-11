@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j;
+using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
 
 // Example 4: Advanced Scenarios
@@ -32,14 +34,14 @@ await using (var session = driver.AsyncSession())
 
 Console.WriteLine($"✓ Created database: {databaseName}");
 
-// We start with the Neo4j Graph Provider here
-
 // Create graph instance with Neo4j provider
-var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null);
-var graph = store.Graph;
+var loggerFactory = LoggerFactory.Create(builder =>
+{
+    builder.AddConsole().SetMinimumLevel(LogLevel.Debug);
+});
 
-// TODO: Some of the functionality in this example is isn't implemented properly.
-/*
+var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null, loggerFactory);
+var graph = store.Graph;
 try
 {
     // ==== POLYMORPHIC NODES ====
@@ -71,9 +73,9 @@ try
         Views = 15000
     };
 
-    await graph.CreateNode(techBlog);
-    await graph.CreateNode(aiArticle);
-    await graph.CreateNode(mlVideo);
+    await graph.CreateNodeAsync(techBlog);
+    await graph.CreateNodeAsync(aiArticle);
+    await graph.CreateNodeAsync(mlVideo);
 
     Console.WriteLine($"✓ Created blog: {techBlog.Title}");
     Console.WriteLine($"✓ Created article: {aiArticle.Title}");
@@ -83,13 +85,11 @@ try
     Console.WriteLine("2. Creating multiple relationship types...");
 
     // Blog contains article
-    await graph.CreateRelationship(new Contains { Source = techBlog, Target = aiArticle });
+    await graph.CreateRelationshipAsync(new Contains(techBlog.Id, aiArticle.Id));
 
     // Article references video
-    await graph.CreateRelationship(new References
+    await graph.CreateRelationshipAsync(new References(aiArticle.Id, mlVideo.Id)
     {
-        Source = aiArticle,
-        Target = mlVideo,
         Context = "See this video for visual explanation"
     });
 
@@ -97,13 +97,13 @@ try
     var aiTag = new Tag { Name = "Artificial Intelligence" };
     var mlTag = new Tag { Name = "Machine Learning" };
 
-    await graph.CreateNode(aiTag);
-    await graph.CreateNode(mlTag);
+    await graph.CreateNodeAsync(aiTag);
+    await graph.CreateNodeAsync(mlTag);
 
     // Tag content
-    await graph.CreateRelationship(new TaggedWith { Source = aiArticle, Target = aiTag });
-    await graph.CreateRelationship(new TaggedWith { Source = aiArticle, Target = mlTag });
-    await graph.CreateRelationship(new TaggedWith { Source = mlVideo, Target = mlTag });
+    await graph.CreateRelationshipAsync(new TaggedWith(aiArticle.Id, aiTag.Id) { TagName = "AI" });
+    await graph.CreateRelationshipAsync(new TaggedWith(aiArticle.Id, mlTag.Id) { TagName = "ML" });
+    await graph.CreateRelationshipAsync(new TaggedWith(mlVideo.Id, mlTag.Id) { TagName = "ML" });
 
     Console.WriteLine("✓ Created relationships between content");
     Console.WriteLine("✓ Created and applied tags\n");
@@ -130,32 +130,18 @@ try
         Console.WriteLine($"  - {article.Title} ({article.WordCount} words)");
     }
 
-    // ==== COMPLEX TRAVERSAL ====
-    Console.WriteLine("\n4. Complex graph traversal...");
+    // ==== BASIC TRAVERSAL ====
+    Console.WriteLine("\n4. Basic graph traversal...");
 
-    // Find all content tagged with "Machine Learning" and related content
-    var mlContent = graph.Nodes<Tag>(new GraphOperationOptions().WithDepth(2))
-        .Where(t => t.Name == "Machine Learning")
-        .Select(t => t.TaggedContent.Target)
-        .ToList();
+    // Find content with tags
+    var taggedContent = await graph.Nodes<Content>()
+        .PathSegments<Content, TaggedWith, Tag>()
+        .ToListAsync();
 
-    Console.WriteLine($"Content tagged with 'Machine Learning':");
-    foreach (var content in mlContent)
+    Console.WriteLine($"Content with tags:");
+    foreach (var path in taggedContent)
     {
-        Console.WriteLine($"  - {content?.Title}");
-
-        // Check if it's an article with references
-        if (content is Article article)
-        {
-            var refs = graph.Relationships<References>(new GraphOperationOptions().WithDepth(1))
-                .Where(r => r.Source!.Id == article.Id)
-                .ToList();
-
-            foreach (var reference in refs)
-            {
-                Console.WriteLine($"    → References: {reference.Target?.Title}");
-            }
-        }
+        Console.WriteLine($"  - {path.StartNode.Title} tagged with '{path.EndNode.Name}'");
     }
 
     // ==== AGGREGATION QUERIES ====
@@ -183,52 +169,28 @@ try
         Console.WriteLine($"\nMost viewed video: {mostViewedVideo.Title} ({mostViewedVideo.Views:N0} views)");
     }
 
-    // ==== PATTERN MATCHING ====
-    Console.WriteLine("\n6. Pattern matching in the graph...");
-
-    // Find content that is both contained in a blog and has tags
-    var blogContent = graph.Nodes<Content>(new GraphOperationOptions().WithDepth(1))
-        .Where(c => c.ContainedIn.Any() && c.Tags.Any())
-        .ToList();
-
-    Console.WriteLine("Content that is in a blog and has tags:");
-    foreach (var content in blogContent)
-    {
-        var blog = content.ContainedIn.FirstOrDefault()?.Source;
-        var tags = content.Tags.Select(t => t.Target?.Name);
-        Console.WriteLine($"  - {content.Title} in '{blog?.Title}' with tags: {string.Join(", ", tags)}");
-    }
-
     // ==== CONDITIONAL UPDATES ====
-    Console.WriteLine("\n7. Conditional updates based on graph state...");
+    Console.WriteLine("\n6. Conditional updates based on content properties...");
 
-    // Update view count for videos referenced by popular articles
-    var popularArticles = graph.Nodes<Article>(new GraphOperationOptions().WithDepth(1))
-        .Where(a => a.WordCount > 2000)
+    // Update view count for popular videos
+    var popularVideos = graph.Nodes<Video>()
+        .Where(v => v.Views > 10000)
         .ToList();
 
-    foreach (var article in popularArticles)
+    foreach (var video in popularVideos)
     {
-        var referencedVideos = article.References
-            .Select(r => r.Target)
-            .OfType<Video>()
-            .ToList();
-
-        foreach (var video in referencedVideos)
-        {
-            video.Views += 100; // Boost views
-            await graph.UpdateNode(video);
-            Console.WriteLine($"✓ Boosted views for '{video.Title}' (referenced by popular article)");
-        }
+        video.Views += 100; // Boost views
+        await graph.UpdateNodeAsync(video);
+        Console.WriteLine($"✓ Boosted views for '{video.Title}' to {video.Views:N0}");
     }
 
     Console.WriteLine("\n=== Example 4 Complete ===");
     Console.WriteLine("This example demonstrated:");
     Console.WriteLine("• Polymorphic node types with inheritance");
     Console.WriteLine("• Multiple relationship types between nodes");
-    Console.WriteLine("• Complex queries across type hierarchies");
-    Console.WriteLine("• Graph pattern matching");
-    Console.WriteLine("• Conditional updates based on graph structure");
+    Console.WriteLine("• Basic queries across type hierarchies");
+    Console.WriteLine("• Simple graph traversal patterns");
+    Console.WriteLine("• Conditional updates based on node properties");
 }
 catch (Exception ex)
 {
@@ -250,4 +212,3 @@ finally
     }
     await driver.DisposeAsync();
 }
-*/

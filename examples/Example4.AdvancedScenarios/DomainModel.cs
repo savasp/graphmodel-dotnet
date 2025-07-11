@@ -80,8 +80,8 @@ public record Reference(string startNodeId, string endNodeId) : Relationship(sta
 }
 
 [Relationship(Label = "TAGGED_WITH")]
-public record TaggedContent(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
+public record TaggedWith(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
 {
-    public TaggedContent() : this(string.Empty, string.Empty) { }
+    public TaggedWith() : this(string.Empty, string.Empty) { }
     public string TagName { get; set; } = string.Empty;
 }
