@@ -45,20 +45,20 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
 
-        var friendship = new PersonKnows 
+        var friendship = new KnowsWell 
         { 
             StartNodeId = person1.Id, 
             EndNodeId = person2.Id,
-            Notes = "Close friendship since college"
+            HowWell = "Close friendship since college"
         };
         
         await this.Graph.CreateRelationshipAsync(friendship, null, TestContext.Current.CancellationToken);
 
         // Search for "college"
-        var results = await this.Graph.SearchRelationships<PersonKnows>("college").ToListAsync();
+        var results = await this.Graph.SearchRelationships<KnowsWell>("college").ToListAsync();
         
         Assert.Single(results);
-        Assert.Contains("college", results[0].Notes);
+        Assert.Contains("college", results[0].HowWell);
     }
 
     [Fact]
@@ -71,11 +71,11 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(friend, null, TestContext.Current.CancellationToken);
 
-        var relationship = new PersonKnows 
+        var relationship = new KnowsWell 
         { 
             StartNodeId = person.Id, 
             EndNodeId = friend.Id,
-            Notes = "SearchUser knows Friend"
+            HowWell = "SearchUser knows Friend"
         };
         
         await this.Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
@@ -116,11 +116,11 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
 
-        var relationship = new PersonKnows 
+        var relationship = new KnowsWell 
         { 
             StartNodeId = person1.Id, 
             EndNodeId = person2.Id,
-            Notes = "unique_search_term_12345"
+            HowWell = "unique_search_term_12345"
         };
         
         await this.Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
@@ -129,9 +129,9 @@ public interface IFullTextSearchTests : IGraphModelTest
         var results = await this.Graph.SearchRelationships("unique_search_term_12345").ToListAsync();
         
         Assert.Single(results);
-        Assert.IsType<PersonKnows>(results[0]);
-        var foundRelationship = (PersonKnows)results[0];
-        Assert.Contains("unique_search_term_12345", foundRelationship.Notes);
+        Assert.IsType<KnowsWell>(results[0]);
+        var foundRelationship = (KnowsWell)results[0];
+        Assert.Contains("unique_search_term_12345", foundRelationship.HowWell);
     }
 
     [Fact]

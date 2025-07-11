@@ -1332,27 +1332,27 @@ internal class CypherQueryVisitor : ExpressionVisitor
     private void HandleFullTextSearch(FullTextSearchExpression searchExpr)
     {
         var indexName = GetFullTextIndexName(searchExpr.EntityType);
-        var paramName = _context.Builder.Parameters.AddParameter(searchExpr.SearchQuery);
+        var paramName = _context.Builder.AddParameter(searchExpr.SearchQuery);
         
         if (typeof(INode).IsAssignableFrom(searchExpr.EntityType))
         {
             // Node full text search
-            var alias = _context.Scope.GetNewAlias("n");
+            var alias = _context.Scope.GetOrCreateAlias(searchExpr.EntityType, "n");
             _context.Builder.AddFullTextNodeSearch(indexName, paramName, alias);
             _context.Scope.CurrentAlias = alias;
         }
         else if (typeof(IRelationship).IsAssignableFrom(searchExpr.EntityType))
         {
             // Relationship full text search  
-            var alias = _context.Scope.GetNewAlias("r");
+            var alias = _context.Scope.GetOrCreateAlias(searchExpr.EntityType, "r");
             _context.Builder.AddFullTextRelationshipSearch(indexName, paramName, alias);
             _context.Scope.CurrentAlias = alias;
         }
         else
         {
             // Entity search (both nodes and relationships)
-            var nodeAlias = _context.Scope.GetNewAlias("n");
-            var relAlias = _context.Scope.GetNewAlias("r");
+            var nodeAlias = _context.Scope.GetOrCreateAlias(typeof(INode), "n");
+            var relAlias = _context.Scope.GetOrCreateAlias(typeof(IRelationship), "r");
             _context.Builder.AddFullTextEntitySearch(indexName, paramName, nodeAlias, relAlias);
             _context.Scope.CurrentAlias = nodeAlias; // Default to node alias
         }
