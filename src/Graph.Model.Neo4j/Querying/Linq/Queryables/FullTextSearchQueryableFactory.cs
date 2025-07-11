@@ -14,27 +14,8 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 
-using System.Linq.Expressions;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
-
-/// <summary>
-/// Represents a full text search query expression
-/// </summary>
-internal class FullTextSearchExpression : Expression
-{
-    public string SearchQuery { get; }
-    public Type EntityType { get; }
-
-    public FullTextSearchExpression(string searchQuery, Type entityType)
-    {
-        SearchQuery = searchQuery;
-        EntityType = entityType;
-    }
-
-    public override ExpressionType NodeType => ExpressionType.Extension;
-    public override Type Type => typeof(IQueryable<>).MakeGenericType(EntityType);
-}
 
 /// <summary>
 /// Static factory methods for creating full text search queryables
