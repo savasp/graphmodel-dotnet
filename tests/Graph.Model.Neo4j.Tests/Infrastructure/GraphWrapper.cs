@@ -79,6 +79,21 @@ public class GraphWrapper : IGraph
     public Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) =>
         innerGraph.DeleteRelationshipAsync(id, transaction, cancellationToken);
 
+    public IGraphQueryable<IEntity> Search(string query, IGraphTransaction? transaction = null) =>
+        innerGraph.Search(query, transaction);
+
+    public IGraphNodeQueryable<INode> SearchNodes(string query, IGraphTransaction? transaction = null) =>
+        innerGraph.SearchNodes(query, transaction);
+
+    public IGraphRelationshipQueryable<IRelationship> SearchRelationships(string query, IGraphTransaction? transaction = null) =>
+        innerGraph.SearchRelationships(query, transaction);
+
+    public IGraphNodeQueryable<T> SearchNodes<T>(string query, IGraphTransaction? transaction = null) where T : INode =>
+        innerGraph.SearchNodes<T>(query, transaction);
+
+    public IGraphRelationshipQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : IRelationship =>
+        innerGraph.SearchRelationships<T>(query, transaction);
+
     public async ValueTask DisposeAsync()
     {
         if (disposed) return;
