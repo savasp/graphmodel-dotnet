@@ -1,78 +1,85 @@
 # Example 4: Advanced Scenarios
 
-This example demonstrates advanced features of the GraphModel library including polymorphism, multiple relationship types, and complex graph patterns.
+This example demonstrates advanced features of the GraphModel library including polymorphic node types, multiple relationship types, and complex graph operations.
 
 ## What You'll Learn
 
-- Working with polymorphic node types (inheritance)
+- Working with polymorphic node types (inheritance) 
 - Managing multiple relationship types between nodes
-- Complex queries across type hierarchies
-- Pattern matching in graphs
-- Conditional updates based on graph structure
+- Basic queries across type hierarchies
+- Simple graph traversal patterns
+- Conditional updates based on node properties
 
 ## Key Concepts Demonstrated
 
-### 1. Polymorphic Types
+### 1. Polymorphic Node Types
 
 ```csharp
 // Base type
-[Node("Content")]
-public abstract class Content : Node { }
+[Node(Label = "Content")]
+public record Content : Node
+{
+    public string Title { get; set; } = string.Empty;
+    public string Url { get; set; } = string.Empty;
+    public string Author { get; set; } = string.Empty;
+}
 
 // Derived types
-[Node("Article")]
-public class Article : Content { }
+[Node(Label = "Article")]
+public record Article : Content
+{
+    public DateTime PublishedDate { get; set; }
+    public int WordCount { get; set; }
+}
 
-[Node("Video")]
-public class Video : Content { }
+[Node(Label = "Video")]
+public record Video : Content
+{
+    public int Duration { get; set; }
+    public int Views { get; set; }
+}
 ```
 
 ### 2. Multiple Relationship Types
 
-Different relationships can exist between the same or different node types:
+Different relationships can exist between different node types:
 
 ```csharp
-[Relationship("CONTAINS")]
-public class Contains : Relationship<Blog, Content> { }
+[Relationship(Label = "CONTAINS")]
+public record Contains(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 
-[Relationship("REFERENCES")]
-public class References : Relationship<Content, Content> { }
+[Relationship(Label = "REFERENCES")]
+public record References(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
+{
+    public string Context { get; set; } = string.Empty;
+}
 
-[Relationship("TAGGED_WITH")]
-public class TaggedWith : Relationship<Content, Tag> { }
+[Relationship(Label = "TAGGED_WITH")]
+public record TaggedWith(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
+{
+    public string TagName { get; set; } = string.Empty;
+}
 ```
 
-### 3. Complex Navigation Properties
+### 3. Type-Safe Queries Across Hierarchies
 
 ```csharp
-// Outgoing relationships
-public IEnumerable<References> References => GetRelationships<References>();
-
-// Incoming relationships
-public IEnumerable<Contains> ContainedIn => GetIncomingRelationships<Contains>();
-```
-
-### 4. Type-Safe Queries Across Hierarchies
-
-```csharp
-// Query base type
+// Query base type - gets all content types
 var allContent = graph.Nodes<Content>().ToList();
 
-// Query specific type
+// Query specific type with filtering
 var articles = graph.Nodes<Article>()
     .Where(a => a.WordCount > 1000)
     .ToList();
 ```
 
-### 5. Pattern Matching
-
-Find complex patterns in the graph:
+### 4. Path Traversal
 
 ```csharp
-// Content that is both contained in a blog and has tags
-var pattern = graph.Nodes<Content>(new GraphOperationOptions().WithDepth(1))
-    .Where(c => c.ContainedIn.Any() && c.Tags.Any())
-    .ToList();
+// Find content with their tags
+var taggedContent = await graph.Nodes<Content>()
+    .PathSegments<Content, TaggedWith, Tag>()
+    .ToListAsync();
 ```
 
 ## Content Management Example
@@ -80,15 +87,17 @@ var pattern = graph.Nodes<Content>(new GraphOperationOptions().WithDepth(1))
 The example simulates a content management system with:
 
 - Blogs containing articles
-- Articles referencing videos
+- Articles referencing videos  
 - Content tagged with categories
-- View tracking and statistics
+- View tracking and popularity metrics
 
 ## Running the Example
+
+**Note: This example requires .NET 10.0 which is not yet released.**
 
 ```bash
 cd examples/Example4.AdvancedScenarios
 dotnet run
 ```
 
-Make sure Neo4j is running and accessible at `neo4j://localhost:7687`.
+Make sure Neo4j is running and accessible at `bolt://localhost:7687` with username `neo4j` and password `password`.
