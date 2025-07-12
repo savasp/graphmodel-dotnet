@@ -135,6 +135,15 @@ internal class MatchQueryPart : ICypherQueryPart
         // Keep _additionalMatchStatements intact
     }
 
+    /// <summary>
+    /// Adds a CALL clause for full text search or other procedures.
+    /// </summary>
+    public void AddCallClause(string callExpression)
+    {
+        _additionalMatchStatements.Add(callExpression);
+        _logger.LogDebug("[MatchQueryPart] Added CALL clause: {CallExpression}", callExpression);
+    }
+
     public void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters)
     {
         _logger.LogDebug("[MatchQueryPart] AppendTo called - Main clauses: {MainCount}, Additional: {AdditionalCount}, Optional: {OptionalCount}",

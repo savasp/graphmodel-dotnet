@@ -474,6 +474,121 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
+    public IGraphQueryable<Model.IEntity> Search(string query, IGraphTransaction? transaction = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
+        
+        try
+        {
+            _logger.LogDebug("Performing full text search with query: {Query}", query);
+
+            var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true).Result;
+
+            // Create a provider scoped to this specific transaction
+            var provider = new GraphQueryProvider(_graphContext, neo4jTx);
+            return FullTextSearchQueryableFactory.CreateSearchQueryable<Model.IEntity>(provider, neo4jTx, _graphContext, query);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to create search queryable for query: {query}";
+            _logger.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public IGraphNodeQueryable<Model.INode> SearchNodes(string query, IGraphTransaction? transaction = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
+        
+        try
+        {
+            _logger.LogDebug("Performing full text search on nodes with query: {Query}", query);
+
+            var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true).Result;
+
+            // Create a provider scoped to this specific transaction
+            var provider = new GraphQueryProvider(_graphContext, neo4jTx);
+            return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<Model.INode>(provider, neo4jTx, _graphContext, query);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to create node search queryable for query: {query}";
+            _logger.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public IGraphRelationshipQueryable<Model.IRelationship> SearchRelationships(string query, IGraphTransaction? transaction = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
+        
+        try
+        {
+            _logger.LogDebug("Performing full text search on relationships with query: {Query}", query);
+
+            var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true).Result;
+
+            // Create a provider scoped to this specific transaction
+            var provider = new GraphQueryProvider(_graphContext, neo4jTx);
+            return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<Model.IRelationship>(provider, neo4jTx, _graphContext, query);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to create relationship search queryable for query: {query}";
+            _logger.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public IGraphNodeQueryable<T> SearchNodes<T>(string query, IGraphTransaction? transaction = null) where T : Model.INode
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
+        
+        try
+        {
+            _logger.LogDebug("Performing full text search on nodes of type {NodeType} with query: {Query}", typeof(T).Name, query);
+
+            var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true).Result;
+
+            // Create a provider scoped to this specific transaction
+            var provider = new GraphQueryProvider(_graphContext, neo4jTx);
+            return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<T>(provider, neo4jTx, _graphContext, query);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to create typed node search queryable for type {typeof(T).Name} and query: {query}";
+            _logger.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public IGraphRelationshipQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : Model.IRelationship
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
+        
+        try
+        {
+            _logger.LogDebug("Performing full text search on relationships of type {RelationshipType} with query: {Query}", typeof(T).Name, query);
+
+            var neo4jTx = TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true).Result;
+
+            // Create a provider scoped to this specific transaction
+            var provider = new GraphQueryProvider(_graphContext, neo4jTx);
+            return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<T>(provider, neo4jTx, _graphContext, query);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to create typed relationship search queryable for type {typeof(T).Name} and query: {query}";
+            _logger.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
+    }
+
+    /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
         return ValueTask.CompletedTask;
