@@ -27,13 +27,13 @@ jobs:
       working-directory: .
 
     - name: Build
-      run: dotnet build --no-restore --configuration Release -p:UseProjectReferences=false
+      run: dotnet build --no-restore --configuration Release
       working-directory: .
     
     - name: Test Analyzers
-      run: dotnet test tests/Graph.Model.Analyzers.Tests --no-build --verbosity normal --collect:"XPlat Code Coverage"
+      run: dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj --no-build --verbosity normal
       
     - name: Test Neo4j Provider with Docker containers
       env:
         USE_NEO4J_CONTAINERS: true
-      run: dotnet test tests/Graph.Model.Neo4j.Tests --no-build --verbosity normal --collect:"XPlat Code Coverage"
+      run: dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj --no-build --verbosity normal
