@@ -188,7 +188,7 @@ try
     }
 
     // Find posts with likes
-    var postsWithLikes = await graph.Nodes<Post>()
+    var postsWithLikes = await graph.Nodes<User>()
         .PathSegments<User, Likes, Post>()
         .ToListAsync();
 
@@ -238,14 +238,14 @@ try
         .ToListAsync();
 
     var charlieFollowingIds = charlieFollowing.Select(p => p.EndNode.Id).ToHashSet();
-    
+
     // Find who Charlie's friends are following
     var friendsOfFriends = await graph.Nodes<User>()
         .Where(u => charlieFollowingIds.Contains(u.Id))
         .PathSegments<User, Follows, User>()
         .ToListAsync();
 
-    var charlie = await graph.Nodes<User>()
+    charlie = await graph.Nodes<User>()
         .Where(u => u.Username == "charlie_explorer")
         .FirstOrDefaultAsync();
 
