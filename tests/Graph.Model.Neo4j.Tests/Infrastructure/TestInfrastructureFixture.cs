@@ -56,6 +56,9 @@ public class TestInfrastructureFixture : IAsyncLifetime
 
     static TestInfrastructureFixture()
     {
+        /*
+        * Disable this logic. Always assume that there is a local Neo4j instance running.
+
         var useContainers = Environment.GetEnvironmentVariable("USE_NEO4J_CONTAINERS");
         if (string.IsNullOrEmpty(useContainers))
         {
@@ -70,6 +73,9 @@ public class TestInfrastructureFixture : IAsyncLifetime
         {
             testInfrastructure = new Neo4jTestInfrastructureWithDbInstance();
         }
+        */
+
+        testInfrastructure = new Neo4jTestInfrastructureWithDbInstance();
     }
 
     public ILoggerFactory LoggerFactory => loggerFactory;
