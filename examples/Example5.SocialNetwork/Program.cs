@@ -14,14 +14,13 @@
 
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j;
+using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
 
 // Example 5: Social Network
 // Demonstrates a complete social network implementation with users, posts, and interactions
 
 Console.WriteLine("=== Example 5: Social Network ===\n");
-
-/* This example still has some issues with featurs that haven't been implemented properly.
 
 const string databaseName = "example5";
 
@@ -35,10 +34,14 @@ await using (var session = driver.AsyncSession())
 
 Console.WriteLine($"✓ Created database: {databaseName}");
 
-// We start with the Neo4j Graph Provider here
-
 // Create graph instance with Neo4j provider
-var graph = new Neo4jGraphProvider("bolt://localhost:7687", "neo4j", "password", databaseName, null);
+var loggerFactory = LoggerFactory.Create(builder =>
+{
+    builder.AddConsole().SetMinimumLevel(LogLevel.Debug);
+});
+
+var store = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, null, loggerFactory);
+var graph = store.Graph;
 
 try
 {
@@ -77,23 +80,23 @@ try
         Bio = "Digital artist and creative soul"
     };
 
-    await graph.CreateNode(alice);
-    await graph.CreateNode(bob);
-    await graph.CreateNode(charlie);
-    await graph.CreateNode(diana);
+    await graph.CreateNodeAsync(alice);
+    await graph.CreateNodeAsync(bob);
+    await graph.CreateNodeAsync(charlie);
+    await graph.CreateNodeAsync(diana);
 
     Console.WriteLine($"✓ Created {4} users\n");
 
     // ==== CREATE FRIENDSHIPS ====
     Console.WriteLine("2. Creating friendships...");
 
-    await graph.CreateRelationship(new Follows { Source = alice, Target = bob, Since = DateTime.UtcNow.AddYears(-1) });
-    await graph.CreateRelationship(new Follows { Source = bob, Target = alice, Since = DateTime.UtcNow.AddYears(-1) });
-    await graph.CreateRelationship(new Follows { Source = alice, Target = charlie, Since = DateTime.UtcNow.AddMonths(-6) });
-    await graph.CreateRelationship(new Follows { Source = charlie, Target = alice, Since = DateTime.UtcNow.AddMonths(-5) });
-    await graph.CreateRelationship(new Follows { Source = bob, Target = charlie, Since = DateTime.UtcNow.AddMonths(-4) });
-    await graph.CreateRelationship(new Follows { Source = charlie, Target = diana, Since = DateTime.UtcNow.AddMonths(-2) });
-    await graph.CreateRelationship(new Follows { Source = diana, Target = charlie, Since = DateTime.UtcNow.AddMonths(-2) });
+    await graph.CreateRelationshipAsync(new Follows(alice.Id, bob.Id, DateTime.UtcNow.AddYears(-1)));
+    await graph.CreateRelationshipAsync(new Follows(bob.Id, alice.Id, DateTime.UtcNow.AddYears(-1)));
+    await graph.CreateRelationshipAsync(new Follows(alice.Id, charlie.Id, DateTime.UtcNow.AddMonths(-6)));
+    await graph.CreateRelationshipAsync(new Follows(charlie.Id, alice.Id, DateTime.UtcNow.AddMonths(-5)));
+    await graph.CreateRelationshipAsync(new Follows(bob.Id, charlie.Id, DateTime.UtcNow.AddMonths(-4)));
+    await graph.CreateRelationshipAsync(new Follows(charlie.Id, diana.Id, DateTime.UtcNow.AddMonths(-2)));
+    await graph.CreateRelationshipAsync(new Follows(diana.Id, charlie.Id, DateTime.UtcNow.AddMonths(-2)));
 
     Console.WriteLine("✓ Created friendship connections\n");
 
@@ -102,7 +105,6 @@ try
 
     var post1 = new Post
     {
-        Author = new Author { Target = alice },
         Content = "Just deployed a new feature using GraphModel! The LINQ support is amazing 🚀",
         PostedAt = DateTime.UtcNow.AddHours(-24),
         Tags = ["programming", "graphdb", "dotnet"]
@@ -110,7 +112,6 @@ try
 
     var post2 = new Post
     {
-        Author = new Author { Target = bob },
         Content = "Building something cool with Neo4j and C#. Graph databases are the future!",
         PostedAt = DateTime.UtcNow.AddHours(-12),
         Tags = ["neo4j", "databases", "csharp"]
@@ -118,19 +119,18 @@ try
 
     var post3 = new Post
     {
-        Author = new Author { Target = charlie },
         Content = "Captured an amazing sunset today! Nature never ceases to amaze me 🌅",
         PostedAt = DateTime.UtcNow.AddHours(-6),
         Tags = ["photography", "nature", "sunset"]
     };
 
-    await graph.CreateNode(post1);
-    await graph.CreateNode(post2);
-    await graph.CreateNode(post3);
+    await graph.CreateNodeAsync(post1);
+    await graph.CreateNodeAsync(post2);
+    await graph.CreateNodeAsync(post3);
 
-    await graph.CreateRelationship(new Posted { Source = alice, Target = post1 });
-    await graph.CreateRelationship(new Posted { Source = bob, Target = post2 });
-    await graph.CreateRelationship(new Posted { Source = charlie, Target = post3 });
+    await graph.CreateRelationshipAsync(new Posted(alice.Id, post1.Id));
+    await graph.CreateRelationshipAsync(new Posted(bob.Id, post2.Id));
+    await graph.CreateRelationshipAsync(new Posted(charlie.Id, post3.Id));
 
     Console.WriteLine("✓ Created posts\n");
 
@@ -138,146 +138,137 @@ try
     Console.WriteLine("4. Creating interactions...");
 
     // Likes
-    await graph.CreateRelationship(new Likes { Source = bob, Target = post1, LikedAt = DateTime.UtcNow.AddHours(-20) });
-    await graph.CreateRelationship(new Likes { Source = charlie, Target = post1, LikedAt = DateTime.UtcNow.AddHours(-18) });
-    await graph.CreateRelationship(new Likes { Source = alice, Target = post2, LikedAt = DateTime.UtcNow.AddHours(-10) });
-    await graph.CreateRelationship(new Likes { Source = diana, Target = post3, LikedAt = DateTime.UtcNow.AddHours(-4) });
+    await graph.CreateRelationshipAsync(new Likes(bob.Id, post1.Id, DateTime.UtcNow.AddHours(-20)));
+    await graph.CreateRelationshipAsync(new Likes(charlie.Id, post1.Id, DateTime.UtcNow.AddHours(-18)));
+    await graph.CreateRelationshipAsync(new Likes(alice.Id, post2.Id, DateTime.UtcNow.AddHours(-10)));
+    await graph.CreateRelationshipAsync(new Likes(diana.Id, post3.Id, DateTime.UtcNow.AddHours(-4)));
 
     // Comments
     var comment1 = new Comment
     {
-        Author = new Author { Target = bob },
         Content = "Great work! Can't wait to try it out.",
         CommentedAt = DateTime.UtcNow.AddHours(-19)
     };
 
     var comment2 = new Comment
     {
-        Author = new Author { Target = alice },
         Content = "Thanks! Let me know if you need any help getting started.",
-        CommentedAt = DateTime.UtcNow.AddHours(-18),
-        ReplyTo = new ReplyTo { Target = comment1 }
+        CommentedAt = DateTime.UtcNow.AddHours(-18)
     };
 
-    await graph.CreateNode(comment1);
-    await graph.CreateNode(comment2);
+    await graph.CreateNodeAsync(comment1);
+    await graph.CreateNodeAsync(comment2);
 
-    await graph.CreateRelationship(new CommentedOn { Source = comment1, Target = post1 });
-    await graph.CreateRelationship(new CommentedOn { Source = comment2, Target = post1 });
-    await graph.CreateRelationship(new Wrote { Source = bob, Target = comment1 });
-    await graph.CreateRelationship(new Wrote { Source = alice, Target = comment2 });
+    await graph.CreateRelationshipAsync(new CommentedOn(comment1.Id, post1.Id));
+    await graph.CreateRelationshipAsync(new CommentedOn(comment2.Id, post1.Id));
+    await graph.CreateRelationshipAsync(new Wrote(bob.Id, comment1.Id, DateTime.UtcNow.AddHours(-19)));
+    await graph.CreateRelationshipAsync(new Wrote(alice.Id, comment2.Id, DateTime.UtcNow.AddHours(-18)));
+    await graph.CreateRelationshipAsync(new ReplyTo(comment2.Id, comment1.Id));
 
     Console.WriteLine("✓ Created likes and comments\n");
 
     // ==== SOCIAL NETWORK QUERIES ====
     Console.WriteLine("5. Social network analytics...");
 
-    // Find mutual followers
-    var aliceFollowers = graph.Nodes<User>(new GraphOperationOptions().WithDepth(1))
-        .Where(u => u.Username == "alice_wonder")
-        .SelectMany(u => u.Followers.Select(f => f.Source))
+    // Find users and their followers
+    var usersWithFollowers = await graph.Nodes<User>()
+        .PathSegments<User, Follows, User>()
+        .ToListAsync();
+
+    var followersCount = usersWithFollowers
+        .GroupBy(p => p.EndNode.Username)
+        .Select(g => new { Username = g.Key, FollowerCount = g.Count() })
+        .OrderByDescending(x => x.FollowerCount)
         .ToList();
 
-    var bobFollowers = graph.Nodes<User>(new GraphOperationOptions().WithDepth(1))
-        .Where(u => u.Username == "bob_builder")
-        .SelectMany(u => u.Followers.Select(f => f.Source))
-        .ToList();
+    Console.WriteLine("Users by follower count:");
+    foreach (var user in followersCount)
+    {
+        Console.WriteLine($"  - {user.Username}: {user.FollowerCount} followers");
+    }
 
-    var mutualFollowers = aliceFollowers.Intersect(bobFollowers).ToList();
-    Console.WriteLine($"Mutual followers of Alice and Bob: {mutualFollowers.Count}");
+    // Find posts with likes
+    var postsWithLikes = await graph.Nodes<User>()
+        .PathSegments<User, Likes, Post>()
+        .ToListAsync();
 
-    // Find most liked posts
-    var postsWithLikes = graph.Nodes<Post>(new GraphOperationOptions().WithDepth(2))
-        .Select(p => new { Post = p, LikeCount = p.LikedBy.Count() })
-        .OrderByDescending(p => p.LikeCount)
+    var likeCounts = postsWithLikes
+        .GroupBy(p => p.EndNode.Id)
+        .Select(g => new { Post = g.First().EndNode, LikeCount = g.Count() })
+        .OrderByDescending(x => x.LikeCount)
         .ToList();
 
     Console.WriteLine("\nPosts by popularity:");
-    foreach (var item in postsWithLikes)
+    foreach (var item in likeCounts)
     {
-        Console.WriteLine($"  - Post by {item.Post.Author!.Target!.Username}: {item.LikeCount} likes");
-        Console.WriteLine($"    \"{item.Post.Content.Substring(0, Math.Min(50, item.Post.Content.Length))}...\"");
-    }
-
-    // Find users who follow each other (mutual following)
-    var mutualFollows = graph.Nodes<User>(new GraphOperationOptions().WithDepth(1))
-        .SelectMany(u => u.Following
-            .Where(f => f.Target != null && f.Target.Following.Any(f2 => f2.Target!.Id == u.Id))
-            .Select(f => new { User1 = u.Username, User2 = f.Target!.Username }))
-        .Where(pair => string.Compare(pair.User1, pair.User2) < 0) // Avoid duplicates
-        .ToList();
-
-    Console.WriteLine("\nMutual connections:");
-    foreach (var pair in mutualFollows)
-    {
-        Console.WriteLine($"  - {pair.User1} ↔ {pair.User2}");
+        Console.WriteLine($"  - Post: \"{item.Post.Content.Substring(0, Math.Min(50, item.Post.Content.Length))}...\" ({item.LikeCount} likes)");
     }
 
     // ==== FEED GENERATION ====
     Console.WriteLine("\n6. Generating personalized feed for Alice...");
 
-    var aliceUser = graph.Nodes<User>(new GraphOperationOptions().WithDepth(2))
-        .FirstOrDefault(u => u.Username == "alice_wonder");
+    // Get posts from people Alice follows
+    var aliceFollowing = await graph.Nodes<User>()
+        .Where(u => u.Username == "alice_wonder")
+        .PathSegments<User, Follows, User>()
+        .ToListAsync();
 
-    if (aliceUser != null)
+    var followedUserIds = aliceFollowing.Select(p => p.EndNode.Id).ToHashSet();
+
+    var feedPosts = await graph.Nodes<User>()
+        .Where(u => followedUserIds.Contains(u.Id))
+        .PathSegments<User, Posted, Post>()
+        .ToListAsync();
+
+    Console.WriteLine($"Feed for alice_wonder ({feedPosts.Count} posts):");
+    foreach (var path in feedPosts.OrderByDescending(p => p.EndNode.PostedAt).Take(3))
     {
-        // Get posts from people Alice follows
-        var feedPosts = aliceUser.Following
-            .SelectMany(f => f.Target?.Posts ?? Enumerable.Empty<Posted>())
-            .Select(p => p.Target)
-            .Where(p => p != null)
-            .OrderByDescending(p => p!.PostedAt)
-            .Take(10)
-            .ToList();
-
-        Console.WriteLine($"Feed for {aliceUser.Username}:");
-        foreach (var post in feedPosts)
-        {
-            if (post != null)
-            {
-                var likes = graph.Relationships<Likes>(new GraphOperationOptions().WithDepth(0))
-                    .Count(l => l.Target!.Id == post.Id);
-
-                Console.WriteLine($"  - {post.Author!.Target!.Username} ({post.PostedAt:g}):");
-                Console.WriteLine($"    \"{post.Content}\"");
-                Console.WriteLine($"    {likes} likes, Tags: {string.Join(", ", post.Tags)}");
-            }
-        }
+        Console.WriteLine($"  - {path.StartNode.Username} ({path.EndNode.PostedAt:g}):");
+        Console.WriteLine($"    \"{path.EndNode.Content}\"");
+        Console.WriteLine($"    Tags: {string.Join(", ", path.EndNode.Tags)}");
     }
 
     // ==== RECOMMENDATION ENGINE ====
     Console.WriteLine("\n7. Friend recommendations for Charlie...");
 
-    var charlieUser = graph.Nodes<User>(new GraphOperationOptions().WithDepth(2))
-        .FirstOrDefault(u => u.Username == "charlie_explorer");
+    // Find friends of friends who Charlie doesn't follow
+    var charlieFollowing = await graph.Nodes<User>()
+        .Where(u => u.Username == "charlie_explorer")
+        .PathSegments<User, Follows, User>()
+        .ToListAsync();
 
-    if (charlieUser != null)
+    var charlieFollowingIds = charlieFollowing.Select(p => p.EndNode.Id).ToHashSet();
+
+    // Find who Charlie's friends are following
+    var friendsOfFriends = await graph.Nodes<User>()
+        .Where(u => charlieFollowingIds.Contains(u.Id))
+        .PathSegments<User, Follows, User>()
+        .ToListAsync();
+
+    charlie = await graph.Nodes<User>()
+        .Where(u => u.Username == "charlie_explorer")
+        .FirstOrDefaultAsync();
+
+    if (charlie != null)
     {
-        // Find friends of friends who Charlie doesn't follow
-        var currentFollowing = charlieUser.Following.Select(f => f.Target?.Id).ToHashSet();
-        currentFollowing.Add(charlieUser.Id); // Don't recommend self
+        charlieFollowingIds.Add(charlie.Id); // Don't recommend self
 
-        var recommendations = charlieUser.Following
-            .SelectMany(f => f.Target?.Following ?? Enumerable.Empty<Follows>())
-            .Select(f => f.Target)
-            .Where(u => u != null && !currentFollowing.Contains(u.Id))
-            .GroupBy(u => u!.Id)
+        var recommendations = friendsOfFriends
+            .Where(p => !charlieFollowingIds.Contains(p.EndNode.Id))
+            .GroupBy(p => p.EndNode.Id)
             .OrderByDescending(g => g.Count()) // More mutual connections = higher score
-            .Take(3)
-            .Select(g => g.First())
+            .Take(2)
+            .Select(g => g.First().EndNode)
             .ToList();
 
-        Console.WriteLine($"Friend recommendations for {charlieUser.Username}:");
+        Console.WriteLine($"Friend recommendations for charlie_explorer:");
         foreach (var user in recommendations)
         {
-            if (user != null)
-            {
-                var mutualCount = charlieUser.Following
-                    .Count(f => f.Target?.Following.Any(f2 => f2.Target?.Id == user.Id) ?? false);
+            var mutualCount = friendsOfFriends
+                .Count(p => p.EndNode.Id == user.Id);
 
-                Console.WriteLine($"  - {user.Username} ({mutualCount} mutual connections)");
-                Console.WriteLine($"    Bio: {user.Bio}");
-            }
+            Console.WriteLine($"  - {user.Username} ({mutualCount} mutual connections)");
+            Console.WriteLine($"    Bio: {user.Bio}");
         }
     }
 
@@ -285,9 +276,9 @@ try
     Console.WriteLine("This example demonstrated:");
     Console.WriteLine("• Building a social network with users, posts, and interactions");
     Console.WriteLine("• Complex relationship patterns (follows, likes, comments)");
-    Console.WriteLine("• Social network analytics (mutual connections, popularity)");
+    Console.WriteLine("• Social network analytics (follower counts, popular posts)");
     Console.WriteLine("• Feed generation based on social graph");
-    Console.WriteLine("• Friend recommendation engine");
+    Console.WriteLine("• Friend recommendation engine using graph patterns");
 }
 catch (Exception ex)
 {
@@ -309,4 +300,3 @@ finally
     }
     await driver.DisposeAsync();
 }
-*/
