@@ -33,10 +33,15 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
 
         <!-- Development mode uses project references by default -->
+        <!-- This ensures that CI/CD workflows and local development work without requiring pre-built packages -->
         <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Debug'">true</UseProjectReferences>
         <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Benchmark'">true</UseProjectReferences>
         <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'LocalFeed'">true</UseProjectReferences>
-        <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Release'">false</UseProjectReferences>
+        <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Release'">true</UseProjectReferences>
+        
+        <!-- Use package references only when explicitly requested -->
+        <!-- Set UsePackageReferences=true to build with package references instead of project references -->
+        <UseProjectReferences Condition="'$(UsePackageReferences)' == 'true'">false</UseProjectReferences>
 
         <!-- LocalFeed configuration: Release optimizations + project references + package generation -->
         <Optimize Condition="'$(Configuration)' == 'LocalFeed'">true</Optimize>
@@ -148,5 +153,20 @@
         <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" Properties="Configuration=Release" Targets="Build" />
 
         <Message Text="✅ Local feed test completed successfully!" Importance="high" />
+    </Target>
+
+    <!-- Generate packages with package references for distribution -->
+    <Target Name="BuildWithPackageReferences" DependsOnTargets="CleanLocalFeed">
+        <Message Text="📦 Building with package references for distribution..." Importance="high" />
+
+        <!-- First, build with LocalFeed to generate packages -->
+        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" Properties="Configuration=LocalFeed" Targets="Build" />
+
+        <!-- Then build with package references -->
+        <Message Text="🔄 Building with package references..." Importance="high" />
+        <Exec Command="dotnet restore --force" />
+        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" Properties="Configuration=Release;UsePackageReferences=true" Targets="Build" />
+
+        <Message Text="✅ Build with package references completed successfully!" Importance="high" />
     </Target>
 </Project>
