@@ -41,7 +41,6 @@ fi
 print_status "Creating Neo4j pod..."
 podman pod create \
     --name "$POD_NAME" \
-    --network brainexpanded-internal \
     --publish 7474:7474 \
     --publish 7687:7687
 
