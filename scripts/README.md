@@ -23,6 +23,9 @@ dotnet build --configuration Debug
 # Performance testing build (project references + optimizations)
 dotnet build --configuration Benchmark
 
+# Local package testing (project references + packages)
+dotnet build --configuration LocalFeed
+
 # Production build (package references)
 dotnet build --configuration Release
 ```
@@ -30,8 +33,11 @@ dotnet build --configuration Release
 ### Package Management
 
 ```bash
-# Clean build outputs
-dotnet clean
+# Set up local NuGet feed for testing
+./scripts/setup-local-feed-msbuild.sh
+
+# Clean up local feed
+./scripts/cleanup-local-feed.sh
 
 # Run benchmarks
 ./scripts/run-benchmarks.sh
@@ -119,27 +125,6 @@ dotnet msbuild -target:CleanLocalFeed
 ✅ LocalFeed configuration implemented and working  
 ✅ Automatic package publishing to local feed
 
-### `setup-local-feed-simple.sh` / `setup-local-feed.ps1` (Legacy)
-
-Manual approach for creating local NuGet feed (use MSBuild approach above instead):
-
-```bash
-# Build packages and set up local feed
-./scripts/setup-local-feed-simple.sh
-
-# Test Release configuration
-dotnet restore --force
-dotnet build --configuration Release -p:Version=1.0.0-local.YYYYMMDDHHMMSS
-```
-
-**What it does:**
-
-- Builds all source projects with project references (Benchmark configuration)
-- Creates NuGet packages from built outputs
-- Sets up a local NuGet feed in `./local-nuget-feed/`
-- Configures NuGet to use the local feed
-- Outputs the version to use for testing
-
 ### `cleanup-local-feed.sh`
 
 Removes the local NuGet feed and cleans up:
@@ -158,8 +143,7 @@ Removes the local NuGet feed and cleans up:
 
 ### PowerShell Equivalents
 
-- `setup-local-feed.ps1` - PowerShell version of the setup script
-- Both scripts work cross-platform
+- All scripts have PowerShell equivalents for cross-platform compatibility
 
 ## 📚 Documentation Build Scripts
 
@@ -278,3 +262,37 @@ A Bash script for running performance benchmarks on macOS/Linux.
 ```
 
 ```
+
+## 🛠️ Development Tools Scripts
+
+### `start-neo4j-container.sh`
+
+Starts the neo4j container.
+
+**Usage:**
+
+```bash
+./scripts/start-neo4j-container.sh
+```
+
+**What it does:**
+
+- Starts the neo4j container using podman
+- If the image doesn't exist locally, it is downloaded
+
+### `run-seq.sh`
+
+Starts Seq log aggregation system for development and testing using Podman.
+
+**Usage:**
+
+```bash
+./scripts/run-seq.sh
+```
+
+**What it does:**
+
+- Starts Seq container with log aggregation using Podman
+- Provides log UI at http://localhost:5341
+- Stores log data in `~/tmp/logdata`
+- Automatically removes existing containers
