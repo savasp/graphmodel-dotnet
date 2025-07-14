@@ -31,9 +31,9 @@ jobs:
       working-directory: .
     
     - name: Test Analyzers
-      run: dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj --no-build --verbosity normal
+      run: dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj --no-build --configuration Release --verbosity normal
       
     - name: Test Neo4j Provider with Docker containers
       env:
         USE_NEO4J_CONTAINERS: true
-      run: dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj --no-build --verbosity normal
+      run: dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj --no-build --configuration Release --verbosity normal
