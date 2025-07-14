@@ -27,7 +27,7 @@ jobs:
       working-directory: .
 
     - name: Build
-      run: dotnet build --no-restore --configuration Release
+      run: dotnet build --no-restore --configuration Release -p:UseProjectReferences=false
       working-directory: .
     
     - name: Test Analyzers
