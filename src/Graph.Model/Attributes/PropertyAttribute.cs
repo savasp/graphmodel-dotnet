@@ -84,8 +84,8 @@ public class PropertyAttribute() : Attribute
     /// Gets or sets whether this property should be included in full text search indexes.
     /// </summary>
     /// <value>True if the property should be included in full text search, false to exclude it. 
-    /// If null (default), string properties are included by default.</value>
-    public bool? IncludeInFullTextSearch { get; set; } = null;
+    /// If true (default), string properties are included by default.</value>
+    public bool IncludeInFullTextSearch { get; set; } = true;
 }
 
 /// <summary>
