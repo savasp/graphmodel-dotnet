@@ -1377,11 +1377,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         if (typeof(INode).IsAssignableFrom(entityType))
         {
-            return entityType == typeof(INode) ? "nodes_fulltext_index" : $"nodes_{entityType.Name.ToLowerInvariant()}_fulltext_index";
+            return entityType == typeof(INode) ? "nodes_fulltext_index" : $"nodes_{Model.Labels.GetLabelFromType(entityType).ToLowerInvariant()}_fulltext_index";
         }
         else if (typeof(IRelationship).IsAssignableFrom(entityType))
         {
-            return entityType == typeof(IRelationship) ? "relationships_fulltext_index" : $"relationships_{entityType.Name.ToLowerInvariant()}_fulltext_index";
+            return entityType == typeof(IRelationship) ? "relationships_fulltext_index" : $"relationships_{Model.Labels.GetLabelFromType(entityType).ToLowerInvariant()}_fulltext_index";
         }
         else
         {

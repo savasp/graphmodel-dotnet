@@ -363,7 +363,10 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     public void AddFullTextRelationshipSearch(string indexName, string queryParam, string relAlias)
     {
         _logger.LogDebug("AddFullTextRelationshipSearch called with index: {IndexName}, query: {QueryParam}, alias: {RelAlias}", indexName, queryParam, relAlias);
-        var searchPattern = $"CALL db.index.fulltext.queryRelationships('{indexName}', {queryParam}) YIELD relationship AS {relAlias}";
+        // Use the unified path segment format - need to get start and end nodes for the relationship
+        var searchPattern = $@"CALL db.index.fulltext.queryRelationships('{indexName}', {queryParam}) YIELD relationship AS {relAlias}
+        MATCH (src)-[{relAlias}]->(tgt)
+        RETURN {{ StartNode: {{ Node: src, ComplexProperties: [] }}, Relationship: {relAlias}, EndNode: {{ Node: tgt, ComplexProperties: [] }} }} AS PathSegment";
         _matchPart.AddCallClause(searchPattern);
     }
 
@@ -371,16 +374,19 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     {
         _logger.LogDebug("AddFullTextEntitySearch called with index: {IndexName}, query: {QueryParam}, nodeAlias: {NodeAlias}, relAlias: {RelAlias}", indexName, queryParam, nodeAlias, relAlias);
 
-        // We'll use a UNION ALL approach with consistent return structure using subqueries, wrapped in a single CALL { ... } and a top-level RETURN
+        // Return nodes and relationships in their native Neo4j formats
+        // Nodes are returned as nodes, relationships are returned as PathSegments
+        // The materialization process will handle type discovery based on labels/types
         var unionQuery = $@"
             CALL {{
-                CALL db.index.fulltext.queryNodes('{indexName}', {queryParam}) YIELD node AS {nodeAlias}
-                RETURN {{ Node: {nodeAlias}, ComplexProperties: [] }} AS Node
+                CALL db.index.fulltext.queryNodes('nodes_fulltext_index', {queryParam}) YIELD node AS {nodeAlias}
+                RETURN {nodeAlias} AS entity
                 UNION ALL
-                CALL db.index.fulltext.queryRelationships('{indexName}', {queryParam}) YIELD relationship AS {relAlias}
-                RETURN {{ Node: {relAlias}, ComplexProperties: [] }} AS Node
+                CALL db.index.fulltext.queryRelationships('relationships_fulltext_index', {queryParam}) YIELD relationship AS {relAlias}
+                MATCH (src)-[{relAlias}]->(tgt)
+                RETURN {{ StartNode: {{ Node: src, ComplexProperties: [] }}, Relationship: {relAlias}, EndNode: {{ Node: tgt, ComplexProperties: [] }} }} AS entity
             }}
-            RETURN Node";
+            RETURN entity";
         _matchPart.AddCallClause(unionQuery);
     }
 
