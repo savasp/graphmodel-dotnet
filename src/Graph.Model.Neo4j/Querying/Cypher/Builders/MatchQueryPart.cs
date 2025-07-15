@@ -161,8 +161,16 @@ internal class MatchQueryPart : ICypherQueryPart
         // Add additional MATCH statements (for complex properties, etc.)
         foreach (var additionalMatch in _additionalMatchStatements)
         {
-            builder.AppendLine($"MATCH {additionalMatch}");
-            _logger.LogDebug("[MatchQueryPart] Added additional MATCH: {Match}", additionalMatch);
+            if (additionalMatch.TrimStart().StartsWith("CALL "))
+            {
+                builder.AppendLine(additionalMatch);
+                _logger.LogDebug("[MatchQueryPart] Added CALL clause: {Call}", additionalMatch);
+            }
+            else
+            {
+                builder.AppendLine($"MATCH {additionalMatch}");
+                _logger.LogDebug("[MatchQueryPart] Added additional MATCH: {Match}", additionalMatch);
+            }
         }
 
         // Add OPTIONAL MATCH clauses

@@ -370,9 +370,18 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     public void AddFullTextEntitySearch(string indexName, string queryParam, string nodeAlias, string relAlias)
     {
         _logger.LogDebug("AddFullTextEntitySearch called with index: {IndexName}, query: {QueryParam}, nodeAlias: {NodeAlias}, relAlias: {RelAlias}", indexName, queryParam, nodeAlias, relAlias);
-        var nodeSearchPattern = $"CALL db.index.fulltext.queryNodes('{indexName}', {queryParam}) YIELD node AS {nodeAlias}";
-        var relSearchPattern = $"CALL db.index.fulltext.queryRelationships('{indexName}', {queryParam}) YIELD relationship AS {relAlias}";
-        _matchPart.AddCallClause($"{nodeSearchPattern} UNION {relSearchPattern}");
+
+        // We'll use a UNION ALL approach with consistent return structure using subqueries, wrapped in a single CALL { ... } and a top-level RETURN
+        var unionQuery = $@"
+            CALL {{
+                CALL db.index.fulltext.queryNodes('{indexName}', {queryParam}) YIELD node AS {nodeAlias}
+                RETURN {{ Node: {nodeAlias}, ComplexProperties: [] }} AS Node
+                UNION ALL
+                CALL db.index.fulltext.queryRelationships('{indexName}', {queryParam}) YIELD relationship AS {relAlias}
+                RETURN {{ Node: {relAlias}, ComplexProperties: [] }} AS Node
+            }}
+            RETURN Node";
+        _matchPart.AddCallClause(unionQuery);
     }
 
     public void AddGroupBy(string expression)
@@ -561,6 +570,8 @@ internal class CypherQueryBuilder(CypherQueryContext context)
             // For regular node queries, collect main nodes with ordering and pagination
             _orderByPart.AppendTo(query, _parameters);
             _paginationPart.AppendTo(query, _parameters);
+
+            // For nodes, do complex property loading
             AppendComplexPropertyMatchesForSingleNode(query);
         }
         else

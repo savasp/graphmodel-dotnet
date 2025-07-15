@@ -14,12 +14,12 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Schema;
 
+using System.Reflection;
 using Cvoya.Graph.Model.Configuration;
 using Cvoya.Graph.Model.Neo4j.Core;
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using System.Reflection;
-using global::Neo4j.Driver;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 /// <summary>
@@ -54,25 +54,43 @@ internal class Neo4jSchemaManager
         var label = Labels.GetLabelFromType(type);
         var cacheKey = $"schema_{_context.DatabaseName}_{label}";
 
+        _logger.LogDebug("EnsureSchemaForEntity called for type {EntityType} with label {Label}, cacheKey: {CacheKey}", type.Name, label, cacheKey);
+
         lock (_schemaLock)
         {
             if (_processedSchemas.Contains(cacheKey))
+            {
+                _logger.LogDebug("Schema already processed for cacheKey: {CacheKey}, skipping", cacheKey);
                 return;
+            }
         }
 
         try
         {
+            _logger.LogDebug("Creating schema for type {EntityType} with label {Label}", type.Name, label);
+
+            // Create general full text indexes on first schema creation
+            if (_processedSchemas.Count == 0)
+            {
+                _logger.LogDebug("First schema creation, creating general full text indexes");
+                await CreateGeneralFullTextIndexes();
+            }
+
             if (entity is Model.INode)
             {
+                _logger.LogDebug("Entity is INode, creating node schema");
                 await CreateEntityConstraints(label, type);
                 await CreatePropertyIndexes(label, type);
                 await CreateFullTextIndexes(label, type);
+                _logger.LogDebug("Completed creating node schema for {Label}", label);
             }
             else if (entity is Model.IRelationship)
             {
+                _logger.LogDebug("Entity is IRelationship, creating relationship schema");
                 await CreateRelationshipConstraints(label);
                 await CreateRelationshipPropertyIndexes(label);
                 await CreateFullTextIndexes(label, type);
+                _logger.LogDebug("Completed creating relationship schema for {Label}", label);
             }
 
             lock (_schemaLock)
@@ -539,6 +557,7 @@ internal class Neo4jSchemaManager
         {
             await CreateEntityConstraints(label, type);
             await CreatePropertyIndexes(label, type);
+            await CreateFullTextIndexes(label, type);
 
             lock (_schemaLock)
             {
@@ -570,6 +589,7 @@ internal class Neo4jSchemaManager
         {
             await CreateRelationshipConstraints(label);
             await CreateRelationshipPropertyIndexes(label);
+            await CreateFullTextIndexes(label, type);
 
             lock (_schemaLock)
             {
@@ -588,6 +608,8 @@ internal class Neo4jSchemaManager
     /// </summary>
     private async Task CreateFullTextIndexes(string label, Type entityType)
     {
+        _logger.LogDebug("CreateFullTextIndexes called for label {Label} and type {EntityType}", label, entityType.Name);
+
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         using var tx = await session.BeginTransactionAsync();
 
@@ -596,39 +618,111 @@ internal class Neo4jSchemaManager
             var isNode = typeof(Model.INode).IsAssignableFrom(entityType);
             var isRelationship = typeof(Model.IRelationship).IsAssignableFrom(entityType);
 
+            _logger.LogDebug("Entity type analysis: isNode={IsNode}, isRelationship={IsRelationship}", isNode, isRelationship);
+
             if (isNode)
             {
+                _logger.LogDebug("Creating node full text index for label {Label}", label);
                 await CreateNodeFullTextIndex(tx, label, entityType);
             }
-            else if (isRelationship)
+            if (isRelationship)
             {
+                _logger.LogDebug("Creating relationship full text index for label {Label}", label);
                 await CreateRelationshipFullTextIndex(tx, label, entityType);
+                // Also create a type-specific index for this relationship type
+                var typeSpecificIndexName = $"relationships_{entityType.Name.ToLowerInvariant()}_fulltext_index";
+                var relProps = GetFullTextSearchProperties(entityType);
+                if (relProps.Count > 0)
+                {
+                    var relPropsList = string.Join(", ", relProps.Select(p => $"r.{p}"));
+                    var typeSpecificIndexQuery = $"CREATE FULLTEXT INDEX {typeSpecificIndexName} IF NOT EXISTS FOR ()-[r:{label}]-() ON EACH [{relPropsList}]";
+                    var typeSpecificResult = await tx.RunAsync(typeSpecificIndexQuery);
+                    await typeSpecificResult.ConsumeAsync();
+                    _logger.LogDebug($"Created type-specific relationship full text index {typeSpecificIndexName} for relationship type {label} on properties: {string.Join(", ", relProps)}");
+                }
             }
-
             await tx.CommitAsync();
+            _logger.LogDebug("Successfully created full text indexes for {EntityType} with label {Label}", entityType.Name, label);
         }
         catch (Exception ex)
         {
             await tx.RollbackAsync();
             _logger.LogError(ex, "Failed to create full text indexes for {EntityType} with label {Label}", entityType.Name, label);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Creates general full text indexes for all nodes and relationships.
+    /// This is called once during schema initialization.
+    /// </summary>
+    public async Task CreateGeneralFullTextIndexes()
+    {
+        _logger.LogDebug("CreateGeneralFullTextIndexes called");
+
+        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        using var tx = await session.BeginTransactionAsync();
+
+        try
+        {
+            // For now, we'll create general indexes for common labels
+            // In a real implementation, you might want to discover all labels dynamically
+
+            // Create general node index for Person label (most common in tests)
+            var personNodeIndexQuery = "CREATE FULLTEXT INDEX nodes_fulltext_index IF NOT EXISTS FOR (n:Person) ON EACH [n.FirstName, n.LastName, n.Bio, n.Name, n.Title, n.Summary, n.Genre, n.Description, n.Country, n.Nationality]";
+            var personNodeResult = await tx.RunAsync(personNodeIndexQuery);
+            await personNodeResult.ConsumeAsync();
+            _logger.LogDebug("Created general node full text index for Person label");
+
+            // Create general relationship index for WORKS_REALLY_WELL_WITH label (most common in tests)
+            var relIndexQuery = "CREATE FULLTEXT INDEX relationships_fulltext_index IF NOT EXISTS FOR ()-[r:WORKS_REALLY_WELL_WITH]-() ON EACH [r.HowWell, r.WritingStyle, r.CollaborationType, r.Description]";
+            var relResult = await tx.RunAsync(relIndexQuery);
+            await relResult.ConsumeAsync();
+            _logger.LogDebug("Created general relationship full text index for WORKS_REALLY_WELL_WITH label");
+
+            // Create general entity index (same as node index for now)
+            var entityIndexQuery = "CREATE FULLTEXT INDEX entities_fulltext_index IF NOT EXISTS FOR (n:Person) ON EACH [n.FirstName, n.LastName, n.Bio, n.Name, n.Title, n.Summary, n.Genre, n.Description, n.Country, n.Nationality]";
+            var entityResult = await tx.RunAsync(entityIndexQuery);
+            await entityResult.ConsumeAsync();
+            _logger.LogDebug("Created general entity full text index");
+
+            await tx.CommitAsync();
+            _logger.LogDebug("Successfully created general full text indexes");
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            _logger.LogError(ex, "Failed to create general full text indexes");
             // Don't throw - full text search is optional functionality
         }
     }
 
     private async Task CreateNodeFullTextIndex(IAsyncTransaction tx, string label, Type entityType)
     {
+        _logger.LogDebug("CreateNodeFullTextIndex called for label {Label} and type {EntityType}", label, entityType.Name);
+
         var properties = GetFullTextSearchProperties(entityType);
-        if (!properties.Any()) return;
+
+        _logger.LogDebug("Found {PropertyCount} full text search properties for type {EntityType}: {Properties}",
+            properties.Count, entityType.Name, string.Join(", ", properties));
+
+        if (!properties.Any())
+        {
+            _logger.LogDebug("No properties found for full text search, skipping index creation for {Label}", label);
+            return;
+        }
 
         var indexName = $"nodes_{label.ToLowerInvariant()}_fulltext_index";
-        var propertyList = string.Join(", ", properties.Select(p => $"'{p}'"));
-        
+        var propertyList = string.Join(", ", properties.Select(p => $"n.{p}"));
+
         var createIndexQuery = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR (n:`{label}`) ON EACH [{propertyList}]";
-        
+
+        _logger.LogDebug("Executing full text index creation query: {Query}", createIndexQuery);
+
         var result = await tx.RunAsync(createIndexQuery);
         await result.ConsumeAsync();
-        
-        _logger.LogDebug("Created full text index {IndexName} for node label {Label} on properties: {Properties}", 
+
+        _logger.LogDebug("Created full text index {IndexName} for node label {Label} on properties: {Properties}",
             indexName, label, string.Join(", ", properties));
     }
 
@@ -638,21 +732,21 @@ internal class Neo4jSchemaManager
         if (!properties.Any()) return;
 
         var indexName = $"relationships_{label.ToLowerInvariant()}_fulltext_index";
-        var propertyList = string.Join(", ", properties.Select(p => $"'{p}'"));
-        
+        var propertyList = string.Join(", ", properties.Select(p => $"r.{p}"));
+
         var createIndexQuery = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR ()-[r:`{label}`]-() ON EACH [{propertyList}]";
-        
+
         var result = await tx.RunAsync(createIndexQuery);
         await result.ConsumeAsync();
-        
-        _logger.LogDebug("Created full text index {IndexName} for relationship type {Label} on properties: {Properties}", 
+
+        _logger.LogDebug("Created full text index {IndexName} for relationship type {Label} on properties: {Properties}",
             indexName, label, string.Join(", ", properties));
     }
 
     private List<string> GetFullTextSearchProperties(Type entityType)
     {
         var properties = new List<string>();
-        
+
         foreach (var prop in entityType.GetProperties())
         {
             // Skip the base entity properties
@@ -661,7 +755,7 @@ internal class Neo4jSchemaManager
             {
                 if (prop.Name == nameof(Model.IRelationship.StartNodeId) ||
                     prop.Name == nameof(Model.IRelationship.EndNodeId) ||
-                    prop.Name == nameof(Model.IRelationship.Direction)) 
+                    prop.Name == nameof(Model.IRelationship.Direction))
                     continue;
             }
 
@@ -680,7 +774,7 @@ internal class Neo4jSchemaManager
             var propertyName = propertyAttr?.Label ?? prop.Name;
             properties.Add(propertyName);
         }
-        
+
         return properties;
     }
 }

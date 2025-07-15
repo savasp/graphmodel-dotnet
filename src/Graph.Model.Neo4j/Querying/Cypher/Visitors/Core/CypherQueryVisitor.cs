@@ -1320,7 +1320,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
         if (node is FullTextSearchExpression searchExpr)
         {
             _logger.LogDebug("Handling full text search expression for query: {Query}", searchExpr.SearchQuery);
-            
+
             // Handle full text search by adding appropriate Cypher
             HandleFullTextSearch(searchExpr);
             return node;
@@ -1333,13 +1333,15 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         var indexName = GetFullTextIndexName(searchExpr.EntityType);
         var paramName = _context.Builder.AddParameter(searchExpr.SearchQuery);
-        
+
         if (typeof(INode).IsAssignableFrom(searchExpr.EntityType))
         {
             // Node full text search
             var alias = _context.Scope.GetOrCreateAlias(searchExpr.EntityType, "n");
             _context.Builder.AddFullTextNodeSearch(indexName, paramName, alias);
             _context.Scope.CurrentAlias = alias;
+            _context.Builder.SetMainNodeAlias(alias);
+            _context.Builder.EnableComplexPropertyLoading();
         }
         else if (typeof(IRelationship).IsAssignableFrom(searchExpr.EntityType))
         {
@@ -1347,6 +1349,16 @@ internal class CypherQueryVisitor : ExpressionVisitor
             var alias = _context.Scope.GetOrCreateAlias(searchExpr.EntityType, "r");
             _context.Builder.AddFullTextRelationshipSearch(indexName, paramName, alias);
             _context.Scope.CurrentAlias = alias;
+            _context.Builder.SetMainNodeAlias(alias);
+
+            // Set the relationship query flag directly without adding MATCH clauses
+            // We'll use reflection to set the private field since there's no public method
+            var builderType = _context.Builder.GetType();
+            var field = builderType.GetField("_isRelationshipQuery", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            field?.SetValue(_context.Builder, true);
+
+            // Disable complex property loading for relationships since they don't need it
+            _context.Builder.DisableComplexPropertyLoading();
         }
         else
         {
@@ -1355,6 +1367,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
             var relAlias = _context.Scope.GetOrCreateAlias(typeof(IRelationship), "r");
             _context.Builder.AddFullTextEntitySearch(indexName, paramName, nodeAlias, relAlias);
             _context.Scope.CurrentAlias = nodeAlias; // Default to node alias
+            _context.Builder.SetMainNodeAlias(nodeAlias);
+            // Disable complex property loading for entity search
+            _context.Builder.DisableComplexPropertyLoading();
         }
     }
 
