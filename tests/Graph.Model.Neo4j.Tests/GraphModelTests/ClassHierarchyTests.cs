@@ -13,7 +13,7 @@
 // limitations under the License.
 
 
-namespace Cvoya.Graph.Model.Neo4j.Tests;
+namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
 public class ClassHierarchyTests(TestInfrastructureFixture fixture) :
     Neo4jTest(fixture),

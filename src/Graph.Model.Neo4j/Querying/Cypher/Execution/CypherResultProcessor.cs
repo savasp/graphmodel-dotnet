@@ -76,6 +76,12 @@ internal sealed class CypherResultProcessor
             return Task.FromResult(ProcessRelationships(records, targetType));
         }
 
+        // Handle IEntity - polymorphic entity search results
+        if (targetType == typeof(Model.IEntity))
+        {
+            return Task.FromResult(ProcessMixedEntities(records));
+        }
+
         // Handle projections (EntityInfo)
         return Task.FromResult(ProcessProjections(records, targetType));
     }
@@ -1078,6 +1084,37 @@ internal sealed class CypherResultProcessor
         }
 
         return new SimpleCollection(items, elementType);
+    }
+
+    private List<EntityInfo> ProcessMixedEntities(List<IRecord> records)
+    {
+        var results = new List<EntityInfo>();
+
+        foreach (var record in records)
+        {
+            // Entity search returns records with 'entity' column that can be either nodes or PathSegment maps
+            if (record.TryGetValue("entity", out var entityValue))
+            {
+                if (entityValue is INode node)
+                {
+                    // Process as a node
+                    var nodeEntityInfo = CreateEntityInfoFromNode(node, typeof(Model.INode));
+                    results.Add(nodeEntityInfo);
+                }
+                else if (entityValue is IReadOnlyDictionary<string, object> pathSegmentMap)
+                {
+                    // This is a PathSegment map, process as a relationship
+                    var pathSegment = DeserializePathSegment(pathSegmentMap);
+                    if (pathSegment != null)
+                    {
+                        var relationshipEntityInfo = CreateEntityInfoFromRelationship(pathSegment.Relationship, typeof(Model.IRelationship));
+                        results.Add(relationshipEntityInfo);
+                    }
+                }
+            }
+        }
+
+        return results;
     }
 }
 

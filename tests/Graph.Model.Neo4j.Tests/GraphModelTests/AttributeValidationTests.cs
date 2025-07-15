@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Tests;
+namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
 public class AttributeValidationTests(TestInfrastructureFixture fixture) :
     Neo4jTest(fixture),

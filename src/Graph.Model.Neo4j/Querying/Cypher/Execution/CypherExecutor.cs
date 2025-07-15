@@ -45,4 +45,4 @@ internal sealed class CypherExecutor
 
         return records;
     }
-}
+} 

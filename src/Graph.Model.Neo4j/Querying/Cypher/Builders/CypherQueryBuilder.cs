@@ -353,6 +353,43 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         _returnPart.AddUnwind(expression);
     }
 
+    public void AddFullTextNodeSearch(string indexName, string queryParam, string nodeAlias)
+    {
+        _logger.LogDebug("AddFullTextNodeSearch called with index: {IndexName}, query: {QueryParam}, alias: {NodeAlias}", indexName, queryParam, nodeAlias);
+        var searchPattern = $"CALL db.index.fulltext.queryNodes('{indexName}', {queryParam}) YIELD node AS {nodeAlias}";
+        _matchPart.AddCallClause(searchPattern);
+    }
+
+    public void AddFullTextRelationshipSearch(string indexName, string queryParam, string relAlias)
+    {
+        _logger.LogDebug("AddFullTextRelationshipSearch called with index: {IndexName}, query: {QueryParam}, alias: {RelAlias}", indexName, queryParam, relAlias);
+        // Use the unified path segment format - need to get start and end nodes for the relationship
+        var searchPattern = $@"CALL db.index.fulltext.queryRelationships('{indexName}', {queryParam}) YIELD relationship AS {relAlias}
+        MATCH (src)-[{relAlias}]->(tgt)
+        RETURN {{ StartNode: {{ Node: src, ComplexProperties: [] }}, Relationship: {relAlias}, EndNode: {{ Node: tgt, ComplexProperties: [] }} }} AS PathSegment";
+        _matchPart.AddCallClause(searchPattern);
+    }
+
+    public void AddFullTextEntitySearch(string indexName, string queryParam, string nodeAlias, string relAlias)
+    {
+        _logger.LogDebug("AddFullTextEntitySearch called with index: {IndexName}, query: {QueryParam}, nodeAlias: {NodeAlias}, relAlias: {RelAlias}", indexName, queryParam, nodeAlias, relAlias);
+
+        // Return nodes and relationships in their native Neo4j formats
+        // Nodes are returned as nodes, relationships are returned as PathSegments
+        // The materialization process will handle type discovery based on labels/types
+        var unionQuery = $@"
+            CALL {{
+                CALL db.index.fulltext.queryNodes('nodes_fulltext_index', {queryParam}) YIELD node AS {nodeAlias}
+                RETURN {nodeAlias} AS entity
+                UNION ALL
+                CALL db.index.fulltext.queryRelationships('relationships_fulltext_index', {queryParam}) YIELD relationship AS {relAlias}
+                MATCH (src)-[{relAlias}]->(tgt)
+                RETURN {{ StartNode: {{ Node: src, ComplexProperties: [] }}, Relationship: {relAlias}, EndNode: {{ Node: tgt, ComplexProperties: [] }} }} AS entity
+            }}
+            RETURN entity";
+        _matchPart.AddCallClause(unionQuery);
+    }
+
     public void AddGroupBy(string expression)
     {
         _logger.LogDebug("AddGroupBy called with expression: '{Expression}'", expression);
@@ -539,6 +576,8 @@ internal class CypherQueryBuilder(CypherQueryContext context)
             // For regular node queries, collect main nodes with ordering and pagination
             _orderByPart.AppendTo(query, _parameters);
             _paginationPart.AppendTo(query, _parameters);
+
+            // For nodes, do complex property loading
             AppendComplexPropertyMatchesForSingleNode(query);
         }
         else

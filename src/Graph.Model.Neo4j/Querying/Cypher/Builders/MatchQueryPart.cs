@@ -135,6 +135,15 @@ internal class MatchQueryPart : ICypherQueryPart
         // Keep _additionalMatchStatements intact
     }
 
+    /// <summary>
+    /// Adds a CALL clause for full text search or other procedures.
+    /// </summary>
+    public void AddCallClause(string callExpression)
+    {
+        _additionalMatchStatements.Add(callExpression);
+        _logger.LogDebug("[MatchQueryPart] Added CALL clause: {CallExpression}", callExpression);
+    }
+
     public void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters)
     {
         _logger.LogDebug("[MatchQueryPart] AppendTo called - Main clauses: {MainCount}, Additional: {AdditionalCount}, Optional: {OptionalCount}",
@@ -152,8 +161,16 @@ internal class MatchQueryPart : ICypherQueryPart
         // Add additional MATCH statements (for complex properties, etc.)
         foreach (var additionalMatch in _additionalMatchStatements)
         {
-            builder.AppendLine($"MATCH {additionalMatch}");
-            _logger.LogDebug("[MatchQueryPart] Added additional MATCH: {Match}", additionalMatch);
+            if (additionalMatch.TrimStart().StartsWith("CALL "))
+            {
+                builder.AppendLine(additionalMatch);
+                _logger.LogDebug("[MatchQueryPart] Added CALL clause: {Call}", additionalMatch);
+            }
+            else
+            {
+                builder.AppendLine($"MATCH {additionalMatch}");
+                _logger.LogDebug("[MatchQueryPart] Added additional MATCH: {Match}", additionalMatch);
+            }
         }
 
         // Add OPTIONAL MATCH clauses

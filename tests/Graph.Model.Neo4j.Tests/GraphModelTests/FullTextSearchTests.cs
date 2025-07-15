@@ -14,8 +14,8 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-public class AggregationTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.IAggregationTests
+public class FullTextSearchTests(TestInfrastructureFixture fixture) :
+    Neo4jTest(fixture, true),
+    Model.Tests.IFullTextSearchTests
 {
 }

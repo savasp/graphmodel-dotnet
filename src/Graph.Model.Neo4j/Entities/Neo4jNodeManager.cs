@@ -43,9 +43,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(node);
 
-            // Validate property constraints at application level
-            ValidateNodeProperties(node);
-
             // Serialize the node
             var entity = _serializer.Serialize(node);
 
@@ -86,9 +83,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         {
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(node);
-
-            // Validate property constraints at application level
-            ValidateNodeProperties(node);
 
             // Serialize the node
             var entity = _serializer.Serialize(node);
@@ -273,89 +267,5 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
         var result = await transaction.RunAsync(cypher, new { nodeId, props = simpleProperties });
         return await result.CountAsync(cancellationToken) > 0;
-    }
-
-    private void ValidateNodeProperties<TNode>(TNode node) where TNode : Model.INode
-    {
-        var label = Labels.GetLabelFromType(node.GetType());
-        var config = context.SchemaManager.GetRegistry().GetNodeConfiguration(label);
-
-        if (config == null) return;
-
-        foreach (var (propertyName, propertyConfig) in config.Properties)
-        {
-            if (propertyConfig.Validation == null) continue;
-
-            var property = node.GetType().GetProperty(propertyName);
-            if (property == null) continue;
-
-            var value = property.GetValue(node);
-            if (value == null) continue;
-
-            ValidatePropertyValue(propertyName, value, propertyConfig.Validation, label);
-        }
-    }
-
-    private void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
-    {
-        // MinValue validation
-        if (validation.MinValue is not null)
-        {
-            if (value is IComparable comparable)
-            {
-                if (comparable.CompareTo(validation.MinValue) < 0)
-                {
-                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must be greater than or equal to {validation.MinValue}. Current value: {value}");
-                }
-            }
-        }
-
-        // MaxValue validation
-        if (validation.MaxValue is not null)
-        {
-            if (value is IComparable comparable)
-            {
-                if (comparable.CompareTo(validation.MaxValue) > 0)
-                {
-                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must be less than or equal to {validation.MaxValue}. Current value: {value}");
-                }
-            }
-        }
-
-        // MinLength validation
-        if (validation.MinLength is not null)
-        {
-            if (value is string stringValue)
-            {
-                if (stringValue.Length < validation.MinLength)
-                {
-                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must have a minimum length of {validation.MinLength}. Current length: {stringValue.Length}");
-                }
-            }
-        }
-
-        // MaxLength validation
-        if (validation.MaxLength is not null)
-        {
-            if (value is string stringValue)
-            {
-                if (stringValue.Length > validation.MaxLength)
-                {
-                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must have a maximum length of {validation.MaxLength}. Current length: {stringValue.Length}");
-                }
-            }
-        }
-
-        // Pattern validation
-        if (!string.IsNullOrEmpty(validation.Pattern))
-        {
-            if (value is string stringValue)
-            {
-                if (!System.Text.RegularExpressions.Regex.IsMatch(stringValue, validation.Pattern))
-                {
-                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must match the pattern '{validation.Pattern}'. Current value: {stringValue}");
-                }
-            }
-        }
     }
 }

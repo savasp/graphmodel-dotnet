@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -1310,5 +1311,81 @@ internal class CypherQueryVisitor : ExpressionVisitor
             return IsScalarOrPrimitive(underlying);
 
         return false;
+    }
+
+    protected override Expression VisitExtension(Expression node)
+    {
+        _logger.LogDebug("VisitExtension called with node type: {NodeType}", node.GetType().Name);
+
+        if (node is FullTextSearchExpression searchExpr)
+        {
+            _logger.LogDebug("Handling full text search expression for query: {Query}", searchExpr.SearchQuery);
+
+            // Handle full text search by adding appropriate Cypher
+            HandleFullTextSearch(searchExpr);
+            return node;
+        }
+
+        return base.VisitExtension(node);
+    }
+
+    private void HandleFullTextSearch(FullTextSearchExpression searchExpr)
+    {
+        var indexName = GetFullTextIndexName(searchExpr.EntityType);
+        var paramName = _context.Builder.AddParameter(searchExpr.SearchQuery);
+
+        if (typeof(INode).IsAssignableFrom(searchExpr.EntityType))
+        {
+            // Node full text search
+            var alias = _context.Scope.GetOrCreateAlias(searchExpr.EntityType, "n");
+            _context.Builder.AddFullTextNodeSearch(indexName, paramName, alias);
+            _context.Scope.CurrentAlias = alias;
+            _context.Builder.SetMainNodeAlias(alias);
+            _context.Builder.EnableComplexPropertyLoading();
+        }
+        else if (typeof(IRelationship).IsAssignableFrom(searchExpr.EntityType))
+        {
+            // Relationship full text search  
+            var alias = _context.Scope.GetOrCreateAlias(searchExpr.EntityType, "r");
+            _context.Builder.AddFullTextRelationshipSearch(indexName, paramName, alias);
+            _context.Scope.CurrentAlias = alias;
+            _context.Builder.SetMainNodeAlias(alias);
+
+            // Set the relationship query flag directly without adding MATCH clauses
+            // We'll use reflection to set the private field since there's no public method
+            var builderType = _context.Builder.GetType();
+            var field = builderType.GetField("_isRelationshipQuery", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            field?.SetValue(_context.Builder, true);
+
+            // Disable complex property loading for relationships since they don't need it
+            _context.Builder.DisableComplexPropertyLoading();
+        }
+        else
+        {
+            // Entity search (both nodes and relationships)
+            var nodeAlias = _context.Scope.GetOrCreateAlias(typeof(INode), "n");
+            var relAlias = _context.Scope.GetOrCreateAlias(typeof(IRelationship), "r");
+            _context.Builder.AddFullTextEntitySearch(indexName, paramName, nodeAlias, relAlias);
+            _context.Scope.CurrentAlias = nodeAlias; // Default to node alias
+            _context.Builder.SetMainNodeAlias(nodeAlias);
+            // Disable complex property loading for entity search
+            _context.Builder.DisableComplexPropertyLoading();
+        }
+    }
+
+    private static string GetFullTextIndexName(Type entityType)
+    {
+        if (typeof(INode).IsAssignableFrom(entityType))
+        {
+            return entityType == typeof(INode) ? "nodes_fulltext_index" : $"nodes_{Model.Labels.GetLabelFromType(entityType).ToLowerInvariant()}_fulltext_index";
+        }
+        else if (typeof(IRelationship).IsAssignableFrom(entityType))
+        {
+            return entityType == typeof(IRelationship) ? "relationships_fulltext_index" : $"relationships_{Model.Labels.GetLabelFromType(entityType).ToLowerInvariant()}_fulltext_index";
+        }
+        else
+        {
+            return "entities_fulltext_index";
+        }
     }
 }
