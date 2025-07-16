@@ -17,7 +17,7 @@ namespace Cvoya.Graph.Model;
 /// <summary>
 /// Concrete implementation of a dynamic relationship.
 /// </summary>
-public record DynamicRelationship : IDynamicRelationship
+public sealed record DynamicRelationship : IDynamicRelationship
 {
     /// <summary>
     /// Gets the unique identifier of the relationship.

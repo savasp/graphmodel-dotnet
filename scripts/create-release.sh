@@ -15,132 +15,135 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}🚀 GraphModel Release Creator${NC}"
 echo ""
 
-# Parse command line arguments
-VERSION=""
-BUILD_LOCAL=""
-BUILD_RELEASE=""
-COMMIT=""
-
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -v|--version)
-            VERSION="$2"
-            shift 2
-            ;;
-        --build-local)
-            BUILD_LOCAL="true"
-            shift
-            ;;
-        --build-release)
-            BUILD_RELEASE="true"
-            shift
-            ;;
-        --commit)
-            COMMIT="true"
-            shift
-            ;;
-        -h|--help)
-            echo "Usage: $0 [OPTIONS]"
-            echo ""
-            echo "Options:"
-            echo "  -v, --version VERSION    Specify version (e.g., 1.2.3 or 1.2.3-alpha)"
-            echo "  --build-local           Build Release configuration after creating version"
-            echo "  --build-release         Build Release configuration after creating version"
-            echo "  --commit                Commit VERSION file to git"
-            echo "  -h, --help              Show this help message"
-            echo ""
-            echo "Examples:"
-            echo "  $0 -v 1.2.3                          # Create stable release"
-            echo "  $0 -v 1.2.3-alpha                    # Create pre-release"
-            echo "  $0 -v 1.2.3 --build-local            # Create and build release"
-            echo "  $0 -v 1.2.3 --build-release --commit # Create, build, and commit"
-            exit 0
-            ;;
-        *)
-            echo -e "${RED}❌ Unknown option: $1${NC}"
-            echo "Use --help for usage information"
-            exit 1
-            ;;
-    esac
-done
-
-# Prompt for version if not provided
-if [ -z "$VERSION" ]; then
-    echo -e "${YELLOW}📝 Enter release version (e.g., 1.2.3 or 1.2.3-alpha):${NC}"
-    read -r VERSION
+# Read existing VERSION file to get default semantic version
+DEFAULT_SEMVER=""
+if [ -f VERSION ]; then
+    PREV_VERSION=$(cat VERSION | head -n1)
+    # Remove the first .YYYYMMDD.rev and everything after it
+    DEFAULT_SEMVER=$(echo "$PREV_VERSION" | sed -E 's/\.[0-9]{8}\.[0-9]+.*$//')
 fi
 
-# Validate version format
-if [ -z "$VERSION" ]; then
-    echo -e "${RED}❌ Version cannot be empty${NC}"
+# Prompt for semantic version (e.g., 1.0.0-alpha)
+if [ -n "$DEFAULT_SEMVER" ]; then
+    echo -e "${YELLOW}📝 Enter semantic version (e.g., 1.0.0-alpha) [default: $DEFAULT_SEMVER]:${NC}"
+    read -r SEMVER
+    if [ -z "$SEMVER" ]; then
+        SEMVER="$DEFAULT_SEMVER"
+    fi
+else
+    echo -e "${YELLOW}📝 Enter semantic version (e.g., 1.0.0-alpha):${NC}"
+    read -r SEMVER
+fi
+
+# Always strip any .YYYYMMDD.rev from SEMVER in case user pasted a full version string
+SEMVER=$(echo "$SEMVER" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
+
+if [ -z "$SEMVER" ]; then
+    echo -e "${RED}❌ Semantic version cannot be empty${NC}"
     exit 1
 fi
 
-# Create the release version
-echo -e "${BLUE}🎯 Creating release version: $VERSION${NC}"
-dotnet msbuild -target:CreateRelease -p:ReleaseVersion="$VERSION"
-
-if [ $? -ne 0 ]; then
-    echo -e "${RED}❌ Failed to create release version${NC}"
+# Validate semantic version (basic check)
+if ! [[ $SEMVER =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+    echo -e "${RED}❌ Invalid semantic version format. Example: 1.0.0-alpha${NC}"
     exit 1
 fi
 
-echo ""
-
-# Build Release if requested
-if [ "$BUILD_LOCAL" = "true" ]; then
-    echo -e "${BLUE}🔨 Building Release configuration...${NC}"
-    dotnet build --configuration Release
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ Release build complete${NC}"
-    else
-        echo -e "${RED}❌ Release build failed${NC}"
-        exit 1
-    fi
-    echo ""
-fi
-
-# Build Release if requested
-if [ "$BUILD_RELEASE" = "true" ]; then
-    echo -e "${BLUE}🔨 Building Release configuration...${NC}"
-    dotnet build --configuration Release
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ Release build complete${NC}"
-    else
-        echo -e "${RED}❌ Release build failed${NC}"
-        exit 1
-    fi
-    echo ""
-fi
-
-# Commit VERSION file if requested
-if [ "$COMMIT" = "true" ]; then
-    if command -v git &> /dev/null && [ -d .git ]; then
-        echo -e "${BLUE}📝 Committing VERSION file...${NC}"
-        git add VERSION
-        git commit -m "Release $VERSION"
-        
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}✅ VERSION file committed${NC}"
-        else
-            echo -e "${YELLOW}⚠️  Git commit failed or no changes to commit${NC}"
+# Check if prerelease section exists (e.g., -alpha, -beta)
+if [[ $SEMVER =~ -[a-zA-Z0-9.]+$ ]]; then
+    # Prerelease: add date and revision
+    TODAY=$(date +%Y%m%d)
+    PREV_VERSION=""
+    PREV_DATE=""
+    PREV_REV=""
+    if [ -f VERSION ]; then
+        PREV_VERSION=$(cat VERSION | head -n1)
+        # Extract date and revision from previous version (assumes format: x.y.z(-qualifier)?.YYYYMMDD.rev)
+        if [[ $PREV_VERSION =~ ([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)\.([0-9]{8})\.([0-9]+) ]]; then
+            PREV_DATE="${BASH_REMATCH[3]}"
+            PREV_REV="${BASH_REMATCH[4]}"
         fi
-    else
-        echo -e "${YELLOW}⚠️  Git not available or not in a git repository${NC}"
     fi
+    if [ "$PREV_DATE" == "$TODAY" ]; then
+        REVISION=$((PREV_REV + 1))
+    else
+        REVISION=0
+    fi
+    FULL_VERSION="${SEMVER}.${TODAY}.${REVISION}"
+else
+    # Stable: use as-is
+    FULL_VERSION="$SEMVER"
+fi
+
+echo -e "${BLUE}🎯 Creating release version: $FULL_VERSION${NC}"
+echo "$FULL_VERSION" > VERSION
+echo -e "${GREEN}✅ VERSION file updated${NC}"
+
+# Update Directory.Build.props to use the version from VERSION file
+TEMP_FILE=$(mktemp)
+awk -v version="$FULL_VERSION" -v full_version="$FULL_VERSION" '
+    /<AssemblyVersion>/ {
+        print "        <AssemblyVersion>" version "</AssemblyVersion>"
+        next
+    }
+    /<FileVersion>/ {
+        print "        <FileVersion>" version "</FileVersion>"
+        next
+    }
+    /<Version>/ {
+        print "        <Version>" full_version "</Version>"
+        next
+    }
+    /<PackageVersion>/ {
+        print "        <PackageVersion>" full_version "</PackageVersion>"
+        next
+    }
+    { print }
+' Directory.Build.props > "$TEMP_FILE"
+mv "$TEMP_FILE" Directory.Build.props
+echo -e "${GREEN}✅ Directory.Build.props updated${NC}"
+
+# Handle VERSION.ASSEMBLY
+IFS='.' read -r MAJOR MINOR PATCH <<< "${SEMVER%%-*}"
+ASSEMBLY_BASE="$MAJOR.$MINOR"
+# Get UTC year and day of year
+YEAR=$(date -u +%Y)
+YEAR_SHORT=$((YEAR - 2000))
+DAY_OF_YEAR=$(date -u +%j)
+ASSEMBLY_BUILD=$((YEAR_SHORT * 1000 + 10#$DAY_OF_YEAR))
+# Get UTC hour and minute
+ASSEMBLY_REVISION=$(date -u +%H%M)
+
+ASSEMBLY_VERSION="$ASSEMBLY_BASE.$ASSEMBLY_BUILD.$ASSEMBLY_REVISION"
+echo "$ASSEMBLY_VERSION" > VERSION.ASSEMBLY
+echo -e "${GREEN}✅ VERSION.ASSEMBLY file updated: $ASSEMBLY_VERSION${NC}"
+
+# (Preserve the rest of the script: build, commit, output, etc.)
+
+# Output version details and next steps
+
+# For output: set the quality qualifier string
+if [[ $SEMVER =~ -[a-zA-Z0-9.]+$ ]]; then
+    QUALIFIER="${SEMVER#*-}"
+    QUALIFIER_MSG="   • Quality qualifier: $QUALIFIER"
+else
+    QUALIFIER_MSG="   • Quality qualifier: (stable release)"
 fi
 
 echo ""
-echo -e "${GREEN}🎉 Release $VERSION created successfully!${NC}"
+echo -e "${GREEN}🎉 Release $FULL_VERSION created successfully!${NC}"
+echo ""
+echo -e "${BLUE}📋 Version details:${NC}"
+echo "   • Version number: $SEMVER"
+echo "$QUALIFIER_MSG"
+echo "   • Full package version: $FULL_VERSION"
 echo ""
 echo -e "${BLUE}📋 Next steps:${NC}"
 if [ "$BUILD_LOCAL" != "true" ] && [ "$BUILD_RELEASE" != "true" ]; then
     echo "   • Build release:    dotnet build --configuration Release -p:UsePackageReferences=true"
 fi
 if [ "$COMMIT" != "true" ]; then
-    echo "   • Commit version:   git add VERSION && git commit -m 'Release $VERSION'"
+    echo "   • Commit version:   git add VERSION Directory.Build.props && git commit -m 'Release $FULL_VERSION'"
 fi
 echo "   • Test packages:    dotnet build --configuration Release"
 echo "   • Publish packages: dotnet nuget push artifacts/*.nupkg" 

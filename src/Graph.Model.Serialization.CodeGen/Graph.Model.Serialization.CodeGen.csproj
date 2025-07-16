@@ -18,6 +18,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <None Include="buildTransitive\Cvoya.Graph.Model.Serialization.CodeGen.targets" Pack="true" PackagePath="buildTransitive/" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Neo4j.Driver" Version="5.28.1" />
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" PrivateAssets="all" />

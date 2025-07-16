@@ -206,4 +206,50 @@ public interface IFullTextSearchTests : IGraphModelTest
         Assert.Equal(lowerResults[0].Id, upperResults[0].Id);
         Assert.Equal(upperResults[0].Id, mixedResults[0].Id);
     }
+
+    [Fact]
+    public async Task SearchWithWhereClause()
+    {
+        // Create test data
+        var person = new Person { FirstName = "John", LastName = "Doe", Age = 30 };
+        var person2 = new Person { FirstName = "Jane", LastName = "Doe", Age = 25 };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
+
+        // Search with where clause
+        var results = await this.Graph.SearchNodes<Person>("John").Where(p => p.Age > 25).ToListAsync();
+
+        Assert.Single(results);
+        Assert.Equal(person.Id, results[0].Id);
+    }
+
+    [Fact]
+    public async Task SearchWithWhereClauseAndMultipleProperties()
+    {
+        // Create test data
+        var person = new Person { FirstName = "John", LastName = "Doe", Age = 30 };
+        var person2 = new Person { FirstName = "Jane", LastName = "Doe", Age = 25 };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
+
+        // Search with where clause and multiple properties
+        var results = await this.Graph.SearchNodes<Person>("John").Where(p => p.Age > 25 && p.LastName == "Doe").ToListAsync();
+
+        Assert.Single(results);
+        Assert.Equal(person.Id, results[0].Id);
+    }
+
+    [Fact]
+    public async Task SearchWithSelectClause()
+    {
+        // Create test data
+        var person = new Person { FirstName = "John", LastName = "Doe", Age = 30 };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+
+        // Search with select clause
+        var results = await this.Graph.SearchNodes<Person>("John").Select(p => p.LastName).ToListAsync();
+
+        Assert.Single(results);
+        Assert.Equal("Doe", results[0]);
+    }
 }

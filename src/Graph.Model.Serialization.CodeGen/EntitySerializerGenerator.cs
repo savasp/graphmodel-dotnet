@@ -59,8 +59,9 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         {
             if (compilation.GetAssemblyOrModuleSymbol(reference) is IAssemblySymbol assembly)
             {
-                // Look specifically for our test assembly
-                if (assembly.Name.Contains("Graph.Model.Tests"))
+                // Look for any assembly that might contain INode/IRelationship implementations
+                // Skip system assemblies and NuGet packages to improve performance
+                if (!IsSystemOrThirdPartyAssembly(assembly))
                 {
                     var types = GetAllTypesFromAssembly(assembly)
                         .Where(ShouldGenerateSerializerFor)
@@ -72,6 +73,28 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         }
 
         return entityTypes.ToImmutableArray();
+    }
+
+    private static bool IsSystemOrThirdPartyAssembly(IAssemblySymbol assembly)
+    {
+        var name = assembly.Name;
+
+        // Skip system assemblies
+        if (name.StartsWith("System.") || name.StartsWith("Microsoft.") ||
+            name.StartsWith("netstandard") || name.Equals("mscorlib"))
+        {
+            return true;
+        }
+
+        // Skip common third-party packages
+        if (name.StartsWith("Newtonsoft.") || name.StartsWith("Neo4j.") ||
+            name.StartsWith("Serilog") || name.StartsWith("NUnit") ||
+            name.StartsWith("xunit") || name.StartsWith("coverlet"))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static IEnumerable<INamedTypeSymbol> GetAllTypesFromAssembly(IAssemblySymbol assembly)
@@ -115,6 +138,19 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
 
     private static bool ShouldGenerateSerializerFor(INamedTypeSymbol type)
     {
+        // Skip interfaces, abstract classes, and generic type definitions
+        if (type.TypeKind == TypeKind.Interface ||
+            type.IsAbstract)
+        {
+            return false;
+        }
+
+        // Exclude built-in dynamic types - they handle serialization differently
+        if (IsDynamicType(type))
+        {
+            return false;
+        }
+
         var interfaces = type.AllInterfaces;
         var implementsINode = interfaces.Any(i =>
             i.Name == "INode" &&
@@ -124,6 +160,15 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
             i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
 
         return implementsINode || implementsIRelationship;
+    }
+
+    private static bool IsDynamicType(INamedTypeSymbol type)
+    {
+        var fullName = type.ToDisplayString();
+
+        // Exclude the built-in dynamic types
+        return fullName == "Cvoya.Graph.Model.DynamicNode" ||
+               fullName == "Cvoya.Graph.Model.DynamicRelationship";
     }
 
     private static bool IsTargetType(SyntaxNode node, CancellationToken ct)
@@ -272,7 +317,7 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         sb.AppendLine("    private readonly EntitySerializerRegistry _serializerRegistry = EntitySerializerRegistry.Instance;");
         sb.AppendLine($"    public Type EntityType => typeof({Utils.GetTypeOfName(type)});");
         sb.AppendLine();
- 
+
         Deserialization.GenerateDeserializeMethod(sb, type);
         sb.AppendLine();
         Serialization.GenerateSerializeMethod(sb, type);

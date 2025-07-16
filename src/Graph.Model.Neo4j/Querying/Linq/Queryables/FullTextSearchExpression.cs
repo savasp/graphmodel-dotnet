@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Model;
 
 /// <summary>
 /// Represents a full text search query expression
@@ -31,5 +32,24 @@ internal class FullTextSearchExpression : Expression
     }
 
     public override ExpressionType NodeType => ExpressionType.Extension;
-    public override Type Type => typeof(IQueryable<>).MakeGenericType(EntityType);
+    public override Type Type
+    {
+        get
+        {
+            // Return the appropriate graph queryable type based on the entity type
+            if (typeof(INode).IsAssignableFrom(EntityType))
+            {
+                return typeof(IGraphNodeQueryable<>).MakeGenericType(EntityType);
+            }
+            else if (typeof(IRelationship).IsAssignableFrom(EntityType))
+            {
+                return typeof(IGraphRelationshipQueryable<>).MakeGenericType(EntityType);
+            }
+            else
+            {
+                // For general entities, return the base graph queryable type
+                return typeof(IGraphQueryable<>).MakeGenericType(EntityType);
+            }
+        }
+    }
 }

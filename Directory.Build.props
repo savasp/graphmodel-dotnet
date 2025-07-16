@@ -22,8 +22,6 @@
 
         <!-- Package settings -->
         <IncludeBuildOutput>true</IncludeBuildOutput>
-        <Version>1.0.0</Version>
-        <VersionSuffix>alpha-$([System.DateTime]::Now.ToString('yyyyMMddHHmmss'))</VersionSuffix>
         <Company>Cvoya</Company>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/savasp/graphmodel-dotnet</PackageProjectUrl>
@@ -38,7 +36,7 @@
         <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Benchmark'">true</UseProjectReferences>
         <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'LocalFeed'">true</UseProjectReferences>
         <UseProjectReferences Condition="'$(UseProjectReferences)' == '' AND '$(Configuration)' == 'Release'">true</UseProjectReferences>
-        
+
         <!-- Use package references only when explicitly requested -->
         <!-- Set UsePackageReferences=true to build with package references instead of project references -->
         <UseProjectReferences Condition="'$(UsePackageReferences)' == 'true'">false</UseProjectReferences>
@@ -75,15 +73,16 @@
     <!-- Version Management -->
     <PropertyGroup>
         <VersionFile>$(MSBuildThisFileDirectory)VERSION</VersionFile>
-        <Version Condition="Exists('$(VersionFile)')">$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</Version>
-    </PropertyGroup>
+        <AssemblyVersionFile>$(MSBuildThisFileDirectory)VERSION.ASSEMBLY</AssemblyVersionFile>
 
-    <!-- Version Management Targets -->
-    <Target Name="CreateRelease">
-        <Error Text="Please specify a release version: -p:ReleaseVersion=1.2.3" Condition="'$(ReleaseVersion)' == ''" />
-        <WriteLinesToFile File="$(VersionFile)" Lines="$(ReleaseVersion)" Overwrite="true" />
-        <Message Text="Release version $(ReleaseVersion) created" Importance="high" />
-    </Target>
+        <FullVersion Condition="Exists('$(VersionFile)')">$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</FullVersion>
+        <AssemblyVersionString Condition="Exists('$(AssemblyVersionFile)')">$([System.IO.File]::ReadAllText('$(AssemblyVersionFile)').Trim())</AssemblyVersionString>
+
+        <Version Condition="Exists('$(VersionFile)')">$(FullVersion)</Version>
+        <PackageVersion Condition="Exists('$(VersionFile)')">$(FullVersion)</PackageVersion>
+        <AssemblyVersion Condition="Exists('$(AssemblyVersionFile)')">$(AssemblyVersionString)</AssemblyVersion>
+        <FileVersion Condition="Exists('$(AssemblyVersionFile)')">$(AssemblyVersionString)</FileVersion>
+    </PropertyGroup>
 
     <Target Name="ShowVersion">
         <PropertyGroup Condition="Exists('$(VersionFile)')">
@@ -131,9 +130,9 @@
         <!-- Remove NuGet source -->
         <Exec Command="dotnet nuget remove source '$(LocalFeedSourceName)'" ContinueOnError="true" />
 
-        <!-- Clean directories -->
-        <RemoveDir Directories="$(LocalFeedPath)" />
-        <RemoveDir Directories="$(PackageOutputPath)" />
+        <!-- Clean directories only if they exist -->
+        <RemoveDir Directories="$(LocalFeedPath)" Condition="Exists('$(LocalFeedPath)')" />
+        <RemoveDir Directories="$(PackageOutputPath)" Condition="Exists('$(PackageOutputPath)')" />
 
         <!-- Clear NuGet cache -->
         <Exec Command="dotnet nuget locals all --clear" ContinueOnError="true" />

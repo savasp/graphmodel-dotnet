@@ -2,6 +2,20 @@
 
 This document provides a comprehensive guide to the core interfaces and type system that form the foundation of Graph Model. Understanding these interfaces is essential for effective use of the library.
 
+## 📦 Getting Started: Required Packages
+
+To use Graph Model in your project, you only need to install the Neo4j provider package:
+
+```bash
+# Required
+dotnet add package Cvoya.Graph.Model.Neo4j
+
+# Optional (recommended for extra compile-time validation)
+dotnet add package Cvoya.Graph.Model.Analyzers
+```
+
+The Neo4j provider package will automatically bring in all required dependencies and enable code generation. The analyzers package is optional but recommended for additional compile-time checks.
+
 ## 🏗️ Architecture Overview
 
 Graph Model follows a layered architecture with clean abstractions:

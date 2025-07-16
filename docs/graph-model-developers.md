@@ -4,6 +4,20 @@ This document explains the GraphModel build configurations, version management, 
 
 ## 🚀 Quick Start
 
+### Required Packages
+
+To get started, install the Neo4j provider package (required):
+
+```bash
+dotnet add package Cvoya.Graph.Model.Neo4j
+```
+
+Optionally, add the analyzers package for extra compile-time validation (recommended):
+
+```bash
+dotnet add package Cvoya.Graph.Model.Analyzers
+```
+
 ### Essential Commands
 
 ```bash

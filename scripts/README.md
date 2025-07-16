@@ -4,6 +4,16 @@ This directory contains utility scripts for the GraphModel project.
 
 ## 🚀 Quick Start Commands
 
+### Build System Validation
+
+```bash
+# Check project status
+./scripts/status.sh
+
+# Validate all build configurations
+./scripts/validate-build.sh
+```
+
 ### Version Management
 
 ```bash
@@ -30,6 +40,22 @@ dotnet build --configuration LocalFeed
 dotnet build --configuration Release
 ```
 
+### Testing
+
+```bash
+# Run all tests
+./scripts/run-tests.sh
+
+# Run tests with coverage
+./scripts/run-tests.sh --coverage
+
+# Run tests with containers
+./scripts/run-tests.sh --neo4j --seq
+
+# Run performance tests
+./scripts/run-tests.sh --performance
+```
+
 ### Package Management
 
 ```bash
@@ -41,6 +67,16 @@ dotnet build --configuration Release
 
 # Run benchmarks
 ./scripts/run-benchmarks.sh
+```
+
+### Cleanup
+
+```bash
+# Clean build artifacts
+./scripts/clean-all.sh
+
+# Clean everything (containers, cache, artifacts)
+./scripts/clean-all.sh --all
 ```
 
 ## 📖 Complete Documentation
@@ -141,10 +177,6 @@ Removes the local NuGet feed and cleans up:
 - Clears NuGet cache
 - Restores normal project reference behavior
 
-### PowerShell Equivalents
-
-- All scripts have PowerShell equivalents for cross-platform compatibility
-
 ## 📚 Documentation Build Scripts
 
 ### `build-docs.sh` (Bash)
@@ -174,69 +206,6 @@ A Bash script for building XML documentation from all source projects.
 ./scripts/build-docs.sh Benchmark
 ```
 
-### `build-docs.ps1` (PowerShell)
-
-A PowerShell script for building XML documentation on Windows or PowerShell Core.
-
-**Usage:**
-
-```powershell
-./scripts/build-docs.ps1 [options]
-```
-
-**Parameters:**
-
-- `-Configuration <config>`: Build configuration (default: `Release`)
-- `-Help`: Show help message
-
-**Examples:**
-
-```powershell
-# Build documentation with Release configuration
-./scripts/build-docs.ps1
-
-# Build documentation with Debug configuration
-./scripts/build-docs.ps1 -Configuration Debug
-
-# Show help
-./scripts/build-docs.ps1 -Help
-```
-
-## 🏃‍♂️ Performance Benchmark Scripts
-
-### `run-benchmarks.ps1` (PowerShell)
-
-A PowerShell script for running performance benchmarks on Windows or PowerShell Core.
-
-**Usage:**
-
-```powershell
-./scripts/run-benchmarks.ps1 [options]
-```
-
-**Parameters:**
-
-- `-Mode <mode>`: Benchmark mode (default: `all`)
-  - `all`: Run all benchmarks automatically
-  - `crud`: Run only CRUD operation benchmarks
-  - `relationships`: Run only relationship benchmarks
-  - `interactive`: Interactive benchmark selection
-- `-OutputDir <dir>`: Output directory for results (default: `./benchmarks`)
-- `-Help`: Show help message
-
-**Examples:**
-
-```powershell
-# Run all benchmarks
-./scripts/run-benchmarks.ps1
-
-# Run only CRUD benchmarks
-./scripts/run-benchmarks.ps1 -Mode crud
-
-# Interactive selection with custom output
-./scripts/run-benchmarks.ps1 -Mode interactive -OutputDir "./my-results"
-```
-
 ### `run-benchmarks.sh` (Bash)
 
 A Bash script for running performance benchmarks on macOS/Linux.
@@ -257,37 +226,121 @@ A Bash script for running performance benchmarks on macOS/Linux.
 - `-o, --output <dir>`: Output directory for results (default: `./benchmarks`)
 - `-h, --help`: Show help message
 
-**Examples:**
-
-```
-
-```
-
 ## 🛠️ Development Tools Scripts
 
-### `start-neo4j-container.sh`
+### `status.sh` ⭐ **New**
 
-Starts the neo4j container.
+Shows the current state of the build system, containers, and project.
 
 **Usage:**
 
 ```bash
-./scripts/start-neo4j-container.sh
+./scripts/status.sh
 ```
 
 **What it does:**
 
-- Starts the neo4j container using podman
+- Shows project information (version, .NET SDK)
+- Reports build artifacts status
+- Checks container status (Neo4j, Seq)
+- Shows test results status
+- Provides recommendations and quick actions
+
+### `validate-build.sh` ⭐ **New**
+
+Validates the entire build system and ensures all configurations work correctly.
+
+**Usage:**
+
+```bash
+./scripts/validate-build.sh
+```
+
+**What it does:**
+
+- Tests all build configurations (Debug, Benchmark, LocalFeed, Release)
+- Validates MSBuild targets and local feed workflow
+- Checks prerequisites and project structure
+- Ensures the build system is ready for development and CI/CD
+
+### `run-tests.sh` ⭐ **New**
+
+Comprehensive test runner with support for different test types and configurations.
+
+**Usage:**
+
+```bash
+./scripts/run-tests.sh [options]
+```
+
+**Options:**
+
+- `-c, --configuration <config>`: Build configuration (default: Release)
+- `-v, --verbosity <level>`: Test verbosity (default: normal)
+- `--coverage`: Collect code coverage
+- `--neo4j`: Start Neo4j container before tests
+- `--seq`: Start Seq container before tests
+- `--no-analyzers`: Skip analyzer tests
+- `--no-neo4j`: Skip Neo4j tests
+- `--performance`: Run performance tests
+
+**Examples:**
+
+```bash
+./scripts/run-tests.sh                                    # Run all tests
+./scripts/run-tests.sh --coverage                        # Run with coverage
+./scripts/run-tests.sh --neo4j --seq                     # Start containers and run tests
+./scripts/run-tests.sh --performance                     # Run performance tests
+./scripts/run-tests.sh -c Debug --no-neo4j               # Debug build, skip Neo4j tests
+```
+
+### `clean-all.sh` ⭐ **New**
+
+Comprehensive cleanup script that removes all build artifacts, containers, and temporary files.
+
+**Usage:**
+
+```bash
+./scripts/clean-all.sh [options]
+```
+
+**Options:**
+
+- `--containers`: Clean up containers (Neo4j, Seq)
+- `--nuget`: Clean NuGet cache
+- `--all`: Clean everything (containers, cache, artifacts)
+
+**Examples:**
+
+```bash
+./scripts/clean-all.sh                    # Clean build artifacts only
+./scripts/clean-all.sh --containers       # Clean containers and artifacts
+./scripts/clean-all.sh --all              # Clean everything
+```
+
+### `start-neo4j.sh`
+
+Starts the Neo4j container.
+
+**Usage:**
+
+```bash
+./scripts/containers/start-neo4j.sh
+```
+
+**What it does:**
+
+- Starts the Neo4j container using podman
 - If the image doesn't exist locally, it is downloaded
 
-### `run-seq.sh`
+### `start-seq.sh`
 
 Starts Seq log aggregation system for development and testing using Podman.
 
 **Usage:**
 
 ```bash
-./scripts/run-seq.sh
+./scripts/containers/start-seq.sh
 ```
 
 **What it does:**
