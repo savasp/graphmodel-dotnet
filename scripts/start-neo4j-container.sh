@@ -54,6 +54,7 @@ podman run -d --pod "$POD_NAME" \
     --env NEO4JLABS_PLUGINS='["apoc"]' \
     --env NEO4J_dbms_security_procedures_unrestricted=apoc.* \
     --env NEO4J_dbms_security_procedures_allowlist=apoc.* \
+    --env NEO4J_apoc_trigger_enabled=true \
     --volume neo4j-data:/data \
     --volume neo4j-logs:/logs \
     --restart unless-stopped \
