@@ -128,7 +128,6 @@ public class Company : INode
     public string Name { get; set; } = string.Empty;
     public Address Headquarters { get; set; } = new(); // Complex type
     public List<Address> Offices { get; set; } = new(); // Collection
-    public Dictionary<string, object> Metadata { get; set; } = new(); // Dynamic data
 }
 
 public class Address // Not a node - just a value object from the Graph Model's perspective
