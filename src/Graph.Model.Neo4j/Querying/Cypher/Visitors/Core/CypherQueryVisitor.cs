@@ -15,7 +15,9 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
 using System.Linq.Expressions;
+using System.Reflection;
 using Cvoya.Graph.Model;
+using Cvoya.Graph.Model.Neo4j.Linq.Helpers;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Microsoft.Extensions.Logging;
@@ -194,6 +196,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
             case "WithDepth":
                 return HandleWithDepth(node, result);
+
+            case "Search":
+                return HandleSearch(node, result);
 
             default:
                 throw new GraphException(
@@ -1057,6 +1062,126 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
 
         return result ?? node.Arguments[0];
+    }
+
+    private Expression HandleSearch(MethodCallExpression node, Expression? result)
+    {
+        _logger.LogDebug("Processing Search method call");
+
+        if (node.Arguments.Count != 2)
+            throw new GraphException("Search method must have exactly 2 arguments");
+
+        var searchQueryArg = node.Arguments[1];
+        var searchQuery = EvaluateConstantExpression<string>(searchQueryArg);
+
+        _logger.LogDebug("Processing Search with query: {Query}", searchQuery);
+
+        // Determine the entity type from the source queryable
+        var sourceType = result?.Type ?? node.Arguments[0].Type;
+        var elementType = TypeHelpers.GetElementType(sourceType);
+
+        // Create a SearchExpression and handle it
+        var searchExpr = new SearchExpression(node.Arguments[0], searchQuery);
+        HandleSearchExpression(searchExpr, elementType);
+
+        return result ?? node.Arguments[0];
+    }
+
+    private void HandleSearchExpression(SearchExpression searchExpr, Type elementType)
+    {
+        // Check if we're in a path segments context
+        if (_context.Builder.IsPathSegmentLoading())
+        {
+            // In path segments context, apply search as a WHERE condition on the target nodes
+            var currentAlias = _context.Scope.CurrentAlias ?? "tgt";
+            var searchParamName = _context.Builder.AddParameter(searchExpr.SearchQuery);
+
+            // Create a WHERE condition that searches in the target node's searchable properties
+            var searchableProps = GetSearchableProperties(elementType);
+            // Build the Cypher WHERE clause to check each property
+            var searchCondition = string.Join(" OR ", searchableProps.Split(',').Select(p => $"toLower(toString({currentAlias}.{p.Trim(' ', '\'', '"')})) CONTAINS toLower({searchParamName})"));
+            _context.Builder.AddWhere($"({searchCondition})");
+
+            _logger.LogDebug("Applied search as WHERE condition in path segments context: {Condition}", searchCondition);
+            return;
+        }
+
+        var indexName = GetFullTextIndexName(elementType);
+        var paramName = _context.Builder.AddParameter(searchExpr.SearchQuery);
+
+        if (typeof(INode).IsAssignableFrom(elementType))
+        {
+            // Node full text search
+            var alias = _context.Scope.GetOrCreateAlias(elementType, "n");
+            _context.Builder.AddFullTextNodeSearch(indexName, paramName, alias);
+            _context.Scope.CurrentAlias = alias;
+            _context.Builder.SetMainNodeAlias(alias);
+            _context.Builder.EnableComplexPropertyLoading();
+        }
+        else if (typeof(IRelationship).IsAssignableFrom(elementType))
+        {
+            // Relationship full text search  
+            var alias = _context.Scope.GetOrCreateAlias(elementType, "r");
+            _context.Builder.AddFullTextRelationshipSearch(indexName, paramName, alias);
+            _context.Scope.CurrentAlias = alias;
+            _context.Builder.SetMainNodeAlias(alias);
+
+            // Set the relationship query flag directly without adding MATCH clauses
+            // We'll use reflection to set the private field since there's no public method
+            var builderType = _context.Builder.GetType();
+            var field = builderType.GetField("_isRelationshipQuery", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            field?.SetValue(_context.Builder, true);
+
+            // Disable complex property loading for relationships since they don't need it
+            _context.Builder.DisableComplexPropertyLoading();
+        }
+        else
+        {
+            // Entity search (both nodes and relationships)
+            var nodeAlias = _context.Scope.GetOrCreateAlias(typeof(INode), "n");
+            var relAlias = _context.Scope.GetOrCreateAlias(typeof(IRelationship), "r");
+            _context.Builder.AddFullTextEntitySearch(indexName, paramName, nodeAlias, relAlias);
+            _context.Scope.CurrentAlias = nodeAlias; // Default to node alias
+            _context.Builder.SetMainNodeAlias(nodeAlias);
+            // Disable complex property loading for entity search
+            _context.Builder.DisableComplexPropertyLoading();
+        }
+    }
+
+    private string GetSearchableProperties(Type elementType)
+    {
+        // Get the searchable properties for the given type
+        var properties = new List<string>();
+
+        foreach (var prop in elementType.GetProperties())
+        {
+            // Skip the base entity properties
+            if (prop.Name == nameof(Model.IEntity.Id)) continue;
+            if (typeof(Model.IRelationship).IsAssignableFrom(elementType))
+            {
+                if (prop.Name == nameof(Model.IRelationship.StartNodeId) ||
+                    prop.Name == nameof(Model.IRelationship.EndNodeId) ||
+                    prop.Name == nameof(Model.IRelationship.Direction))
+                    continue;
+            }
+
+            // Only include string properties by default
+            if (prop.PropertyType != typeof(string)) continue;
+
+            // Check for explicit inclusion/exclusion via PropertyAttribute
+            var propertyAttr = prop.GetCustomAttribute<PropertyAttribute>();
+            if (propertyAttr != null)
+            {
+                if (propertyAttr.Ignore) continue;
+                if (propertyAttr.IncludeInFullTextSearch == false) continue;
+            }
+
+            // Include by default for string properties
+            var propertyName = propertyAttr?.Label ?? prop.Name;
+            properties.Add(propertyName);
+        }
+
+        return string.Join(", ", properties.Select(p => $"'{p}'"));
     }
 
     protected override Expression VisitConstant(ConstantExpression node)

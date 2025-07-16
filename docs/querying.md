@@ -302,6 +302,60 @@ var connectedToAlice = graph.Relationships<Knows>()
 
 ## Full-Text Search
 
+Graph Model provides comprehensive full-text search capabilities through both direct search methods and LINQ integration.
+
+### Direct Search Methods
+
+```csharp
+// Search across all entities (nodes and relationships)
+var allResults = await graph.Search("machine learning").ToListAsync();
+
+// Search specific node types
+var articleResults = await graph.SearchNodes<Article>("artificial intelligence").ToListAsync();
+
+// Search specific relationship types
+var relationshipResults = await graph.SearchRelationships<Knows>("college").ToListAsync();
+
+// Search using generic interfaces
+var allNodes = await graph.SearchNodes("graph database").ToListAsync();
+var allRelationships = await graph.SearchRelationships("friendship").ToListAsync();
+```
+
+### LINQ Integration with Search
+
+The `Search()` method can be used in LINQ chains to perform full-text search on query results:
+
+```csharp
+// Basic search in LINQ chain
+var results = await graph.Nodes<Person>()
+    .Where(p => p.Age > 25)
+    .Search("software engineer")
+    .ToListAsync();
+
+// Search in path segments traversal
+var memories = await graph.Nodes<User>()
+    .Where(u => u.Id == "...")
+    .PathSegments<User, UserMemory, Memory>()
+    .Select(p => p.EndNode)
+    .Search("vacation memories")
+    .ToListAsync();
+
+// Search with multiple conditions
+var filteredResults = await graph.Nodes<Article>()
+    .Where(a => a.PublishedDate > DateTime.UtcNow.AddDays(-30))
+    .Search("machine learning")
+    .Where(a => a.Author.StartsWith("Dr."))
+    .ToListAsync();
+
+// Search with projections
+var summaries = await graph.Nodes<Article>()
+    .Search("artificial intelligence")
+    .Select(a => new { a.Title, a.Summary })
+    .ToListAsync();
+```
+
+### Traditional String Operations
+
 ```csharp
 // Contains search
 var results = graph.Nodes<Article>()
@@ -323,6 +377,14 @@ var prefixSearch = graph.Nodes<Person>()
     .Where(p => p.Email.StartsWith("admin@"))
     .ToList();
 ```
+
+### Search Features
+
+- **Case Insensitive**: All search operations are case-insensitive by default
+- **Multi-word Support**: Search for phrases like "machine learning" or "artificial intelligence"
+- **Property Control**: Use `[Property(IncludeInFullTextSearch = false)]` to exclude properties from search
+- **Automatic Indexing**: Full-text indexes are created and managed automatically
+- **LINQ Integration**: Seamlessly integrate search into existing LINQ query chains
 
 ## Combining Node and Relationship Queries
 

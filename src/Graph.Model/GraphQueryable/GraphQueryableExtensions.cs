@@ -805,4 +805,35 @@ public static class GraphQueryableExtensions
     }
 
     #endregion
+
+    /// <summary>
+    /// Performs a full text search on the queryable results.
+    /// This method can be used in LINQ chains to search for specific text within the results.
+    /// </summary>
+    /// <typeparam name="T">The type of elements in the queryable</typeparam>
+    /// <param name="source">The source queryable</param>
+    /// <param name="searchQuery">The search query string</param>
+    /// <returns>A queryable that represents the search results</returns>
+    public static IGraphQueryable<T> Search<T>(
+        this IGraphQueryable<T> source,
+        string searchQuery)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentException.ThrowIfNullOrWhiteSpace(searchQuery, nameof(searchQuery));
+
+        var methodInfo = GetGenericExtensionMethod(
+            typeof(GraphQueryableExtensions),
+            nameof(Search),
+            1, // T
+            2  // source, searchQuery
+        ).MakeGenericMethod(typeof(T));
+
+        var expression = Expression.Call(
+            null,
+            methodInfo,
+            source.Expression,
+            Expression.Constant(searchQuery));
+
+        return source.Provider.CreateQuery<T>(expression);
+    }
 }

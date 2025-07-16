@@ -252,4 +252,155 @@ public interface IFullTextSearchTests : IGraphModelTest
         Assert.Single(results);
         Assert.Equal("Doe", results[0]);
     }
+
+    [Fact]
+    public async Task CanSearchInLinqChain()
+    {
+        // Create test data
+        var person1 = new Person { FirstName = "Alice", LastName = "Wonder", Bio = "Software engineer with expertise in cloud computing" };
+        var person2 = new Person { FirstName = "Bob", LastName = "Builder", Bio = "Data scientist working on machine learning" };
+        var person3 = new Person { FirstName = "Charlie", LastName = "Brown", Bio = "Product manager focused on user experience" };
+
+        await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
+
+        // Search in LINQ chain
+        var results = await this.Graph.Nodes<Person>()
+            .Where(p => p.Age > 20)
+            .Search("cloud computing")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("Alice", results[0].FirstName);
+        Assert.Contains("cloud computing", results[0].Bio);
+    }
+
+    [Fact]
+    public async Task CanSearchInPathSegmentsChain()
+    {
+        // Create test data with relationships
+        var user = new Person { FirstName = "John", LastName = "Doe", Bio = "User with memories" };
+        var memory1 = new Person { FirstName = "Memory1", LastName = "Memory", Bio = "Important memory about vacation" };
+        var memory2 = new Person { FirstName = "Memory2", LastName = "Memory", Bio = "Another memory about work" };
+
+        await this.Graph.CreateNodeAsync(user, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(memory1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(memory2, null, TestContext.Current.CancellationToken);
+
+        var userMemory1 = new KnowsWell
+        {
+            StartNodeId = user.Id,
+            EndNodeId = memory1.Id,
+            HowWell = "Strong connection"
+        };
+
+        var userMemory2 = new KnowsWell
+        {
+            StartNodeId = user.Id,
+            EndNodeId = memory2.Id,
+            HowWell = "Weak connection"
+        };
+
+        await this.Graph.CreateRelationshipAsync(userMemory1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(userMemory2, null, TestContext.Current.CancellationToken);
+
+        // Search in path segments chain
+        var results = await this.Graph.Nodes<Person>()
+            .Where(u => u.Id == user.Id)
+            .PathSegments<Person, KnowsWell, Person>()
+            .Select(p => p.EndNode)
+            .Search("vacation")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("Memory1", results[0].FirstName);
+        Assert.Contains("vacation", results[0].Bio);
+    }
+
+    [Fact]
+    public async Task CanSearchWithMultipleConditions()
+    {
+        // Create test data
+        var person1 = new Person { FirstName = "Alice", LastName = "Wonder", Age = 30, Bio = "Software engineer with expertise in cloud computing" };
+        var person2 = new Person { FirstName = "Bob", LastName = "Builder", Age = 25, Bio = "Data scientist working on machine learning" };
+        var person3 = new Person { FirstName = "Charlie", LastName = "Brown", Age = 35, Bio = "Product manager focused on user experience" };
+
+        await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
+
+        // Search with multiple conditions
+        var results = await this.Graph.Nodes<Person>()
+            .Where(p => p.Age > 25)
+            .Search("engineer")
+            .Where(p => p.FirstName.StartsWith("A"))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("Alice", results[0].FirstName);
+        Assert.Contains("engineer", results[0].Bio);
+    }
+
+    [Fact]
+    public async Task CanSearchWithSelectProjection()
+    {
+        // Create test data
+        var person = new Person { FirstName = "Alice", LastName = "Wonder", Bio = "Software engineer with expertise in cloud computing" };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+
+        // Search with select projection
+        var results = await this.Graph.Nodes<Person>()
+            .Search("cloud computing")
+            .Select(p => new { p.FirstName, p.Bio })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("Alice", results[0].FirstName);
+        Assert.Contains("cloud computing", results[0].Bio);
+    }
+
+    [Fact]
+    public async Task SearchInLinqChainReturnsEmptyForNonMatchingQuery()
+    {
+        // Create test data
+        var person = new Person { FirstName = "Alice", LastName = "Wonder", Bio = "Software engineer" };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+
+        // Search for something that doesn't exist
+        var results = await this.Graph.Nodes<Person>()
+            .Where(p => p.Age > 20)
+            .Search("NonExistentTerm")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task SearchInLinqChainIsNotCaseSensitive()
+    {
+        // Create test data
+        var person = new Person { FirstName = "Alice", LastName = "Wonder", Bio = "Software engineer with CLOUD computing expertise" };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+
+        // Search with different cases
+        var lowerResults = await this.Graph.Nodes<Person>()
+            .Search("cloud computing")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var upperResults = await this.Graph.Nodes<Person>()
+            .Search("CLOUD COMPUTING")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var mixedResults = await this.Graph.Nodes<Person>()
+            .Search("Cloud Computing")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(lowerResults);
+        Assert.Single(upperResults);
+        Assert.Single(mixedResults);
+
+        Assert.Equal(lowerResults[0].Id, upperResults[0].Id);
+        Assert.Equal(upperResults[0].Id, mixedResults[0].Id);
+    }
 }

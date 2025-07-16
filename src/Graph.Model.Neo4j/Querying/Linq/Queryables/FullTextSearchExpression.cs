@@ -53,3 +53,21 @@ internal class FullTextSearchExpression : Expression
         }
     }
 }
+
+/// <summary>
+/// Represents a full text search operation on a LINQ queryable
+/// </summary>
+internal class SearchExpression : Expression
+{
+    public string SearchQuery { get; }
+    public Expression Source { get; }
+
+    public SearchExpression(Expression source, string searchQuery)
+    {
+        Source = source ?? throw new ArgumentNullException(nameof(source));
+        SearchQuery = searchQuery ?? throw new ArgumentNullException(nameof(searchQuery));
+    }
+
+    public override ExpressionType NodeType => ExpressionType.Extension;
+    public override Type Type => Source.Type;
+}

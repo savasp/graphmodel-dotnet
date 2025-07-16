@@ -556,6 +556,56 @@ var connectionAnalysis = await graph.Nodes<Person>()
     .ToListAsync();
 ```
 
+## 🔍 Full-Text Search
+
+Graph Model provides comprehensive full-text search capabilities that integrate seamlessly with LINQ:
+
+### Direct Search Methods
+
+```csharp
+// Search across all entities
+var allResults = await graph.Search("machine learning").ToListAsync();
+
+// Type-specific searches
+var nodes = await graph.SearchNodes<Article>("artificial intelligence").ToListAsync();
+var relationships = await graph.SearchRelationships<Knows>("college").ToListAsync();
+```
+
+### LINQ Integration
+
+The `Search()` method can be used anywhere in a LINQ chain:
+
+```csharp
+// Search in basic LINQ chain
+var results = await graph.Nodes<Person>()
+    .Where(p => p.Age > 25)
+    .Search("software engineer")
+    .ToListAsync();
+
+// Search in path segments traversal
+var memories = await graph.Nodes<User>()
+    .Where(u => u.Id == "...")
+    .PathSegments<User, UserMemory, Memory>()
+    .Select(p => p.EndNode)
+    .Search("vacation memories")
+    .ToListAsync();
+
+// Search with multiple conditions
+var filtered = await graph.Nodes<Article>()
+    .Where(a => a.PublishedDate > DateTime.UtcNow.AddDays(-30))
+    .Search("machine learning")
+    .Where(a => a.Author.StartsWith("Dr."))
+    .ToListAsync();
+```
+
+### Search Features
+
+- **Case Insensitive**: All searches are case-insensitive
+- **Multi-word Support**: Search for phrases like "machine learning"
+- **Property Control**: Exclude properties with `[Property(IncludeInFullTextSearch = false)]`
+- **Automatic Indexing**: Full-text indexes are managed automatically
+- **LINQ Integration**: Use anywhere in query chains
+
 ## 🎯 Design Principles
 
 ### 1. Interface Segregation

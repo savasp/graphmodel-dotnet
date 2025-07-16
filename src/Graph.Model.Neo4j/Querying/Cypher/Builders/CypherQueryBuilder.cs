@@ -191,6 +191,11 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         return _includeComplexProperties;
     }
 
+    public bool IsPathSegmentLoading()
+    {
+        return _loadPathSegment;
+    }
+
     public void EnablePathSegmentLoading()
     {
         _includeComplexProperties = true;
