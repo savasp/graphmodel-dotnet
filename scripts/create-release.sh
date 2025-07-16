@@ -137,7 +137,7 @@ echo -e "${GREEN}🎉 Release $VERSION created successfully!${NC}"
 echo ""
 echo -e "${BLUE}📋 Next steps:${NC}"
 if [ "$BUILD_LOCAL" != "true" ] && [ "$BUILD_RELEASE" != "true" ]; then
-    echo "   • Build release:    dotnet build --configuration Release"
+    echo "   • Build release:    dotnet build --configuration Release -p:UsePackageReferences=true"
 fi
 if [ "$COMMIT" != "true" ]; then
     echo "   • Commit version:   git add VERSION && git commit -m 'Release $VERSION'"
