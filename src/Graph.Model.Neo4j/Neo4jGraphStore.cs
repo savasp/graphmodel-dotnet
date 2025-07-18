@@ -89,10 +89,11 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
         Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
     {
         ArgumentNullException.ThrowIfNull(driver, nameof(driver));
+        _databaseName = databaseName;
         _databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
         _driver = driver;
         _schemaRegistry = schemaRegistry ?? new SchemaRegistry();
-        Graph = new Neo4jGraph(this, databaseName, _schemaRegistry, loggerFactory);
+        Graph = new Neo4jGraph(this, _databaseName, _schemaRegistry, loggerFactory);
     }
 
     /// <inheritdoc />
