@@ -181,6 +181,11 @@ public class PropertyConfiguration
     public bool IsIndexed { get; set; } = false;
 
     /// <summary>
+    /// Gets or sets whether this property should be used as a key for the entity.
+    /// </summary>
+    public bool IsKey { get; set; } = false;
+
+    /// <summary>
     /// Gets or sets whether this property should have unique values across entities with the same label/type.
     /// </summary>
     public bool IsUnique { get; set; } = false;

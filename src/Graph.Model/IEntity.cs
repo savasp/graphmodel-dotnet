@@ -27,5 +27,6 @@ public interface IEntity
     /// <remarks>
     /// Identifiers should be immutable once the entity has been persisted to ensure referential integrity.
     /// </remarks>
+    [Property(IsKey = true)]
     string Id { get; init; }
 }
