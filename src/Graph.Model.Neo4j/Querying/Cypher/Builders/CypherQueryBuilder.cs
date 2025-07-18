@@ -375,25 +375,27 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         _matchPart.AddCallClause(searchPattern);
     }
 
-    public void AddFullTextEntitySearch(string indexName, string queryParam, string nodeAlias, string relAlias)
+    public void AddFullTextEntitySearch(string nodeIndexName, string relIndexName, string queryParam, string nodeAlias, string relAlias)
     {
-        _logger.LogDebug("AddFullTextEntitySearch called with index: {IndexName}, query: {QueryParam}, nodeAlias: {NodeAlias}, relAlias: {RelAlias}", indexName, queryParam, nodeAlias, relAlias);
+        _logger.LogDebug("AddFullTextEntitySearch called with nodeIndex: {NodeIndexName}, relIndex: {RelIndexName}, query: {QueryParam}, nodeAlias: {NodeAlias}, relAlias: {RelAlias}", nodeIndexName, relIndexName, queryParam, nodeAlias, relAlias);
 
         // Return nodes and relationships in their native Neo4j formats
         // Nodes are returned as nodes, relationships are returned as PathSegments
         // The materialization process will handle type discovery based on labels/types
         var unionQuery = $@"
             CALL {{
-                CALL db.index.fulltext.queryNodes('nodes_fulltext_index', {queryParam}) YIELD node AS {nodeAlias}
+                CALL db.index.fulltext.queryNodes('{nodeIndexName}', {queryParam}) YIELD node AS {nodeAlias}
                 RETURN {nodeAlias} AS entity
                 UNION ALL
-                CALL db.index.fulltext.queryRelationships('relationships_fulltext_index', {queryParam}) YIELD relationship AS {relAlias}
+                CALL db.index.fulltext.queryRelationships('{relIndexName}', {queryParam}) YIELD relationship AS {relAlias}
                 MATCH (src)-[{relAlias}]->(tgt)
                 RETURN {{ StartNode: {{ Node: src, ComplexProperties: [] }}, Relationship: {relAlias}, EndNode: {{ Node: tgt, ComplexProperties: [] }} }} AS entity
             }}
             RETURN entity";
         _matchPart.AddCallClause(unionQuery);
     }
+
+
 
     public void AddGroupBy(string expression)
     {

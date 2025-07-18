@@ -57,6 +57,15 @@ public class PropertyAttribute() : Attribute
     public bool Ignore { get; set; } = false;
 
     /// <summary>
+    /// Gets or sets whether this property is a key for the entity.
+    /// </summary>
+    /// <value>True if the property is a key, otherwise false.</value>
+    /// <remarks>
+    /// This implies that the property is indexed and unique.
+    /// </remarks>
+    public bool IsKey { get; set; } = false;
+
+    /// <summary>
     /// Gets or sets whether this property should be indexed for query performance.
     /// </summary>
     /// <value>True if the property should be indexed, otherwise false.</value>

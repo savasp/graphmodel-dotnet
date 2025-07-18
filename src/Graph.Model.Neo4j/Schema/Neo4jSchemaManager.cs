@@ -17,7 +17,6 @@ namespace Cvoya.Graph.Model.Neo4j.Schema;
 using System.Reflection;
 using Cvoya.Graph.Model.Configuration;
 using Cvoya.Graph.Model.Neo4j.Core;
-using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
@@ -610,9 +609,6 @@ internal class Neo4jSchemaManager
     {
         _logger.LogDebug("CreateFullTextIndexes called for label {Label} and type {EntityType}", label, entityType.Name);
 
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
-
         try
         {
             var isNode = typeof(Model.INode).IsAssignableFrom(entityType);
@@ -622,130 +618,119 @@ internal class Neo4jSchemaManager
 
             if (isNode)
             {
-                _logger.LogDebug("Creating node full text index for label {Label}", label);
-                await CreateNodeFullTextIndex(tx, label, entityType);
+                _logger.LogDebug("Creating node label full text index for label {Label}", label);
+                await CreateNodeLabelFullTextIndex(label);
             }
             if (isRelationship)
             {
-                _logger.LogDebug("Creating relationship full text index for label {Label}", label);
-                await CreateRelationshipFullTextIndex(tx, label, entityType);
-                // Also create a type-specific index for this relationship type
-                var typeSpecificIndexName = $"relationships_{entityType.Name.ToLowerInvariant()}_fulltext_index";
-                var relProps = GetFullTextSearchProperties(entityType);
-                if (relProps.Count > 0)
-                {
-                    var relPropsList = string.Join(", ", relProps.Select(p => $"r.{p}"));
-                    var typeSpecificIndexQuery = $"CREATE FULLTEXT INDEX {typeSpecificIndexName} IF NOT EXISTS FOR ()-[r:{label}]-() ON EACH [{relPropsList}]";
-                    var typeSpecificResult = await tx.RunAsync(typeSpecificIndexQuery);
-                    await typeSpecificResult.ConsumeAsync();
-                    _logger.LogDebug($"Created type-specific relationship full text index {typeSpecificIndexName} for relationship type {label} on properties: {string.Join(", ", relProps)}");
-                }
+                _logger.LogDebug("Creating relationship type full text index for type {Label}", label);
+                await CreateRelationshipTypeFullTextIndex(label);
             }
-            await tx.CommitAsync();
+
             _logger.LogDebug("Successfully created full text indexes for {EntityType} with label {Label}", entityType.Name, label);
         }
         catch (Exception ex)
         {
-            await tx.RollbackAsync();
             _logger.LogError(ex, "Failed to create full text indexes for {EntityType} with label {Label}", entityType.Name, label);
             throw;
         }
     }
 
     /// <summary>
-    /// Creates general full text indexes for all nodes and relationships.
-    /// This is called once during schema initialization.
+    /// Discovers all types in loaded assemblies that implement INode or IRelationship.
+    /// </summary>
+    private static (List<Type> nodeTypes, List<Type> relationshipTypes) DiscoverGraphEntityTypes()
+    {
+        var nodeTypes = new List<Type>();
+        var relationshipTypes = new List<Type>();
+        var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+        foreach (var assembly in assemblies)
+        {
+            Type[] types;
+            try { types = assembly.GetTypes(); } catch { continue; }
+            foreach (var type in types)
+            {
+                if (type.IsAbstract || type.IsInterface) continue;
+                if (typeof(Cvoya.Graph.Model.INode).IsAssignableFrom(type))
+                    nodeTypes.Add(type);
+                else if (typeof(Cvoya.Graph.Model.IRelationship).IsAssignableFrom(type))
+                    relationshipTypes.Add(type);
+            }
+        }
+        return (nodeTypes, relationshipTypes);
+    }
+
+    /// <summary>
+    /// Creates full text indexes for all discovered node labels and relationship types.
     /// </summary>
     public async Task CreateGeneralFullTextIndexes()
     {
-        _logger.LogDebug("CreateGeneralFullTextIndexes called");
-
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
-
-        try
+        _logger.LogDebug("CreateGeneralFullTextIndexes called (auto-discovering types)");
+        var (nodeTypes, relationshipTypes) = DiscoverGraphEntityTypes();
+        var createdNodeLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var createdRelTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var allNodeProperties = new HashSet<string>();
+        var allRelationshipProperties = new HashSet<string>();
+        foreach (var nodeType in nodeTypes)
         {
-            // For now, we'll create general indexes for common labels
-            // In a real implementation, you might want to discover all labels dynamically
-
-            // Create general node index for Person label (most common in tests)
-            var personNodeIndexQuery = "CREATE FULLTEXT INDEX nodes_fulltext_index IF NOT EXISTS FOR (n:Person) ON EACH [n.FirstName, n.LastName, n.Bio, n.Name, n.Title, n.Summary, n.Genre, n.Description, n.Country, n.Nationality]";
-            var personNodeResult = await tx.RunAsync(personNodeIndexQuery);
-            await personNodeResult.ConsumeAsync();
-            _logger.LogDebug("Created general node full text index for Person label");
-
-            // Create general relationship index for WORKS_REALLY_WELL_WITH label (most common in tests)
-            var relIndexQuery = "CREATE FULLTEXT INDEX relationships_fulltext_index IF NOT EXISTS FOR ()-[r:WORKS_REALLY_WELL_WITH]-() ON EACH [r.HowWell, r.WritingStyle, r.CollaborationType, r.Description]";
-            var relResult = await tx.RunAsync(relIndexQuery);
-            await relResult.ConsumeAsync();
-            _logger.LogDebug("Created general relationship full text index for WORKS_REALLY_WELL_WITH label");
-
-            // Create general entity index (same as node index for now)
-            var entityIndexQuery = "CREATE FULLTEXT INDEX entities_fulltext_index IF NOT EXISTS FOR (n:Person) ON EACH [n.FirstName, n.LastName, n.Bio, n.Name, n.Title, n.Summary, n.Genre, n.Description, n.Country, n.Nationality]";
-            var entityResult = await tx.RunAsync(entityIndexQuery);
-            await entityResult.ConsumeAsync();
-            _logger.LogDebug("Created general entity full text index");
-
+            var label = Labels.GetLabelFromType(nodeType);
+            if (createdNodeLabels.Add(label))
+            {
+                await CreateNodeLabelFullTextIndex(label);
+                // For global index, only include properties that are explicitly configured for full text search
+                var properties = GetExplicitlySearchablePropertiesForType(nodeType);
+                foreach (var prop in properties)
+                {
+                    allNodeProperties.Add(prop);
+                }
+            }
+        }
+        foreach (var relType in relationshipTypes)
+        {
+            var typeLabel = Labels.GetLabelFromType(relType);
+            if (createdRelTypes.Add(typeLabel))
+            {
+                await CreateRelationshipTypeFullTextIndex(typeLabel);
+                var properties = GetSearchablePropertiesForType(relType);
+                foreach (var prop in properties)
+                {
+                    allRelationshipProperties.Add(prop);
+                }
+            }
+        }
+        // Create global indexes for all discovered node labels and all discovered relationship types
+        if (createdNodeLabels.Count > 0 && allNodeProperties.Any())
+        {
+            using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+            using var tx = await session.BeginTransactionAsync();
+            var labelList = string.Join("|", createdNodeLabels);
+            var propertyList = string.Join(", ", allNodeProperties.Select(p => $"n.{p}"));
+            var indexQuery = $"CREATE FULLTEXT INDEX nodes_all_labels_fulltext_index IF NOT EXISTS FOR (n:{labelList}) ON EACH [{propertyList}]";
+            var result = await tx.RunAsync(indexQuery);
+            await result.ConsumeAsync();
             await tx.CommitAsync();
-            _logger.LogDebug("Successfully created general full text indexes");
+            _logger.LogDebug("Created global node full text index for all labels with properties: {Properties}", string.Join(", ", allNodeProperties));
         }
-        catch (Exception ex)
+        if (createdRelTypes.Count > 1 && allRelationshipProperties.Any())
         {
-            await tx.RollbackAsync();
-            _logger.LogError(ex, "Failed to create general full text indexes");
-            // Don't throw - full text search is optional functionality
+            using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+            using var tx = await session.BeginTransactionAsync();
+            var typeList = string.Join("|", createdRelTypes);
+            var propertyList = string.Join(", ", allRelationshipProperties.Select(p => $"r.{p}"));
+            var indexQuery = $"CREATE FULLTEXT INDEX relationships_all_types_fulltext_index IF NOT EXISTS FOR ()-[r:{typeList}]-() ON EACH [{propertyList}]";
+            var result = await tx.RunAsync(indexQuery);
+            await result.ConsumeAsync();
+            await tx.CommitAsync();
+            _logger.LogDebug("Created global relationship full text index for all discovered types with properties: {Properties}", string.Join(", ", allRelationshipProperties));
         }
     }
 
-    private async Task CreateNodeFullTextIndex(IAsyncTransaction tx, string label, Type entityType)
+    /// <summary>
+    /// Gets the searchable properties for a strongly typed entity based on PropertyAttribute configuration.
+    /// </summary>
+    private static List<string> GetSearchablePropertiesForType(Type entityType)
     {
-        _logger.LogDebug("CreateNodeFullTextIndex called for label {Label} and type {EntityType}", label, entityType.Name);
-
-        var properties = GetFullTextSearchProperties(entityType);
-
-        _logger.LogDebug("Found {PropertyCount} full text search properties for type {EntityType}: {Properties}",
-            properties.Count, entityType.Name, string.Join(", ", properties));
-
-        if (!properties.Any())
-        {
-            _logger.LogDebug("No properties found for full text search, skipping index creation for {Label}", label);
-            return;
-        }
-
-        var indexName = $"nodes_{label.ToLowerInvariant()}_fulltext_index";
-        var propertyList = string.Join(", ", properties.Select(p => $"n.{p}"));
-
-        var createIndexQuery = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR (n:`{label}`) ON EACH [{propertyList}]";
-
-        _logger.LogDebug("Executing full text index creation query: {Query}", createIndexQuery);
-
-        var result = await tx.RunAsync(createIndexQuery);
-        await result.ConsumeAsync();
-
-        _logger.LogDebug("Created full text index {IndexName} for node label {Label} on properties: {Properties}",
-            indexName, label, string.Join(", ", properties));
-    }
-
-    private async Task CreateRelationshipFullTextIndex(IAsyncTransaction tx, string label, Type entityType)
-    {
-        var properties = GetFullTextSearchProperties(entityType);
-        if (!properties.Any()) return;
-
-        var indexName = $"relationships_{label.ToLowerInvariant()}_fulltext_index";
-        var propertyList = string.Join(", ", properties.Select(p => $"r.{p}"));
-
-        var createIndexQuery = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR ()-[r:`{label}`]-() ON EACH [{propertyList}]";
-
-        var result = await tx.RunAsync(createIndexQuery);
-        await result.ConsumeAsync();
-
-        _logger.LogDebug("Created full text index {IndexName} for relationship type {Label} on properties: {Properties}",
-            indexName, label, string.Join(", ", properties));
-    }
-
-    private List<string> GetFullTextSearchProperties(Type entityType)
-    {
-        var properties = new List<string>();
+        var searchableProperties = new List<string>();
 
         foreach (var prop in entityType.GetProperties())
         {
@@ -770,11 +755,150 @@ internal class Neo4jSchemaManager
                 if (propertyAttr.IncludeInFullTextSearch == false) continue;
             }
 
-            // Include by default for string properties
+            // Include by default for string properties (unless explicitly excluded above)
             var propertyName = propertyAttr?.Label ?? prop.Name;
-            properties.Add(propertyName);
+            searchableProperties.Add(propertyName);
         }
 
-        return properties;
+        return searchableProperties;
     }
+
+    /// <summary>
+    /// Gets only the explicitly searchable properties for a strongly typed entity.
+    /// This is used for global indexes to avoid including all string properties by default.
+    /// </summary>
+    private static List<string> GetExplicitlySearchablePropertiesForType(Type entityType)
+    {
+        var searchableProperties = new List<string>();
+
+        foreach (var prop in entityType.GetProperties())
+        {
+            // Skip the base entity properties
+            if (prop.Name == nameof(Model.IEntity.Id)) continue;
+            if (typeof(Model.IRelationship).IsAssignableFrom(entityType))
+            {
+                if (prop.Name == nameof(Model.IRelationship.StartNodeId) ||
+                    prop.Name == nameof(Model.IRelationship.EndNodeId) ||
+                    prop.Name == nameof(Model.IRelationship.Direction))
+                    continue;
+            }
+
+            // Only include string properties
+            if (prop.PropertyType != typeof(string)) continue;
+
+            // Check for explicit inclusion/exclusion via PropertyAttribute
+            var propertyAttr = prop.GetCustomAttribute<PropertyAttribute>();
+            if (propertyAttr != null)
+            {
+                if (propertyAttr.Ignore) continue;
+                // Only include if explicitly set to true (not by default)
+                if (propertyAttr.IncludeInFullTextSearch == true)
+                {
+                    var propertyName = propertyAttr.Label ?? prop.Name;
+                    searchableProperties.Add(propertyName);
+                }
+            }
+            // Don't include properties without explicit configuration in global index
+        }
+
+        return searchableProperties;
+    }
+
+
+
+    /// <summary>
+    /// Creates a full text index for a specific node label.
+    /// </summary>
+    private async Task CreateNodeLabelFullTextIndex(string label)
+    {
+        _logger.LogDebug("CreateNodeLabelFullTextIndex called for label {Label}", label);
+
+        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        using var tx = await session.BeginTransactionAsync();
+
+        try
+        {
+            var indexName = $"nodes_{label.ToLowerInvariant()}_fulltext_index";
+
+            // Find the actual type for this label
+            var nodeType = DiscoverGraphEntityTypes().nodeTypes.FirstOrDefault(t => Labels.GetLabelFromType(t).Equals(label, StringComparison.OrdinalIgnoreCase));
+            if (nodeType == null)
+            {
+                _logger.LogWarning("No strongly typed entity found for label {Label}. Skipping full text index creation.", label);
+                await tx.RollbackAsync();
+                return;
+            }
+
+            var searchableProperties = GetSearchablePropertiesForType(nodeType);
+
+            if (!searchableProperties.Any())
+            {
+                _logger.LogWarning("No searchable properties configured for label {Label}. Skipping full text index creation.", label);
+                await tx.RollbackAsync();
+                return;
+            }
+            var propertyList = string.Join(", ", searchableProperties.Select(p => $"n.{p}"));
+            var indexQuery = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR (n:`{label}`) ON EACH [{propertyList}]";
+            var result = await tx.RunAsync(indexQuery);
+            await result.ConsumeAsync();
+            await tx.CommitAsync();
+            _logger.LogDebug("Created node label full text index {IndexName} for label {Label} with properties: {Properties}", indexName, label, string.Join(", ", searchableProperties));
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            _logger.LogError(ex, "Failed to create node label full text index for label {Label}", label);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Creates a full text index for a specific relationship type.
+    /// </summary>
+    private async Task CreateRelationshipTypeFullTextIndex(string type)
+    {
+        _logger.LogDebug("CreateRelationshipTypeFullTextIndex called for type {Type}", type);
+
+        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        using var tx = await session.BeginTransactionAsync();
+
+        try
+        {
+            var indexName = $"relationships_{type.ToLowerInvariant()}_fulltext_index";
+
+            // Find the actual type for this relationship type
+            var relType = DiscoverGraphEntityTypes().relationshipTypes.FirstOrDefault(t => Labels.GetLabelFromType(t).Equals(type, StringComparison.OrdinalIgnoreCase));
+            if (relType == null)
+            {
+                _logger.LogWarning("No strongly typed entity found for relationship type {Type}. Skipping full text index creation.", type);
+                await tx.RollbackAsync();
+                return;
+            }
+
+            var searchableProperties = GetSearchablePropertiesForType(relType);
+
+            if (!searchableProperties.Any())
+            {
+                _logger.LogWarning("No searchable properties configured for relationship type {Type}. Skipping full text index creation.", type);
+                await tx.RollbackAsync();
+                return;
+            }
+            var propertyList = string.Join(", ", searchableProperties.Select(p => $"r.{p}"));
+            var indexQuery = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR ()-[r:`{type}`]-() ON EACH [{propertyList}]";
+            var result = await tx.RunAsync(indexQuery);
+            await result.ConsumeAsync();
+            await tx.CommitAsync();
+            _logger.LogDebug("Created relationship type full text index {IndexName} for type {Type} with properties: {Properties}", indexName, type, string.Join(", ", searchableProperties));
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            _logger.LogError(ex, "Failed to create relationship type full text index for type {Type}", type);
+            throw;
+        }
+    }
+
+
+
+
 }
