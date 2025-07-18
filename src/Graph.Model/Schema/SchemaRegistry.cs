@@ -142,13 +142,11 @@ public class SchemaRegistry
 
     private EntitySchemaInfo CreateEntitySchemaInfo(Type entityType, string label)
     {
-        Console.WriteLine($"Creating schema for {label} ({entityType.FullName})");
         var properties = new Dictionary<string, PropertySchemaInfo>();
         var allProperties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
 
         foreach (var property in allProperties)
         {
-            Console.WriteLine($"  Processing property {property.Name} ({property.PropertyType.Name}) for {label}");
             var propertySchema = CreatePropertySchemaInfo(property);
             properties[property.Name] = propertySchema;
         }
