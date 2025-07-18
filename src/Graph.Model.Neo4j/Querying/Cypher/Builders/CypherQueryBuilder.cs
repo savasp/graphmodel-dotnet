@@ -365,23 +365,20 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         _matchPart.AddCallClause(searchPattern);
     }
 
-    public void AddFullTextRelationshipSearch(string indexName, string queryParam, string relAlias)
+    public void AddFullTextRelationshipSearch(string indexName, string queryParam, string relAlias, string? relationshipType = null)
     {
-        _logger.LogDebug("AddFullTextRelationshipSearch called with index: {IndexName}, query: {QueryParam}, alias: {RelAlias}", indexName, queryParam, relAlias);
-        // Use the unified path segment format - need to get start and end nodes for the relationship
-        var searchPattern = $@"CALL db.index.fulltext.queryRelationships('{indexName}', {queryParam}) YIELD relationship AS {relAlias}
-        MATCH (src)-[{relAlias}]->(tgt)
-        RETURN {{ StartNode: {{ Node: src, ComplexProperties: [] }}, Relationship: {relAlias}, EndNode: {{ Node: tgt, ComplexProperties: [] }} }} AS PathSegment";
+        _logger.LogDebug("AddFullTextRelationshipSearch called with index: {IndexName}, query: {QueryParam}, alias: {RelAlias}, type: {Type}", indexName, queryParam, relAlias, relationshipType);
+
+        var whereClause = string.IsNullOrEmpty(relationshipType) ? "" : $" WHERE type({relAlias}) = '{relationshipType}'";
+        var searchPattern = $@"CALL db.index.fulltext.queryRelationships('{indexName}', {queryParam}) YIELD relationship AS {relAlias}{whereClause}
+            MATCH (src)-[{relAlias}]->(tgt)
+            RETURN {{ StartNode: {{ Node: src, ComplexProperties: [] }}, Relationship: {relAlias}, EndNode: {{ Node: tgt, ComplexProperties: [] }} }} AS PathSegment";
         _matchPart.AddCallClause(searchPattern);
     }
 
     public void AddFullTextEntitySearch(string nodeIndexName, string relIndexName, string queryParam, string nodeAlias, string relAlias)
     {
         _logger.LogDebug("AddFullTextEntitySearch called with nodeIndex: {NodeIndexName}, relIndex: {RelIndexName}, query: {QueryParam}, nodeAlias: {NodeAlias}, relAlias: {RelAlias}", nodeIndexName, relIndexName, queryParam, nodeAlias, relAlias);
-
-        // Return nodes and relationships in their native Neo4j formats
-        // Nodes are returned as nodes, relationships are returned as PathSegments
-        // The materialization process will handle type discovery based on labels/types
         var unionQuery = $@"
             CALL {{
                 CALL db.index.fulltext.queryNodes('{nodeIndexName}', {queryParam}) YIELD node AS {nodeAlias}

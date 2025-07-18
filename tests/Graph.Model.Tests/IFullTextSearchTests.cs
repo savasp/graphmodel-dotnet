@@ -426,40 +426,34 @@ public interface IFullTextSearchTests : IGraphModelTest
     [Fact]
     public async Task CanSearchDynamicNodeWithFullTextSearch()
     {
-        // Create a DynamicNode with properties
-        var node = new DynamicNode(new[] { "DynamicLabel" }, new Dictionary<string, object?>
-        {
-            ["Name"] = "searchable-value",
-            ["Description"] = "not-searchable"
-        });
-        await this.Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
+        var person = new Person { FirstName = "Alice", LastName = "Wonder" };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Should find node when searching for property value
-        var found = await this.Graph.SearchNodes<DynamicNode>("searchable-value").ToListAsync();
+        var found = await this.Graph.SearchNodes<DynamicNode>("Wonder").ToListAsync();
         Assert.Single(found);
-        Assert.Equal("searchable-value", found[0].Properties["Name"]);
+        Assert.Equal(person.FirstName, found[0].Properties["FirstName"]);
+        Assert.Equal(person.LastName, found[0].Properties["LastName"]);
     }
 
     [Fact]
     public async Task CanSearchDynamicRelationshipWithFullTextSearch()
     {
-        // Create two DynamicNodes as endpoints
-        var nodeA = new DynamicNode(new[] { "A" }, new Dictionary<string, object?> { ["Name"] = "NodeA" });
-        var nodeB = new DynamicNode(new[] { "B" }, new Dictionary<string, object?> { ["Name"] = "NodeB" });
-        await this.Graph.CreateNodeAsync(nodeA, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateNodeAsync(nodeB, null, TestContext.Current.CancellationToken);
-
-        // Create a DynamicRelationship with properties
-        var rel = new DynamicRelationship(nodeA.Id, nodeB.Id, "DynamicRelType", new Dictionary<string, object?>
+        var person1 = new Person { FirstName = "Alice", LastName = "Wonder" };
+        var person2 = new Person { FirstName = "Bob", LastName = "Builder" };
+        await this.Graph.CreateNodeAsync(person1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
+        var knows = new KnowsWell
         {
-            ["Name"] = "rel-searchable",
-            ["Description"] = "rel-not-searchable"
-        });
-        await this.Graph.CreateRelationshipAsync(rel, null, TestContext.Current.CancellationToken);
+            StartNodeId = person1.Id,
+            EndNodeId = person2.Id,
+            HowWell = "Good friends"
+        };
+        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
 
         // Should find relationship when searching for property value
-        var found = await this.Graph.SearchRelationships<DynamicRelationship>("rel-searchable").ToListAsync();
+        var found = await this.Graph.SearchRelationships<DynamicRelationship>("Good friends").ToListAsync();
         Assert.Single(found);
-        Assert.Equal("rel-searchable", found[0].Properties["Name"]);
+        Assert.Equal("Good friends", found[0].Properties["HowWell"]);
     }
 }

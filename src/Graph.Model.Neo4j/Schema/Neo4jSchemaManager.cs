@@ -362,113 +362,92 @@ internal class Neo4jSchemaManager
 
     private async Task CreateGeneralFullTextIndexesAsync()
     {
-        _logger.LogDebug("Creating general full text indexes");
+        _logger.LogDebug("Creating global full text indexes");
 
-        var nodeLabels = _schemaRegistry.GetRegisteredNodeLabels().ToList();
-        var relationshipTypes = _schemaRegistry.GetRegisteredRelationshipTypes().ToList();
-
-        if (nodeLabels.Count > 0)
-        {
-            await CreateNodeLabelFullTextIndexAsync(nodeLabels);
-        }
-
-        if (relationshipTypes.Count > 0)
-        {
-            await CreateRelationshipTypeFullTextIndexAsync(relationshipTypes);
-        }
-    }
-
-    private async Task CreateNodeLabelFullTextIndexAsync(IEnumerable<string> labels)
-    {
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         using var tx = await session.BeginTransactionAsync();
 
         try
         {
-            // Create separate full-text indexes for each label since Neo4j doesn't support multiple labels in one index
-            foreach (var label in labels)
+            // Collect node labels and string properties from schema registry
+            var nodeLabels = new HashSet<string>();
+            var nodeStringProps = new HashSet<string>();
+
+            foreach (var nodeLabel in _schemaRegistry.GetRegisteredNodeLabels())
             {
-                var schema = _schemaRegistry.GetNodeSchema(label);
-                if (schema == null) continue;
-
-                var stringProps = schema.Properties
-                    .Where(p =>
-                        !p.Value.Ignore &&
-                        p.Value.IncludeInFullTextSearch &&
-                        p.Value.PropertyInfo.PropertyType == typeof(string))
-                    .Select(p => $"n.{p.Value.Name}")
-                    .ToList();
-
-                if (stringProps.Count == 0)
+                nodeLabels.Add(nodeLabel);
+                var schema = _schemaRegistry.GetNodeSchema(nodeLabel);
+                if (schema != null)
                 {
-                    _logger.LogDebug("No string properties for full text index on node label: {Label}", label);
-                    continue;
+                    foreach (var prop in schema.Properties.Values)
+                    {
+                        if (!prop.Ignore && prop.PropertyInfo.PropertyType == typeof(string) && prop.IncludeInFullTextSearch)
+                        {
+                            nodeStringProps.Add(prop.Name);
+                        }
+                    }
                 }
+            }
 
-                var propsList = string.Join(", ", stringProps);
-                var indexName = $"node_fulltext_index_{label.ToLowerInvariant()}";
-                var createIndex = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR (n:{label}) ON EACH [{propsList}]";
+            // Create node index if we have labels and string properties
+            if (nodeLabels.Count > 0 && nodeStringProps.Count > 0)
+            {
+                var labelList = string.Join("|", nodeLabels);
+                var propList = string.Join(", ", nodeStringProps.Select(p => $"n.{p}"));
+                var createNodeIndex = $"CREATE FULLTEXT INDEX node_fulltext_index IF NOT EXISTS FOR (n:{labelList}) ON EACH [{propList}]";
+                await tx.RunAsync(createNodeIndex);
+                _logger.LogDebug("Created global node full-text index with {LabelCount} labels and {PropertyCount} properties", nodeLabels.Count, nodeStringProps.Count);
+            }
+            else
+            {
+                _logger.LogDebug("Skipped node full-text index creation - no labels or string properties found");
+            }
 
-                var result = await tx.RunAsync(createIndex);
-                await result.ConsumeAsync();
+            // Collect relationship types and string properties from schema registry
+            var relTypes = new HashSet<string>();
+            var relStringProps = new HashSet<string>();
 
-                _logger.LogDebug("Created full text index {Index} for node label: {Label}", indexName, label);
+            foreach (var relType in _schemaRegistry.GetRegisteredRelationshipTypes())
+            {
+                relTypes.Add(relType);
+                var schema = _schemaRegistry.GetRelationshipSchema(relType);
+                if (schema != null)
+                {
+                    foreach (var prop in schema.Properties.Values)
+                    {
+                        if (!prop.Ignore && prop.PropertyInfo.PropertyType == typeof(string) && prop.IncludeInFullTextSearch)
+                        {
+                            relStringProps.Add(prop.Name);
+                        }
+                    }
+                }
+            }
+
+            // Create relationship index if we have types and string properties
+            if (relTypes.Count > 0 && relStringProps.Count > 0)
+            {
+                var typeList = string.Join("|", relTypes);
+                var propList = string.Join(", ", relStringProps.Select(p => $"r.{p}"));
+                var createRelIndex = $"CREATE FULLTEXT INDEX rel_fulltext_index IF NOT EXISTS FOR ()-[r:{typeList}]-() ON EACH [{propList}]";
+                await tx.RunAsync(createRelIndex);
+                _logger.LogDebug("Created global relationship full-text index with {TypeCount} types and {PropertyCount} properties", relTypes.Count, relStringProps.Count);
+            }
+            else
+            {
+                _logger.LogDebug("Skipped relationship full-text index creation - no types or string properties found");
             }
 
             await tx.CommitAsync();
+            _logger.LogDebug("Global full-text index creation completed");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             await tx.RollbackAsync();
+            _logger.LogError(ex, "Failed to create global full-text indexes");
             throw;
         }
     }
 
-    private async Task CreateRelationshipTypeFullTextIndexAsync(IEnumerable<string> types)
-    {
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
-
-        try
-        {
-            // Create separate full-text indexes for each relationship type since Neo4j doesn't support multiple types in one index
-            foreach (var type in types)
-            {
-                var schema = _schemaRegistry.GetRelationshipSchema(type);
-                if (schema == null) continue;
-
-                var stringProps = schema.Properties
-                    .Where(p =>
-                        !p.Value.Ignore &&
-                        p.Value.IncludeInFullTextSearch &&
-                        p.Value.PropertyInfo.PropertyType == typeof(string))
-                    .Select(p => $"r.{p.Value.Name}")
-                    .ToList();
-
-                if (stringProps.Count == 0)
-                {
-                    _logger.LogDebug("No string properties for full text index on relationship type: {Type}", type);
-                    continue;
-                }
-
-                var propsList = string.Join(", ", stringProps);
-                var indexName = $"relationship_fulltext_index_{type.ToLowerInvariant()}";
-                var createIndex = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR ()-[r:{type}]->() ON EACH [{propsList}]";
-
-                var result = await tx.RunAsync(createIndex);
-                await result.ConsumeAsync();
-
-                _logger.LogDebug("Created full text index {Index} for relationship type: {Type}", indexName, type);
-            }
-
-            await tx.CommitAsync();
-        }
-        catch (Exception)
-        {
-            await tx.RollbackAsync();
-            throw;
-        }
-    }
 
     private async Task DropAllIndexesAsync()
     {
