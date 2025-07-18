@@ -41,7 +41,7 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A queryable interface to the dynamic nodes</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
-    IGraphNodeQueryable<IDynamicNode> DynamicNodes(IGraphTransaction? transaction = null);
+    IGraphNodeQueryable<DynamicNode> DynamicNodes(IGraphTransaction? transaction = null);
 
     /// <summary>
     /// Gets a queryable interface to dynamic relationships in the graph
@@ -50,7 +50,7 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A queryable interface to the dynamic relationships</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
-    IGraphRelationshipQueryable<IDynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null);
+    IGraphRelationshipQueryable<DynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null);
 
     /// <summary>
     /// Gets a dynamic node by ID
@@ -62,7 +62,7 @@ public interface IGraph : IAsyncDisposable
     /// <returns>The dynamic node with the specified ID</returns>
     /// <exception cref="KeyNotFoundException">Thrown when the dynamic node is not found</exception>
     /// <exception cref="GraphException">Thrown when the dynamic node cannot be retrieved or there is another issue</exception>
-    Task<IDynamicNode> GetDynamicNodeAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
+    Task<DynamicNode> GetDynamicNodeAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets a dynamic relationship by ID
@@ -74,7 +74,7 @@ public interface IGraph : IAsyncDisposable
     /// <returns>The dynamic relationship with the specified ID</returns>
     /// <exception cref="KeyNotFoundException">Thrown when the dynamic relationship is not found</exception>
     /// <exception cref="GraphException">Thrown when the dynamic relationship cannot be retrieved or there is another issue</exception>
-    Task<IDynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
+    Task<DynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets a queryable interface to nodes in the graph with options for relationship loading

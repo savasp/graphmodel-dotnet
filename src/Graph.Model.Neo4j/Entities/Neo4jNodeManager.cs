@@ -209,7 +209,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         string cypher;
 
         // For dynamic nodes, use the actual labels from ActualLabels
-        if (entity.ActualType.IsAssignableTo(typeof(Model.IDynamicNode)))
+        if (entity.ActualType.IsAssignableTo(typeof(Model.DynamicNode)))
         {
             if (entity.ActualLabels != null && entity.ActualLabels.Count > 0)
             {
@@ -246,7 +246,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
 
         // For dynamic nodes, update both properties and labels
-        if (entity.ActualType == typeof(Model.IDynamicNode) && entity.ActualLabels != null && entity.ActualLabels.Count > 0)
+        if (entity.ActualType == typeof(Model.DynamicNode) && entity.ActualLabels != null && entity.ActualLabels.Count > 0)
         {
             // First, get the current labels to remove them
             var getLabelsCypher = "MATCH (n {Id: $nodeId}) RETURN labels(n) AS currentLabels";

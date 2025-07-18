@@ -194,7 +194,6 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
 
         // Update the relationship
         var updatedRelationship = new DynamicRelationship(
-            id: relationship.Id,
             startNodeId: person1.Id,
             endNodeId: person2.Id,
             type: "KNOWS",

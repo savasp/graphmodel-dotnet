@@ -37,16 +37,16 @@ public class GraphWrapper : IGraph
 
     public Task<IGraphTransaction> GetTransactionAsync() => innerGraph.GetTransactionAsync();
 
-    public IGraphNodeQueryable<IDynamicNode> DynamicNodes(IGraphTransaction? transaction = null) =>
+    public IGraphNodeQueryable<DynamicNode> DynamicNodes(IGraphTransaction? transaction = null) =>
         innerGraph.DynamicNodes(transaction);
 
-    public IGraphRelationshipQueryable<IDynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null) =>
+    public IGraphRelationshipQueryable<DynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null) =>
         innerGraph.DynamicRelationships(transaction);
 
-    public Task<IDynamicNode> GetDynamicNodeAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) =>
+    public Task<DynamicNode> GetDynamicNodeAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) =>
         innerGraph.GetDynamicNodeAsync(id, transaction, cancellationToken);
 
-    public Task<IDynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) =>
+    public Task<DynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) =>
         innerGraph.GetDynamicRelationshipAsync(id, transaction, cancellationToken);
 
     public IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null) where N : INode =>

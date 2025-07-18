@@ -196,7 +196,7 @@ internal sealed class CypherResultProcessor
     private EntityInfo ProcessSingleNodeResult(NodeResult nodeResult, Type targetType)
     {
         // Use the new recursive deserializer for complex properties
-        if (targetType.IsAssignableTo(typeof(IDynamicNode)))
+        if (targetType.IsAssignableTo(typeof(DynamicNode)))
         {
             // For dynamic nodes
             return DeserializeComplexPropertiesForDynamicNode(nodeResult.Node, nodeResult.ComplexProperties, typeof(DynamicNode));
@@ -220,7 +220,7 @@ internal sealed class CypherResultProcessor
         var label = node.Labels.FirstOrDefault() ?? actualType.Name;
 
         // Use dynamic extraction for dynamic nodes (including complex property nodes)
-        if (typeof(Model.IDynamicNode).IsAssignableFrom(actualType))
+        if (typeof(Model.DynamicNode).IsAssignableFrom(actualType))
         {
             simpleProperties = ExtractAllSimplePropertiesForDynamicNode(node.Properties);
             if (!simpleProperties.ContainsKey(nameof(Model.IEntity.Id)) && node.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
@@ -739,7 +739,7 @@ internal sealed class CypherResultProcessor
         var label = node.Labels.FirstOrDefault() ?? actualType.Name;
 
         // Handle dynamic nodes differently
-        if (typeof(Model.IDynamicNode).IsAssignableFrom(actualType))
+        if (typeof(Model.DynamicNode).IsAssignableFrom(actualType))
         {
             simpleProperties = ExtractAllSimplePropertiesForDynamicNode(node.Properties);
             // Add Id property if not present
@@ -780,7 +780,7 @@ internal sealed class CypherResultProcessor
         Dictionary<string, Property> simpleProperties;
 
         // Handle dynamic relationships differently
-        if (typeof(Model.IDynamicRelationship).IsAssignableFrom(actualType))
+        if (typeof(Model.DynamicRelationship).IsAssignableFrom(actualType))
         {
             simpleProperties = new Dictionary<string, Property>();
             foreach (var (key, value) in relationship.Properties)
@@ -837,11 +837,11 @@ internal sealed class CypherResultProcessor
     private Type DiscoverActualNodeType(INode node, Type targetType)
     {
         // Special handling for dynamic entities
-        if (targetType == typeof(Model.IDynamicNode))
+        if (targetType == typeof(Model.DynamicNode))
         {
             _logger.LogDebug("Using label-based type DynamicNode for target type {TargetType}",
                 targetType.Name);
-            return typeof(Model.IDynamicNode);
+            return typeof(Model.DynamicNode);
         }
 
         // Step 1: Try to get type from stored metadata
@@ -874,11 +874,11 @@ internal sealed class CypherResultProcessor
     private Type DiscoverActualRelationshipType(IRelationship relationship, Type targetType)
     {
         // Special handling for dynamic entities
-        if (targetType == typeof(Model.IDynamicRelationship))
+        if (targetType == typeof(Model.DynamicRelationship))
         {
             _logger.LogDebug("Using relationship type-based type DynamicRelationship for target type {TargetType}",
                 targetType.Name);
-            return typeof(Model.IDynamicRelationship);
+            return typeof(Model.DynamicRelationship);
         }
 
         // Step 1: Try to get type from stored metadata

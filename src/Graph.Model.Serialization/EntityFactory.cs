@@ -42,7 +42,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     public object Deserialize(EntityInfo entity)
     {
         // Handle dynamic entities
-        if (entity.ActualType.IsAssignableTo(typeof(IDynamicNode)) || entity.ActualType.IsAssignableTo(typeof(IDynamicRelationship)))
+        if (entity.ActualType.IsAssignableTo(typeof(DynamicNode)) || entity.ActualType.IsAssignableTo(typeof(DynamicRelationship)))
         {
             return DeserializeDynamicEntity(entity);
         }
@@ -70,8 +70,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     {
         return entity switch
         {
-            IDynamicNode node => SerializeDynamicEntity(node),
-            IDynamicRelationship relationship => SerializeDynamicEntity(relationship),
+            DynamicNode node => SerializeDynamicEntity(node),
+            DynamicRelationship relationship => SerializeDynamicEntity(relationship),
             _ => SerializeEntityUsingGeneratedSerializer(entity),
         };
     }
@@ -85,8 +85,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         _serializerRegistry.ContainsType(type) ||
         typeof(INode).IsAssignableFrom(type) ||
         typeof(IRelationship).IsAssignableFrom(type) ||
-        type == typeof(IDynamicNode) ||
-        type == typeof(IDynamicRelationship);
+        type == typeof(DynamicNode) ||
+        type == typeof(DynamicRelationship);
 
     /// <summary>
     /// Retrieves the schema for a given entity type.
@@ -128,18 +128,18 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
         switch (entity)
         {
-            case IDynamicNode node:
+            case DynamicNode node:
                 // Add the Id property
-                simpleProperties[nameof(IDynamicNode.Id)] = new Property(
-                    GetPropertyInfo(typeof(IDynamicNode), nameof(IDynamicNode.Id)),
-                    nameof(IDynamicNode.Id),
+                simpleProperties[nameof(DynamicNode.Id)] = new Property(
+                    GetPropertyInfo(typeof(DynamicNode), nameof(DynamicNode.Id)),
+                    nameof(DynamicNode.Id),
                     false,
                     new SimpleValue(node.Id, typeof(string)));
 
                 // Add the Labels property
-                simpleProperties[nameof(IDynamicNode.Labels)] = new Property(
-                    GetPropertyInfo(typeof(IDynamicNode), nameof(IDynamicNode.Labels)),
-                    nameof(IDynamicNode.Labels),
+                simpleProperties[nameof(DynamicNode.Labels)] = new Property(
+                    GetPropertyInfo(typeof(DynamicNode), nameof(DynamicNode.Labels)),
+                    nameof(DynamicNode.Labels),
                     false,
                     new SimpleCollection(node.Labels.Select(l => new SimpleValue(l, typeof(string))).ToList(), typeof(string)));
 
@@ -147,38 +147,38 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                 ProcessDynamicProperties(node.Properties, simpleProperties, complexProperties);
 
                 return new EntityInfo(
-                    typeof(IDynamicNode),
+                    typeof(DynamicNode),
                     node.Labels.FirstOrDefault() ?? "",
                     node.Labels.ToList().AsReadOnly(),
                     simpleProperties,
                     complexProperties);
 
-            case IDynamicRelationship relationship:
+            case DynamicRelationship relationship:
                 // Add the Id property
-                simpleProperties[nameof(IDynamicRelationship.Id)] = new Property(
-                    GetPropertyInfo(typeof(IDynamicRelationship), nameof(IDynamicRelationship.Id)),
-                    nameof(IDynamicRelationship.Id),
+                simpleProperties[nameof(DynamicRelationship.Id)] = new Property(
+                    GetPropertyInfo(typeof(DynamicRelationship), nameof(DynamicRelationship.Id)),
+                    nameof(DynamicRelationship.Id),
                     false,
                     new SimpleValue(relationship.Id, typeof(string)));
 
                 // Add the Type property
-                simpleProperties[nameof(IDynamicRelationship.Type)] = new Property(
-                    GetPropertyInfo(typeof(IDynamicRelationship), nameof(IDynamicRelationship.Type)),
-                    nameof(IDynamicRelationship.Type),
+                simpleProperties[nameof(DynamicRelationship.Type)] = new Property(
+                    GetPropertyInfo(typeof(DynamicRelationship), nameof(DynamicRelationship.Type)),
+                    nameof(DynamicRelationship.Type),
                     false,
                     new SimpleValue(relationship.Type, typeof(string)));
 
                 // Add the StartNodeId property
-                simpleProperties[nameof(IDynamicRelationship.StartNodeId)] = new Property(
-                    GetPropertyInfo(typeof(IDynamicRelationship), nameof(IDynamicRelationship.StartNodeId)),
-                    nameof(IDynamicRelationship.StartNodeId),
+                simpleProperties[nameof(DynamicRelationship.StartNodeId)] = new Property(
+                    GetPropertyInfo(typeof(DynamicRelationship), nameof(DynamicRelationship.StartNodeId)),
+                    nameof(DynamicRelationship.StartNodeId),
                     false,
                     new SimpleValue(relationship.StartNodeId, typeof(string)));
 
                 // Add the EndNodeId property
-                simpleProperties[nameof(IDynamicRelationship.EndNodeId)] = new Property(
-                    GetPropertyInfo(typeof(IDynamicRelationship), nameof(IDynamicRelationship.EndNodeId)),
-                    nameof(IDynamicRelationship.EndNodeId),
+                simpleProperties[nameof(DynamicRelationship.EndNodeId)] = new Property(
+                    GetPropertyInfo(typeof(DynamicRelationship), nameof(DynamicRelationship.EndNodeId)),
+                    nameof(DynamicRelationship.EndNodeId),
                     false,
                     new SimpleValue(relationship.EndNodeId, typeof(string)));
 
@@ -186,7 +186,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                 ProcessDynamicProperties(relationship.Properties, simpleProperties, complexProperties);
 
                 return new EntityInfo(
-                    typeof(IDynamicRelationship),
+                    typeof(DynamicRelationship),
                     relationship.Type,
                     [],
                     simpleProperties,
@@ -201,16 +201,16 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     {
         switch (entity.ActualType)
         {
-            case var t when t.IsAssignableTo(typeof(IDynamicNode)):
+            case var t when t.IsAssignableTo(typeof(DynamicNode)):
                 return DeserializeDynamicNode(entity);
-            case var t when t.IsAssignableTo(typeof(IDynamicRelationship)):
+            case var t when t.IsAssignableTo(typeof(DynamicRelationship)):
                 return DeserializeDynamicRelationship(entity);
             default:
                 throw new GraphException($"Unsupported dynamic entity type: {entity.ActualType.Name}");
         }
     }
 
-    private IDynamicNode DeserializeDynamicNode(EntityInfo entity)
+    private DynamicNode DeserializeDynamicNode(EntityInfo entity)
     {
         var properties = new Dictionary<string, object?>();
 
@@ -218,7 +218,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         foreach (var kvp in entity.SimpleProperties)
         {
             if (kvp.Key != nameof(IEntity.Id)
-                && kvp.Key != nameof(IDynamicNode.Labels)
+                && kvp.Key != nameof(DynamicNode.Labels)
                 && kvp.Value.Value is SimpleValue simpleValue)
             {
                 properties[kvp.Key] = simpleValue.Object;
@@ -289,7 +289,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         };
     }
 
-    private IDynamicRelationship DeserializeDynamicRelationship(EntityInfo entity)
+    private DynamicRelationship DeserializeDynamicRelationship(EntityInfo entity)
     {
         var properties = new Dictionary<string, object?>();
 
@@ -297,9 +297,9 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         foreach (var kvp in entity.SimpleProperties)
         {
             if (kvp.Key != nameof(IEntity.Id)
-                && kvp.Key != nameof(IDynamicRelationship.Type)
-                && kvp.Key != nameof(IDynamicRelationship.StartNodeId)
-                && kvp.Key != nameof(IDynamicRelationship.EndNodeId)
+                && kvp.Key != nameof(DynamicRelationship.Type)
+                && kvp.Key != nameof(DynamicRelationship.StartNodeId)
+                && kvp.Key != nameof(DynamicRelationship.EndNodeId)
                 && kvp.Value.Value is SimpleValue simpleValue)
             {
                 properties[kvp.Key] = simpleValue.Object;
@@ -323,19 +323,19 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         {
             type = entity.Label;
         }
-        else if (entity.SimpleProperties.TryGetValue(nameof(IDynamicRelationship.Type), out var typeProperty) &&
+        else if (entity.SimpleProperties.TryGetValue(nameof(DynamicRelationship.Type), out var typeProperty) &&
             typeProperty.Value is SimpleValue typeValue)
         {
             type = typeValue.Object?.ToString() ?? "";
         }
 
-        if (entity.SimpleProperties.TryGetValue(nameof(IDynamicRelationship.StartNodeId), out var startNodeIdProperty) &&
+        if (entity.SimpleProperties.TryGetValue(nameof(DynamicRelationship.StartNodeId), out var startNodeIdProperty) &&
             startNodeIdProperty.Value is SimpleValue startNodeIdValue)
         {
             startNodeId = startNodeIdValue.Object?.ToString() ?? "";
         }
 
-        if (entity.SimpleProperties.TryGetValue(nameof(IDynamicRelationship.EndNodeId), out var endNodeIdProperty) &&
+        if (entity.SimpleProperties.TryGetValue(nameof(DynamicRelationship.EndNodeId), out var endNodeIdProperty) &&
             endNodeIdProperty.Value is SimpleValue endNodeIdValue)
         {
             endNodeId = endNodeIdValue.Object?.ToString() ?? "";

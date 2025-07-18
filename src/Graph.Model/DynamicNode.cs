@@ -17,13 +17,8 @@ namespace Cvoya.Graph.Model;
 /// <summary>
 /// Concrete implementation of a dynamic node.
 /// </summary>
-public sealed record DynamicNode : IDynamicNode
+public sealed record DynamicNode : Node
 {
-    /// <summary>
-    /// Gets the unique identifier of the node.
-    /// </summary>
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
     /// <summary>
     /// Gets the labels for this node.
     /// </summary>

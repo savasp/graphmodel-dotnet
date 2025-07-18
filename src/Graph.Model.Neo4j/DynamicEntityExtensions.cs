@@ -29,7 +29,7 @@ public static class DynamicEntityExtensions
     /// <param name="node">The dynamic node.</param>
     /// <param name="propertyName">The name of the property.</param>
     /// <returns>The property value if found and of the correct type, otherwise default(T).</returns>
-    public static T? GetProperty<T>(this IDynamicNode node, string propertyName)
+    public static T? GetProperty<T>(this DynamicNode node, string propertyName)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
@@ -194,7 +194,7 @@ public static class DynamicEntityExtensions
     /// <param name="relationship">The dynamic relationship.</param>
     /// <param name="propertyName">The name of the property.</param>
     /// <returns>The property value if found and of the correct type, otherwise default(T).</returns>
-    public static T? GetProperty<T>(this IDynamicRelationship relationship, string propertyName)
+    public static T? GetProperty<T>(this DynamicRelationship relationship, string propertyName)
     {
         ArgumentNullException.ThrowIfNull(relationship);
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
@@ -230,7 +230,7 @@ public static class DynamicEntityExtensions
     /// <param name="node">The dynamic node.</param>
     /// <param name="label">The label to check for.</param>
     /// <returns>True if the node has the specified label, otherwise false.</returns>
-    public static bool HasLabel(this IDynamicNode node, string label)
+    public static bool HasLabel(this DynamicNode node, string label)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
@@ -244,7 +244,7 @@ public static class DynamicEntityExtensions
     /// <param name="relationship">The dynamic relationship.</param>
     /// <param name="type">The type to check for.</param>
     /// <returns>True if the relationship has the specified type, otherwise false.</returns>
-    public static bool HasType(this IDynamicRelationship relationship, string type)
+    public static bool HasType(this DynamicRelationship relationship, string type)
     {
         ArgumentNullException.ThrowIfNull(relationship);
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
@@ -258,7 +258,7 @@ public static class DynamicEntityExtensions
     /// <param name="node">The dynamic node.</param>
     /// <param name="labels">The labels to check for.</param>
     /// <returns>True if the node has any of the specified labels, otherwise false.</returns>
-    public static bool HasAnyLabel(this IDynamicNode node, params string[] labels)
+    public static bool HasAnyLabel(this DynamicNode node, params string[] labels)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(labels);
@@ -272,7 +272,7 @@ public static class DynamicEntityExtensions
     /// <param name="node">The dynamic node.</param>
     /// <param name="labels">The labels to check for.</param>
     /// <returns>True if the node has all of the specified labels, otherwise false.</returns>
-    public static bool HasAllLabels(this IDynamicNode node, params string[] labels)
+    public static bool HasAllLabels(this DynamicNode node, params string[] labels)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(labels);
@@ -285,7 +285,7 @@ public static class DynamicEntityExtensions
     /// </summary>
     /// <param name="node">The dynamic node.</param>
     /// <returns>An enumerable of property names.</returns>
-    public static IEnumerable<string> GetPropertyNames(this IDynamicNode node)
+    public static IEnumerable<string> GetPropertyNames(this DynamicNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
         return node.Properties.Keys;
@@ -296,7 +296,7 @@ public static class DynamicEntityExtensions
     /// </summary>
     /// <param name="relationship">The dynamic relationship.</param>
     /// <returns>An enumerable of property names.</returns>
-    public static IEnumerable<string> GetPropertyNames(this IDynamicRelationship relationship)
+    public static IEnumerable<string> GetPropertyNames(this DynamicRelationship relationship)
     {
         ArgumentNullException.ThrowIfNull(relationship);
         return relationship.Properties.Keys;
@@ -308,7 +308,7 @@ public static class DynamicEntityExtensions
     /// <param name="node">The dynamic node.</param>
     /// <param name="propertyName">The name of the property to check for.</param>
     /// <returns>True if the node has the specified property, otherwise false.</returns>
-    public static bool HasProperty(this IDynamicNode node, string propertyName)
+    public static bool HasProperty(this DynamicNode node, string propertyName)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
@@ -322,7 +322,7 @@ public static class DynamicEntityExtensions
     /// <param name="relationship">The dynamic relationship.</param>
     /// <param name="propertyName">The name of the property to check for.</param>
     /// <returns>True if the relationship has the specified property, otherwise false.</returns>
-    public static bool HasProperty(this IDynamicRelationship relationship, string propertyName)
+    public static bool HasProperty(this DynamicRelationship relationship, string propertyName)
     {
         ArgumentNullException.ThrowIfNull(relationship);
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);

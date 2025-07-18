@@ -398,7 +398,7 @@ internal class Neo4jGraph : IGraph
     // Dynamic entity methods
 
     /// <inheritdoc />
-    public IGraphNodeQueryable<IDynamicNode> DynamicNodes(IGraphTransaction? transaction = null)
+    public IGraphNodeQueryable<DynamicNode> DynamicNodes(IGraphTransaction? transaction = null)
     {
         try
         {
@@ -408,7 +408,7 @@ internal class Neo4jGraph : IGraph
 
             // Create a provider scoped to this specific transaction
             var provider = new GraphQueryProvider(_graphContext, neo4jTx);
-            return new GraphNodeQueryable<IDynamicNode>(provider, neo4jTx, _graphContext);
+            return new GraphNodeQueryable<DynamicNode>(provider, neo4jTx, _graphContext);
         }
         catch (Exception ex)
         {
@@ -426,7 +426,7 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public IGraphRelationshipQueryable<IDynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null)
+    public IGraphRelationshipQueryable<DynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null)
     {
         try
         {
@@ -436,7 +436,7 @@ internal class Neo4jGraph : IGraph
 
             // Create a provider scoped to this specific transaction
             var provider = new GraphQueryProvider(_graphContext, neo4jTx);
-            return new GraphRelationshipQueryable<IDynamicRelationship>(provider, _graphContext, neo4jTx);
+            return new GraphRelationshipQueryable<DynamicRelationship>(provider, _graphContext, neo4jTx);
         }
         catch (Exception ex)
         {
@@ -454,7 +454,7 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<IDynamicNode> GetDynamicNodeAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+    public async Task<DynamicNode> GetDynamicNodeAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
     {
         var query = DynamicNodes(transaction)
             .Where(n => n.Id == id);
@@ -464,7 +464,7 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<IDynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+    public async Task<DynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
     {
         var query = DynamicRelationships(transaction)
             .Where(r => r.Id == id);
@@ -477,7 +477,7 @@ internal class Neo4jGraph : IGraph
     public IGraphQueryable<Model.IEntity> Search(string query, IGraphTransaction? transaction = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
-        
+
         try
         {
             _logger.LogDebug("Performing full text search with query: {Query}", query);
@@ -500,7 +500,7 @@ internal class Neo4jGraph : IGraph
     public IGraphNodeQueryable<Model.INode> SearchNodes(string query, IGraphTransaction? transaction = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
-        
+
         try
         {
             _logger.LogDebug("Performing full text search on nodes with query: {Query}", query);
@@ -523,7 +523,7 @@ internal class Neo4jGraph : IGraph
     public IGraphRelationshipQueryable<Model.IRelationship> SearchRelationships(string query, IGraphTransaction? transaction = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
-        
+
         try
         {
             _logger.LogDebug("Performing full text search on relationships with query: {Query}", query);
@@ -546,7 +546,7 @@ internal class Neo4jGraph : IGraph
     public IGraphNodeQueryable<T> SearchNodes<T>(string query, IGraphTransaction? transaction = null) where T : Model.INode
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
-        
+
         try
         {
             _logger.LogDebug("Performing full text search on nodes of type {NodeType} with query: {Query}", typeof(T).Name, query);
@@ -569,7 +569,7 @@ internal class Neo4jGraph : IGraph
     public IGraphRelationshipQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : Model.IRelationship
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
-        
+
         try
         {
             _logger.LogDebug("Performing full text search on relationships of type {RelationshipType} with query: {Query}", typeof(T).Name, query);

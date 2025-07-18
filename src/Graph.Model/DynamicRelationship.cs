@@ -17,28 +17,8 @@ namespace Cvoya.Graph.Model;
 /// <summary>
 /// Concrete implementation of a dynamic relationship.
 /// </summary>
-public sealed record DynamicRelationship : IDynamicRelationship
+public sealed record DynamicRelationship : Relationship
 {
-    /// <summary>
-    /// Gets the unique identifier of the relationship.
-    /// </summary>
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
-    /// <summary>
-    /// Gets the ID of the start node in this relationship.
-    /// </summary>
-    public string StartNodeId { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Gets the ID of the end node in this relationship.
-    /// </summary>
-    public string EndNodeId { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Gets the direction of this relationship.
-    /// </summary>
-    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
-
     /// <summary>
     /// Gets the type of this relationship.
     /// </summary>
@@ -52,7 +32,7 @@ public sealed record DynamicRelationship : IDynamicRelationship
     /// <summary>
     /// Initializes a new instance of the <see cref="DynamicRelationship"/> class.
     /// </summary>
-    public DynamicRelationship() { }
+    public DynamicRelationship() : base(string.Empty, string.Empty, RelationshipDirection.Outgoing) { }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DynamicRelationship"/> class with specified parameters.
@@ -63,32 +43,9 @@ public sealed record DynamicRelationship : IDynamicRelationship
     /// <param name="properties">The properties of the relationship.</param>
     /// <param name="direction">The direction of the relationship.</param>
     public DynamicRelationship(string startNodeId, string endNodeId, string type,
-        IDictionary<string, object?> properties, RelationshipDirection direction = RelationshipDirection.Outgoing)
+        IDictionary<string, object?> properties, RelationshipDirection direction = RelationshipDirection.Outgoing) : base(startNodeId, endNodeId, direction)
     {
-        StartNodeId = startNodeId;
-        EndNodeId = endNodeId;
         Type = type;
-        Direction = direction;
-        Properties = new Dictionary<string, object?>(properties).AsReadOnly();
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DynamicRelationship"/> class with specified parameters including ID.
-    /// </summary>
-    /// <param name="id">The unique identifier of the relationship.</param>
-    /// <param name="startNodeId">The ID of the start node.</param>
-    /// <param name="endNodeId">The ID of the end node.</param>
-    /// <param name="type">The type of the relationship.</param>
-    /// <param name="properties">The properties of the relationship.</param>
-    /// <param name="direction">The direction of the relationship.</param>
-    public DynamicRelationship(string id, string startNodeId, string endNodeId, string type,
-        IDictionary<string, object?> properties, RelationshipDirection direction = RelationshipDirection.Outgoing)
-    {
-        Id = id;
-        StartNodeId = startNodeId;
-        EndNodeId = endNodeId;
-        Type = type;
-        Direction = direction;
         Properties = new Dictionary<string, object?>(properties).AsReadOnly();
     }
 }
