@@ -238,21 +238,31 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : Model.IRelationship
     {
         var type = Labels.GetLabelFromType(relationship.GetType());
-        var config = context.SchemaManager.GetRegistry().GetRelationshipConfiguration(type);
+        var schema = context.SchemaManager.GetSchemaRegistry().GetRelationshipSchema(type);
 
-        if (config == null) return;
+        if (schema == null) return;
 
-        foreach (var (propertyName, propertyConfig) in config.Properties)
+        foreach (var (propertyName, propertySchema) in schema.Properties)
         {
-            if (propertyConfig.Validation == null) continue;
-
             var property = relationship.GetType().GetProperty(propertyName);
             if (property == null) continue;
 
             var value = property.GetValue(relationship);
-            if (value == null) continue;
 
-            ValidatePropertyValue(propertyName, value, propertyConfig.Validation, type);
+            // Validate required fields
+            if (propertySchema.IsRequired)
+            {
+                if (value == null || (value is string stringValue && string.IsNullOrWhiteSpace(stringValue)))
+                {
+                    throw new GraphException($"Property '{propertyName}' on {type} is required and cannot be null or empty.");
+                }
+            }
+
+            // Validate custom validation rules
+            if (propertySchema.Validation is { } validation && value is not null)
+            {
+                ValidatePropertyValue(propertyName, value, validation, type);
+            }
         }
     }
 

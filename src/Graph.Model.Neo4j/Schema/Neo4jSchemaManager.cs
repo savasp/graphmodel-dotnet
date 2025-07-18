@@ -14,235 +14,198 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Schema;
 
-using System.Reflection;
-using Cvoya.Graph.Model.Configuration;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 /// <summary>
-/// Enhanced schema manager that handles property configurations.
+/// Schema manager that handles Neo4j-specific schema operations using the SchemaRegistry.
 /// </summary>
 internal class Neo4jSchemaManager
 {
     private readonly GraphContext _context;
     private readonly ILogger _logger;
-    private readonly PropertyConfigurationRegistry _registry;
+    private readonly SchemaRegistry _schemaRegistry;
     private readonly HashSet<string> _processedSchemas = new();
     private readonly object _schemaLock = new();
+    private bool _isSchemaInitialized = false;
 
-    public Neo4jSchemaManager(GraphContext context, PropertyConfigurationRegistry registry)
+    public Neo4jSchemaManager(GraphContext context, SchemaRegistry schemaRegistry)
     {
         _context = context;
-        _registry = registry;
+        _schemaRegistry = schemaRegistry;
         _logger = context.LoggerFactory?.CreateLogger<Neo4jSchemaManager>() ?? NullLogger<Neo4jSchemaManager>.Instance;
     }
 
     /// <summary>
-    /// Ensures all necessary constraints and indexes exist for an entity.
+    /// Initializes the schema by discovering all entity types and creating the necessary constraints and indexes.
     /// </summary>
-    /// <typeparam name="T">The entity type.</typeparam>
-    /// <param name="entity">The entity instance.</param>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
-    public async Task EnsureSchemaForEntity<T>(T entity) where T : Cvoya.Graph.Model.IEntity
+    public async Task InitializeSchemaAsync(CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(entity);
-
-        var type = entity.GetType();
-        var label = Labels.GetLabelFromType(type);
-        var cacheKey = $"schema_{_context.DatabaseName}_{label}";
-
-        _logger.LogDebug("EnsureSchemaForEntity called for type {EntityType} with label {Label}, cacheKey: {CacheKey}", type.Name, label, cacheKey);
-
         lock (_schemaLock)
         {
-            if (_processedSchemas.Contains(cacheKey))
+            if (_isSchemaInitialized)
             {
-                _logger.LogDebug("Schema already processed for cacheKey: {CacheKey}, skipping", cacheKey);
+                _logger.LogDebug("Schema already initialized, skipping initialization");
                 return;
             }
         }
 
+        _logger.LogInformation("Initializing Neo4j schema...");
+
         try
         {
-            _logger.LogDebug("Creating schema for type {EntityType} with label {Label}", type.Name, label);
-
-            // Create general full text indexes on first schema creation
-            if (_processedSchemas.Count == 0)
+            // Initialize the schema registry if not already done
+            if (!_schemaRegistry.IsInitialized)
             {
-                _logger.LogDebug("First schema creation, creating general full text indexes");
-                await CreateGeneralFullTextIndexes();
+                _schemaRegistry.Initialize();
+                _logger.LogDebug("Schema registry initialized with {NodeCount} node types and {RelationshipCount} relationship types",
+                    _schemaRegistry.GetRegisteredNodeLabels().Count(),
+                    _schemaRegistry.GetRegisteredRelationshipTypes().Count());
             }
 
-            if (entity is Model.INode)
+            // Create constraints and indexes for all discovered node types
+            foreach (var nodeLabel in _schemaRegistry.GetRegisteredNodeLabels())
             {
-                _logger.LogDebug("Entity is INode, creating node schema");
-                await CreateEntityConstraints(label, type);
-                await CreatePropertyIndexes(label, type);
-                await CreateFullTextIndexes(label, type);
-                _logger.LogDebug("Completed creating node schema for {Label}", label);
+                await CreateNodeConstraintsAndIndexesAsync(nodeLabel);
             }
-            else if (entity is Model.IRelationship)
+
+            // Create constraints and indexes for all discovered relationship types
+            foreach (var relationshipType in _schemaRegistry.GetRegisteredRelationshipTypes())
             {
-                _logger.LogDebug("Entity is IRelationship, creating relationship schema");
-                await CreateRelationshipConstraints(label);
-                await CreateRelationshipPropertyIndexes(label);
-                await CreateFullTextIndexes(label, type);
-                _logger.LogDebug("Completed creating relationship schema for {Label}", label);
+                await CreateRelationshipConstraintsAndIndexesAsync(relationshipType);
             }
+
+            // Create general full text indexes
+            await CreateGeneralFullTextIndexesAsync();
 
             lock (_schemaLock)
             {
-                _processedSchemas.Add(cacheKey);
+                _isSchemaInitialized = true;
             }
 
-            _logger.LogDebug("Ensured schema exists for label: {Label}", label);
+            _logger.LogInformation("Neo4j schema initialization completed successfully");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create schema for label: {Label}", label);
-            throw new GraphException($"Failed to create schema for label: {label}", ex);
+            _logger.LogError(ex, "Failed to initialize Neo4j schema");
+            throw new GraphException("Failed to initialize Neo4j schema", ex);
         }
     }
 
     /// <summary>
-    /// Ensures all necessary constraints and indexes exist for a node label.
+    /// Recreates all indexes in the Neo4j database.
     /// </summary>
-    /// <param name="label">The node label.</param>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
-    public async Task EnsureSchemaForNodeLabel(string label)
+    public async Task RecreateIndexesAsync(CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(label);
-
-        var cacheKey = $"schema_{_context.DatabaseName}_{label}";
-
-        lock (_schemaLock)
-        {
-            if (_processedSchemas.Contains(cacheKey))
-                return;
-        }
+        _logger.LogInformation("Recreating Neo4j indexes...");
 
         try
         {
-            await CreateNodeConstraints(label);
-            await CreateNodeValidationTriggers(label);
-            await CreateNodeIndexes(label);
+            // Drop all existing indexes
+            await DropAllIndexesAsync();
 
-            lock (_schemaLock)
+            // Recreate indexes for all registered node types
+            foreach (var nodeLabel in _schemaRegistry.GetRegisteredNodeLabels())
             {
-                _processedSchemas.Add(cacheKey);
+                await CreateNodeIndexesAsync(nodeLabel);
             }
 
-            _logger.LogDebug("Ensured schema exists for node label: {Label}", label);
+            // Recreate indexes for all registered relationship types
+            foreach (var relationshipType in _schemaRegistry.GetRegisteredRelationshipTypes())
+            {
+                await CreateRelationshipIndexesAsync(relationshipType);
+            }
+
+            // Recreate general full text indexes
+            await CreateGeneralFullTextIndexesAsync();
+
+            _logger.LogInformation("Neo4j indexes recreated successfully");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create schema for node label: {Label}", label);
-            throw new GraphException($"Failed to create schema for node label: {label}", ex);
+            _logger.LogError(ex, "Failed to recreate Neo4j indexes");
+            throw new GraphException("Failed to recreate Neo4j indexes", ex);
         }
     }
 
-    /// <summary>
-    /// Ensures all necessary constraints and indexes exist for a relationship type.
-    /// </summary>
-    /// <param name="type">The relationship type.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    public async Task EnsureSchemaForRelationshipType(string type)
+    private async Task CreateNodeConstraintsAndIndexesAsync(string label)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(type);
-
-        var cacheKey = $"schema_{_context.DatabaseName}_{type}";
-
         lock (_schemaLock)
         {
-            if (_processedSchemas.Contains(cacheKey))
-                return;
-        }
-
-        try
-        {
-            await CreateRelationshipConstraints(type);
-            await CreateRelationshipValidationTriggers(type);
-            await CreateRelationshipIndexes(type);
-
-            lock (_schemaLock)
+            if (_processedSchemas.Contains($"node:{label}"))
             {
-                _processedSchemas.Add(cacheKey);
+                _logger.LogDebug("Node schema already processed for label: {Label}", label);
+                return;
             }
+        }
 
-            _logger.LogDebug("Ensured schema exists for relationship type: {Type}", type);
-        }
-        catch (Exception ex)
+        var schema = _schemaRegistry.GetNodeSchema(label);
+        if (schema == null)
         {
-            _logger.LogError(ex, "Failed to create schema for relationship type: {Type}", type);
-            throw new GraphException($"Failed to create schema for relationship type: {type}", ex);
+            _logger.LogWarning("No schema found for node label: {Label}", label);
+            return;
         }
-    }
 
-    private async Task CreateEntityConstraints(string label, Type entityType)
-    {
-        if (typeof(Model.INode).IsAssignableFrom(entityType))
-        {
-            await CreateNodeConstraints(label);
-            await CreateNodeValidationTriggers(label);
-        }
-        else if (typeof(Model.IRelationship).IsAssignableFrom(entityType))
-        {
-            await CreateRelationshipConstraints(label);
-            await CreateRelationshipValidationTriggers(label);
-        }
-    }
-
-    private async Task CreatePropertyIndexes(string label, Type entityType)
-    {
-        if (typeof(Model.INode).IsAssignableFrom(entityType))
-        {
-            await CreateNodeIndexes(label);
-        }
-        else if (typeof(Model.IRelationship).IsAssignableFrom(entityType))
-        {
-            await CreateRelationshipIndexes(label);
-        }
-    }
-
-    private async Task CreateNodeConstraints(string label)
-    {
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         using var tx = await session.BeginTransactionAsync();
 
         try
         {
             // Always create unique constraint on Id
-            var idConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{nameof(Model.IEntity.Id)} IS UNIQUE";
+            var idConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:{label}) REQUIRE n.Id IS UNIQUE";
             var result = await tx.RunAsync(idConstraint);
             await result.ConsumeAsync();
 
-            // Create constraints based on property configurations
-            var config = _registry.GetNodeConfiguration(label);
-            if (config != null)
+            // Handle composite key constraints
+            if (schema.HasCompositeKey())
             {
-                foreach (var (propertyName, propertyConfig) in config.Properties)
-                {
-                    if (propertyConfig.IsUnique)
-                    {
-                        var uniqueConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{propertyName} IS UNIQUE";
-                        result = await tx.RunAsync(uniqueConstraint);
-                        await result.ConsumeAsync();
-                        _logger.LogDebug("Created unique constraint for property {Property} on label {Label}", propertyName, label);
-                    }
+                var keyProperties = schema.GetKeyProperties().ToList();
+                var keyPropertyNames = keyProperties.Select(p => $"n.{p.Name}").ToList();
+                var compositeKeyConstraintName = $"composite_key_{label}_{string.Join("_", keyProperties.Select(p => p.Name))}".ToLowerInvariant();
+                var compositeKeyConstraint = $"CREATE CONSTRAINT {compositeKeyConstraintName} IF NOT EXISTS FOR (n:{label}) REQUIRE ({string.Join(", ", keyPropertyNames)}) IS UNIQUE";
 
-                    if (propertyConfig.IsRequired)
-                    {
-                        var notNullConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:`{label}`) REQUIRE n.{propertyName} IS NOT NULL";
-                        result = await tx.RunAsync(notNullConstraint);
-                        await result.ConsumeAsync();
-                        _logger.LogDebug("Created not null constraint for property {Property} on label {Label}", propertyName, label);
-                    }
+                result = await tx.RunAsync(compositeKeyConstraint);
+                await result.ConsumeAsync();
+                _logger.LogDebug("Created composite key constraint for properties {Properties} on label {Label}", string.Join(", ", keyProperties.Select(p => p.Name)), label);
+            }
+
+            // Create constraints based on property configurations
+            foreach (var (propertyName, propertySchema) in schema.Properties)
+            {
+                if (propertySchema.Ignore) continue;
+
+                // Skip individual unique constraints for key properties if we have a composite key
+                if (propertySchema.IsUnique && !(schema.HasCompositeKey() && propertySchema.IsKey))
+                {
+                    var uniqueConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:{label}) REQUIRE n.{propertySchema.Name} IS UNIQUE";
+                    result = await tx.RunAsync(uniqueConstraint);
+                    await result.ConsumeAsync();
+                    _logger.LogDebug("Created unique constraint for property {Property} on label {Label}", propertySchema.Name, label);
+                }
+
+                if (propertySchema.IsRequired)
+                {
+                    var notNullConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:{label}) REQUIRE n.{propertySchema.Name} IS NOT NULL";
+                    result = await tx.RunAsync(notNullConstraint);
+                    await result.ConsumeAsync();
+                    _logger.LogDebug("Created not null constraint for property {Property} on label {Label}", propertySchema.Name, label);
                 }
             }
 
             await tx.CommitAsync();
+
+            lock (_schemaLock)
+            {
+                _processedSchemas.Add($"node:{label}");
+            }
+
+            _logger.LogDebug("Successfully processed node schema for label: {Label}", label);
         }
         catch (Exception)
         {
@@ -251,146 +214,107 @@ internal class Neo4jSchemaManager
         }
     }
 
-    private async Task CreateNodeValidationTriggers(string label)
+    private async Task CreateRelationshipConstraintsAndIndexesAsync(string type)
     {
-        // Create validation triggers for PropertyValidation rules
-        var config = _registry.GetNodeConfiguration(label);
-        if (config == null) return;
-
-        foreach (var (propertyName, propertyConfig) in config.Properties)
+        lock (_schemaLock)
         {
-            if (propertyConfig.Validation == null) continue;
-
-            var validationLogic = BuildValidationLogic(propertyConfig.Validation, propertyName, label);
-            if (string.IsNullOrEmpty(validationLogic)) continue;
-
-            var triggerName = $"validate_{label}_{propertyName}".ToLowerInvariant();
-            var createTrigger = $"CALL apoc.trigger.add('{triggerName}', '{validationLogic}', {{phase: 'before'}})";
-
-            try
+            if (_processedSchemas.Contains($"relationship:{type}"))
             {
-                using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-                using var tx = await session.BeginTransactionAsync();
-
-                var result = await tx.RunAsync(createTrigger);
-                await result.ConsumeAsync();
-                await tx.CommitAsync();
-
-                _logger.LogDebug("Created validation trigger {Trigger} for property {Property} on label {Label}", triggerName, propertyName, label);
-            }
-            catch (Exception ex) when (ex.Message.Contains("Triggers have not been enabled") || ex.Message.Contains("apoc.trigger.enabled"))
-            {
-                _logger.LogWarning("APOC triggers are not enabled. Property validation will not be enforced at the database level. " +
-                    "To enable triggers, set 'apoc.trigger.enabled=true' in your apoc.conf file. Error: {Error}", ex.Message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to create validation trigger {Trigger} for property {Property} on label {Label}. APOC plugin might not be available or properly configured.", triggerName, propertyName, label);
+                _logger.LogDebug("Relationship schema already processed for type: {Type}", type);
+                return;
             }
         }
-    }
 
-    private async Task CreateRelationshipConstraints(string type)
-    {
+        var schema = _schemaRegistry.GetRelationshipSchema(type);
+        if (schema == null)
+        {
+            _logger.LogWarning("No schema found for relationship type: {Type}", type);
+            return;
+        }
+
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         using var tx = await session.BeginTransactionAsync();
 
         try
         {
-            // Always create unique constraint on Id for relationships
-            var idConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:`{type}`]-() REQUIRE r.{nameof(Model.IEntity.Id)} IS UNIQUE";
+            // Always create unique constraint on Id
+            var idConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.Id IS UNIQUE";
             var result = await tx.RunAsync(idConstraint);
             await result.ConsumeAsync();
 
-            // Create constraints based on property configurations
-            var config = _registry.GetRelationshipConfiguration(type);
-            if (config != null)
+            // Handle composite key constraints
+            if (schema.HasCompositeKey())
             {
-                foreach (var (propertyName, propertyConfig) in config.Properties)
-                {
-                    if (propertyConfig.IsUnique)
-                    {
-                        var uniqueConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:`{type}`]-() REQUIRE r.{propertyName} IS UNIQUE";
-                        result = await tx.RunAsync(uniqueConstraint);
-                        await result.ConsumeAsync();
-                    }
+                var keyProperties = schema.GetKeyProperties().ToList();
+                var keyPropertyNames = keyProperties.Select(p => $"r.{p.Name}").ToList();
+                var compositeKeyConstraintName = $"composite_key_{type}_{string.Join("_", keyProperties.Select(p => p.Name))}".ToLowerInvariant();
+                var compositeKeyConstraint = $"CREATE CONSTRAINT {compositeKeyConstraintName} IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE ({string.Join(", ", keyPropertyNames)}) IS UNIQUE";
 
-                    if (propertyConfig.IsRequired)
-                    {
-                        var notNullConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:`{type}`]-() REQUIRE r.{propertyName} IS NOT NULL";
-                        result = await tx.RunAsync(notNullConstraint);
-                        await result.ConsumeAsync();
-                    }
-                }
-            }
-
-            await tx.CommitAsync();
-        }
-        catch (Exception)
-        {
-            await tx.RollbackAsync();
-            throw;
-        }
-    }
-
-    private async Task CreateRelationshipValidationTriggers(string type)
-    {
-        // Create validation triggers for PropertyValidation rules
-        var config = _registry.GetRelationshipConfiguration(type);
-        if (config == null) return;
-
-        foreach (var (propertyName, propertyConfig) in config.Properties)
-        {
-            if (propertyConfig.Validation == null) continue;
-
-            var validationLogic = BuildValidationLogic(propertyConfig.Validation, propertyName, type);
-            if (string.IsNullOrEmpty(validationLogic)) continue;
-
-            var triggerName = $"validate_{type}_{propertyName}".ToLowerInvariant();
-            var createTrigger = $"CALL apoc.trigger.add('{triggerName}', '{validationLogic}', {{phase: 'before'}})";
-
-            try
-            {
-                using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-                using var tx = await session.BeginTransactionAsync();
-
-                var result = await tx.RunAsync(createTrigger);
+                result = await tx.RunAsync(compositeKeyConstraint);
                 await result.ConsumeAsync();
-                await tx.CommitAsync();
+                _logger.LogDebug("Created composite key constraint for properties {Properties} on relationship type {Type}", string.Join(", ", keyProperties.Select(p => p.Name)), type);
+            }
 
-                _logger.LogDebug("Created validation trigger {Trigger} for property {Property} on relationship type {Type}", triggerName, propertyName, type);
-            }
-            catch (Exception ex) when (ex.Message.Contains("Triggers have not been enabled") || ex.Message.Contains("apoc.trigger.enabled"))
+            // Create constraints based on property configurations
+            foreach (var (propertyName, propertySchema) in schema.Properties)
             {
-                _logger.LogWarning("APOC triggers are not enabled. Property validation will not be enforced at the database level. " +
-                    "To enable triggers, set 'apoc.trigger.enabled=true' in your apoc.conf file. Error: {Error}", ex.Message);
+                if (propertySchema.Ignore) continue;
+
+                // Skip individual unique constraints for key properties if we have a composite key
+                if (propertySchema.IsUnique && !(schema.HasCompositeKey() && propertySchema.IsKey))
+                {
+                    var uniqueConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.{propertySchema.Name} IS UNIQUE";
+                    result = await tx.RunAsync(uniqueConstraint);
+                    await result.ConsumeAsync();
+                    _logger.LogDebug("Created unique constraint for property {Property} on relationship type {Type}", propertySchema.Name, type);
+                }
+
+                if (propertySchema.IsRequired)
+                {
+                    var notNullConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.{propertySchema.Name} IS NOT NULL";
+                    result = await tx.RunAsync(notNullConstraint);
+                    await result.ConsumeAsync();
+                    _logger.LogDebug("Created not null constraint for property {Property} on relationship type {Type}", propertySchema.Name, type);
+                }
             }
-            catch (Exception ex)
+
+            await tx.CommitAsync();
+
+            lock (_schemaLock)
             {
-                _logger.LogWarning(ex, "Failed to create validation trigger {Trigger} for property {Property} on relationship type {Type}. APOC plugin might not be available or properly configured.", triggerName, propertyName, type);
+                _processedSchemas.Add($"relationship:{type}");
             }
+
+            _logger.LogDebug("Successfully processed relationship schema for type: {Type}", type);
+        }
+        catch (Exception)
+        {
+            await tx.RollbackAsync();
+            throw;
         }
     }
 
-    private async Task CreateRelationshipPropertyIndexes(string type)
+    private async Task CreateNodeIndexesAsync(string label)
     {
+        var schema = _schemaRegistry.GetNodeSchema(label);
+        if (schema == null) return;
+
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         using var tx = await session.BeginTransactionAsync();
 
         try
         {
-            var config = _registry.GetRelationshipConfiguration(type);
-            if (config != null)
+            foreach (var (propertyName, propertySchema) in schema.Properties)
             {
-                foreach (var (propertyName, propertyConfig) in config.Properties)
+                if (propertySchema.Ignore) continue;
+
+                if (propertySchema.IsIndexed)
                 {
-                    if (propertyConfig.IsIndexed)
-                    {
-                        var indexName = $"idx_{type}_{propertyName}".ToLowerInvariant();
-                        var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR ()-[r:`{type}`]-() ON (r.{propertyName})";
-                        var result = await tx.RunAsync(createIndex);
-                        await result.ConsumeAsync();
-                    }
+                    var indexName = $"idx_{label}_{propertySchema.Name}".ToLowerInvariant();
+                    var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR (n:{label}) ON (n.{propertySchema.Name})";
+                    var result = await tx.RunAsync(createIndex);
+                    await result.ConsumeAsync();
+                    _logger.LogDebug("Created index {Index} for property {Property} on label {Label}", indexName, propertySchema.Name, label);
                 }
             }
 
@@ -403,26 +327,27 @@ internal class Neo4jSchemaManager
         }
     }
 
-    private async Task CreateNodeIndexes(string label)
+    private async Task CreateRelationshipIndexesAsync(string type)
     {
+        var schema = _schemaRegistry.GetRelationshipSchema(type);
+        if (schema == null) return;
+
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         using var tx = await session.BeginTransactionAsync();
 
         try
         {
-            var config = _registry.GetNodeConfiguration(label);
-            if (config != null)
+            foreach (var (propertyName, propertySchema) in schema.Properties)
             {
-                foreach (var (propertyName, propertyConfig) in config.Properties)
+                if (propertySchema.Ignore) continue;
+
+                if (propertySchema.IsIndexed)
                 {
-                    if (propertyConfig.IsIndexed)
-                    {
-                        var indexName = $"idx_{label}_{propertyName}".ToLowerInvariant();
-                        var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR (n:`{label}`) ON (n.{propertyName})";
-                        var result = await tx.RunAsync(createIndex);
-                        await result.ConsumeAsync();
-                        _logger.LogDebug("Created index {Index} for property {Property} on label {Label}", indexName, propertyName, label);
-                    }
+                    var indexName = $"idx_{type}_{propertySchema.Name}".ToLowerInvariant();
+                    var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR ()-[r:{type}]-() ON (r.{propertySchema.Name})";
+                    var result = await tx.RunAsync(createIndex);
+                    await result.ConsumeAsync();
+                    _logger.LogDebug("Created index {Index} for property {Property} on relationship type {Type}", indexName, propertySchema.Name, type);
                 }
             }
 
@@ -435,27 +360,59 @@ internal class Neo4jSchemaManager
         }
     }
 
-    private async Task CreateRelationshipIndexes(string type)
+    private async Task CreateGeneralFullTextIndexesAsync()
+    {
+        _logger.LogDebug("Creating general full text indexes");
+
+        var nodeLabels = _schemaRegistry.GetRegisteredNodeLabels().ToList();
+        var relationshipTypes = _schemaRegistry.GetRegisteredRelationshipTypes().ToList();
+
+        if (nodeLabels.Count > 0)
+        {
+            await CreateNodeLabelFullTextIndexAsync(nodeLabels);
+        }
+
+        if (relationshipTypes.Count > 0)
+        {
+            await CreateRelationshipTypeFullTextIndexAsync(relationshipTypes);
+        }
+    }
+
+    private async Task CreateNodeLabelFullTextIndexAsync(IEnumerable<string> labels)
     {
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         using var tx = await session.BeginTransactionAsync();
 
         try
         {
-            var config = _registry.GetRelationshipConfiguration(type);
-            if (config != null)
+            // Create separate full-text indexes for each label since Neo4j doesn't support multiple labels in one index
+            foreach (var label in labels)
             {
-                foreach (var (propertyName, propertyConfig) in config.Properties)
+                var schema = _schemaRegistry.GetNodeSchema(label);
+                if (schema == null) continue;
+
+                var stringProps = schema.Properties
+                    .Where(p =>
+                        !p.Value.Ignore &&
+                        p.Value.IncludeInFullTextSearch &&
+                        p.Value.PropertyInfo.PropertyType == typeof(string))
+                    .Select(p => $"n.{p.Value.Name}")
+                    .ToList();
+
+                if (stringProps.Count == 0)
                 {
-                    if (propertyConfig.IsIndexed)
-                    {
-                        var indexName = $"idx_{type}_{propertyName}".ToLowerInvariant();
-                        var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR ()-[r:`{type}`]-() ON (r.{propertyName})";
-                        var result = await tx.RunAsync(createIndex);
-                        await result.ConsumeAsync();
-                        _logger.LogDebug("Created index {Index} for property {Property} on relationship type {Type}", indexName, propertyName, type);
-                    }
+                    _logger.LogDebug("No string properties for full text index on node label: {Label}", label);
+                    continue;
                 }
+
+                var propsList = string.Join(", ", stringProps);
+                var indexName = $"node_fulltext_index_{label.ToLowerInvariant()}";
+                var createIndex = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR (n:{label}) ON EACH [{propsList}]";
+
+                var result = await tx.RunAsync(createIndex);
+                await result.ConsumeAsync();
+
+                _logger.LogDebug("Created full text index {Index} for node label: {Label}", indexName, label);
             }
 
             await tx.CommitAsync();
@@ -467,438 +424,104 @@ internal class Neo4jSchemaManager
         }
     }
 
-    // Helper to build Cypher validation logic for APOC trigger
-    private string BuildValidationLogic(Cvoya.Graph.Model.PropertyValidation validation, string propertyName, string label)
+    private async Task CreateRelationshipTypeFullTextIndexAsync(IEnumerable<string> types)
     {
-        var checks = new List<string>();
-        // Numeric value checks
-        if (validation.MinValue != null)
+        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        using var tx = await session.BeginTransactionAsync();
+
+        try
         {
-            checks.Add($"n.{propertyName} < {validation.MinValue}");
+            // Create separate full-text indexes for each relationship type since Neo4j doesn't support multiple types in one index
+            foreach (var type in types)
+            {
+                var schema = _schemaRegistry.GetRelationshipSchema(type);
+                if (schema == null) continue;
+
+                var stringProps = schema.Properties
+                    .Where(p =>
+                        !p.Value.Ignore &&
+                        p.Value.IncludeInFullTextSearch &&
+                        p.Value.PropertyInfo.PropertyType == typeof(string))
+                    .Select(p => $"r.{p.Value.Name}")
+                    .ToList();
+
+                if (stringProps.Count == 0)
+                {
+                    _logger.LogDebug("No string properties for full text index on relationship type: {Type}", type);
+                    continue;
+                }
+
+                var propsList = string.Join(", ", stringProps);
+                var indexName = $"relationship_fulltext_index_{type.ToLowerInvariant()}";
+                var createIndex = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR ()-[r:{type}]->() ON EACH [{propsList}]";
+
+                var result = await tx.RunAsync(createIndex);
+                await result.ConsumeAsync();
+
+                _logger.LogDebug("Created full text index {Index} for relationship type: {Type}", indexName, type);
+            }
+
+            await tx.CommitAsync();
         }
-        if (validation.MaxValue != null)
+        catch (Exception)
         {
-            checks.Add($"n.{propertyName} > {validation.MaxValue}");
+            await tx.RollbackAsync();
+            throw;
         }
-        // String length checks
-        if (validation.MinLength != null)
+    }
+
+    private async Task DropAllIndexesAsync()
+    {
+        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        using var tx = await session.BeginTransactionAsync();
+
+        try
         {
-            checks.Add($"size(n.{propertyName}) < {validation.MinLength}");
+            // Drop all indexes except constraints
+            var dropIndexes = "SHOW INDEXES WHERE type = 'BTREE' OR type = 'FULLTEXT' YIELD name";
+            var result = await tx.RunAsync(dropIndexes);
+            var records = await result.ToListAsync();
+
+            foreach (var record in records)
+            {
+                var indexName = record["name"].ToString();
+                if (!string.IsNullOrEmpty(indexName))
+                {
+                    var dropIndex = $"DROP INDEX {indexName} IF EXISTS";
+                    await tx.RunAsync(dropIndex);
+                    _logger.LogDebug("Dropped index: {IndexName}", indexName);
+                }
+            }
+
+            await tx.CommitAsync();
+            _logger.LogInformation("Dropped {Count} indexes", records.Count);
         }
-        if (validation.MaxLength != null)
+        catch (Exception)
         {
-            checks.Add($"size(n.{propertyName}) > {validation.MaxLength}");
+            await tx.RollbackAsync();
+            throw;
         }
-        // Pattern check
-        if (!string.IsNullOrEmpty(validation.Pattern))
-        {
-            // Cypher =~ operator for regex
-            checks.Add($"NOT n.{propertyName} =~ '{validation.Pattern.Replace("'", "\\'")}'");
-        }
-        if (checks.Count == 0)
-            return string.Empty;
-        // APOC trigger script: fail if any check is true
-        var condition = string.Join(" OR ", checks);
-        // The trigger script must be a single-line string for apoc.trigger.add
-        var cypher = $@"UNWIND $createdNodes AS n WITH n WHERE n.{propertyName} IS NOT NULL AND ({condition}) CALL apoc.util.validate(true, 'Validation failed for {label}.{propertyName}', [n]) YIELD value RETURN value";
-        return cypher.Replace("\n", " ").Replace("\r", " ").Replace("'", "\\'");
     }
 
     /// <summary>
-    /// Clears the processed schemas cache.
+    /// Clears the processed schemas cache and resets the initialization state.
     /// </summary>
     public void ClearCache()
     {
         lock (_schemaLock)
         {
             _processedSchemas.Clear();
+            _isSchemaInitialized = false;
         }
-        _logger.LogDebug("Cleared schema cache");
+        _logger.LogDebug("Cleared schema cache and reset initialization state");
     }
 
     /// <summary>
-    /// Checks if a schema has already been processed.
+    /// Gets the schema registry.
     /// </summary>
-    /// <param name="cacheKey">The cache key to check.</param>
-    /// <returns>True if the schema has been processed, false otherwise.</returns>
-    public bool IsSchemaProcessed(string cacheKey)
+    /// <returns>The schema registry.</returns>
+    public SchemaRegistry GetSchemaRegistry()
     {
-        lock (_schemaLock)
-        {
-            return _processedSchemas.Contains(cacheKey);
-        }
+        return _schemaRegistry;
     }
-
-    /// <summary>
-    /// Gets the property configuration registry.
-    /// </summary>
-    /// <returns>The property configuration registry.</returns>
-    public PropertyConfigurationRegistry GetRegistry()
-    {
-        return _registry;
-    }
-
-    public async Task EnsureSchemaForNode<T>(T node) where T : Model.INode
-    {
-        ArgumentNullException.ThrowIfNull(node);
-
-        var type = node.GetType();
-        var label = Labels.GetLabelFromType(type);
-        var cacheKey = $"schema_{_context.DatabaseName}_{label}";
-
-        lock (_schemaLock)
-        {
-            if (_processedSchemas.Contains(cacheKey))
-                return;
-        }
-
-        try
-        {
-            await CreateEntityConstraints(label, type);
-            await CreatePropertyIndexes(label, type);
-            await CreateFullTextIndexes(label, type);
-
-            lock (_schemaLock)
-            {
-                _processedSchemas.Add(cacheKey);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to create schema for node label: {Label}", label);
-            throw new GraphException($"Failed to create schema for node label: {label}", ex);
-        }
-    }
-
-    public async Task EnsureSchemaForRelationship<T>(T relationship) where T : Model.IRelationship
-    {
-        ArgumentNullException.ThrowIfNull(relationship);
-
-        var type = relationship.GetType();
-        var label = Labels.GetLabelFromType(type);
-        var cacheKey = $"schema_{_context.DatabaseName}_{label}";
-
-        lock (_schemaLock)
-        {
-            if (_processedSchemas.Contains(cacheKey))
-                return;
-        }
-
-        try
-        {
-            await CreateRelationshipConstraints(label);
-            await CreateRelationshipPropertyIndexes(label);
-            await CreateFullTextIndexes(label, type);
-
-            lock (_schemaLock)
-            {
-                _processedSchemas.Add(cacheKey);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to create schema for relationship type: {Label}", label);
-            throw new GraphException($"Failed to create schema for relationship type: {label}", ex);
-        }
-    }
-
-    /// <summary>
-    /// Creates full text indexes for the given entity type.
-    /// </summary>
-    private async Task CreateFullTextIndexes(string label, Type entityType)
-    {
-        _logger.LogDebug("CreateFullTextIndexes called for label {Label} and type {EntityType}", label, entityType.Name);
-
-        try
-        {
-            var isNode = typeof(Model.INode).IsAssignableFrom(entityType);
-            var isRelationship = typeof(Model.IRelationship).IsAssignableFrom(entityType);
-
-            _logger.LogDebug("Entity type analysis: isNode={IsNode}, isRelationship={IsRelationship}", isNode, isRelationship);
-
-            if (isNode)
-            {
-                _logger.LogDebug("Creating node label full text index for label {Label}", label);
-                await CreateNodeLabelFullTextIndex(label);
-            }
-            if (isRelationship)
-            {
-                _logger.LogDebug("Creating relationship type full text index for type {Label}", label);
-                await CreateRelationshipTypeFullTextIndex(label);
-            }
-
-            _logger.LogDebug("Successfully created full text indexes for {EntityType} with label {Label}", entityType.Name, label);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to create full text indexes for {EntityType} with label {Label}", entityType.Name, label);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Discovers all types in loaded assemblies that implement INode or IRelationship.
-    /// </summary>
-    private static (List<Type> nodeTypes, List<Type> relationshipTypes) DiscoverGraphEntityTypes()
-    {
-        var nodeTypes = new List<Type>();
-        var relationshipTypes = new List<Type>();
-        var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-        foreach (var assembly in assemblies)
-        {
-            Type[] types;
-            try { types = assembly.GetTypes(); } catch { continue; }
-            foreach (var type in types)
-            {
-                if (type.IsAbstract || type.IsInterface) continue;
-                if (typeof(Cvoya.Graph.Model.INode).IsAssignableFrom(type))
-                    nodeTypes.Add(type);
-                else if (typeof(Cvoya.Graph.Model.IRelationship).IsAssignableFrom(type))
-                    relationshipTypes.Add(type);
-            }
-        }
-        return (nodeTypes, relationshipTypes);
-    }
-
-    /// <summary>
-    /// Creates full text indexes for all discovered node labels and relationship types.
-    /// </summary>
-    public async Task CreateGeneralFullTextIndexes()
-    {
-        _logger.LogDebug("CreateGeneralFullTextIndexes called (auto-discovering types)");
-        var (nodeTypes, relationshipTypes) = DiscoverGraphEntityTypes();
-        var createdNodeLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var createdRelTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var allNodeProperties = new HashSet<string>();
-        var allRelationshipProperties = new HashSet<string>();
-        foreach (var nodeType in nodeTypes)
-        {
-            var label = Labels.GetLabelFromType(nodeType);
-            if (createdNodeLabels.Add(label))
-            {
-                await CreateNodeLabelFullTextIndex(label);
-                // For global index, only include properties that are explicitly configured for full text search
-                var properties = GetExplicitlySearchablePropertiesForType(nodeType);
-                foreach (var prop in properties)
-                {
-                    allNodeProperties.Add(prop);
-                }
-            }
-        }
-        foreach (var relType in relationshipTypes)
-        {
-            var typeLabel = Labels.GetLabelFromType(relType);
-            if (createdRelTypes.Add(typeLabel))
-            {
-                await CreateRelationshipTypeFullTextIndex(typeLabel);
-                var properties = GetSearchablePropertiesForType(relType);
-                foreach (var prop in properties)
-                {
-                    allRelationshipProperties.Add(prop);
-                }
-            }
-        }
-        // Create global indexes for all discovered node labels and all discovered relationship types
-        if (createdNodeLabels.Count > 0 && allNodeProperties.Any())
-        {
-            using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-            using var tx = await session.BeginTransactionAsync();
-            var labelList = string.Join("|", createdNodeLabels);
-            var propertyList = string.Join(", ", allNodeProperties.Select(p => $"n.{p}"));
-            var indexQuery = $"CREATE FULLTEXT INDEX nodes_all_labels_fulltext_index IF NOT EXISTS FOR (n:{labelList}) ON EACH [{propertyList}]";
-            var result = await tx.RunAsync(indexQuery);
-            await result.ConsumeAsync();
-            await tx.CommitAsync();
-            _logger.LogDebug("Created global node full text index for all labels with properties: {Properties}", string.Join(", ", allNodeProperties));
-        }
-        if (createdRelTypes.Count > 1 && allRelationshipProperties.Any())
-        {
-            using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-            using var tx = await session.BeginTransactionAsync();
-            var typeList = string.Join("|", createdRelTypes);
-            var propertyList = string.Join(", ", allRelationshipProperties.Select(p => $"r.{p}"));
-            var indexQuery = $"CREATE FULLTEXT INDEX relationships_all_types_fulltext_index IF NOT EXISTS FOR ()-[r:{typeList}]-() ON EACH [{propertyList}]";
-            var result = await tx.RunAsync(indexQuery);
-            await result.ConsumeAsync();
-            await tx.CommitAsync();
-            _logger.LogDebug("Created global relationship full text index for all discovered types with properties: {Properties}", string.Join(", ", allRelationshipProperties));
-        }
-    }
-
-    /// <summary>
-    /// Gets the searchable properties for a strongly typed entity based on PropertyAttribute configuration.
-    /// </summary>
-    private static List<string> GetSearchablePropertiesForType(Type entityType)
-    {
-        var searchableProperties = new List<string>();
-
-        foreach (var prop in entityType.GetProperties())
-        {
-            // Skip the base entity properties
-            if (prop.Name == nameof(Model.IEntity.Id)) continue;
-            if (typeof(Model.IRelationship).IsAssignableFrom(entityType))
-            {
-                if (prop.Name == nameof(Model.IRelationship.StartNodeId) ||
-                    prop.Name == nameof(Model.IRelationship.EndNodeId) ||
-                    prop.Name == nameof(Model.IRelationship.Direction))
-                    continue;
-            }
-
-            // Only include string properties by default
-            if (prop.PropertyType != typeof(string)) continue;
-
-            // Check for explicit inclusion/exclusion via PropertyAttribute
-            var propertyAttr = prop.GetCustomAttribute<PropertyAttribute>();
-            if (propertyAttr != null)
-            {
-                if (propertyAttr.Ignore) continue;
-                if (propertyAttr.IncludeInFullTextSearch == false) continue;
-            }
-
-            // Include by default for string properties (unless explicitly excluded above)
-            var propertyName = propertyAttr?.Label ?? prop.Name;
-            searchableProperties.Add(propertyName);
-        }
-
-        return searchableProperties;
-    }
-
-    /// <summary>
-    /// Gets only the explicitly searchable properties for a strongly typed entity.
-    /// This is used for global indexes to avoid including all string properties by default.
-    /// </summary>
-    private static List<string> GetExplicitlySearchablePropertiesForType(Type entityType)
-    {
-        var searchableProperties = new List<string>();
-
-        foreach (var prop in entityType.GetProperties())
-        {
-            // Skip the base entity properties
-            if (prop.Name == nameof(Model.IEntity.Id)) continue;
-            if (typeof(Model.IRelationship).IsAssignableFrom(entityType))
-            {
-                if (prop.Name == nameof(Model.IRelationship.StartNodeId) ||
-                    prop.Name == nameof(Model.IRelationship.EndNodeId) ||
-                    prop.Name == nameof(Model.IRelationship.Direction))
-                    continue;
-            }
-
-            // Only include string properties
-            if (prop.PropertyType != typeof(string)) continue;
-
-            // Check for explicit inclusion/exclusion via PropertyAttribute
-            var propertyAttr = prop.GetCustomAttribute<PropertyAttribute>();
-            if (propertyAttr != null)
-            {
-                if (propertyAttr.Ignore) continue;
-                // Only include if explicitly set to true (not by default)
-                if (propertyAttr.IncludeInFullTextSearch == true)
-                {
-                    var propertyName = propertyAttr.Label ?? prop.Name;
-                    searchableProperties.Add(propertyName);
-                }
-            }
-            // Don't include properties without explicit configuration in global index
-        }
-
-        return searchableProperties;
-    }
-
-
-
-    /// <summary>
-    /// Creates a full text index for a specific node label.
-    /// </summary>
-    private async Task CreateNodeLabelFullTextIndex(string label)
-    {
-        _logger.LogDebug("CreateNodeLabelFullTextIndex called for label {Label}", label);
-
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
-
-        try
-        {
-            var indexName = $"nodes_{label.ToLowerInvariant()}_fulltext_index";
-
-            // Find the actual type for this label
-            var nodeType = DiscoverGraphEntityTypes().nodeTypes.FirstOrDefault(t => Labels.GetLabelFromType(t).Equals(label, StringComparison.OrdinalIgnoreCase));
-            if (nodeType == null)
-            {
-                _logger.LogWarning("No strongly typed entity found for label {Label}. Skipping full text index creation.", label);
-                await tx.RollbackAsync();
-                return;
-            }
-
-            var searchableProperties = GetSearchablePropertiesForType(nodeType);
-
-            if (!searchableProperties.Any())
-            {
-                _logger.LogWarning("No searchable properties configured for label {Label}. Skipping full text index creation.", label);
-                await tx.RollbackAsync();
-                return;
-            }
-            var propertyList = string.Join(", ", searchableProperties.Select(p => $"n.{p}"));
-            var indexQuery = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR (n:`{label}`) ON EACH [{propertyList}]";
-            var result = await tx.RunAsync(indexQuery);
-            await result.ConsumeAsync();
-            await tx.CommitAsync();
-            _logger.LogDebug("Created node label full text index {IndexName} for label {Label} with properties: {Properties}", indexName, label, string.Join(", ", searchableProperties));
-        }
-        catch (Exception ex)
-        {
-            await tx.RollbackAsync();
-            _logger.LogError(ex, "Failed to create node label full text index for label {Label}", label);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Creates a full text index for a specific relationship type.
-    /// </summary>
-    private async Task CreateRelationshipTypeFullTextIndex(string type)
-    {
-        _logger.LogDebug("CreateRelationshipTypeFullTextIndex called for type {Type}", type);
-
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
-
-        try
-        {
-            var indexName = $"relationships_{type.ToLowerInvariant()}_fulltext_index";
-
-            // Find the actual type for this relationship type
-            var relType = DiscoverGraphEntityTypes().relationshipTypes.FirstOrDefault(t => Labels.GetLabelFromType(t).Equals(type, StringComparison.OrdinalIgnoreCase));
-            if (relType == null)
-            {
-                _logger.LogWarning("No strongly typed entity found for relationship type {Type}. Skipping full text index creation.", type);
-                await tx.RollbackAsync();
-                return;
-            }
-
-            var searchableProperties = GetSearchablePropertiesForType(relType);
-
-            if (!searchableProperties.Any())
-            {
-                _logger.LogWarning("No searchable properties configured for relationship type {Type}. Skipping full text index creation.", type);
-                await tx.RollbackAsync();
-                return;
-            }
-            var propertyList = string.Join(", ", searchableProperties.Select(p => $"r.{p}"));
-            var indexQuery = $"CREATE FULLTEXT INDEX {indexName} IF NOT EXISTS FOR ()-[r:`{type}`]-() ON EACH [{propertyList}]";
-            var result = await tx.RunAsync(indexQuery);
-            await result.ConsumeAsync();
-            await tx.CommitAsync();
-            _logger.LogDebug("Created relationship type full text index {IndexName} for type {Type} with properties: {Properties}", indexName, type, string.Join(", ", searchableProperties));
-        }
-        catch (Exception ex)
-        {
-            await tx.RollbackAsync();
-            _logger.LogError(ex, "Failed to create relationship type full text index for type {Type}", type);
-            throw;
-        }
-    }
-
-
-
-
 }

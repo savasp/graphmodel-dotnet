@@ -14,8 +14,6 @@
 
 namespace Cvoya.Graph.Model;
 
-using Cvoya.Graph.Model.Configuration;
-
 /// <summary>
 /// Interface for the Graph client. Provides CRUD operations for nodes and relationships, querying, and transaction management.
 /// All methods throw <see cref="GraphException"/> for underlying graph errors.
@@ -23,10 +21,10 @@ using Cvoya.Graph.Model.Configuration;
 public interface IGraph : IAsyncDisposable
 {
     /// <summary>
-    /// Gets the property configuration registry for the graph.
-    /// This registry is used to manage property configurations for nodes and relationships.
+    /// Gets the schema registry for the graph.
+    /// This registry is used to manage schema information for nodes and relationships.
     /// </summary>
-    PropertyConfigurationRegistry PropertyConfigurationRegistry { get; }
+    SchemaRegistry SchemaRegistry { get; }
 
     /// <summary>
     /// Gets a new transaction that can be used for multiple operations
@@ -248,4 +246,13 @@ public interface IGraph : IAsyncDisposable
     /// <returns>A queryable interface to the typed relationship search results</returns>
     /// <exception cref="GraphException">Thrown when the search fails</exception>
     IGraphRelationshipQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : IRelationship;
+
+    /// <summary>
+    /// Recreates all indexes in the graph database.
+    /// This method will drop existing indexes and recreate them based on the current schema.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    /// <exception cref="GraphException">Thrown when index recreation fails.</exception>
+    Task RecreateIndexesAsync(CancellationToken cancellationToken = default);
 }

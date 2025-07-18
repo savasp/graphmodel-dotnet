@@ -14,7 +14,6 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Core;
 
-using Cvoya.Graph.Model.Configuration;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 
@@ -29,7 +28,7 @@ internal class Neo4jGraph : IGraph
 {
     private readonly ILogger _logger;
     private readonly GraphContext _graphContext;
-    private readonly PropertyConfigurationRegistry _registry;
+    private readonly SchemaRegistry _schemaRegistry;
 
     // Keep a reference to the graph store to ensure
     // that it's not garbage collected
@@ -38,10 +37,10 @@ internal class Neo4jGraph : IGraph
     /// <summary>
     /// Initializes a new instance of the <see cref="Neo4jGraph"/> class.
     /// </summary>
-    public Neo4jGraph(Neo4jGraphStore store, string databaseName, PropertyConfigurationRegistry? registry = null, ILoggerFactory? loggerFactory = null)
+    public Neo4jGraph(Neo4jGraphStore store, string databaseName, SchemaRegistry? schemaRegistry = null, ILoggerFactory? loggerFactory = null)
     {
         _logger = loggerFactory?.CreateLogger<Neo4jGraph>() ?? NullLogger<Neo4jGraph>.Instance;
-        _registry = registry ?? new PropertyConfigurationRegistry();
+        _schemaRegistry = schemaRegistry ?? new SchemaRegistry();
         _graphStore = store ?? throw new ArgumentNullException(nameof(store));
 
         ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
@@ -51,12 +50,15 @@ internal class Neo4jGraph : IGraph
             _graphStore.Driver,
             databaseName,
             loggerFactory,
-            _registry);
+            _schemaRegistry);
+
+        // Initialize the schema registry automatically
+        _schemaRegistry.Initialize();
 
         _logger.LogInformation("Graph initialized for database '{0}'", databaseName);
     }
 
-    public PropertyConfigurationRegistry PropertyConfigurationRegistry => _registry;
+    public SchemaRegistry SchemaRegistry => _schemaRegistry;
 
     /// <inheritdoc />
     public async Task<IGraphTransaction> GetTransactionAsync()
@@ -166,7 +168,7 @@ internal class Neo4jGraph : IGraph
             _logger.LogDebug("Creating node of type {NodeType}", typeof(N).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
-            await _graphContext.SchemaManager.EnsureSchemaForEntity(node);
+            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 graphContext: _graphContext,
@@ -206,7 +208,7 @@ internal class Neo4jGraph : IGraph
             _logger.LogDebug("Creating relationship of type {RelationshipType}", typeof(R).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
-            await _graphContext.SchemaManager.EnsureSchemaForEntity(relationship);
+            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
@@ -585,6 +587,22 @@ internal class Neo4jGraph : IGraph
             var message = $"Failed to create typed relationship search queryable for type {typeof(T).Name} and query: {query}";
             _logger.LogError(ex, message);
             throw new GraphException(message, ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task RecreateIndexesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Recreating indexes for Neo4j graph");
+            await _graphContext.SchemaManager.RecreateIndexesAsync(cancellationToken);
+            _logger.LogInformation("Index recreation completed successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to recreate indexes");
+            throw new GraphException("Failed to recreate indexes", ex);
         }
     }
 

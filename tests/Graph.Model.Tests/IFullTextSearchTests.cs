@@ -424,68 +424,42 @@ public interface IFullTextSearchTests : IGraphModelTest
     }
 
     [Fact]
-    public async Task CanSearchDynamicNodeWithFullTextSearchPropertyConfig()
+    public async Task CanSearchDynamicNodeWithFullTextSearch()
     {
-        // Register property configuration for the label
-        var label = "DynamicLabel";
-        var configRegistry = this.Graph.PropertyConfigurationRegistry;
-        configRegistry.ConfigureNode(label, cfg =>
+        // Create a DynamicNode with properties
+        var node = new DynamicNode(new[] { "DynamicLabel" }, new Dictionary<string, object?>
         {
-            cfg.Property("IndexedProp", p => p.IsIndexed = true);
-            cfg.Property("NonIndexedProp", p => p.IsIndexed = false);
-        });
-
-        // Create a DynamicNode with both indexed and non-indexed properties
-        var node = new DynamicNode(new[] { label }, new Dictionary<string, object?>
-        {
-            ["IndexedProp"] = "searchable-value",
-            ["NonIndexedProp"] = "not-searchable"
+            ["Name"] = "searchable-value",
+            ["Description"] = "not-searchable"
         });
         await this.Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        // Should find node when searching for indexed property value
+        // Should find node when searching for property value
         var found = await this.Graph.SearchNodes<DynamicNode>("searchable-value").ToListAsync();
         Assert.Single(found);
-        Assert.Equal("searchable-value", found[0].Properties["IndexedProp"]);
-
-        // Should NOT find node when searching for non-indexed property value
-        var notFound = await this.Graph.SearchNodes<DynamicNode>("not-searchable").ToListAsync();
-        Assert.Empty(notFound);
+        Assert.Equal("searchable-value", found[0].Properties["Name"]);
     }
 
     [Fact]
-    public async Task CanSearchDynamicRelationshipWithFullTextSearchPropertyConfig()
+    public async Task CanSearchDynamicRelationshipWithFullTextSearch()
     {
-        // Register property configuration for the relationship type
-        var relType = "DynamicRelType";
-        var configRegistry = this.Graph.PropertyConfigurationRegistry;
-        configRegistry.ConfigureRelationship(relType, cfg =>
-        {
-            cfg.Property("IndexedRelProp", p => p.IsIndexed = true);
-            cfg.Property("NonIndexedRelProp", p => p.IsIndexed = false);
-        });
-
         // Create two DynamicNodes as endpoints
         var nodeA = new DynamicNode(new[] { "A" }, new Dictionary<string, object?> { ["Name"] = "NodeA" });
         var nodeB = new DynamicNode(new[] { "B" }, new Dictionary<string, object?> { ["Name"] = "NodeB" });
         await this.Graph.CreateNodeAsync(nodeA, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(nodeB, null, TestContext.Current.CancellationToken);
 
-        // Create a DynamicRelationship with both indexed and non-indexed properties
-        var rel = new DynamicRelationship(nodeA.Id, nodeB.Id, relType, new Dictionary<string, object?>
+        // Create a DynamicRelationship with properties
+        var rel = new DynamicRelationship(nodeA.Id, nodeB.Id, "DynamicRelType", new Dictionary<string, object?>
         {
-            ["IndexedRelProp"] = "rel-searchable",
-            ["NonIndexedRelProp"] = "rel-not-searchable"
+            ["Name"] = "rel-searchable",
+            ["Description"] = "rel-not-searchable"
         });
         await this.Graph.CreateRelationshipAsync(rel, null, TestContext.Current.CancellationToken);
 
-        // Should find relationship when searching for indexed property value
+        // Should find relationship when searching for property value
         var found = await this.Graph.SearchRelationships<DynamicRelationship>("rel-searchable").ToListAsync();
         Assert.Single(found);
-        Assert.Equal("rel-searchable", found[0].Properties["IndexedRelProp"]);
-
-        // Should NOT find relationship when searching for non-indexed property value
-        var notFound = await this.Graph.SearchRelationships<DynamicRelationship>("rel-not-searchable").ToListAsync();
-        Assert.Empty(notFound);
+        Assert.Equal("rel-searchable", found[0].Properties["Name"]);
     }
 }

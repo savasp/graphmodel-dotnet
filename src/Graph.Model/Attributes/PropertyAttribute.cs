@@ -14,8 +14,6 @@
 
 namespace Cvoya.Graph.Model;
 
-using Cvoya.Graph.Model;
-
 /// <summary>
 /// Enhanced attribute to configure property behavior in the graph database.
 /// </summary>
@@ -84,51 +82,27 @@ public class PropertyAttribute() : Attribute
     public bool IsRequired { get; set; } = false;
 
     /// <summary>
-    /// Gets or sets validation rules for this property.
-    /// </summary>
-    /// <value>The validation rules for this property.</value>
-    public PropertyValidation? Validation { get; set; } = null;
-
-    /// <summary>
     /// Gets or sets whether this property should be included in full text search indexes.
     /// </summary>
     /// <value>True if the property should be included in full text search, false to exclude it. 
     /// If true (default), string properties are included by default.</value>
     public bool IncludeInFullTextSearch { get; set; } = true;
-}
 
-/// <summary>
-/// Defines validation rules for properties.
-/// </summary>
-public class PropertyValidation
-{
     /// <summary>
     /// Gets or sets the minimum length for string properties.
     /// </summary>
     /// <value>The minimum length for string properties, or null if not specified.</value>
-    public int? MinLength { get; set; } = null;
+    public int MinLength { get; init; } = int.MinValue;
 
     /// <summary>
     /// Gets or sets the maximum length for string properties.
     /// </summary>
     /// <value>The maximum length for string properties, or null if not specified.</value>
-    public int? MaxLength { get; set; } = null;
-
-    /// <summary>
-    /// Gets or sets the minimum value for numeric properties.
-    /// </summary>
-    /// <value>The minimum value for numeric properties, or null if not specified.</value>
-    public object? MinValue { get; set; } = null;
-
-    /// <summary>
-    /// Gets or sets the maximum value for numeric properties.
-    /// </summary>
-    /// <value>The maximum value for numeric properties, or null if not specified.</value>
-    public object? MaxValue { get; set; } = null;
+    public int MaxLength { get; init; } = int.MaxValue;
 
     /// <summary>
     /// Gets or sets a regular expression pattern for string validation.
     /// </summary>
     /// <value>The regular expression pattern for string validation, or null if not specified.</value>
-    public string? Pattern { get; set; } = null;
+    public string Pattern { get; init; } = string.Empty;
 }

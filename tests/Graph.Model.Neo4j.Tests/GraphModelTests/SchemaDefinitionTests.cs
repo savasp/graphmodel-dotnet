@@ -14,8 +14,8 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-public class PropertyConfigurationTests(TestInfrastructureFixture fixture) :
+public class SchemaDefinitionTests(TestInfrastructureFixture fixture) :
     Neo4jTest(fixture, getNewDatabase: true),
-    Model.Tests.IPropertyConfigurationTests
+    Model.Tests.ISchemaDefinitionTests
 {
 }

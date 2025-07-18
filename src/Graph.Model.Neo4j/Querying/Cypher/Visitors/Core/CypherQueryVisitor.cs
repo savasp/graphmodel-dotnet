@@ -1140,8 +1140,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
             // Entity search (both nodes and relationships)
             var nodeAlias = _context.Scope.GetOrCreateAlias(typeof(INode), "n");
             var relAlias = _context.Scope.GetOrCreateAlias(typeof(IRelationship), "r");
-            var nodeIndexName = "nodes_all_labels_fulltext_index";
-            var relIndexName = "relationships_all_types_fulltext_index";
+            var nodeIndexName = "node_fulltext_index_all_labels";
+            var relIndexName = "relationship_fulltext_index_all_types";
             _context.Builder.AddFullTextEntitySearch(nodeIndexName, relIndexName, paramName, nodeAlias, relAlias);
             _context.Scope.CurrentAlias = nodeAlias; // Default to node alias
             _context.Builder.SetMainNodeAlias(nodeAlias);
@@ -1198,7 +1198,18 @@ internal class CypherQueryVisitor : ExpressionVisitor
             // Check if this is a relationship queryable
             if (node.Value is IGraphRelationshipQueryable)
             {
+                // Special handling for DynamicRelationship - it should match any relationship type
+                if (queryable.ElementType == typeof(Model.DynamicRelationship))
+                {
+                    _logger.LogDebug("Adding dynamic relationship match (any type)");
+                    _context.Builder.AddRelationshipMatch(""); // Empty string means match any type
+                    _context.Scope.CurrentAlias = "r";
 
+                    // Relationships are always treated as path segments, so they need complex property loading
+                    _logger.LogDebug("Dynamic relationship requires complex property loading");
+                    _context.Builder.EnableComplexPropertyLoading();
+                }
+                else
                 {
                     // Get all compatible labels to support inheritance hierarchies
                     var compatibleLabels = Labels.GetCompatibleLabels(queryable.ElementType);
@@ -1220,7 +1231,13 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 // For nodes, generate the MATCH clause using the queryable's element type
                 var alias = _context.Scope.GetOrCreateAlias(queryable.ElementType, "src");
 
-
+                // Special handling for DynamicNode - it should match any node label
+                if (queryable.ElementType == typeof(Model.DynamicNode))
+                {
+                    _logger.LogDebug("Adding dynamic node match (any label)");
+                    _context.Builder.AddMatch(alias, ""); // Empty string means match any label
+                }
+                else
                 {
                     // Get all compatible labels to support inheritance hierarchies
                     var compatibleLabels = Labels.GetCompatibleLabels(queryable.ElementType);
@@ -1481,8 +1498,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
             // Entity search (both nodes and relationships)
             var nodeAlias = _context.Scope.GetOrCreateAlias(typeof(INode), "n");
             var relAlias = _context.Scope.GetOrCreateAlias(typeof(IRelationship), "r");
-            var nodeIndexName = "nodes_all_labels_fulltext_index";
-            var relIndexName = "relationships_all_types_fulltext_index";
+            var nodeIndexName = "node_fulltext_index_all_labels";
+            var relIndexName = "relationship_fulltext_index_all_types";
             _context.Builder.AddFullTextEntitySearch(nodeIndexName, relIndexName, paramName, nodeAlias, relAlias);
             _context.Scope.CurrentAlias = nodeAlias; // Default to node alias
             _context.Builder.SetMainNodeAlias(nodeAlias);
@@ -1498,27 +1515,27 @@ internal class CypherQueryVisitor : ExpressionVisitor
             // For interface types, use the global nodes index
             if (entityType == typeof(INode))
             {
-                return "nodes_all_labels_fulltext_index";
+                return "node_fulltext_index_all_labels";
             }
 
             // For strongly typed entities, use the specific label index
-            return $"nodes_{Model.Labels.GetLabelFromType(entityType).ToLowerInvariant()}_fulltext_index";
+            return $"node_fulltext_index_{Model.Labels.GetLabelFromType(entityType).ToLowerInvariant()}";
         }
         else if (typeof(IRelationship).IsAssignableFrom(entityType))
         {
             // For interface types, use the global relationships index
             if (entityType == typeof(IRelationship))
             {
-                return "relationships_all_types_fulltext_index";
+                return "relationship_fulltext_index_all_types";
             }
 
             // For strongly typed entities, use the specific type index
-            return $"relationships_{Model.Labels.GetLabelFromType(entityType).ToLowerInvariant()}_fulltext_index";
+            return $"relationship_fulltext_index_{Model.Labels.GetLabelFromType(entityType).ToLowerInvariant()}";
         }
         else
         {
             // For entity types, use the global nodes index as a fallback
-            return "nodes_all_labels_fulltext_index";
+            return "node_fulltext_index_all_labels";
         }
     }
 }

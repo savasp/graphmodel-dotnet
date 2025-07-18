@@ -203,7 +203,10 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
                 ["strength"] = 0.9,
                 ["active"] = false
             }
-        );
+        )
+        {
+            Id = relationship.Id // Keep the same ID
+        };
 
         await Graph.UpdateRelationshipAsync(updatedRelationship, null, TestContext.Current.CancellationToken);
         var fetched = await Graph.GetDynamicRelationshipAsync(relationship.Id, null, TestContext.Current.CancellationToken);

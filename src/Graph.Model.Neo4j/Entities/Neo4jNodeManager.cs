@@ -278,21 +278,31 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     private void ValidateNodeProperties<TNode>(TNode node) where TNode : Model.INode
     {
         var label = Labels.GetLabelFromType(node.GetType());
-        var config = context.SchemaManager.GetRegistry().GetNodeConfiguration(label);
+        var schema = context.SchemaManager.GetSchemaRegistry().GetNodeSchema(label);
 
-        if (config == null) return;
+        if (schema == null) return;
 
-        foreach (var (propertyName, propertyConfig) in config.Properties)
+        foreach (var (propertyName, propertySchema) in schema.Properties)
         {
-            if (propertyConfig.Validation == null) continue;
-
             var property = node.GetType().GetProperty(propertyName);
             if (property == null) continue;
 
             var value = property.GetValue(node);
-            if (value == null) continue;
 
-            ValidatePropertyValue(propertyName, value, propertyConfig.Validation, label);
+            // Validate required fields
+            if (propertySchema.IsRequired)
+            {
+                if (value == null || (value is string stringValue && string.IsNullOrWhiteSpace(stringValue)))
+                {
+                    throw new GraphException($"Property '{propertyName}' on {label} is required and cannot be null or empty.");
+                }
+            }
+
+            // Validate custom validation rules
+            if (propertySchema.Validation is { } validation && value is not null)
+            {
+                ValidatePropertyValue(propertyName, value, validation, label);
+            }
         }
     }
 

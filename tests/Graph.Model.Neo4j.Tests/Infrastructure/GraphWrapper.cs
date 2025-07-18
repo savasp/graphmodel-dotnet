@@ -15,7 +15,6 @@
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
 using Cvoya.Graph.Model;
-using Cvoya.Graph.Model.Configuration;
 
 public class GraphWrapper : IGraph
 {
@@ -33,7 +32,7 @@ public class GraphWrapper : IGraph
 
     internal string DatabaseName => databaseName;
 
-    public PropertyConfigurationRegistry PropertyConfigurationRegistry => innerGraph.PropertyConfigurationRegistry;
+    public SchemaRegistry SchemaRegistry => innerGraph.SchemaRegistry;
 
     public Task<IGraphTransaction> GetTransactionAsync() => innerGraph.GetTransactionAsync();
 
@@ -93,6 +92,9 @@ public class GraphWrapper : IGraph
 
     public IGraphRelationshipQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : IRelationship =>
         innerGraph.SearchRelationships<T>(query, transaction);
+
+    public Task RecreateIndexesAsync(CancellationToken cancellationToken = default) =>
+        innerGraph.RecreateIndexesAsync(cancellationToken);
 
     public async ValueTask DisposeAsync()
     {
