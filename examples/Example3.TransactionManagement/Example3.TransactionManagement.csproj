@@ -14,6 +14,8 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0-preview.5.25277.114" />
     <ProjectReference Include="../../src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj" />
     <ProjectReference Include="../../src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <!-- Explicit CodeGen analyzer reference when using project references -->
+    <ProjectReference Include="../../src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" Condition="'$(UseProjectReferences)' == 'true'" />
   </ItemGroup>
 
 </Project>
