@@ -52,9 +52,8 @@ internal class Neo4jGraph : IGraph
             loggerFactory,
             _schemaRegistry);
 
-        // Initialize the schema registry automatically
-        _schemaRegistry.Initialize();
-
+        // Don't initialize schema registry here - let it be initialized lazily on first use
+        // This avoids double initialization and concurrency issues
         _logger.LogInformation("Graph initialized for database '{0}'", databaseName);
     }
 

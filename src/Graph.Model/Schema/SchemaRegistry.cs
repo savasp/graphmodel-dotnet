@@ -20,12 +20,12 @@ using System.Reflection;
 /// Registry for schema information that can be shared between strongly-typed and dynamic entities.
 /// This registry discovers and manages schema information for all INode and IRelationship types.
 /// </summary>
-public class SchemaRegistry
+public class SchemaRegistry : IDisposable
 {
     private readonly Dictionary<string, EntitySchemaInfo> _nodeSchemas = new();
     private readonly Dictionary<string, EntitySchemaInfo> _relationshipSchemas = new();
-    private readonly object _lock = new();
-    private bool _isInitialized = false;
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
+    private volatile bool _isInitialized = false;
 
     /// <summary>
     /// Gets whether the schema registry has been initialized.
@@ -33,13 +33,20 @@ public class SchemaRegistry
     public bool IsInitialized => _isInitialized;
 
     /// <summary>
-    /// Initializes the schema registry by discovering all INode and IRelationship types
+    /// Asynchronously initializes the schema registry by discovering all INode and IRelationship types
     /// in all loaded assemblies and populating the registry with their schema information.
     /// </summary>
-    public void Initialize()
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        lock (_lock)
+        // Quick check without lock for performance
+        if (_isInitialized)
+            return;
+
+        // Use async-safe semaphore
+        await _semaphore.WaitAsync(cancellationToken);
+        try
         {
+            // Double-check pattern
             if (_isInitialized)
                 return;
 
@@ -57,20 +64,37 @@ public class SchemaRegistry
 
             _isInitialized = true;
         }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     /// <summary>
     /// Gets the schema information for a node label.
     /// </summary>
     /// <param name="label">The node label.</param>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>The schema information for the node label, or null if not found.</returns>
-    public EntitySchemaInfo? GetNodeSchema(string label)
+    public async Task<EntitySchemaInfo?> GetNodeSchemaAsync(string label, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
 
-        lock (_lock)
+        // Quick read without lock since dictionary reads are thread-safe after initialization
+        if (_isInitialized)
         {
             return _nodeSchemas.TryGetValue(label, out var schema) ? schema : null;
+        }
+
+        // If not initialized, use semaphore for safety
+        await _semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _nodeSchemas.TryGetValue(label, out var schema) ? schema : null;
+        }
+        finally
+        {
+            _semaphore.Release();
         }
     }
 
@@ -78,51 +102,127 @@ public class SchemaRegistry
     /// Gets the schema information for a relationship type.
     /// </summary>
     /// <param name="type">The relationship type.</param>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>The schema information for the relationship type, or null if not found.</returns>
+    public async Task<EntitySchemaInfo?> GetRelationshipSchemaAsync(string type, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(type);
+
+        // Quick read without lock since dictionary reads are thread-safe after initialization
+        if (_isInitialized)
+        {
+            return _relationshipSchemas.TryGetValue(type, out var schema) ? schema : null;
+        }
+
+        // If not initialized, use semaphore for safety
+        await _semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relationshipSchemas.TryGetValue(type, out var schema) ? schema : null;
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Gets the schema information for a node label (synchronous version for use after initialization).
+    /// </summary>
+    /// <param name="label">The node label.</param>
+    /// <returns>The schema information for the node label, or null if not found.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if the registry is not initialized.</exception>
+    public EntitySchemaInfo? GetNodeSchema(string label)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+
+        if (!_isInitialized)
+            throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
+
+        return _nodeSchemas.TryGetValue(label, out var schema) ? schema : null;
+    }
+
+    /// <summary>
+    /// Gets the schema information for a relationship type (synchronous version for use after initialization).
+    /// </summary>
+    /// <param name="type">The relationship type.</param>
+    /// <returns>The schema information for the relationship type, or null if not found.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if the registry is not initialized.</exception>
     public EntitySchemaInfo? GetRelationshipSchema(string type)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
 
-        lock (_lock)
-        {
-            return _relationshipSchemas.TryGetValue(type, out var schema) ? schema : null;
-        }
+        if (!_isInitialized)
+            throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
+
+        return _relationshipSchemas.TryGetValue(type, out var schema) ? schema : null;
     }
 
     /// <summary>
     /// Gets all registered node labels.
     /// </summary>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>An enumerable of registered node labels.</returns>
-    public IEnumerable<string> GetRegisteredNodeLabels()
+    public async Task<IEnumerable<string>> GetRegisteredNodeLabelsAsync(CancellationToken cancellationToken = default)
     {
-        lock (_lock)
+        // Quick read without lock since dictionary reads are thread-safe after initialization
+        if (_isInitialized)
         {
             return _nodeSchemas.Keys.ToList();
+        }
+
+        // If not initialized, use semaphore for safety
+        await _semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _nodeSchemas.Keys.ToList();
+        }
+        finally
+        {
+            _semaphore.Release();
         }
     }
 
     /// <summary>
     /// Gets all registered relationship types.
     /// </summary>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>An enumerable of registered relationship types.</returns>
-    public IEnumerable<string> GetRegisteredRelationshipTypes()
+    public async Task<IEnumerable<string>> GetRegisteredRelationshipTypesAsync(CancellationToken cancellationToken = default)
     {
-        lock (_lock)
+        // Quick read without lock since dictionary reads are thread-safe after initialization
+        if (_isInitialized)
         {
             return _relationshipSchemas.Keys.ToList();
+        }
+
+        // If not initialized, use semaphore for safety
+        await _semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relationshipSchemas.Keys.ToList();
+        }
+        finally
+        {
+            _semaphore.Release();
         }
     }
 
     /// <summary>
-    /// Clears all schema information and resets the initialization state.
+    /// Asynchronously clears all schema information and resets the initialization state.
     /// </summary>
-    public void Clear()
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
-        lock (_lock)
+        await _semaphore.WaitAsync(cancellationToken);
+        try
         {
             _nodeSchemas.Clear();
             _relationshipSchemas.Clear();
             _isInitialized = false;
+        }
+        finally
+        {
+            _semaphore.Release();
         }
     }
 
@@ -251,5 +351,13 @@ public class SchemaRegistry
         }
 
         return (nodeTypes, relationshipTypes);
+    }
+
+    /// <summary>
+    /// Disposes the semaphore used for concurrency control.
+    /// </summary>
+    public void Dispose()
+    {
+        _semaphore?.Dispose();
     }
 }

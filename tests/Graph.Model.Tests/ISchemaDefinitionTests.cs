@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
+using System.Threading.Tasks;
 using Xunit;
 
 // Test entities for property configuration testing
@@ -62,14 +63,14 @@ public interface ISchemaDefinitionTests : IGraphModelTest
     SchemaRegistry Registry => Graph.SchemaRegistry;
 
     [Fact]
-    public void SchemaRegistryMethods_WorkCorrectly()
+    public async Task SchemaRegistryMethods_WorkCorrectly()
     {
         // Arrange - Initialize the registry to discover types
-        Registry.Initialize();
+        await Registry.InitializeAsync();
 
         // Act & Assert - Check that the registry contains our test types
-        var nodeLabels = Registry.GetRegisteredNodeLabels().ToList();
-        var relationshipTypes = Registry.GetRegisteredRelationshipTypes().ToList();
+        var nodeLabels = await Registry.GetRegisteredNodeLabelsAsync();
+        var relationshipTypes = await Registry.GetRegisteredRelationshipTypesAsync();
 
         Assert.Contains("ConfigTestPerson", nodeLabels);
         Assert.Contains("ConfigTestKnows", relationshipTypes);
@@ -83,10 +84,10 @@ public interface ISchemaDefinitionTests : IGraphModelTest
     }
 
     [Fact]
-    public void SchemaRegistry_WithIndexedProperty_ConfigurationStored()
+    public async Task SchemaRegistry_WithIndexedProperty_ConfigurationStored()
     {
         // Arrange
-        Registry.Initialize();
+        await Registry.InitializeAsync();
 
         // Act & Assert
         var nodeSchema = Registry.GetNodeSchema("ConfigTestPerson");
@@ -98,10 +99,10 @@ public interface ISchemaDefinitionTests : IGraphModelTest
     }
 
     [Fact]
-    public void SchemaRegistry_WithRelationshipConfiguration_WorksCorrectly()
+    public async Task SchemaRegistry_WithRelationshipConfiguration_WorksCorrectly()
     {
         // Arrange
-        Registry.Initialize();
+        await Registry.InitializeAsync();
 
         // Act & Assert
         var relSchema = Registry.GetRelationshipSchema("ConfigTestKnows");
@@ -113,13 +114,13 @@ public interface ISchemaDefinitionTests : IGraphModelTest
     }
 
     [Fact]
-    public void SchemaRegistry_WithValidationRules_ValidatesCorrectly()
+    public async Task SchemaRegistry_WithValidationRules_ValidatesCorrectly()
     {
         // Arrange
-        Registry.Initialize();
+        await Registry.InitializeAsync();
 
         // Act & Assert - Test that the schema registry contains our test types
-        var nodeSchema = Registry.GetNodeSchema("ConfigTestPerson");
+        var nodeSchema = await Registry.GetNodeSchemaAsync("ConfigTestPerson");
         Assert.NotNull(nodeSchema);
         Assert.True(nodeSchema.Properties.ContainsKey("FirstName"));
         Assert.True(nodeSchema.Properties["FirstName"].IsRequired);
@@ -127,26 +128,26 @@ public interface ISchemaDefinitionTests : IGraphModelTest
     }
 
     [Fact]
-    public void SchemaRegistry_WithCustomPropertyName_WorksCorrectly()
+    public async Task SchemaRegistry_WithCustomPropertyName_WorksCorrectly()
     {
         // Arrange
-        Registry.Initialize();
+        await Registry.InitializeAsync();
 
         // Act & Assert - Test that property names are correctly resolved
-        var nodeSchema = Registry.GetNodeSchema("ConfigTestPerson");
+        var nodeSchema = await Registry.GetNodeSchemaAsync("ConfigTestPerson");
         Assert.NotNull(nodeSchema);
         Assert.True(nodeSchema.Properties.ContainsKey("FirstName"));
         Assert.Equal("FirstName", nodeSchema.Properties["FirstName"].Name); // Uses property name by default
     }
 
     [Fact]
-    public void SchemaRegistry_WithMultipleConfigurations_WorksCorrectly()
+    public async Task SchemaRegistry_WithMultipleConfigurations_WorksCorrectly()
     {
         // Arrange
-        Registry.Initialize();
+        await Registry.InitializeAsync();
 
         // Act & Assert
-        var nodeSchema = Registry.GetNodeSchema("ConfigTestPerson");
+        var nodeSchema = await Registry.GetNodeSchemaAsync("ConfigTestPerson");
         Assert.NotNull(nodeSchema);
         Assert.True(nodeSchema.Properties.ContainsKey("FirstName"));
         Assert.True(nodeSchema.Properties.ContainsKey("LastName"));
@@ -157,28 +158,35 @@ public interface ISchemaDefinitionTests : IGraphModelTest
     }
 
     [Fact]
-    public void SchemaRegistryClear_WorksCorrectly()
+    public async Task SchemaRegistryClear_WorksCorrectly()
     {
         // Arrange
-        Registry.Initialize();
+        await Registry.InitializeAsync();
         Assert.True(Registry.IsInitialized);
 
         // Act
-        Registry.Clear();
+        await Registry.ClearAsync();
 
         // Assert
         Assert.False(Registry.IsInitialized);
-        var nodeLabels = Registry.GetRegisteredNodeLabels();
+        var nodeLabels = await Registry.GetRegisteredNodeLabelsAsync();
         Assert.Empty(nodeLabels);
     }
 
     [Fact]
-    public void Graph_WithSchemaRegistry_InitializesCorrectly()
+    public async Task Graph_WithSchemaRegistry_InitializesCorrectly()
     {
+        // The registry is initialized on first use of the graph instance.
+        // TODO: This behavior needs to change. The registry should be initialized
+        // when the graph is ready to use. We can add an initialization method to the graph.
+
+        var person = new Person { FirstName = "Test", LastName = "User" };
+        await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+
         // Assert - Verify that the schema registry is initialized
         Assert.True(Registry.IsInitialized);
-        var nodeLabels = Registry.GetRegisteredNodeLabels().ToList();
-        var relationshipTypes = Registry.GetRegisteredRelationshipTypes().ToList();
+        var nodeLabels = await Registry.GetRegisteredNodeLabelsAsync();
+        var relationshipTypes = await Registry.GetRegisteredRelationshipTypesAsync();
 
         Assert.Contains("ConfigTestPerson", nodeLabels);
         Assert.Contains("ConfigTestKnows", relationshipTypes);

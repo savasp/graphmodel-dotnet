@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Threading.Tasks;
 using Xunit.Sdk;
 
 namespace Cvoya.Graph.Model.Tests;
@@ -696,8 +697,14 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Fact]
-    public void PropertyAttributeDefaults_AreCorrect()
+    public async Task PropertyAttributeDefaults_AreCorrect()
     {
+        // We need to initialize the schema registry since it is lazily initialized upon
+        // first use of the graph instance.
+        // TODO: Change this behavior by adding an explicit required for an initialization method
+        // in the IGraph interface.
+        await Graph.SchemaRegistry.InitializeAsync();
+
         // Since IEntity.Id is marked as IsKey, all INode and IRelationship instances will have
         // at least one Property attribute.
         var nodeSchema = Graph.SchemaRegistry.GetNodeSchema("PersonWithNoAttributes");

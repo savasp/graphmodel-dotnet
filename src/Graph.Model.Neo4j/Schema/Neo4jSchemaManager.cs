@@ -14,7 +14,9 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Schema;
 
+using System.Linq;
 using Cvoya.Graph.Model.Neo4j.Core;
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
@@ -28,8 +30,8 @@ internal class Neo4jSchemaManager
     private readonly ILogger _logger;
     private readonly SchemaRegistry _schemaRegistry;
     private readonly HashSet<string> _processedSchemas = new();
-    private readonly object _schemaLock = new();
-    private bool _isSchemaInitialized = false;
+    private readonly SemaphoreSlim _initializationSemaphore = new(1, 1);
+    private volatile bool _isSchemaInitialized = false;
 
     public Neo4jSchemaManager(GraphContext context, SchemaRegistry schemaRegistry)
     {
@@ -45,54 +47,64 @@ internal class Neo4jSchemaManager
     /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task InitializeSchemaAsync(CancellationToken cancellationToken = default)
     {
-        lock (_schemaLock)
+        // Quick check without lock for performance
+        if (_isSchemaInitialized)
         {
+            _logger.LogDebug("Schema already initialized, skipping initialization");
+            return;
+        }
+
+        // Use semaphore for async-safe concurrency control
+        await _initializationSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            // Double-check pattern
             if (_isSchemaInitialized)
             {
                 _logger.LogDebug("Schema already initialized, skipping initialization");
                 return;
             }
-        }
 
-        _logger.LogInformation("Initializing Neo4j schema...");
+            _logger.LogInformation("Initializing Neo4j schema...");
 
-        try
-        {
             // Initialize the schema registry if not already done
             if (!_schemaRegistry.IsInitialized)
             {
-                _schemaRegistry.Initialize();
+                await _schemaRegistry.InitializeAsync(cancellationToken);
+                var nodeLabelsCount = (await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken)).Count();
+                var relationshipTypesCount = (await _schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken)).Count();
                 _logger.LogDebug("Schema registry initialized with {NodeCount} node types and {RelationshipCount} relationship types",
-                    _schemaRegistry.GetRegisteredNodeLabels().Count(),
-                    _schemaRegistry.GetRegisteredRelationshipTypes().Count());
+                    nodeLabelsCount, relationshipTypesCount);
             }
 
             // Create constraints and indexes for all discovered node types
-            foreach (var nodeLabel in _schemaRegistry.GetRegisteredNodeLabels())
+            var nodeLabels = await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken);
+            foreach (var nodeLabel in nodeLabels)
             {
-                await CreateNodeConstraintsAndIndexesAsync(nodeLabel);
+                await CreateNodeConstraintsAndIndexesAsync(nodeLabel, cancellationToken);
             }
 
             // Create constraints and indexes for all discovered relationship types
-            foreach (var relationshipType in _schemaRegistry.GetRegisteredRelationshipTypes())
+            var relationshipTypes = await _schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken);
+            foreach (var relationshipType in relationshipTypes)
             {
-                await CreateRelationshipConstraintsAndIndexesAsync(relationshipType);
+                await CreateRelationshipConstraintsAndIndexesAsync(relationshipType, cancellationToken);
             }
 
             // Create general full text indexes
-            await CreateGeneralFullTextIndexesAsync();
+            await CreateGeneralFullTextIndexesAsync(cancellationToken);
 
-            lock (_schemaLock)
-            {
-                _isSchemaInitialized = true;
-            }
-
+            _isSchemaInitialized = true;
             _logger.LogInformation("Neo4j schema initialization completed successfully");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to initialize Neo4j schema");
             throw new GraphException("Failed to initialize Neo4j schema", ex);
+        }
+        finally
+        {
+            _initializationSemaphore.Release();
         }
     }
 
@@ -111,19 +123,21 @@ internal class Neo4jSchemaManager
             await DropAllIndexesAsync();
 
             // Recreate indexes for all registered node types
-            foreach (var nodeLabel in _schemaRegistry.GetRegisteredNodeLabels())
+            var nodeLabels = await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken);
+            foreach (var nodeLabel in nodeLabels)
             {
-                await CreateNodeIndexesAsync(nodeLabel);
+                await CreateNodeIndexesAsync(nodeLabel, cancellationToken);
             }
 
             // Recreate indexes for all registered relationship types
-            foreach (var relationshipType in _schemaRegistry.GetRegisteredRelationshipTypes())
+            var relationshipTypes = await _schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken);
+            foreach (var relationshipType in relationshipTypes)
             {
-                await CreateRelationshipIndexesAsync(relationshipType);
+                await CreateRelationshipIndexesAsync(relationshipType, cancellationToken);
             }
 
             // Recreate general full text indexes
-            await CreateGeneralFullTextIndexesAsync();
+            await CreateGeneralFullTextIndexesAsync(cancellationToken);
 
             _logger.LogInformation("Neo4j indexes recreated successfully");
         }
@@ -134,125 +148,112 @@ internal class Neo4jSchemaManager
         }
     }
 
-    private async Task CreateNodeConstraintsAndIndexesAsync(string label)
+    private async Task CreateNodeConstraintsAndIndexesAsync(string label, CancellationToken cancellationToken = default)
     {
-        lock (_schemaLock)
+        var processedKey = $"node:{label}";
+        lock (_processedSchemas)
         {
-            if (_processedSchemas.Contains($"node:{label}"))
+            if (_processedSchemas.Contains(processedKey))
             {
                 _logger.LogDebug("Node schema already processed for label: {Label}", label);
                 return;
             }
         }
 
-        var schema = _schemaRegistry.GetNodeSchema(label);
+        var schema = await _schemaRegistry.GetNodeSchemaAsync(label, cancellationToken);
         if (schema == null)
         {
             _logger.LogWarning("No schema found for node label: {Label}", label);
             return;
         }
 
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
+        // First, create constraints in their own transaction
+        await CreateNodeConstraintsAsync(label, schema);
 
-        try
+        // Then, create indexes in a separate transaction
+        await CreateNodeIndexesAsync(label, cancellationToken);
+
+        lock (_processedSchemas)
         {
-            // Always create unique constraint on Id
-            var idConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:{label}) REQUIRE n.Id IS UNIQUE";
-            var result = await tx.RunAsync(idConstraint);
-            await result.ConsumeAsync();
-
-            // Handle composite key constraints
-            if (schema.HasCompositeKey())
-            {
-                var keyProperties = schema.GetKeyProperties().ToList();
-                var keyPropertyNames = keyProperties.Select(p => $"n.{p.Name}").ToList();
-                var compositeKeyConstraintName = $"composite_key_{label}_{string.Join("_", keyProperties.Select(p => p.Name))}".ToLowerInvariant();
-                var compositeKeyConstraint = $"CREATE CONSTRAINT {compositeKeyConstraintName} IF NOT EXISTS FOR (n:{label}) REQUIRE ({string.Join(", ", keyPropertyNames)}) IS UNIQUE";
-
-                result = await tx.RunAsync(compositeKeyConstraint);
-                await result.ConsumeAsync();
-                _logger.LogDebug("Created composite key constraint for properties {Properties} on label {Label}", string.Join(", ", keyProperties.Select(p => p.Name)), label);
-            }
-
-            // Create constraints based on property configurations
-            foreach (var (propertyName, propertySchema) in schema.Properties)
-            {
-                if (propertySchema.Ignore) continue;
-
-                // Skip individual unique constraints for key properties if we have a composite key
-                if (propertySchema.IsUnique && !(schema.HasCompositeKey() && propertySchema.IsKey))
-                {
-                    var uniqueConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:{label}) REQUIRE n.{propertySchema.Name} IS UNIQUE";
-                    result = await tx.RunAsync(uniqueConstraint);
-                    await result.ConsumeAsync();
-                    _logger.LogDebug("Created unique constraint for property {Property} on label {Label}", propertySchema.Name, label);
-                }
-
-                if (propertySchema.IsRequired)
-                {
-                    var notNullConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR (n:{label}) REQUIRE n.{propertySchema.Name} IS NOT NULL";
-                    result = await tx.RunAsync(notNullConstraint);
-                    await result.ConsumeAsync();
-                    _logger.LogDebug("Created not null constraint for property {Property} on label {Label}", propertySchema.Name, label);
-                }
-            }
-
-            await tx.CommitAsync();
-
-            lock (_schemaLock)
-            {
-                _processedSchemas.Add($"node:{label}");
-            }
-
-            _logger.LogDebug("Successfully processed node schema for label: {Label}", label);
+            _processedSchemas.Add(processedKey);
         }
-        catch (Exception)
-        {
-            await tx.RollbackAsync();
-            throw;
-        }
+
+        _logger.LogDebug("Successfully processed node schema for label: {Label}", label);
     }
 
-    private async Task CreateRelationshipConstraintsAndIndexesAsync(string type)
+    private async Task CreateRelationshipConstraintsAndIndexesAsync(string type, CancellationToken cancellationToken = default)
     {
-        lock (_schemaLock)
+        var processedKey = $"relationship:{type}";
+        lock (_processedSchemas)
         {
-            if (_processedSchemas.Contains($"relationship:{type}"))
+            if (_processedSchemas.Contains(processedKey))
             {
                 _logger.LogDebug("Relationship schema already processed for type: {Type}", type);
                 return;
             }
         }
 
-        var schema = _schemaRegistry.GetRelationshipSchema(type);
+        var schema = await _schemaRegistry.GetRelationshipSchemaAsync(type, cancellationToken);
         if (schema == null)
         {
             _logger.LogWarning("No schema found for relationship type: {Type}", type);
             return;
         }
 
+        // First, create constraints in their own transaction
+        await CreateRelationshipConstraintsAsync(type, schema);
+
+        // Then, create indexes in a separate transaction
+        await CreateRelationshipIndexesAsync(type, cancellationToken);
+
+        lock (_processedSchemas)
+        {
+            _processedSchemas.Add(processedKey);
+        }
+
+        _logger.LogDebug("Successfully processed relationship schema for type: {Type}", type);
+    }
+
+    private async Task CreateNodeConstraintsAsync(string label, EntitySchemaInfo schema)
+    {
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         using var tx = await session.BeginTransactionAsync();
 
         try
         {
-            // Always create unique constraint on Id
-            var idConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.Id IS UNIQUE";
-            var result = await tx.RunAsync(idConstraint);
-            await result.ConsumeAsync();
+            // Get existing constraints to avoid conflicts
+            var existingConstraints = await GetExistingConstraintsAsync(tx, label, isNode: true);
+
+            // Always create unique constraint on Id if it doesn't exist
+            var idConstraintName = $"unique_{label}_Id".ToLowerInvariant();
+            if (!existingConstraints.Any(c => c.Contains("Id") && c.Contains("UNIQUE")))
+            {
+                var idConstraint = $"CREATE CONSTRAINT {idConstraintName} IF NOT EXISTS FOR (n:{label}) REQUIRE n.Id IS UNIQUE";
+                var result = await tx.RunAsync(idConstraint);
+                await result.ConsumeAsync();
+                _logger.LogDebug("Created unique Id constraint for label {Label}", label);
+            }
 
             // Handle composite key constraints
             if (schema.HasCompositeKey())
             {
                 var keyProperties = schema.GetKeyProperties().ToList();
-                var keyPropertyNames = keyProperties.Select(p => $"r.{p.Name}").ToList();
-                var compositeKeyConstraintName = $"composite_key_{type}_{string.Join("_", keyProperties.Select(p => p.Name))}".ToLowerInvariant();
-                var compositeKeyConstraint = $"CREATE CONSTRAINT {compositeKeyConstraintName} IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE ({string.Join(", ", keyPropertyNames)}) IS UNIQUE";
+                var keyPropertyNames = keyProperties.Select(p => p.Name).ToList();
+                var compositeKeyConstraintName = $"composite_key_{label}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
 
-                result = await tx.RunAsync(compositeKeyConstraint);
-                await result.ConsumeAsync();
-                _logger.LogDebug("Created composite key constraint for properties {Properties} on relationship type {Type}", string.Join(", ", keyProperties.Select(p => p.Name)), type);
+                // Check if composite key constraint already exists
+                var compositeExists = existingConstraints.Any(c =>
+                    keyPropertyNames.All(prop => c.Contains(prop)) && c.Contains("UNIQUE"));
+
+                if (!compositeExists)
+                {
+                    var cypherPropertyNames = keyPropertyNames.Select(p => $"n.{p}").ToList();
+                    var compositeKeyConstraint = $"CREATE CONSTRAINT {compositeKeyConstraintName} IF NOT EXISTS FOR (n:{label}) REQUIRE ({string.Join(", ", cypherPropertyNames)}) IS UNIQUE";
+
+                    var result = await tx.RunAsync(compositeKeyConstraint);
+                    await result.ConsumeAsync();
+                    _logger.LogDebug("Created composite key constraint for properties {Properties} on label {Label}", string.Join(", ", keyPropertyNames), label);
+                }
             }
 
             // Create constraints based on property configurations
@@ -263,40 +264,171 @@ internal class Neo4jSchemaManager
                 // Skip individual unique constraints for key properties if we have a composite key
                 if (propertySchema.IsUnique && !(schema.HasCompositeKey() && propertySchema.IsKey))
                 {
-                    var uniqueConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.{propertySchema.Name} IS UNIQUE";
-                    result = await tx.RunAsync(uniqueConstraint);
-                    await result.ConsumeAsync();
-                    _logger.LogDebug("Created unique constraint for property {Property} on relationship type {Type}", propertySchema.Name, type);
+                    var propertyExists = existingConstraints.Any(c =>
+                        c.Contains(propertySchema.Name) && c.Contains("UNIQUE"));
+
+                    if (!propertyExists)
+                    {
+                        var uniqueConstraintName = $"unique_{label}_{propertySchema.Name}".ToLowerInvariant();
+                        var uniqueConstraint = $"CREATE CONSTRAINT {uniqueConstraintName} IF NOT EXISTS FOR (n:{label}) REQUIRE n.{propertySchema.Name} IS UNIQUE";
+                        var result = await tx.RunAsync(uniqueConstraint);
+                        await result.ConsumeAsync();
+                        _logger.LogDebug("Created unique constraint for property {Property} on label {Label}", propertySchema.Name, label);
+                    }
                 }
 
                 if (propertySchema.IsRequired)
                 {
-                    var notNullConstraint = $"CREATE CONSTRAINT IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.{propertySchema.Name} IS NOT NULL";
-                    result = await tx.RunAsync(notNullConstraint);
-                    await result.ConsumeAsync();
-                    _logger.LogDebug("Created not null constraint for property {Property} on relationship type {Type}", propertySchema.Name, type);
+                    var requiredExists = existingConstraints.Any(c =>
+                        c.Contains(propertySchema.Name) && c.Contains("NOT NULL"));
+
+                    if (!requiredExists)
+                    {
+                        var notNullConstraintName = $"notnull_{label}_{propertySchema.Name}".ToLowerInvariant();
+                        var notNullConstraint = $"CREATE CONSTRAINT {notNullConstraintName} IF NOT EXISTS FOR (n:{label}) REQUIRE n.{propertySchema.Name} IS NOT NULL";
+                        var result = await tx.RunAsync(notNullConstraint);
+                        await result.ConsumeAsync();
+                        _logger.LogDebug("Created not null constraint for property {Property} on label {Label}", propertySchema.Name, label);
+                    }
                 }
             }
 
             await tx.CommitAsync();
-
-            lock (_schemaLock)
-            {
-                _processedSchemas.Add($"relationship:{type}");
-            }
-
-            _logger.LogDebug("Successfully processed relationship schema for type: {Type}", type);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             await tx.RollbackAsync();
+            _logger.LogError(ex, "Failed to create constraints for node label: {Label}", label);
             throw;
         }
     }
 
-    private async Task CreateNodeIndexesAsync(string label)
+    private async Task CreateRelationshipConstraintsAsync(string type, EntitySchemaInfo schema)
     {
-        var schema = _schemaRegistry.GetNodeSchema(label);
+        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        using var tx = await session.BeginTransactionAsync();
+
+        try
+        {
+            // Get existing constraints to avoid conflicts
+            var existingConstraints = await GetExistingConstraintsAsync(tx, type, isNode: false);
+
+            // Always create unique constraint on Id if it doesn't exist
+            var idConstraintName = $"unique_rel_{type}_Id".ToLowerInvariant();
+            if (!existingConstraints.Any(c => c.Contains("Id") && c.Contains("UNIQUE")))
+            {
+                var idConstraint = $"CREATE CONSTRAINT {idConstraintName} IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.Id IS UNIQUE";
+                var result = await tx.RunAsync(idConstraint);
+                await result.ConsumeAsync();
+                _logger.LogDebug("Created unique Id constraint for relationship type {Type}", type);
+            }
+
+            // Handle composite key constraints
+            if (schema.HasCompositeKey())
+            {
+                var keyProperties = schema.GetKeyProperties().ToList();
+                var keyPropertyNames = keyProperties.Select(p => p.Name).ToList();
+                var compositeKeyConstraintName = $"composite_key_rel_{type}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
+
+                // Check if composite key constraint already exists
+                var compositeExists = existingConstraints.Any(c =>
+                    keyPropertyNames.All(prop => c.Contains(prop)) && c.Contains("UNIQUE"));
+
+                if (!compositeExists)
+                {
+                    var cypherPropertyNames = keyPropertyNames.Select(p => $"r.{p}").ToList();
+                    var compositeKeyConstraint = $"CREATE CONSTRAINT {compositeKeyConstraintName} IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE ({string.Join(", ", cypherPropertyNames)}) IS UNIQUE";
+
+                    var result = await tx.RunAsync(compositeKeyConstraint);
+                    await result.ConsumeAsync();
+                    _logger.LogDebug("Created composite key constraint for properties {Properties} on relationship type {Type}", string.Join(", ", keyPropertyNames), type);
+                }
+            }
+
+            // Create constraints based on property configurations
+            foreach (var (propertyName, propertySchema) in schema.Properties)
+            {
+                if (propertySchema.Ignore) continue;
+
+                // Skip individual unique constraints for key properties if we have a composite key
+                if (propertySchema.IsUnique && !(schema.HasCompositeKey() && propertySchema.IsKey))
+                {
+                    var propertyExists = existingConstraints.Any(c =>
+                        c.Contains(propertySchema.Name) && c.Contains("UNIQUE"));
+
+                    if (!propertyExists)
+                    {
+                        var uniqueConstraintName = $"unique_rel_{type}_{propertySchema.Name}".ToLowerInvariant();
+                        var uniqueConstraint = $"CREATE CONSTRAINT {uniqueConstraintName} IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.{propertySchema.Name} IS UNIQUE";
+                        var result = await tx.RunAsync(uniqueConstraint);
+                        await result.ConsumeAsync();
+                        _logger.LogDebug("Created unique constraint for property {Property} on relationship type {Type}", propertySchema.Name, type);
+                    }
+                }
+
+                if (propertySchema.IsRequired)
+                {
+                    var requiredExists = existingConstraints.Any(c =>
+                        c.Contains(propertySchema.Name) && c.Contains("NOT NULL"));
+
+                    if (!requiredExists)
+                    {
+                        var notNullConstraintName = $"notnull_rel_{type}_{propertySchema.Name}".ToLowerInvariant();
+                        var notNullConstraint = $"CREATE CONSTRAINT {notNullConstraintName} IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.{propertySchema.Name} IS NOT NULL";
+                        var result = await tx.RunAsync(notNullConstraint);
+                        await result.ConsumeAsync();
+                        _logger.LogDebug("Created not null constraint for property {Property} on relationship type {Type}", propertySchema.Name, type);
+                    }
+                }
+            }
+
+            await tx.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            _logger.LogError(ex, "Failed to create constraints for relationship type: {Type}", type);
+            throw;
+        }
+    }
+
+    private async Task<List<string>> GetExistingConstraintsAsync(IAsyncTransaction tx, string labelOrType, bool isNode)
+    {
+        try
+        {
+            var query = "SHOW CONSTRAINTS YIELD name, labelsOrTypes, properties, type";
+            var result = await tx.RunAsync(query);
+            var records = await result.ToListAsync();
+
+            var constraints = new List<string>();
+            foreach (var record in records)
+            {
+                var labelsOrTypes = record["labelsOrTypes"].As<List<string>>();
+                var properties = record["properties"].As<List<string>>();
+                var constraintType = record["type"].As<string>();
+
+                // Check if this constraint applies to our label/type
+                if (labelsOrTypes.Contains(labelOrType))
+                {
+                    var description = $"{constraintType} on {string.Join(",", properties)}";
+                    constraints.Add(description);
+                }
+            }
+
+            return constraints;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to retrieve existing constraints for {LabelOrType}, proceeding with creation attempts", labelOrType);
+            return new List<string>();
+        }
+    }
+
+
+
+    private async Task CreateNodeIndexesAsync(string label, CancellationToken cancellationToken = default)
+    {
+        var schema = await _schemaRegistry.GetNodeSchemaAsync(label, cancellationToken);
         if (schema == null) return;
 
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
@@ -327,9 +459,9 @@ internal class Neo4jSchemaManager
         }
     }
 
-    private async Task CreateRelationshipIndexesAsync(string type)
+    private async Task CreateRelationshipIndexesAsync(string type, CancellationToken cancellationToken = default)
     {
-        var schema = _schemaRegistry.GetRelationshipSchema(type);
+        var schema = await _schemaRegistry.GetRelationshipSchemaAsync(type, cancellationToken);
         if (schema == null) return;
 
         using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
@@ -360,7 +492,7 @@ internal class Neo4jSchemaManager
         }
     }
 
-    private async Task CreateGeneralFullTextIndexesAsync()
+    private async Task CreateGeneralFullTextIndexesAsync(CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Creating global full text indexes");
 
@@ -373,10 +505,11 @@ internal class Neo4jSchemaManager
             var nodeLabels = new HashSet<string>();
             var nodeStringProps = new HashSet<string>();
 
-            foreach (var nodeLabel in _schemaRegistry.GetRegisteredNodeLabels())
+            var registeredNodeLabels = await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken);
+            foreach (var nodeLabel in registeredNodeLabels)
             {
                 nodeLabels.Add(nodeLabel);
-                var schema = _schemaRegistry.GetNodeSchema(nodeLabel);
+                var schema = await _schemaRegistry.GetNodeSchemaAsync(nodeLabel, cancellationToken);
                 if (schema != null)
                 {
                     foreach (var prop in schema.Properties.Values)
@@ -407,10 +540,11 @@ internal class Neo4jSchemaManager
             var relTypes = new HashSet<string>();
             var relStringProps = new HashSet<string>();
 
-            foreach (var relType in _schemaRegistry.GetRegisteredRelationshipTypes())
+            var registeredRelationshipTypes = await _schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken);
+            foreach (var relType in registeredRelationshipTypes)
             {
                 relTypes.Add(relType);
-                var schema = _schemaRegistry.GetRelationshipSchema(relType);
+                var schema = await _schemaRegistry.GetRelationshipSchemaAsync(relType, cancellationToken);
                 if (schema != null)
                 {
                     foreach (var prop in schema.Properties.Values)
@@ -447,6 +581,7 @@ internal class Neo4jSchemaManager
             throw;
         }
     }
+
 
 
     private async Task DropAllIndexesAsync()
@@ -487,11 +622,11 @@ internal class Neo4jSchemaManager
     /// </summary>
     public void ClearCache()
     {
-        lock (_schemaLock)
+        lock (_processedSchemas)
         {
             _processedSchemas.Clear();
-            _isSchemaInitialized = false;
         }
+        _isSchemaInitialized = false;
         _logger.LogDebug("Cleared schema cache and reset initialization state");
     }
 
