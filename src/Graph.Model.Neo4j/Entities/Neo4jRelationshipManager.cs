@@ -237,6 +237,13 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
     private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : Model.IRelationship
     {
+        // For DynamicRelationship, validate against existing schemas if any
+        if (relationship is DynamicRelationship dynamicRelationship)
+        {
+            ValidateDynamicRelationshipProperties(dynamicRelationship);
+            return;
+        }
+
         var type = Labels.GetLabelFromType(relationship.GetType());
         var schema = context.SchemaManager.GetSchemaRegistry().GetRelationshipSchema(type);
 
@@ -262,6 +269,65 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             if (propertySchema.Validation is { } validation && value is not null)
             {
                 ValidatePropertyValue(propertyName, value, validation, type);
+            }
+        }
+    }
+
+    private void ValidateDynamicRelationshipProperties(DynamicRelationship relationship)
+    {
+        var schema = context.SchemaManager.GetSchemaRegistry().GetRelationshipSchema(relationship.Type);
+        if (schema == null) return;
+
+        // Found a schema for this relationship type, validate the dynamic relationship against it
+        var validatedProperties = new HashSet<string>();
+
+        foreach (var (propertyName, propertySchema) in schema.Properties)
+        {
+            // Use the mapped property name from the schema (from PropertyAttribute.Label)
+            var mappedPropertyName = propertySchema.Name;
+
+            // Check if the property exists in the dynamic relationship's properties
+            if (!relationship.Properties.TryGetValue(mappedPropertyName, out var value))
+            {
+                // Property doesn't exist in dynamic relationship
+                if (propertySchema.IsRequired)
+                {
+                    throw new GraphException($"Property '{mappedPropertyName}' on {relationship.Type} is required but not provided in DynamicRelationship.");
+                }
+                continue;
+            }
+
+            // Mark this property as validated
+            validatedProperties.Add(mappedPropertyName);
+
+            // Validate required fields
+            if (propertySchema.IsRequired)
+            {
+                if (value == null || (value is string stringValue && string.IsNullOrWhiteSpace(stringValue)))
+                {
+                    throw new GraphException($"Property '{mappedPropertyName}' on {relationship.Type} is required and cannot be null or empty.");
+                }
+            }
+
+            // Validate custom validation rules
+            if (propertySchema.Validation is { } validation && value is not null)
+            {
+                ValidatePropertyValue(mappedPropertyName, value, validation, relationship.Type);
+            }
+
+            // Validate enum values
+            if (value is not null)
+            {
+                ValidateEnumValue(mappedPropertyName, value, propertySchema.PropertyInfo.PropertyType, relationship.Type);
+            }
+        }
+
+        // Check for extra properties that don't exist in the schema
+        foreach (var propertyName in relationship.Properties.Keys)
+        {
+            if (!validatedProperties.Contains(propertyName))
+            {
+                throw new GraphException($"Property '{propertyName}' on {relationship.Type} is not defined in the schema and cannot be used.");
             }
         }
     }
@@ -325,6 +391,29 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 {
                     throw new GraphException($"Property '{propertyName}' on {entityLabel} must match the pattern '{validation.Pattern}'. Current value: {stringValue}");
                 }
+            }
+        }
+    }
+
+    private void ValidateEnumValue(string propertyName, object value, Type propertyType, string entityLabel)
+    {
+        // Check if the property type is an enum
+        if (propertyType.IsEnum)
+        {
+            // If the value is a string, try to parse it as the enum
+            if (value is string stringValue)
+            {
+                if (!Enum.TryParse(propertyType, stringValue, ignoreCase: true, out _))
+                {
+                    var validValues = string.Join(", ", Enum.GetNames(propertyType));
+                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must be a valid enum value. Valid values are: {validValues}. Current value: {stringValue}");
+                }
+            }
+            // If the value is not a string, check if it can be converted to the enum
+            else if (!Enum.IsDefined(propertyType, value))
+            {
+                var validValues = string.Join(", ", Enum.GetNames(propertyType));
+                throw new GraphException($"Property '{propertyName}' on {entityLabel} must be a valid enum value. Valid values are: {validValues}. Current value: {value}");
             }
         }
     }

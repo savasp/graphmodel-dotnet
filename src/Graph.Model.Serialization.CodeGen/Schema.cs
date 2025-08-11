@@ -186,8 +186,7 @@ internal static class Schema
     {
         var propertyType = property.Type;
         var propertyName = Utils.GetPropertyName(property);
-        var isNullable = propertyType.NullableAnnotation == NullableAnnotation.Annotated ||
-                        (propertyType.CanBeReferencedByName && !propertyType.IsValueType);
+        var isNullable = IsNullableType(propertyType);
 
         sb.AppendLine($"        // Schema for property: {property.Name}");
         sb.AppendLine("        {");
@@ -272,5 +271,19 @@ internal static class Schema
 
         sb.AppendLine("        }");
         sb.AppendLine();
+    }
+
+    private static bool IsNullableType(ITypeSymbol type)
+    {
+        // Check for nullable reference types
+        if (type.NullableAnnotation == NullableAnnotation.Annotated)
+            return true;
+
+        // Check for nullable value types (e.g., DateTime?, int?, etc.)
+        if (type is INamedTypeSymbol { IsGenericType: true } namedType &&
+            namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+            return true;
+
+        return false;
     }
 }

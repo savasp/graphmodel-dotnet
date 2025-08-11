@@ -60,7 +60,7 @@ internal static class Serialization
     {
         var isSimple = GraphDataModel.IsSimple(propertyType);
         var isCollection = GraphDataModel.IsCollectionOfSimple(propertyType) || GraphDataModel.IsCollectionOfComplex(propertyType);
-        var isNullable = propertyType.NullableAnnotation == NullableAnnotation.Annotated;
+        var isNullable = IsNullableType(propertyType);
 
         sb.AppendLine($"        {{");
         sb.AppendLine($"            var propInfo = typeof({property.ContainingType.ToDisplayString()}).GetProperty(\"{property.Name}\")!;");
@@ -75,7 +75,7 @@ internal static class Serialization
         else if (isSimple)
         {
             // For value types that can't be null, always serialize. For reference/nullable types, check for null
-            if (propertyType.IsValueType && propertyType.NullableAnnotation != NullableAnnotation.Annotated)
+            if (propertyType.IsValueType && !IsNullableType(propertyType))
             {
                 // Non-nullable value type - always serialize
                 sb.AppendLine($"            serializedValue = new SimpleValue(");
@@ -142,8 +142,8 @@ internal static class Serialization
             sb.AppendLine($"                foreach (var item in value)");
             sb.AppendLine($"                {{");
 
-            // Only add null check for reference types
-            if (elementType.IsReferenceType || elementType.NullableAnnotation == NullableAnnotation.Annotated)
+            // Only add null check for nullable types
+            if (IsNullableType(elementType))
             {
                 sb.AppendLine($"                    if (item != null)");
                 sb.AppendLine($"                    {{");
@@ -225,5 +225,19 @@ internal static class Serialization
         }
 
         return type.ToDisplayString();
+    }
+
+    private static bool IsNullableType(ITypeSymbol type)
+    {
+        // Check for nullable reference types
+        if (type.NullableAnnotation == NullableAnnotation.Annotated)
+            return true;
+
+        // Check for nullable value types (e.g., DateTime?, int?, etc.)
+        if (type is INamedTypeSymbol { IsGenericType: true } namedType &&
+            namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+            return true;
+
+        return false;
     }
 }

@@ -227,10 +227,11 @@ internal static class Deserialization
         // Handle missing init-only properties with proper defaults
         var defaultValue = GetDefaultValueForProperty(propName, property.Type, out var shouldThrow);
 
-        // Add a nullability check in the generated code
-        if (property.Type.NullableAnnotation != NullableAnnotation.Annotated && defaultValue == "null")
+        // Check if the property type is nullable
+        if (IsNullableType(property.Type))
         {
-            sb.AppendLine($"            throw new InvalidOperationException(\"Property '{propertyName}' is not nullable and no value was provided.\");");
+            // For nullable types, set to null if no value is provided
+            sb.AppendLine($"            {variableName} = null;");
         }
         else if (shouldThrow)
         {
@@ -294,7 +295,14 @@ internal static class Deserialization
         {
             // For required properties, use sensible defaults based on the property name and type
             var defaultValue = GetDefaultValueForParameter(paramName!, parameter.Type, out var shouldThrow);
-            if (shouldThrow)
+
+            // Check if the parameter type is nullable
+            if (IsNullableType(parameter.Type))
+            {
+                // For nullable types, set to null if no value is provided
+                sb.AppendLine($"            {paramName} = null;");
+            }
+            else if (shouldThrow)
             {
                 sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for parameter '{paramName}' of type '{parameter.Type.ToDisplayString()}'.\");");
             }
@@ -344,6 +352,28 @@ internal static class Deserialization
             GenerateValueExtraction(sb, property.Type, $"{variableName}.{propName}", propertyName, propRepVar, 12);
 
             sb.AppendLine("        }");
+            sb.AppendLine("        else");
+            sb.AppendLine("        {");
+
+            // Handle missing properties
+            if (IsNullableType(property.Type))
+            {
+                sb.AppendLine($"            {variableName}.{propName} = null;");
+            }
+            else
+            {
+                var defaultValue = GetDefaultValueForProperty(propertyName, property.Type, out var shouldThrow);
+                if (shouldThrow)
+                {
+                    sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for property '{propertyName}' of type '{property.Type.ToDisplayString()}'.\");");
+                }
+                else
+                {
+                    sb.AppendLine($"            {variableName}.{propName} = {defaultValue};");
+                }
+            }
+
+            sb.AppendLine("        }");
         }
     }
 
@@ -365,13 +395,22 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}else");
             sb.AppendLine($"{indentStr}{{");
 
-            if (targetType.IsReferenceType && targetType.NullableAnnotation != NullableAnnotation.Annotated)
+            if (IsNullableType(targetType))
             {
-                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required simple property '{propertyLabel}' is missing or null\");");
+                sb.AppendLine($"{indentStr}    {variableName} = null;");
             }
             else
             {
-                sb.AppendLine($"{indentStr}    {variableName} = default({targetType.ToDisplayString()});");
+                // For non-nullable types, use sensible defaults
+                var defaultValue = GetDefaultValueForProperty(propertyLabel, targetType, out var shouldThrow);
+                if (shouldThrow)
+                {
+                    sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"No sensible default value for property '{propertyLabel}' of type '{targetType.ToDisplayString()}'.\");");
+                }
+                else
+                {
+                    sb.AppendLine($"{indentStr}    {variableName} = {defaultValue};");
+                }
             }
 
             sb.AppendLine($"{indentStr}}}");
@@ -395,13 +434,15 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}else");
             sb.AppendLine($"{indentStr}{{");
 
-            if (targetType.IsReferenceType && targetType.NullableAnnotation != NullableAnnotation.Annotated)
+            if (IsNullableType(targetType))
             {
-                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required complex property '{propertyLabel}' is missing or null\");");
+                sb.AppendLine($"{indentStr}    {variableName} = null;");
             }
             else
             {
-                sb.AppendLine($"{indentStr}    {variableName} = default({targetType.ToDisplayString()});");
+                // For non-nullable complex types, we can't create a sensible default
+                // so we should throw an exception
+                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required complex property '{propertyLabel}' is missing or null\");");
             }
 
             sb.AppendLine($"{indentStr}}}");
@@ -586,5 +627,19 @@ internal static class Deserialization
             bool b => b.ToString().ToLowerInvariant(),
             _ => defaultValue.ToString() ?? "null"
         };
+    }
+
+    private static bool IsNullableType(ITypeSymbol type)
+    {
+        // Check for nullable reference types
+        if (type.NullableAnnotation == NullableAnnotation.Annotated)
+            return true;
+
+        // Check for nullable value types (e.g., DateTime?, int?, etc.)
+        if (type is INamedTypeSymbol { IsGenericType: true } namedType &&
+            namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
+            return true;
+
+        return false;
     }
 }

@@ -25,7 +25,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     public async Task CanCreateAndGetDynamicNodeWithPrimitiveProperties()
     {
         var node = new DynamicNode(
-            labels: new[] { "Person", "User" },
+            labels: ["Neo4jPerson", "Neo4jUser"], // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?>
             {
                 ["name"] = "John Doe",
@@ -53,8 +53,8 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         Assert.Equal(30, fetched.GetProperty<int>("age"));
         Assert.Equal("john@example.com", fetched.GetProperty<string>("email"));
         Assert.True(fetched.GetProperty<bool>("active"));
-        Assert.True(fetched.HasLabel("Person"));
-        Assert.True(fetched.HasLabel("User"));
+        Assert.True(fetched.HasLabel("Neo4jPerson"));
+        Assert.True(fetched.HasLabel("Neo4jUser"));
         Assert.Equal(2, fetched.Labels.Count);
     }
 
@@ -69,7 +69,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         };
 
         var node = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: ["Neo4jPerson"], // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?>
             {
                 ["name"] = "Jane Smith",
@@ -100,11 +100,11 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     {
         // Create two nodes first
         var person1 = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: ["Neo4jPerson"], // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?> { ["name"] = "Alice" }
         );
         var person2 = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: ["Neo4jPerson"], // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?> { ["name"] = "Bob" }
         );
 
@@ -114,7 +114,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         var relationship = new DynamicRelationship(
             startNodeId: person1.Id,
             endNodeId: person2.Id,
-            type: "KNOWS",
+            type: "NEO4J_KNOWS", // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?>
             {
                 ["since"] = DateTime.UtcNow,
@@ -128,17 +128,17 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
 
         Assert.Equal(person1.Id, fetched.StartNodeId);
         Assert.Equal(person2.Id, fetched.EndNodeId);
-        Assert.Equal("KNOWS", fetched.Type);
+        Assert.Equal("NEO4J_KNOWS", fetched.Type);
         Assert.Equal(0.8, fetched.GetProperty<double>("strength"));
         Assert.True(fetched.GetProperty<bool>("active"));
-        Assert.True(fetched.HasType("KNOWS"));
+        Assert.True(fetched.HasType("NEO4J_KNOWS"));
     }
 
     [Fact]
     public async Task CanUpdateDynamicNode()
     {
         var node = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: ["Neo4jPerson"], // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?> { ["name"] = "Original Name" }
         );
 
@@ -147,7 +147,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         // Update the node
         var updatedNode = new DynamicNode(
             id: node.Id,
-            labels: new[] { "Person", "Employee" },
+            labels: ["Neo4jPerson", "Neo4jEmployee"], // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?>
             {
                 ["name"] = "Updated Name",
@@ -162,8 +162,8 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         Assert.Equal("Updated Name", fetched.GetProperty<string>("name"));
         Assert.Equal(25, fetched.GetProperty<int>("age"));
         Assert.Equal("Engineering", fetched.GetProperty<string>("department"));
-        Assert.True(fetched.HasLabel("Person"));
-        Assert.True(fetched.HasLabel("Employee"));
+        Assert.True(fetched.HasLabel("Neo4jPerson"));
+        Assert.True(fetched.HasLabel("Neo4jEmployee"));
         Assert.Equal(2, fetched.Labels.Count);
     }
 
@@ -172,11 +172,11 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     {
         // Create nodes
         var person1 = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: ["Neo4jPerson"], // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?> { ["name"] = "Alice" }
         );
         var person2 = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: ["Neo4jPerson"], // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?> { ["name"] = "Bob" }
         );
 
@@ -186,7 +186,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         var relationship = new DynamicRelationship(
             startNodeId: person1.Id,
             endNodeId: person2.Id,
-            type: "KNOWS",
+            type: "NEO4J_KNOWS",
             properties: new Dictionary<string, object?> { ["since"] = DateTime.UtcNow }
         );
 
@@ -196,7 +196,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         var updatedRelationship = new DynamicRelationship(
             startNodeId: person1.Id,
             endNodeId: person2.Id,
-            type: "KNOWS",
+            type: "NEO4J_KNOWS",
             properties: new Dictionary<string, object?>
             {
                 ["since"] = DateTime.UtcNow.AddDays(-1),
@@ -220,7 +220,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     public async Task CanDeleteDynamicNode()
     {
         var node = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: ["Neo4jPerson"], // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?> { ["name"] = "To Delete" }
         );
 
@@ -236,11 +236,11 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     {
         // Create nodes and relationship
         var person1 = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: ["Neo4jPerson"], // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?> { ["name"] = "Alice" }
         );
         var person2 = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: ["Neo4jPerson"], // Use labels that don't conflict with other test models
             properties: new Dictionary<string, object?> { ["name"] = "Bob" }
         );
 
@@ -250,7 +250,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         var relationship = new DynamicRelationship(
             startNodeId: person1.Id,
             endNodeId: person2.Id,
-            type: "KNOWS",
+            type: "NEO4J_KNOWS",
             properties: new Dictionary<string, object?> { ["since"] = DateTime.UtcNow }
         );
 
@@ -268,15 +268,15 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         var nodes = new[]
         {
             new DynamicNode(
-                labels: new[] { "Person", "Employee" },
+                labels: new[] { "Neo4jPerson", "Neo4jEmployee" },
                 properties: new Dictionary<string, object?> { ["name"] = "Alice", ["age"] = 30 }
             ),
             new DynamicNode(
-                labels: new[] { "Person", "Manager" },
+                labels: new[] { "Neo4jPerson", "Neo4jManager" },
                 properties: new Dictionary<string, object?> { ["name"] = "Bob", ["age"] = 35 }
             ),
             new DynamicNode(
-                labels: new[] { "Company" },
+                labels: new[] { "Neo4jCompany" },
                 properties: new Dictionary<string, object?> { ["name"] = "Tech Corp" }
             )
         };
@@ -288,15 +288,15 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
 
         // Query by label
         var people = await Graph.DynamicNodes()
-            .Where(n => n.HasLabel("Person"))
+            .Where(n => n.HasLabel("Neo4jPerson"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, people.Count);
-        Assert.All(people, p => Assert.True(p.HasLabel("Person")));
+        Assert.All(people, p => Assert.True(p.HasLabel("Neo4jPerson")));
 
         // Query by property
         var adults = await Graph.DynamicNodes()
-            .Where(n => n.HasLabel("Person") && n.GetProperty<int>("age") > 25)
+            .Where(n => n.HasLabel("Neo4jPerson") && n.GetProperty<int>("age") > 25)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, adults.Count);
@@ -304,11 +304,11 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
 
         // Query by multiple labels
         var employees = await Graph.DynamicNodes()
-            .Where(n => n.HasLabel("Employee"))
+            .Where(n => n.HasLabel("Neo4jEmployee"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(employees);
-        Assert.True(employees[0].HasLabel("Employee"));
+        Assert.True(employees[0].HasLabel("Neo4jEmployee"));
     }
 
     [Fact]
@@ -316,15 +316,15 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     {
         // Create nodes and relationships
         var person1 = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: new[] { "Neo4jPerson" },
             properties: new Dictionary<string, object?> { ["name"] = "Alice" }
         );
         var person2 = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: new[] { "Neo4jPerson" },
             properties: new Dictionary<string, object?> { ["name"] = "Bob" }
         );
         var person3 = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: new[] { "Neo4jPerson" },
             properties: new Dictionary<string, object?> { ["name"] = "Charlie" }
         );
 
@@ -337,19 +337,19 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
             new DynamicRelationship(
                 startNodeId: person1.Id,
                 endNodeId: person2.Id,
-                type: "KNOWS",
+                type: "Neo4jKNOWS",
                 properties: new Dictionary<string, object?> { ["since"] = DateTime.UtcNow, ["active"] = true }
             ),
             new DynamicRelationship(
                 startNodeId: person2.Id,
                 endNodeId: person3.Id,
-                type: "KNOWS",
+                type: "Neo4jKNOWS",
                 properties: new Dictionary<string, object?> { ["since"] = DateTime.UtcNow, ["active"] = false }
             ),
             new DynamicRelationship(
                 startNodeId: person1.Id,
                 endNodeId: person3.Id,
-                type: "WORKS_WITH",
+                type: "Neo4jWORKS_WITH",
                 properties: new Dictionary<string, object?> { ["project"] = "Alpha" }
             )
         };
@@ -361,15 +361,15 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
 
         // Query by type
         var knowsRelationships = await Graph.DynamicRelationships()
-            .Where(r => r.HasType("KNOWS"))
+            .Where(r => r.HasType("Neo4jKNOWS"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, knowsRelationships.Count);
-        Assert.All(knowsRelationships, r => Assert.True(r.HasType("KNOWS")));
+        Assert.All(knowsRelationships, r => Assert.True(r.HasType("Neo4jKNOWS")));
 
         // Query by property
         var activeRelationships = await Graph.DynamicRelationships()
-            .Where(r => r.HasType("KNOWS") && r.GetProperty<bool>("active") == true)
+            .Where(r => r.HasType("Neo4jKNOWS") && r.GetProperty<bool>("active") == true)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(activeRelationships);
@@ -396,7 +396,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         var nodes = new[]
         {
             new DynamicNode(
-                labels: new[] { "Person" },
+                labels: new[] { "Neo4jPerson" },
                 properties: new Dictionary<string, object?>
                 {
                     ["name"] = "Alice",
@@ -404,7 +404,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
                 }
             ),
             new DynamicNode(
-                labels: new[] { "Person" },
+                labels: new[] { "Neo4jPerson" },
                 properties: new Dictionary<string, object?>
                 {
                     ["name"] = "Bob",
@@ -420,7 +420,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
 
         // Query by complex property - we'll filter in memory since expression trees don't support 'is' pattern matching
         var allPeople = await Graph.DynamicNodes()
-            .Where(n => n.HasLabel("Person"))
+            .Where(n => n.HasLabel("Neo4jPerson"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         var seattlePeople = allPeople.Where(n =>
@@ -442,7 +442,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         var nodes = new[]
         {
             new DynamicNode(
-                labels: new[] { "Person" },
+                labels: new[] { "Neo4jPerson" },
                 properties: new Dictionary<string, object?>
                 {
                     ["name"] = "Alice",
@@ -450,7 +450,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
                 }
             ),
             new DynamicNode(
-                labels: new[] { "Person" },
+                labels: new[] { "Neo4jPerson" },
                 properties: new Dictionary<string, object?>
                 {
                     ["name"] = "Bob",
@@ -466,7 +466,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
 
         // Query by array property - this should be translated to Cypher
         var developers = await Graph.DynamicNodes()
-            .Where(n => n.HasLabel("Person") && n.GetProperty<IList<string>>("tags")!.Contains("developer"))
+            .Where(n => n.HasLabel("Neo4jPerson") && n.GetProperty<IList<string>>("tags")!.Contains("developer"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         if (developers.Count > 0)
@@ -485,7 +485,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     public async Task CanProjectDynamicNodeProperties()
     {
         var node = new DynamicNode(
-            labels: new[] { "Person", "Employee" },
+            labels: new[] { "Neo4jPerson", "Neo4jEmployee" },
             properties: new Dictionary<string, object?>
             {
                 ["name"] = "Alice",
@@ -498,7 +498,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
         var projections = await Graph.DynamicNodes()
-            .Where(n => n.HasLabel("Person"))
+            .Where(n => n.HasLabel("Neo4jPerson"))
             .Select(n => new
             {
                 Id = n.Id,
@@ -521,7 +521,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     public async Task CanUseDynamicEntityExtensions()
     {
         var node = new DynamicNode(
-            labels: new[] { "Person", "Employee" },
+            labels: new[] { "Neo4jPerson", "Neo4jEmployee" },
             properties: new Dictionary<string, object?>
             {
                 ["name"] = "Alice",
@@ -533,11 +533,11 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
 
         // Test extension methods
-        Assert.True(fetched.HasLabel("Person"));
-        Assert.True(fetched.HasLabel("Employee"));
-        Assert.True(fetched.HasAnyLabel("Person", "Manager"));
-        Assert.True(fetched.HasAllLabels("Person", "Employee"));
-        Assert.False(fetched.HasAllLabels("Person", "Manager"));
+        Assert.True(fetched.HasLabel("Neo4jPerson"));
+        Assert.True(fetched.HasLabel("Neo4jEmployee"));
+        Assert.True(fetched.HasAnyLabel("Neo4jPerson", "Neo4jManager"));
+        Assert.True(fetched.HasAllLabels("Neo4jPerson", "Neo4jEmployee"));
+        Assert.False(fetched.HasAllLabels("Neo4jPerson", "Neo4jManager"));
 
         Assert.True(fetched.HasProperty("name"));
         Assert.True(fetched.HasProperty("age"));
@@ -557,7 +557,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     public async Task CanHandleNullProperties()
     {
         var node = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: new[] { "Neo4jPerson" },
             properties: new Dictionary<string, object?>
             {
                 ["name"] = "Alice",
@@ -594,14 +594,14 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     public async Task CanHandleEmptyProperties()
     {
         var node = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: new[] { "Neo4jPerson" },
             properties: new Dictionary<string, object?>()
         );
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
         var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
 
-        Assert.True(fetched.HasLabel("Person"));
+        Assert.True(fetched.HasLabel("Neo4jPerson"));
         Assert.Empty(fetched.Properties);
         Assert.Empty(fetched.GetPropertyNames());
     }
@@ -616,7 +616,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         }
 
         var node = new DynamicNode(
-            labels: new[] { "TestNode" },
+            labels: new[] { "Neo4jTestNode" },
             properties: properties
         );
 
@@ -632,7 +632,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     public async Task CanHandleSpecialCharactersInPropertyNames()
     {
         var node = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: new[] { "Neo4jPerson" },
             properties: new Dictionary<string, object?>
             {
                 ["name"] = "Alice",
@@ -655,7 +655,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     public async Task CanHandleNumericTypes()
     {
         var node = new DynamicNode(
-            labels: new[] { "Person" },
+            labels: new[] { "Neo4jPerson" },
             properties: new Dictionary<string, object?>
             {
                 ["intValue"] = 42,
@@ -684,7 +684,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         var timeOnly = TimeOnly.FromDateTime(now);
 
         var node = new DynamicNode(
-            labels: new[] { "Event" },
+            labels: new[] { "Neo4jEvent" },
             properties: new Dictionary<string, object?>
             {
                 ["createdAt"] = now,

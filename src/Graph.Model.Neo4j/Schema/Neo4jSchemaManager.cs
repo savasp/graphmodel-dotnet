@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Schema;
 
 using System.Linq;
+using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j.Core;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
@@ -279,6 +280,14 @@ internal class Neo4jSchemaManager
 
                 if (propertySchema.IsRequired)
                 {
+                    // Skip NOT NULL constraints for complex properties since they are modeled as separate nodes
+                    // A property is considered complex if it's not a simple type (i.e., it's a user-defined class/record)
+                    if (!GraphDataModel.IsSimple(propertySchema.PropertyInfo.PropertyType))
+                    {
+                        _logger.LogDebug("Skipping NOT NULL constraint for complex property {Property} on label {Label} - complex properties are modeled as separate nodes", propertySchema.Name, label);
+                        continue;
+                    }
+
                     var requiredExists = existingConstraints.Any(c =>
                         c.Contains(propertySchema.Name) && c.Contains("NOT NULL"));
 
