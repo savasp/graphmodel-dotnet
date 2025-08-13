@@ -395,6 +395,36 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task CanCreateAndGetDynamicNode()
+    {
+        // Arrange
+        await Graph.SchemaRegistry.InitializeAsync();
+
+        var label = Labels.GetLabelFromType(typeof(Todo));
+        var node = new DynamicNode
+        {
+            Labels = [label],
+            Properties = new Dictionary<string, object?>(GetMemoryProperties())
+            {
+                ["note"] = "Test todo",
+                ["done"] = false,
+                ["due"] = DateTime.UtcNow,
+                ["priority"] = "Normal",
+                // Don't add 'categories' to check that non-required properties are handled properly
+            }
+        };
+
+        // Act
+        await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
+
+        // Assert
+        var retrievedNode = await Graph.GetNodeAsync<DynamicNode>(node.Id, null, TestContext.Current.CancellationToken);
+
+        // Just checking that the deserialization worked
+        Assert.NotNull(retrievedNode);
+    }
+
+    [Fact]
     public async Task DynamicNode_AllOptionalProperties_AreValidated()
     {
         // Arrange
