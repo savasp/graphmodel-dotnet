@@ -111,7 +111,7 @@ internal sealed class ComplexPropertyManager(GraphContext context)
             relProps
         });
 
-        var record = await result.SingleAsync(cancellationToken);
+        var record = await GetSingleRecordAsync(result, cancellationToken);
         var complexNodeId = record["nodeId"].As<string>()
             ?? throw new GraphException($"Failed to create complex property node");
 
@@ -160,10 +160,37 @@ internal sealed class ComplexPropertyManager(GraphContext context)
             propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix
         });
 
-        var deletedCount = (await result.FirstAsync(cancellationToken))["deletedCount"].As<int>();
+        var deletedCount = (await GetFirstRecordAsync(result, cancellationToken))["deletedCount"].As<int>();
 
         logger.LogDebug(
             "Deleted {DeletedCount} complex property relationships for parent {ParentId}",
             deletedCount, parentId);
+    }
+
+    private static async Task<IRecord> GetSingleRecordAsync(IResultCursor result, CancellationToken cancellationToken)
+    {
+#if NET10_0
+        return await result.SingleAsync(cancellationToken);
+#else
+        var records = await result.ToListAsync(cancellationToken);
+        return records.Count switch
+        {
+            0 => throw new InvalidOperationException("Sequence contains no elements"),
+            1 => records[0],
+            _ => throw new InvalidOperationException("Sequence contains more than one element")
+        };
+#endif
+    }
+
+    private static async Task<IRecord> GetFirstRecordAsync(IResultCursor result, CancellationToken cancellationToken)
+    {
+#if NET10_0
+        return await result.FirstAsync(cancellationToken);
+#else
+        var records = await result.ToListAsync(cancellationToken);
+        return records.Count == 0
+            ? throw new InvalidOperationException("Sequence contains no elements")
+            : records[0];
+#endif
     }
 }

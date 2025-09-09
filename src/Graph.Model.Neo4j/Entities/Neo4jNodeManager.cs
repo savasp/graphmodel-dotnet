@@ -149,7 +149,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                     propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix
                 });
 
-                var checkRecord = await checkResult.SingleAsync(cancellationToken);
+                var checkRecord = await GetSingleRecordAsync(checkResult, cancellationToken);
                 var businessRelationshipCount = checkRecord["businessRelationshipCount"].As<int>();
 
                 if (businessRelationshipCount > 0)
@@ -182,7 +182,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix
             });
 
-            var record = await result.SingleAsync(cancellationToken);
+            var record = await GetSingleRecordAsync(result, cancellationToken);
             var wasDeleted = record["wasDeleted"].As<bool>();
 
             if (!wasDeleted)
@@ -230,7 +230,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
 
         var result = await transaction.RunAsync(cypher, new { props = simpleProperties });
-        var record = await result.SingleAsync(cancellationToken);
+        var record = await GetSingleRecordAsync(result, cancellationToken);
 
         return record["nodeId"].As<string>()
             ?? throw new GraphException("Failed to create node - no ID returned");
@@ -251,7 +251,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // First, get the current labels to remove them
             var getLabelsCypher = "MATCH (n {Id: $nodeId}) RETURN labels(n) AS currentLabels";
             var getLabelsResult = await transaction.RunAsync(getLabelsCypher, new { nodeId });
-            var getLabelsRecord = await getLabelsResult.SingleAsync(cancellationToken);
+            var getLabelsRecord = await GetSingleRecordAsync(getLabelsResult, cancellationToken);
             var currentLabels = getLabelsRecord["currentLabels"].As<List<string>>() ?? new List<string>();
 
             // Build the REMOVE clause for current labels
@@ -272,7 +272,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         }
 
         var result = await transaction.RunAsync(cypher, new { nodeId, props = simpleProperties });
-        return await result.CountAsync(cancellationToken) > 0;
+        return await GetCountAsync(result, cancellationToken) > 0;
     }
 
     private void ValidateNodeProperties<TNode>(TNode node) where TNode : Model.INode
@@ -460,5 +460,30 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 throw new GraphException($"Property '{propertyName}' on {entityLabel} must be a valid enum value. Valid values are: {validValues}. Current value: {value}");
             }
         }
+    }
+
+    private static async Task<IRecord> GetSingleRecordAsync(IResultCursor result, CancellationToken cancellationToken)
+    {
+#if NET10_0
+        return await result.SingleAsync(cancellationToken);
+#else
+        var records = await result.ToListAsync(cancellationToken);
+        return records.Count switch
+        {
+            0 => throw new InvalidOperationException("Sequence contains no elements"),
+            1 => records[0],
+            _ => throw new InvalidOperationException("Sequence contains more than one element")
+        };
+#endif
+    }
+
+    private static async Task<int> GetCountAsync(IResultCursor result, CancellationToken cancellationToken)
+    {
+#if NET10_0
+        return await result.CountAsync(cancellationToken);
+#else
+        var records = await result.ToListAsync(cancellationToken);
+        return records.Count;
+#endif
     }
 }

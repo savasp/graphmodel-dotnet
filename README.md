@@ -1,7 +1,7 @@
 # GraphModel
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![.NET](https://img.shields.io/badge/.NET-10.0+-purple.svg)](https://dotnet.microsoft.com/download)
+[![.NET](https://img.shields.io/badge/.NET-9.0%20%7C%2010.0+-purple.svg)](https://dotnet.microsoft.com/download)
 [![GitHub release](https://img.shields.io/github/release/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel-dotnet/releases)
 [![Build Status](https://github.com/savasp/graphmodel-dotnet/workflows/🧪%20Tests/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/tests.yml)
 [![Coverage](https://github.com/savasp/graphmodel-dotnet/workflows/📊%20Code%20Coverage/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/coverage.yml)
@@ -284,7 +284,7 @@ GraphModel follows a clean, layered architecture:
 
 ## 🔧 Requirements
 
-- **.NET 10.0** or later
+- **.NET 9.0** or **.NET 10.0** or later
 - **Neo4j 4.0+** (5.x recommended for Neo4j provider)
 - **C# 12** language features
 

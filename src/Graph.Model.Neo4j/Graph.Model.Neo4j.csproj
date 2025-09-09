@@ -19,7 +19,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Neo4j.Driver" Version="5.28.1" />
+        <PackageReference Include="Neo4j.Driver" Version="5.28.3" />
     </ItemGroup>
 
     <!-- Use project references for development (default) -->

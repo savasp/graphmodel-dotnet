@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
-        <TargetFrameworkOverride>netstandard2.0</TargetFrameworkOverride>
+        <TargetFrameworks>netstandard2.0</TargetFrameworks>
         <AssemblyName>Graph.Model.Serialization.CodeGen</AssemblyName>
         <RootNamespace>Graph.Model.Serialization.CodeGen</RootNamespace>
     </PropertyGroup>

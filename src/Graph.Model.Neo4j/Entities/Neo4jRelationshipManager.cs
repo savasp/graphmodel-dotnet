@@ -166,7 +166,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 cypher,
                 new { relId = relationshipId });
 
-            var record = await result.SingleAsync(cancellationToken);
+            var record = await GetSingleRecordAsync(result, cancellationToken);
             var deletedCount = record["deletedCount"].As<int>();
 
             if (deletedCount == 0)
@@ -209,7 +209,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             props = properties
         });
 
-        var record = await result.SingleAsync(cancellationToken);
+        var record = await GetSingleRecordAsync(result, cancellationToken);
         return record["created"].As<bool>();
     }
 
@@ -231,7 +231,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             props = properties
         });
 
-        var record = await result.SingleAsync(cancellationToken);
+        var record = await GetSingleRecordAsync(result, cancellationToken);
         return record["updated"].As<bool>();
     }
 
@@ -416,5 +416,20 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 throw new GraphException($"Property '{propertyName}' on {entityLabel} must be a valid enum value. Valid values are: {validValues}. Current value: {value}");
             }
         }
+    }
+
+    private static async Task<IRecord> GetSingleRecordAsync(IResultCursor result, CancellationToken cancellationToken)
+    {
+#if NET10_0
+        return await result.SingleAsync(cancellationToken);
+#else
+        var records = await result.ToListAsync(cancellationToken);
+        return records.Count switch
+        {
+            0 => throw new InvalidOperationException("Sequence contains no elements"),
+            1 => records[0],
+            _ => throw new InvalidOperationException("Sequence contains more than one element")
+        };
+#endif
     }
 }
