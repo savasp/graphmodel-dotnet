@@ -49,6 +49,7 @@ public static class GraphTraversalExtensions
         return source.Provider.CreateQuery<IGraphPathSegment<TStartNode, TRelationship, TEndNode>>(callExpression);
     }
 
+
     /// <summary>
     /// Traverses relationships of the specified type to get the target nodes.
     /// This is implemented as a convenience method on top of PathSegments.
@@ -119,7 +120,7 @@ public static class GraphTraversalExtensions
 
     /// <summary>
     /// Traverses relationships of the specified type to get the target nodes with direction constraints.
-    /// This is implemented as a convenience method on top of PathSegments.
+    /// This overload allows specifying direction directly in the method call for better readability.
     /// </summary>
     /// <typeparam name="TStartNode">The type of the starting nodes</typeparam>
     /// <typeparam name="TRelationship">The type of relationships to traverse</typeparam>
@@ -137,6 +138,28 @@ public static class GraphTraversalExtensions
         return source
             .PathSegments<TStartNode, TRelationship, TEndNode>()
             .Direction(direction)
+            .Select(ps => ps.EndNode);
+    }
+
+    /// <summary>
+    /// Traverses relationships in reverse direction to get the source nodes.
+    /// This is a convenience method for reverse traversal that makes the intent clear.
+    /// Equivalent to Traverse with GraphTraversalDirection.Incoming.
+    /// </summary>
+    /// <typeparam name="TStartNode">The type of the starting nodes (where we end up)</typeparam>
+    /// <typeparam name="TRelationship">The type of relationships to traverse</typeparam>
+    /// <typeparam name="TEndNode">The type of the target nodes (where we start from)</typeparam>
+    /// <param name="source">The source queryable of starting nodes</param>
+    /// <returns>A queryable of source nodes reached through reverse traversal</returns>
+    public static IGraphQueryable<TStartNode> ReverseTraverse<TStartNode, TRelationship, TEndNode>(
+        this IGraphNodeQueryable<TEndNode> source)
+        where TStartNode : INode
+        where TRelationship : IRelationship
+        where TEndNode : INode
+    {
+        return source
+            .PathSegments<TEndNode, TRelationship, TStartNode>()
+            .Direction(GraphTraversalDirection.Incoming)
             .Select(ps => ps.EndNode);
     }
 

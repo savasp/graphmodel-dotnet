@@ -254,6 +254,209 @@ public interface IQueryTraversalTests : IGraphModelTest
 
     #endregion
 
+    #region Reverse Traversal Tests
+
+    [Fact]
+    public async Task CanReverseTraverseWithReverseTraverseMethod()
+    {
+        // Setup: Alice knows Bob, Charlie knows Alice
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        // Act: Reverse traverse from Alice to find who knows her (should get Charlie)
+        var reverseResults = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .ReverseTraverse<Person, Knows, Person>()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Single(reverseResults);
+        Assert.Equal("Charlie", reverseResults[0].FirstName);
+    }
+
+    [Fact]
+    public async Task CanReverseTraverseWithPathSegmentsDirection()
+    {
+        // Setup: Alice knows Bob, Charlie knows Alice
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        // Act: Use PathSegments with incoming direction to find who knows Alice
+        var pathSegments = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .PathSegments<Person, Knows, Person>()
+            .Direction(GraphTraversalDirection.Incoming)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Single(pathSegments);
+        Assert.Equal("Alice", pathSegments[0].StartNode.FirstName);
+        Assert.Equal("Charlie", pathSegments[0].EndNode.FirstName);
+    }
+
+    [Fact]
+    public async Task CanReverseTraverseWithTraverseDirection()
+    {
+        // Setup: Alice knows Bob, Charlie knows Alice
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        // Act: Use Traverse with incoming direction to find who knows Alice
+        var reverseResults = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .Traverse<Person, Knows, Person>(GraphTraversalDirection.Incoming)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Single(reverseResults);
+        Assert.Equal("Charlie", reverseResults[0].FirstName);
+    }
+
+    [Fact]
+    public async Task CanReverseTraverseWithMultipleIncomingRelationships()
+    {
+        // Setup: Alice knows Bob, Charlie knows Alice, David knows Alice
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+        var david = new Person { FirstName = "David", LastName = "Wilson" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(david, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = david.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        // Act: Reverse traverse from Alice to find who knows her
+        var reverseResults = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .ReverseTraverse<Person, Knows, Person>()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(2, reverseResults.Count);
+        Assert.Contains(reverseResults, p => p.FirstName == "Charlie");
+        Assert.Contains(reverseResults, p => p.FirstName == "David");
+        Assert.DoesNotContain(reverseResults, p => p.FirstName == "Bob");
+    }
+
+    [Fact]
+    public async Task CanReverseTraverseWithNoIncomingRelationships()
+    {
+        // Setup: Alice knows Bob, but no one knows Alice
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        // Act: Reverse traverse from Alice to find who knows her
+        var reverseResults = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .ReverseTraverse<Person, Knows, Person>()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Empty(reverseResults);
+    }
+
+    [Fact]
+    public async Task CanReverseTraverseWithDifferentRelationshipTypes()
+    {
+        // Setup: Alice knows Bob, Charlie lives at Alice's address
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new LivesAt { StartNodeId = charlie.Id, EndNodeId = alice.Id, MovedInDate = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        // Act: Reverse traverse from Alice using LivesAt relationship
+        var reverseResults = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .ReverseTraverse<Person, LivesAt, Person>()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Single(reverseResults);
+        Assert.Equal("Charlie", reverseResults[0].FirstName);
+    }
+
+    [Fact]
+    public async Task CanReverseTraverseWithDepthConstraints()
+    {
+        // Setup: Alice knows Bob, Bob knows Charlie, Charlie knows David
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+        var david = new Person { FirstName = "David", LastName = "Wilson" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(david, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = david.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        // Act: Reverse traverse from Alice with depth constraint
+        var reverseResults = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .ReverseTraverse<Person, Knows, Person>()
+            .WithDepth(1) // Only direct relationships
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert - Alice has no incoming relationships, so should be empty
+        Assert.Empty(reverseResults);
+
+        // Act: Reverse traverse from Bob with depth constraint
+        var bobReverseResults = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Bob")
+            .ReverseTraverse<Person, Knows, Person>()
+            .WithDepth(1)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert - Bob should have Alice as incoming
+        Assert.Single(bobReverseResults);
+        Assert.Equal("Alice", bobReverseResults[0].FirstName);
+    }
+
+    #endregion
+
     #region Relationship Filtering Tests
 
     [Fact]

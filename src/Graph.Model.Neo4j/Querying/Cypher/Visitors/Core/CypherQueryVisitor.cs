@@ -192,6 +192,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
             case "PathSegments":
                 return HandlePathSegments(node, result);
 
+            case "ReverseTraverse":
+                return HandleReverseTraverse(node, result);
+
             case "Direction":
                 return HandleDirection(node, result);
 
@@ -992,6 +995,17 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 _logger.LogDebug("PathSegments: Source={Source}, Relationship={Relationship}, Target={Target}",
                     sourceType.Name, relationshipType.Name, targetType.Name);
 
+                // Check if direction parameter is provided
+                if (node.Arguments.Count >= 2)
+                {
+                    var directionArg = node.Arguments[1];
+                    if (directionArg is ConstantExpression { Value: GraphTraversalDirection direction })
+                    {
+                        _context.Builder.SetTraversalDirection(direction);
+                        _logger.LogDebug("Set traversal direction from PathSegments: {Direction}", direction);
+                    }
+                }
+
                 // Set up path segment context in the scope
                 _context.Scope.SetTraversalInfo(sourceType, relationshipType, targetType);
                 _context.Builder.EnablePathSegmentLoading();
@@ -1011,6 +1025,49 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
 
         _logger.LogDebug("Configured path segment traversal");
+        return result ?? node.Arguments[0];
+    }
+
+    private Expression HandleReverseTraverse(MethodCallExpression node, Expression? result)
+    {
+        _logger.LogDebug("Processing ReverseTraverse method call");
+
+        // ReverseTraverse method typically has generic arguments that specify the path structure
+        var method = node.Method;
+        if (method.IsGenericMethod)
+        {
+            var genericArgs = method.GetGenericArguments();
+            if (genericArgs.Length == 3)
+            {
+                var sourceType = genericArgs[0];  // This is actually the target type in reverse traversal
+                var relationshipType = genericArgs[1];
+                var targetType = genericArgs[2];  // This is actually the source type in reverse traversal
+
+                _logger.LogDebug("ReverseTraverse: Source={Source}, Relationship={Relationship}, Target={Target}",
+                    sourceType.Name, relationshipType.Name, targetType.Name);
+
+                // Set traversal direction to incoming for reverse traversal
+                _context.Builder.SetTraversalDirection(GraphTraversalDirection.Incoming);
+
+                // Set up path segment context in the scope
+                _context.Scope.SetTraversalInfo(targetType, relationshipType, sourceType);
+                _context.Builder.EnablePathSegmentLoading();
+
+                // Set up the pending path segment pattern with appropriate aliases
+                var sourceAlias = _context.Scope.GetOrCreateAlias(targetType, "src");
+                var relAlias = _context.Scope.GetOrCreateAlias(relationshipType, "r");
+                var targetAlias = _context.Scope.GetOrCreateAlias(sourceType, "tgt");
+
+                _context.Builder.SetPendingPathSegmentPattern(
+                    targetType, relationshipType, sourceType,
+                    sourceAlias, relAlias, targetAlias);
+
+                _logger.LogDebug("Set up reverse traversal pattern: ({Source}:{SourceType})<-[{Rel}:{RelType}]-({Target}:{TargetType})",
+                    sourceAlias, targetType.Name, relAlias, relationshipType.Name, targetAlias, sourceType.Name);
+            }
+        }
+
+        _logger.LogDebug("Configured reverse traversal");
         return result ?? node.Arguments[0];
     }
 
