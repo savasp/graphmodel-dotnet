@@ -185,6 +185,107 @@ public interface IQueryTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task CanQueryWithTakeZero()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var taken = await this.Graph.Nodes<Person>().Take(0).ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Empty(taken);
+    }
+
+    [Fact]
+    public async Task CanQueryWithTakeLargerThanAvailable()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var taken = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Take(10).ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(2, taken.Count);
+        Assert.Equal("A", taken[0].FirstName);
+        Assert.Equal("B", taken[1].FirstName);
+    }
+
+    [Fact]
+    public async Task CanQueryWithTakeOne()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        var p3 = new Person { FirstName = "C" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
+
+        var taken = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Take(1).ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Single(taken);
+        Assert.Equal("A", taken[0].FirstName);
+    }
+
+    [Fact]
+    public async Task CanQueryWithTakeAndWhere()
+    {
+        var p1 = new Person { FirstName = "Alice", LastName = "Smith" };
+        var p2 = new Person { FirstName = "Bob", LastName = "Smith" };
+        var p3 = new Person { FirstName = "Charlie", LastName = "Jones" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
+
+        var taken = await this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == "Smith")
+            .OrderBy(p => p.FirstName)
+            .Take(1)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(taken);
+        Assert.Equal("Alice", taken[0].FirstName);
+    }
+
+    [Fact]
+    public async Task CanQueryWithTakeAndSelect()
+    {
+        var p1 = new Person { FirstName = "Alice", LastName = "Smith" };
+        var p2 = new Person { FirstName = "Bob", LastName = "Smith" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var taken = await this.Graph.Nodes<Person>()
+            .OrderBy(p => p.FirstName)
+            .Select(p => p.FirstName)
+            .Take(1)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(taken);
+        Assert.Equal("Alice", taken[0]);
+    }
+
+    [Fact]
+    public async Task CanQueryWithTakeAndDistinct()
+    {
+        var p1 = new Person { FirstName = "Alice", LastName = "Smith" };
+        var p2 = new Person { FirstName = "Alice", LastName = "Jones" };
+        var p3 = new Person { FirstName = "Bob", LastName = "Smith" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
+
+        var taken = await this.Graph.Nodes<Person>()
+            .Select(p => p.FirstName)
+            .Distinct()
+            .OrderBy(name => name)
+            .Take(2)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, taken.Count);
+        Assert.Equal("Alice", taken[0]);
+        Assert.Equal("Bob", taken[1]);
+    }
+
+    [Fact]
     public async Task CanQueryWithFirstAndSingle()
     {
         var p1 = new Person { FirstName = "A" };

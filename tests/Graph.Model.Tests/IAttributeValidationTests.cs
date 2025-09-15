@@ -27,7 +27,7 @@ public interface IAttributeValidationTests : IGraphModelTest
         public string LastName { get; set; } = string.Empty;
     }
 
-    [Node("Employee", "Person", "User")]
+    [Node("Employee", "Person", "SomeUser")]
     public class PersonWithMultipleLabels : INode
     {
         public string Id { get; init; } = Guid.NewGuid().ToString("N");

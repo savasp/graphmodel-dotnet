@@ -703,6 +703,10 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                 WITH {currentWith}, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties");
         }
 
+        // Add ordering and pagination before the final return
+        _orderByPart.AppendTo(query, _parameters);
+        _paginationPart.AppendTo(query, _parameters);
+
         // Build the return clause based on what we loaded
         var returnClause = PathSegmentProjection switch
         {
