@@ -61,6 +61,14 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         };
     }
 
+    /// <summary>
+    /// Checks if a string is a parameter reference (starts with $).
+    /// </summary>
+    private static bool IsParameterReference(string value)
+    {
+        return value.StartsWith("$");
+    }
+
     protected override Expression VisitMethodCall(MethodCallExpression node)
     {
         _logger.LogDebug("Translating method call: {Method}", node.Method.Name);
@@ -793,8 +801,12 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
                 _ => throw new NotSupportedException($"Binary operator {node.NodeType} is not supported for DateTime")
             };
 
-            _logger.LogDebug("Translated DateTime binary expression: {Left} {Operator} {Right}", left, operatorSymbol, right);
-            return Expression.Constant($"{left} {operatorSymbol} {right}");
+            // Wrap DateTime parameters in datetime() function for proper type handling
+            var leftExpression = node.Left.Type == typeof(DateTime) && IsParameterReference(left) ? $"datetime({left})" : left;
+            var rightExpression = node.Right.Type == typeof(DateTime) && IsParameterReference(right) ? $"datetime({right})" : right;
+
+            _logger.LogDebug("Translated DateTime binary expression: {Left} {Operator} {Right}", leftExpression, operatorSymbol, rightExpression);
+            return Expression.Constant($"{leftExpression} {operatorSymbol} {rightExpression}");
         }
 
         // Handle logical operations

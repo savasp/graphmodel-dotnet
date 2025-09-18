@@ -341,4 +341,131 @@ public interface IQueryTests : IGraphModelTest
         Assert.Equal(p1.FirstName, a.FirstName);
     }
 
+    [Fact]
+    public async Task CanQueryWithDateTimeComparison()
+    {
+        var now = DateTime.UtcNow;
+        var memory1 = new Memory
+        {
+            Text = "Old memory",
+            CreatedAt = now.AddDays(-7),
+            UpdatedAt = now.AddDays(-7),
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false
+        };
+        var memory2 = new Memory
+        {
+            Text = "Recent memory",
+            CreatedAt = now.AddDays(-1),
+            UpdatedAt = now.AddDays(-1),
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false
+        };
+        var memory3 = new Memory
+        {
+            Text = "Very recent memory",
+            CreatedAt = now.AddHours(-1),
+            UpdatedAt = now.AddHours(-1),
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false
+        };
+
+        await this.Graph.CreateNodeAsync(memory1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(memory2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(memory3, null, TestContext.Current.CancellationToken);
+
+        // Test DateTime parameter comparison - this should generate datetime($param) in Cypher
+        var recentMemories = await this.Graph.Nodes<Memory>()
+            .Where(m => m.CreatedAt >= now.AddDays(-2))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, recentMemories.Count);
+        Assert.Contains(recentMemories, m => m.Text == "Recent memory");
+        Assert.Contains(recentMemories, m => m.Text == "Very recent memory");
+        Assert.DoesNotContain(recentMemories, m => m.Text == "Old memory");
+    }
+
+    [Fact]
+    public async Task CanQueryWithDateTimeLessThanComparison()
+    {
+        var now = DateTime.UtcNow;
+        var memory1 = new Memory
+        {
+            Text = "Old memory",
+            CreatedAt = now.AddDays(-7),
+            UpdatedAt = now.AddDays(-7),
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false
+        };
+        var memory2 = new Memory
+        {
+            Text = "Recent memory",
+            CreatedAt = now.AddDays(-1),
+            UpdatedAt = now.AddDays(-1),
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false
+        };
+        var memory3 = new Memory
+        {
+            Text = "Very recent memory",
+            CreatedAt = now.AddHours(-1),
+            UpdatedAt = now.AddHours(-1),
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false
+        };
+
+        await this.Graph.CreateNodeAsync(memory1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(memory2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(memory3, null, TestContext.Current.CancellationToken);
+
+        // Test DateTime parameter comparison with less than
+        var oldMemories = await this.Graph.Nodes<Memory>()
+            .Where(m => m.CreatedAt < now.AddDays(-2))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(oldMemories);
+        Assert.Equal("Old memory", oldMemories[0].Text);
+    }
+
+    [Fact]
+    public async Task CanQueryWithDateTimeEqualsComparison()
+    {
+        var specificTime = DateTime.UtcNow.AddDays(-3);
+        var memory1 = new Memory
+        {
+            Text = "Exact time memory",
+            CreatedAt = specificTime,
+            UpdatedAt = specificTime,
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false
+        };
+        var memory2 = new Memory
+        {
+            Text = "Different time memory",
+            CreatedAt = specificTime.AddHours(1),
+            UpdatedAt = specificTime.AddHours(1),
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false
+        };
+
+        await this.Graph.CreateNodeAsync(memory1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(memory2, null, TestContext.Current.CancellationToken);
+
+        // Test DateTime parameter comparison with equals
+        var exactTimeMemories = await this.Graph.Nodes<Memory>()
+            .Where(m => m.CreatedAt == specificTime)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(exactTimeMemories);
+        Assert.Equal("Exact time memory", exactTimeMemories[0].Text);
+    }
+
 }
