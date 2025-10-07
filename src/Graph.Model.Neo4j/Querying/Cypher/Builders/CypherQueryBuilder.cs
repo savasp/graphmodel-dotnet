@@ -31,6 +31,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 {
     private readonly ILogger<CypherQueryBuilder> _logger = context.LoggerFactory?.CreateLogger<CypherQueryBuilder>()
         ?? NullLogger<CypherQueryBuilder>.Instance;
+    private readonly CypherQueryContext _context = context;
 
     // Focused query parts that handle specific responsibilities
     private readonly MatchQueryPart _matchPart = new(context);
@@ -407,6 +408,8 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     }
 
     public bool HasReturnClause => _returnPart.HasContent;
+    public bool IsDistinct => _returnPart.IsDistinct;
+    public IReadOnlyList<string> ReturnClauses => _returnPart.ReturnClauses;
 
     public void AddReturn(string expression, string? alias = null)
     {
@@ -439,9 +442,10 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         // The WhereQueryPart now handles pending WHERE clauses internally
         // This method is kept for compatibility but delegates to the focused part
         _logger.LogDebug("FinalizeWhereClause called - delegating to WhereQueryPart");
+        _wherePart.FinalizePendingClauses();
     }
 
-    private string GetActualAlias(string originalAlias)
+    public string GetActualAlias(string originalAlias)
     {
         // Map the aliases based on the path segment context
         if (_pendingPathSegmentPattern != null)
@@ -465,6 +469,15 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                 "r" => PathSegmentRelationshipAlias ?? originalAlias,
                 _ => originalAlias
             };
+        }
+
+        // If we're in a path segment context but don't have the pattern yet,
+        // we need to defer the alias resolution until the pattern is built
+        if (_context.Scope.IsInPathSegmentContext())
+        {
+            // Return the original alias for now - it will be resolved later
+            // when the path segment pattern is built
+            return originalAlias;
         }
 
         return originalAlias;
@@ -834,9 +847,6 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         var relLabel = relLabels.Count == 1 ? relLabels[0] : string.Join("|", relLabels);
         var targetLabel = targetLabels.Count == 1 ? targetLabels[0] : string.Join("|", targetLabels);
 
-        // Process any pending WHERE clauses BEFORE building the pattern
-        FinalizeWhereClause();
-
         // Determine direction
         var direction = TraversalDirection ?? GraphTraversalDirection.Outgoing;
         string pattern = direction switch
@@ -867,5 +877,9 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         PathSegmentTargetAlias = p.TargetAlias;
 
         _pendingPathSegmentPattern = null;
+
+        // Note: Don't process WHERE clauses here - they will be processed later in Build()
+        // after the path segment aliases are set. The pending WHERE clauses will be processed
+        // with the correct aliases when FinalizeWhereClause() is called in Build().
     }
 }

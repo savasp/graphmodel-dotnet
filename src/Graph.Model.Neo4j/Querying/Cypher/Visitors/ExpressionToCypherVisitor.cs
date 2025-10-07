@@ -397,20 +397,23 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
 
                 if (nestedMember.Member.Name == nameof(IGraphPathSegment.Relationship))
                 {
-                    _logger.LogDebug("Mapping path segment relationship property {Property} to r.{Property}", node.Member.Name, node.Member.Name);
-                    return Expression.Constant($"r.{node.Member.Name}");
+                    var relAlias = _queryBuilder.GetActualAlias("r");
+                    _logger.LogDebug("Mapping path segment relationship property {Property} to {RelAlias}.{Property}", node.Member.Name, relAlias, node.Member.Name);
+                    return Expression.Constant($"{relAlias}.{node.Member.Name}");
                 }
 
                 if (nestedMember.Member.Name == nameof(IGraphPathSegment.StartNode))
                 {
-                    _logger.LogDebug("Mapping path segment start node property {Property} to src.{Property}", node.Member.Name, node.Member.Name);
-                    return Expression.Constant($"src.{node.Member.Name}");
+                    var srcAlias = _queryBuilder.GetActualAlias("src");
+                    _logger.LogDebug("Mapping path segment start node property {Property} to {SrcAlias}.{Property}", node.Member.Name, srcAlias, node.Member.Name);
+                    return Expression.Constant($"{srcAlias}.{node.Member.Name}");
                 }
 
                 if (nestedMember.Member.Name == nameof(IGraphPathSegment.EndNode))
                 {
-                    _logger.LogDebug("Mapping path segment end node property {Property} to tgt.{Property}", node.Member.Name, node.Member.Name);
-                    return Expression.Constant($"tgt.{node.Member.Name}");
+                    var tgtAlias = _queryBuilder.GetActualAlias("tgt");
+                    _logger.LogDebug("Mapping path segment end node property {Property} to {TgtAlias}.{Property}", node.Member.Name, tgtAlias, node.Member.Name);
+                    return Expression.Constant($"{tgtAlias}.{node.Member.Name}");
                 }
             }
 
@@ -482,8 +485,10 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
                     _ => throw new NotSupportedException($"Path segment property '{node.Member.Name}' is not supported")
                 };
 
-                _logger.LogDebug("Mapped path segment property {Property} to alias {Alias}", node.Member.Name, propertyMapping);
-                return Expression.Constant(propertyMapping);
+                // Resolve the actual alias using the query builder's alias mapping
+                var actualAlias = _queryBuilder.GetActualAlias(propertyMapping);
+                _logger.LogDebug("Mapped path segment property {Property} to alias {Alias} (resolved to {ActualAlias})", node.Member.Name, propertyMapping, actualAlias);
+                return Expression.Constant(actualAlias);
             }
 
             // Special handling for IGrouping.Key in GROUP BY scenarios
@@ -892,12 +897,14 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         if (typeof(Model.IRelationship).IsAssignableFrom(node.Type))
         {
             _logger.LogDebug("Parameter expression for relationship: using alias 'r'");
-            return Expression.Constant("r");
+            var relAlias = _queryBuilder.GetActualAlias("r");
+            return Expression.Constant(relAlias);
         }
 
-        var result = _scope.CurrentAlias ?? throw new InvalidOperationException("No current alias set");
-        _logger.LogDebug("Parameter expression result: {Result}", result);
-        return Expression.Constant(result);
+        var alias = _scope.CurrentAlias ?? throw new InvalidOperationException("No current alias set");
+        var actualAlias = _queryBuilder.GetActualAlias(alias);
+        _logger.LogDebug("Parameter expression result: {Alias} -> {ActualAlias}", alias, actualAlias);
+        return Expression.Constant(actualAlias);
     }
 
     protected override Expression VisitConditional(ConditionalExpression node)

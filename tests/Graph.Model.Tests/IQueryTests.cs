@@ -468,4 +468,67 @@ public interface IQueryTests : IGraphModelTest
         Assert.Equal("Exact time memory", exactTimeMemories[0].Text);
     }
 
+    [Fact]
+    public async Task CanQueryWithTraverseAndPathSegmentsAndWhereClause()
+    {
+        // Create test data similar to the user's scenario
+        var user = new User { Id = "user123", Name = "Test User", Email = "test@example.com", GoogleId = "google123" };
+        var memory1 = new Memory
+        {
+            Text = "Memory 1",
+            CreatedAt = DateTime.UtcNow.AddDays(-1),
+            UpdatedAt = DateTime.UtcNow.AddDays(-1),
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false
+        };
+        var memory2 = new Memory
+        {
+            Text = "Memory 2",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            UpdatedAt = DateTime.UtcNow.AddDays(-2),
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false
+        };
+
+        await this.Graph.CreateNodeAsync(user, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(memory1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(memory2, null, TestContext.Current.CancellationToken);
+
+        // Create relationships
+        var userMemory1 = new UserMemory(user.Id, memory1.Id);
+        var userMemory2 = new UserMemory(user.Id, memory2.Id);
+        await this.Graph.CreateRelationshipAsync(userMemory1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(userMemory2, null, TestContext.Current.CancellationToken);
+
+        // Test the problematic query pattern: Traverse + PathSegments + WHERE + Select
+        var from = DateTime.UtcNow.AddDays(-3);
+        var to = DateTime.UtcNow;
+        var limit = 10;
+
+        var query = this.Graph.Nodes<User>()
+            .Where(u => u.Id == user.Id)
+            .Traverse<User, UserMemory, Memory>();
+
+        if (from != default)
+        {
+            query = query.Where(m => m.CreatedAt >= from);
+        }
+
+        if (to != default)
+        {
+            query = query.Where(m => m.CreatedAt <= to);
+        }
+
+        var memories = await query
+            .OrderByDescending(m => m.CreatedAt)
+            .Take(limit)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Verify the query executed successfully
+        Assert.NotNull(memories);
+        Assert.Equal(2, memories.Count);
+    }
+
 }

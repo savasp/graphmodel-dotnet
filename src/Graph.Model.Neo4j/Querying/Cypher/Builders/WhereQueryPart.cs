@@ -74,6 +74,15 @@ internal class WhereQueryPart : ICypherQueryPart
         _pendingWhereClauses.Clear();
     }
 
+    /// <summary>
+    /// Clears only the processed WHERE clauses, keeping the pending ones.
+    /// This is used when we need to reprocess pending WHERE clauses with updated aliases.
+    /// </summary>
+    public void ClearProcessedWhereClausesOnly()
+    {
+        _whereClauses.Clear();
+    }
+
     public void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters)
     {
         // Process any pending WHERE clauses first

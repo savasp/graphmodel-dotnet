@@ -46,6 +46,8 @@ internal class ReturnQueryPart : ICypherQueryPart
 
     public bool IsExistsQuery => _isExistsQuery;
     public bool IsNotExistsQuery => _isNotExistsQuery;
+    public bool IsDistinct => _isDistinct;
+    public IReadOnlyList<string> ReturnClauses => _returnClauses.AsReadOnly();
 
     /// <summary>
     /// Sets the main node alias for fallback return structures.

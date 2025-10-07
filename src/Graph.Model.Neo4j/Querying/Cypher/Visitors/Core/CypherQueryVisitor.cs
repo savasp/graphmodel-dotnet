@@ -222,11 +222,21 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
         _logger.LogDebug("Processing WHERE clause with lambda");
 
-        // Use the expression visitor to translate the lambda body to Cypher
-        var whereCondition = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
-        _context.Builder.AddWhere(whereCondition);
+        // If we're in a path segment context, defer the WHERE clause processing until the path segment pattern is built
+        // This ensures that the WHERE clause uses the correct aliases that match the MATCH clause
+        if (_context.Builder.IsPathSegmentLoading())
+        {
+            _context.Builder.SetPendingWhere(lambda, _context.Scope.CurrentAlias);
+            _logger.LogDebug("Deferred WHERE clause for path segment context with alias: {Alias}", _context.Scope.CurrentAlias);
+        }
+        else
+        {
+            // Use the expression visitor to translate the lambda body to Cypher
+            var whereCondition = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
+            _context.Builder.AddWhere(whereCondition);
+            _logger.LogDebug("Added WHERE condition: {Condition}", whereCondition);
+        }
 
-        _logger.LogDebug("Added WHERE condition: {Condition}", whereCondition);
         return result ?? node.Arguments[0];
     }
 
@@ -386,6 +396,25 @@ internal class CypherQueryVisitor : ExpressionVisitor
         _logger.LogDebug("Processing ORDER BY clause, descending: {Descending}", descending);
 
         var orderExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
+
+        // Special handling for DISTINCT queries with SELECT projections
+        // When we have DISTINCT with a SELECT, the ORDER BY should reference the selected expression, not the original node
+        if (_context.Builder.IsDistinct && _context.Builder.ReturnClauses.Count > 0)
+        {
+            // Check if the order expression is just a parameter reference (like "src")
+            // and we have a single return clause that's a property access (like "src.FirstName")
+            if (orderExpression == _context.Scope.CurrentAlias && _context.Builder.ReturnClauses.Count == 1)
+            {
+                var returnClause = _context.Builder.ReturnClauses[0];
+                // If the return clause is a property access, use that instead of the parameter
+                if (returnClause.Contains(".") && returnClause.StartsWith(orderExpression + "."))
+                {
+                    orderExpression = returnClause;
+                    _logger.LogDebug("Adjusted ORDER BY for DISTINCT query: {Expression}", orderExpression);
+                }
+            }
+        }
+
         _context.Builder.AddOrderBy(orderExpression, descending);
 
         _logger.LogDebug("Added ORDER BY: {Expression} {Direction}", orderExpression, descending ? "DESC" : "ASC");
@@ -1437,9 +1466,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
             var memberName = memberExpr.Member.Name;
             return memberName switch
             {
-                nameof(IGraphPathSegment.StartNode) => "{ Node: src, ComplexProperties: src_flat_properties }",
-                nameof(IGraphPathSegment.EndNode) => "{ Node: tgt, ComplexProperties: tgt_flat_properties }",
-                nameof(IGraphPathSegment.Relationship) => "r", // Relationships don't need complex property structure in this context
+                nameof(IGraphPathSegment.StartNode) => $"{{ Node: {_context.Builder.GetActualAlias("src")}, ComplexProperties: src_flat_properties }}",
+                nameof(IGraphPathSegment.EndNode) => $"{{ Node: {_context.Builder.GetActualAlias("tgt")}, ComplexProperties: tgt_flat_properties }}",
+                nameof(IGraphPathSegment.Relationship) => _context.Builder.GetActualAlias("r"), // Relationships don't need complex property structure in this context
                 _ => _expressionVisitor.VisitAndReturnCypher(expression)
             };
         }
@@ -1451,19 +1480,23 @@ internal class CypherQueryVisitor : ExpressionVisitor
             {
                 // This is a direct node parameter - use the current alias with complex properties
                 var alias = _context.Scope.CurrentAlias ?? "src";
-                return $"{{ Node: {alias}, ComplexProperties: {alias}_flat_properties }}";
+                var actualAlias = _context.Builder.GetActualAlias(alias);
+                return $"{{ Node: {actualAlias}, ComplexProperties: {alias}_flat_properties }}";
             }
 
             if (typeof(Model.IRelationship).IsAssignableFrom(paramExpr.Type))
             {
                 // This is a direct relationship parameter
-                return "r";
+                return _context.Builder.GetActualAlias("r");
             }
 
             if (typeof(IGraphPathSegment).IsAssignableFrom(paramExpr.Type))
             {
                 // This is a direct path segment parameter - return structured object
-                return "{ StartNode: { Node: src, ComplexProperties: src_flat_properties }, Relationship: r, EndNode: { Node: tgt, ComplexProperties: tgt_flat_properties } }";
+                var srcAlias = _context.Builder.GetActualAlias("src");
+                var relAlias = _context.Builder.GetActualAlias("r");
+                var tgtAlias = _context.Builder.GetActualAlias("tgt");
+                return $"{{ StartNode: {{ Node: {srcAlias}, ComplexProperties: src_flat_properties }}, Relationship: {relAlias}, EndNode: {{ Node: {tgtAlias}, ComplexProperties: tgt_flat_properties }} }}";
             }
         }
 

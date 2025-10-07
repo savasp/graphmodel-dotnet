@@ -162,6 +162,14 @@ internal sealed class CypherQueryScope(Type rootType)
         GroupByExpression = expression;
     }
 
+    /// <summary>
+    /// Checks if we're currently in a path segment context.
+    /// </summary>
+    public bool IsInPathSegmentContext()
+    {
+        return IsPathSegmentContext;
+    }
+
     private string GenerateAlias(Type type)
     {
         var name = type.Name;
