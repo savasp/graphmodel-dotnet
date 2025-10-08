@@ -15,10 +15,8 @@
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
 public class DynamicEntityTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.IQueryTests
+    Neo4jTest(fixture)
 {
-
     [Fact]
     public async Task CanCreateAndGetDynamicNodeWithPrimitiveProperties()
     {
