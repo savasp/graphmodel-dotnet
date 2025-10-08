@@ -928,6 +928,10 @@ internal class CypherQueryBuilder(CypherQueryContext context)
             _logger.LogDebug("Return clauses after update: {Clauses}", string.Join(", ", _returnPart.ReturnClauses));
         }
 
+        // Add ordering and pagination before the final return
+        _orderByPart.AppendTo(query, _parameters);
+        _paginationPart.AppendTo(query, _parameters);
+
         // Use the user projections with complex property structures for special types
         _returnPart.AppendTo(query, _parameters);
 

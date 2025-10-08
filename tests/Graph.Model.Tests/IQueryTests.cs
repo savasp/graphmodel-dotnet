@@ -517,7 +517,7 @@ public interface IQueryTests : IGraphModelTest
         // Test the problematic query pattern: Traverse + PathSegments + WHERE + Select
         var from = DateTime.UtcNow.AddDays(-3);
         var to = DateTime.UtcNow;
-        var limit = 10;
+        var limit = 1;
 
         var memories = await this.Graph.Nodes<User>()
             .Where(u => u.Id == user.Id)
@@ -532,7 +532,7 @@ public interface IQueryTests : IGraphModelTest
 
         // Verify the query executed successfully
         Assert.NotNull(memories);
-        Assert.Equal(2, memories.Count);
+        Assert.Equal(1, memories.Count);
     }
 
     [Fact]
@@ -586,7 +586,7 @@ public interface IQueryTests : IGraphModelTest
         // Test the problematic query pattern: Traverse + PathSegments + WHERE + Select
         var from = DateTime.UtcNow.AddDays(-3);
         var to = DateTime.UtcNow;
-        var limit = 10;
+        var limit = 1;
 
         var memories = await this.Graph.Nodes<User>()
             .Where(u => u.Id == user.Id)
@@ -601,6 +601,6 @@ public interface IQueryTests : IGraphModelTest
 
         // Verify the query executed successfully
         Assert.NotNull(memories);
-        Assert.Equal(2, memories.Count);
+        Assert.Equal(1, memories.Count);
     }
 }
