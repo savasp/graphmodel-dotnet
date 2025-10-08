@@ -164,17 +164,17 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var cypher = cascadeDelete
                 ? @"MATCH (n {Id: $nodeId})
                     OPTIONAL MATCH (n)--(connected)
-                    DETACH DELETE connected
-                    WITH n
+                    WITH n, collect(connected) AS connectedNodes
+                    FOREACH (conn IN connectedNodes | DETACH DELETE conn)
                     DETACH DELETE n
-                    RETURN n IS NOT NULL AS wasDeleted"
+                    RETURN true AS wasDeleted"
                 : @"MATCH (n {Id: $nodeId})
                     OPTIONAL MATCH (n)-[r]->(complex)
                     WHERE type(r) STARTS WITH $propertyPrefix
-                    DETACH DELETE complex
-                    WITH n
+                    WITH n, collect(complex) AS complexNodes
+                    FOREACH (comp IN complexNodes | DETACH DELETE comp)
                     DETACH DELETE n
-                    RETURN n IS NOT NULL AS wasDeleted";
+                    RETURN true AS wasDeleted";
 
             var result = await transaction.Transaction.RunAsync(cypher, new
             {
