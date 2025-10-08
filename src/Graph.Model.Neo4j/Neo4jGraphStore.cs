@@ -23,6 +23,7 @@ using global::Neo4j.Driver;
 public sealed class Neo4jGraphStore : IAsyncDisposable
 {
     private readonly IDriver _driver;
+    private readonly bool _ownsDriver;
     private readonly string _databaseName;
     private readonly SchemaRegistry _schemaRegistry;
 
@@ -57,6 +58,7 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
 
         _databaseName = databaseName;
         _schemaRegistry = schemaRegistry ?? new SchemaRegistry();
+        _ownsDriver = true; // This constructor creates its own driver
 
         // Create the Neo4j driver
         _driver = GraphDatabase.Driver(
@@ -92,6 +94,7 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
         _databaseName = databaseName;
         _databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
         _driver = driver;
+        _ownsDriver = false; // This constructor receives an external driver, don't dispose it
         _schemaRegistry = schemaRegistry ?? new SchemaRegistry();
         Graph = new Neo4jGraph(this, _databaseName, _schemaRegistry, loggerFactory);
     }
@@ -126,10 +129,19 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     /// <summary>
     /// Disposes the Neo4j graph store and its resources asynchronously.
     /// </summary>
+    /// <remarks>
+    /// Only disposes the driver if this instance created it (owns it).
+    /// If an external driver was provided, the caller is responsible for disposing it.
+    /// </remarks>
     public async ValueTask DisposeAsync()
     {
         await Graph.DisposeAsync();
-        await _driver.DisposeAsync();
+
+        // Only dispose the driver if we own it
+        if (_ownsDriver)
+        {
+            await _driver.DisposeAsync();
+        }
     }
 
     internal IDriver Driver => _driver;
