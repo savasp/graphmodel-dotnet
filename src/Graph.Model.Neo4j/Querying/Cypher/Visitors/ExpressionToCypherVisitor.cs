@@ -161,8 +161,8 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
 
             var dateTimeExpr = member.Member.Name switch
             {
-                "Now" => "datetime()",
-                "UtcNow" => "datetime.realtime()",
+                "Now" => "localdatetime()",
+                "UtcNow" => "datetime()",
                 "Today" => "date()",
                 _ => throw new NotSupportedException($"DateTime static property {member.Member.Name} is not supported")
             };
@@ -190,8 +190,8 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         {
             var expr = node.Method.Name switch
             {
-                "get_Now" => "datetime()",
-                "get_UtcNow" => "datetime.realtime()",
+                "get_Now" => "localdatetime()",
+                "get_UtcNow" => "datetime()",
                 "get_Today" => "date()",
                 _ => throw new NotSupportedException($"Static DateTime method {node.Method.Name} is not supported")
             };
@@ -204,32 +204,47 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         var target = VisitAndReturnCypher(node.Object!);
         var arguments = node.Arguments.Select(arg => VisitAndReturnCypher(arg)).ToList();
 
+        // Helper to wrap target in appropriate temporal function if needed
+        // Don't double-wrap if it's already a temporal function call
+        string WrapInTemporal(string target, string defaultWrapper)
+        {
+            if (target.StartsWith("datetime(") || target.StartsWith("localdatetime(") ||
+                target.StartsWith("date(") || target.StartsWith("time(") ||
+                target == "datetime()" || target == "localdatetime()" ||
+                target == "date()" || target == "time()")
+            {
+                return target;
+            }
+            return $"{defaultWrapper}({target})";
+        }
+
         var expression = node.Method.Name switch
         {
-            "AddYears" when arguments.Count == 1 => $"datetime({target}) + duration({{years: {arguments[0]}}})",
-            "AddMonths" when arguments.Count == 1 => $"datetime({target}) + duration({{months: {arguments[0]}}})",
-            "AddDays" when arguments.Count == 1 => $"datetime({target}) + duration({{days: {arguments[0]}}})",
-            "AddHours" when arguments.Count == 1 => $"datetime({target}) + duration({{hours: {arguments[0]}}})",
-            "AddMinutes" when arguments.Count == 1 => $"datetime({target}) + duration({{minutes: {arguments[0]}}})",
-            "AddSeconds" when arguments.Count == 1 => $"datetime({target}) + duration({{seconds: {arguments[0]}}})",
-            "AddMilliseconds" when arguments.Count == 1 => $"datetime({target}) + duration({{milliseconds: {arguments[0]}}})",
+            "AddYears" when arguments.Count == 1 => $"{WrapInTemporal(target, "datetime")} + duration({{years: {arguments[0]}}})",
+            "AddMonths" when arguments.Count == 1 => $"{WrapInTemporal(target, "datetime")} + duration({{months: {arguments[0]}}})",
+            "AddDays" when arguments.Count == 1 => $"{WrapInTemporal(target, "datetime")} + duration({{days: {arguments[0]}}})",
+            "AddHours" when arguments.Count == 1 => $"{WrapInTemporal(target, "datetime")} + duration({{hours: {arguments[0]}}})",
+            "AddMinutes" when arguments.Count == 1 => $"{WrapInTemporal(target, "datetime")} + duration({{minutes: {arguments[0]}}})",
+            "AddSeconds" when arguments.Count == 1 => $"{WrapInTemporal(target, "datetime")} + duration({{seconds: {arguments[0]}}})",
+            "AddMilliseconds" when arguments.Count == 1 => $"{WrapInTemporal(target, "datetime")} + duration({{milliseconds: {arguments[0]}}})",
 
             // Property accessors (get_ methods from properties)
-            "get_Year" => $"datetime({target}).year",
-            "get_Month" => $"datetime({target}).month",
-            "get_Day" => $"datetime({target}).day",
-            "get_Hour" => $"datetime({target}).hour",
-            "get_Minute" => $"datetime({target}).minute",
-            "get_Second" => $"datetime({target}).second",
-            "get_Millisecond" => $"datetime({target}).millisecond",
-            "get_DayOfWeek" => $"datetime({target}).dayOfWeek",
-            "get_DayOfYear" => $"datetime({target}).ordinalDay",
-            "get_Date" => $"date({target})",
-            "get_TimeOfDay" => $"time({target})",
+            // Use the target as-is if it's already a temporal function
+            "get_Year" => $"{WrapInTemporal(target, "datetime")}.year",
+            "get_Month" => $"{WrapInTemporal(target, "datetime")}.month",
+            "get_Day" => $"{WrapInTemporal(target, "datetime")}.day",
+            "get_Hour" => $"{WrapInTemporal(target, "datetime")}.hour",
+            "get_Minute" => $"{WrapInTemporal(target, "datetime")}.minute",
+            "get_Second" => $"{WrapInTemporal(target, "datetime")}.second",
+            "get_Millisecond" => $"{WrapInTemporal(target, "datetime")}.millisecond",
+            "get_DayOfWeek" => $"{WrapInTemporal(target, "datetime")}.dayOfWeek",
+            "get_DayOfYear" => $"{WrapInTemporal(target, "datetime")}.ordinalDay",
+            "get_Date" => $"date({WrapInTemporal(target, "datetime")})",
+            "get_TimeOfDay" => $"time({WrapInTemporal(target, "datetime")})",
 
             // Conversion methods
             "ToUniversalTime" => $"datetime({target})",
-            "ToLocalTime" => $"datetime({target})",
+            "ToLocalTime" => $"localdatetime({target})",
             "ToString" => arguments.Count == 0 ? $"toString({target})" : $"toString({target})",
 
             _ => throw new NotSupportedException($"DateTime method {node.Method.Name} is not supported")
@@ -365,8 +380,8 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         {
             var expression = node.Member.Name switch
             {
-                "Now" => "datetime()",
-                "UtcNow" => "datetime.realtime()",
+                "Now" => "localdatetime()",
+                "UtcNow" => "datetime()",
                 "Today" => "date()",
                 _ => throw new NotSupportedException($"DateTime static property {node.Member.Name} is not supported")
             };
