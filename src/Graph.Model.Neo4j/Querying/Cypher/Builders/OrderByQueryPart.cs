@@ -60,6 +60,25 @@ internal class OrderByQueryPart : ICypherQueryPart
         _isAggregationQuery = true;
     }
 
+    /// <summary>
+    /// Updates aliases in ORDER BY clauses for path segments.
+    /// This is used when we have a Traverse + PathSegments pattern and need to update
+    /// the ORDER BY clause aliases from the Traverse pattern to the PathSegments pattern.
+    /// </summary>
+    public void UpdateAliasesForPathSegments(string newSourceAlias, string newTargetAlias)
+    {
+        // Update existing ORDER BY clauses to use the new aliases
+        for (int i = 0; i < _orderByClauses.Count; i++)
+        {
+            var (expression, isDescending) = _orderByClauses[i];
+            // Replace src with newSourceAlias and tgt with newTargetAlias
+            // Use word boundaries to avoid replacing partial matches
+            expression = System.Text.RegularExpressions.Regex.Replace(expression, @"\bsrc\b", newSourceAlias);
+            expression = System.Text.RegularExpressions.Regex.Replace(expression, @"\btgt\b", newTargetAlias);
+            _orderByClauses[i] = (expression, isDescending);
+        }
+    }
+
     public void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters)
     {
         if (_orderByClauses.Count > 0)

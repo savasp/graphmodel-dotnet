@@ -426,20 +426,42 @@ internal sealed class CypherResultProcessor
                         string.Join(", ", node.Properties.Select(kv => $"{kv.Key}={kv.Value}")));
 
                     // Create the base EntityInfo from the node
-                    var nodeEntityInfo = CreateEntityInfoFromNode(node, typeof(Model.INode));
+                    EntityInfo nodeEntityInfo;
 
-                    // Debug: Log the created EntityInfo
-                    _logger.LogDebug("Created EntityInfo with {SimpleCount} simple properties: [{SimpleProps}]",
-                        nodeEntityInfo.SimpleProperties.Count,
-                        string.Join(", ", nodeEntityInfo.SimpleProperties.Select(kv => $"{kv.Key}={kv.Value.Value}")));
+                    // Discover the actual node type from the node labels
+                    var actualNodeType = DiscoverActualNodeType(node, typeof(Model.INode));
 
                     // Add complex properties if they exist
                     if (complexPropStructure["ComplexProperties"] is IList<object> complexProps && complexProps.Count > 0)
                     {
-                        // TODO: Process the complex properties from the flat list
-                        // For now, we'll just use the base node EntityInfo
                         _logger.LogDebug("Complex properties found: {Count} items", complexProps.Count);
+
+                        // Convert the complex properties list to ComplexProperty objects
+                        var complexPropertyList = complexProps
+                            .OfType<Dictionary<string, object>>()
+                            .Select(dict => new ComplexProperty(
+                                ParentNode: dict["ParentNode"].As<INode>(),
+                                Relationship: dict["Relationship"].As<IRelationship>(),
+                                SequenceNumber: dict["SequenceNumber"].As<int>(),
+                                Property: dict["Property"].As<INode>()
+                            ))
+                            .OrderBy(cp => cp.SequenceNumber)
+                            .ToList();
+
+                        // Create EntityInfo with complex properties properly deserialized using the actual type
+                        nodeEntityInfo = DeserializeComplexPropertiesForTypedNode(node, complexPropertyList, actualNodeType);
                     }
+                    else
+                    {
+                        // No complex properties, just create the base EntityInfo from the node
+                        nodeEntityInfo = CreateEntityInfoFromNode(node, actualNodeType);
+                    }
+
+                    // Debug: Log the created EntityInfo
+                    _logger.LogDebug("Created EntityInfo with {SimpleCount} simple properties: [{SimpleProps}], {ComplexCount} complex properties",
+                        nodeEntityInfo.SimpleProperties.Count,
+                        string.Join(", ", nodeEntityInfo.SimpleProperties.Select(kv => $"{kv.Key}={kv.Value.Value}")),
+                        nodeEntityInfo.ComplexProperties.Count);
 
                     complexProperties[key] = new Property(
                         PropertyInfo: null!, // We'll handle this differently for projections

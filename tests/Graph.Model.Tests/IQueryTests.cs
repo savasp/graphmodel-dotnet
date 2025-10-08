@@ -469,7 +469,74 @@ public interface IQueryTests : IGraphModelTest
     }
 
     [Fact]
-    public async Task CanQueryWithTraverseAndPathSegmentsAndWhereClause()
+    public async Task CanQueryWithTraverseAndPathSegmentsAndWhereClauseWithoutComplexProperties()
+    {
+        // Create test data similar to the user's scenario
+        var user = new User { Id = "user123", Name = "Test User", Email = "test@example.com", GoogleId = "google123" };
+        var memory1 = new MemoryWithoutSourceProperty
+        {
+            Text = "Memory 1",
+            CreatedAt = DateTime.UtcNow.AddDays(-1),
+            UpdatedAt = DateTime.UtcNow.AddDays(-1),
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false,
+        };
+        var memory2 = new MemoryWithoutSourceProperty
+        {
+            Text = "Memory 2",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            UpdatedAt = DateTime.UtcNow.AddDays(-2),
+            Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
+            Deleted = false,
+        };
+
+        var memorySourceNode = new MemorySourceNode
+        {
+            Name = "TestApp",
+            Description = "A test application",
+            Version = "1.0",
+            Device = "TestDevice"
+        };
+
+        await this.Graph.CreateNodeAsync(user, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(memory1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(memory2, null, TestContext.Current.CancellationToken);
+
+        await this.Graph.CreateNodeAsync(memorySourceNode, null, TestContext.Current.CancellationToken);
+
+        // Create relationships
+        var userMemory1 = new UserMemory(user.Id, memory1.Id);
+        var userMemory2 = new UserMemory(user.Id, memory2.Id);
+        var memory1ToSource = new MemoryToMemorySourceNode(memory1.Id, memorySourceNode.Id);
+        var memory2ToSource = new MemoryToMemorySourceNode(memory2.Id, memorySourceNode.Id);
+        await this.Graph.CreateRelationshipAsync(userMemory1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(userMemory2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(memory1ToSource, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(memory2ToSource, null, TestContext.Current.CancellationToken);
+
+        // Test the problematic query pattern: Traverse + PathSegments + WHERE + Select
+        var from = DateTime.UtcNow.AddDays(-3);
+        var to = DateTime.UtcNow;
+        var limit = 10;
+
+        var memories = await this.Graph.Nodes<User>()
+            .Where(u => u.Id == user.Id)
+            .Traverse<User, UserMemory, MemoryWithoutSourceProperty>()
+            .Where(m => m.CreatedAt >= from)
+            .Where(m => m.CreatedAt <= to)
+            .OrderByDescending(m => m.CreatedAt)
+            .Take(limit)
+            .PathSegments<MemoryWithoutSourceProperty, MemoryToMemorySourceNode, MemorySourceNode>()
+            .Select(ps => new { ps.StartNode, ps.EndNode })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Verify the query executed successfully
+        Assert.NotNull(memories);
+        Assert.Equal(2, memories.Count);
+    }
+
+    [Fact]
+    public async Task CanQueryWithTraverseAndPathSegmentsAndWhereClauseWithComplexProperties()
     {
         // Create test data similar to the user's scenario
         var user = new User { Id = "user123", Name = "Test User", Email = "test@example.com", GoogleId = "google123" };
@@ -478,57 +545,62 @@ public interface IQueryTests : IGraphModelTest
             Text = "Memory 1",
             CreatedAt = DateTime.UtcNow.AddDays(-1),
             UpdatedAt = DateTime.UtcNow.AddDays(-1),
-            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
             Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
-            Deleted = false
+            Deleted = false,
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" }
         };
         var memory2 = new Memory
         {
             Text = "Memory 2",
             CreatedAt = DateTime.UtcNow.AddDays(-2),
             UpdatedAt = DateTime.UtcNow.AddDays(-2),
-            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" },
             Location = new Point { Longitude = 0, Latitude = 0, Height = 0 },
-            Deleted = false
+            Deleted = false,
+            CapturedBy = new MemorySource { Name = "Test", Description = "Test", Version = "1.0", Device = "Test" }
+        };
+
+        var memorySourceNode = new MemorySourceNode
+        {
+            Name = "TestApp",
+            Description = "A test application",
+            Version = "1.0",
+            Device = "TestDevice"
         };
 
         await this.Graph.CreateNodeAsync(user, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(memory1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(memory2, null, TestContext.Current.CancellationToken);
 
+        await this.Graph.CreateNodeAsync(memorySourceNode, null, TestContext.Current.CancellationToken);
+
         // Create relationships
         var userMemory1 = new UserMemory(user.Id, memory1.Id);
         var userMemory2 = new UserMemory(user.Id, memory2.Id);
+        var memory1ToSource = new MemoryToMemorySourceNode(memory1.Id, memorySourceNode.Id);
+        var memory2ToSource = new MemoryToMemorySourceNode(memory2.Id, memorySourceNode.Id);
         await this.Graph.CreateRelationshipAsync(userMemory1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateRelationshipAsync(userMemory2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(memory1ToSource, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(memory2ToSource, null, TestContext.Current.CancellationToken);
 
         // Test the problematic query pattern: Traverse + PathSegments + WHERE + Select
         var from = DateTime.UtcNow.AddDays(-3);
         var to = DateTime.UtcNow;
         var limit = 10;
 
-        var query = this.Graph.Nodes<User>()
+        var memories = await this.Graph.Nodes<User>()
             .Where(u => u.Id == user.Id)
-            .Traverse<User, UserMemory, Memory>();
-
-        if (from != default)
-        {
-            query = query.Where(m => m.CreatedAt >= from);
-        }
-
-        if (to != default)
-        {
-            query = query.Where(m => m.CreatedAt <= to);
-        }
-
-        var memories = await query
+            .Traverse<User, UserMemory, Memory>()
+            .Where(m => m.CreatedAt >= from)
+            .Where(m => m.CreatedAt <= to)
             .OrderByDescending(m => m.CreatedAt)
             .Take(limit)
+            .PathSegments<Memory, MemoryToMemorySourceNode, MemorySourceNode>()
+            .Select(ps => new { ps.StartNode, ps.EndNode })
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Verify the query executed successfully
         Assert.NotNull(memories);
         Assert.Equal(2, memories.Count);
     }
-
 }

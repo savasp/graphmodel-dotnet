@@ -121,6 +121,25 @@ internal class WhereQueryPart : ICypherQueryPart
     }
 
     /// <summary>
+    /// Updates aliases in WHERE clauses for path segments.
+    /// This is used when we have a Traverse + PathSegments pattern and need to update
+    /// the WHERE clause aliases from the Traverse pattern to the PathSegments pattern.
+    /// </summary>
+    public void UpdateAliasesForPathSegments(string newSourceAlias, string newTargetAlias)
+    {
+        // Update existing WHERE clauses to use the new aliases
+        for (int i = 0; i < _whereClauses.Count; i++)
+        {
+            var clause = _whereClauses[i];
+            // Replace src with newSourceAlias and tgt with newTargetAlias
+            // Use word boundaries to avoid replacing partial matches
+            clause = System.Text.RegularExpressions.Regex.Replace(clause, @"\bsrc\b", newSourceAlias);
+            clause = System.Text.RegularExpressions.Regex.Replace(clause, @"\btgt\b", newTargetAlias);
+            _whereClauses[i] = clause;
+        }
+    }
+
+    /// <summary>
     /// Processes a single WHERE clause using the unified expression visitor.
     /// </summary>
     private void ProcessWhereClause(LambdaExpression lambda, string alias)

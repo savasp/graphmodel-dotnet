@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Threading.Tasks;
+
 namespace Cvoya.Graph.Model.Tests;
 
 public interface IBasicTests : IGraphModelTest
@@ -216,5 +218,39 @@ public interface IBasicTests : IGraphModelTest
     {
         var queryable = this.Graph.Relationships<Knows>();
         Assert.NotNull(queryable);
+    }
+
+    [Fact]
+    public async Task CanQueryForMemories()
+    {
+        var memory = new Memory
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            CapturedBy = new MemorySource
+            {
+                Name = "UnitTest",
+                Description = "Unit Test",
+                Version = "1.0.0",
+                Device = "TestDevice"
+            },
+            Location = new Point { Latitude = 10, Longitude = 20, Height = 5 },
+            Deleted = false,
+            Text = "This is a test memory"
+        };
+
+        await this.Graph.CreateNodeAsync(memory, null, TestContext.Current.CancellationToken);
+
+        var memories = await this.Graph.Nodes<Memory>().ToListAsync();
+        Assert.NotNull(memories);
+
+        var retrievedMemory = await this.Graph.Nodes<Memory>()
+            .Where(m => m.Id == memory.Id)
+            .FirstOrDefaultAsync();
+
+        Assert.NotNull(retrievedMemory);
+        Assert.Equal("UnitTest", retrievedMemory.CapturedBy.Name);
+        Assert.Equal(10, retrievedMemory.Location.Latitude);
     }
 }

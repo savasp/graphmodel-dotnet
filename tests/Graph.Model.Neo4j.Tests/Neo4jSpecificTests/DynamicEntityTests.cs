@@ -14,8 +14,6 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
-using Microsoft.Extensions.Logging;
-
 public class DynamicEntityTests(TestInfrastructureFixture fixture) :
     Neo4jTest(fixture),
     Model.Tests.IQueryTests

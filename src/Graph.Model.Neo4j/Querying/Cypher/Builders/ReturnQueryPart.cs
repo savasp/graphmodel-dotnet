@@ -162,6 +162,23 @@ internal class ReturnQueryPart : ICypherQueryPart
         ClearReturn();
     }
 
+    /// <summary>
+    /// Updates aliases in RETURN clauses for path segments.
+    /// This is used when we have a Traverse + PathSegments pattern and need to update
+    /// the RETURN clause aliases from the Traverse pattern to the PathSegments pattern.
+    /// </summary>
+    public void UpdateAliasesForPathSegments(string oldAlias, string newAlias)
+    {
+        // Update existing RETURN clauses to use the new aliases
+        for (int i = 0; i < _returnClauses.Count; i++)
+        {
+            var clause = _returnClauses[i];
+            // Replace "Node: oldAlias" with "Node: newAlias"
+            clause = clause.Replace($"Node: {oldAlias}", $"Node: {newAlias}");
+            _returnClauses[i] = clause;
+        }
+    }
+
     public void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters)
     {
         // Handle special query types first
