@@ -84,21 +84,7 @@ internal static class Deserialization
         var properties = new List<IPropertySymbol>();
         var seenProperties = new HashSet<string>();
 
-        // Get properties from all implemented interfaces first (including IEntity, IRelationship)
-        foreach (var interfaceType in type.AllInterfaces)
-        {
-            foreach (var property in interfaceType.GetMembers().OfType<IPropertySymbol>())
-            {
-                if (property.DeclaredAccessibility == Accessibility.Public &&
-                    property.GetMethod != null &&
-                    seenProperties.Add(property.Name))
-                {
-                    properties.Add(property);
-                }
-            }
-        }
-
-        // Then get properties from the type hierarchy
+        // First get properties from the type hierarchy (concrete implementations)
         for (var currentType = type; currentType != null; currentType = currentType.BaseType)
         {
             foreach (var property in currentType.GetMembers().OfType<IPropertySymbol>())
@@ -106,6 +92,20 @@ internal static class Deserialization
                 if (property.DeclaredAccessibility == Accessibility.Public &&
                     property.GetMethod != null &&
                     !property.IsStatic &&
+                    seenProperties.Add(property.Name))
+                {
+                    properties.Add(property);
+                }
+            }
+        }
+
+        // Then get properties from all implemented interfaces (only if not already seen)
+        foreach (var interfaceType in type.AllInterfaces)
+        {
+            foreach (var property in interfaceType.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (property.DeclaredAccessibility == Accessibility.Public &&
+                    property.GetMethod != null &&
                     seenProperties.Add(property.Name))
                 {
                     properties.Add(property);

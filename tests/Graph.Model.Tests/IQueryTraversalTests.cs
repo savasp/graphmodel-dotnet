@@ -1106,4 +1106,53 @@ public interface IQueryTraversalTests : IGraphModelTest
     }
 
     #endregion
+
+    #region Multiple PathSegments with Incoming Direction Tests
+
+    [Fact]
+    public async Task CanUseMultiplePathSegmentsWithIncomingDirection()
+    {
+        var alice = new User { Name = "Alice", Email = "alice@example.com", GoogleId = "alice-google-id" };
+        var memory = new MemoryWithoutSourceProperty
+        {
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Location = new Model.Point { Height = 0, Latitude = 47.6062, Longitude = -122.3321 },
+            Deleted = false,
+            Text = "memory"
+        };
+
+        var memorySource = new MemorySourceNode
+        {
+            Name = "Source1",
+            Description = "Test Source",
+            Version = "1.0",
+            Device = "Device1",
+        };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(memory, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(memorySource, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new UserMemory { StartNodeId = alice.Id, EndNodeId = memory.Id }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new MemoryToMemorySourceNode { StartNodeId = memory.Id, EndNodeId = memorySource.Id }, null, TestContext.Current.CancellationToken);
+
+        // Act: Use multiple PathSegments with incoming direction
+        // This should generate: (tgt_2:MemorySourceNode)<-[r_1:MemoryToMemorySourceNode]-(src:MemoryWithoutSourceProperty)<-[r:MEMORY]-(tgt:User)
+        var results = await Graph.Nodes<MemoryWithoutSourceProperty>()
+            .PathSegments<MemoryWithoutSourceProperty, UserMemory, User>()
+            .Direction(GraphTraversalDirection.Incoming)
+            .Where(ps => ps.EndNode.Name == "Alice")
+            .Select(ps => ps.StartNode)
+            .PathSegments<MemoryWithoutSourceProperty, MemoryToMemorySourceNode, MemorySourceNode>()
+            .Select(ps => new { Memory = ps.StartNode, MemorySource = ps.EndNode })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Single(results);
+        Assert.Equal("memory", results[0].Memory.Text);
+        Assert.Equal("Source1", results[0].MemorySource.Name);
+    }
+ 
+    #endregion
 }

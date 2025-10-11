@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Cvoya.Graph.Model.Tests;
+
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
 public class BasicTests(TestInfrastructureFixture fixture) :
@@ -22,40 +24,31 @@ public class BasicTests(TestInfrastructureFixture fixture) :
     public async Task RuntimeMetadataProperties_AreStoredAndRetrievedCorrectly()
     {
         // Test node labels
-        var testNode = new TestNodeWithLabels { Name = "TestNode" };
+        var testNode = new Person { FirstName = "John", LastName = "Doe" };
 
         // Before save, labels should be empty
         Assert.Empty(testNode.Labels);
 
         await Graph.CreateNodeAsync(testNode, null, TestContext.Current.CancellationToken);
 
-        // After save, labels should be populated with the actual Neo4j labels
+        testNode = await Graph.GetNodeAsync<Person>(testNode.Id, null, TestContext.Current.CancellationToken);
+
+        // When retrieving a node, labels should be populated with the actual Neo4j labels
         Assert.NotEmpty(testNode.Labels);
-        Assert.Contains("TestNodeWithLabels", testNode.Labels);
+        Assert.Contains("Person", testNode.Labels);
 
         // Test relationship type
-        var testRel = new TestRelationshipWithType(testNode.Id, testNode.Id)
-        {
-            Description = "Test relationship"
-        };
+        var testRel = new Knows { StartNodeId = testNode.Id, EndNodeId = testNode.Id, Since = DateTime.UtcNow };
 
         // Before save, type should be empty
         Assert.Empty(testRel.Type);
 
         await Graph.CreateRelationshipAsync(testRel, null, TestContext.Current.CancellationToken);
 
-        // After save, type should be populated with the actual Neo4j relationship type
+        testRel = await Graph.GetRelationshipAsync<Knows>(testRel.Id, null, TestContext.Current.CancellationToken);
+
+        // When retrieving a relationship, type should be populated with the actual Neo4j relationship type
         Assert.NotEmpty(testRel.Type);
-        Assert.Equal("TestRelationshipWithType", testRel.Type);
+        Assert.Equal("KNOWS", testRel.Type);
     }
-}
-
-public record TestNodeWithLabels : Node
-{
-    public string Name { get; init; } = string.Empty;
-}
-
-public record TestRelationshipWithType(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
-{
-    public string Description { get; init; } = string.Empty;
 }

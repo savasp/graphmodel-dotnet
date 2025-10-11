@@ -231,6 +231,10 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
         var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
 
+        // Add Labels property to be stored in Neo4j
+        simpleProperties[nameof(Model.INode.Labels)] =
+            entity.ActualLabels == null || entity.ActualLabels.Count == 0 ? [entity.Label] : entity.ActualLabels;
+
         var result = await transaction.RunAsync(cypher, new { props = simpleProperties });
         var record = await GetSingleRecordAsync(result, cancellationToken);
 
@@ -246,6 +250,10 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         string cypher;
         var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
+
+        // Add Labels property to be stored in Neo4j
+        simpleProperties[nameof(Model.INode.Labels)] =
+            entity.ActualLabels == null || entity.ActualLabels.Count == 0 ? [entity.Label] : entity.ActualLabels;
 
         // For dynamic nodes, update both properties and labels
         if (entity.ActualType == typeof(Model.DynamicNode) && entity.ActualLabels != null && entity.ActualLabels.Count > 0)

@@ -70,6 +70,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     private string? _mainNodeAlias;
     private int _parameterCounter;
     private bool _loadPathSegment;
+    private bool _hasMultiplePathSegments;
 
     public PathSegmentProjectionEnum PathSegmentProjection = PathSegmentProjectionEnum.Full;
 
@@ -920,7 +921,10 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
         // For combined Traverse + PathSegments pattern, we need to update the user projections
         // to use the correct aliases (tgt instead of src for StartNode)
-        if (!string.IsNullOrEmpty(_intermediateTargetAlias) && _intermediateTargetAlias != tgt)
+        // Only apply this logic for Traverse + PathSegments, not for multiple PathSegments calls
+        // For multiple PathSegments, we want to keep src as src for the Memory field
+        // Traverse + PathSegments patterns start with (src:...), while multiple PathSegments start with (tgt_2:...)
+        if (!string.IsNullOrEmpty(_intermediateTargetAlias) && src == "src" && PathSegmentSourceAlias == "src" && !_hasMultiplePathSegments)
         {
             _logger.LogDebug("Updating user projections for combined pattern - replacing {OldAlias} with {NewAlias}", src, _intermediateTargetAlias);
             _logger.LogDebug("Return clauses before update: {Clauses}", string.Join(", ", _returnPart.ReturnClauses));
@@ -1063,7 +1067,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                 string combinedPathPattern = pathDirection switch
                 {
                     GraphTraversalDirection.Outgoing => $"({traversePattern.SourceAlias}:{firstSourceLabel})-[{traversePattern.RelAlias}:{firstRelLabel}]->({traversePattern.TargetAlias}:{firstTargetLabel})-[{pathSegmentPattern.RelAlias}:{secondRelLabel}]->({pathSegmentPattern.TargetAlias}:{secondTargetLabel})",
-                    GraphTraversalDirection.Incoming => $"({traversePattern.SourceAlias}:{firstSourceLabel})<-[{traversePattern.RelAlias}:{firstRelLabel}]-({traversePattern.TargetAlias}:{firstTargetLabel})<-[{pathSegmentPattern.RelAlias}:{secondRelLabel}]-({pathSegmentPattern.TargetAlias}:{secondTargetLabel})",
+                    GraphTraversalDirection.Incoming => $"({pathSegmentPattern.TargetAlias}:{secondTargetLabel})<-[{pathSegmentPattern.RelAlias}:{secondRelLabel}]-({traversePattern.TargetAlias}:{firstTargetLabel})<-[{traversePattern.RelAlias}:{firstRelLabel}]-({traversePattern.SourceAlias}:{firstSourceLabel})",
                     GraphTraversalDirection.Both => $"({traversePattern.SourceAlias}:{firstSourceLabel})-[{traversePattern.RelAlias}:{firstRelLabel}]-({traversePattern.TargetAlias}:{firstTargetLabel})-[{pathSegmentPattern.RelAlias}:{secondRelLabel}]-({pathSegmentPattern.TargetAlias}:{secondTargetLabel})",
                     _ => throw new NotSupportedException($"Unknown traversal direction: {pathDirection}")
                 };
@@ -1075,13 +1079,29 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                 AddMatchPattern(combinedPathPattern);
 
                 // Update the path segment aliases to point to the combined pattern
-                // The source is the first pattern's source, the target is the second pattern's target
-                PathSegmentSourceAlias = traversePattern.SourceAlias;
-                PathSegmentRelationshipAlias = traversePattern.RelAlias;
-                PathSegmentTargetAlias = pathSegmentPattern.TargetAlias;
+                // For incoming direction, the pattern is reversed, so we need to adjust aliases accordingly
+                if (pathDirection == GraphTraversalDirection.Incoming)
+                {
+                    // For incoming direction, the pattern is: (tgt2)<-[r2]-(tgt)<-[r1]-(src)
+                    // So the source is the second pattern's target, and the target is the first pattern's source
+                    PathSegmentSourceAlias = pathSegmentPattern.TargetAlias;
+                    PathSegmentRelationshipAlias = pathSegmentPattern.RelAlias;
+                    PathSegmentTargetAlias = traversePattern.SourceAlias;
 
-                // Store the intermediate target alias (T1) for WHERE clause filtering
-                _intermediateTargetAlias = traversePattern.TargetAlias;
+                    // Store the intermediate target alias (tgt) for WHERE clause filtering
+                    _intermediateTargetAlias = traversePattern.TargetAlias;
+                }
+                else
+                {
+                    // For outgoing direction, the pattern is: (src)-[r1]->(tgt)-[r2]->(tgt2)
+                    // So the source is the first pattern's source, and the target is the second pattern's target
+                    PathSegmentSourceAlias = traversePattern.SourceAlias;
+                    PathSegmentRelationshipAlias = traversePattern.RelAlias;
+                    PathSegmentTargetAlias = pathSegmentPattern.TargetAlias;
+
+                    // Store the intermediate target alias (T1) for WHERE clause filtering
+                    _intermediateTargetAlias = traversePattern.TargetAlias;
+                }
 
                 _pathSegmentPatterns.Clear();
                 _pendingPathSegmentPattern = null;
@@ -1091,40 +1111,76 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
         // Original logic for true nested path segments (multiple PathSegments calls)
         // Build a combined pattern that chains all path segments together
+        _hasMultiplePathSegments = true;
         var combinedPattern = new StringBuilder();
         var direction = TraversalDirection ?? GraphTraversalDirection.Outgoing;
 
-        for (int i = 0; i < _pathSegmentPatterns.Count; i++)
+        if (direction == GraphTraversalDirection.Incoming)
         {
-            var p = _pathSegmentPatterns[i];
-
-            // Get compatible labels for inheritance support
-            var sourceLabels = Labels.GetCompatibleLabels(p.SourceType);
-            var relLabels = Labels.GetCompatibleLabels(p.RelType);
-            var targetLabels = Labels.GetCompatibleLabels(p.TargetType);
-
-            var sourceLabel = sourceLabels.Count == 1 ? sourceLabels[0] : string.Join("|", sourceLabels);
-            var relLabel = relLabels.Count == 1 ? relLabels[0] : string.Join("|", relLabels);
-            var targetLabel = targetLabels.Count == 1 ? targetLabels[0] : string.Join("|", targetLabels);
-
-            if (i == 0)
+            // For incoming direction, build the pattern in reverse order
+            for (int i = _pathSegmentPatterns.Count - 1; i >= 0; i--)
             {
-                // First segment: start with source node
-                combinedPattern.Append($"({p.SourceAlias}:{sourceLabel})");
-            }
+                var p = _pathSegmentPatterns[i];
 
-            // Add relationship and target node
-            switch (direction)
-            {
-                case GraphTraversalDirection.Outgoing:
-                    combinedPattern.Append($"-[{p.RelAlias}:{relLabel}]->({p.TargetAlias}:{targetLabel})");
-                    break;
-                case GraphTraversalDirection.Incoming:
+                // Get compatible labels for inheritance support
+                var sourceLabels = Labels.GetCompatibleLabels(p.SourceType);
+                var relLabels = Labels.GetCompatibleLabels(p.RelType);
+                var targetLabels = Labels.GetCompatibleLabels(p.TargetType);
+
+                var sourceLabel = sourceLabels.Count == 1 ? sourceLabels[0] : string.Join("|", sourceLabels);
+                var relLabel = relLabels.Count == 1 ? relLabels[0] : string.Join("|", relLabels);
+                var targetLabel = targetLabels.Count == 1 ? targetLabels[0] : string.Join("|", targetLabels);
+
+                if (i == _pathSegmentPatterns.Count - 1)
+                {
+                    // Last segment (first in reverse): start with target node
+                    combinedPattern.Append($"({p.TargetAlias}:{targetLabel})");
+                }
+
+                // Add relationship and source node (in reverse)
+                // For the first segment in reverse (which is the last segment), use the target alias
+                if (i == 0)
+                {
                     combinedPattern.Append($"<-[{p.RelAlias}:{relLabel}]-({p.TargetAlias}:{targetLabel})");
-                    break;
-                case GraphTraversalDirection.Both:
-                    combinedPattern.Append($"-[{p.RelAlias}:{relLabel}]-({p.TargetAlias}:{targetLabel})");
-                    break;
+                }
+                else
+                {
+                    combinedPattern.Append($"<-[{p.RelAlias}:{relLabel}]-({p.SourceAlias}:{sourceLabel})");
+                }
+            }
+        }
+        else
+        {
+            // For outgoing and both directions, build in normal order
+            for (int i = 0; i < _pathSegmentPatterns.Count; i++)
+            {
+                var p = _pathSegmentPatterns[i];
+
+                // Get compatible labels for inheritance support
+                var sourceLabels = Labels.GetCompatibleLabels(p.SourceType);
+                var relLabels = Labels.GetCompatibleLabels(p.RelType);
+                var targetLabels = Labels.GetCompatibleLabels(p.TargetType);
+
+                var sourceLabel = sourceLabels.Count == 1 ? sourceLabels[0] : string.Join("|", sourceLabels);
+                var relLabel = relLabels.Count == 1 ? relLabels[0] : string.Join("|", relLabels);
+                var targetLabel = targetLabels.Count == 1 ? targetLabels[0] : string.Join("|", targetLabels);
+
+                if (i == 0)
+                {
+                    // First segment: start with source node
+                    combinedPattern.Append($"({p.SourceAlias}:{sourceLabel})");
+                }
+
+                // Add relationship and target node
+                switch (direction)
+                {
+                    case GraphTraversalDirection.Outgoing:
+                        combinedPattern.Append($"-[{p.RelAlias}:{relLabel}]->({p.TargetAlias}:{targetLabel})");
+                        break;
+                    case GraphTraversalDirection.Both:
+                        combinedPattern.Append($"-[{p.RelAlias}:{relLabel}]-({p.TargetAlias}:{targetLabel})");
+                        break;
+                }
             }
         }
 

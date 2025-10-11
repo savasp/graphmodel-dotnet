@@ -6,6 +6,9 @@
     <IsPackable>false</IsPackable>
     <AssemblyName>Cvoya.Graph.Model.Tests</AssemblyName>
 
+    <!-- Keep the code generated files -->
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+
     <!-- Use the new testing platform -->
     <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
     <RuntimeIdentifiers>osx-arm64;win-x64;linux-x64</RuntimeIdentifiers>
@@ -36,6 +39,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Graph.Model/Graph.Model.csproj" />
+    <ProjectReference Include="../../src/Graph.Model.Serialization/Graph.Model.Serialization.csproj" />
+    <ProjectReference Include="../../src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
