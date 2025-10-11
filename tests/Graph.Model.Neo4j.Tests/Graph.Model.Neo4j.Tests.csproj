@@ -10,8 +10,10 @@
 
         <!-- Use the new testing platform -->
         <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
-        <TestingPlatformOutputType>Exe</TestingPlatformOutputType>
         <RuntimeIdentifiers>osx-arm64;win-x64;linux-x64</RuntimeIdentifiers>
+
+        <!-- Prevent MTP from emitting its own Main -->
+        <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
 
         <!-- Enable live output -->
         <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
@@ -24,7 +26,7 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.6" />
 
         <!-- xunit -->
-        <PackageReference Include="xunit.v3" Version="3.0.0-pre.25" />
+        <PackageReference Include="xunit.v3" Version="3.1.0" />
 
         <!-- Testcontainers -->
         <PackageReference Include="Testcontainers.Neo4j" Version="4.6.0" />

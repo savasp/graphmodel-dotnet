@@ -41,7 +41,8 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
         DiagnosticDescriptors.DuplicatePropertyAttributeLabel,
         DiagnosticDescriptors.DuplicateRelationshipAttributeLabel,
         DiagnosticDescriptors.DuplicateNodeAttributeLabel,
-        DiagnosticDescriptors.CircularReferenceWithoutNullable);
+        DiagnosticDescriptors.CircularReferenceWithoutNullable,
+        DiagnosticDescriptors.ShouldInheritFromBaseClass);
 
     /// <summary>
     /// Initializes the analyzer and registers the symbol action for named types.
@@ -70,6 +71,9 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
         // Skip if it doesn't implement INode or IRelationship
         if (!implementsINode && !implementsIRelationship)
             return;
+
+        // GM011: Check if type directly implements INode/IRelationship without inheriting from base class
+        AnalyzeBaseClassInheritance(context, namedTypeSymbol, implementsINode, implementsIRelationship);
 
         // GM001: Check parameterless constructor
         AnalyzeParameterlessConstructor(context, namedTypeSymbol, implementsINode, implementsIRelationship);
@@ -114,8 +118,87 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
         AnalyzeCircularReferences(context, namedTypeSymbol, helper);
     }
 
+    private static void AnalyzeBaseClassInheritance(SymbolAnalysisContext context, INamedTypeSymbol namedType, bool implementsINode, bool implementsIRelationship)
+    {
+        // Skip abstract types and interfaces
+        if (namedType.IsAbstract || namedType.TypeKind == TypeKind.Interface)
+            return;
+
+        // Check if the type directly implements INode/IRelationship without proper base class
+        bool inheritsFromNode = false;
+        bool inheritsFromRelationship = false;
+
+        var baseType = namedType.BaseType;
+        while (baseType != null)
+        {
+            if (baseType.Name == "Node" && baseType.ContainingNamespace.ToDisplayString() == "Cvoya.Graph.Model")
+            {
+                inheritsFromNode = true;
+                break;
+            }
+            if (baseType.Name == "Relationship" && baseType.ContainingNamespace.ToDisplayString() == "Cvoya.Graph.Model")
+            {
+                inheritsFromRelationship = true;
+                break;
+            }
+            baseType = baseType.BaseType;
+        }
+
+        if (implementsINode && !inheritsFromNode)
+        {
+            var diagnostic = Diagnostic.Create(
+                DiagnosticDescriptors.ShouldInheritFromBaseClass,
+                namedType.Locations.FirstOrDefault(),
+                namedType.Name,
+                "Node",
+                "INode");
+
+            context.ReportDiagnostic(diagnostic);
+        }
+
+        if (implementsIRelationship && !inheritsFromRelationship)
+        {
+            var diagnostic = Diagnostic.Create(
+                DiagnosticDescriptors.ShouldInheritFromBaseClass,
+                namedType.Locations.FirstOrDefault(),
+                namedType.Name,
+                "Relationship",
+                "IRelationship");
+
+            context.ReportDiagnostic(diagnostic);
+        }
+    }
+
     private static void AnalyzeParameterlessConstructor(SymbolAnalysisContext context, INamedTypeSymbol namedType, bool implementsINode, bool implementsIRelationship)
     {
+        // Records are always valid - they have compiler-generated constructors and proper initialization
+        if (namedType.IsRecord)
+            return;
+
+        // Skip types that inherit from Node or Relationship base classes - they handle constructors properly
+        bool inheritsFromNode = false;
+        bool inheritsFromRelationship = false;
+
+        var baseType = namedType.BaseType;
+        while (baseType != null)
+        {
+            if (baseType.Name == "Node" && baseType.ContainingNamespace.ToDisplayString() == "Cvoya.Graph.Model")
+            {
+                inheritsFromNode = true;
+                break;
+            }
+            if (baseType.Name == "Relationship" && baseType.ContainingNamespace.ToDisplayString() == "Cvoya.Graph.Model")
+            {
+                inheritsFromRelationship = true;
+                break;
+            }
+            baseType = baseType.BaseType;
+        }
+
+        // Skip if inheriting from base classes
+        if (inheritsFromNode || inheritsFromRelationship)
+            return;
+
         var hasParameterlessConstructor = namedType.Constructors.Any(c =>
             c.Parameters.Length == 0 && (c.DeclaredAccessibility == Accessibility.Public || c.DeclaredAccessibility == Accessibility.Internal));
 
@@ -123,10 +206,15 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
         {
             // Check if there are constructors that initialize all properties
             var allProperties = GetAllProperties(namedType);
-            var settableProperties = allProperties.Where(p => p.SetMethod != null && p.SetMethod.DeclaredAccessibility == Accessibility.Public).ToList();
+            // Include both set and init accessors - both can be initialized via constructors
+            var settableProperties = allProperties.Where(p =>
+                p.SetMethod != null &&
+                p.SetMethod.DeclaredAccessibility == Accessibility.Public
+            ).ToList();
 
             bool hasValidConstructor = namedType.Constructors.Any(constructor =>
             {
+                // Constructor should have a parameter for each settable property
                 if (constructor.Parameters.Length != settableProperties.Count)
                     return false;
 

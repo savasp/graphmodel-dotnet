@@ -213,20 +213,17 @@ public class RelationshipBenchmark
 }
 
 [Node("Company")]
-public class Company : Cvoya.Graph.Model.INode
+public record Company : Node
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = string.Empty;
     public string Industry { get; set; } = string.Empty;
 }
 
 [Relationship("WORKS_AT")]
-public class WorksAt : Cvoya.Graph.Model.IRelationship
+public record WorksAt : Relationship
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
-    public string StartNodeId { get; init; } = string.Empty;
-    public string EndNodeId { get; init; } = string.Empty;
+    public WorksAt() : base(string.Empty, string.Empty) { }
+    public WorksAt(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
 
     public string Position { get; set; } = string.Empty;
 

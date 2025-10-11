@@ -20,7 +20,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WithExistingSchema_ValidatesRequiredProperties()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var node = new DynamicNode
         {
@@ -43,7 +43,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WithExistingSchema_ValidatesPropertyNames()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(SomeTask));
         var node = new DynamicNode
@@ -65,7 +65,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WithExistingSchema_ValidatesPropertyValidationRules()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var node = new DynamicNode
         {
@@ -89,7 +89,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WithoutExistingSchema_DoesNotValidate()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var node = new DynamicNode
         {
@@ -109,7 +109,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WithMultipleLabels_ValidatesAgainstAllSchemas()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var node = new DynamicNode
         {
@@ -132,7 +132,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicRelationship_WithExistingSchema_ValidatesRequiredProperties()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var startNode = new DynamicNode { Labels = [nameof(Person)] };
         var endNode = new DynamicNode { Labels = [nameof(Person)] };
@@ -162,7 +162,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicRelationship_WithExistingSchema_ValidatesPropertyNames()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var startNode = new DynamicNode { Labels = [nameof(Person)] };
         var endNode = new DynamicNode { Labels = [nameof(Person)] };
@@ -193,7 +193,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicRelationship_WithExistingSchema_ValidatesPropertyValidationRules()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var startNode = new DynamicNode { Labels = [nameof(Person)] };
         var endNode = new DynamicNode { Labels = [nameof(Person)] };
@@ -223,7 +223,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicRelationship_WithoutExistingSchema_DoesNotValidate()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var startNode = new DynamicNode { Labels = [nameof(Person)] };
         var endNode = new DynamicNode { Labels = [nameof(Person)] };
@@ -251,7 +251,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_ValidatesCorrectly()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(Todo));
         var node = new DynamicNode
@@ -276,7 +276,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_MissingRequiredProperties_ThrowsException()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(Todo));
         var node = new DynamicNode
@@ -301,7 +301,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WrongCase_ThrowsException()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(Todo));
         var node = new DynamicNode
@@ -325,7 +325,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_InvalidEnumValue_ThrowsException()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(Todo));
         var node = new DynamicNode
@@ -350,7 +350,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_ExtraProperties_ThrowsException()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(Todo));
         var node = new DynamicNode
@@ -378,7 +378,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_ErrorWhenCasingDoesNotMatch()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var node = new DynamicNode
         {
@@ -398,7 +398,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task CanCreateAndGetDynamicNode()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(Todo));
         var node = new DynamicNode
@@ -428,7 +428,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_AllOptionalProperties_AreValidated()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(Todo));
         var node = new DynamicNode
@@ -458,7 +458,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_ValidatesAgainstTodoSchema()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(Todo));
         var dynamicNode = new DynamicNode
@@ -485,7 +485,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WrongPropertyNames_ThrowsException()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(Todo));
         var dynamicNode = new DynamicNode
@@ -509,7 +509,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WithTodoWithoutRequiredProperties_SucceedsEvenWithMissingProperties()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(TodoWithoutRequiredProperties));
         // This simulates what happens when Todo properties are NOT required
@@ -536,7 +536,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WithValidationTest_ValidatesAllPropertyTypes()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(ValidationTest));
         var node = new DynamicNode
@@ -565,7 +565,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WithValidationTest_MissingRequiredProperties_ThrowsException()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(ValidationTest));
         var node = new DynamicNode
@@ -587,7 +587,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WithValidationTest_StringLengthValidation_ThrowsException()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(ValidationTest));
         var node = new DynamicNode
@@ -616,7 +616,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WithEdgeCaseTest_HandlesEdgeCasesCorrectly()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(EdgeCaseTest));
         var node = new DynamicNode
@@ -644,7 +644,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicRelationship_ValidatesRelationshipProperties_ThrowsExceptionForLongDescription()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var startNode = new DynamicNode { Labels = ["Person"] };
         var endNode = new DynamicNode { Labels = ["Person"] };
@@ -674,7 +674,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     public async Task DynamicNode_WithInvalidEnumValue_ThrowsException()
     {
         // Arrange
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         var label = Labels.GetLabelFromType(typeof(ValidationTest));
         var node = new DynamicNode

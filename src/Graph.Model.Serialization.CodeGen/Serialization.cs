@@ -46,13 +46,50 @@ internal static class Serialization
             GenerateIntermediateRepresentationCreation(sb, property, propertyType, propertyName);
         }
 
-        sb.AppendLine($"        return new EntityInfo(");
-        sb.AppendLine($"            ActualType: typeof({GetTypeOfName(type)}),");
-        sb.AppendLine($"            Label: \"{Utils.GetLabelFromType(type)}\",");
-        sb.AppendLine($"            ActualLabels: [],");
-        sb.AppendLine($"            SimpleProperties: simpleProperties,");
-        sb.AppendLine($"            ComplexProperties: complexProperties");
-        sb.AppendLine($"        );");
+        // Determine if this is a node or relationship to populate labels/type correctly
+        var implementsINode = type.AllInterfaces.Any(i =>
+            i.Name == "INode" &&
+            i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
+        var implementsIRelationship = type.AllInterfaces.Any(i =>
+            i.Name == "IRelationship" &&
+            i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
+
+        if (implementsINode)
+        {
+            // For nodes, populate ActualLabels from the Labels property
+            sb.AppendLine($"        var actualLabels = entity.Labels?.ToList() ?? new List<string>();");
+            sb.AppendLine($"        var primaryLabel = actualLabels.Count > 0 ? actualLabels[0] : \"{Utils.GetLabelFromType(type)}\";");
+            sb.AppendLine($"        return new EntityInfo(");
+            sb.AppendLine($"            ActualType: typeof({GetTypeOfName(type)}),");
+            sb.AppendLine($"            Label: primaryLabel,");
+            sb.AppendLine($"            ActualLabels: actualLabels,");
+            sb.AppendLine($"            SimpleProperties: simpleProperties,");
+            sb.AppendLine($"            ComplexProperties: complexProperties");
+            sb.AppendLine($"        );");
+        }
+        else if (implementsIRelationship)
+        {
+            // For relationships, use the Type property as the label
+            sb.AppendLine($"        var relationshipType = !string.IsNullOrEmpty(entity.Type) ? entity.Type : \"{Utils.GetLabelFromType(type)}\";");
+            sb.AppendLine($"        return new EntityInfo(");
+            sb.AppendLine($"            ActualType: typeof({GetTypeOfName(type)}),");
+            sb.AppendLine($"            Label: relationshipType,");
+            sb.AppendLine($"            ActualLabels: new List<string>(),");
+            sb.AppendLine($"            SimpleProperties: simpleProperties,");
+            sb.AppendLine($"            ComplexProperties: complexProperties");
+            sb.AppendLine($"        );");
+        }
+        else
+        {
+            // For other types (complex properties), use the type name as label
+            sb.AppendLine($"        return new EntityInfo(");
+            sb.AppendLine($"            ActualType: typeof({GetTypeOfName(type)}),");
+            sb.AppendLine($"            Label: \"{Utils.GetLabelFromType(type)}\",");
+            sb.AppendLine($"            ActualLabels: new List<string>(),");
+            sb.AppendLine($"            SimpleProperties: simpleProperties,");
+            sb.AppendLine($"            ComplexProperties: complexProperties");
+            sb.AppendLine($"        );");
+        }
         sb.AppendLine("    }");
     }
 

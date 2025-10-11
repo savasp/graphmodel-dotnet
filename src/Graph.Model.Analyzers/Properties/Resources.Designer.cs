@@ -212,17 +212,19 @@ internal class Resources
     ///   Looks up a localized string similar to Circular reference without nullable type.
     /// </summary>
     internal static string GM010_Title => ResourceManager.GetString("GM010_Title", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Types should inherit from Node or Relationship base classes instead of implementing INode or IRelationship directly. The base classes provide default implementations for runtime metadata properties like Labels and Type, which are managed by the graph provider..
+    /// </summary>
+    internal static string GM011_Description => ResourceManager.GetString("GM011_Description", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Type '{0}' should inherit from '{1}' instead of implementing '{2}' directly. The base class provides default implementations for runtime metadata properties.
+    /// </summary>
+    internal static string GM011_MessageFormat => ResourceManager.GetString("GM011_MessageFormat", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Type should inherit from base class instead of implementing interface directly.
+    /// </summary>
+    internal static string GM011_Title => ResourceManager.GetString("GM011_Title", resourceCulture)!;
 }
-// Copyright 2025 Savas Parastatidis
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.

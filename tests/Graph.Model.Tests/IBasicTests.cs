@@ -242,12 +242,12 @@ public interface IBasicTests : IGraphModelTest
 
         await this.Graph.CreateNodeAsync(memory, null, TestContext.Current.CancellationToken);
 
-        var memories = await this.Graph.Nodes<Memory>().ToListAsync();
+        var memories = await this.Graph.Nodes<Memory>().ToListAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(memories);
 
         var retrievedMemory = await this.Graph.Nodes<Memory>()
             .Where(m => m.Id == memory.Id)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
 
         Assert.NotNull(retrievedMemory);
         Assert.Equal("UnitTest", retrievedMemory.CapturedBy.Name);

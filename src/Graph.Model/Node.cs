@@ -32,4 +32,14 @@ public abstract record Node : INode
     /// The default format used is the "N" format (32 digits without hyphens).
     /// </remarks>
     public string Id { get; init; } = Guid.NewGuid().ToString("N");
+
+    /// <summary>
+    /// Gets or sets the labels for this node as they are stored in the graph database.
+    /// </summary>
+    /// <remarks>
+    /// This property is automatically populated by the graph provider when the node is
+    /// created or retrieved from the database. The labels are derived from the <see cref="NodeAttribute"/>
+    /// or the type name if no attribute is present.
+    /// </remarks>
+    public virtual IReadOnlyList<string> Labels { get; set; } = Array.Empty<string>();
 }

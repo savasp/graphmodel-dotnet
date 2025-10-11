@@ -38,7 +38,6 @@ public record Email : Memory
     public bool IsImportant { get; init; } = false;
     public DateTime SentAt { get; init; }
     public DateTime? ReceivedAt { get; init; }
-    public List<string> Labels { get; init; } = new();
     public string? ExternalId { get; init; } // Original ID from the service
     public string? ServiceType { get; init; } // "Google" or "Microsoft365"
 }

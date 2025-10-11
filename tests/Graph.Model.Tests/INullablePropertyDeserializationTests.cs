@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 namespace Cvoya.Graph.Model.Tests;
 
 public interface INullablePropertyDeserializationTests : IGraphModelTest
 {
     [Node]
-    public class PersonWithNullableProperties : INode
+    public record PersonWithNullableProperties : Node
     {
-        public string Id { get; init; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public DateTime? CompletedAt { get; set; }
         public int? Age { get; set; }

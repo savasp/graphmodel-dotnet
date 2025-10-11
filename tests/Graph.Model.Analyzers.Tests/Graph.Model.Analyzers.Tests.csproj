@@ -9,7 +9,6 @@
 
         <!-- Use the new testing platform -->
         <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
-        <TestingPlatformOutputType>Exe</TestingPlatformOutputType>
         <RuntimeIdentifiers>osx-arm64;win-x64;linux-x64</RuntimeIdentifiers>
     </PropertyGroup>
 

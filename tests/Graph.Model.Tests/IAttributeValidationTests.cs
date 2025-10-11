@@ -12,42 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Threading.Tasks;
-using Xunit.Sdk;
-
 namespace Cvoya.Graph.Model.Tests;
 
 public interface IAttributeValidationTests : IGraphModelTest
 {
     [Node("CustomPersonLabel")]
-    public class PersonWithCustomLabel : INode
+    public record PersonWithCustomLabel : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
     }
 
     [Node("Employee", "Person", "SomeUser")]
-    public class PersonWithMultipleLabels : INode
+    public record PersonWithMultipleLabels : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
         public string Department { get; set; } = string.Empty;
     }
 
-    public class PersonWithoutLabel : INode
+    public record PersonWithoutLabel : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
     }
 
     [Node("IndexedPerson")]
-    public class PersonWithCustomPropertyLabels : INode
+    public record PersonWithCustomPropertyLabels : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
         [Property(Label = "first_name")]
         public string FirstName { get; set; } = string.Empty;
 
@@ -62,10 +54,8 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Node("PersonWithIgnoredProps")]
-    public class PersonWithIgnoredProperties : INode
+    public record PersonWithIgnoredProperties : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
         [Property]
         public string FirstName { get; set; } = string.Empty;
 
@@ -79,12 +69,10 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Relationship("CUSTOM_WORKS_WITH")]
-    public class CustomWorksWith : IRelationship
+    public record CustomWorksWith : Relationship
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-        public string StartNodeId { get; init; } = string.Empty;
-        public string EndNodeId { get; init; } = string.Empty;
-        public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
+        public CustomWorksWith() : base(string.Empty, string.Empty) { }
+        public CustomWorksWith(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
 
         [Property(Label = "start_date")]
         public DateTime StartDate { get; set; } = DateTime.UtcNow;
@@ -93,20 +81,17 @@ public interface IAttributeValidationTests : IGraphModelTest
         public string ProjectName { get; set; } = string.Empty;
     }
 
-    public class WorksWithoutLabel : IRelationship
+    public record WorksWithoutLabel : Relationship
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-        public string StartNodeId { get; init; } = string.Empty;
-        public string EndNodeId { get; init; } = string.Empty;
-        public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
+        public WorksWithoutLabel() : base(string.Empty, string.Empty) { }
+        public WorksWithoutLabel(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+
         public DateTime Since { get; set; } = DateTime.UtcNow;
     }
 
     [Node("PersonWithKeyProperties")]
-    public class PersonWithKeyProperties : INode
+    public record PersonWithKeyProperties : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
         [Property(IsKey = true)]
         public string EmployeeId { get; set; } = string.Empty;
 
@@ -121,10 +106,8 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Node("PersonWithIndexedProperties")]
-    public class PersonWithIndexedProperties : INode
+    public record PersonWithIndexedProperties : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
         [Property(IsIndexed = true)]
         public string Email { get; set; } = string.Empty;
 
@@ -138,9 +121,8 @@ public interface IAttributeValidationTests : IGraphModelTest
         public string Address { get; set; } = string.Empty;
     }
 
-    public class PersonWithNoAttributes : INode
+    public record PersonWithNoAttributes : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
         public string Email { get; set; } = string.Empty;
         public string PhoneNumber { get; set; } = string.Empty;
         public string Notes { get; set; } = string.Empty;
@@ -148,10 +130,8 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Node("PersonWithRequiredProperties")]
-    public class PersonWithRequiredProperties : INode
+    public record PersonWithRequiredProperties : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
         [Property(IsRequired = true)]
         public string FirstName { get; set; } = string.Empty;
 
@@ -166,10 +146,8 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Node("PersonWithUniqueProperties")]
-    public class PersonWithUniqueProperties : INode
+    public record PersonWithUniqueProperties : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
         [Property(IsUnique = true)]
         public string Email { get; set; } = string.Empty;
 
@@ -184,10 +162,8 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Node("PersonWithFullTextSearchProperties")]
-    public class PersonWithFullTextSearchProperties : INode
+    public record PersonWithFullTextSearchProperties : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
         [Property(IncludeInFullTextSearch = true)]
         public string FirstName { get; set; } = string.Empty;
 
@@ -205,10 +181,8 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Node("PersonWithValidationProperties")]
-    public class PersonWithValidationProperties : INode
+    public record PersonWithValidationProperties : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
         [Property(MinLength = 2, MaxLength = 50)]
         public string FirstName { get; set; } = string.Empty;
 
@@ -220,10 +194,8 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Node("PersonWithCompositeKeyProperties")]
-    public class PersonWithCompositeKeyProperties : INode
+    public record PersonWithCompositeKeyProperties : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
         [Property(IsKey = true)]
         public string CompanyId { get; set; } = string.Empty;
 
@@ -241,10 +213,8 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Node("PersonWithMixedProperties")]
-    public class PersonWithMixedProperties : INode
+    public record PersonWithMixedProperties : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
         [Property(IsKey = true, IsRequired = true, IsIndexed = true, IsUnique = true)]
         public string EmployeeId { get; set; } = string.Empty;
 
@@ -265,12 +235,10 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Relationship("RelationshipWithKeyProperties")]
-    public class RelationshipWithKeyProperties : IRelationship
+    public record RelationshipWithKeyProperties : Relationship
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-        public string StartNodeId { get; init; } = string.Empty;
-        public string EndNodeId { get; init; } = string.Empty;
-        public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
+        public RelationshipWithKeyProperties() : base(string.Empty, string.Empty) { }
+        public RelationshipWithKeyProperties(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
 
         [Property(IsKey = true)]
         public string RelationshipId { get; set; } = string.Empty;
@@ -283,13 +251,10 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Relationship("RelationshipWithValidationProperties")]
-    public class RelationshipWithValidationProperties : IRelationship
+    public record RelationshipWithValidationProperties : Relationship
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-        public string StartNodeId { get; init; } = string.Empty;
-        public string EndNodeId { get; init; } = string.Empty;
-        public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
-
+        public RelationshipWithValidationProperties() : base(string.Empty, string.Empty) { }
+        public RelationshipWithValidationProperties(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
         public double Strength { get; set; }
 
         [Property(MinLength = 1, MaxLength = 1000)]
@@ -703,7 +668,7 @@ public interface IAttributeValidationTests : IGraphModelTest
         // first use of the graph instance.
         // TODO: Change this behavior by adding an explicit required for an initialization method
         // in the IGraph interface.
-        await Graph.SchemaRegistry.InitializeAsync();
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
 
         // Since IEntity.Id is marked as IsKey, all INode and IRelationship instances will have
         // at least one Property attribute.
@@ -718,7 +683,6 @@ public interface IAttributeValidationTests : IGraphModelTest
         Assert.False(addressSchema.IsIndexed);
         Assert.True(addressSchema.IncludeInFullTextSearch); // String property default
         Assert.False(addressSchema.Ignore);
-        Assert.NotNull(addressSchema.Validation);
 
         Assert.Null(addressSchema.Validation.MinLength);
         Assert.Null(addressSchema.Validation.MaxLength);

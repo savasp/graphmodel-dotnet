@@ -30,22 +30,10 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
-            public class FollowsRelationship : IRelationship
-            {
-                public string Id { get; init; } = string.Empty;
-                public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
-            }
+            public record FollowsRelationship(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : Relationship(StartNodeId, EndNodeId, Direction);
             
             [Relationship("LIKES")]
-            public class LikesRelationship : IRelationship
-            {
-                public string Id { get; init; } = string.Empty;
-                public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
-            }
+            public record LikesRelationship(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : Relationship(StartNodeId, EndNodeId, Direction);
             """;
 
         await VerifyAnalyzerAsync(test);
@@ -58,22 +46,10 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
-            public class FollowsRelationship : IRelationship
-            {
-                public string Id { get; init; } = string.Empty;
-                public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
-            }
+            public record FollowsRelationship(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : Relationship(StartNodeId, EndNodeId, Direction);
             
             [Relationship("FOLLOWS")]
-            public class {|#0:DuplicateFollowsRelationship|} : IRelationship
-            {
-                public string Id { get; init; } = string.Empty;
-                public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
-            }
+            public record {|#0:DuplicateFollowsRelationship|}(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : Relationship(StartNodeId, EndNodeId, Direction);
             """;
 
         var expected = VerifyCS.Diagnostic("GM008")
@@ -90,18 +66,12 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
-            public class BaseFollowsRelationship : IRelationship
-            {
-                public string Id { get; init; } = string.Empty;
-                public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
-            }
+            public record BaseFollowsRelationship(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : Relationship(StartNodeId, EndNodeId, Direction);
             
             [Relationship("FOLLOWS")]
-            public class {|#0:DerivedFollowsRelationship|} : BaseFollowsRelationship
+            public record {|#0:DerivedFollowsRelationship|}(string StartNodeId, string EndNodeId, RelationshipDirection Direction = RelationshipDirection.Outgoing) : BaseFollowsRelationship(StartNodeId, EndNodeId, Direction)
             {
-                public string Type { get; set; } = string.Empty;
+                public string CustomType { get; init; } = string.Empty;
             }
             """;
 
@@ -119,7 +89,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
-            public class BaseFollowsRelationship : IRelationship
+            public class BaseFollowsRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -144,7 +114,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
-            public class FollowsRelationship : IRelationship
+            public class FollowsRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -153,7 +123,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             }
             
             [Relationship("follows")]
-            public class {|#0:LowercaseFollowsRelationship|} : IRelationship
+            public class {|#0:LowercaseFollowsRelationship|} : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -177,7 +147,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Relationship("SOCIAL")]
-            public class BaseSocialRelationship : IRelationship
+            public class BaseSocialRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -192,7 +162,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             }
             
             [Relationship("SOCIAL")]
-            public class {|#0:DuplicateSocialRelationship|} : IRelationship
+            public class {|#0:DuplicateSocialRelationship|} : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -215,7 +185,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
-            public class FollowsRelationship : IRelationship
+            public class FollowsRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -224,7 +194,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             }
             
             // Relationship without attribute should not cause conflicts
-            public class GenericRelationship : IRelationship
+            public class GenericRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -243,7 +213,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Relationship("FOLLOWS")]
-            public class FollowsRelationship1 : IRelationship
+            public class FollowsRelationship1 : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -252,7 +222,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             }
             
             [Relationship("FOLLOWS")]
-            public class {|#0:FollowsRelationship2|} : IRelationship
+            public class {|#0:FollowsRelationship2|} : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -261,7 +231,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             }
             
             [Relationship("FOLLOWS")]
-            public class {|#1:FollowsRelationship3|} : IRelationship
+            public class {|#1:FollowsRelationship3|} : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -286,7 +256,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Relationship("")]
-            public class EmptyLabelRelationship1 : IRelationship
+            public class EmptyLabelRelationship1 : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -295,7 +265,7 @@ public class GM008_DuplicateRelationshipAttributeLabelTests
             }
             
             [Relationship("")]
-            public class EmptyLabelRelationship2 : IRelationship
+            public class EmptyLabelRelationship2 : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }

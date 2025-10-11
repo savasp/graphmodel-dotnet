@@ -31,7 +31,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
             using System;
             using System.Collections.Generic;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -57,7 +57,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
             using Cvoya.Graph.Model;
             using System.Collections.Generic;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public List<string> Tags { get; set; } = new();
@@ -84,7 +84,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
                 public int ZipCode { get; set; }
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public Address Location { get; set; } = new();
@@ -109,7 +109,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
                 Pending
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public Status CurrentStatus { get; set; }
@@ -127,7 +127,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
             using Cvoya.Graph.Model;
             using System.Threading.Tasks;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public Task {|#0:AsyncOperation|} { get; set; } = null!;
@@ -148,7 +148,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
             using Cvoya.Graph.Model;
             using System;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public Action {|#0:Callback|} { get; set; } = null!;
@@ -170,7 +170,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
             using System.Collections.Generic;
             using System.Threading.Tasks;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public List<Task> {|#0:Tasks|} { get; set; } = new();
@@ -196,7 +196,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
                 public INode OwnerNode { get; set; } = null!;
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public InvalidAddress {|#0:Location|} { get; set; } = new();
@@ -217,7 +217,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
             using Cvoya.Graph.Model;
             using System;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public int? Age { get; set; }
@@ -235,7 +235,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public Point Location { get; set; } = new();
@@ -253,7 +253,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
             using System;
             using System.Threading.Tasks;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public Task {|#0:Operation1|} { get; set; } = null!;
@@ -277,12 +277,8 @@ public class GM004_InvalidPropertyTypeForNodeTests
             using Cvoya.Graph.Model;
             using System.Threading.Tasks;
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
-                public string Id { get; init; } = string.Empty;
-                public RelationshipDirection Direction { get; init; }
-                public string StartNodeId { get; init; } = string.Empty;
-                public string EndNodeId { get; init; } = string.Empty;
                 // This would be invalid for IRelationship and is caught by GM005 rule
                 public Task {|#0:AsyncOperation|} { get; set; } = null!;
             }
@@ -290,9 +286,12 @@ public class GM004_InvalidPropertyTypeForNodeTests
 
         // This test ensures GM004 only applies to INode implementations
         // The Task property is caught by GM005 rule for relationships
-        var expected = VerifyCS.Diagnostic("GM005")
-            .WithLocation(0)
-            .WithArguments("AsyncOperation", "TestRelationship", "Task");
+        var expected = new[]
+        {
+            VerifyCS.Diagnostic("GM005")
+                .WithLocation(0)
+                .WithArguments("AsyncOperation", "TestRelationship", "Task"),
+        };
 
         await VerifyAnalyzerAsync(test, expected);
     }
@@ -304,7 +303,7 @@ public class GM004_InvalidPropertyTypeForNodeTests
             using Cvoya.Graph.Model;
             using System;
             
-            public class BaseNode : INode
+            public class BaseNode : Node
             {
                 public string Id { get; init; } = string.Empty;
             }

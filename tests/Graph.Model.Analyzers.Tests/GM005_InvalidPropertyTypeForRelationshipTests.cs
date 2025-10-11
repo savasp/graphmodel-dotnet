@@ -30,7 +30,7 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
             using Cvoya.Graph.Model;
             using System;
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -57,7 +57,7 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
             using Cvoya.Graph.Model;
             using System.Collections.Generic;
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -87,7 +87,7 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
                 High
             }
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -113,7 +113,7 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
                 public string City { get; set; } = string.Empty;
             }
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -143,7 +143,7 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
                 public string Value { get; set; } = string.Empty;
             }
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -167,7 +167,7 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
             using Cvoya.Graph.Model;
             using System.Threading.Tasks;
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -191,7 +191,7 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
             using Cvoya.Graph.Model;
             using System;
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -215,7 +215,7 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
             using Cvoya.Graph.Model;
             using System;
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -243,7 +243,7 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
                 public string Street { get; set; } = string.Empty;
             }
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -276,9 +276,8 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
                 public string Street { get; set; } = string.Empty;
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
-                public string Id { get; init; } = string.Empty;
                 // This would be valid for INode but GM005 only applies to IRelationship
                 public Address Location { get; set; } = new();
             }
@@ -299,7 +298,7 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
                 public string Street { get; set; } = string.Empty;
             }
             
-            public class BaseRelationship : IRelationship
+            public class BaseRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -332,7 +331,7 @@ public class GM005_InvalidPropertyTypeForRelationshipTests
                 public string Value { get; set; } = string.Empty;
             }
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }

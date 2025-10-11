@@ -12,24 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 namespace Cvoya.Graph.Model.Tests;
 
 public interface IErrorHandlingTests : IGraphModelTest
 {
-    public class TestNode : INode
+    public record TestNode : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
         public string Name { get; set; } = string.Empty;
         public int Value { get; set; }
     }
 
-    public class TestRelationship : IRelationship
+    public record TestRelationship : Relationship
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
-        public string StartNodeId { get; init; } = string.Empty;
-        public string EndNodeId { get; init; } = string.Empty;
-        public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
-        public string Type { get; set; } = string.Empty;
+        public TestRelationship() : base(string.Empty, string.Empty) { }
+        public TestRelationship(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
     }
 
     [Fact]

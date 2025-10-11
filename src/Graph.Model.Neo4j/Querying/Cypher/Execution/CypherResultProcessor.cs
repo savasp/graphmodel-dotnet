@@ -780,6 +780,22 @@ internal sealed class CypherResultProcessor
             simpleProperties = ExtractSimpleProperties(node.Properties, actualType);
         }
 
+        // Add Labels property for all nodes (both dynamic and typed)
+        // This enables filtering by labels in LINQ queries
+        var labelsProperty = actualType.GetProperty(nameof(Model.INode.Labels));
+        if (labelsProperty != null)
+        {
+            var labelsValue = node.Labels.ToList();
+            simpleProperties[nameof(Model.INode.Labels)] = new Property(
+                PropertyInfo: labelsProperty,
+                Label: nameof(Model.INode.Labels),
+                IsNullable: false,
+                Value: new SimpleCollection(
+                    labelsValue.Select(l => new SimpleValue(l, typeof(string))).ToList(),
+                    typeof(string))
+            );
+        }
+
         return new EntityInfo(
             ActualType: actualType,
             Label: label,
@@ -842,6 +858,19 @@ internal sealed class CypherResultProcessor
                     Value: new SimpleValue(relationship.Properties[nameof(Model.IEntity.Id)], typeof(string))
                 );
             }
+        }
+
+        // Add Type property for all relationships (both dynamic and typed)
+        // This enables filtering by type in LINQ queries
+        var typeProperty = actualType.GetProperty(nameof(Model.IRelationship.Type));
+        if (typeProperty != null)
+        {
+            simpleProperties[nameof(Model.IRelationship.Type)] = new Property(
+                PropertyInfo: typeProperty,
+                Label: nameof(Model.IRelationship.Type),
+                IsNullable: false,
+                Value: new SimpleValue(label, typeof(string))
+            );
         }
 
         return new EntityInfo(
@@ -1025,7 +1054,8 @@ internal sealed class CypherResultProcessor
                     return Enumerable.Empty<Type>();
                 }
             })
-            .Where(t => t.IsClass && !t.IsAbstract && typeof(Model.INode).IsAssignableFrom(t));
+            .Where(t => t.IsClass && !t.IsAbstract && typeof(Model.INode).IsAssignableFrom(t))
+            .Where(t => t != typeof(Model.DynamicNode)); // Exclude DynamicNode from schema discovery
     }
 
     /// <summary>
@@ -1051,7 +1081,8 @@ internal sealed class CypherResultProcessor
                     return Enumerable.Empty<Type>();
                 }
             })
-            .Where(t => t.IsClass && !t.IsAbstract && typeof(Model.IRelationship).IsAssignableFrom(t));
+            .Where(t => t.IsClass && !t.IsAbstract && typeof(Model.IRelationship).IsAssignableFrom(t))
+            .Where(t => t != typeof(Model.DynamicRelationship)); // Exclude DynamicRelationship from schema discovery
     }
 
     private Dictionary<string, Property> ExtractSimpleProperties(

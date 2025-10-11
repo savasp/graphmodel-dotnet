@@ -122,4 +122,14 @@ internal static class DiagnosticDescriptors
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.GM010_Description);
+
+    // GM011: Type should inherit from base class instead of implementing interface directly
+    public static readonly DiagnosticDescriptor ShouldInheritFromBaseClass = new(
+        id: "GM011",
+        title: Resources.GM011_Title,
+        messageFormat: Resources.GM011_MessageFormat,
+        category: "Graph.Model",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: Resources.GM011_Description);
 }

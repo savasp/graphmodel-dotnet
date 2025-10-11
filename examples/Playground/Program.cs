@@ -24,7 +24,7 @@ const string databaseName = "GraphModelPlayground";
 
 // ==== SETUP a new database ====
 var driver = GraphDatabase.Driver("bolt://localhost:7687", AuthTokens.Basic("neo4j", "password"));
-await using (var session = driver.AsyncSession())
+await using (var session = driver.AsyncSession(sc => sc.WithDatabase("system")))
 {
     await session.RunAsync($"CREATE OR REPLACE DATABASE {databaseName}");
 

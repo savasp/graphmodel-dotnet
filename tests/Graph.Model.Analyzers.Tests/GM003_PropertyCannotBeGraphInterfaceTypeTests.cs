@@ -18,7 +18,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Testing;
 using Xunit;
 
-
 using static Cvoya.Graph.Model.Analyzers.Tests.TestHelpers.AnalyzerTestHelpers;
 
 public class GM003_PropertyCannotBeGraphInterfaceTypeTests
@@ -29,7 +28,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -46,7 +45,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public INode {|#0:Parent|} { get; set; } = null!;
@@ -66,7 +65,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public IRelationship {|#0:Connection|} { get; set; } = null!;
@@ -86,13 +85,13 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class PersonNode : INode
+            public class PersonNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public PersonNode {|#0:Person|} { get; set; } = null!;
@@ -112,7 +111,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class FollowsRelationship : IRelationship
+            public class FollowsRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -120,7 +119,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
                 public string EndNodeId { get; init; } = string.Empty;
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public FollowsRelationship {|#0:FollowsConnection|} { get; set; } = null!;
@@ -141,7 +140,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
             using Cvoya.Graph.Model;
             using System.Collections.Generic;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public List<INode> {|#0:Children|} { get; set; } = new();
@@ -162,7 +161,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
             using Cvoya.Graph.Model;
             using System.Collections.Generic;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public List<IRelationship> {|#0:Relationships|} { get; set; } = new();
@@ -182,13 +181,13 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class PersonNode : INode
+            public class PersonNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public PersonNode[] {|#0:People|} { get; set; } = Array.Empty<PersonNode>();
@@ -209,7 +208,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
             using Cvoya.Graph.Model;
             using System.Collections.Generic;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public IEnumerable<INode> {|#0:Nodes|} { get; set; } = Enumerable.Empty<INode>();
@@ -229,7 +228,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -252,7 +251,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public INode? {|#0:Parent|} { get; set; }
@@ -278,7 +277,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
                 public string City { get; set; } = string.Empty;
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public Address Location { get; set; } = new();
@@ -295,7 +294,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
             using Cvoya.Graph.Model;
             using System.Collections.Generic;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public List<string> Tags { get; set; } = new();
@@ -312,7 +311,7 @@ public class GM003_PropertyCannotBeGraphInterfaceTypeTests
             using Cvoya.Graph.Model;
             using System.Collections.Generic;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public INode {|#0:Parent|} { get; set; } = null!;

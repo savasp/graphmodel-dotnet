@@ -20,9 +20,9 @@ namespace Cvoya.Graph.Model;
 public sealed record DynamicRelationship : Relationship
 {
     /// <summary>
-    /// Gets the type of this relationship.
+    /// Gets or sets the type of this relationship.
     /// </summary>
-    public string Type { get; init; } = string.Empty;
+    public override string Type { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets the properties of this relationship.

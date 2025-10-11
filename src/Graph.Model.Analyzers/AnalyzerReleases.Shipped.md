@@ -13,3 +13,4 @@ GM007   | Graph.Model | Error    | Duplicate PropertyAttribute label in type hie
 GM008   | Graph.Model | Error    | Duplicate RelationshipAttribute label in type hierarchy
 GM009   | Graph.Model | Error    | Duplicate NodeAttribute label in type hierarchy
 GM010   | Graph.Model | Error    | Circular reference without nullable type
+GM011   | Graph.Model | Warning  | Types should inherit from Node or Relationship base classes instead of implementing INode or IRelationship directly

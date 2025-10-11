@@ -27,7 +27,7 @@ const string databaseName = "example6";
 // ==== SETUP a new database ====
 Console.WriteLine("0. Setting up a new database...");
 var driver = GraphDatabase.Driver("bolt://localhost:7687", AuthTokens.Basic("neo4j", "password"));
-await using (var session = driver.AsyncSession())
+await using (var session = driver.AsyncSession(sc => sc.WithDatabase("system")))
 {
     await session.RunAsync($"CREATE OR REPLACE DATABASE {databaseName}");
 }
@@ -47,27 +47,27 @@ try
 {
     // ==== CREATE SAMPLE DATA ====
     Console.WriteLine("\n1. Creating sample data...");
-    
+
     // Create authors
-    var tolkien = new Author 
-    { 
-        Name = "J.R.R. Tolkien", 
+    var tolkien = new Author
+    {
+        Name = "J.R.R. Tolkien",
         Bio = "British author known for fantasy literature including The Lord of the Rings",
         Nationality = "British",
         PersonalNotes = "Secret information not searchable"
     };
-    
-    var asimov = new Author 
-    { 
-        Name = "Isaac Asimov", 
+
+    var asimov = new Author
+    {
+        Name = "Isaac Asimov",
         Bio = "American science fiction writer famous for robot stories and Foundation series",
         Nationality = "American",
         PersonalNotes = "Private notes about the author"
     };
-    
-    var dahl = new Author 
-    { 
-        Name = "Roald Dahl", 
+
+    var dahl = new Author
+    {
+        Name = "Roald Dahl",
         Bio = "British novelist known for children's books and dark humor",
         Nationality = "British",
         PersonalNotes = "Confidential author information"
@@ -78,28 +78,28 @@ try
     await graph.CreateNodeAsync(dahl);
 
     // Create books
-    var hobbit = new Book 
-    { 
-        Title = "The Hobbit", 
-        Genre = "Fantasy", 
+    var hobbit = new Book
+    {
+        Title = "The Hobbit",
+        Genre = "Fantasy",
         Summary = "A reluctant hobbit goes on an adventure with dwarves to reclaim their mountain home",
         PublicationYear = 1937,
         Price = 12.99m
     };
-    
-    var foundation = new Book 
-    { 
-        Title = "Foundation", 
-        Genre = "Science Fiction", 
+
+    var foundation = new Book
+    {
+        Title = "Foundation",
+        Genre = "Science Fiction",
         Summary = "Mathematical psychohistory predicts the fall of a galactic empire",
         PublicationYear = 1951,
         Price = 14.99m
     };
-    
-    var charlie = new Book 
-    { 
-        Title = "Charlie and the Chocolate Factory", 
-        Genre = "Children's Literature", 
+
+    var charlie = new Book
+    {
+        Title = "Charlie and the Chocolate Factory",
+        Genre = "Children's Literature",
         Summary = "A poor boy wins a golden ticket to tour a magical chocolate factory",
         PublicationYear = 1964,
         Price = 9.99m
@@ -110,16 +110,16 @@ try
     await graph.CreateNodeAsync(charlie);
 
     // Create publishers
-    var allen = new Publisher 
-    { 
-        Name = "Allen & Unwin", 
+    var allen = new Publisher
+    {
+        Name = "Allen & Unwin",
         Country = "United Kingdom",
         Description = "British publisher known for academic and literary works"
     };
-    
-    var gnome = new Publisher 
-    { 
-        Name = "Gnome Press", 
+
+    var gnome = new Publisher
+    {
+        Name = "Gnome Press",
         Country = "United States",
         Description = "American science fiction specialty publisher from the golden age"
     };
@@ -176,7 +176,7 @@ try
     Console.WriteLine("✓ Created authors, books, publishers and their relationships");
 
     // ==== DEMONSTRATE FULL TEXT SEARCH FEATURES ====
-    
+
     Console.WriteLine("\n2. Demonstrating Full Text Search Features...\n");
 
     // ==== Search across all entities ====
@@ -307,7 +307,7 @@ try
     }
 
     Console.WriteLine("\n=== Full Text Search Demo Complete! ===");
-    
+
     Console.WriteLine("\n📋 Summary of demonstrated features:");
     Console.WriteLine("✓ Search across all entity types with Search(query)");
     Console.WriteLine("✓ Search specific node types with SearchNodes<T>(query)");

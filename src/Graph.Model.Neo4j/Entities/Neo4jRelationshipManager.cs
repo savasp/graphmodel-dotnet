@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Entities;
 
+using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
@@ -57,6 +58,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             // Validate property constraints at application level
             ValidateRelationshipProperties(relationship);
 
+
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);
 
@@ -85,6 +87,9 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             _logger.LogInformation("Created relationship of type {RelationshipType} with ID {RelationshipId}",
                 typeof(TRelationship).Name, relationship.Id);
 
+            // Populate the Type property on the original object
+            PopulateRelationshipType(relationship);
+
             return relationship;
         }
         catch (Exception ex) when (ex is not GraphException)
@@ -112,6 +117,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             // Validate property constraints at application level
             ValidateRelationshipProperties(relationship);
+
 
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);
@@ -212,6 +218,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         var record = await GetSingleRecordAsync(result, cancellationToken);
         return record["created"].As<bool>();
     }
+
 
     private async Task<bool> UpdateRelationshipPropertiesAsync(
         string relationshipId,
@@ -416,6 +423,38 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 throw new GraphException($"Property '{propertyName}' on {entityLabel} must be a valid enum value. Valid values are: {validValues}. Current value: {value}");
             }
         }
+    }
+
+    private static void PopulateRelationshipType<TRelationship>(TRelationship relationship)
+        where TRelationship : Model.IRelationship
+    {
+        // Only populate type for non-dynamic relationships
+        // Dynamic relationships should have their type populated from Neo4j data during deserialization
+        if (typeof(TRelationship).IsAssignableTo(typeof(Model.DynamicRelationship)))
+            return;
+
+        // Get the type from the type's RelationshipAttribute or use the type name
+        var relationshipType = GetTypeFromRelationshipType(typeof(TRelationship));
+
+        // Populate the Type property using reflection to access the setter
+        var typeProperty = typeof(TRelationship).GetProperty(nameof(Model.IRelationship.Type));
+        if (typeProperty != null && typeProperty.CanWrite)
+        {
+            typeProperty.SetValue(relationship, relationshipType);
+        }
+    }
+
+    private static string GetTypeFromRelationshipType(Type relationshipType)
+    {
+        // Check for RelationshipAttribute
+        var relationshipAttribute = relationshipType.GetCustomAttribute<Model.RelationshipAttribute>();
+        if (relationshipAttribute != null && !string.IsNullOrEmpty(relationshipAttribute.Label))
+        {
+            return relationshipAttribute.Label;
+        }
+
+        // Fall back to type name
+        return relationshipType.Name;
     }
 
     private static async Task<IRecord> GetSingleRecordAsync(IResultCursor result, CancellationToken cancellationToken)

@@ -582,6 +582,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
         var fetched = await Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken);
 
+        // Dynamic nodes with empty labels should remain empty
         Assert.Empty(fetched.Labels);
         Assert.Equal("Alice", fetched.GetProperty<string>("name"));
     }

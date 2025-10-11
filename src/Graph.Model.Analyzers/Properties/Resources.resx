@@ -122,4 +122,15 @@
   <data name="GM010_Description" xml:space="preserve">
     <value>A type implementing INode or IRelationship cannot contain a type reference cycle without a nullable type.</value>
   </data>
+
+  <!-- GM011: Type should inherit from base class instead of implementing interface directly -->
+  <data name="GM011_Title" xml:space="preserve">
+    <value>Type should inherit from base class instead of implementing interface directly</value>
+  </data>
+  <data name="GM011_MessageFormat" xml:space="preserve">
+    <value>Type '{0}' should inherit from '{1}' instead of implementing '{2}' directly. The base class provides default implementations for runtime metadata properties</value>
+  </data>
+  <data name="GM011_Description" xml:space="preserve">
+    <value>Types should inherit from Node or Relationship base classes instead of implementing INode or IRelationship directly. The base classes provide default implementations for runtime metadata properties like Labels and Type, which are managed by the graph provider.</value>
+  </data>
 </root>

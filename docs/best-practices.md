@@ -16,7 +16,57 @@ This guide covers best practices for using Graph Model effectively in your appli
 
 ## Model Design
 
-### 1. Choose the Right Granularity
+### 1. Use Base Classes for Node and Relationship Implementation
+
+**Do**: Inherit from `Node` or `Relationship` base classes
+
+```csharp
+// Good: Using base class
+[Node("Person")]
+public record Person : Node
+{
+    public string Name { get; set; } = string.Empty;
+    public int Age { get; set; }
+}
+
+// Good: Using Relationship base class
+[Relationship("KNOWS")]
+public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+{
+    public DateTime Since { get; set; }
+}
+```
+
+**Don't**: Implement `INode` or `IRelationship` directly
+
+```csharp
+// Avoid: Implementing interface directly (triggers GM011 warning)
+public record Person : INode
+{
+    public string Id { get; init; } = Guid.NewGuid().ToString();
+    public IReadOnlyList<string> Labels { get; } = new List<string> { "Person" }; // Don't manage these manually!
+    public string Name { get; set; } = string.Empty;
+}
+```
+
+**Why?** The base classes provide:
+
+- Automatic ID generation
+- Runtime metadata properties (`Labels`, `Type`) managed by the graph provider
+- Correct initialization patterns
+- Protection against manual metadata manipulation
+
+The `Labels` property on `INode` and `Type` property on `IRelationship` are **runtime metadata** populated by the graph provider during serialization/deserialization. They enable polymorphic queries and filtering but should never be set manually.
+
+```csharp
+// Querying with runtime metadata
+var query = graph.Nodes<User>()
+    .Where(u => u.Id == userId)
+    .PathSegments<User, UserMemory, Memory>()
+    .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == relationshipType); // Using runtime Type property
+```
+
+### 2. Choose the Right Granularity
 
 **Do**: Model entities at the right level of detail
 
@@ -55,7 +105,7 @@ public class Person : INode
 }
 ```
 
-### 2. Use Meaningful Relationship Types
+### 3. Use Meaningful Relationship Types
 
 **Do**: Use descriptive, domain-specific relationship names
 
@@ -79,7 +129,7 @@ public class Purchased : IRelationship<Customer, Product>
 public class RelatedTo : IRelationship<INode, INode> { }
 ```
 
-### 3. Model Time Appropriately
+### 4. Model Time Appropriately
 
 **Do**: Add temporal properties to relationships when needed
 

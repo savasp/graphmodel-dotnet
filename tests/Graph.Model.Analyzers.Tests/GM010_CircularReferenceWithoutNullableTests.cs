@@ -35,7 +35,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public string City { get; set; } = string.Empty;
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -60,7 +60,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public TreeNode? RightChild { get; set; }
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public TreeNode Data { get; set; } = new();
@@ -82,7 +82,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public CircularType SelfReference { get; set; } = null!;
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public CircularType {|#0:Data|} { get; set; } = new();
@@ -114,7 +114,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public TypeA BackReference { get; set; } = new();
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public TypeA {|#0:Data|} { get; set; } = new();
@@ -152,7 +152,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public TypeA BackToStart { get; set; } = new();
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public TypeA {|#0:Chain|} { get; set; } = new();
@@ -184,7 +184,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public TypeA? BackReference { get; set; } // Nullable
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public TypeA Data { get; set; } = new();
@@ -202,22 +202,21 @@ public class GM010_CircularReferenceWithoutNullableTests
             using Cvoya.Graph.Model;
             using System.Collections.Generic;
             
-            public class Node
+            public class CustomNode
             {
                 public string Value { get; set; } = string.Empty;
-                public List<Node> Children { get; set; } = new();
+                public List<CustomNode> Children { get; set; } = new();
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
-                public string Id { get; init; } = string.Empty;
-                public Node {|#0:Tree|} { get; set; } = new();
+                public CustomNode {|#0:Tree|} { get; set; } = new();
             }
             """;
 
         var expected = VerifyCS.Diagnostic("GM010")
             .WithLocation(0)
-            .WithArguments("Tree", "TestNode", "Node");
+            .WithArguments("Tree", "TestNode", "CustomNode");
 
         await VerifyAnalyzerAsync(test, expected);
     }
@@ -234,7 +233,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public TreeNode[] Children { get; set; } = Array.Empty<TreeNode>();
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public TreeNode {|#0:Root|} { get; set; } = new();
@@ -262,7 +261,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public TreeNode? Parent { get; set; }
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public TreeNode Tree { get; set; } = new();
@@ -290,7 +289,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public CircularType2 Self { get; set; } = null!;
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public CircularType1 {|#0:Data1|} { get; set; } = new();
@@ -319,7 +318,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public CircularMetadata NestedData { get; set; } = null!;
             }
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -353,7 +352,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public CircularType Data { get; set; } = new();
             }
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -375,7 +374,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public CircularType Self { get; set; } = null!;
             }
             
-            public class BaseNode : INode
+            public class BaseNode : Node
             {
                 public string Id { get; init; } = string.Empty;
             }
@@ -438,7 +437,7 @@ public class GM010_CircularReferenceWithoutNullableTests
                 public string Phone { get; set; } = string.Empty;
             }
             
-            public class PersonNode : INode
+            public class PersonNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public Address HomeAddress { get; set; } = new();

@@ -20,9 +20,9 @@ namespace Cvoya.Graph.Model;
 public sealed record DynamicNode : Node
 {
     /// <summary>
-    /// Gets the labels for this node.
+    /// Gets or sets the labels for this node.
     /// </summary>
-    public IReadOnlyList<string> Labels { get; init; } = new List<string>();
+    public override IReadOnlyList<string> Labels { get; set; } = new List<string>();
 
     /// <summary>
     /// Gets the properties of this node.

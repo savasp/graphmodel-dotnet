@@ -29,7 +29,7 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -45,7 +45,7 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; init; } = string.Empty;
@@ -61,7 +61,7 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string {|#0:Name|} { private get; set; } = string.Empty;
@@ -81,7 +81,7 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string {|#0:Name|} { get; private set; } = string.Empty;
@@ -101,7 +101,7 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string {|#0:Name|} { internal get; set; } = string.Empty;
@@ -121,7 +121,7 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string {|#0:Name|} { get; internal set; } = string.Empty;
@@ -141,7 +141,7 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -164,7 +164,7 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string {|#0:Name|} { get; } = string.Empty;
@@ -184,7 +184,7 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string {|#0:Name|} { set; } = string.Empty;
@@ -204,7 +204,7 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string {|#0:Name|} { get; private set; } = string.Empty;
@@ -227,7 +227,7 @@ public class GM002_PropertyMustHavePublicAccessorsTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class BaseNode : INode
+            public class BaseNode : Node
             {
                 public string Id { get; init; } = string.Empty;
             }

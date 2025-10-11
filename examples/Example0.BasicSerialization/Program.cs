@@ -27,7 +27,7 @@ const string databaseName = "example0";
 // ==== SETUP a new database ====
 Console.WriteLine("0. Setting up a new database...");
 var driver = GraphDatabase.Driver("bolt://localhost:7687", AuthTokens.Basic("neo4j", "password"));
-await using (var session = driver.AsyncSession())
+await using (var session = driver.AsyncSession(sc => sc.WithDatabase("system")))
 {
     await session.RunAsync($"CREATE OR REPLACE DATABASE {databaseName}");
 }
@@ -227,6 +227,37 @@ try
 
     Console.WriteLine($"✓ Created relationship between {alice.Name} and {bob.Name}");
     Console.WriteLine($"  Since: {aliceFriendBob.Since}");
+
+    // Work with DynamicNode and DynamicRelationship
+    Console.WriteLine("4. Creating a dynamic node and relationship...");
+    var person1 = new DynamicNode(["DynamicPerson", "Manager"], new Dictionary<string, object?>
+    {
+        { "Name", "Dynamic Dave" },
+        { "Role", "Manager" },
+        { "StartDate", DateTime.Now }
+    });
+
+    var person2 = new DynamicNode(["DynamicPerson", "Intern"], new Dictionary<string, object?>
+    {
+        { "Name", "Dynamic Eve" },
+        { "Role", "Intern" },
+        { "StartDate", DateTime.Now }
+    });
+
+    await graph.CreateNodeAsync(person1);
+    await graph.CreateNodeAsync(person2);
+    Console.WriteLine($"✓ Created dynamic node: {person1.Properties["Name"]} with role {person1.Properties["Role"]}");
+    Console.WriteLine($"✓ Created dynamic node: {person2.Properties["Name"]} with role {person2.Properties["Role"]}");
+
+    var managesRel = new DynamicRelationship(person1.Id, person2.Id, "MANAGES", new Dictionary<string, object?>
+    {
+        { "Since", new DateTime(2023, 1, 1) },
+        { "Notes", "Promising intern" }
+    });
+
+    await graph.CreateRelationshipAsync(managesRel);
+    Console.WriteLine($"✓ Created dynamic relationship: {person1.Properties["Name"]} MANAGES {person2.Properties["Name"]} since {managesRel.Properties["Since"]}\n");
+
 
     Console.WriteLine("\n=== Example 0 Complete ===");
     Console.WriteLine("This example demonstrated:");

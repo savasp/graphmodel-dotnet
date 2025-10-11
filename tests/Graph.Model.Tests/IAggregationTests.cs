@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 namespace Cvoya.Graph.Model.Tests;
 
 public interface IAggregationTests : IGraphModelTest
 {
-    public class PersonWithNumbers : INode
+    public record PersonWithNumbers : Node
     {
-        public string Id { get; init; } = Guid.NewGuid().ToString("N");
         public string FirstName { get; set; } = string.Empty;
         public int Age { get; set; }
         public long Salary { get; set; }

@@ -26,4 +26,23 @@ namespace Cvoya.Graph.Model;
 /// </remarks>
 public interface INode : IEntity
 {
+    /// <summary>
+    /// Gets the labels for this node as they are stored in the graph database.
+    /// This is a runtime property that reflects the actual labels assigned to the node.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property is automatically populated by the graph provider when the node is
+    /// retrieved from or saved to the database. The labels are derived from the <see cref="NodeAttribute"/>
+    /// on the implementing type, or the type name if no attribute is present.
+    /// </para>
+    /// <para>
+    /// This property enables polymorphic queries and filtering by label at runtime,
+    /// complementing the compile-time type system.
+    /// </para>
+    /// <para>
+    /// Do not set this property manually - it is managed by the graph provider.
+    /// </para>
+    /// </remarks>
+    IReadOnlyList<string> Labels { get; }
 }

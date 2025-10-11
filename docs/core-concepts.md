@@ -78,30 +78,44 @@ Nodes represent the primary entities in your graph model:
 /// <summary>
 /// Defines the contract for node entities in the graph model.
 /// Nodes represent primary data entities that can be connected via relationships.
-/// This interface serves as a marker interface that extends IEntity,
-/// signifying that implementing classes represent nodes rather than relationships.
 /// </summary>
 public interface INode : IEntity
 {
-    // Marker interface - no additional members beyond IEntity
+    /// <summary>
+    /// Gets the labels for this node as they are stored in the graph database.
+    /// This is a runtime property that reflects the actual labels assigned to the node.
+    /// </summary>
+    /// <remarks>
+    /// This property is automatically populated by the graph provider when the node is
+    /// retrieved from or saved to the database. The labels are derived from the NodeAttribute
+    /// on the implementing type, or the type name if no attribute is present.
+    ///
+    /// This property enables polymorphic queries and filtering by label at runtime,
+    /// complementing the compile-time type system.
+    ///
+    /// Do not set this property manually - it is managed by the graph provider.
+    /// </remarks>
+    IReadOnlyList<string> Labels { get; }
 }
 ```
 
 ### Design Philosophy
 
-- **Marker Interface**: `INode` doesn't add properties, it just identifies node types
+- **Runtime Metadata**: `INode.Labels` provides runtime access to node labels for polymorphic queries
+- **Provider-Managed**: The Labels property is automatically populated by the graph provider
 - **Domain-Focused**: Your node classes represent your actual business entities
+- **Base Class Recommended**: Use the `Node` base class which provides default implementations
 
 ### Node Implementation Patterns
 
-#### 1. Simple Node
+> **Best Practice**: Always inherit from the `Node` base class instead of implementing `INode` directly. The base class provides automatic ID generation and proper runtime metadata management.
+
+#### 1. Simple Node (Recommended)
 
 ```csharp
 [Node("Person")]
-public class Person : INode
+public record Person : Node  // Use Node base class
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString();
-
     [Property("first_name", Index = true)]
     public string FirstName { get; set; } = string.Empty;
 
@@ -121,10 +135,8 @@ public class Person : INode
 
 ```csharp
 [Node("Company")]
-public class Company : INode
+public record Company : Node  // Use Node base class
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString();
-
     public string Name { get; set; } = string.Empty;
     public Address Headquarters { get; set; } = new(); // Complex type
     public List<Address> Offices { get; set; } = new(); // Collection
@@ -144,9 +156,8 @@ Implementations of the Graph Model must support polymorphic behavior.
 
 ```csharp
 [Node("Person")]
-public abstract class Person : INode
+public abstract record Person : Node  // Use Node base class
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString();
 
     [Property("first_name")]
     public string FirstName { get; set; } = string.Empty;
@@ -196,6 +207,22 @@ Relationships connect nodes and form the graph structure. There are two main rel
 public interface IRelationship : IEntity
 {
     /// <summary>
+    /// Gets the type of this relationship as it is stored in the graph database.
+    /// This is a runtime property that reflects the actual relationship type.
+    /// </summary>
+    /// <remarks>
+    /// This property is automatically populated by the graph provider when the relationship is
+    /// retrieved from or saved to the database. The type is derived from the RelationshipAttribute
+    /// on the implementing type, or the type name if no attribute is present.
+    ///
+    /// This property enables polymorphic queries and filtering by type at runtime,
+    /// complementing the compile-time type system.
+    ///
+    /// Do not set this property manually - it is managed by the graph provider.
+    /// </remarks>
+    string Type { get; }
+
+    /// <summary>
     /// Gets the direction of this relationship.
     /// The direction determines how the relationship can be traversed.
     /// </summary>
@@ -214,6 +241,8 @@ public interface IRelationship : IEntity
     string EndNodeId { get; init; }
 }
 ```
+
+> **Best Practice**: Always inherit from the `Relationship` base class instead of implementing `IRelationship` directly. The base class provides automatic ID generation and proper runtime metadata management.
 
 ### Strongly-Typed Relationships: IRelationship<TSource, TTarget>
 
@@ -260,31 +289,26 @@ public enum RelationshipDirection
 
 ### Relationship Implementation Patterns
 
-#### 1. Simple Relationship
+#### 1. Simple Relationship (Recommended)
 
 ```csharp
 [Relationship("KNOWS")]
-public record Knows : Relationship   // Convenience record offered by the core library
+public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
 {
     public DateTime Since { get; set; }
-    public string Type { get; set; } = "acquaintance";
+    public string KnownAs { get; set; } = "acquaintance";  // Custom property
 }
 ```
 
-#### 2. Strongly-Typed Relationship
+#### 2. Strongly-Typed Relationship (Not Yet Supported)
+
+> **Note**: Strongly-typed relationships (`IRelationship<TSource, TTarget>`) are currently being redesigned and are not yet supported in the current version. Use the simple relationship pattern shown above.
 
 ```csharp
+// Coming in a future release
 [Relationship("KNOWS")]
-public class Knows : IRelationship<Person, Person>
+public record Knows : Relationship<Person, Person>
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString();
-    public string StartNodeId { get; init; } = string.Empty;
-    public string EndNodeId { get; init; } = string.Empty;
-    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Bidirectional;
-
-    public Person Source { get; set; }
-    public Person Target { get; set; }
-
     public DateTime Since { get; set; }
     public int Strength { get; set; } = 1; // 1-10 scale
 }

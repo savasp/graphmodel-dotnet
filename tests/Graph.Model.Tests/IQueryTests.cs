@@ -532,7 +532,7 @@ public interface IQueryTests : IGraphModelTest
 
         // Verify the query executed successfully
         Assert.NotNull(memories);
-        Assert.Equal(1, memories.Count);
+        Assert.Single(memories);
     }
 
     [Fact]
@@ -601,6 +601,6 @@ public interface IQueryTests : IGraphModelTest
 
         // Verify the query executed successfully
         Assert.NotNull(memories);
-        Assert.Equal(1, memories.Count);
+        Assert.Single(memories);
     }
 }

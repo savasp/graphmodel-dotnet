@@ -172,10 +172,8 @@ public class CrudOperationsBenchmark
 }
 
 [Node("Person")]
-public class Person : Cvoya.Graph.Model.INode
+public record Person : Node
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-
     [Property(Label = "first_name")]
     public string FirstName { get; set; } = string.Empty;
 

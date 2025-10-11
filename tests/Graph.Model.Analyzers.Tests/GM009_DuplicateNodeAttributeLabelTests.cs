@@ -30,14 +30,14 @@ public class GM009_DuplicateNodeAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Node("Person")]
-            public class PersonNode : INode
+            public class PersonNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
             }
             
             [Node("Company")]
-            public class CompanyNode : INode
+            public class CompanyNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string CompanyName { get; set; } = string.Empty;
@@ -54,14 +54,14 @@ public class GM009_DuplicateNodeAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Node("Person")]
-            public class PersonNode : INode
+            public class PersonNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
             }
             
             [Node("Person")]
-            public class {|#0:DuplicatePersonNode|} : INode
+            public class {|#0:DuplicatePersonNode|} : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string FullName { get; set; } = string.Empty;
@@ -82,7 +82,7 @@ public class GM009_DuplicateNodeAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Node("Person")]
-            public class BasePersonNode : INode
+            public class BasePersonNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -109,7 +109,7 @@ public class GM009_DuplicateNodeAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Node("Person")]
-            public class BasePersonNode : INode
+            public class BasePersonNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -132,14 +132,14 @@ public class GM009_DuplicateNodeAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Node("Person")]
-            public class PersonNode : INode
+            public class PersonNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
             }
             
             [Node("person")]
-            public class {|#0:LowercasePersonNode|} : INode
+            public class {|#0:LowercasePersonNode|} : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -161,7 +161,7 @@ public class GM009_DuplicateNodeAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Node("Entity")]
-            public class BaseEntityNode : INode
+            public class BaseEntityNode : Node
             {
                 public string Id { get; init; } = string.Empty;
             }
@@ -173,7 +173,7 @@ public class GM009_DuplicateNodeAttributeLabelTests
             }
             
             [Node("Entity")]
-            public class {|#0:DuplicateEntityNode|} : INode
+            public class {|#0:DuplicateEntityNode|} : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Type { get; set; } = string.Empty;
@@ -194,14 +194,14 @@ public class GM009_DuplicateNodeAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Node("Person")]
-            public class PersonNode : INode
+            public class PersonNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
             }
             
             // Node without attribute should not cause conflicts
-            public class GenericNode : INode
+            public class GenericNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Data { get; set; } = string.Empty;
@@ -218,21 +218,21 @@ public class GM009_DuplicateNodeAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Node("Person")]
-            public class PersonNode1 : INode
+            public class PersonNode1 : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
             }
             
             [Node("Person")]
-            public class {|#0:PersonNode2|} : INode
+            public class {|#0:PersonNode2|} : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
             }
             
             [Node("Person")]
-            public class {|#1:PersonNode3|} : INode
+            public class {|#1:PersonNode3|} : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -255,14 +255,14 @@ public class GM009_DuplicateNodeAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Node("")]
-            public class EmptyLabelNode1 : INode
+            public class EmptyLabelNode1 : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
             }
             
             [Node("")]
-            public class EmptyLabelNode2 : INode
+            public class EmptyLabelNode2 : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -280,14 +280,14 @@ public class GM009_DuplicateNodeAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Node("Person", "Individual")]
-            public class PersonNode : INode
+            public class PersonNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
             }
             
             [Node("Employee", "Person")]
-            public class {|#0:EmployeeNode|} : INode
+            public class {|#0:EmployeeNode|} : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
@@ -309,14 +309,14 @@ public class GM009_DuplicateNodeAttributeLabelTests
             using Cvoya.Graph.Model;
             
             [Node("Person", "Individual")]
-            public class PersonNode : INode
+            public class PersonNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;
             }
             
             [Node("Employee", "Worker")]
-            public class EmployeeNode : INode
+            public class EmployeeNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 public string Name { get; set; } = string.Empty;

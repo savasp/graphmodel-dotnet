@@ -15,9 +15,8 @@
 namespace Cvoya.Graph.Model.Tests;
 
 // Example domain models
-public class Person : INode
+public record Person : Node
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public int Age { get; set; } = 30;
@@ -26,15 +25,14 @@ public class Person : INode
     public Point Location { get; set; } = new Point { Longitude = 0.0, Latitude = 0.0, Height = 0.0 };
 }
 
-public class Manager : Person
+public record Manager : Person
 {
     public string Department { get; set; } = string.Empty;
     public int TeamSize { get; set; } = 0;
 }
 
-public class Address : INode
+public record Address : Node
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public string Street { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
 }
@@ -46,50 +44,30 @@ public class AddressValue
 }
 
 [Relationship(Label = "FRIENDOF")]
-public class Friend : IRelationship
+public record Friend : Relationship
 {
-    public Friend() { }
-    public Friend(string startNodeId, string endNodeId)
-    {
-        this.StartNodeId = startNodeId;
-        this.EndNodeId = endNodeId;
-    }
-    public Friend(INode source, INode target)
-    {
-        this.StartNodeId = source.Id;
-        this.EndNodeId = target.Id;
-    }
+    public Friend() : base(string.Empty, string.Empty) { }
 
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-    public string StartNodeId { get; init; } = string.Empty;
-    public string EndNodeId { get; init; } = string.Empty;
-    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
+    public Friend(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+
+    public Friend(INode source, INode target) : base(source.Id, target.Id) { }
+
     public DateTime Since { get; set; } = DateTime.UtcNow;
 }
 
 [Relationship(Label = "KNOWS")]
-public class Knows : IRelationship
+public record Knows : Relationship
 {
-    public Knows() { }
-    public Knows(string startNodeId, string endNodeId)
-    {
-        this.StartNodeId = startNodeId;
-        this.EndNodeId = endNodeId;
-    }
-    public Knows(INode source, INode target)
-    {
-        this.StartNodeId = source.Id;
-        this.EndNodeId = target.Id;
-    }
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-    public string StartNodeId { get; init; } = string.Empty;
-    public string EndNodeId { get; init; } = string.Empty;
-    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
-    public DateTime Since { get; set; }
+    public Knows() : base(string.Empty, string.Empty) { }
+    public Knows(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+
+    public Knows(INode source, INode target) : base(source.Id, target.Id) { }
+
+    public DateTime Since { get; set; } = DateTime.UtcNow;
 }
 
 [Relationship(Label = "WORKS_REALLY_WELL_WITH")]
-public class KnowsWell : Knows
+public record KnowsWell : Knows
 {
     public KnowsWell() { }
     public KnowsWell(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
@@ -98,27 +76,25 @@ public class KnowsWell : Knows
 }
 
 [Relationship(Label = "LIVES_AT")]
-public class LivesAt : IRelationship
+public record LivesAt : Relationship
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-    public string StartNodeId { get; init; } = string.Empty;
-    public string EndNodeId { get; init; } = string.Empty;
-    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
+    public LivesAt() : base(string.Empty, string.Empty) { }
+    public LivesAt(string startNodeId, string endNodeId) : base(startNodeId, endNodeId) { }
+    public LivesAt(INode source, INode target) : base(source.Id, target.Id) { }
     public DateTime MovedInDate { get; set; } = DateTime.UtcNow;
 }
 
-public class PersonWithComplexProperty : Person
+public record PersonWithComplexProperty : Person
 {
     public AddressValue Address { get; set; } = new AddressValue();
 }
 
-public class PersonWithComplexProperties : INode
+public record PersonWithComplexProperties : Node
 {
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
-    public int Age { get; set; } = 30;
-    public DateTime DateOfBirth { get; set; } = DateTime.UtcNow;
+    public int Age { get; set; }
+    public DateTime DateOfBirth { get; set; }
     public string Bio { get; set; } = string.Empty;
     public AddressValue Address { get; set; } = new AddressValue();
     // TODO: Add serialization support for dictionaries.

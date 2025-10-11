@@ -29,7 +29,7 @@ public class GM007_DuplicatePropertyAttributeLabelTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 
@@ -53,7 +53,7 @@ public class GM007_DuplicatePropertyAttributeLabelTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 
@@ -78,7 +78,7 @@ public class GM007_DuplicatePropertyAttributeLabelTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class BaseNode : INode
+            public class BaseNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 
@@ -106,7 +106,7 @@ public class GM007_DuplicatePropertyAttributeLabelTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 
@@ -139,7 +139,7 @@ public class GM007_DuplicatePropertyAttributeLabelTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class BaseNode : INode
+            public class BaseNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 
@@ -178,7 +178,7 @@ public class GM007_DuplicatePropertyAttributeLabelTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestRelationship : IRelationship
+            public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
                 public RelationshipDirection Direction { get; init; }
@@ -206,7 +206,7 @@ public class GM007_DuplicatePropertyAttributeLabelTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 
@@ -228,7 +228,7 @@ public class GM007_DuplicatePropertyAttributeLabelTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 
@@ -252,18 +252,14 @@ public class GM007_DuplicatePropertyAttributeLabelTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class PersonNode : INode
+            public class PersonNode : Node
             {
-                public string Id { get; init; } = string.Empty;
-                
                 [Property(Label = "name")]
                 public string Name { get; set; } = string.Empty;
             }
             
-            public class CompanyNode : INode
+            public class CompanyNode : Node
             {
-                public string Id { get; init; } = string.Empty;
-                
                 [Property(Label = "name")]
                 public string CompanyName { get; set; } = string.Empty;
             }
@@ -278,7 +274,7 @@ public class GM007_DuplicatePropertyAttributeLabelTests
         var test = """
             using Cvoya.Graph.Model;
             
-            public class TestNode : INode
+            public class TestNode : Node
             {
                 public string Id { get; init; } = string.Empty;
                 

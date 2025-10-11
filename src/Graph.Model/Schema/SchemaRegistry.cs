@@ -344,9 +344,17 @@ public class SchemaRegistry : IDisposable
                 if (type.IsAbstract || type.IsInterface) continue;
 
                 if (typeof(INode).IsAssignableFrom(type))
-                    nodeTypes.Add(type);
+                {
+                    // Exclude DynamicNode from schema discovery
+                    if (type != typeof(DynamicNode))
+                        nodeTypes.Add(type);
+                }
                 else if (typeof(IRelationship).IsAssignableFrom(type))
-                    relationshipTypes.Add(type);
+                {
+                    // Exclude DynamicRelationship from schema discovery
+                    if (type != typeof(DynamicRelationship))
+                        relationshipTypes.Add(type);
+                }
             }
         }
 

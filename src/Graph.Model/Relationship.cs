@@ -29,4 +29,14 @@ public abstract record Relationship(string StartNodeId, string EndNodeId, Relati
 {
     /// <inheritdoc/>
     public string Id { get; init; } = Guid.NewGuid().ToString("N");
+
+    /// <summary>
+    /// Gets or sets the type of this relationship as it is stored in the graph database.
+    /// </summary>
+    /// <remarks>
+    /// This property is automatically populated by the graph provider when the relationship is
+    /// created or retrieved from the database. The type is derived from the <see cref="RelationshipAttribute"/>
+    /// or the type name if no attribute is present.
+    /// </remarks>
+    public virtual string Type { get; set; } = string.Empty;
 }
