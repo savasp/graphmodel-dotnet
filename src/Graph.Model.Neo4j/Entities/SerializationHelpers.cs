@@ -22,7 +22,7 @@ internal static class SerializationHelpers
 {
     public static Dictionary<string, object?> SerializeSimpleProperties(EntityInfo entity)
     {
-        return entity.SimpleProperties
+        var properties = entity.SimpleProperties
             .Where(kv => kv.Value.Value is not null)
             .ToDictionary(
                 kv => kv.Key,
@@ -32,5 +32,9 @@ internal static class SerializationHelpers
                     SimpleCollection collection => collection.Values.Select(v => SerializationBridge.ToNeo4jValue(v.Object)),
                     _ => throw new GraphException("Unexpected value type in simple properties")
                 });
+
+        properties[nameof(Model.INode.Labels)] = entity.ActualLabels.Count > 0 ? entity.ActualLabels : Labels.GetCompatibleLabels(entity.ActualType);
+
+        return properties;
     }
 }

@@ -47,7 +47,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // Validate property constraints at application level
             ValidateNodeProperties(node);
 
-
             // Serialize the node
             var entity = _serializer.Serialize(node);
 
@@ -65,9 +64,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             }
 
             _logger.LogInformation("Created node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
-
-            // Populate the Labels property on the original object
-            PopulateNodeLabels(node);
 
             return node;
         }
@@ -95,7 +91,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
             // Validate property constraints at application level
             ValidateNodeProperties(node);
-
 
             // Serialize the node
             var entity = _serializer.Serialize(node);
@@ -242,39 +237,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         return record["nodeId"].As<string>()
             ?? throw new GraphException("Failed to create node - no ID returned");
     }
-
-    private static void PopulateNodeLabels<TNode>(TNode node)
-        where TNode : Model.INode
-    {
-        // Only populate labels for non-dynamic nodes
-        // Dynamic nodes should have their labels populated from Neo4j data during deserialization
-        if (typeof(TNode).IsAssignableTo(typeof(Model.DynamicNode)))
-            return;
-
-        // Get the labels from the type's NodeAttribute or use the type name
-        var labels = GetLabelsFromType(typeof(TNode));
-
-        // Populate the Labels property using reflection to access the setter
-        var labelsProperty = typeof(TNode).GetProperty(nameof(Model.INode.Labels));
-        if (labelsProperty != null && labelsProperty.CanWrite)
-        {
-            labelsProperty.SetValue(node, labels);
-        }
-    }
-
-    private static List<string> GetLabelsFromType(Type nodeType)
-    {
-        // Check for NodeAttribute
-        var nodeAttribute = nodeType.GetCustomAttribute<Model.NodeAttribute>();
-        if (nodeAttribute != null && !string.IsNullOrEmpty(nodeAttribute.Label))
-        {
-            return new List<string> { nodeAttribute.Label };
-        }
-
-        // Fall back to type name
-        return new List<string> { nodeType.Name };
-    }
-
 
     private async Task<bool> UpdateMainNodeAsync(
         string nodeId,

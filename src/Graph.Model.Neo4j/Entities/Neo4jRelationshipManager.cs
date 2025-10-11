@@ -58,7 +58,6 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             // Validate property constraints at application level
             ValidateRelationshipProperties(relationship);
 
-
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);
 
@@ -87,9 +86,6 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             _logger.LogInformation("Created relationship of type {RelationshipType} with ID {RelationshipId}",
                 typeof(TRelationship).Name, relationship.Id);
 
-            // Populate the Type property on the original object
-            PopulateRelationshipType(relationship);
-
             return relationship;
         }
         catch (Exception ex) when (ex is not GraphException)
@@ -117,7 +113,6 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             // Validate property constraints at application level
             ValidateRelationshipProperties(relationship);
-
 
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);
@@ -207,6 +202,8 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         var properties = SerializationHelpers.SerializeSimpleProperties(entity)
             .Where(kv => !_ignoredProperties.Contains(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        properties[nameof(Model.IRelationship.Type)] = entity.Label;
 
         var result = await transaction.RunAsync(cypher, new
         {
@@ -423,38 +420,6 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 throw new GraphException($"Property '{propertyName}' on {entityLabel} must be a valid enum value. Valid values are: {validValues}. Current value: {value}");
             }
         }
-    }
-
-    private static void PopulateRelationshipType<TRelationship>(TRelationship relationship)
-        where TRelationship : Model.IRelationship
-    {
-        // Only populate type for non-dynamic relationships
-        // Dynamic relationships should have their type populated from Neo4j data during deserialization
-        if (typeof(TRelationship).IsAssignableTo(typeof(Model.DynamicRelationship)))
-            return;
-
-        // Get the type from the type's RelationshipAttribute or use the type name
-        var relationshipType = GetTypeFromRelationshipType(typeof(TRelationship));
-
-        // Populate the Type property using reflection to access the setter
-        var typeProperty = typeof(TRelationship).GetProperty(nameof(Model.IRelationship.Type));
-        if (typeProperty != null && typeProperty.CanWrite)
-        {
-            typeProperty.SetValue(relationship, relationshipType);
-        }
-    }
-
-    private static string GetTypeFromRelationshipType(Type relationshipType)
-    {
-        // Check for RelationshipAttribute
-        var relationshipAttribute = relationshipType.GetCustomAttribute<Model.RelationshipAttribute>();
-        if (relationshipAttribute != null && !string.IsNullOrEmpty(relationshipAttribute.Label))
-        {
-            return relationshipAttribute.Label;
-        }
-
-        // Fall back to type name
-        return relationshipType.Name;
     }
 
     private static async Task<IRecord> GetSingleRecordAsync(IResultCursor result, CancellationToken cancellationToken)
