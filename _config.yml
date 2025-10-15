@@ -31,7 +31,6 @@ exclude:
   - "*.sln"
   - "*.csproj"
   - "*.cs"
-  - dotnet.config
   - Directory.Build.props
   - VERSION
   - LICENSE
