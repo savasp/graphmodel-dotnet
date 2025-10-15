@@ -70,6 +70,15 @@
         <IsPackable>false</IsPackable>
     </PropertyGroup>
 
+    <!-- Analyzer project settings - allow packaging for LocalFeed configuration -->
+    <PropertyGroup Condition=" '$(MSBuildProjectName)' == 'Graph.Model.Analyzers' OR '$(MSBuildProjectName)' == 'Graph.Model.Serialization.CodeGen' ">
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        <IsPackable Condition="'$(Configuration)' == 'LocalFeed'">true</IsPackable>
+        <IsPackable Condition="'$(Configuration)' != 'LocalFeed'">false</IsPackable>
+        <!-- Override DevelopmentDependency for LocalFeed to allow packaging -->
+        <DevelopmentDependency Condition="'$(Configuration)' == 'LocalFeed'">false</DevelopmentDependency>
+    </PropertyGroup>
+
     <!-- Version Management -->
     <PropertyGroup>
         <VersionFile>$(MSBuildThisFileDirectory)VERSION</VersionFile>
@@ -105,8 +114,10 @@
         <!-- Create local feed directory -->
         <MakeDir Directories="$(LocalFeedPath)" />
 
-        <!-- Add NuGet source if not already added -->
-        <Exec Command="dotnet nuget list source | grep '$(LocalFeedSourceName)' || dotnet nuget add source '$(LocalFeedPath)' --name '$(LocalFeedSourceName)'" ContinueOnError="true" />
+        <!-- Add NuGet source if not already added (check if sentinel file exists to avoid duplicate attempts) -->
+        <Exec Command="dotnet nuget list source | grep -q '$(LocalFeedSourceName)' || dotnet nuget add source '$(LocalFeedPath)' --name '$(LocalFeedSourceName)'" 
+              Condition="!Exists('$(LocalFeedSentinelFile)')" 
+              ContinueOnError="true" />
 
         <!-- Create sentinel file -->
         <WriteLinesToFile File="$(LocalFeedSentinelFile)" Lines="Local feed setup completed at $([System.DateTime]::Now)" Overwrite="true" />
@@ -124,15 +135,24 @@
         <Message Text="📦 Published $(MSBuildProjectName) to local feed" Importance="high" Condition="@(PackageFiles) != ''" />
     </Target>
 
+    <!-- Explicitly pack analyzer and codegen projects for LocalFeed configuration -->
+    <!-- Only run this target once at the solution level, not for each project -->
+    <Target Name="PackSpecialProjects" AfterTargets="Build" Condition="'$(Configuration)' == 'LocalFeed' AND '$(MSBuildProjectName)' == 'Graph.Model'">
+        <Message Text="📦 Packing special projects (Analyzers and CodeGen)..." Importance="high" />
+        <MSBuild Projects="$(MSBuildThisFileDirectory)src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj" Targets="Pack" Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />
+        <MSBuild Projects="$(MSBuildThisFileDirectory)src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" Targets="Pack" Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />
+        <Message Text="✅ Special projects packed successfully!" Importance="high" />
+    </Target>
+
     <Target Name="CleanLocalFeed">
         <Message Text="🧹 Cleaning up GraphModel local NuGet feed..." Importance="high" />
 
-        <!-- Remove NuGet source -->
-        <Exec Command="dotnet nuget remove source '$(LocalFeedSourceName)'" ContinueOnError="true" />
+        <!-- Remove NuGet source only if it exists -->
+        <Exec Command="dotnet nuget list source | grep -q '$(LocalFeedSourceName)' &amp;&amp; dotnet nuget remove source '$(LocalFeedSourceName)'" ContinueOnError="true" />
 
-        <!-- Clean directories only if they exist -->
-        <RemoveDir Directories="$(LocalFeedPath)" Condition="Exists('$(LocalFeedPath)')" />
-        <RemoveDir Directories="$(PackageOutputPath)" Condition="Exists('$(PackageOutputPath)')" />
+        <!-- Clean directories only if they exist and are not in use -->
+        <RemoveDir Directories="$(LocalFeedPath)" Condition="Exists('$(LocalFeedPath)')" ContinueOnError="true" />
+        <RemoveDir Directories="$(PackageOutputPath)" Condition="Exists('$(PackageOutputPath)')" ContinueOnError="true" />
 
         <!-- Clear NuGet cache -->
         <Exec Command="dotnet nuget locals all --clear" ContinueOnError="true" />

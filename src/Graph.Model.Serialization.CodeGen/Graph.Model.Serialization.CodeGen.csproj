@@ -11,6 +11,10 @@
         <PackageId>Cvoya.Graph.Model.Serialization.CodeGen</PackageId>
         <Description>Code generation for Graph Data Model serialization.</Description>
         <PackageTags>graph;database;neo4j;codegen;serialization</PackageTags>
+        <IsPackable Condition="'$(Configuration)' == 'LocalFeed'">true</IsPackable>
+        <IsPackable Condition="'$(Configuration)' != 'LocalFeed'">false</IsPackable>
+        <GeneratePackageOnBuild Condition="'$(Configuration)' == 'LocalFeed'">true</GeneratePackageOnBuild>
+        <GeneratePackageOnBuild Condition="'$(Configuration)' != 'LocalFeed'">false</GeneratePackageOnBuild>
     </PropertyGroup>
 
     <ItemGroup>

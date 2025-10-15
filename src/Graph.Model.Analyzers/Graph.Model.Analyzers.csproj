@@ -10,7 +10,12 @@
         <PackageId>Cvoya.Graph.Model.Analyzers</PackageId>
         <Description>Roslyn analyzer for enforcing implementation constraints on INode and IRelationship interfaces.</Description>
         <PackageTags>roslyn;analyzer;graph;codeanalysis</PackageTags>
-        <DevelopmentDependency>true</DevelopmentDependency>
+            <DevelopmentDependency Condition="'$(Configuration)' != 'LocalFeed'">true</DevelopmentDependency>
+            <DevelopmentDependency Condition="'$(Configuration)' == 'LocalFeed'">false</DevelopmentDependency>
+            <IsPackable Condition="'$(Configuration)' == 'LocalFeed'">true</IsPackable>
+            <IsPackable Condition="'$(Configuration)' != 'LocalFeed'">false</IsPackable>
+            <GeneratePackageOnBuild Condition="'$(Configuration)' == 'LocalFeed'">true</GeneratePackageOnBuild>
+            <GeneratePackageOnBuild Condition="'$(Configuration)' != 'LocalFeed'">false</GeneratePackageOnBuild>
 
         <!-- Force resource generation -->
         <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
