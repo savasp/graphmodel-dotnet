@@ -14,22 +14,35 @@
 
 namespace Cvoya.Graph.Model.Age.Core;
 
+using System.Data;
+
+using Cvoya.Graph.Model;
+
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
 /// <summary>
-/// Central coordination point for AGE specific services. The class currently acts as a placeholder until the concrete data and query managers are implemented.
+/// Central coordination point for Apache AGE services. The surface will expand as providers for schema, entities, and queries come online.
 /// </summary>
 internal sealed class AgeGraphContext
 {
-    public AgeGraphContext(AgeGraph graph, NpgsqlDataSource dataSource, ILoggerFactory loggerFactory)
+    public AgeGraphContext(
+        AgeGraph graph,
+        NpgsqlDataSource dataSource,
+        string graphName,
+        SchemaRegistry schemaRegistry,
+        ILoggerFactory loggerFactory)
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(dataSource);
+        ArgumentException.ThrowIfNullOrWhiteSpace(graphName);
+        ArgumentNullException.ThrowIfNull(schemaRegistry);
         ArgumentNullException.ThrowIfNull(loggerFactory);
 
         Graph = graph;
         DataSource = dataSource;
+        GraphName = graphName;
+        SchemaRegistry = schemaRegistry;
         LoggerFactory = loggerFactory;
     }
 
@@ -37,5 +50,12 @@ internal sealed class AgeGraphContext
 
     internal NpgsqlDataSource DataSource { get; }
 
+    internal string GraphName { get; }
+
+    internal SchemaRegistry SchemaRegistry { get; }
+
     internal ILoggerFactory LoggerFactory { get; }
+
+    internal AgeGraphTransaction CreateTransaction(bool isReadOnly = false, IsolationLevel isolationLevel = IsolationLevel.ReadCommitted) =>
+        new(this, isReadOnly, isolationLevel);
 }

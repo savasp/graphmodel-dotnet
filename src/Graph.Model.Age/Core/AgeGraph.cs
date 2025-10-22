@@ -23,6 +23,7 @@ using Microsoft.Extensions.Logging;
 internal sealed class AgeGraph : IGraph
 {
     private readonly ILogger logger;
+    private readonly AgeGraphContext graphContext;
 
     public AgeGraph(AgeGraphStore store, string graphName, SchemaRegistry schemaRegistry, ILoggerFactory loggerFactory)
     {
@@ -36,6 +37,8 @@ internal sealed class AgeGraph : IGraph
         SchemaRegistry = schemaRegistry;
         logger = loggerFactory.CreateLogger<AgeGraph>();
         logger.LogInformation("Initialized Apache AGE graph '{GraphName}'", GraphName);
+
+        graphContext = new AgeGraphContext(this, store.DataSource, GraphName, SchemaRegistry, loggerFactory);
     }
 
     internal AgeGraphStore Store { get; }
@@ -46,7 +49,20 @@ internal sealed class AgeGraph : IGraph
     public SchemaRegistry SchemaRegistry { get; }
 
     /// <inheritdoc />
-    public Task<IGraphTransaction> GetTransactionAsync() => throw new NotImplementedException();
+    public async Task<IGraphTransaction> GetTransactionAsync()
+    {
+        try
+        {
+            var transaction = graphContext.CreateTransaction();
+            await transaction.BeginTransactionAsync().ConfigureAwait(false);
+            return transaction;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to create AGE transaction");
+            throw new GraphException("Failed to create AGE transaction", ex);
+        }
+    }
 
     /// <inheritdoc />
     public IGraphNodeQueryable<DynamicNode> DynamicNodes(IGraphTransaction? transaction = null) => throw new NotImplementedException();
