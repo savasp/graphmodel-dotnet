@@ -55,6 +55,8 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
 
     internal string GraphName { get; }
 
+    internal bool IsReadOnly => isReadOnly;
+
     internal NpgsqlTransaction Transaction => transaction
         ?? throw new GraphException("Transaction has not been started. Call BeginTransactionAsync first.");
 
@@ -70,9 +72,9 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
             return;
         }
 
-    connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-    await ConfigureSessionAsync(connection, cancellationToken).ConfigureAwait(false);
-    await EnsureGraphExistsAsync(connection, cancellationToken).ConfigureAwait(false);
+        connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await ConfigureSessionAsync(connection, cancellationToken).ConfigureAwait(false);
+        await EnsureGraphExistsAsync(connection, cancellationToken).ConfigureAwait(false);
 
         transaction = await connection.BeginTransactionAsync(isolationLevel, cancellationToken).ConfigureAwait(false);
 
@@ -94,9 +96,9 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
             throw new GraphException("Transaction is not active.");
         }
 
-    await transaction!.CommitAsync().ConfigureAwait(false);
+        await transaction!.CommitAsync().ConfigureAwait(false);
         committed = true;
-    logger.LogDebug("Committed AGE transaction for graph '{GraphName}'", GraphName);
+        logger.LogDebug("Committed AGE transaction for graph '{GraphName}'", GraphName);
     }
 
     public async Task Rollback()
@@ -106,9 +108,9 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
             throw new GraphException("Transaction is not active.");
         }
 
-    await transaction!.RollbackAsync().ConfigureAwait(false);
+        await transaction!.RollbackAsync().ConfigureAwait(false);
         rolledBack = true;
-    logger.LogDebug("Rolled back AGE transaction for graph '{GraphName}'", GraphName);
+        logger.LogDebug("Rolled back AGE transaction for graph '{GraphName}'", GraphName);
     }
 
     public async ValueTask DisposeAsync()
