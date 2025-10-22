@@ -1,9 +1,41 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+    <RootNamespace>Cvoya.Graph.Model.Age</RootNamespace>
+    <AssemblyName>Cvoya.Graph.Model.Age</AssemblyName>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>Cvoya.Graph.Model.Age</PackageId>
+    <Description>PostgreSQL Apache AGE provider for the GraphModel abstraction with LINQ and Cypher support.</Description>
+    <PackageTags>graph;database;postgres;age;cypher</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Cvoya.Graph.Model.Age.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Konnektr.Npgsql.Age" Version="1.1.0" />
+    <PackageReference Include="Npgsql" Version="9.0.4" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
+    <ProjectReference Include="../Graph.Model/Graph.Model.csproj" />
+    <ProjectReference Include="../Graph.Model.Serialization/Graph.Model.Serialization.csproj" />
+    <ProjectReference Include="../Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseProjectReferences)' == 'false'">
+    <PackageReference Include="Cvoya.Graph.Model" Version="$(Version)" />
+    <PackageReference Include="Cvoya.Graph.Model.Serialization" Version="$(Version)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(GeneratePackageOnBuild)' == 'true'">
+    <None Include="../Graph.Model.Serialization.CodeGen/bin/$(Configuration)/netstandard2.0/Graph.Model.Serialization.CodeGen.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
+  </ItemGroup>
 
 </Project>
