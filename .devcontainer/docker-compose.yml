@@ -11,9 +11,6 @@ services:
 
     # Overrides default command so things don't shut down after the process ends.
     command: sleep infinity
-
-    # Runs app on the same network as the database container, allows "forwardPorts" in devcontainer.json function.
-    network_mode: service:db
     
     # Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
     # user: root
@@ -21,9 +18,11 @@ services:
     # Use "forwardPorts" in **devcontainer.json** to forward an app port locally. 
     # (Adding the "ports" property to this file will not forward from a Codespace.)
 
-  db:
+  age:
     image: apache/age:latest
     restart: unless-stopped
+    # Runs app on the same network as the database container, allows "forwardPorts" in devcontainer.json function.
+    network_mode: service:app
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
@@ -34,5 +33,22 @@ services:
     # Add "forwardPorts": ["5432"] to **devcontainer.json** to forward PostgreSQL locally.
     # (Adding the "ports" property to this file will not forward from a Codespace.)
 
+  neo4j:
+    image: neo4j:enterprise
+    restart: unless-stopped
+    network_mode: service:app
+    volumes:
+      - neo4j-data5:/data
+    environment:
+      NEO4J_AUTH: neo4j/password
+      NEO4J_initial_dbms_default__database: GraphModelTests000
+      NEO4J_ACCEPT_LICENSE_AGREEMENT: yes
+      NEO4J_apoc_export_file_enabled: true
+      NEO4J_apoc_import_file_enabled: true
+      NEO4J_apoc_import_file_use__neo4j__config: true
+      NEO4J_dbms_security_procedures_unrestricted: apoc.\*
+      NEO4J_PLUGINS: '["apoc"]'
+
 volumes:
   postgres-data:
+  neo4j-data5:
