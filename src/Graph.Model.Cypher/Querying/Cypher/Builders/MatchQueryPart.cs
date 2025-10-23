@@ -12,34 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+namespace Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 
 using System.Text;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Model;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-
 
 /// <summary>
 /// Handles MATCH clause construction for Cypher queries.
 /// Extracted from the monolithic CypherQueryBuilder to provide focused responsibility.
 /// </summary>
-internal class MatchQueryPart : ICypherQueryPart
+public sealed class MatchQueryPart(ILoggerFactory? loggerFactory = null) : ICypherQueryPart
 {
-    private readonly List<string> _matchClauses = [];
-    private readonly List<string> _optionalMatchClauses = [];
-    private readonly List<string> _additionalMatchStatements = [];
-    private readonly ILogger _logger;
+    private readonly List<string> matchClauses = [];
+    private readonly List<string> optionalMatchClauses = [];
+    private readonly List<string> additionalMatchStatements = [];
+    private readonly ILogger logger = loggerFactory?.CreateLogger<MatchQueryPart>()
+        ?? NullLogger<MatchQueryPart>.Instance;
 
+    /// <summary>
+    /// Gets the order in which this query part should appear in the final query.
+    /// </summary>
     public int Order => 1; // MATCH comes first in Cypher queries
 
-    public bool HasContent => _matchClauses.Count > 0 || _optionalMatchClauses.Count > 0 || _additionalMatchStatements.Count > 0;
-
-    public MatchQueryPart(CypherQueryContext context)
-    {
-        _logger = context.LoggerFactory?.CreateLogger<MatchQueryPart>()
-            ?? NullLogger<MatchQueryPart>.Instance;
-    }
+    /// <summary>
+    /// Gets a value indicating whether this query part has any content to append.
+    /// </summary>
+    public bool HasContent => matchClauses.Count > 0 || optionalMatchClauses.Count > 0 || additionalMatchStatements.Count > 0;
 
     /// <summary>
     /// Adds a simple node match pattern.
@@ -60,7 +60,7 @@ internal class MatchQueryPart : ICypherQueryPart
             match.Append(pattern);
         }
 
-        _matchClauses.Add(match.ToString());
+        matchClauses.Add(match.ToString());
     }
 
     /// <summary>
@@ -72,23 +72,23 @@ internal class MatchQueryPart : ICypherQueryPart
         // These should be separate MATCH statements to avoid cross products
         if (fullPattern.Contains(")-[") && fullPattern.Contains("]->("))
         {
-            // Avoid duplicating exact patterns
-            if (_additionalMatchStatements.Contains(fullPattern))
+            if (additionalMatchStatements.Contains(fullPattern))
             {
                 return;
             }
-            _additionalMatchStatements.Add(fullPattern);
-            _logger.LogDebug("[MatchQueryPart] Added to additional MATCH statements: {Pattern}", fullPattern);
+
+            additionalMatchStatements.Add(fullPattern);
+            logger.LogDebug("[MatchQueryPart] Added to additional MATCH statements: {Pattern}", fullPattern);
         }
         else
         {
-            // Avoid duplicating exact patterns
-            if (_matchClauses.Contains(fullPattern))
+            if (matchClauses.Contains(fullPattern))
             {
                 return;
             }
-            _matchClauses.Add(fullPattern);
-            _logger.LogDebug("[MatchQueryPart] Added to main MATCH clauses: {Pattern}", fullPattern);
+
+            matchClauses.Add(fullPattern);
+            logger.LogDebug("[MatchQueryPart] Added to main MATCH clauses: {Pattern}", fullPattern);
         }
     }
 
@@ -97,7 +97,7 @@ internal class MatchQueryPart : ICypherQueryPart
     /// </summary>
     public void AddOptionalMatch(string pattern)
     {
-        _optionalMatchClauses.Add(pattern);
+        optionalMatchClauses.Add(pattern);
     }
 
     /// <summary>
@@ -109,10 +109,9 @@ internal class MatchQueryPart : ICypherQueryPart
         var depthPattern = BuildDepthPattern(minDepth, maxDepth);
         var directionPattern = BuildDirectionPattern(direction);
 
-        // Handle empty relationship type (for dynamic relationships that match any type)
         var relTypeClause = string.IsNullOrEmpty(relationshipType) ? "r" : $"r:{relationshipType}";
         var pattern = $"(src){directionPattern}[{relTypeClause}{depthPattern}]{GetOppositeDirection(directionPattern)}(tgt)";
-        _matchClauses.Add(pattern);
+        matchClauses.Add(pattern);
     }
 
     /// <summary>
@@ -120,9 +119,9 @@ internal class MatchQueryPart : ICypherQueryPart
     /// </summary>
     public void ClearMatches()
     {
-        _matchClauses.Clear();
-        _optionalMatchClauses.Clear();
-        _additionalMatchStatements.Clear();
+        matchClauses.Clear();
+        optionalMatchClauses.Clear();
+        additionalMatchStatements.Clear();
     }
 
     /// <summary>
@@ -130,9 +129,8 @@ internal class MatchQueryPart : ICypherQueryPart
     /// </summary>
     public void ClearMainMatches()
     {
-        _matchClauses.Clear();
-        _optionalMatchClauses.Clear();
-        // Keep _additionalMatchStatements intact
+        matchClauses.Clear();
+        optionalMatchClauses.Clear();
     }
 
     /// <summary>
@@ -140,44 +138,46 @@ internal class MatchQueryPart : ICypherQueryPart
     /// </summary>
     public void AddCallClause(string callExpression)
     {
-        _additionalMatchStatements.Add(callExpression);
-        _logger.LogDebug("[MatchQueryPart] Added CALL clause: {CallExpression}", callExpression);
+        additionalMatchStatements.Add(callExpression);
+        logger.LogDebug("[MatchQueryPart] Added CALL clause: {CallExpression}", callExpression);
     }
 
+    /// <summary>
+    /// Appends the MATCH clause content to the query builder.
+    /// </summary>
+    /// <param name="builder">The string builder to append to.</param>
+    /// <param name="parameters">The parameters dictionary for the query.</param>
     public void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters)
     {
-        _logger.LogDebug("[MatchQueryPart] AppendTo called - Main clauses: {MainCount}, Additional: {AdditionalCount}, Optional: {OptionalCount}",
-            _matchClauses.Count, _additionalMatchStatements.Count, _optionalMatchClauses.Count);
+        logger.LogDebug("[MatchQueryPart] AppendTo called - Main clauses: {MainCount}, Additional: {AdditionalCount}, Optional: {OptionalCount}",
+            matchClauses.Count, additionalMatchStatements.Count, optionalMatchClauses.Count);
 
-        // Add regular MATCH clauses
-        if (_matchClauses.Count > 0)
+        if (matchClauses.Count > 0)
         {
             builder.Append("MATCH ");
-            builder.AppendJoin(", ", _matchClauses);
+            builder.AppendJoin(", ", matchClauses);
             builder.AppendLine();
-            _logger.LogDebug("[MatchQueryPart] Added main MATCH clauses: {Clauses}", string.Join(", ", _matchClauses));
+            logger.LogDebug("[MatchQueryPart] Added main MATCH clauses: {Clauses}", string.Join(", ", matchClauses));
         }
 
-        // Add additional MATCH statements (for complex properties, etc.)
-        foreach (var additionalMatch in _additionalMatchStatements)
+        foreach (var additionalMatch in additionalMatchStatements)
         {
-            if (additionalMatch.TrimStart().StartsWith("CALL "))
+            if (additionalMatch.TrimStart().StartsWith("CALL ", StringComparison.Ordinal))
             {
                 builder.AppendLine(additionalMatch);
-                _logger.LogDebug("[MatchQueryPart] Added CALL clause: {Call}", additionalMatch);
+                logger.LogDebug("[MatchQueryPart] Added CALL clause: {Call}", additionalMatch);
             }
             else
             {
                 builder.AppendLine($"MATCH {additionalMatch}");
-                _logger.LogDebug("[MatchQueryPart] Added additional MATCH: {Match}", additionalMatch);
+                logger.LogDebug("[MatchQueryPart] Added additional MATCH: {Match}", additionalMatch);
             }
         }
 
-        // Add OPTIONAL MATCH clauses
-        foreach (var optionalMatch in _optionalMatchClauses)
+        foreach (var optionalMatch in optionalMatchClauses)
         {
             builder.AppendLine($"OPTIONAL MATCH {optionalMatch}");
-            _logger.LogDebug("[MatchQueryPart] Added OPTIONAL MATCH: {Match}", optionalMatch);
+            logger.LogDebug("[MatchQueryPart] Added OPTIONAL MATCH: {Match}", optionalMatch);
         }
     }
 
@@ -188,7 +188,7 @@ internal class MatchQueryPart : ICypherQueryPart
             (null, int max) => $"*1..{max}",
             (int min, int max) => $"*{min}..{max}",
             (int min, null) => $"*{min}..",
-            _ => ""
+            _ => string.Empty
         };
     }
 

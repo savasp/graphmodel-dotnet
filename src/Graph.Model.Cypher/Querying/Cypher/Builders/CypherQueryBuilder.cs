@@ -12,34 +12,64 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+namespace Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using Cvoya.Graph.Model;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Model.Cypher.Querying.Cypher;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 
 /// <summary>
-/// Refactored CypherQueryBuilder that uses focused query parts to eliminate duplication.
+/// General-purpose Cypher query builder that works with any Cypher-compatible graph database.
+/// Extracted from the Neo4j-specific implementation to provide a provider-agnostic foundation.
 /// </summary>
-internal class CypherQueryBuilder(CypherQueryContext context)
+public class CypherQueryBuilder
 {
-    private readonly ILogger<CypherQueryBuilder> _logger = context.LoggerFactory?.CreateLogger<CypherQueryBuilder>()
-        ?? NullLogger<CypherQueryBuilder>.Instance;
-    private readonly CypherQueryContext _context = context;
+    private readonly ILogger<CypherQueryBuilder> _logger;
+    private readonly ICypherQueryBuilderContext _context;
+    private readonly ICypherExpressionProcessor _expressionProcessor;
+    private readonly ICypherCollectionProvider _collectionProvider;
 
     // Focused query parts that handle specific responsibilities
-    private readonly MatchQueryPart _matchPart = new(context);
-    private readonly WhereQueryPart _wherePart = new(context);
-    private readonly GroupByQueryPart _groupByPart = new();
-    private readonly ReturnQueryPart _returnPart = new();
-    private readonly OrderByQueryPart _orderByPart = new();
-    private readonly PaginationQueryPart _paginationPart = new();
+    private readonly MatchQueryPart _matchPart;
+    private readonly WhereQueryPart _wherePart;
+    private readonly GroupByQueryPart _groupByPart;
+    private readonly ReturnQueryPart _returnPart;
+    private readonly OrderByQueryPart _orderByPart;
+    private readonly PaginationQueryPart _paginationPart;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CypherQueryBuilder"/> class.
+    /// </summary>
+    /// <param name="context">The query builder context providing configuration and services.</param>
+    /// <param name="expressionProcessor">The expression processor for handling LINQ expressions.</param>
+    /// <param name="collectionProvider">The collection provider for database-specific collection operations.</param>
+    public CypherQueryBuilder(
+        ICypherQueryBuilderContext context,
+        ICypherExpressionProcessor expressionProcessor,
+        ICypherCollectionProvider collectionProvider)
+    {
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _expressionProcessor = expressionProcessor ?? throw new ArgumentNullException(nameof(expressionProcessor));
+        _collectionProvider = collectionProvider ?? throw new ArgumentNullException(nameof(collectionProvider));
+        _logger = _context.LoggerFactory?.CreateLogger<CypherQueryBuilder>()
+            ?? NullLogger<CypherQueryBuilder>.Instance;
+
+        // Initialize query parts
+        _matchPart = new MatchQueryPart(_context.LoggerFactory);
+        _groupByPart = new GroupByQueryPart();
+        _returnPart = new ReturnQueryPart();
+        _orderByPart = new OrderByQueryPart();
+        _paginationPart = new PaginationQueryPart();
+
+        // Initialize WhereQueryPart with the provided expression processor
+        _wherePart = new WhereQueryPart(expressionProcessor);
+    }
 
     private record PendingPathSegmentPattern(
         Type SourceType,
@@ -572,7 +602,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         _wherePart.FinalizePendingClauses();
 
         // Build the query using the focused query parts
-        var parts = new List<ICypherQueryPart> { _matchPart, _wherePart, _groupByPart, _returnPart, _orderByPart, _paginationPart };
+        var parts = new List<Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.ICypherQueryPart> { _matchPart, _wherePart, _groupByPart, _returnPart, _orderByPart, _paginationPart };
 
         foreach (var part in parts.Where(p => p.HasContent).OrderBy(p => p.Order))
         {
@@ -679,7 +709,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
             WITH {_mainNodeAlias},
                 reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
-            WITH {_mainNodeAlias}, apoc.coll.toSet(src_flat_properties) AS src_flat_properties
+            WITH {_mainNodeAlias}, {_collectionProvider.ToSet("src_flat_properties")} AS src_flat_properties
 
 
             RETURN {{
@@ -746,7 +776,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                     END AS src_flat_property
                 WITH {currentWith},
                     reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
-                WITH {currentWith}, apoc.coll.toSet(src_flat_properties) AS src_flat_properties");
+                WITH {currentWith}, {_collectionProvider.ToSet("src_flat_properties")} AS src_flat_properties");
 
             currentWith += ", src_flat_properties";
         }
@@ -772,7 +802,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                     END AS tgt_flat_property
                 WITH {currentWith},
                     reduce(flat = [], l IN collect(tgt_flat_property) | flat + l) AS tgt_flat_properties
-                WITH {currentWith}, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties");
+                WITH {currentWith}, {_collectionProvider.ToSet("tgt_flat_properties")} AS tgt_flat_properties");
         }
 
         // Add ordering and pagination before the final return
@@ -895,7 +925,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                 END AS src_flat_property
             WITH {withClause},
                 reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
-            WITH {withClause}, apoc.coll.toSet(src_flat_properties) AS src_flat_properties");
+            WITH {withClause}, {_collectionProvider.ToSet("src_flat_properties")} AS src_flat_properties");
 
         // Load complex properties for target node
         query.AppendLine($@"
@@ -917,7 +947,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                 END AS tgt_flat_property
             WITH {withClause}, src_flat_properties,
                 reduce(flat = [], l IN collect(tgt_flat_property) | flat + l) AS tgt_flat_properties
-            WITH {withClause}, src_flat_properties, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties");
+            WITH {withClause}, src_flat_properties, {_collectionProvider.ToSet("tgt_flat_properties")} AS tgt_flat_properties");
 
         // For combined Traverse + PathSegments pattern, we need to update the user projections
         // to use the correct aliases (tgt instead of src for StartNode)

@@ -30,13 +30,13 @@ using Microsoft.Extensions.Logging;
 /// </summary>
 internal class ExpressionToCypherVisitor : ExpressionVisitor
 {
-    private readonly CypherQueryBuilder _queryBuilder;
+    private readonly Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder _queryBuilder;
     private readonly CypherQueryScope _scope;
     private readonly ILogger _logger;
     private readonly string? _contextAlias;
 
     public ExpressionToCypherVisitor(
-        CypherQueryBuilder queryBuilder,
+        Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder queryBuilder,
         CypherQueryScope scope,
         ILogger logger,
         string? contextAlias = null)
@@ -939,29 +939,37 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
     // Helper methods moved from BaseExpressionVisitor
     private static bool IsEvaluableMethodCall(MethodCallExpression node)
     {
+        // Don't evaluate DateTime methods that can be translated to Cypher
+        if (node.Method.DeclaringType == typeof(DateTime) ||
+            node.Method.DeclaringType == typeof(DateTimeOffset) ||
+            node.Method.DeclaringType == typeof(DateOnly) ||
+            node.Method.DeclaringType == typeof(TimeOnly))
+        {
+            return false;
+        }
+
+        // Don't evaluate Math methods that can be translated to Cypher
+        if (node.Method.DeclaringType == typeof(Math))
+        {
+            return false;
+        }
+
+        // Don't evaluate string methods that can be translated to Cypher
+        if (node.Method.DeclaringType == typeof(string))
+        {
+            return false;
+        }
+
         var evaluableMethods = new[]
         {
-                // DateTime methods
-                "AddYears", "AddMonths", "AddDays", "AddHours", "AddMinutes", "AddSeconds", "AddMilliseconds",
-                "Date", "TimeOfDay", "Year", "Month", "Day", "Hour", "Minute", "Second", "Millisecond",
-                
                 // String methods (that don't need Cypher translation)
                 "Concat", "Join", "Format",
-                
-                // Math methods
-                "Abs", "Max", "Min", "Round", "Floor", "Ceiling",
                 
                 // Guid methods
                 "NewGuid"
             };
 
         if (evaluableMethods.Contains(node.Method.Name))
-        {
-            return true;
-        }
-
-        if (node.Method.DeclaringType == typeof(DateTime) &&
-            (node.Method.Name == "get_UtcNow" || node.Method.Name == "get_Now"))
         {
             return true;
         }

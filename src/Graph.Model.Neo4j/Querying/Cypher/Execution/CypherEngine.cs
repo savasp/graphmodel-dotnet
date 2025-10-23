@@ -16,9 +16,12 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
 using System.Linq.Expressions;
 using System.Text.Json;
+using Cvoya.Graph.Model.Cypher.Querying.Cypher;
+using Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -89,7 +92,8 @@ internal sealed class CypherEngine
 
         var (cypher, parameters) = visitor.Query;
 
-        var paramBuilder = new CypherParameterBuilder(_entityFactory);
+        var valueSerializer = new Neo4jCypherValueSerializer();
+        var paramBuilder = new CypherParameterBuilder(_entityFactory, valueSerializer, _loggerFactory);
         var convertedParams = new Dictionary<string, object?>();
 
         foreach (var (key, value) in parameters)

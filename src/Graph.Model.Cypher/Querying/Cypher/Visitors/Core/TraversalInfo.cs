@@ -12,17 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher;
+namespace Cvoya.Graph.Model.Cypher.Querying.Cypher.Visitors.Core;
 
 /// <summary>
-/// Represents a Cypher query with its parameters and optional transaction context.
+/// Information about a traversal operation.
 /// </summary>
-internal sealed record CypherQuery(
-    string Text,
-    IReadOnlyDictionary<string, object?> Parameters)
-{
-    /// <summary>
-    /// Creates an empty query.
-    /// </summary>
-    public static CypherQuery Empty { get; } = new(string.Empty, new Dictionary<string, object?>());
-}
+internal record TraversalInfo(
+    Type SourceNodeType,
+    Type RelationshipType,
+    Type TargetNodeType);

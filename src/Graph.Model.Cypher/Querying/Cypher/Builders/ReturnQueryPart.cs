@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+namespace Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 
 using System.Text;
-
 
 /// <summary>
 /// Handles RETURN clause construction for Cypher queries.
 /// Extracted from the monolithic CypherQueryBuilder to provide focused responsibility.
 /// </summary>
-internal class ReturnQueryPart : ICypherQueryPart
+public class ReturnQueryPart : ICypherQueryPart
 {
     private readonly List<string> _returnClauses = [];
     private readonly List<string> _withClauses = [];
@@ -32,21 +31,48 @@ internal class ReturnQueryPart : ICypherQueryPart
     private bool _isNotExistsQuery;
     private string? _mainNodeAlias;
 
+    /// <summary>
+    /// Gets the order in which this query part should appear in the final query.
+    /// </summary>
     public int Order => 6; // RETURN comes near the end
 
+    /// <summary>
+    /// Gets a value indicating whether this query part has any content to append.
+    /// </summary>
     public bool HasContent => HasExplicitReturn || _mainNodeAlias != null;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether this query part contains user-defined projections.
+    /// </summary>
     public bool HasUserProjections { get; set; } = false;
 
+    /// <summary>
+    /// Gets a value indicating whether this query part has explicit return clauses defined.
+    /// </summary>
     public bool HasExplicitReturn =>
     _returnClauses.Count > 0 ||
     _aggregation != null ||
     _isExistsQuery ||
     _isNotExistsQuery;
 
+    /// <summary>
+    /// Gets a value indicating whether this is an EXISTS query.
+    /// </summary>
     public bool IsExistsQuery => _isExistsQuery;
+    
+    /// <summary>
+    /// Gets a value indicating whether this is a NOT EXISTS query.
+    /// </summary>
     public bool IsNotExistsQuery => _isNotExistsQuery;
+    
+    /// <summary>
+    /// Gets a value indicating whether the RETURN clause should include DISTINCT.
+    /// </summary>
     public bool IsDistinct => _isDistinct;
+    
+    /// <summary>
+    /// Gets the list of return clauses that have been added to this query part.
+    /// </summary>
     public IReadOnlyList<string> ReturnClauses => _returnClauses.AsReadOnly();
 
     /// <summary>
@@ -138,8 +164,6 @@ internal class ReturnQueryPart : ICypherQueryPart
         _unwindClauses.Add(expression);
     }
 
-
-
     /// <summary>
     /// Clears all return-related clauses.
     /// </summary>
@@ -179,6 +203,11 @@ internal class ReturnQueryPart : ICypherQueryPart
         }
     }
 
+    /// <summary>
+    /// Appends the RETURN clause content to the query builder.
+    /// </summary>
+    /// <param name="builder">The string builder to append to.</param>
+    /// <param name="parameters">The parameters dictionary for the query.</param>
     public void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters)
     {
         // Handle special query types first

@@ -12,33 +12,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+namespace Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 
 using System.Linq.Expressions;
 using System.Text;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors;
-using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
-using Microsoft.Extensions.Logging;
-
 
 /// <summary>
 /// Handles WHERE clause construction for Cypher queries.
 /// Extracted from the monolithic CypherQueryBuilder and processes pending WHERE clauses
 /// using the expression visitor pattern.
 /// </summary>
-internal class WhereQueryPart : ICypherQueryPart
+public class WhereQueryPart : ICypherQueryPart
 {
     private readonly List<string> _whereClauses = [];
     private readonly List<(LambdaExpression Lambda, string Alias)> _pendingWhereClauses = [];
-    private readonly CypherQueryContext _context;
+    private readonly ICypherExpressionProcessor _expressionProcessor;
 
-    public WhereQueryPart(CypherQueryContext context)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="WhereQueryPart"/> class.
+    /// </summary>
+    /// <param name="expressionProcessor">The expression processor for converting lambda expressions to Cypher.</param>
+    public WhereQueryPart(ICypherExpressionProcessor expressionProcessor)
     {
-        _context = context;
+        _expressionProcessor = expressionProcessor ?? throw new ArgumentNullException(nameof(expressionProcessor));
     }
 
+    /// <summary>
+    /// Gets the order in which this query part should appear in the final query.
+    /// </summary>
     public int Order => 2; // WHERE comes after MATCH
 
+    /// <summary>
+    /// Gets a value indicating whether this query part has any content to append.
+    /// </summary>
     public bool HasContent => _whereClauses.Count > 0 || _pendingWhereClauses.Count > 0;
 
     /// <summary>
@@ -83,6 +89,11 @@ internal class WhereQueryPart : ICypherQueryPart
         _whereClauses.Clear();
     }
 
+    /// <summary>
+    /// Appends the WHERE clause content to the query builder.
+    /// </summary>
+    /// <param name="builder">The string builder to append to.</param>
+    /// <param name="parameters">The parameters dictionary for the query.</param>
     public void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters)
     {
         // Process any pending WHERE clauses first
@@ -107,20 +118,6 @@ internal class WhereQueryPart : ICypherQueryPart
     }
 
     /// <summary>
-    /// Processes all pending WHERE clauses and converts them to Cypher conditions.
-    /// This is where the separation of concerns pays off - handlers set up the context,
-    /// and this method uses visitors to process the expressions.
-    /// </summary>
-    private void ProcessPendingWhereClauses()
-    {
-        foreach (var (lambda, alias) in _pendingWhereClauses)
-        {
-            ProcessWhereClause(lambda, alias);
-        }
-        _pendingWhereClauses.Clear();
-    }
-
-    /// <summary>
     /// Updates aliases in WHERE clauses for path segments.
     /// This is used when we have a Traverse + PathSegments pattern and need to update
     /// the WHERE clause aliases from the Traverse pattern to the PathSegments pattern.
@@ -140,22 +137,25 @@ internal class WhereQueryPart : ICypherQueryPart
     }
 
     /// <summary>
-    /// Processes a single WHERE clause using the unified expression visitor.
+    /// Processes all pending WHERE clauses and converts them to Cypher conditions.
+    /// </summary>
+    private void ProcessPendingWhereClauses()
+    {
+        foreach (var (lambda, alias) in _pendingWhereClauses)
+        {
+            ProcessWhereClause(lambda, alias);
+        }
+        _pendingWhereClauses.Clear();
+    }
+
+    /// <summary>
+    /// Processes a single WHERE clause using the expression processor.
     /// </summary>
     private void ProcessWhereClause(LambdaExpression lambda, string alias)
     {
-        // Create the unified expression visitor
-        var logger = _context.LoggerFactory?.CreateLogger<ExpressionToCypherVisitor>()
-            ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ExpressionToCypherVisitor>.Instance;
-        var expressionVisitor = new ExpressionToCypherVisitor(
-            _context.Builder,
-            _context.Scope,
-            logger,
-            alias);
-
-        // Visit the lambda body to get the Cypher expression
-        var expression = expressionVisitor.VisitAndReturnCypher(lambda.Body);
-
+        // Use the abstracted expression processor to convert lambda to Cypher
+        var expression = _expressionProcessor.ProcessExpression(lambda.Body, alias);
+        
         // Add the resulting condition
         AddWhere(expression);
     }

@@ -25,14 +25,14 @@ using Microsoft.Extensions.Logging;
 internal record CypherQueryContext
 {
     public CypherQueryScope Scope { get; }
-    public CypherQueryBuilder Builder { get; }
+    public Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder Builder { get; }
     public ILoggerFactory? LoggerFactory { get; }
 
     public CypherQueryContext(Type rootType, ILoggerFactory? loggerFactory = null)
     {
         LoggerFactory = loggerFactory;
         Scope = new CypherQueryScope(rootType);
-        Builder = new CypherQueryBuilder(this);
+        Builder = new Neo4jCypherQueryBuilder(this);
     }
 
     /// <summary>

@@ -12,26 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+namespace Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 
 using System.Text;
-
 
 /// <summary>
 /// Handles GROUP BY clause construction for Cypher queries.
 /// Extracted from ReturnQueryPart to ensure proper ordering of GROUP BY before RETURN.
 /// </summary>
-internal class GroupByQueryPart : ICypherQueryPart
+public class GroupByQueryPart : ICypherQueryPart
 {
     private readonly List<string> _groupByClauses = [];
 
+    /// <summary>
+    /// Gets the order in which this query part should appear in the final query.
+    /// </summary>
     public int Order => 5; // GROUP BY comes before RETURN (Order = 6)
 
+    /// <summary>
+    /// Gets a value indicating whether this query part has any content to append.
+    /// </summary>
     public bool HasContent => _groupByClauses.Count > 0;
 
     /// <summary>
     /// Adds a GROUP BY expression.
     /// </summary>
+    /// <param name="expression">The expression to group by.</param>
     public void AddGroupBy(string expression)
     {
         _groupByClauses.Add(expression);
@@ -45,6 +51,11 @@ internal class GroupByQueryPart : ICypherQueryPart
         _groupByClauses.Clear();
     }
 
+    /// <summary>
+    /// Appends the GROUP BY clause content to the query builder.
+    /// </summary>
+    /// <param name="builder">The string builder to append to.</param>
+    /// <param name="parameters">The parameters dictionary for the query.</param>
     public void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters)
     {
         if (_groupByClauses.Count > 0)

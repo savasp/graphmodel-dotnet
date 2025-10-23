@@ -12,31 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+namespace Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 
 using System.Text;
 
-
 /// <summary>
-/// Represents a part of a Cypher query that can contribute to the query building process.
-/// This interface enables decomposition of the monolithic CypherQueryBuilder into focused parts.
+/// Represents a portion of a Cypher query that can contribute clauses and parameters.
 /// </summary>
-internal interface ICypherQueryPart
+public interface ICypherQueryPart
 {
     /// <summary>
-    /// Contributes this part's content to the query builder.
+    /// Appends this part's Cypher contribution to the provided builder.
     /// </summary>
-    /// <param name="builder">The target string builder</param>
-    /// <param name="parameters">The parameters dictionary</param>
+    /// <param name="builder">The query text builder.</param>
+    /// <param name="parameters">The parameters dictionary.</param>
     void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters);
 
     /// <summary>
-    /// Indicates whether this part has any content to contribute.
+    /// Indicates whether this part has content to contribute.
     /// </summary>
     bool HasContent { get; }
 
     /// <summary>
-    /// The priority order for this part in the query (lower values come first).
+    /// Specifies the ordering of the part relative to other parts (lower comes first).
     /// </summary>
     int Order { get; }
 }

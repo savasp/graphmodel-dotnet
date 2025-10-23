@@ -12,29 +12,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
+namespace Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 
 using System.Text;
-
 
 /// <summary>
 /// Handles ORDER BY clause construction for Cypher queries.
 /// Extracted from the monolithic CypherQueryBuilder to provide focused responsibility.
 /// </summary>
-internal class OrderByQueryPart : ICypherQueryPart
+public class OrderByQueryPart : ICypherQueryPart
 {
     private readonly List<(string Expression, bool IsDescending)> _orderByClauses = [];
     private bool _isAggregationQuery;
 
+    /// <summary>
+    /// Gets the order in which this query part should appear in the final query.
+    /// </summary>
     public int Order => 7; // ORDER BY comes near the end
 
+    /// <summary>
+    /// Gets a value indicating whether this query part has any content to append.
+    /// </summary>
     public bool HasContent => _orderByClauses.Count > 0 && !_isAggregationQuery;
 
+    /// <summary>
+    /// Gets a value indicating whether this query part has ORDER BY clauses.
+    /// </summary>
     public bool HasOrderBy => _orderByClauses.Count > 0;
 
     /// <summary>
     /// Adds an ORDER BY expression.
     /// </summary>
+    /// <param name="expression">The expression to order by.</param>
+    /// <param name="isDescending">Whether to order in descending order.</param>
     public void AddOrderBy(string expression, bool isDescending = false)
     {
         _orderByClauses.Add((expression, isDescending));
@@ -65,6 +75,8 @@ internal class OrderByQueryPart : ICypherQueryPart
     /// This is used when we have a Traverse + PathSegments pattern and need to update
     /// the ORDER BY clause aliases from the Traverse pattern to the PathSegments pattern.
     /// </summary>
+    /// <param name="newSourceAlias">The new source alias to use.</param>
+    /// <param name="newTargetAlias">The new target alias to use.</param>
     public void UpdateAliasesForPathSegments(string newSourceAlias, string newTargetAlias)
     {
         // Update existing ORDER BY clauses to use the new aliases
@@ -79,6 +91,11 @@ internal class OrderByQueryPart : ICypherQueryPart
         }
     }
 
+    /// <summary>
+    /// Appends the ORDER BY clause content to the query builder.
+    /// </summary>
+    /// <param name="builder">The string builder to append to.</param>
+    /// <param name="parameters">The parameters dictionary for the query.</param>
     public void AppendTo(StringBuilder builder, Dictionary<string, object?> parameters)
     {
         if (_orderByClauses.Count > 0)

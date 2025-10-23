@@ -18,6 +18,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Model;
+using Cvoya.Graph.Model.Cypher.Querying.Cypher;
 using Cvoya.Graph.Model.Neo4j.Linq.Helpers;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
@@ -342,10 +343,10 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 // This is accessing a path segment property - set the appropriate projection
                 var projection = memberExpr.Member.Name switch
                 {
-                    nameof(IGraphPathSegment.StartNode) => CypherQueryBuilder.PathSegmentProjectionEnum.StartNode,
-                    nameof(IGraphPathSegment.EndNode) => CypherQueryBuilder.PathSegmentProjectionEnum.EndNode,
-                    nameof(IGraphPathSegment.Relationship) => CypherQueryBuilder.PathSegmentProjectionEnum.Relationship,
-                    _ => CypherQueryBuilder.PathSegmentProjectionEnum.Full
+                    nameof(IGraphPathSegment.StartNode) => Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder.PathSegmentProjectionEnum.StartNode,
+                    nameof(IGraphPathSegment.EndNode) => Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder.PathSegmentProjectionEnum.EndNode,
+                    nameof(IGraphPathSegment.Relationship) => Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder.PathSegmentProjectionEnum.Relationship,
+                    _ => Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder.PathSegmentProjectionEnum.Full
                 };
 
                 _context.Builder.SetPathSegmentProjection(projection);
@@ -354,9 +355,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 // Update the current alias based on the projection
                 var newAlias = projection switch
                 {
-                    CypherQueryBuilder.PathSegmentProjectionEnum.StartNode => "src",
-                    CypherQueryBuilder.PathSegmentProjectionEnum.EndNode => "tgt",
-                    CypherQueryBuilder.PathSegmentProjectionEnum.Relationship => "r",
+                    Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder.PathSegmentProjectionEnum.StartNode => "src",
+                    Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder.PathSegmentProjectionEnum.EndNode => "tgt",
+                    Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder.PathSegmentProjectionEnum.Relationship => "r",
                     _ => _context.Scope.CurrentAlias
                 };
 
@@ -1040,7 +1041,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 _context.Builder.EnablePathSegmentLoading();
 
                 // For PathSegments calls, set the projection to Full to return complete path segment objects
-                _context.Builder.SetPathSegmentProjection(CypherQueryBuilder.PathSegmentProjectionEnum.Full);
+                _context.Builder.SetPathSegmentProjection(Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder.PathSegmentProjectionEnum.Full);
                 _logger.LogDebug("Set path segment projection to Full for PathSegments call");
 
                 // Set up the pending path segment pattern with appropriate aliases

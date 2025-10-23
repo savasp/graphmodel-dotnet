@@ -23,7 +23,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 internal abstract class CypherVisitorBase<T> : ExpressionVisitor
 {
     protected CypherQueryScope Scope { get; }
-    protected CypherQueryBuilder Builder { get; }
+    protected Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.CypherQueryBuilder Builder { get; }
     protected ILogger<T> Logger { get; }
     protected CypherQueryContext Context { get; }
 
