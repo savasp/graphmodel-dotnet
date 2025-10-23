@@ -11,6 +11,10 @@
     href: docs/attributes.md
   - name: Best Practices
     href: docs/best-practices.md
+- name: Provider Development
+  items:
+  - name: Cypher Provider Implementation Guide
+    href: docs/cypher-provider-implementation.md
 - name: Neo4j Provider
   href: src/Graph.Model.Neo4j/README.md
 - name: Code Analyzers

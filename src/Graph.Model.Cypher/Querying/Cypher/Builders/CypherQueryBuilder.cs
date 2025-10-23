@@ -102,36 +102,85 @@ public class CypherQueryBuilder
     private bool _loadPathSegment;
     private bool _hasMultiplePathSegments;
 
+    /// <summary>
+    /// Gets or sets the projection mode for path segments when querying graph relationships.
+    /// </summary>
     public PathSegmentProjectionEnum PathSegmentProjection = PathSegmentProjectionEnum.Full;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether a WHERE clause has been applied to the root node.
+    /// </summary>
     public bool HasAppliedRootWhere { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the alias used for the root node in the query.
+    /// </summary>
     public string? RootNodeAlias { get; set; }
 
+    /// <summary>
+    /// Gets or sets the alias used for the source node in path segment queries.
+    /// </summary>
     public string? PathSegmentSourceAlias { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the alias used for the relationship in path segment queries.
+    /// </summary>
     public string? PathSegmentRelationshipAlias { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the alias used for the target node in path segment queries.
+    /// </summary>
     public string? PathSegmentTargetAlias { get; set; }
 
     // Delegate to the focused query parts
+    /// <summary>
+    /// Gets a value indicating whether the query contains user-defined projections in the RETURN clause.
+    /// </summary>
     public bool HasUserProjections => _returnPart.HasUserProjections;
+    
+    /// <summary>
+    /// Gets a value indicating whether the query has an explicit RETURN clause defined.
+    /// </summary>
     public bool HasExplicitReturn => _returnPart.HasExplicitReturn;
 
+    /// <summary>
+    /// Gets a value indicating whether this query is specifically targeting relationships rather than nodes.
+    /// </summary>
     public bool IsRelationshipQuery => _isRelationshipQuery;
 
+    /// <summary>
+    /// Gets the traversal direction for relationship queries (incoming, outgoing, or both).
+    /// </summary>
     public GraphTraversalDirection? TraversalDirection { get; private set; }
 
+    /// <summary>
+    /// Sets the traversal direction for relationship queries.
+    /// </summary>
+    /// <param name="direction">The direction to traverse relationships.</param>
     public void SetTraversalDirection(GraphTraversalDirection direction)
     {
         TraversalDirection = direction;
     }
 
+    /// <summary>
+    /// Sets the maximum depth for relationship traversal queries.
+    /// </summary>
+    /// <param name="maxDepth">The maximum number of hops to traverse.</param>
     public void SetDepth(int maxDepth)
     {
         _maxDepth = maxDepth;
         _minDepth = null; // Clear min depth when only max is set
     }
 
+    /// <summary>
+    /// Gets a value indicating whether depth constraints have been configured for the query.
+    /// </summary>
     public bool HasDepthConstraints => _minDepth.HasValue || _maxDepth.HasValue;
 
+    /// <summary>
+    /// Gets the Cypher depth pattern string based on configured minimum and maximum depths.
+    /// </summary>
+    /// <returns>A string like "1..3", "2..", or "1" representing the depth constraint.</returns>
     public string GetDepthPattern()
     {
         return (_minDepth, _maxDepth) switch
@@ -143,24 +192,46 @@ public class CypherQueryBuilder
         };
     }
 
+    /// <summary>
+    /// Disables loading of complex properties (nodes, relationships, path segments) in query results.
+    /// This optimization is useful when only simple scalar properties are needed.
+    /// </summary>
     public void DisableComplexPropertyLoading()
     {
         _includeComplexProperties = false;
         _loadPathSegment = false;
     }
 
+    /// <summary>
+    /// Marks the query as an aggregation query, which disables ORDER BY clauses that would be invalid with aggregation.
+    /// </summary>
     public void SetAggregationQuery()
     {
         _orderByPart.SetAggregationQuery();
         _logger.LogDebug("Query marked as aggregation query - ORDER BY clauses will be disabled");
     }
 
+    /// <summary>
+    /// Sets both minimum and maximum depth constraints for relationship traversal queries.
+    /// </summary>
+    /// <param name="minDepth">The minimum number of hops to traverse.</param>
+    /// <param name="maxDepth">The maximum number of hops to traverse.</param>
     public void SetDepth(int minDepth, int maxDepth)
     {
         _minDepth = minDepth;
         _maxDepth = maxDepth;
     }
 
+    /// <summary>
+    /// Sets up a pending path segment pattern that will be built when the query is finalized.
+    /// This is used for complex path segment queries involving multiple entity types.
+    /// </summary>
+    /// <param name="sourceType">The type of the source node.</param>
+    /// <param name="relType">The type of the relationship.</param>
+    /// <param name="targetType">The type of the target node.</param>
+    /// <param name="sourceAlias">The alias for the source node.</param>
+    /// <param name="relAlias">The alias for the relationship.</param>
+    /// <param name="targetAlias">The alias for the target node.</param>
     public void SetPendingPathSegmentPattern(
         Type sourceType,
         Type relType,
@@ -177,29 +248,62 @@ public class CypherQueryBuilder
             sourceAlias, sourceType.Name, relAlias, relType.Name, targetAlias, targetType.Name);
     }
 
+    /// <summary>
+    /// Specifies the different ways path segments can be projected in query results.
+    /// </summary>
     public enum PathSegmentProjectionEnum
     {
+        /// <summary>
+        /// Return the complete path segment with source node, relationship, and target node.
+        /// </summary>
         Full,        // Return the whole path segment
+        /// <summary>
+        /// Return only the source (start) node of the path segment.
+        /// </summary>
         StartNode,   // Return only the start node  
+        /// <summary>
+        /// Return only the target (end) node of the path segment.
+        /// </summary>
         EndNode,     // Return only the end node
+        /// <summary>
+        /// Return only the relationship of the path segment.
+        /// </summary>
         Relationship // Return only the relationship
     }
 
+    /// <summary>
+    /// Sets a pending WHERE clause that will be applied when the query is finalized.
+    /// This allows for deferred WHERE clause processing in complex query scenarios.
+    /// </summary>
+    /// <param name="lambda">The lambda expression representing the WHERE condition.</param>
+    /// <param name="alias">The alias to use when processing the expression.</param>
     public void SetPendingWhere(LambdaExpression lambda, string? alias)
     {
         _wherePart.SetPendingWhere(lambda, alias);
     }
 
+    /// <summary>
+    /// Configures the query to return a boolean indicating whether matching records exist.
+    /// </summary>
     public void SetExistsQuery()
     {
         _returnPart.SetExistsQuery();
     }
 
+    /// <summary>
+    /// Configures the query to return a boolean indicating whether no matching records exist.
+    /// </summary>
     public void SetNotExistsQuery()
     {
         _returnPart.SetNotExistsQuery();
     }
 
+    /// <summary>
+    /// Adds a MATCH clause to the query for finding nodes with the specified alias and optional label.
+    /// </summary>
+    /// <param name="alias">The alias to assign to matched nodes.</param>
+    /// <param name="label">The optional node label to match against.</param>
+    /// <param name="pattern">The optional custom pattern string.</param>
     public void AddMatch(string alias, string? label = null, string? pattern = null)
     {
         if (RootNodeAlias is null)
@@ -214,71 +318,135 @@ public class CypherQueryBuilder
         _returnPart.SetMainNodeAlias(_mainNodeAlias);
     }
 
+    /// <summary>
+    /// Adds a custom MATCH pattern to the query.
+    /// </summary>
+    /// <param name="fullPattern">The complete MATCH pattern string.</param>
     public void AddMatchPattern(string fullPattern)
     {
         _matchPart.AddMatchPattern(fullPattern);
     }
 
+    /// <summary>
+    /// Enables loading of complex properties (nodes, relationships, path segments) in query results.
+    /// </summary>
     public void EnableComplexPropertyLoading()
     {
         _includeComplexProperties = true;
     }
 
+    /// <summary>
+    /// Gets a value indicating whether complex property loading is currently enabled.
+    /// </summary>
+    /// <returns>True if complex properties will be loaded, false otherwise.</returns>
     public bool IsComplexPropertyLoadingEnabled()
     {
         return _includeComplexProperties;
     }
 
+    /// <summary>
+    /// Gets a value indicating whether path segment loading is currently enabled.
+    /// </summary>
+    /// <returns>True if path segments will be loaded, false otherwise.</returns>
     public bool IsPathSegmentLoading()
     {
         return _loadPathSegment;
     }
 
+    /// <summary>
+    /// Enables loading of path segment data in query results.
+    /// </summary>
     public void EnablePathSegmentLoading()
     {
         _includeComplexProperties = true;
         _loadPathSegment = true;
     }
 
+    /// <summary>
+    /// Removes all MATCH clauses from the query.
+    /// </summary>
     public void ClearMatches()
     {
         _matchPart.ClearMatches();
     }
 
+    /// <summary>
+    /// Removes all user-defined projections from the RETURN clause.
+    /// </summary>
     public void ClearUserProjections()
     {
         _returnPart.ClearUserProjections();
     }
 
+    /// <summary>
+    /// Removes all WHERE conditions from the query.
+    /// </summary>
     public void ClearWhere()
     {
         _wherePart.ClearWhere();
     }
 
+    /// <summary>
+    /// Adds a WHERE condition to the query.
+    /// </summary>
+    /// <param name="condition">The condition string to add to the WHERE clause.</param>
     public void AddWhere(string condition)
     {
         _wherePart.AddWhere(condition);
     }
 
+    /// <summary>
+    /// Removes all RETURN clauses from the query.
+    /// </summary>
     public void ClearReturn()
     {
         _returnPart.ClearReturn();
     }
 
+    /// <summary>
+    /// Sets the main node alias for the query.
+    /// </summary>
+    /// <param name="alias">The alias to use for the main node.</param>
     public void SetMainNodeAlias(string alias)
     {
         _mainNodeAlias = alias;
     }
 
+    /// <summary>
+    /// Adds an ORDER BY clause to the query.
+    /// </summary>
+    /// <param name="expression">The expression to order by.</param>
+    /// <param name="isDescending">Whether to sort in descending order.</param>
     public void AddOrderBy(string expression, bool isDescending = false)
     {
         _orderByPart.AddOrderBy(expression, isDescending);
     }
 
+    /// <summary>
+    /// Sets the number of records to skip in the query results.
+    /// </summary>
+    /// <param name="skip">The number of records to skip.</param>
     public void SetSkip(int skip) => _paginationPart.SetSkip(skip);
+    
+    /// <summary>
+    /// Sets the maximum number of records to return.
+    /// </summary>
+    /// <param name="limit">The maximum number of records to return.</param>
     public void SetLimit(int limit) => _paginationPart.SetLimit(limit);
+    
+    /// <summary>
+    /// Sets up an aggregation function in the RETURN clause.
+    /// </summary>
+    /// <param name="function">The aggregation function name (e.g., "COUNT", "SUM").</param>
+    /// <param name="expression">The expression to aggregate.</param>
     public void SetAggregation(string function, string expression) => _returnPart.SetAggregation(function, expression);
 
+    /// <summary>
+    /// Adds a parameter to the query and returns its parameter name.
+    /// Reuses existing parameters if the same value is added multiple times.
+    /// </summary>
+    /// <param name="value">The parameter value.</param>
+    /// <returns>The parameter name to use in the Cypher query.</returns>
     public string AddParameter(object? value)
     {
         _logger.LogDebug("Adding parameter with value: {Value}", value);
@@ -295,6 +463,12 @@ public class CypherQueryBuilder
         return $"${paramName}";
     }
 
+    /// <summary>
+    /// Builds and returns the complete Cypher query with all configured clauses and parameters.
+    /// This method finalizes the query construction, applying any pending patterns or conditions,
+    /// and returns a <see cref="CypherQuery"/> object containing the query text and parameters.
+    /// </summary>
+    /// <returns>A complete Cypher query ready for execution.</returns>
     public CypherQuery Build()
     {
         _logger.LogDebug("Building Cypher query");
