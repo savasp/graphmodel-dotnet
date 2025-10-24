@@ -55,7 +55,8 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
 
         loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
         {
-            builder.SetMinimumLevel(LogLevel.Information);
+            builder.SetMinimumLevel(LogLevel.Debug);
+            builder.AddConsole();
         });
         NpgsqlLoggingConfiguration.InitializeLogging(loggerFactory, parameterLoggingEnabled: true);
 

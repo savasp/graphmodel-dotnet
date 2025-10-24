@@ -162,7 +162,7 @@ internal sealed class AgeCypherEngine
     {
         // Get label from attribute or use type name
         var nodeAttribute = type.GetCustomAttributes(typeof(NodeAttribute), true).FirstOrDefault() as NodeAttribute;
-        if (nodeAttribute != null)
+        if (nodeAttribute != null && !string.IsNullOrEmpty(nodeAttribute.Label))
         {
             return nodeAttribute.Label;
         }
@@ -173,6 +173,7 @@ internal sealed class AgeCypherEngine
             return relAttribute.Label;
         }
 
+        // Fall back to type name if no label specified
         return type.Name;
     }
 
@@ -305,7 +306,7 @@ internal sealed class AgeCypherEngine
         var results = new List<object>();
         var complexProps = GetComplexProperties(elementType);
         var hasComplexProps = complexProps.Count > 0;
-
+        _logger.LogDebug("Executing Cypher query against AGE: {Cypher}", cypher);
         await using var command = transaction.Connection.CreateCypherCommand(_graphContext.GraphName, cypher, parameters);
         command.Transaction = transaction.Transaction;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);

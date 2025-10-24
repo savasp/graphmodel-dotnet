@@ -89,7 +89,9 @@ internal sealed class AgeGraph : IGraph
         {
             logger.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
 
-            var ageTx = TransactionHelpers.GetOrCreateTransactionAsync(graphContext, transaction, true).Result;
+            // Only request read-only if we're creating a new transaction
+            // If a transaction is provided, use it as-is (could be read or write)
+            var ageTx = TransactionHelpers.GetOrCreateTransactionAsync(graphContext, transaction, transaction == null).Result;
 
             // Create a provider scoped to this specific transaction
             var provider = new Querying.Linq.Providers.AgeGraphQueryProvider(graphContext, ageTx);
@@ -110,7 +112,9 @@ internal sealed class AgeGraph : IGraph
         {
             logger.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
 
-            var ageTx = TransactionHelpers.GetOrCreateTransactionAsync(graphContext, transaction, true).Result;
+            // Only request read-only if we're creating a new transaction
+            // If a transaction is provided, use it as-is (could be read or write)
+            var ageTx = TransactionHelpers.GetOrCreateTransactionAsync(graphContext, transaction, transaction == null).Result;
 
             // Create a provider scoped to this specific transaction
             var provider = new Querying.Linq.Providers.AgeGraphQueryProvider(graphContext, ageTx);
