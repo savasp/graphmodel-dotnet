@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Age.Core;
 using System.Data;
 
 using Cvoya.Graph.Model;
+using Cvoya.Graph.Model.Age.Core.Entities;
 
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -44,6 +45,8 @@ internal sealed class AgeGraphContext
         GraphName = graphName;
         SchemaRegistry = schemaRegistry;
         LoggerFactory = loggerFactory;
+        NodeManager = new AgeNodeManager(this);
+        RelationshipManager = new AgeRelationshipManager(this);
     }
 
     internal AgeGraph Graph { get; }
@@ -55,6 +58,10 @@ internal sealed class AgeGraphContext
     internal SchemaRegistry SchemaRegistry { get; }
 
     internal ILoggerFactory LoggerFactory { get; }
+
+    internal AgeNodeManager NodeManager { get; }
+
+    internal AgeRelationshipManager RelationshipManager { get; }
 
     internal AgeGraphTransaction CreateTransaction(bool isReadOnly = false, IsolationLevel isolationLevel = IsolationLevel.ReadCommitted) =>
         new(this, isReadOnly, isolationLevel);

@@ -15,6 +15,8 @@
 namespace Cvoya.Graph.Model.Age.Core;
 
 using Cvoya.Graph.Model;
+using Cvoya.Graph.Model.Age.Core.Entities;
+using Cvoya.Graph.Model.Age.Core.Internal;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
@@ -24,6 +26,8 @@ internal sealed class AgeGraph : IGraph
 {
     private readonly ILogger logger;
     private readonly AgeGraphContext graphContext;
+    private readonly AgeNodeManager nodeManager;
+    private readonly AgeRelationshipManager relationshipManager;
 
     public AgeGraph(AgeGraphStore store, string graphName, SchemaRegistry schemaRegistry, ILoggerFactory loggerFactory)
     {
@@ -39,6 +43,8 @@ internal sealed class AgeGraph : IGraph
         logger.LogInformation("Initialized Apache AGE graph '{GraphName}'", GraphName);
 
         graphContext = new AgeGraphContext(this, store.DataSource, GraphName, SchemaRegistry, loggerFactory);
+        nodeManager = graphContext.NodeManager;
+        relationshipManager = graphContext.RelationshipManager;
     }
 
     internal AgeGraphStore Store { get; }
@@ -77,34 +83,286 @@ internal sealed class AgeGraph : IGraph
     public Task<DynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
     /// <inheritdoc />
-    public IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null) where N : INode => throw new NotImplementedException();
+    public IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null) where N : INode
+    {
+        try
+        {
+            logger.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
+
+            var ageTx = TransactionHelpers.GetOrCreateTransactionAsync(graphContext, transaction, true).Result;
+
+            // Create a provider scoped to this specific transaction
+            var provider = new Querying.Linq.Providers.AgeGraphQueryProvider(graphContext, ageTx);
+            return new Querying.Linq.Queryables.AgeGraphNodeQueryable<N>(provider, ageTx, graphContext);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to create nodes queryable for type {typeof(N).Name}";
+            logger.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
+    }
 
     /// <inheritdoc />
-    public IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null) where R : IRelationship => throw new NotImplementedException();
+    public IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null) where R : IRelationship
+    {
+        try
+        {
+            logger.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
+
+            var ageTx = TransactionHelpers.GetOrCreateTransactionAsync(graphContext, transaction, true).Result;
+
+            // Create a provider scoped to this specific transaction
+            var provider = new Querying.Linq.Providers.AgeGraphQueryProvider(graphContext, ageTx);
+            return new Querying.Linq.Queryables.AgeGraphRelationshipQueryable<R>(provider, ageTx, graphContext);
+        }
+        catch (Exception ex) when (ex is not GraphException)
+        {
+            var message = $"Failed to create relationships queryable for type {typeof(R).Name}";
+            logger.LogError(ex, message);
+            throw new GraphException(message, ex);
+        }
+    }
 
     /// <inheritdoc />
-    public Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : INode => throw new NotImplementedException();
+    public async Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where N : INode
+    {
+        // Use the query infrastructure like Neo4j does - this will properly handle complex properties
+        var query = Nodes<N>(transaction)
+            .Where(n => n.Id == id);
+
+        return await query.FirstOrDefaultAsync(cancellationToken)
+            ?? throw new GraphException($"Node with ID {id} not found");
+    }
 
     /// <inheritdoc />
-    public Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : IRelationship => throw new NotImplementedException();
+    public async Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where R : IRelationship
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        try
+        {
+            return await TransactionHelpers.ExecuteInTransactionAsync(
+                    graphContext,
+                    transaction,
+                    tx => relationshipManager.GetRelationshipAsync<R>(id, tx, cancellationToken),
+                    $"Failed to retrieve relationship {id} of type {typeof(R).Name}")
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            var message = $"Failed to retrieve relationship {id} of type {typeof(R).Name}";
+            logger.LogError(ex, message);
+            if (ex is GraphException)
+            {
+                throw;
+            }
+
+            throw new GraphException(message, ex);
+        }
+    }
 
     /// <inheritdoc />
-    public Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : INode => throw new NotImplementedException();
+    public async Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where N : INode
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        if (string.IsNullOrWhiteSpace(node.Id))
+        {
+            throw new GraphException("Node ID cannot be null or empty.");
+        }
+
+        try
+        {
+            await TransactionHelpers.ExecuteInTransactionAsync(
+                    graphContext,
+                    transaction,
+                    async tx =>
+                    {
+                        await nodeManager.CreateNodeAsync(node, tx, cancellationToken).ConfigureAwait(false);
+                        return true;
+                    },
+                    $"Failed to create node of type {typeof(N).Name}")
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            var message = $"Failed to create node of type {typeof(N).Name}";
+            logger.LogError(ex, message);
+            if (ex is GraphException)
+            {
+                throw;
+            }
+
+            throw new GraphException(message, ex);
+        }
+    }
 
     /// <inheritdoc />
-    public Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : IRelationship => throw new NotImplementedException();
+    public async Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where R : IRelationship
+    {
+        ArgumentNullException.ThrowIfNull(relationship);
+        if (string.IsNullOrWhiteSpace(relationship.Id))
+        {
+            throw new GraphException("Relationship ID cannot be null or empty.");
+        }
+
+        try
+        {
+            await TransactionHelpers.ExecuteInTransactionAsync(
+                    graphContext,
+                    transaction,
+                    async tx =>
+                    {
+                        await relationshipManager.CreateRelationshipAsync(relationship, tx, cancellationToken).ConfigureAwait(false);
+                        return true;
+                    },
+                    $"Failed to create relationship of type {typeof(R).Name}")
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            var message = $"Failed to create relationship of type {typeof(R).Name}";
+            logger.LogError(ex, message);
+            if (ex is GraphException)
+            {
+                throw;
+            }
+
+            throw new GraphException(message, ex);
+        }
+    }
 
     /// <inheritdoc />
-    public Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : INode => throw new NotImplementedException();
+    public async Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where N : INode
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        if (string.IsNullOrWhiteSpace(node.Id))
+        {
+            throw new GraphException("Node ID cannot be null or empty.");
+        }
+
+        try
+        {
+            await TransactionHelpers.ExecuteInTransactionAsync(
+                    graphContext,
+                    transaction,
+                    tx => nodeManager.UpdateNodeAsync(node, tx, cancellationToken),
+                    $"Failed to update node {node.Id} of type {typeof(N).Name}")
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            var message = $"Failed to update node {node.Id} of type {typeof(N).Name}";
+            logger.LogError(ex, message);
+            if (ex is GraphException)
+            {
+                throw;
+            }
+
+            throw new GraphException(message, ex);
+        }
+    }
 
     /// <inheritdoc />
-    public Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : IRelationship => throw new NotImplementedException();
+    public async Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where R : IRelationship
+    {
+        ArgumentNullException.ThrowIfNull(relationship);
+        if (string.IsNullOrWhiteSpace(relationship.Id))
+        {
+            throw new GraphException("Relationship ID cannot be null or empty.");
+        }
+
+        try
+        {
+            await TransactionHelpers.ExecuteInTransactionAsync(
+                    graphContext,
+                    transaction,
+                    tx => relationshipManager.UpdateRelationshipAsync(relationship, tx, cancellationToken),
+                    $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}")
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            var message = $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}";
+            logger.LogError(ex, message);
+            if (ex is GraphException)
+            {
+                throw;
+            }
+
+            throw new GraphException(message, ex);
+        }
+    }
 
     /// <inheritdoc />
-    public Task DeleteNodeAsync(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    public async Task DeleteNodeAsync(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        try
+        {
+            var deleted = await TransactionHelpers.ExecuteInTransactionAsync(
+                    graphContext,
+                    transaction,
+                    tx => nodeManager.DeleteNodeAsync(id, tx, cascadeDelete, cancellationToken),
+                    $"Failed to delete node {id}")
+                .ConfigureAwait(false);
+
+            if (!deleted)
+            {
+                throw new GraphException($"Node {id} was not deleted.");
+            }
+        }
+        catch (Exception ex)
+        {
+            var message = $"Failed to delete node {id}";
+            logger.LogError(ex, message);
+            if (ex is GraphException)
+            {
+                throw;
+            }
+
+            throw new GraphException(message, ex);
+        }
+    }
 
     /// <inheritdoc />
-    public Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    public async Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        try
+        {
+            var deleted = await TransactionHelpers.ExecuteInTransactionAsync(
+                    graphContext,
+                    transaction,
+                    tx => relationshipManager.DeleteRelationshipAsync(id, tx, cancellationToken),
+                    $"Failed to delete relationship {id}")
+                .ConfigureAwait(false);
+
+            if (!deleted)
+            {
+                throw new GraphException($"Relationship {id} was not deleted.");
+            }
+        }
+        catch (Exception ex)
+        {
+            var message = $"Failed to delete relationship {id}";
+            logger.LogError(ex, message);
+            if (ex is GraphException)
+            {
+                throw;
+            }
+
+            throw new GraphException(message, ex);
+        }
+    }
 
     /// <inheritdoc />
     public IGraphQueryable<IEntity> Search(string query, IGraphTransaction? transaction = null) => throw new NotImplementedException();
