@@ -26,7 +26,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 {
     private readonly ILogger<Neo4jNodeManager> _logger = context.LoggerFactory?.CreateLogger<Neo4jNodeManager>()
         ?? NullLogger<Neo4jNodeManager>.Instance;
-    private readonly EntityFactory _serializer = new EntityFactory();
+    private readonly EntityFactory _serializer = new EntityFactory(context.LoggerFactory);
     private readonly ComplexPropertyManager _complexPropertyManager = new(context);
 
     public async Task<TNode> CreateNodeAsync<TNode>(

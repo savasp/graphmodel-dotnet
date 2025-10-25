@@ -253,4 +253,27 @@ public interface IBasicTests : IGraphModelTest
         Assert.Equal("UnitTest", retrievedMemory.CapturedBy.Name);
         Assert.Equal(10, retrievedMemory.Location.Latitude);
     }
+
+    [Fact]
+    public async Task CanCreateAndRetrieveUserNode()
+    {
+        var user = new User
+        {
+            Name = "Alice",
+            Email = "alice@example.com",
+            GoogleId = "alice_google_id",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            Job = "Engineer"
+        };
+
+        await this.Graph.CreateNodeAsync(user, null, TestContext.Current.CancellationToken);
+
+        var fetchedUser = await this.Graph.Nodes<User>()
+            .Where(u => u.Id == user.Id)
+            .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(fetchedUser);
+        Assert.Equal("Alice", fetchedUser.Name);
+        Assert.Equal("alice@example.com", fetchedUser.Email);
+    }
 }

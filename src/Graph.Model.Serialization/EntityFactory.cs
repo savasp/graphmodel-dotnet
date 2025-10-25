@@ -496,10 +496,25 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         Dictionary<string, Property> simpleProperties,
         Dictionary<string, Property> complexProperties)
     {
+        var visited = new HashSet<object>(Cvoya.Graph.Model.GraphDataModel.ReferenceEqualityComparer.Instance);
+        ProcessDynamicProperties(properties, simpleProperties, complexProperties, visited);
+    }
+
+    private void ProcessDynamicProperties(
+        IReadOnlyDictionary<string, object?> properties,
+        Dictionary<string, Property> simpleProperties,
+        Dictionary<string, Property> complexProperties,
+        HashSet<object> visited)
+    {
+        _logger.LogDebug("ProcessDynamicProperties: Processing {PropertyCount} properties", properties.Count);
+
         foreach (var kvp in properties)
         {
             var propertyName = kvp.Key;
             var propertyValue = kvp.Value;
+
+            _logger.LogDebug("ProcessDynamicProperties: Processing property '{PropertyName}' with value '{PropertyValue}' of type '{PropertyType}'",
+                propertyName, propertyValue, propertyValue?.GetType().Name ?? "null");
 
             if (propertyValue == null)
             {
@@ -514,19 +529,35 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
             var valueType = propertyValue.GetType();
 
+            // Handle JsonValueOfElement by extracting the actual value
+            if (propertyValue is System.Text.Json.JsonElement jsonElement)
+            {
+                propertyValue = jsonElement.ValueKind switch
+                {
+                    System.Text.Json.JsonValueKind.String => jsonElement.GetString(),
+                    System.Text.Json.JsonValueKind.Number => jsonElement.GetDecimal(),
+                    System.Text.Json.JsonValueKind.True => true,
+                    System.Text.Json.JsonValueKind.False => false,
+                    System.Text.Json.JsonValueKind.Null => null,
+                    _ => propertyValue
+                };
+                valueType = propertyValue?.GetType() ?? typeof(object);
+            }
+
             if (GraphDataModel.IsSimple(valueType))
             {
                 // Simple property
+                _logger.LogDebug("ProcessDynamicProperties: Adding simple property '{PropertyName}' to simpleProperties", propertyName);
                 simpleProperties[propertyName] = new Property(
                     GetPropertyInfo(valueType, propertyName),
                     propertyName,
-                    false,
-                    new SimpleValue(propertyValue, valueType));
+                    propertyValue == null,
+                    new SimpleValue(propertyValue ?? (object)"", valueType));
             }
             else if (GraphDataModel.IsCollectionOfSimple(valueType))
             {
                 // Collection of simple values
-                var collection = (IEnumerable)propertyValue;
+                var collection = (IEnumerable)propertyValue!;
                 var simpleValues = new List<SimpleValue>();
                 var elementType = GetElementType(valueType);
 
@@ -544,7 +575,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             else if (GraphDataModel.IsCollectionOfComplex(valueType))
             {
                 // Collection of complex values
-                var collection = (IEnumerable)propertyValue;
+                var collection = (IEnumerable)propertyValue!;
                 var complexValues = new List<EntityInfo>();
                 var elementType = GetElementType(valueType);
 
@@ -552,8 +583,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                 {
                     if (item != null)
                     {
-                        // Recursively serialize complex objects
-                        var itemEntityInfo = SerializeComplexObject(item, elementType);
+                        // Recursively serialize complex objects with cycle detection
+                        var itemEntityInfo = SerializeComplexObject(item, elementType, visited);
                         complexValues.Add(itemEntityInfo);
                     }
                 }
@@ -567,7 +598,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             else if (valueType.IsAssignableTo(typeof(IDictionary<string, object?>)) || valueType.IsAssignableTo(typeof(IDictionary<string, object>)))
             {
                 // Convert dictionary to EntityInfo with simple properties for each key-value pair
-                var dict = (IDictionary<string, object?>)propertyValue;
+                var dict = (IDictionary<string, object?>)propertyValue!;
                 var dictSimpleProperties = new Dictionary<string, Property>();
                 var dictComplexProperties = new Dictionary<string, Property>();
 
@@ -594,8 +625,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                     }
                     else
                     {
-                        // Recursively handle nested complex objects
-                        var nestedComplexEntityInfo = SerializeComplexObject(value, value.GetType());
+                        // Recursively handle nested complex objects with cycle detection
+                        var nestedComplexEntityInfo = SerializeComplexObject(value!, value.GetType(), visited);
                         dictComplexProperties[key] = new Property(
                             GetPropertyInfo(value.GetType(), key),
                             key,
@@ -619,8 +650,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             }
             else
             {
-                // Complex property - recursively serialize
-                var complexEntityInfo = SerializeComplexObject(propertyValue, valueType);
+                // Complex property - recursively serialize with cycle detection
+                var complexEntityInfo = SerializeComplexObject(propertyValue!, valueType, visited);
                 complexProperties[propertyName] = new Property(
                     GetPropertyInfo(valueType, propertyName),
                     propertyName,
@@ -632,100 +663,132 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
     private EntityInfo SerializeComplexObject(object obj, Type objectType)
     {
-        var simpleProperties = new Dictionary<string, Property>();
-        var complexProperties = new Dictionary<string, Property>();
+        // Use a thread-safe approach with cycle detection during serialization
+        var visited = new HashSet<object>(Cvoya.Graph.Model.GraphDataModel.ReferenceEqualityComparer.Instance);
+        return SerializeComplexObject(obj, objectType, visited);
+    }
 
-        // Get all public properties of the object
-        var properties = objectType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-
-        foreach (var propertyInfo in properties)
+    private EntityInfo SerializeComplexObject(object obj, Type objectType, HashSet<object> visited)
+    {
+        // Check for circular references during serialization to prevent stack overflow
+        if (visited.Contains(obj))
         {
-            if (!propertyInfo.CanRead)
-                continue;
-
-            var propertyName = propertyInfo.Name;
-            var propertyValue = propertyInfo.GetValue(obj);
-            var propertyType = propertyInfo.PropertyType;
-
-            if (propertyValue == null)
-            {
-                // Null values are treated as simple properties
-                simpleProperties[propertyName] = new Property(
-                    propertyInfo,
-                    propertyName,
-                    true,
-                    new SimpleValue(null!, typeof(object)));
-                continue;
-            }
-
-            if (GraphDataModel.IsSimple(propertyType))
-            {
-                // Simple property
-                simpleProperties[propertyName] = new Property(
-                    propertyInfo,
-                    propertyName,
-                    false,
-                    new SimpleValue(propertyValue, propertyType));
-            }
-            else if (GraphDataModel.IsCollectionOfSimple(propertyType))
-            {
-                // Collection of simple values
-                var collection = (IEnumerable)propertyValue;
-                var simpleValues = new List<SimpleValue>();
-                var elementType = GetElementType(propertyType);
-
-                foreach (var item in collection)
-                {
-                    simpleValues.Add(new SimpleValue(item ?? (object)"", item?.GetType() ?? elementType));
-                }
-
-                simpleProperties[propertyName] = new Property(
-                    propertyInfo,
-                    propertyName,
-                    false,
-                    new SimpleCollection(simpleValues, elementType));
-            }
-            else if (GraphDataModel.IsCollectionOfComplex(propertyType))
-            {
-                // Collection of complex values
-                var collection = (IEnumerable)propertyValue;
-                var complexValues = new List<EntityInfo>();
-                var elementType = GetElementType(propertyType);
-
-                foreach (var item in collection)
-                {
-                    if (item != null)
-                    {
-                        // Recursively serialize complex objects
-                        var itemEntityInfo = SerializeComplexObject(item, elementType);
-                        complexValues.Add(itemEntityInfo);
-                    }
-                }
-
-                complexProperties[propertyName] = new Property(
-                    propertyInfo,
-                    propertyName,
-                    false,
-                    new EntityCollection(elementType, complexValues));
-            }
-            else
-            {
-                // Complex property - recursively serialize
-                var complexEntityInfo = SerializeComplexObject(propertyValue, propertyType);
-                complexProperties[propertyName] = new Property(
-                    propertyInfo,
-                    propertyName,
-                    false,
-                    complexEntityInfo);
-            }
+            // Return a minimal EntityInfo to break the cycle
+            return new EntityInfo(
+                objectType,
+                objectType.Name,
+                [],
+                new Dictionary<string, Property>(),
+                new Dictionary<string, Property>());
         }
 
-        return new EntityInfo(
-            objectType,
-            objectType.Name,
-            [],
-            simpleProperties,
-            complexProperties);
+        visited.Add(obj);
+
+        try
+        {
+            var simpleProperties = new Dictionary<string, Property>();
+            var complexProperties = new Dictionary<string, Property>();
+
+            // Get all public properties of the object - this is thread-safe
+            var properties = objectType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+            foreach (var propertyInfo in properties)
+            {
+                if (!propertyInfo.CanRead)
+                    continue;
+
+                // Skip properties with parameters (like indexers)
+                if (propertyInfo.GetIndexParameters().Length > 0)
+                    continue;
+
+                var propertyName = propertyInfo.Name;
+                var propertyValue = propertyInfo.GetValue(obj);
+                var propertyType = propertyInfo.PropertyType;
+
+                if (propertyValue == null)
+                {
+                    // Null values are treated as simple properties
+                    simpleProperties[propertyName] = new Property(
+                        propertyInfo,
+                        propertyName,
+                        true,
+                        new SimpleValue(null!, typeof(object)));
+                    continue;
+                }
+
+                if (GraphDataModel.IsSimple(propertyType))
+                {
+                    // Simple property
+                    simpleProperties[propertyName] = new Property(
+                        propertyInfo,
+                        propertyName,
+                        false,
+                        new SimpleValue(propertyValue, propertyType));
+                }
+                else if (GraphDataModel.IsCollectionOfSimple(propertyType))
+                {
+                    // Collection of simple values
+                    var collection = (IEnumerable)propertyValue;
+                    var simpleValues = new List<SimpleValue>();
+                    var elementType = GetElementType(propertyType);
+
+                    foreach (var item in collection)
+                    {
+                        simpleValues.Add(new SimpleValue(item ?? (object)"", item?.GetType() ?? elementType));
+                    }
+
+                    simpleProperties[propertyName] = new Property(
+                        propertyInfo,
+                        propertyName,
+                        false,
+                        new SimpleCollection(simpleValues, elementType));
+                }
+                else if (GraphDataModel.IsCollectionOfComplex(propertyType))
+                {
+                    // Collection of complex values
+                    var collection = (IEnumerable)propertyValue;
+                    var complexValues = new List<EntityInfo>();
+                    var elementType = GetElementType(propertyType);
+
+                    foreach (var item in collection)
+                    {
+                        if (item != null)
+                        {
+                            // Recursively serialize complex objects with cycle detection
+                            var itemEntityInfo = SerializeComplexObject(item, elementType, visited);
+                            complexValues.Add(itemEntityInfo);
+                        }
+                    }
+
+                    complexProperties[propertyName] = new Property(
+                        propertyInfo,
+                        propertyName,
+                        false,
+                        new EntityCollection(elementType, complexValues));
+                }
+                else
+                {
+                    // Complex property - recursively serialize with cycle detection
+                    var complexEntityInfo = SerializeComplexObject(propertyValue, propertyType, visited);
+                    complexProperties[propertyName] = new Property(
+                        propertyInfo,
+                        propertyName,
+                        false,
+                        complexEntityInfo);
+                }
+            }
+
+            return new EntityInfo(
+                objectType,
+                SanitizeTypeNameForNeo4j(objectType),
+                [],
+                simpleProperties,
+                complexProperties);
+        }
+        finally
+        {
+            visited.Remove(obj);
+        }
     }
 
     private static Type GetElementType(Type collectionType)
@@ -746,6 +809,32 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
         // Fallback to object if we can't determine the element type
         return typeof(object);
+    }
+
+    private static string SanitizeTypeNameForNeo4j(Type type)
+    {
+        // Handle generic types like Nullable<T> -> NullableT
+        if (type.IsGenericType)
+        {
+            var name = type.Name;
+            var backtickIndex = name.IndexOf('`');
+            if (backtickIndex > 0)
+            {
+                name = name.Substring(0, backtickIndex);
+            }
+
+            // Add generic type parameters
+            var genericArgs = type.GetGenericArguments();
+            if (genericArgs.Length > 0)
+            {
+                name += string.Join("", genericArgs.Select(SanitizeTypeNameForNeo4j));
+            }
+
+            return name;
+        }
+
+        // For non-generic types, just return the name
+        return type.Name;
     }
 
     private static PropertyInfo GetPropertyInfo(Type type, string propertyName)

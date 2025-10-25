@@ -371,7 +371,7 @@ public static class GraphDataModel
     }
 
     // Reference equality comparer for HashSet
-    private sealed class ReferenceEqualityComparer : IEqualityComparer<object>
+    public sealed class ReferenceEqualityComparer : IEqualityComparer<object>
     {
         public static ReferenceEqualityComparer Instance { get; } = new ReferenceEqualityComparer();
         bool IEqualityComparer<object>.Equals(object? x, object? y) => ReferenceEquals(x, y);
