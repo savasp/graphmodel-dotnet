@@ -41,6 +41,9 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
     // Limit concurrent graph acquisitions - this prevents connection pool exhaustion
     // when multiple tests within fixtures try to get graphs simultaneously
     private static SemaphoreSlim? globalGraphAcquisitionSemaphore;
+    
+    // Semaphore to limit concurrent fresh graph operations to avoid connection pool exhaustion
+    private static readonly SemaphoreSlim freshGraphOperationsSemaphore = new(3, 3); // Max 3 concurrent operations
 
     private ILogger<TestInfrastructureFixture> logger;
     private DatabasePoolManager? databasePool;
@@ -143,29 +146,115 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
         // which may still be using it for background operations
     }
 
-    public async Task<AgeGraphStore> GetGraphAsync(bool getNewGraph)
+    public async Task<AgeGraphStore> GetGraphAsync(bool getNewGraph = false)
     {
-        if (databasePool == null)
+        if (getNewGraph)
         {
-            throw new InvalidOperationException("Database pool not initialized");
+            logger.LogInformation("Creating completely fresh graph for test isolation");
+            
+            // Create a completely new AgeGraphStore instance instead of using the pool
+            // This ensures we get a truly clean graph without relying on cleanup mechanisms
+            var freshGraphName = "fresh_test_graph_" + Guid.NewGuid().ToString("N")[..8];
+            
+            // Create the fresh graph in PostgreSQL first
+            await CreateFreshGraphAsync(freshGraphName);
+            
+            var freshStore = new AgeGraphStore(connectionString, freshGraphName);
+            
+            logger.LogInformation("Successfully created fresh graph {GraphName} bypassing pool", freshGraphName);
+            return freshStore;
         }
 
-        // Acquire semaphore FIRST, regardless of which path we take
-        // This ensures we never have more than MaxConcurrentFixtures graphs doing cleanup/operations
-        if (!graphAcquisitionSemaphoreAcquired)
-        {
-            logger.LogDebug("Waiting for graph acquisition slot...");
-            await globalGraphAcquisitionSemaphore!.WaitAsync();
-            graphAcquisitionSemaphoreAcquired = true;
-            logger.LogDebug("Graph acquisition slot acquired");
-        }
+        // Get a graph name from the pool and create an AgeGraphStore for it
+        var graphName = await databasePool!.RequestDatabaseAsync();
+        var pooledStore = new AgeGraphStore(connectionString, graphName);
+        
+        return pooledStore;
+    }
 
-        // Getting a new graph (semaphore already acquired above)
-        logger.LogDebug("Requesting new graph from pool");
-        var graphName = await databasePool.RequestDatabaseAsync();
-        logger.LogDebug("Graph {GraphName} ready - semaphore will be held until disposal", graphName);
-        var store = new AgeGraphStore(globalDataSource!, graphName, schemaRegistry, loggerFactory);
-        return store;
+    private async Task CreateFreshGraphAsync(string graphName)
+    {
+        // Use a semaphore to limit concurrent fresh graph operations and avoid connection pool exhaustion
+        await freshGraphOperationsSemaphore.WaitAsync();
+        try
+        {
+            // Create a temporary connection to create the fresh graph
+            await using var tempConnection = await globalDataSource!.OpenConnectionAsync();
+            
+            // Configure the connection for AGE
+            await using (var loadCmd = tempConnection.CreateCommand())
+            {
+                loadCmd.CommandText = "LOAD 'age'";
+                await loadCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
+
+            await using (var searchPathCmd = tempConnection.CreateCommand())
+            {
+                searchPathCmd.CommandText = "SET search_path = ag_catalog, \"$user\", public";
+                await searchPathCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
+            
+            // Create the graph
+            await using (var create = tempConnection.CreateGraphCommand(graphName))
+            {
+                // create_graph returns a result set, we need to fully consume it
+                await using var reader = await create.ExecuteReaderAsync().ConfigureAwait(false);
+                while (await reader.ReadAsync().ConfigureAwait(false))
+                {
+                    // Just consume the rows, we don't care about the result
+                }
+            }
+            
+            logger.LogDebug("Fresh graph {GraphName} created in PostgreSQL", graphName);
+        }
+        finally
+        {
+            freshGraphOperationsSemaphore.Release();
+        }
+    }
+
+    private async Task DropFreshGraphAsync(string graphName)
+    {
+        await freshGraphOperationsSemaphore.WaitAsync();
+        try
+        {
+            // Create a temporary connection to drop the fresh graph
+            await using var tempConnection = await globalDataSource!.OpenConnectionAsync();
+            
+            // Configure the connection for AGE
+            await using (var loadCmd = tempConnection.CreateCommand())
+            {
+                loadCmd.CommandText = "LOAD 'age'";
+                await loadCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
+
+            await using (var searchPathCmd = tempConnection.CreateCommand())
+            {
+                searchPathCmd.CommandText = "SET search_path = ag_catalog, \"$user\", public";
+                await searchPathCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
+            
+            // Drop the graph
+            await using (var drop = tempConnection.DropGraphCommand(graphName))
+            {
+                // drop_graph returns a result set, we need to fully consume it
+                await using var reader = await drop.ExecuteReaderAsync().ConfigureAwait(false);
+                while (await reader.ReadAsync().ConfigureAwait(false))
+                {
+                    // Just consume the rows, we don't care about the result
+                }
+            }
+            
+            logger.LogDebug("Fresh graph {GraphName} dropped from PostgreSQL", graphName);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to drop fresh graph {GraphName}, but continuing", graphName);
+        }
+        finally
+        {
+            freshGraphOperationsSemaphore.Release();
+        }
     }
 
     public async Task ReturnGraphAsync(AgeGraphStore graphStore)
@@ -174,14 +263,27 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
         {
             throw new InvalidOperationException("Database pool not initialized");
         }
-        // For new graphs that won't be reused by this fixture, release them back to the pool
-        logger.LogDebug("Returning new graph {GraphName} to pool", graphStore.GraphName);
-        await databasePool.ReleaseDatabaseAsync(graphStore.GraphName);
+        
+        // Check if this is a fresh graph (has fresh_test_graph_ prefix)
+        if (graphStore.GraphName.StartsWith("fresh_test_graph_"))
+        {
+            logger.LogDebug("Disposing fresh graph {GraphName} without returning to pool", graphStore.GraphName);
+            
+            // For fresh graphs, dispose the store and drop the graph from PostgreSQL
+            await graphStore.DisposeAsync();
+            await DropFreshGraphAsync(graphStore.GraphName);
+            return;
+        }
+        
+        // For pooled graphs, return them to the pool
+        logger.LogDebug("Returning pooled graph {GraphName} to pool", graphStore.GraphName);
+        // Mark as dirty since the graph needs cleaning before the next test uses it
+        await databasePool.ReleaseDatabaseAsync(graphStore.GraphName, shouldCleanOnNextUse: true);
         await graphStore.DisposeAsync();
-        // Release graph acquisition semaphore when we return a new graph
+        // Release graph acquisition semaphore when we return a pooled graph
         if (graphAcquisitionSemaphoreAcquired)
         {
-            logger.LogDebug("Releasing graph acquisition slot (new graph returned)");
+            logger.LogDebug("Releasing graph acquisition slot (pooled graph returned)");
             if (globalGraphAcquisitionSemaphore is not null && globalGraphAcquisitionSemaphore.CurrentCount < MaxConcurrentFixtures)
             {
                 globalGraphAcquisitionSemaphore.Release();

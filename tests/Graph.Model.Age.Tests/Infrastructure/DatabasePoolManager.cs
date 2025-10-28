@@ -57,6 +57,10 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     {
         var manager = new DatabasePoolManager(dataSource, loggerFactory, graphCount);
         manager.poolManagerConnection = await dataSource.OpenConnectionAsync();
+        
+        // Configure the pool manager connection for AGE
+        await manager.ConfigureConnectionForAgeAsync(manager.poolManagerConnection);
+        
         await manager.SetupGraphsAsync(); // don't wait for setup to complete
         return manager;
     }
@@ -66,6 +70,9 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     private readonly SemaphoreSlim graphsAreAvailableSemaphore;
     private readonly ConcurrentQueue<string> availableGraphs = new();
     private readonly ConcurrentDictionary<string, bool> dirtyGraphs = new();
+    
+    // Semaphore to synchronize access to the shared poolManagerConnection
+    private readonly SemaphoreSlim poolManagerConnectionSemaphore = new(1, 1);
 
     private readonly int maxPoolSize;
     private readonly NpgsqlDataSource dataSource;
@@ -122,11 +129,15 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         throw new InvalidOperationException("No available graphs in the pool. This should not have happened because of the semaphore.");
     }
 
-    public async Task ReleaseDatabaseAsync(string graphName)
+    public async Task ReleaseDatabaseAsync(string graphName, bool shouldCleanOnNextUse = true)
     {
         logger.LogDebug("Releasing graph {GraphName} back to the pool", graphName);
-        // Don't drop/recreate here - connections may still be in the pool
-        // The graph will be cleaned before next use anyway
+        // Mark the graph as dirty only if it needs cleaning for the next test
+        if (shouldCleanOnNextUse)
+        {
+            dirtyGraphs.TryAdd(graphName, true);
+            dirtyGraphs[graphName] = true;
+        }
         availableGraphs.Enqueue(graphName);
         graphsAreAvailableSemaphore.Release();
         logger.LogDebug("Graph {GraphName} is now available in the pool", graphName);
@@ -153,14 +164,24 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(poolManagerConnection, nameof(poolManagerConnection));
         logger.LogDebug("Cleaning graph {GraphName} synchronously", graphName);
-        // Delete all nodes and relationships using Cypher
-        await using (var cmd = poolManagerConnection.CreateCommand())
+        
+        // Use semaphore to prevent concurrent operations on the shared connection
+        await poolManagerConnectionSemaphore.WaitAsync().ConfigureAwait(false);
+        try
         {
-            cmd.CommandText = $"SELECT * FROM ag_catalog.cypher('{graphName}', $$ MATCH (n) DETACH DELETE n $$) as (a agtype)";
-            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
+            // Delete all nodes and relationships using Cypher - use the exact same format as the working version
+            await using (var cmd = poolManagerConnection.CreateCommand())
+            {
+                cmd.CommandText = $"SELECT * FROM ag_catalog.cypher('{graphName}', $$ MATCH (n) DETACH DELETE n $$) as (a agtype)";
+                await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
 
-        logger.LogDebug("Graph {GraphName} cleaned successfully", graphName);
+            logger.LogDebug("Graph {GraphName} cleaned successfully", graphName);
+        }
+        finally
+        {
+            poolManagerConnectionSemaphore.Release();
+        }
     }
 
     private async Task SetupGraphsAsync()
@@ -187,43 +208,56 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(poolManagerConnection, nameof(poolManagerConnection));
         logger.LogDebug("Creating or replacing graph {GraphName}", graphName);
-        // Drop graph if it already exists (ignore if it does not)
-        await using (var drop = poolManagerConnection.DropGraphCommand(graphName))
+        
+        // Use semaphore to prevent concurrent operations on the shared connection
+        await poolManagerConnectionSemaphore.WaitAsync().ConfigureAwait(false);
+        try
         {
-            try
+            // Drop graph if it already exists (ignore if it does not)
+            await using (var drop = poolManagerConnection.DropGraphCommand(graphName))
             {
-                // drop_graph returns a result set, we need to fully consume it
-                await using var reader = await drop.ExecuteReaderAsync().ConfigureAwait(false);
+                try
+                {
+                    // drop_graph returns a result set, we need to fully consume it
+                    await using var reader = await drop.ExecuteReaderAsync().ConfigureAwait(false);
+                    while (await reader.ReadAsync().ConfigureAwait(false))
+                    {
+                        // Just consume the rows, we don't care about the result
+                    }
+                }
+                catch (PostgresException ex) when (ex.SqlState is "42704" or "3F000")
+                {
+                    // Graph does not exist yet - ignore.
+                    logger.LogDebug("Graph {GraphName} did not exist prior to reset", graphName);
+                }
+            }
+
+            // Create the graph
+            await using (var create = poolManagerConnection.CreateGraphCommand(graphName))
+            {
+                // create_graph returns a result set, we need to fully consume it
+                await using var reader = await create.ExecuteReaderAsync().ConfigureAwait(false);
                 while (await reader.ReadAsync().ConfigureAwait(false))
                 {
                     // Just consume the rows, we don't care about the result
                 }
             }
-            catch (PostgresException ex) when (ex.SqlState is "42704" or "3F000")
-            {
-                // Graph does not exist yet - ignore.
-                logger.LogDebug("Graph {GraphName} did not exist prior to reset", graphName);
-            }
-        }
 
-        // Create the graph
-        await using (var create = poolManagerConnection.CreateGraphCommand(graphName))
+            logger.LogDebug("Graph {GraphName} is now ready", graphName);
+        }
+        finally
         {
-            // create_graph returns a result set, we need to fully consume it
-            await using var reader = await create.ExecuteReaderAsync().ConfigureAwait(false);
-            while (await reader.ReadAsync().ConfigureAwait(false))
-            {
-                // Just consume the rows, we don't care about the result
-            }
+            poolManagerConnectionSemaphore.Release();
         }
-
-        logger.LogDebug("Graph {GraphName} is now ready", graphName);
     }
 
     private async Task DropGraphAsync(string graphName)
     {
         ArgumentNullException.ThrowIfNull(poolManagerConnection, nameof(poolManagerConnection));
         logger.LogDebug("Scheduling drop of graph {GraphName}", graphName);
+        
+        // Use semaphore to prevent concurrent operations on the shared connection
+        await poolManagerConnectionSemaphore.WaitAsync().ConfigureAwait(false);
         try
         {
             logger.LogDebug("Dropping graph {GraphName}", graphName);
@@ -244,10 +278,31 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             logger.LogWarning(ex, "Failed to drop graph {GraphName}. It may not exist or is already dropped.", graphName);
             // Ignore errors during cleanup - the graph might not exist
         }
+        finally
+        {
+            poolManagerConnectionSemaphore.Release();
+        }
     }
 
     private string GenerateGraphName(int i)
     {
         return "graphmodeltests" + i.ToString("D3");
+    }
+
+    private async Task ConfigureConnectionForAgeAsync(NpgsqlConnection connection)
+    {
+        // Load AGE extension
+        await using (var loadCmd = connection.CreateCommand())
+        {
+            loadCmd.CommandText = "LOAD 'age'";
+            await loadCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        // Set search path
+        await using (var searchPathCmd = connection.CreateCommand())
+        {
+            searchPathCmd.CommandText = "SET search_path = ag_catalog, \"$user\", public";
+            await searchPathCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
     }
 }
