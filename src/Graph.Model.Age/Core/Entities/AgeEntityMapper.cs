@@ -156,6 +156,19 @@ internal sealed class AgeEntityMapper
 
     private static IReadOnlyList<string> ExtractLabels(Vertex vertex)
     {
+        // For AGE inheritance support, check for inheritance_labels property first
+        if (vertex.Properties.TryGetValue("inheritance_labels", out var inheritanceValue))
+        {
+            return inheritanceValue switch
+            {
+                string[] stringArray => stringArray.ToList(),
+                IList<object?> list => list.Select(v => v?.ToString() ?? string.Empty).Where(static v => !string.IsNullOrWhiteSpace(v)).ToList(),
+                IEnumerable<string> stringList => stringList.ToList(),
+                _ => []
+            };
+        }
+        
+        // Fallback to standard Labels property
         if (vertex.Properties.TryGetValue(nameof(INode.Labels), out var value))
         {
             return value switch
@@ -166,6 +179,7 @@ internal sealed class AgeEntityMapper
             };
         }
 
+        // Final fallback to vertex label
         if (!string.IsNullOrEmpty(vertex.Label))
         {
             return vertex.Label.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -243,6 +257,19 @@ internal sealed class AgeEntityMapper
             return value;
         }
 
+        // Handle numeric type conversions (PostgreSQL may return Int32 when we expect Int64, etc.)
+        if (IsNumericType(underlyingType) && IsNumericType(value.GetType()))
+        {
+            try
+            {
+                return Convert.ChangeType(value, underlyingType, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                // If conversion fails, fall through to other handlers
+            }
+        }
+
         // Special handling for specific types that AGE stores as strings
         if (value is string str)
         {
@@ -298,6 +325,16 @@ internal sealed class AgeEntityMapper
     }
 
     private record PointData(double Longitude, double Latitude, double Height);
+
+    private static bool IsNumericType(Type type)
+    {
+        return type == typeof(sbyte) || type == typeof(byte) ||
+               type == typeof(short) || type == typeof(ushort) ||
+               type == typeof(int) || type == typeof(uint) ||
+               type == typeof(long) || type == typeof(ulong) ||
+               type == typeof(float) || type == typeof(double) ||
+               type == typeof(decimal);
+    }
 
     private static Type DetermineElementType(IList<object?> list)
     {

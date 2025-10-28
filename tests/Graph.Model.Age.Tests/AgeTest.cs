@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Age.Tests;
 
 using Cvoya.Graph.Model.Age.Tests.Infrastructure;
+using Cvoya.Graph.Model.Age.Core;
 using Microsoft.Extensions.Logging;
 using Xunit;
 
@@ -27,8 +28,9 @@ public class AgeTest : IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
 {
     private readonly TestInfrastructureFixture fixture;
     private readonly bool getNewGraph;
-    private IGraph? graph;
+    private IGraph? graph => ageGraphStore?.Graph;
     private ILogger<AgeTest>? logger;
+    private AgeGraphStore? ageGraphStore;
 
     public AgeTest(TestInfrastructureFixture fixture, bool getNewGraph = false)
     {
@@ -43,13 +45,16 @@ public class AgeTest : IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
         logger = fixture.LoggerFactory.CreateLogger<AgeTest>();
         logger.LogInformation("Initializing AGE test graph (newGraph: {NewGraph})", getNewGraph);
 
-        graph = await fixture.GetGraphAsync(getNewGraph).ConfigureAwait(false);
+        ageGraphStore = await fixture.GetGraphAsync(getNewGraph).ConfigureAwait(false);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         (logger as IDisposable)?.Dispose();
-        graph = null;
-        return ValueTask.CompletedTask;
+        if(ageGraphStore != null)
+        {
+            await fixture.ReturnGraphAsync(ageGraphStore);
+            ageGraphStore = null;
+        }
     }
 }

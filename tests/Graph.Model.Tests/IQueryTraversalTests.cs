@@ -1110,6 +1110,83 @@ public interface IQueryTraversalTests : IGraphModelTest
     #region Multiple PathSegments with Incoming Direction Tests
 
     [Fact]
+    public async Task CanUseChainedPathSegmentsForMultiHopTraversal()
+    {
+        // Setup: Alice -> Bob -> Charlie -> David (3-hop chain)
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+        var david = new Person { FirstName = "David", LastName = "Wilson" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(david, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = david.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        // Act: Use chained PathSegments for 3-hop traversal (Alice -> Bob -> Charlie -> David)
+        var results = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .PathSegments<Person, Knows, Person>()         // Alice -> Bob
+            .Select(ps => ps.EndNode)
+            .PathSegments<Person, Knows, Person>()         // Bob -> Charlie  
+            .Select(ps => ps.EndNode)
+            .PathSegments<Person, Knows, Person>()         // Charlie -> David
+            .Select(ps => new { Start = ps.StartNode.FirstName, End = ps.EndNode.FirstName })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert: Should find the 3-hop path from Alice to David via Charlie -> David
+        Assert.Single(results);
+        Assert.Equal("Charlie", results[0].Start);
+        Assert.Equal("David", results[0].End);
+    }
+
+    [Fact]
+    public async Task CanUseChainedPathSegmentsWithFiltering()
+    {
+        // Setup: Alice -> Bob -> Charlie, Alice -> Eve -> Frank
+        var alice = new Person { FirstName = "Alice", LastName = "Smith", Age = 25 };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones", Age = 30 };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown", Age = 35 };
+        var eve = new Person { FirstName = "Eve", LastName = "Davis", Age = 28 };
+        var frank = new Person { FirstName = "Frank", LastName = "Miller", Age = 40 };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(eve, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(frank, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = eve.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = eve.Id, EndNodeId = frank.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        // Act: Use chained PathSegments with filtering for people over 35 at 2-hop distance
+        var results = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .PathSegments<Person, Knows, Person>()          // Alice -> Bob/Eve
+            .Select(ps => ps.EndNode)
+            .PathSegments<Person, Knows, Person>()          // Bob->Charlie, Eve->Frank
+            .Where(ps => ps.EndNode.Age > 35)               // Filter for people over 35
+            .Select(ps => new { 
+                FirstHop = ps.StartNode.FirstName, 
+                SecondHop = ps.EndNode.FirstName,
+                Age = ps.EndNode.Age 
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert: Should find Frank (40) via Eve, not Charlie (35) via Bob
+        Assert.Single(results);
+        Assert.Equal("Eve", results[0].FirstHop);
+        Assert.Equal("Frank", results[0].SecondHop);
+        Assert.Equal(40, results[0].Age);
+    }
+
+    [Fact]
     public async Task CanUseMultiplePathSegmentsWithIncomingDirection()
     {
         var alice = new User { Name = "Alice", Email = "alice@example.com", GoogleId = "alice-google-id" };

@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Age.Tests.Infrastructure;
 
 using Cvoya.Graph.Model.Age.Core;
 using Microsoft.Extensions.Logging;
+using Xunit;
 using Npgsql;
 using Npgsql.Age;
 
@@ -28,7 +29,7 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
     // Shared data source singleton to limit total connections across ALL test fixtures
     private static NpgsqlDataSource? globalDataSource;
     private static readonly Lock dataSourceLock = new();
-    
+
     // Limit concurrent test fixtures to match the graph pool size
     private static SemaphoreSlim? globalFixtureSemaphore;
     private const int MaxConcurrentFixtures = 10;
@@ -36,15 +37,13 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
     private readonly string connectionString;
     private readonly ILoggerFactory loggerFactory;
     private readonly SchemaRegistry schemaRegistry = new();
-    
+
     // Limit concurrent graph acquisitions - this prevents connection pool exhaustion
     // when multiple tests within fixtures try to get graphs simultaneously
     private static SemaphoreSlim? globalGraphAcquisitionSemaphore;
-    
+
     private ILogger<TestInfrastructureFixture> logger;
     private DatabasePoolManager? databasePool;
-    private string? cachedGraphName;
-    private AgeGraphStore? cachedStore;
     private bool fixtureSemaphoreAcquired = false;
     private bool graphAcquisitionSemaphoreAcquired = false;
 
@@ -57,6 +56,7 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
         {
             builder.SetMinimumLevel(LogLevel.Debug);
             builder.AddConsole();
+            builder.AddXUnit();
         });
         NpgsqlLoggingConfiguration.InitializeLogging(loggerFactory, parameterLoggingEnabled: true);
 
@@ -72,20 +72,22 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
                     // Initialize semaphores
                     globalFixtureSemaphore = new SemaphoreSlim(MaxConcurrentFixtures, MaxConcurrentFixtures);
                     globalGraphAcquisitionSemaphore = new SemaphoreSlim(MaxConcurrentFixtures, MaxConcurrentFixtures);
-                    
-                    // PostgreSQL default max_connections is usually 100
-                    // Semaphores limit concurrency to 10, but each operation may need multiple connections
-                    // (transaction + cleanup + background operations). Double the pool for headroom.
+
+                    // PostgreSQL max_connections = 100, but we need headroom for:
+                    // - System processes (~10)
+                    // - VS Code connections (~5)
+                    // - Manual queries (~5)
+                    // Safe limit: 80 connections for tests
+                    // With 10 concurrent test fixtures × 2-3 connections each = 20-30 active
+                    // Plus cleanup connections and transaction overhead = ~40-50 total
                     var builder = new NpgsqlConnectionStringBuilder(connectionString)
                     {
-                        MaxPoolSize = 100,  // 10 concurrent graphs × ~6 connections each (headroom for complex tests)
-                        MinPoolSize = 5,   // Keep some connections warm
-                        ConnectionIdleLifetime = 300,  // Keep connections alive longer to maximize reuse
+                        ConnectionIdleLifetime = 30,  // Release idle connections faster (was 300)
+                        ConnectionPruningInterval = 5,  // Check for idle connections every 5 seconds
                         Timeout = 30  // Increase timeout to wait for connections instead of failing fast
                     };
                     var dataSourceBuilder = new NpgsqlDataSourceBuilder(builder.ConnectionString);
                     dataSourceBuilder.UseAge();  // AGE extension handles connection initialization
-                    
                     globalDataSource = dataSourceBuilder.Build();
                 }
             }
@@ -100,7 +102,12 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
         await globalFixtureSemaphore!.WaitAsync();
         fixtureSemaphoreAcquired = true;
         logger.LogDebug("Test fixture slot acquired");
-        
+
+        // Initialize schema registry
+        logger.LogDebug("Starting schema registry initialization...");
+        await schemaRegistry.InitializeAsync();
+        logger.LogDebug("Schema registry initialized");
+
         databasePool = await DatabasePoolManager.GetInstanceAsync(
             globalDataSource!,
             loggerFactory,
@@ -113,14 +120,6 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
 
         try
         {
-            if (cachedGraphName != null && cachedStore != null)
-            {
-                await cachedStore.DisposeAsync();
-                if (databasePool != null)
-                {
-                    await databasePool.ReleaseDatabaseAsync(cachedGraphName);
-                }
-                
                 // Release graph acquisition semaphore when we dispose the graph
                 if (graphAcquisitionSemaphoreAcquired)
                 {
@@ -128,7 +127,6 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
                     globalGraphAcquisitionSemaphore!.Release();
                     graphAcquisitionSemaphoreAcquired = false;
                 }
-            }
         }
         finally
         {
@@ -145,43 +143,51 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
         // which may still be using it for background operations
     }
 
-    public async Task<IGraph> GetGraphAsync(bool getNewGraph)
+    public async Task<AgeGraphStore> GetGraphAsync(bool getNewGraph)
     {
         if (databasePool == null)
         {
             throw new InvalidOperationException("Database pool not initialized");
         }
 
-        if (!getNewGraph && cachedGraphName != null)
+        // Acquire semaphore FIRST, regardless of which path we take
+        // This ensures we never have more than MaxConcurrentFixtures graphs doing cleanup/operations
+        if (!graphAcquisitionSemaphoreAcquired)
         {
-            logger.LogDebug("Reusing existing graph: {GraphName}", cachedGraphName);
-            await databasePool.CleanDatabaseAsync(cachedGraphName);
-            return cachedStore!.Graph;
+            logger.LogDebug("Waiting for graph acquisition slot...");
+            await globalGraphAcquisitionSemaphore!.WaitAsync();
+            graphAcquisitionSemaphoreAcquired = true;
+            logger.LogDebug("Graph acquisition slot acquired");
         }
 
-        // Release previous graph if we had one
-        if (cachedGraphName != null && graphAcquisitionSemaphoreAcquired)
+        // Getting a new graph (semaphore already acquired above)
+        logger.LogDebug("Requesting new graph from pool");
+        var graphName = await databasePool.RequestDatabaseAsync();
+        logger.LogDebug("Graph {GraphName} ready - semaphore will be held until disposal", graphName);
+        var store = new AgeGraphStore(globalDataSource!, graphName, schemaRegistry, loggerFactory);
+        return store;
+    }
+
+    public async Task ReturnGraphAsync(AgeGraphStore graphStore)
+    {
+        if (databasePool == null)
         {
-            logger.LogDebug("Releasing previous graph {GraphName}", cachedGraphName);
-            await cachedStore!.DisposeAsync();
-            await databasePool.ReleaseDatabaseAsync(cachedGraphName);
-            
-            // Release the old graph's semaphore slot
-            logger.LogDebug("Releasing previous graph acquisition slot");
-            globalGraphAcquisitionSemaphore!.Release();
+            throw new InvalidOperationException("Database pool not initialized");
+        }
+        // For new graphs that won't be reused by this fixture, release them back to the pool
+        logger.LogDebug("Returning new graph {GraphName} to pool", graphStore.GraphName);
+        await databasePool.ReleaseDatabaseAsync(graphStore.GraphName);
+        await graphStore.DisposeAsync();
+        // Release graph acquisition semaphore when we return a new graph
+        if (graphAcquisitionSemaphoreAcquired)
+        {
+            logger.LogDebug("Releasing graph acquisition slot (new graph returned)");
+            if (globalGraphAcquisitionSemaphore is not null && globalGraphAcquisitionSemaphore.CurrentCount < MaxConcurrentFixtures)
+            {
+                globalGraphAcquisitionSemaphore.Release();
+            }
+
             graphAcquisitionSemaphoreAcquired = false;
         }
-
-        // Getting a new graph - acquire and HOLD the semaphore for the graph's lifetime
-        logger.LogDebug("Getting new graph for test - waiting for graph acquisition slot...");
-        await globalGraphAcquisitionSemaphore!.WaitAsync();
-        graphAcquisitionSemaphoreAcquired = true;
-        
-        logger.LogDebug("Graph acquisition slot acquired");
-        cachedGraphName = await databasePool.RequestDatabaseAsync();
-        cachedStore = new AgeGraphStore(globalDataSource!, cachedGraphName, schemaRegistry, loggerFactory);
-        logger.LogDebug("Graph {GraphName} ready - semaphore will be held until disposal", cachedGraphName);
-
-        return cachedStore!.Graph;
     }
 }

@@ -25,20 +25,20 @@ using Cvoya.Graph.Model.Age.Querying.Linq.Providers;
 internal sealed class AgeGraphRelationshipQueryable<TRelationship> :
     AgeGraphQueryableBase<TRelationship>,
     IGraphRelationshipQueryable<TRelationship>,
-    IOrderedGraphRelationshipQueryable<TRelationship>
+    IOrderedGraphRelationshipQueryable<TRelationship>,
+    IOrderedGraphQueryable<TRelationship>
     where TRelationship : IRelationship
 {
-    public AgeGraphRelationshipQueryable(AgeGraphQueryProvider provider, AgeGraphTransaction transaction, AgeGraphContext graphContext)
-        : base(typeof(TRelationship), provider, graphContext, transaction, CreateRootExpression())
+    public AgeGraphRelationshipQueryable(AgeGraphQueryProvider provider, AgeGraphContext graphContext)
+        : base(typeof(TRelationship), provider, graphContext, CreateRootExpression())
     {
     }
 
     public AgeGraphRelationshipQueryable(
         AgeGraphQueryProvider provider,
         AgeGraphContext graphContext,
-        AgeGraphTransaction transaction,
         Expression expression)
-        : base(typeof(TRelationship), provider, graphContext, transaction, expression)
+        : base(typeof(TRelationship), provider, graphContext, expression)
     {
     }
 

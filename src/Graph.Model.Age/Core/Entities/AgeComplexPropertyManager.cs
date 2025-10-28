@@ -165,8 +165,7 @@ internal sealed class AgeComplexPropertyManager
         IReadOnlyDictionary<string, object?> parameters,
         CancellationToken cancellationToken)
     {
-        await using var command = transaction.Connection.CreateCypherCommand(context.GraphName, cypher, new Dictionary<string, object?>(parameters));
-        command.Transaction = transaction.Transaction;
+        await using var command = context.Connection.CreateCypherCommand(context.GraphName, cypher, new Dictionary<string, object?>(parameters));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {

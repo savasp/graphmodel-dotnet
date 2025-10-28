@@ -49,17 +49,28 @@ internal sealed class AgeNodeManager
         GraphDataModel.EnforceGraphConstraintsForNode(node);
 
         var entity = entityFactory.Serialize(node);
-        var labels = entity.ActualLabels.Count > 0 ? entity.ActualLabels : [entity.Label];
+        
+        // For AGE inheritance support: use base type label and store hierarchy in properties
+        var baseLabel = Labels.GetBaseTypeLabel(typeof(TNode));
+        var inheritanceHierarchy = Labels.GetInheritanceHierarchy(typeof(TNode));
+        
         var properties = AgeSerializationBridge.SerializeSimpleProperties(entity);
 
         // Remove Labels from properties - it's handled via the CREATE (n:Label) syntax
         // We'll add it back when reading from AGE since the deserialization layer expects it
         properties.Remove(nameof(INode.Labels));
+        
+        // Add inheritance hierarchy to properties for AGE inheritance support
+        if (inheritanceHierarchy.Length > 1)
+        {
+            properties["inheritance_labels"] = inheritanceHierarchy;
+        }
 
         // Build property assignments for SET clause (AGE requires individual property assignments)
-        var setStatements = properties.Select((kvp, idx) => $"n.{kvp.Key} = $prop{idx}").ToList();
+        // Apply the same property name mapping that we use in queries
+        var setStatements = properties.Select((kvp, idx) => $"n.{MapPropertyNameForAge(kvp.Key)} = $prop{idx}").ToList();
         var cypher = $$"""
-            CREATE (n:{labels})
+            CREATE (n:{{baseLabel}})
             SET {{string.Join(", ", setStatements)}}
             RETURN n
             """;
@@ -72,11 +83,10 @@ internal sealed class AgeNodeManager
             propIndex++;
         }
 
-        var vertex = await ExecuteSingleVertexAsync(transaction, cypher, parameters, labels, cancellationToken).ConfigureAwait(false);
-        await complexPropertyManager.CreateComplexPropertiesAsync(transaction, vertex.Properties[nameof(IEntity.Id)]?.ToString() ?? vertex.Id.Value.ToString(), entity, cancellationToken).ConfigureAwait(false);
+        var vertex = await ExecuteSingleVertexAsync(transaction, cypher, parameters, [baseLabel], cancellationToken).ConfigureAwait(false);
+        await complexPropertyManager.CreateComplexPropertiesAsync(transaction, vertex.Properties[MapPropertyNameForAge(nameof(IEntity.Id))]?.ToString() ?? node.Id, entity, cancellationToken).ConfigureAwait(false);
 
-        // Return the original node object since it already has all properties including complex ones
-        // (similar to Neo4j provider approach)
+        // Return the original node object with our custom ID (not PostgreSQL internal ID)
         return node;
     }
 
@@ -91,11 +101,15 @@ internal sealed class AgeNodeManager
 
         // Remove Labels from properties - it's part of the node structure, not a regular property
         properties.Remove(nameof(INode.Labels));
+        
+        // Remove Id from properties - in AGE, ID is handled by internal AGE IDs, not as a property
+        properties.Remove(nameof(INode.Id));
 
         // Build property assignments for SET clause (AGE requires individual property assignments)
-        var setStatements = properties.Select((kvp, idx) => $"n.{kvp.Key} = $prop{idx}").ToList();
+        // Apply the same property name mapping that we use in queries
+        var setStatements = properties.Select((kvp, idx) => $"n.{MapPropertyNameForAge(kvp.Key)} = $prop{idx}").ToList();
         var cypher = $$"""
-            MATCH (n {Id: $id})
+            MATCH (n {user_id: $id})
             SET {{string.Join(", ", setStatements)}}
             RETURN n
             """;
@@ -140,8 +154,7 @@ internal sealed class AgeNodeManager
             ["id"] = nodeId
         };
 
-        await using var command = transaction.Connection.CreateCypherCommand(context.GraphName, finalCypher, parameters);
-        command.Transaction = transaction.Transaction;
+        await using var command = context.Connection.CreateCypherCommand(context.GraphName, finalCypher, parameters);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -188,8 +201,7 @@ internal sealed class AgeNodeManager
     {
         var finalCypher = labels.Count == 0 ? cypher : cypher.Replace("{labels}", string.Join(":", labels.Select(label => label.Replace("`", "``"))));
         logger.LogDebug("Executing Cypher query: {Cypher}", finalCypher);
-        await using var command = transaction.Connection.CreateCypherCommand(context.GraphName, finalCypher, new Dictionary<string, object?>(parameters));
-        command.Transaction = transaction.Transaction;
+        await using var command = context.Connection.CreateCypherCommand(context.GraphName, finalCypher, new Dictionary<string, object?>(parameters));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -204,5 +216,21 @@ internal sealed class AgeNodeManager
         }
 
         return agtype.GetVertex();
+    }
+
+    /// <summary>
+    /// Maps C# property names to AGE property names.
+    /// </summary>
+    private static string MapPropertyNameForAge(string csharpPropertyName)
+    {
+        return csharpPropertyName switch
+        {
+            // Map C# "Id" property to our prefixed "user_id" field to avoid conflict with PostgreSQL internal "Id"
+            // This ensures we always use our application-controlled IDs, not PostgreSQL internal IDs
+            "Id" => "user_id",
+            
+            // For all other properties, keep the same name
+            _ => csharpPropertyName
+        };
     }
 }

@@ -19,6 +19,7 @@ using System.Threading;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Npgsql.Age;
+using System.Threading.Tasks;
 
 /// <summary>
 /// Manages a pool of AGE graphs in a PostgreSQL database for parallel test execution.
@@ -29,6 +30,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     // -- Singleton instance of the DatabasePoolManager --
     private static Task<DatabasePoolManager>? instanceTask;
     private static readonly Lock initLock = new();
+    private NpgsqlConnection? poolManagerConnection;
 
     public static Task<DatabasePoolManager> GetInstanceAsync(
         NpgsqlDataSource dataSource,
@@ -48,26 +50,26 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         return instanceTask;
     }
 
-    private static Task<DatabasePoolManager> CreateAsync(
+    private static async Task<DatabasePoolManager> CreateAsync(
         NpgsqlDataSource dataSource,
         ILoggerFactory loggerFactory,
         int graphCount)
     {
         var manager = new DatabasePoolManager(dataSource, loggerFactory, graphCount);
-        _ = manager.SetupGraphsAsync(); // don't wait for setup to complete
-        return Task.FromResult(manager);
+        manager.poolManagerConnection = await dataSource.OpenConnectionAsync();
+        await manager.SetupGraphsAsync(); // don't wait for setup to complete
+        return manager;
     }
 
     // -- Instance definition --
 
     private readonly SemaphoreSlim graphsAreAvailableSemaphore;
     private readonly ConcurrentQueue<string> availableGraphs = new();
+    private readonly ConcurrentDictionary<string, bool> dirtyGraphs = new();
 
     private readonly int maxPoolSize;
     private readonly NpgsqlDataSource dataSource;
     private readonly ILogger<DatabasePoolManager> logger;
-
-    private BackgroundWorker worker;
 
     private DatabasePoolManager(
         NpgsqlDataSource dataSource,
@@ -79,20 +81,20 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         this.dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
         this.maxPoolSize = maxPoolSize;
         this.graphsAreAvailableSemaphore = new SemaphoreSlim(0, maxPoolSize);
-        this.worker = new BackgroundWorker(loggerFactory);
     }
 
     public async ValueTask DisposeAsync()
     {
         logger.LogDebug("Disposing DatabasePool");
 
-        await worker.DisposeAsync();
-
         // Drop all graphs
         for (int i = 0; i < maxPoolSize; i++)
         {
             var graphName = GenerateGraphName(i);
             await DropGraphAsync(graphName);
+        }
+        if(poolManagerConnection is not null){
+            await poolManagerConnection.DisposeAsync();
         }
     }
 
@@ -105,6 +107,16 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         if (graphName != null)
         {
             logger.LogDebug("Acquired graph {GraphName} from the pool", graphName);
+
+            // Lazy cleanup: Clean the graph NOW if it's dirty, before the test uses it
+            // This ensures cleanup happens with the test's connection lifecycle, not during test execution
+            if (dirtyGraphs.TryGetValue(graphName, out bool isDirty) && isDirty)
+            {
+                logger.LogDebug("Graph {GraphName} is dirty, cleaning it now before use", graphName);
+                await CleanGraphNowAsync(graphName);
+                dirtyGraphs[graphName] = false;
+            }
+
             return graphName;
         }
         throw new InvalidOperationException("No available graphs in the pool. This should not have happened because of the semaphore.");
@@ -121,28 +133,34 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     }
 
     /// <summary>
-    /// Assumes that the given graph has already been acquired and is considered
-    /// to be in use. Cleans the graph by deleting all nodes and relationships.
+    /// Cleans a graph immediately by deleting all nodes and relationships.
+    /// This is called when a fixture is reusing its own graph between tests.
     /// </summary>
     public async Task CleanDatabaseAsync(string graphName)
     {
         ArgumentNullException.ThrowIfNull(graphName, nameof(graphName));
-        logger.LogDebug("Scheduling cleaning of graph {GraphName}", graphName);
-        await worker.Schedule(async () =>
+        logger.LogDebug("Cleaning graph {GraphName} synchronously for reuse", graphName);
+        await CleanGraphNowAsync(graphName);
+        // Mark as clean after successful cleanup
+        dirtyGraphs[graphName] = false;
+    }
+
+    /// <summary>
+    /// Immediately cleans a graph by deleting all nodes and relationships.
+    /// Called only when a graph is being acquired for use, not during test execution.
+    /// </summary>
+    private async Task CleanGraphNowAsync(string graphName)
+    {
+        ArgumentNullException.ThrowIfNull(poolManagerConnection, nameof(poolManagerConnection));
+        logger.LogDebug("Cleaning graph {GraphName} synchronously", graphName);
+        // Delete all nodes and relationships using Cypher
+        await using (var cmd = poolManagerConnection.CreateCommand())
         {
-            logger.LogDebug("Cleaning graph {GraphName}", graphName);
-            await using var connection = await dataSource.OpenConnectionAsync().ConfigureAwait(false);
-            await ConfigureSessionAsync(connection, graphName).ConfigureAwait(false);
+            cmd.CommandText = $"SELECT * FROM ag_catalog.cypher('{graphName}', $$ MATCH (n) DETACH DELETE n $$) as (a agtype)";
+            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
 
-            // Delete all nodes and relationships using Cypher
-            await using (var cmd = connection.CreateCommand())
-            {
-                cmd.CommandText = $"SELECT * FROM ag_catalog.cypher('{graphName}', $$ MATCH (n) DETACH DELETE n $$) as (a agtype)";
-                await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-            }
-
-            logger.LogDebug("Graph {GraphName} cleaned successfully", graphName);
-        });
+        logger.LogDebug("Graph {GraphName} cleaned successfully", graphName);
     }
 
     private async Task SetupGraphsAsync()
@@ -157,28 +175,21 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             // so that tests don't have to wait until all graphs are created
             // before they can start running. This is because
             // the scheduler queues all workloads.
-            await worker.Schedule(async () =>
-            {
-                logger.LogDebug("Creating graph {GraphName} in the pool", graphName);
-                await CreateOrReplaceGraphAsync(graphName);
-                availableGraphs.Enqueue(graphName);
-                logger.LogDebug("Graph {GraphName} is ready for use", graphName);
-                graphsAreAvailableSemaphore.Release(); // Signal that a graph is available
-            });
+            logger.LogDebug("Creating graph {GraphName} in the pool", graphName);
+            await CreateOrReplaceGraphAsync(graphName);
+            availableGraphs.Enqueue(graphName);
+            logger.LogDebug("Graph {GraphName} is ready for use", graphName);
+            graphsAreAvailableSemaphore.Release(); // Signal that a graph is available
         }
     }
 
     private async Task CreateOrReplaceGraphAsync(string graphName)
     {
+        ArgumentNullException.ThrowIfNull(poolManagerConnection, nameof(poolManagerConnection));
         logger.LogDebug("Creating or replacing graph {GraphName}", graphName);
-        await using var connection = await dataSource.OpenConnectionAsync().ConfigureAwait(false);
-        await ConfigureSessionAsync(connection, graphName).ConfigureAwait(false);
-
         // Drop graph if it already exists (ignore if it does not)
-        await using (var drop = connection.CreateCommand())
+        await using (var drop = poolManagerConnection.DropGraphCommand(graphName))
         {
-            // AGE functions require literal graph names, not parameters
-            drop.CommandText = $"SELECT drop_graph('{graphName}', true)";
             try
             {
                 // drop_graph returns a result set, we need to fully consume it
@@ -196,10 +207,8 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         }
 
         // Create the graph
-        await using (var create = connection.CreateCommand())
+        await using (var create = poolManagerConnection.CreateGraphCommand(graphName))
         {
-            // AGE functions require literal graph names, not parameters
-            create.CommandText = $"SELECT create_graph('{graphName}')";
             // create_graph returns a result set, we need to fully consume it
             await using var reader = await create.ExecuteReaderAsync().ConfigureAwait(false);
             while (await reader.ReadAsync().ConfigureAwait(false))
@@ -213,17 +222,13 @@ public sealed class DatabasePoolManager : IAsyncDisposable
 
     private async Task DropGraphAsync(string graphName)
     {
+        ArgumentNullException.ThrowIfNull(poolManagerConnection, nameof(poolManagerConnection));
         logger.LogDebug("Scheduling drop of graph {GraphName}", graphName);
         try
         {
             logger.LogDebug("Dropping graph {GraphName}", graphName);
-            await using var connection = await dataSource.OpenConnectionAsync().ConfigureAwait(false);
-            await ConfigureSessionAsync(connection, graphName).ConfigureAwait(false);
-
-            await using (var drop = connection.CreateCommand())
+            await using (var drop = poolManagerConnection.DropGraphCommand(graphName))
             {
-                // AGE functions require literal graph names, not parameters
-                drop.CommandText = $"SELECT drop_graph('{graphName}', true)";
                 // drop_graph returns a result set, we need to fully consume it
                 await using var reader = await drop.ExecuteReaderAsync().ConfigureAwait(false);
                 while (await reader.ReadAsync().ConfigureAwait(false))
@@ -238,21 +243,6 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         {
             logger.LogWarning(ex, "Failed to drop graph {GraphName}. It may not exist or is already dropped.", graphName);
             // Ignore errors during cleanup - the graph might not exist
-        }
-    }
-
-    private static async Task ConfigureSessionAsync(NpgsqlConnection connection, string graphName)
-    {
-        await using (var loadCmd = connection.CreateCommand())
-        {
-            loadCmd.CommandText = "LOAD 'age'";
-            await loadCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-
-        await using (var searchPathCmd = connection.CreateCommand())
-        {
-            searchPathCmd.CommandText = "SET search_path = ag_catalog, \"$user\", public";
-            await searchPathCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
     }
 

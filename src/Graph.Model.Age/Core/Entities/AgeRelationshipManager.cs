@@ -57,9 +57,10 @@ internal sealed class AgeRelationshipManager
         var relationshipType = string.Join(":", labels.Select(label => label.Replace("`", "``")));
 
         // Build property assignments for SET clause (AGE requires individual property assignments)
-        var setStatements = properties.Select((kvp, idx) => $"r.{kvp.Key} = $prop{idx}").ToList();
+        // Apply the same property name mapping that we use in queries
+        var setStatements = properties.Select((kvp, idx) => $"r.{MapPropertyNameForAge(kvp.Key)} = $prop{idx}").ToList();
         var cypher = $$"""
-            MATCH (src {Id: $startId}), (tgt {Id: $endId})
+            MATCH (src {user_id: $startId}), (tgt {user_id: $endId})
             CREATE (src)-[r:{{relationshipType}}]->(tgt)
             SET {{string.Join(", ", setStatements)}}
             RETURN r
@@ -98,9 +99,10 @@ internal sealed class AgeRelationshipManager
         // Don't remove StartNodeId and EndNodeId - keep them as properties
 
         // Build property assignments for SET clause (AGE requires individual property assignments)
-        var setStatements = properties.Select((kvp, idx) => $"r.{kvp.Key} = $prop{idx}").ToList();
+        // Apply the same property name mapping that we use in queries
+        var setStatements = properties.Select((kvp, idx) => $"r.{MapPropertyNameForAge(kvp.Key)} = $prop{idx}").ToList();
         var cypher = $$"""
-            MATCH ()-[r {Id: $id}]->()
+            MATCH ()-[r {user_id: $id}]->()
             SET {{string.Join(", ", setStatements)}}
             RETURN r
             """;
@@ -136,8 +138,7 @@ internal sealed class AgeRelationshipManager
             ["id"] = relationshipId
         };
 
-        await using var command = transaction.Connection.CreateCypherCommand(context.GraphName, cypher, parameters);
-        command.Transaction = transaction.Transaction;
+        await using var command = context.Connection.CreateCypherCommand(context.GraphName, cypher, parameters);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -179,8 +180,7 @@ internal sealed class AgeRelationshipManager
     {
         var finalCypher = relationshipType is null ? cypher : cypher.Replace("{relationshipType}", relationshipType);
 
-        await using var command = transaction.Connection.CreateCypherCommand(context.GraphName, finalCypher, new Dictionary<string, object?>(parameters));
-        command.Transaction = transaction.Transaction;
+        await using var command = context.Connection.CreateCypherCommand(context.GraphName, finalCypher, new Dictionary<string, object?>(parameters));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -195,5 +195,21 @@ internal sealed class AgeRelationshipManager
         }
 
         return agtype.GetEdge();
+    }
+
+    /// <summary>
+    /// Maps C# property names to AGE property names.
+    /// </summary>
+    private static string MapPropertyNameForAge(string csharpPropertyName)
+    {
+        return csharpPropertyName switch
+        {
+            // Map C# "Id" property to our prefixed "user_id" field to avoid conflict with PostgreSQL internal "Id"
+            // This ensures we always use our application-controlled IDs, not PostgreSQL internal IDs
+            "Id" => "user_id",
+            
+            // For all other properties, keep the same name
+            _ => csharpPropertyName
+        };
     }
 }

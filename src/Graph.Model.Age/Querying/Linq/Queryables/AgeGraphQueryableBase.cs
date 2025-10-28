@@ -22,19 +22,17 @@ using Cvoya.Graph.Model.Age.Querying.Linq.Providers;
 /// <summary>
 /// Base class for AGE graph queryables.
 /// </summary>
-internal abstract class AgeGraphQueryableBase<TElement> : IGraphQueryable<TElement>
+internal abstract class AgeGraphQueryableBase<TElement> : IGraphQueryable<TElement>, IAsyncDisposable, IDisposable
 {
     protected AgeGraphQueryableBase(
         Type elementType,
         AgeGraphQueryProvider provider,
         AgeGraphContext graphContext,
-        AgeGraphTransaction transaction,
         Expression expression)
     {
         ElementType = elementType ?? throw new ArgumentNullException(nameof(elementType));
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
         GraphContext = graphContext ?? throw new ArgumentNullException(nameof(graphContext));
-        Transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
         Expression = expression ?? throw new ArgumentNullException(nameof(expression));
     }
 
@@ -47,8 +45,6 @@ internal abstract class AgeGraphQueryableBase<TElement> : IGraphQueryable<TEleme
     public IGraph Graph => GraphContext.Graph;
 
     protected AgeGraphContext GraphContext { get; }
-
-    protected AgeGraphTransaction Transaction { get; }
 
     IQueryProvider IQueryable.Provider => Provider;
 
@@ -65,6 +61,16 @@ internal abstract class AgeGraphQueryableBase<TElement> : IGraphQueryable<TEleme
     public IAsyncEnumerator<TElement> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
         return new AsyncEnumerator(this, cancellationToken);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await ((AgeGraphQueryProvider)Provider).DisposeAsync();
+    }
+
+    public void Dispose()
+    {
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     private sealed class AsyncEnumerator : IAsyncEnumerator<TElement>

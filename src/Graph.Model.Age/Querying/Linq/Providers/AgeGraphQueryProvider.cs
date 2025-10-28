@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Age.Querying.Linq.Providers;
 
 using System.Linq.Expressions;
+using System.Transactions;
 using Cvoya.Graph.Model.Age.Core;
 using Cvoya.Graph.Model.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.Model.Age.Querying.Linq.Queryables;
@@ -24,17 +25,17 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// <summary>
 /// Provides LINQ query execution capabilities for AGE graph operations.
 /// </summary>
-internal sealed class AgeGraphQueryProvider : IGraphQueryProvider
+internal sealed class AgeGraphQueryProvider : IGraphQueryProvider, IAsyncDisposable
 {
     private readonly AgeGraphContext _graphContext;
-    private readonly AgeGraphTransaction _transaction;
+    private readonly AgeGraphTransaction? _transaction;
     private readonly ILogger<AgeGraphQueryProvider> _logger;
     private readonly AgeCypherEngine _cypherEngine;
 
-    public AgeGraphQueryProvider(AgeGraphContext context, AgeGraphTransaction transaction)
+    public AgeGraphQueryProvider(AgeGraphContext context, AgeGraphTransaction? transaction = null)
     {
         _graphContext = context ?? throw new ArgumentNullException(nameof(context));
-        _transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
+        _transaction = transaction;
         _logger = context.LoggerFactory?.CreateLogger<AgeGraphQueryProvider>() ?? NullLogger<AgeGraphQueryProvider>.Instance;
         _cypherEngine = new AgeCypherEngine(context, context.LoggerFactory);
     }
@@ -74,7 +75,6 @@ internal sealed class AgeGraphQueryProvider : IGraphQueryProvider
                 nodeQueryableType,
                 this,
                 _graphContext,
-                _transaction,
                 expression)!;
         }
 
@@ -85,12 +85,11 @@ internal sealed class AgeGraphQueryProvider : IGraphQueryProvider
                 relQueryableType,
                 this,
                 _graphContext,
-                _transaction,
                 expression)!;
         }
 
         // For other types (projections, anonymous types, etc.)
-        return new AgeGraphQueryable<TElement>(this, _graphContext, _transaction, expression);
+        return new AgeGraphQueryable<TElement>(this, _graphContext, expression);
     }
 
     public object? Execute(Expression expression)
@@ -186,5 +185,13 @@ internal sealed class AgeGraphQueryProvider : IGraphQueryProvider
             return FindIEnumerable(seqType.BaseType);
 
         return null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if(_transaction is not null){
+            await _transaction.DisposeAsync();
+        }
+        
     }
 }

@@ -29,6 +29,8 @@ public sealed class AgeGraphStore : IAsyncDisposable
     private readonly bool ownsDataSource;
     private readonly string graphName;
     private readonly SchemaRegistry schemaRegistry;
+    private readonly ILoggerFactory loggerFactory;
+    private readonly Task<AgeGraph> graphInitTask;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AgeGraphStore"/> class.
@@ -56,9 +58,10 @@ public sealed class AgeGraphStore : IAsyncDisposable
 
         this.graphName = graphName;
         this.schemaRegistry = schemaRegistry ?? new SchemaRegistry();
-        var effectiveLoggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
+        this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
 
-        Graph = new AgeGraph(this, this.graphName, this.schemaRegistry, effectiveLoggerFactory);
+        // Initialize the graph asynchronously
+        graphInitTask = InitializeGraphAsync();
     }
 
     /// <summary>
@@ -80,21 +83,24 @@ public sealed class AgeGraphStore : IAsyncDisposable
         this.dataSource = dataSource;
         this.graphName = graphName;
         this.schemaRegistry = schemaRegistry ?? new SchemaRegistry();
+        this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         ownsDataSource = false;
 
-        var effectiveLoggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
-        Graph = new AgeGraph(this, this.graphName, this.schemaRegistry, effectiveLoggerFactory);
+        // Initialize the graph asynchronously
+        graphInitTask = InitializeGraphAsync();
     }
 
     /// <summary>
     /// Gets the graph abstraction for the configured AGE data source.
+    /// This property will wait for the connection to be established and configured.
     /// </summary>
-    public IGraph Graph { get; }
+    public IGraph Graph => graphInitTask.GetAwaiter().GetResult();
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        await Graph.DisposeAsync().ConfigureAwait(false);
+        var graph = await graphInitTask.ConfigureAwait(false);
+        await graph.DisposeAsync().ConfigureAwait(false);
 
         if (ownsDataSource)
         {
@@ -107,4 +113,42 @@ public sealed class AgeGraphStore : IAsyncDisposable
     internal string GraphName => graphName;
 
     internal SchemaRegistry SchemaRegistry => schemaRegistry;
+
+    private async Task<AgeGraph> InitializeGraphAsync()
+    {
+        // Open a connection
+        var connection = await dataSource.OpenConnectionAsync().ConfigureAwait(false);
+
+        try
+        {
+            // Configure the connection for AGE
+            await ConfigureConnectionAsync(connection).ConfigureAwait(false);
+
+            // Create the graph instance with the open, configured connection
+            return new AgeGraph(connection, graphName, schemaRegistry, loggerFactory);
+        }
+        catch
+        {
+            // If initialization fails, dispose the connection
+            await connection.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private static async Task ConfigureConnectionAsync(NpgsqlConnection connection)
+    {
+        // Load AGE extension
+        await using (var loadCmd = connection.CreateCommand())
+        {
+            loadCmd.CommandText = "LOAD 'age'";
+            await loadCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        // Set search path
+        await using (var searchPathCmd = connection.CreateCommand())
+        {
+            searchPathCmd.CommandText = "SET search_path = ag_catalog, \"$user\", public";
+            await searchPathCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+    }
 }

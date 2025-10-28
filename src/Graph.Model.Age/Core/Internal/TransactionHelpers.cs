@@ -25,9 +25,10 @@ internal static class TransactionHelpers
         IGraphTransaction? transaction,
         Func<AgeGraphTransaction, Task<T>> function,
         string errorMessage,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        bool isReadOnly = false)
     {
-        var ageTransaction = await GetOrCreateTransactionAsync(graphContext, transaction).ConfigureAwait(false);
+        var ageTransaction = await GetOrCreateTransactionAsync(graphContext, transaction, isReadOnly).ConfigureAwait(false);
 
         try
         {
@@ -79,6 +80,11 @@ internal static class TransactionHelpers
         if (isReadOnly && !ageGraphTransaction.IsReadOnly)
         {
             throw new GraphException("A write transaction cannot be reused as read-only.");
+        }
+
+        if (!isReadOnly && ageGraphTransaction.IsReadOnly)
+        {
+            throw new GraphException("A read-only transaction cannot be reused for write operations. PostgreSQL does not allow changing transaction mode after it has started.");
         }
 
         return ageGraphTransaction;

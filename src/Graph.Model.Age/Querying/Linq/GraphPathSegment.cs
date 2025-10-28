@@ -14,20 +14,15 @@
 
 namespace Cvoya.Graph.Model.Age.Querying.Linq.Queryables;
 
-using System.Linq.Expressions;
-using Cvoya.Graph.Model.Age.Core;
-using Cvoya.Graph.Model.Age.Querying.Linq.Providers;
-
-/// <summary>
-/// Generic queryable for AGE graph operations.
-/// </summary>
-internal sealed class AgeGraphQueryable<TElement> : AgeGraphQueryableBase<TElement>, IOrderedGraphQueryable<TElement>
+internal record GraphPathSegment<TSource, TRel, TTarget>(
+    TSource StartNode,
+    TRel Relationship,
+    TTarget EndNode) : IGraphPathSegment<TSource, TRel, TTarget>
+    where TSource : INode
+    where TRel : IRelationship
+    where TTarget : INode
 {
-    public AgeGraphQueryable(
-        AgeGraphQueryProvider provider,
-        AgeGraphContext graphContext,
-        Expression expression)
-        : base(typeof(TElement), provider, graphContext, expression)
-    {
-    }
+    INode IGraphPathSegment.StartNode => StartNode;
+    INode IGraphPathSegment.EndNode => EndNode;
+    IRelationship IGraphPathSegment.Relationship => Relationship;
 }

@@ -301,4 +301,104 @@ public static class Labels
 
         return labels;
     }
+
+    /// <summary>
+    /// Gets all labels that should be applied to a node of the given type, including inheritance hierarchy.
+    /// This includes the type's own label and all base type labels (for inheritance support).
+    /// </summary>
+    /// <param name="nodeType">The actual type of the node being created</param>
+    /// <returns>A list of labels that should be applied to the node</returns>
+    public static List<string> GetInheritanceLabels(Type nodeType)
+    {
+        ArgumentNullException.ThrowIfNull(nodeType);
+
+        var labels = new List<string>();
+
+        // Start with the most derived type (the actual type)
+        labels.Add(GetLabelFromType(nodeType));
+
+        // Walk up the inheritance hierarchy and add base type labels
+        var currentType = nodeType.BaseType;
+        while (currentType != null && currentType != typeof(object))
+        {
+            // Only include types that implement INode or IRelationship
+            if (currentType.IsAssignableTo(typeof(INode)) || currentType.IsAssignableTo(typeof(IRelationship)))
+            {
+                var baseLabel = GetLabelFromType(currentType);
+                if (!labels.Contains(baseLabel))
+                {
+                    labels.Add(baseLabel);
+                }
+            }
+            currentType = currentType.BaseType;
+        }
+
+        return labels;
+    }
+
+    /// <summary>
+    /// Gets the base type label for AGE inheritance support.
+    /// In AGE, we store nodes with the most base type label and use properties for derived types.
+    /// The base type is the first concrete (non-abstract) type that implements INode or IRelationship.
+    /// </summary>
+    /// <param name="type">The .NET type</param>
+    /// <returns>The base type label for this inheritance hierarchy</returns>
+    public static string GetBaseTypeLabel(Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+
+        // Find the first concrete (non-abstract) type that implements INode or IRelationship
+        Type? baseType = null;
+        Type? currentType = type;
+
+        while (currentType != null && currentType != typeof(object))
+        {
+            // Check if this type implements INode or IRelationship and is concrete (not abstract, not interface)
+            if ((typeof(INode).IsAssignableFrom(currentType) || typeof(IRelationship).IsAssignableFrom(currentType)) 
+                && !currentType.IsAbstract 
+                && !currentType.IsInterface)
+            {
+                baseType = currentType;
+            }
+            currentType = currentType.BaseType;
+        }
+
+        // If we found a base type, get its label
+        if (baseType != null)
+        {
+            return GetLabelFromType(baseType);
+        }
+
+        // Fall back to the original type's label
+        return GetLabelFromType(type);
+    }
+
+    /// <summary>
+    /// Gets the inheritance hierarchy as an ordered array for AGE property storage.
+    /// Returns labels from most derived down to the first concrete (non-abstract) type that implements INode/IRelationship.
+    /// </summary>
+    /// <param name="type">The .NET type</param>
+    /// <returns>Array of labels representing the inheritance hierarchy</returns>
+    public static string[] GetInheritanceHierarchy(Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+
+        var hierarchy = new List<string>();
+        Type? currentType = type;
+
+        // Build hierarchy from most derived down to the first concrete type
+        while (currentType != null && currentType != typeof(object))
+        {
+            // Include all concrete types that implement INode or IRelationship
+            if ((typeof(INode).IsAssignableFrom(currentType) || typeof(IRelationship).IsAssignableFrom(currentType)) 
+                && !currentType.IsAbstract 
+                && !currentType.IsInterface)
+            {
+                hierarchy.Add(GetLabelFromType(currentType));
+            }
+            currentType = currentType.BaseType;
+        }
+
+        return hierarchy.ToArray();
+    }
 }

@@ -23,25 +23,26 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 
 /// <summary>
-/// Central coordination point for Apache AGE services. The surface will expand as providers for schema, entities, and queries come online.
+/// Central coordination point for Apache AGE services. Works with a single active connection.
+/// The surface will expand as providers for schema, entities, and queries come online.
 /// </summary>
 internal sealed class AgeGraphContext
 {
     public AgeGraphContext(
         AgeGraph graph,
-        NpgsqlDataSource dataSource,
+        NpgsqlConnection connection,
         string graphName,
         SchemaRegistry schemaRegistry,
         ILoggerFactory loggerFactory)
     {
         ArgumentNullException.ThrowIfNull(graph);
-        ArgumentNullException.ThrowIfNull(dataSource);
+        ArgumentNullException.ThrowIfNull(connection);
         ArgumentException.ThrowIfNullOrWhiteSpace(graphName);
         ArgumentNullException.ThrowIfNull(schemaRegistry);
         ArgumentNullException.ThrowIfNull(loggerFactory);
 
         Graph = graph;
-        DataSource = dataSource;
+        Connection = connection;
         GraphName = graphName;
         SchemaRegistry = schemaRegistry;
         LoggerFactory = loggerFactory;
@@ -51,7 +52,7 @@ internal sealed class AgeGraphContext
 
     internal AgeGraph Graph { get; }
 
-    internal NpgsqlDataSource DataSource { get; }
+    internal NpgsqlConnection Connection { get; }
 
     internal string GraphName { get; }
 

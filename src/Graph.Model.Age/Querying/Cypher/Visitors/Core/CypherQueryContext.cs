@@ -15,12 +15,11 @@
 namespace Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
 
 using Cvoya.Graph.Model.Age.Querying.Cypher.Builders;
-using Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Aggregates the state and builder dependencies required to translate LINQ expressions into AGE Cypher queries.
-/// Mirrors the Neo4j provider's context so shared visitors can remain provider-agnostic.
+/// Uses AGE-specific builder to avoid Neo4j syntax generation.
 /// </summary>
 internal sealed record CypherQueryContext
 {
@@ -33,7 +32,7 @@ internal sealed record CypherQueryContext
 
     public CypherQueryScope Scope { get; }
 
-    public CypherQueryBuilder Builder { get; }
+    public AgeCypherQueryBuilder Builder { get; }
 
     public ILoggerFactory? LoggerFactory { get; }
 

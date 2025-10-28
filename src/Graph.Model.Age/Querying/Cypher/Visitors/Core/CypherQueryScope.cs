@@ -45,6 +45,16 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
 
     public string? GroupByExpression { get; private set; }
 
+    /// <summary>
+    /// Current hop number for multi-hop traversal (0, 1, 2, ...)
+    /// </summary>
+    public int CurrentHop { get; private set; } = 0;
+
+    /// <summary>
+    /// Maximum hop reached (used for generating final aliases)
+    /// </summary>
+    public int MaxHop { get; private set; } = 0;
+
     public void SetTraversalDepth(int minDepth, int maxDepth)
     {
         TraversalMinDepth = minDepth;
@@ -112,6 +122,31 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
 
     public bool IsInPathSegmentContext()
         => IsPathSegmentContext;
+
+    /// <summary>
+    /// Advances to the next hop in multi-hop traversal
+    /// </summary>
+    public void AdvanceHop()
+    {
+        CurrentHop++;
+        MaxHop = Math.Max(MaxHop, CurrentHop);
+    }
+
+    /// <summary>
+    /// Gets numbered alias for multi-hop traversal (e.g., "src0", "r1", "tgt2")
+    /// </summary>
+    public string GetNumberedAlias(string baseAlias)
+    {
+        return $"{baseAlias}{CurrentHop}";
+    }
+
+    /// <summary>
+    /// Gets numbered alias for a specific hop (useful for WHERE clause positioning)
+    /// </summary>
+    public string GetNumberedAliasForHop(string baseAlias, int hopNumber)
+    {
+        return $"{baseAlias}{hopNumber}";
+    }
 
     private static string GenerateAlias(Type type)
     {

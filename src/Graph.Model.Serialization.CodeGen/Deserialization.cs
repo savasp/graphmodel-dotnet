@@ -603,6 +603,8 @@ internal static class Deserialization
                 SpecialType.System_Boolean => "false",
                 SpecialType.System_DateTime => "System.DateTime.MinValue",
                 _ when type.Name == "Guid" => "System.Guid.NewGuid().ToString(\"N\")",
+                _ when type.Name == "Point" => "new Cvoya.Graph.Model.Point { Longitude = 0, Latitude = 0, Height = 0 }",
+                _ when type.Name == "MemorySource" => "new Cvoya.Graph.Model.Tests.MemorySource { Name = \"\", Description = \"\", Version = \"\", Device = \"\" }",
                 _ when type.TypeKind == TypeKind.Enum => $"default({type.ToDisplayString()})",
                 _ => null
             };

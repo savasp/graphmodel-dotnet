@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Age.Querying.Linq.Queryables;
 
 using System.Collections;
 using System.Linq.Expressions;
+using System.Threading.Tasks;
 using Cvoya.Graph.Model.Age.Core;
 using Cvoya.Graph.Model.Age.Querying.Linq.Providers;
 
@@ -25,20 +26,20 @@ using Cvoya.Graph.Model.Age.Querying.Linq.Providers;
 internal sealed class AgeGraphNodeQueryable<TNode> :
     AgeGraphQueryableBase<TNode>,
     IGraphNodeQueryable<TNode>,
-    IOrderedGraphNodeQueryable<TNode>
+    IOrderedGraphNodeQueryable<TNode>,
+    IOrderedGraphQueryable<TNode>
     where TNode : INode
 {
-    public AgeGraphNodeQueryable(AgeGraphQueryProvider provider, AgeGraphTransaction transaction, AgeGraphContext graphContext)
-        : base(typeof(TNode), provider, graphContext, transaction, CreateRootExpression())
+    public AgeGraphNodeQueryable(AgeGraphQueryProvider provider, AgeGraphContext graphContext)
+        : base(typeof(TNode), provider, graphContext, CreateRootExpression())
     {
     }
 
     public AgeGraphNodeQueryable(
         AgeGraphQueryProvider provider,
         AgeGraphContext graphContext,
-        AgeGraphTransaction transaction,
         Expression expression)
-        : base(typeof(TNode), provider, graphContext, transaction, expression)
+        : base(typeof(TNode), provider, graphContext, expression)
     {
     }
 
