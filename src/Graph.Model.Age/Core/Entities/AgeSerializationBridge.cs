@@ -56,6 +56,95 @@ internal static class AgeSerializationBridge
         return properties;
     }
 
+    /// <summary>
+    /// Serializes ALL properties (simple + complex) into a flattened dictionary for native AGE storage.
+    /// This leverages AGE's native JSON support for complex objects instead of creating separate nodes.
+    /// </summary>
+    public static Dictionary<string, object?> SerializeAllProperties(EntityInfo entity)
+    {
+        var properties = new Dictionary<string, object?>(StringComparer.Ordinal);
+
+        // Add simple properties first
+        foreach (var (name, property) in entity.SimpleProperties)
+        {
+            switch (property.Value)
+            {
+                case SimpleValue simple:
+                    properties[name] = ToAgeValue(simple.Object);
+                    break;
+                case SimpleCollection collection:
+                    properties[name] = collection.Values.Select(v => ToAgeValue(v.Object)).ToList();
+                    break;
+            }
+        }
+
+        // Add complex properties as nested JSON objects - this is AGE's native approach
+        foreach (var (name, property) in entity.ComplexProperties)
+        {
+            properties[name] = SerializeComplexProperty(property);
+        }
+
+        // Ensure ID is present
+        if (!properties.ContainsKey(nameof(IEntity.Id)))
+        {
+            properties[nameof(IEntity.Id)] = entity.SimpleProperties.TryGetValue(nameof(IEntity.Id), out var idProp) && idProp.Value is SimpleValue idValue
+                ? ToAgeValue(idValue.Object)
+                : null;
+        }
+
+        // Add labels for graph structure
+        if (entity.ActualLabels.Count > 0)
+        {
+            properties[nameof(INode.Labels)] = entity.ActualLabels;
+        }
+
+        return properties;
+    }
+
+    /// <summary>
+    /// Serializes a complex property (EntityInfo or EntityCollection) into a JSON-compatible format for AGE.
+    /// </summary>
+    private static object? SerializeComplexProperty(Property property)
+    {
+        return property.Value switch
+        {
+            null => null,
+            EntityInfo entityInfo => SerializeEntityInfoToJson(entityInfo),
+            EntityCollection collection => collection.Entities.Select(SerializeEntityInfoToJson).ToList(),
+            _ => throw new NotSupportedException($"Unsupported complex property type: {property.Value.GetType()}")
+        };
+    }
+
+    /// <summary>
+    /// Converts an EntityInfo into a JSON-compatible dictionary that AGE can store natively.
+    /// </summary>
+    private static Dictionary<string, object?> SerializeEntityInfoToJson(EntityInfo entityInfo)
+    {
+        var json = new Dictionary<string, object?>(StringComparer.Ordinal);
+
+        // Add simple properties
+        foreach (var (name, property) in entityInfo.SimpleProperties)
+        {
+            switch (property.Value)
+            {
+                case SimpleValue simple:
+                    json[name] = ToAgeValue(simple.Object);
+                    break;
+                case SimpleCollection collection:
+                    json[name] = collection.Values.Select(v => ToAgeValue(v.Object)).ToList();
+                    break;
+            }
+        }
+
+        // Recursively add nested complex properties 
+        foreach (var (name, property) in entityInfo.ComplexProperties)
+        {
+            json[name] = SerializeComplexProperty(property);
+        }
+
+        return json;
+    }
+
     public static object? ToAgeValue(object? value)
     {
         if (value is null)
@@ -133,6 +222,40 @@ internal static class AgeSerializationBridge
         // But be conservative - only convert if we're confident it's that type
         if (value is string str)
         {
+            // If we have a target type, try to convert string to that numeric type
+            // This is especially important for aggregation results which AGE returns as strings
+            if (targetType != null)
+            {
+                var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+                
+                // Handle numeric type conversions for strings
+                if (underlyingType == typeof(decimal))
+                {
+                    if (decimal.TryParse(str, NumberStyles.Float, CultureInfo.InvariantCulture, out var decimalValue))
+                        return decimalValue;
+                }
+                else if (underlyingType == typeof(float))
+                {
+                    if (float.TryParse(str, NumberStyles.Float, CultureInfo.InvariantCulture, out var floatValue))
+                        return floatValue;
+                }
+                else if (underlyingType == typeof(double))
+                {
+                    if (double.TryParse(str, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
+                        return doubleValue;
+                }
+                else if (underlyingType == typeof(long))
+                {
+                    if (long.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out var longValue))
+                        return longValue;
+                }
+                else if (underlyingType == typeof(int))
+                {
+                    if (int.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
+                        return intValue;
+                }
+            }
+            
             // Try parsing as DateTime (ISO 8601 format with 'T' separator - very specific format)
             if (str.Contains('T') && str.Contains('-') && 
                 DateTime.TryParse(str, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dateTime))

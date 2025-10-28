@@ -127,7 +127,7 @@ internal sealed class AgeRelationshipManager
         ArgumentException.ThrowIfNullOrWhiteSpace(relationshipId);
 
         var cypher = """
-            MATCH ()-[r {Id: $id}]->()
+            MATCH ()-[r {user_id: $id}]->()
             WITH r, 1 AS found
             DELETE r
             RETURN found
@@ -156,8 +156,9 @@ internal sealed class AgeRelationshipManager
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
 
+        // Use the same property mapping as in creation - Id maps to user_id
         var cypher = """
-            MATCH ()-[r {Id: $id}]->()
+            MATCH ()-[r {user_id: $id}]->()
             RETURN r
             """;
 

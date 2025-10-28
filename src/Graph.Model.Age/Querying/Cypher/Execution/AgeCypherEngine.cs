@@ -37,6 +37,13 @@ internal sealed class AgeCypherEngine
     private readonly ILoggerFactory? _loggerFactory;
     private readonly EntityFactory _entityFactory;
     private readonly AgeEntityMapper _entityMapper;
+    
+    // New shared architecture components
+    private readonly AgeResultProcessor _ageResultProcessor;
+    private readonly ResultMaterializer<AgeValueConverter> _sharedMaterializer;
+    
+    // Feature flag for gradual migration
+    private readonly bool _useSharedMaterialization = true; // Enable new architecture for BasicTests analysis
 
     public AgeCypherEngine(AgeGraphContext graphContext, ILoggerFactory? loggerFactory)
     {
@@ -45,6 +52,11 @@ internal sealed class AgeCypherEngine
         _logger = loggerFactory?.CreateLogger<AgeCypherEngine>() ?? NullLogger<AgeCypherEngine>.Instance;
         _entityFactory = new EntityFactory(loggerFactory);
         _entityMapper = new AgeEntityMapper(_entityFactory, loggerFactory);
+        
+        // Initialize shared architecture components
+        _ageResultProcessor = new AgeResultProcessor(_entityFactory, _entityMapper, loggerFactory);
+        var ageValueConverter = new AgeValueConverter();
+        _sharedMaterializer = new ResultMaterializer<AgeValueConverter>(_entityFactory, ageValueConverter, loggerFactory);
     }
 
     public async Task<T?> ExecuteAsync<T>(
@@ -56,8 +68,13 @@ internal sealed class AgeCypherEngine
         {
             _logger.LogDebug("Executing query for type {Type}", typeof(T).Name);
 
+            // Detect if this is an aggregation operation
+            var aggregationOp = DetectAggregationType(expression);
+            var isAggregation = aggregationOp != null;
+            
             // Extract the element type from the expression
-            var elementType = ExtractElementType(typeof(T), expression);
+            // For aggregation operations, use the result type T instead of the source element type
+            var elementType = isAggregation ? typeof(T) : ExtractElementType(typeof(T), expression);
 
             // Detect if we have a projection
             var (hasProjection, projectionExpression, sourceElementType) = DetectProjection(expression);
@@ -67,13 +84,35 @@ internal sealed class AgeCypherEngine
 
             _logger.LogDebug("Generated Cypher: {Cypher}", cypher);
 
-            // Execute the query - pass projection info if available
-            var results = await ExecuteQueryAsync(
-                cypher, 
-                parameters, 
-                hasProjection ? sourceElementType : elementType, 
-                transaction, 
-                cancellationToken,
+            // Use shared architecture if enabled
+            if (_useSharedMaterialization)
+            {
+                var result = await ExecuteQueryWithSharedArchitecture<T>(
+                    cypher, parameters, hasProjection ? sourceElementType : elementType, transaction, cancellationToken,
+                    hasProjection ? projectionExpression : null,
+                    hasProjection ? elementType : null, aggregationOp);
+
+                // Check for Single operation - should throw if more than one result
+                var aggregation = DetectAggregationType(expression);
+                if (aggregation == "Single" && result is System.Collections.IEnumerable enumerable)
+                {
+                    var count = 0;
+                    foreach (var _ in enumerable)
+                    {
+                        count++;
+                        if (count > 1)
+                        {
+                            throw new InvalidOperationException("Sequence contains more than one element");
+                        }
+                    }
+                }
+
+                return result;
+            }
+
+            // Fallback to legacy materialization logic
+            var results = await ExecuteQueryLegacy(
+                cypher, parameters, hasProjection ? sourceElementType : elementType, transaction, cancellationToken,
                 hasProjection ? projectionExpression : null,
                 hasProjection ? elementType : null);
 
@@ -918,7 +957,42 @@ internal sealed class AgeCypherEngine
         return defaultVisitor.VisitAndReturnCypher(body);
     }
 
-    private async Task<List<object>> ExecuteQueryAsync(
+
+    private async Task<T?> ExecuteQueryWithSharedArchitecture<T>(
+        string cypher,
+        Dictionary<string, object?> parameters,
+        Type elementType,
+        AgeGraphTransaction? transaction,
+        CancellationToken cancellationToken,
+        LambdaExpression? projectionExpression = null,
+        Type? projectionResultType = null,
+        string? aggregationType = null)
+    {
+        // Build the command - use custom column definitions for projections
+        NpgsqlCommand command;
+        if (projectionExpression != null)
+        {
+            // Extract column names from the projection expression
+            var columnDefs = BuildColumnDefinitions(projectionExpression);
+            command = CreateCypherCommandWithColumns(_graphContext.Connection, _graphContext.GraphName, cypher, parameters, columnDefs);
+        }
+        else
+        {
+            command = _graphContext.Connection.CreateCypherCommand(_graphContext.GraphName, cypher, parameters);
+        }
+
+        command.Transaction = transaction?.Transaction;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+        // Use AgeResultProcessor to convert raw results to EntityInfo structures
+        var entityInfos = await _ageResultProcessor.ProcessAsync(
+            reader, elementType, cancellationToken, projectionExpression, projectionResultType, aggregationType);
+
+        // Use shared ResultMaterializer to convert EntityInfo to final objects
+        return await _sharedMaterializer.MaterializeAsync<T>(entityInfos, cancellationToken);
+    }
+
+    private async Task<List<object>> ExecuteQueryLegacy(
         string cypher,
         Dictionary<string, object?> parameters,
         Type elementType,
@@ -931,7 +1005,6 @@ internal sealed class AgeCypherEngine
         var hasProjection = projectionExpression != null;
         var complexProps = GetComplexProperties(elementType);
         var hasComplexProps = complexProps.Count > 0;
-        _logger.LogDebug("Executing Cypher query against AGE: {Cypher}", cypher);
         
         // Build the command - use custom column definitions for projections
         NpgsqlCommand command;

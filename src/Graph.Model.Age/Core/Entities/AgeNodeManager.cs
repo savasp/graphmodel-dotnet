@@ -54,7 +54,9 @@ internal sealed class AgeNodeManager
         var baseLabel = Labels.GetBaseTypeLabel(typeof(TNode));
         var inheritanceHierarchy = Labels.GetInheritanceHierarchy(typeof(TNode));
         
-        var properties = AgeSerializationBridge.SerializeSimpleProperties(entity);
+        // Use AGE's native approach: flatten ALL properties (simple + complex) directly on the main node
+        // This leverages AGE's native JSON support for complex objects instead of creating separate nodes
+        var properties = AgeSerializationBridge.SerializeAllProperties(entity);
 
         // Remove Labels from properties - it's handled via the CREATE (n:Label) syntax
         // We'll add it back when reading from AGE since the deserialization layer expects it
@@ -84,7 +86,8 @@ internal sealed class AgeNodeManager
         }
 
         var vertex = await ExecuteSingleVertexAsync(transaction, cypher, parameters, [baseLabel], cancellationToken).ConfigureAwait(false);
-        await complexPropertyManager.CreateComplexPropertiesAsync(transaction, vertex.Properties[MapPropertyNameForAge(nameof(IEntity.Id))]?.ToString() ?? node.Id, entity, cancellationToken).ConfigureAwait(false);
+        
+        // No longer creating separate complex property nodes/relationships - all data is in the main node!
 
         // Return the original node object with our custom ID (not PostgreSQL internal ID)
         return node;
@@ -97,7 +100,9 @@ internal sealed class AgeNodeManager
         GraphDataModel.EnforceGraphConstraintsForNode(node);
 
         var entity = entityFactory.Serialize(node);
-        var properties = AgeSerializationBridge.SerializeSimpleProperties(entity);
+        
+        // Use AGE's native approach: flatten ALL properties (simple + complex) directly on the main node
+        var properties = AgeSerializationBridge.SerializeAllProperties(entity);
 
         // Remove Labels from properties - it's part of the node structure, not a regular property
         properties.Remove(nameof(INode.Labels));
@@ -126,7 +131,8 @@ internal sealed class AgeNodeManager
         }
 
         var vertex = await ExecuteSingleVertexAsync(transaction, cypher, parameters, [], cancellationToken).ConfigureAwait(false);
-        await complexPropertyManager.UpdateComplexPropertiesAsync(transaction, vertex.Id.Value.ToString(), entity, cancellationToken).ConfigureAwait(false);
+        
+        // No longer updating separate complex property nodes/relationships - all data is in the main node!
         return true;
     }
 
@@ -136,13 +142,13 @@ internal sealed class AgeNodeManager
 
         var finalCypher = cascadeDelete
             ? """
-                MATCH (n {Id: $id})
+                MATCH (n {user_id: $id})
                 WITH n, 1 AS found
                 DETACH DELETE n
                 RETURN found
                 """
             : """
-                MATCH (n {Id: $id})
+                MATCH (n {user_id: $id})
                 WHERE NOT EXISTS((n)--())
                 WITH n, 1 AS found
                 DETACH DELETE n
@@ -153,7 +159,7 @@ internal sealed class AgeNodeManager
         {
             ["id"] = nodeId
         };
-
+        logger.LogDebug("Executing Cypher query: {Cypher}", finalCypher);
         await using var command = context.Connection.CreateCypherCommand(context.GraphName, finalCypher, parameters);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))

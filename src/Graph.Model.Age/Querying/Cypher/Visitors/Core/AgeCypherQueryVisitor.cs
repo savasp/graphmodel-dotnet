@@ -626,6 +626,14 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
 
         _logger.LogDebug("Processing ORDER BY clause, descending: {Descending}", descending);
 
+        // Check if we have aggregation in RETURN clause - ORDER BY is not allowed with aggregation without GROUP BY
+        if (_context.Builder.HasAggregationInReturn)
+        {
+            _logger.LogDebug("Skipping ORDER BY because aggregation functions are present in RETURN clause");
+            // Continue processing the source expression without adding ORDER BY
+            return Visit(node.Arguments[0]);
+        }
+
         // Check if we need PathSegments detection for ORDER BY
         bool containsPathSegments = ContainsPathSegmentsCall(node);
         
@@ -805,10 +813,11 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
     }
 
     private Expression HandleAggregationWithSelector(MethodCallExpression node, string cypherFunction, string logName)
-    {
-        if (node.Arguments.Count == 2)
+    {        
+        if (node.Arguments.Count == 2 || node.Arguments.Count == 3)
         {
-            // Aggregation with selector: Sum(p => p.Age)
+            // Aggregation with selector: Sum(p => p.Age) or Sum(p => p.Age, cancellationToken)
+            // Lambda is always at index 1, cancellation token (if present) is at index 2
             var lambda = ExtractLambda(node.Arguments[1]);
             if (lambda != null)
             {
@@ -816,6 +825,12 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 var selector = expressionVisitor.VisitAndReturnCypher(lambda.Body);
                 _context.Builder.AddReturn($"{cypherFunction}({selector})");
                 _logger.LogDebug("Added {LogName} aggregation with selector: {Selector}", logName, selector);
+            }
+            else
+            {
+                var alias = _context.Scope.CurrentAlias ?? GetContextualAlias();
+                _context.Builder.AddReturn($"{cypherFunction}({alias})");
+                _logger.LogDebug("Added simple {LogName} aggregation (lambda extraction failed)", logName);
             }
         }
         else

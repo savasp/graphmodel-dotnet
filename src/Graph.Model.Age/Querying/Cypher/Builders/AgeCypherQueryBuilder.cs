@@ -101,6 +101,13 @@ internal class AgeCypherQueryBuilder
     public bool HasReturnClauses => _returnClauses.Count > 0;
 
     /// <summary>
+    /// Checks if any RETURN clauses contain aggregation functions.
+    /// </summary>
+    public bool HasAggregationInReturn => _returnClauses.Any(clause => 
+        clause.Contains("count(") || clause.Contains("sum(") || clause.Contains("avg(") || 
+        clause.Contains("min(") || clause.Contains("max("));
+
+    /// <summary>
     /// Adds an OPTIONAL MATCH clause to the query.
     /// </summary>
     public void AddOptionalMatch(string pattern)

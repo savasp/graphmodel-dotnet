@@ -45,28 +45,31 @@ internal sealed class AgeEntityMapper
         {
             var value = NormalizeValue(rawValue);
             
+            // Reverse the property name mapping from AGE back to C# property names
+            var csharpPropertyName = MapAgePropertyNameToCSharp(key);
+            
             // Get the property type from the target type for proper conversion
-            var propertyInfo = targetType.GetProperty(key);
+            var propertyInfo = targetType.GetProperty(csharpPropertyName);
             var propertyType = propertyInfo?.PropertyType;
             
             // Convert the value using type information
-            var convertedValue = ConvertValue(value, key, propertyType);
+            var convertedValue = ConvertValue(value, csharpPropertyName, propertyType);
             
             if (convertedValue is IDictionary<string, object?> dict && !GraphDataModel.IsSimple(dict.GetType()))
             {
-                var entityInfo = CreateEntityInfoFromDictionary(dict, key);
-                complexProperties[key] = new Property(null!, key, false, entityInfo);
+                var entityInfo = CreateEntityInfoFromDictionary(dict, csharpPropertyName);
+                complexProperties[csharpPropertyName] = new Property(null!, csharpPropertyName, false, entityInfo);
             }
             else if (convertedValue is IList<object?> list && list.Count > 0 && list[0] is IDictionary<string, object?>)
             {
                 var elementInfos = list
                     .Cast<IDictionary<string, object?>>()
-                    .Select(item => CreateEntityInfoFromDictionary(item, key))
+                    .Select(item => CreateEntityInfoFromDictionary(item, csharpPropertyName))
                     .ToList();
 
-                complexProperties[key] = new Property(
+                complexProperties[csharpPropertyName] = new Property(
                     null!,
-                    key,
+                    csharpPropertyName,
                     false,
                     new EntityCollection(typeof(object), elementInfos));
             }
@@ -78,15 +81,15 @@ internal sealed class AgeEntityMapper
                     .Select(item => new SimpleValue(item ?? null!, item?.GetType() ?? elementType))
                     .ToList();
                 
-                simpleProperties[key] = new Property(
+                simpleProperties[csharpPropertyName] = new Property(
                     null!,
-                    key,
+                    csharpPropertyName,
                     false,
                     new SimpleCollection(simpleValues, elementType));
             }
             else
             {
-                simpleProperties[key] = CreateSimpleProperty(key, convertedValue);
+                simpleProperties[csharpPropertyName] = CreateSimpleProperty(csharpPropertyName, convertedValue);
             }
         }
 
@@ -115,13 +118,16 @@ internal sealed class AgeEntityMapper
         {
             var value = NormalizeValue(rawValue);
             
+            // Reverse the property name mapping from AGE back to C# property names
+            var csharpPropertyName = MapAgePropertyNameToCSharp(key);
+            
             // Get the property type from the target type for proper conversion
-            var propertyInfo = targetType.GetProperty(key);
+            var propertyInfo = targetType.GetProperty(csharpPropertyName);
             var propertyType = propertyInfo?.PropertyType;
             
             // Convert the value using type information
-            var convertedValue = ConvertValue(value, key, propertyType);
-            simpleProperties[key] = CreateSimpleProperty(key, convertedValue);
+            var convertedValue = ConvertValue(value, csharpPropertyName, propertyType);
+            simpleProperties[csharpPropertyName] = CreateSimpleProperty(csharpPropertyName, convertedValue);
         }
 
         // If Id, StartNodeId, or EndNodeId are not in properties, use AGE's internal IDs as fallback
@@ -347,4 +353,20 @@ internal sealed class AgeEntityMapper
         value is null
             ? new Property(null!, key, true, new SimpleValue(null!, typeof(object)))
             : new Property(null!, key, false, new SimpleValue(value, value.GetType()));
+
+    /// <summary>
+    /// Maps AGE property names back to C# property names.
+    /// This reverses the mapping applied during node/relationship creation.
+    /// </summary>
+    private static string MapAgePropertyNameToCSharp(string agePropertyName)
+    {
+        return agePropertyName switch
+        {
+            // Map AGE "user_id" field back to C# "Id" property
+            "user_id" => "Id",
+            
+            // For all other properties, keep the same name
+            _ => agePropertyName
+        };
+    }
 }
