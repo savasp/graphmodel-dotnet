@@ -197,6 +197,19 @@ internal class AgeCypherQueryBuilder
     }
 
     /// <summary>
+    /// Clears all ORDER BY clauses.
+    /// Used when ORDER BY is not applicable (e.g., in aggregation queries).
+    /// </summary>
+    public void ClearOrderBy()
+    {
+        if (_orderByClauses.Count > 0)
+        {
+            _logger.LogDebug("Clearing {Count} ORDER BY clause(s)", _orderByClauses.Count);
+            _orderByClauses.Clear();
+        }
+    }
+
+    /// <summary>
     /// Reverses the order of ORDER BY clauses.
     /// </summary>
     public void ReverseOrderBy()

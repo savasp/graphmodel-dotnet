@@ -1367,7 +1367,14 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         _logger.LogDebug("Added COUNT aggregation with alias: {Alias}", countAlias);
 
         // Continue processing the source expression
-        return Visit(node.Arguments[0]);
+        var result = Visit(node.Arguments[0]);
+        
+        // Clear ORDER BY clauses after processing source
+        // Aggregations return a single value, so ordering doesn't make sense
+        _context.Builder.ClearOrderBy();
+        _logger.LogDebug("Cleared ORDER BY clauses for COUNT aggregation");
+        
+        return result;
     }
 
     private Expression HandleAny(MethodCallExpression node)
@@ -1456,6 +1463,12 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         // IMPORTANT: Process the source expression FIRST to set up context (especially CurrentAlias)
         // before creating the expression visitor for the selector
         var result = Visit(node.Arguments[0]);
+        
+        // Clear ORDER BY clauses when processing aggregations
+        // Aggregations return a single value, so ordering the input doesn't affect the output
+        // and ORDER BY on non-aggregated columns in aggregation queries causes errors
+        _context.Builder.ClearOrderBy();
+        _logger.LogDebug("Cleared ORDER BY clauses for {LogName} aggregation", logName);
         
         if (node.Arguments.Count == 2 || node.Arguments.Count == 3)
         {
