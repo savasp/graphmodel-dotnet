@@ -155,17 +155,145 @@ internal sealed class AgeResultProcessor
         // Handle anonymous type projection: Select(p => new { p.FirstName, p.LastName })
         else if (body is NewExpression newExpr)
         {
-            for (int i = 0; i < newExpr.Arguments.Count && i < reader.FieldCount; i++)
+            // First, build a map of all columns available in the result
+            var columnData = new Dictionary<string, (Agtype agtype, int index)>(StringComparer.Ordinal);
+            for (int i = 0; i < reader.FieldCount; i++)
             {
+                var columnName = reader.GetName(i);
                 var agtype = reader.GetFieldValue<Agtype>(i);
-                var member = newExpr.Members?[i];
-                var propertyName = member?.Name ?? $"Field{i}";
+                columnData[columnName] = (agtype, i);
+            }
+            
+            // Track which columns we've processed to detect PathSegment multi-column patterns
+            var processedColumns = new HashSet<int>();
+            
+            for (int memberIndex = 0; memberIndex < newExpr.Arguments.Count; memberIndex++)
+            {
+                var member = newExpr.Members?[memberIndex];
+                var propertyName = member?.Name ?? $"Field{memberIndex}";
                 var propertyType = member switch
                 {
                     PropertyInfo pi => pi.PropertyType,
                     FieldInfo fi => fi.FieldType,
                     _ => typeof(object)
                 };
+                
+                // Check if this is a PathSegment property - it may span multiple columns
+                if (IsPathSegmentType(propertyType))
+                {
+                    _logger.LogDebug("ProcessProjectionRecord: Detected PathSegment property {PropertyName}", propertyName);
+                    
+                    // PathSegment properties might have columns named:
+                    // - c_PathSegment_src{N}, c_PathSegment_r{N}, c_PathSegment_tgt{N} (dedicated columns)
+                    // - OR reference already-returned columns c_StartNode, c_EndNode (shared/deduplicated)
+                    
+                    // Look for PathSegment-specific columns
+                    var pathSegmentColumns = columnData.Keys
+                        .Where(k => k.StartsWith($"c_{propertyName}_", StringComparison.Ordinal))
+                        .ToDictionary(k => k, k => columnData[k]);
+                    
+                    EntityInfo? sourceEntityInfo = null;
+                    EntityInfo? relationshipEntityInfo = null;
+                    EntityInfo? targetEntityInfo = null;
+                    
+                    var genericArgs = propertyType.GetGenericArguments();
+                    if (genericArgs.Length == 3)
+                    {
+                        var sourceType = genericArgs[0];
+                        var relationshipType = genericArgs[1];
+                        var targetType = genericArgs[2];
+                        
+                        // Try to find source node (might be in dedicated column or already returned)
+                        var srcKey = pathSegmentColumns.Keys.FirstOrDefault(k => k.Contains("_src", StringComparison.Ordinal));
+                        if (srcKey != null)
+                        {
+                            var srcAgtype = pathSegmentColumns[srcKey].agtype;
+                            sourceEntityInfo = ConvertAgtypeToEntityInfo(srcAgtype, sourceType, "StartNode");
+                            processedColumns.Add(pathSegmentColumns[srcKey].index);
+                        }
+                        else
+                        {
+                            // Source might be already returned as c_StartNode or similar
+                            var startNodeProp = simpleProperties.Values.FirstOrDefault(p => 
+                                p.Label == "StartNode" && p.Value is EntityInfo);
+                            if (startNodeProp is { Value: EntityInfo entityInfo })
+                            {
+                                sourceEntityInfo = entityInfo;
+                            }
+                        }
+                        
+                        // Try to find relationship
+                        var relKey = pathSegmentColumns.Keys.FirstOrDefault(k => k.Contains("_r", StringComparison.Ordinal));
+                        if (relKey != null)
+                        {
+                            var relAgtype = pathSegmentColumns[relKey].agtype;
+                            relationshipEntityInfo = ConvertAgtypeToEntityInfo(relAgtype, relationshipType, "Relationship");
+                            processedColumns.Add(pathSegmentColumns[relKey].index);
+                        }
+                        
+                        // Try to find target node (might be in dedicated column or already returned)
+                        var tgtKey = pathSegmentColumns.Keys.FirstOrDefault(k => k.Contains("_tgt", StringComparison.Ordinal));
+                        if (tgtKey != null)
+                        {
+                            var tgtAgtype = pathSegmentColumns[tgtKey].agtype;
+                            targetEntityInfo = ConvertAgtypeToEntityInfo(tgtAgtype, targetType, "EndNode");
+                            processedColumns.Add(pathSegmentColumns[tgtKey].index);
+                        }
+                        else
+                        {
+                            // Target might be already returned as c_EndNode or similar
+                            var endNodeProp = simpleProperties.Values.FirstOrDefault(p => 
+                                p.Label == "EndNode" && p.Value is EntityInfo);
+                            if (endNodeProp is { Value: EntityInfo entityInfo })
+                            {
+                                targetEntityInfo = entityInfo;
+                            }
+                        }
+                    }
+                    
+                    // Create PathSegment EntityInfo if we have all components
+                    if (sourceEntityInfo != null && relationshipEntityInfo != null && targetEntityInfo != null)
+                    {
+                        var complexProperties = new Dictionary<string, Property>(StringComparer.Ordinal)
+                        {
+                            ["StartNode"] = new Property(null!, "StartNode", false, sourceEntityInfo),
+                            ["Relationship"] = new Property(null!, "Relationship", false, relationshipEntityInfo),
+                            ["EndNode"] = new Property(null!, "EndNode", false, targetEntityInfo)
+                        };
+                        
+                        var pathSegmentEntityInfo = new EntityInfo(
+                            propertyType,
+                            "PathSegment",
+                            Array.Empty<string>(),
+                            new Dictionary<string, Property>(StringComparer.Ordinal),
+                            complexProperties);
+                        
+                        simpleProperties[propertyName] = new Property(null!, propertyName, false, pathSegmentEntityInfo);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("ProcessProjectionRecord: Could not find all PathSegment components for {PropertyName}", propertyName);
+                    }
+                    
+                    continue;
+                }
+                
+                // Find the column for this member
+                var expectedColumnName = $"c_{propertyName}";
+                if (!columnData.TryGetValue(expectedColumnName, out var columnInfo))
+                {
+                    _logger.LogWarning("ProcessProjectionRecord: Could not find column {ColumnName} for property {PropertyName}", expectedColumnName, propertyName);
+                    continue;
+                }
+                
+                if (processedColumns.Contains(columnInfo.index))
+                {
+                    // Already processed as part of PathSegment expansion
+                    continue;
+                }
+                
+                var agtype = columnInfo.agtype;
+                processedColumns.Add(columnInfo.index);
                 
                 // Handle relationship objects in projections
                 if (agtype.IsEdge && typeof(IRelationship).IsAssignableFrom(propertyType))

@@ -45,7 +45,7 @@ internal sealed class AgeCypherEngine
     // Feature flag for gradual migration
     private readonly bool _useSharedMaterialization = true; // Enable new architecture for BasicTests analysis
 
-    public AgeCypherEngine(AgeGraphContext graphContext, ILoggerFactory? loggerFactory)
+    public AgeCypherEngine(AgeGraphContext graphContext, ILoggerFactory loggerFactory)
     {
         _graphContext = graphContext ?? throw new ArgumentNullException(nameof(graphContext));
         _loggerFactory = loggerFactory;

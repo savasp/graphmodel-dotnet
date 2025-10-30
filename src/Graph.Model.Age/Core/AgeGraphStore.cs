@@ -74,8 +74,9 @@ public sealed class AgeGraphStore : IAsyncDisposable
     public AgeGraphStore(
         NpgsqlDataSource dataSource,
         string graphName,
-        SchemaRegistry? schemaRegistry = null,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory loggerFactory,
+        SchemaRegistry? schemaRegistry = null
+        )
     {
         ArgumentNullException.ThrowIfNull(dataSource);
         ArgumentException.ThrowIfNullOrWhiteSpace(graphName);

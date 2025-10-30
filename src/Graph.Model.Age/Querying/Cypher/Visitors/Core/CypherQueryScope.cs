@@ -46,6 +46,12 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
     public string? GroupByExpression { get; private set; }
 
     /// <summary>
+    /// Tracks the Cypher expression from the last Select projection.
+    /// Used to resolve OrderBy on parameter-only lambda expressions like OrderBy(x => x).
+    /// </summary>
+    public string? LastProjectedExpression { get; set; }
+
+    /// <summary>
     /// Current hop number for multi-hop traversal (0, 1, 2, ...)
     /// </summary>
     public int CurrentHop { get; private set; } = 0;
@@ -119,6 +125,16 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
 
     public void SetGroupByExpression(string expression)
         => GroupByExpression = expression;
+
+    /// <summary>
+    /// Manually registers a type-to-alias mapping. Useful when aliases are generated
+    /// without using GetOrRegisterAlias (e.g., numbered aliases like src0, src1).
+    /// </summary>
+    public void RegisterTypeAlias(Type type, string alias)
+    {
+        typeAliases[type] = alias;
+        aliasTypes[alias] = type;
+    }
 
     public bool IsInPathSegmentContext()
         => IsPathSegmentContext;

@@ -42,6 +42,7 @@ internal class AgeCypherQueryBuilder
     private bool _distinct;
     private bool _includeComplexProperties;
     private bool _shouldReverseOrderBy;
+    private GraphTraversalDirection? _traversalDirection;
 
     /// <summary>
     /// Sets a flag to reverse order by clauses when building the query (for Last operations).
@@ -51,6 +52,11 @@ internal class AgeCypherQueryBuilder
         _shouldReverseOrderBy = shouldReverse;
         _logger.LogDebug("Set should reverse ORDER BY: {ShouldReverse}", shouldReverse);
     }
+
+    /// <summary>
+    /// Gets the query context providing scope and configuration.
+    /// </summary>
+    public CypherQueryContext Context => _context;
 
     /// <summary>
     /// Initializes a new instance of the AgeCypherQueryBuilder.
@@ -86,6 +92,17 @@ internal class AgeCypherQueryBuilder
             var lastPattern = _matchClauses[^1];
             _matchClauses[^1] = lastPattern + pattern;
             _logger.LogDebug("Chained MATCH pattern: {Pattern} -> {CombinedPattern}", pattern, _matchClauses[^1]);
+        }
+        else if (_matchClauses.Count > 0 && pattern.Contains(")-[") && pattern.EndsWith("->") && 
+                 _matchClauses[^1].StartsWith("(src0:", StringComparison.Ordinal))
+        {
+            // This is a hop pattern ending with "->" that should be PREPENDED to the existing pattern
+            // Pattern: "(srcX:Label)-[relX:...]->" and existing: "(src0:Label)..."
+            // Result: "(srcX:Label)-[relX:...]->(src0:Label)..."
+            var existingPattern = _matchClauses[^1];
+            _matchClauses[^1] = pattern + existingPattern;
+            _logger.LogDebug("Prepended MATCH pattern: {Pattern} + {Existing} -> {CombinedPattern}", 
+                pattern, existingPattern, _matchClauses[^1]);
         }
         else
         {
@@ -154,6 +171,22 @@ internal class AgeCypherQueryBuilder
     }
 
     /// <summary>
+    /// Gets the last RETURN clause added to the query, or null if none exist.
+    /// </summary>
+    public string? GetLastReturnClause()
+    {
+        return _returnClauses.Count > 0 ? _returnClauses[^1] : null;
+    }
+
+    /// <summary>
+    /// Gets all RETURN clauses as a read-only list.
+    /// </summary>
+    public IReadOnlyList<string> GetReturnClauses()
+    {
+        return _returnClauses.AsReadOnly();
+    }
+
+    /// <summary>
     /// Adds an ORDER BY clause to the query.
     /// </summary>
     public void AddOrderBy(string expression, bool descending = false)
@@ -208,6 +241,20 @@ internal class AgeCypherQueryBuilder
         _distinct = distinct;
         _logger.LogDebug("Set DISTINCT: {Distinct}", distinct);
     }
+
+    /// <summary>
+    /// Sets the traversal direction for relationship patterns.
+    /// </summary>
+    public void SetTraversalDirection(GraphTraversalDirection direction)
+    {
+        _traversalDirection = direction;
+        _logger.LogDebug("Set traversal direction: {Direction}", direction);
+    }
+
+    /// <summary>
+    /// Gets the current traversal direction.
+    /// </summary>
+    public GraphTraversalDirection? TraversalDirection => _traversalDirection;
 
     /// <summary>
     /// Enables complex property loading using AGE-compatible syntax.

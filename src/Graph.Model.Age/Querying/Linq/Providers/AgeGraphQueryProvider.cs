@@ -36,7 +36,7 @@ internal sealed class AgeGraphQueryProvider : IGraphQueryProvider, IAsyncDisposa
     {
         _graphContext = context ?? throw new ArgumentNullException(nameof(context));
         _transaction = transaction;
-        _logger = context.LoggerFactory?.CreateLogger<AgeGraphQueryProvider>() ?? NullLogger<AgeGraphQueryProvider>.Instance;
+        _logger = context.LoggerFactory.CreateLogger<AgeGraphQueryProvider>() ?? NullLogger<AgeGraphQueryProvider>.Instance;
         _cypherEngine = new AgeCypherEngine(context, context.LoggerFactory);
     }
 
