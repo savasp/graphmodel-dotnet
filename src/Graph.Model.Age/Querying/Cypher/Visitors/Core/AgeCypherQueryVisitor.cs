@@ -61,19 +61,180 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         return new AgeExpressionToCypherVisitor(_context.Builder, _logger, alias);
     }
 
-    private AgeExpressionToCypherVisitor CreatePathSegmentExpressionVisitor(ParameterExpression pathSegmentParameter)
+    /// <summary>
+    /// Finds which hop a PathSegment WHERE clause is targeting by examining the source expression.
+    /// The WHERE targets the PathSegments call it's directly applied to in the chain.
+    /// For example: .PathSegments(hop1).Where(ps => ...) targets hop 1
+    ///              .PathSegments(hop1).Select(...).PathSegments(hop0).Where(ps => ...) targets hop 0
+    /// </summary>
+    private int FindPathSegmentHopForWhere(Expression sourceExpression)
+    {
+        // We need to find which PathSegments this WHERE is applied to
+        // The WHERE's source expression should be the PathSegments (or something between like Select)
+        // Walk UP the tree and find the FIRST PathSegments, but check how many PathSegments
+        // exist BETWEEN the WHERE and that PathSegments
+        var current = sourceExpression;
+        int pathSegmentsDepth = 0; // How many PathSegments we encounter walking up
+        
+        while (current != null)
+        {
+            if (current is MethodCallExpression methodCall)
+            {
+                // Check if this is a PathSegments call
+                if (methodCall.Method.Name == "PathSegments" || 
+                    methodCall.Method.Name == "PathSegmentsIncoming" ||
+                    methodCall.Method.Name == "PathSegmentsOutgoing")
+                {
+                    pathSegmentsDepth++;
+                    
+                    // The WHERE targets the FIRST PathSegments we encounter
+                    // But in bottom-up processing, hop numbers are assigned in reverse:
+                    // .PathSegments(hop1).PathSegments(hop0).Where()
+                    // When we walk UP, we find hop0 first, hop1 second
+                    // CurrentHop = 2 (incremented by both)
+                    // First PathSegments found (pathSegmentsDepth=1): hop = CurrentHop - 1 = 1? NO!
+                    // Actually: hop = CurrentHop - pathSegmentsDepth = 2 - 1 = 1 WRONG!
+                    // 
+                    // Wait, let me think about this differently:
+                    // When WHERE is applied DIRECTLY after PathSegments, the first PathSegments
+                    // we find walking up is the one it targets.
+                    // But what hop number is it?
+                    // 
+                    // Expression: .PathSegments(hop1).Where().PathSegments(hop0)
+                    // Processing order (bottom-up): hop0 processed first, hop1 second
+                    // After hop0: CurrentHop = 1
+                    // After hop1: CurrentHop = 2
+                    // WHERE is between them, so when processing WHERE, CurrentHop = depends on where it is
+                    //
+                    // Actually, the WHERE is processed AFTER both PathSegments in bottom-up traversal!
+                    // So CurrentHop = 2, and we need to figure out which hop the WHERE belongs to.
+                    //
+                    // If WHERE source is PathSegments directly: it's the immediately preceding PathSegments
+                    // Walk up and check: is the source a PathSegments or something between?
+                    
+                    // Check if this is the immediate PathSegments (no other PathSegments between WHERE and this)
+                    if (pathSegmentsDepth == 1)
+                    {
+                        // This is the first PathSegments we found walking UP - it's the one the WHERE targets
+                        // In bottom-up processing, hops are numbered starting from 0 for the innermost (most recent)
+                        // The FIRST PathSegments we find going UP is always the most recent one, which is hop 0
+                        // UNLESS there are multiple PathSegments in the chain, in which case we need to count backwards
+                        
+                        // Actually, let's think about this differently:
+                        // When HandleWhere calls Visit(source), it processes ALL PathSegments in the source chain
+                        // After that, CurrentHop reflects how many PathSegments have been created
+                        // The PathSegments immediately before the WHERE (the one we just found) was the LAST one processed
+                        // And the last one processed gets the LOWEST hop number (0)
+                        // 
+                        // So for: .PathSegments(hop1).PathSegments(hop0).Where()
+                        // After processing: CurrentHop = 2
+                        // The first PathSegments we find (hop0) should return 0
+                        //
+                        // For: .PathSegments(hop0).Where()
+                        // After processing: CurrentHop = 1
+                        // The first PathSegments we find (hop0) should return 0
+                        //
+                        // So the answer is always 0 for the first PathSegments found? NO!
+                        //
+                        // Wait, let me re-examine the failing test:
+                        // .PathSegments(hop1).Select().PathSegments(hop0).Where()
+                        // Walking UP from WHERE: find PathSegments(hop0) first
+                        // This IS hop 0, so return 0
+                        //
+                        // For CanUseMultiplePathSegmentsWithIncomingDirection:
+                        // .PathSegments(hop1).Where().PathSegments(hop0)
+                        // Walking UP from WHERE: find PathSegments(hop1) first (hop0 is AFTER the WHERE)
+                        // This IS hop 1, so return 1
+                        //
+                        // But how do I know which hop number corresponds to the PathSegments I found?
+                        // 
+                        // AH! I need to check if there are MORE PathSegments AFTER this one in the source chain!
+                        // If walking up I find only ONE PathSegments, and CurrentHop = 2, then this is hop 1
+                        // If walking up I find TWO PathSegments, and CurrentHop = 2, then the first is hop 0
+                        
+                        // Continue walking to count total PathSegments in the chain
+                        var tempCurrent = methodCall.Object ?? (methodCall.Arguments.Count > 0 ? methodCall.Arguments[0] : null);
+                        int totalPathSegments = 1;
+                        while (tempCurrent != null)
+                        {
+                            if (tempCurrent is MethodCallExpression tempMethodCall)
+                            {
+                                if (tempMethodCall.Method.Name == "PathSegments" || 
+                                    tempMethodCall.Method.Name == "PathSegmentsIncoming" ||
+                                    tempMethodCall.Method.Name == "PathSegmentsOutgoing")
+                                {
+                                    totalPathSegments++;
+                                }
+                                tempCurrent = tempMethodCall.Object ?? (tempMethodCall.Arguments.Count > 0 ? tempMethodCall.Arguments[0] : null);
+                            }
+                            else
+                            {
+                                break;
+                            }
+                        }
+                        
+                        // The first PathSegments found is at position (totalPathSegments - 1) from the end
+                        // But hop numbers are assigned bottom-up, so hop 0 is the innermost
+                        // If we found 2 PathSegments total and CurrentHop = 2:
+                        //   - First PathSegments found = position 0 from the end = hop 0
+                        // If we found 1 PathSegments total and CurrentHop = 2:
+                        //   - First PathSegments found = the only one, but there's another hop somewhere = hop 1
+                        // Actually, CurrentHop tells us how many hops exist
+                        // totalPathSegments tells us how many we can see from here
+                        // The first one we found is hop = CurrentHop - totalPathSegments
+                        var targetHop = Math.Max(0, _context.Scope.CurrentHop - totalPathSegments);
+                        _logger.LogDebug("Found immediate PathSegments call for WHERE: totalPathSegments={Total}, CurrentHop={CurrentHop}, targeting hop {Hop}", 
+                            totalPathSegments, _context.Scope.CurrentHop, targetHop);
+                        return targetHop;
+                    }
+                }
+                
+                // Continue walking up the tree through the source
+                current = methodCall.Object ?? (methodCall.Arguments.Count > 0 ? methodCall.Arguments[0] : null);
+            }
+            else
+            {
+                break;
+            }
+        }
+        
+        // Fallback to CurrentHop - 1 if we can't determine (shouldn't happen)
+        _logger.LogWarning("Could not determine PathSegment hop for WHERE, falling back to CurrentHop - 1");
+        return Math.Max(0, _context.Scope.CurrentHop - 1);
+    }
+
+    private AgeExpressionToCypherVisitor CreatePathSegmentExpressionVisitor(
+        ParameterExpression pathSegmentParameter,
+        int? explicitHopNumber = null)
     {
         // For path segments, we need to create a visitor that can handle the path segment parameter
-        // Pass the current hop's numbered aliases for proper mapping
-        var sourceAlias = _context.Scope.GetNumberedAlias("src");
-        var relationshipAlias = _context.Scope.GetNumberedAlias("r");
-        var targetAlias = _context.Scope.GetNumberedAlias("tgt");
+        // IMPORTANT: Use the PREVIOUS hop (the one just created by PathSegments) because
+        // HandlePathSegments calls AdvanceHop() at the end, incrementing CurrentHop
+        // For example: .PathSegments() creates src0/r0/tgt0 at hop 0, then advances to hop 1
+        // When .Where(ps => ...) is processed, CurrentHop is 1, but we need aliases from hop 0
+        // However, in chained PathSegments, we need to know WHICH PathSegments the WHERE targets
+        var hopNumber = explicitHopNumber ?? Math.Max(0, _context.Scope.CurrentHop - 1);
         
-        _logger.LogDebug("Creating path segment visitor with aliases: src={Src}, r={Rel}, tgt={Tgt}", 
-            sourceAlias, relationshipAlias, targetAlias);
+        // Use stored hop aliases (avoids type collision issues in chained patterns)
+        var hopAliases = _context.Scope.GetHopAliases(hopNumber);
+        if (hopAliases.HasValue)
+        {
+            var (sourceAlias, relationshipAlias, targetAlias) = hopAliases.Value;
+            _logger.LogDebug("Using stored hop {Hop} aliases: src={Src}, r={Rel}, tgt={Tgt} (explicit={Explicit})", 
+                hopNumber, sourceAlias, relationshipAlias, targetAlias, explicitHopNumber.HasValue);
+            
+            return new AgeExpressionToCypherVisitor(_context.Builder, _logger, "ps", pathSegmentParameter,
+                sourceAlias, relationshipAlias, targetAlias);
+        }
+        
+        // Fallback to numbered aliases if not found (shouldn't happen in normal flow)
+        _logger.LogDebug("Hop {Hop} aliases not found in storage, falling back to numbered aliases", hopNumber);
+        var fallbackSourceAlias = _context.Scope.GetNumberedAliasForHop("src", hopNumber);
+        var fallbackRelAlias = _context.Scope.GetNumberedAliasForHop("r", hopNumber);
+        var fallbackTargetAlias = _context.Scope.GetNumberedAliasForHop("tgt", hopNumber);
         
         return new AgeExpressionToCypherVisitor(_context.Builder, _logger, "ps", pathSegmentParameter,
-            sourceAlias, relationshipAlias, targetAlias);
+            fallbackSourceAlias, fallbackRelAlias, fallbackTargetAlias);
     }
 
     /// <summary>
@@ -136,6 +297,10 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         if (node.Arguments.Count != 2)
             throw new ArgumentException("Where method must have exactly 2 arguments");
 
+        // IMPORTANT: Process the source expression FIRST (bottom-up evaluation)
+        // This ensures that PathSegments and other operations are processed before WHERE clauses are applied
+        var source = Visit(node.Arguments[0]);
+
         var lambda = ExtractLambda(node.Arguments[1]);
         if (lambda == null)
             throw new ArgumentException("Where method requires a lambda expression");
@@ -158,8 +323,14 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             typeof(IGraphPathSegment).IsAssignableFrom(lambda.Parameters[0].Type))
         {
             _logger.LogDebug("Detected path segment WHERE clause - using path segment context");
+            
+            // Find which hop this WHERE is associated with by checking the source expression
+            // The WHERE is applied to the closest PathSegments call in the chain
+            int targetHop = FindPathSegmentHopForWhere(node.Arguments[0]);
+            _logger.LogDebug("WHERE clause targets hop {Hop}", targetHop);
+            
             // For path segments, create a visitor that's aware of the path segment parameter
-            expressionVisitor = CreatePathSegmentExpressionVisitor(lambda.Parameters[0]);
+            expressionVisitor = CreatePathSegmentExpressionVisitor(lambda.Parameters[0], targetHop);
         }
         // Check if this is a relationship WHERE clause (check parameter type directly)
         else if (lambda.Parameters.Count == 1 && 
@@ -176,48 +347,39 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         {
             // Determine semantic position: is this WHERE before or after the traversal?
             var wherePosition = DetermineWherePosition(node);
-            
-            // For multi-hop scenarios, we need to determine which hop this WHERE applies to
-            // Key insight: Use the lambda parameter type to find the correct alias!
             var parameterType = lambda.Parameters[0].Type;
-            string targetAlias;
             
-            if (_context.Scope.CurrentHop == 0)
+            // Determine the alias based on WHERE position and current hop
+            string targetAlias;
+            int hopNumber = Math.Max(0, _context.Scope.CurrentHop - 1);
+            
+            if (wherePosition == WherePosition.PreTraversal)
             {
-                // Single hop or initial hop scenario
-                targetAlias = wherePosition == WherePosition.PreTraversal ? "src0" : "tgt0";
+                // PreTraversal filters source nodes
+                // For chained multi-hop patterns, use the OUTERMOST source (highest hop number)
+                // This is because the chain is: Nodes<T> WHERE ... PathSegments (hop N) ... PathSegments (hop 0)
+                // The WHERE at the beginning should filter the starting nodes (hop N's source)
+                bool isChainedPattern = _context.Builder.HasMatchPatterns && _context.Scope.CurrentHop > 0;
+                if (isChainedPattern)
+                {
+                    // Use the highest hop number (the outermost source in the chain)
+                    hopNumber = _context.Scope.CurrentHop - 1;
+                    _logger.LogDebug("PreTraversal WHERE in chained pattern: using outermost source at hop {HopNumber}", hopNumber);
+                }
+                targetAlias = _context.Scope.GetNumberedAliasForHop("src", hopNumber);
+                _logger.LogDebug("PreTraversal WHERE: isChained={IsChained}, hopNumber={HopNumber}, alias={Alias}", 
+                    isChainedPattern, hopNumber, targetAlias);
             }
             else
             {
-                // Multi-hop scenario - find the alias for the parameter type
-                var aliasForType = _context.Scope.GetAliasForType(parameterType);
-                
-                if (aliasForType != null)
-                {
-                    targetAlias = aliasForType;
-                    _logger.LogDebug("Found alias for parameter type {Type}: {Alias}", parameterType.Name, targetAlias);
-                }
-                else
-                {
-                    // Fallback to the old logic if type lookup fails
-                    _logger.LogDebug("Could not find alias for parameter type {Type}, using fallback logic", parameterType.Name);
-                    if (wherePosition == WherePosition.PreTraversal)
-                    {
-                        // For chained patterns, PreTraversal always applies to the first hop (src0)
-                        // For independent hops, use the most recent hop
-                        bool isChainedPattern = _context.Builder.HasMatchPatterns && _context.Scope.CurrentHop > 0;
-                        int hopNumber = isChainedPattern ? 0 : Math.Max(0, _context.Scope.CurrentHop - 1);
-                        targetAlias = _context.Scope.GetNumberedAliasForHop("src", hopNumber);
-                        _logger.LogDebug("PreTraversal WHERE: isChained={IsChained}, hopNumber={HopNumber}, alias={Alias}", 
-                            isChainedPattern, hopNumber, targetAlias);
-                    }
-                    else
-                    {
-                        // PostTraversal uses the current hop's target
-                        int hopNumber = _context.Scope.CurrentHop - 1;
-                        targetAlias = _context.Scope.GetNumberedAliasForHop("tgt", hopNumber);
-                    }
-                }
+                // PostTraversal filters target nodes
+                // Use CurrentAlias which always points to the current query result
+                // This handles both cases:
+                // - After Traverse: CurrentAlias points to the result (e.g., src0)
+                // - After PathSegments: CurrentAlias points to the target (e.g., tgt0)
+                targetAlias = _context.Scope.CurrentAlias ?? _context.Scope.GetNumberedAliasForHop("tgt", hopNumber);
+                _logger.LogDebug("PostTraversal WHERE: using CurrentAlias={Alias} (CurrentHop={CurrentHop})", 
+                    targetAlias, _context.Scope.CurrentHop);
             }
             
             _logger.LogDebug("Detected node WHERE clause in path segment context - position: {Position}, paramType: {ParamType}, mapping to: {Alias}", 
@@ -239,8 +401,8 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
 
         _logger.LogDebug("Added WHERE condition: {Condition}", whereCondition);
 
-        // Continue processing the source expression
-        return Visit(node.Arguments[0]);
+        // Return the source expression (already visited above)
+        return source;
     }
 
     private Expression HandleSelect(MethodCallExpression node)
@@ -347,7 +509,7 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                         }
                         else
                         {
-                            // Use numbered alias if in multi-hop context
+                            // Always use numbered alias for path segments
                             _logger.LogDebug("DEBUG: CurrentHop={CurrentHop} when adding EndNode projection", _context.Scope.CurrentHop);
                             if (_context.Scope.CurrentHop > 0)
                             {
@@ -357,8 +519,9 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                             }
                             else
                             {
-                                targetAlias = "tgt";
-                                _logger.LogDebug("DEBUG: CurrentHop is 0, using fallback 'tgt'");
+                                // Even for hop 0, use numbered alias (tgt0)
+                                targetAlias = _context.Scope.GetNumberedAliasForHop("tgt", 0);
+                                _logger.LogDebug("DEBUG: CurrentHop is 0, using numbered alias tgt0 = {Alias}", targetAlias);
                             }
                         }
                         
@@ -577,8 +740,9 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                         }
                         else
                         {
-                            targetAlias = "tgt";
-                            _logger.LogDebug("DEBUG: Location2 CurrentHop is 0, using fallback 'tgt'");
+                            // Even for hop 0, use numbered alias
+                            targetAlias = _context.Scope.GetNumberedAliasForHop("tgt", 0);
+                            _logger.LogDebug("DEBUG: Location2 CurrentHop is 0, using numbered alias tgt0 = {Alias}", targetAlias);
                         }
                     }
                     _context.Builder.AddReturn(targetAlias);
@@ -596,40 +760,52 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             else if (isPathSegmentContext && propertyName == "StartNode")
             {
                 _logger.LogDebug("General Select: Processing StartNode in PathSegment context");
-                string sourceAlias;
-                var sourceType = _context.Scope.TraversalInfo?.SourceNodeType;
-                if (sourceType != null)
+                
+                // In chained multi-hop PathSegments context, skip intermediate StartNode projections
+                // The final complex SELECT will handle all projections
+                var isInChainedContext = _context.Builder.HasMatchPatterns && _context.Scope.CurrentHop > 0;
+                
+                _logger.LogDebug("DEBUG: StartNode projection - hasMatchPatterns={HasPatterns}, currentHop={Hop}, skipping={Skip}", 
+                    _context.Builder.HasMatchPatterns, _context.Scope.CurrentHop, isInChainedContext);
+                
+                if (!isInChainedContext)
                 {
-                    sourceAlias = _context.Scope.GetAliasForType(sourceType) ?? "src";
-                    _context.Builder.AddReturn(sourceAlias);
-                    _logger.LogDebug("Added path segment StartNode projection: {Alias}", sourceAlias);
+                    string sourceAlias;
+                    var sourceType = _context.Scope.TraversalInfo?.SourceNodeType;
+                    if (sourceType != null)
+                    {
+                        sourceAlias = _context.Scope.GetAliasForType(sourceType) ?? "src";
+                        _context.Builder.AddReturn(sourceAlias);
+                        _logger.LogDebug("Added path segment StartNode projection: {Alias}", sourceAlias);
+                    }
+                    else
+                    {
+                        sourceAlias = _context.Scope.GetNumberedAlias("src");
+                        _context.Builder.AddReturn(sourceAlias);
+                        _logger.LogDebug("Added default path segment StartNode projection: {Alias}", sourceAlias);
+                    }
+                    
+                    // After projecting to StartNode, we exit PathSegment context and update current alias
+                    _context.Scope.IsPathSegmentContext = false;
+                    _context.Scope.CurrentAlias = sourceAlias;
+                    _logger.LogDebug("Exited PathSegment context after StartNode projection (general path), set CurrentAlias to {Alias}", sourceAlias);
                 }
                 else
                 {
-                    sourceAlias = _context.Scope.GetNumberedAlias("src");
-                    _context.Builder.AddReturn(sourceAlias);
-                    _logger.LogDebug("Added default path segment StartNode projection: {Alias}", sourceAlias);
+                    _logger.LogDebug("Skipped intermediate StartNode projection in chained PathSegments context");
+                    // Still exit path segment context and set current alias for the chain to continue
+                    var sourceType = _context.Scope.TraversalInfo?.SourceNodeType;
+                    var sourceAlias = sourceType != null ? (_context.Scope.GetAliasForType(sourceType) ?? "src") : _context.Scope.GetNumberedAlias("src");
+                    _context.Scope.IsPathSegmentContext = false;
+                    _context.Scope.CurrentAlias = sourceAlias;
                 }
-                
-                // After projecting to StartNode, we exit PathSegment context and update current alias
-                _context.Scope.IsPathSegmentContext = false;
-                _context.Scope.CurrentAlias = sourceAlias;
-                _logger.LogDebug("Exited PathSegment context after StartNode projection (general path), set CurrentAlias to {Alias}", sourceAlias);
             }
             else if (isPathSegmentContext && propertyName == "Relationship")
             {
-                var relationshipType = _context.Scope.TraversalInfo?.RelationshipType;
-                if (relationshipType != null)
-                {
-                    var relAlias = _context.Scope.GetAliasForType(relationshipType) ?? "r";
-                    _context.Builder.AddReturn(relAlias);
-                    _logger.LogDebug("Added path segment Relationship projection: {Alias}", relAlias);
-                }
-                else
-                {
-                    _context.Builder.AddReturn("r");
-                    _logger.LogDebug("Added default path segment Relationship projection: r");
-                }
+                // Use numbered alias for relationship in path segment queries
+                var relAlias = _context.Scope.GetNumberedAlias("r");
+                _context.Builder.AddReturn(relAlias);
+                _logger.LogDebug("Added path segment Relationship projection: {Alias}", relAlias);
             }
             else if (!isPathSegmentContext)
             {
@@ -711,10 +887,12 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                         alias, currentAlias, contextualAlias);
                 }
                 
-                var projectionExpression = $"{alias}.{propertyName}";
+                // Map property name (e.g., Id -> user_id) to match AGE storage
+                var mappedPropertyName = MapPropertyNameForAge(propertyName);
+                var projectionExpression = $"{alias}.{mappedPropertyName}";
                 _context.Builder.AddReturn(projectionExpression);
                 _context.Scope.LastProjectedExpression = projectionExpression; // Track for OrderBy(x => x) cases
-                _logger.LogDebug("Added simple property projection: {Alias}.{Property}", alias, propertyName);
+                _logger.LogDebug("Added simple property projection: {Alias}.{Property} (mapped to {MappedProperty})", alias, propertyName, mappedPropertyName);
             }
             else
             {
@@ -936,7 +1114,11 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             else
             {
                 // Complex expression - use visitor
-                var expressionVisitor = CreateExpressionVisitor();
+                // Check if this expression involves path segment access
+                bool involvesPathSegment = ContainsPathSegmentAccess(arg);
+                var expressionVisitor = involvesPathSegment 
+                    ? CreatePathSegmentExpressionVisitor(null!)  // null because we're not projecting the whole path segment
+                    : CreateExpressionVisitor();
                 var cypherExpr = expressionVisitor.VisitAndReturnCypher(arg);
                 projections.Add($"{cypherExpr} AS {safeAlias}");
             }
@@ -1177,7 +1359,8 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         // Check if we're in a path segment context
         if (ContainsPathSegmentsCall(node))
         {
-            countAlias = "tgt"; // Path segments count the target nodes
+            // Path segments count the target nodes - use numbered alias
+            countAlias = _context.Scope.GetNumberedAlias("tgt");
         }
         
         _context.Builder.AddReturn($"count({countAlias})");
@@ -1269,7 +1452,11 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
     }
 
     private Expression HandleAggregationWithSelector(MethodCallExpression node, string cypherFunction, string logName)
-    {        
+    {
+        // IMPORTANT: Process the source expression FIRST to set up context (especially CurrentAlias)
+        // before creating the expression visitor for the selector
+        var result = Visit(node.Arguments[0]);
+        
         if (node.Arguments.Count == 2 || node.Arguments.Count == 3)
         {
             // Aggregation with selector: Sum(p => p.Age) or Sum(p => p.Age, cancellationToken)
@@ -1297,8 +1484,7 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             _logger.LogDebug("Added simple {LogName} aggregation", logName);
         }
 
-        // Continue processing the source expression
-        return Visit(node.Arguments[0]);
+        return result;
     }
 
     private Expression HandleFirst(MethodCallExpression node)
@@ -1375,8 +1561,13 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             // For path segment queries, return the path components ONLY if no projection exists
             if (!_context.Builder.HasReturnClauses)
             {
-                _context.Builder.AddReturn("src, r, tgt");
-                _logger.LogDebug("Added default path segment return: src, r, tgt");
+                // Use numbered aliases from the current hop context
+                var sourceAlias = _context.Scope.GetNumberedAlias("src");
+                var relAlias = _context.Scope.GetNumberedAlias("r");
+                var targetAlias = _context.Scope.GetNumberedAlias("tgt");
+                var pathSegmentReturn = $"{sourceAlias}, {relAlias}, {targetAlias}";
+                _context.Builder.AddReturn(pathSegmentReturn);
+                _logger.LogDebug("Added default path segment return: {Return}", pathSegmentReturn);
             }
             else
             {
@@ -1683,20 +1874,26 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 // Generate numbered aliases for multi-hop support
                 var sourceAlias = _context.Scope.GetNumberedAlias("src");
                 var relAlias = _context.Scope.GetNumberedAlias("r");
-                string targetAlias;
+                string targetAlias = _context.Scope.GetNumberedAlias("tgt"); // Default value
                 
-                // For chained hops > 0, the target should connect to the previous hop's source
-                // Example: Hop 0 is Memory->Source (src0, tgt0), Hop 1 is User->Memory (src1, target=src0)
+                // For chained hops > 0, check if the target connects to a previous hop's source
+                // For multi-hop chains, connect to the PREVIOUS hop (CurrentHop - 1), not hop 0
+                // Example: Hop 0: Charlie->David, Hop 1: Bob->Charlie (connects to hop 0), Hop 2: Alice->Bob (connects to hop 1)
                 if (_context.Scope.CurrentHop > 0 && isChainedPathSegments)
                 {
-                    // Target of this hop connects to source of hop 0
-                    targetAlias = _context.Scope.GetNumberedAliasForHop("src", 0);
-                    _logger.LogDebug("Chained hop {Hop}: target connects to hop 0 source, using alias {Alias}", 
-                        _context.Scope.CurrentHop, targetAlias);
-                }
-                else
-                {
-                    targetAlias = _context.Scope.GetNumberedAlias("tgt");
+                    // Check previous hops starting from the most recent (CurrentHop - 1) and working backwards
+                    for (int prevHop = _context.Scope.CurrentHop - 1; prevHop >= 0; prevHop--)
+                    {
+                        var prevHopTypes = _context.Scope.GetHopTypes(prevHop);
+                        if (prevHopTypes.HasValue && targetType == prevHopTypes.Value.src)
+                        {
+                            // Target of this hop connects to source of previous hop
+                            targetAlias = _context.Scope.GetNumberedAliasForHop("src", prevHop);
+                            _logger.LogDebug("Chained hop {Hop}: target type {TargetType} matches hop {PrevHop} source, using alias {Alias}", 
+                                _context.Scope.CurrentHop, targetType.Name, prevHop, targetAlias);
+                            break;
+                        }
+                    }
                 }
 
                 // Register type-to-alias mappings so WHERE clauses can find the correct alias for each type
@@ -1712,6 +1909,10 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                     _context.Scope.CurrentHop, sourceAlias, relAlias, targetAlias);
                 _logger.LogDebug("Registered type aliases: {SourceType}={SourceAlias}, {RelType}={RelAlias}, {TargetType}={TargetAlias}",
                     sourceType.Name, sourceAlias, relationshipType.Name, relAlias, targetType.Name, targetAlias);
+
+                // Store hop aliases and types for later use in WHERE clauses and chaining logic
+                _context.Scope.StoreHopAliases(_context.Scope.CurrentHop, sourceAlias, relAlias, targetAlias);
+                _context.Scope.StoreHopTypes(_context.Scope.CurrentHop, sourceType, relationshipType, targetType);
 
                 // Build the path pattern for AGE
                 var sourceLabel = Labels.GetBaseTypeLabel(sourceType);
@@ -1747,6 +1948,16 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 {
                     // First hop: start with source node
                     var relPattern = string.IsNullOrEmpty(relationshipLabel) ? relAlias : $"{relAlias}:{relationshipLabel}";
+                    
+                    // Add depth range if specified (for variable-length paths)
+                    if (_context.Scope.TraversalMinDepth.HasValue || _context.Scope.TraversalMaxDepth.HasValue)
+                    {
+                        var minDepth = _context.Scope.TraversalMinDepth ?? 1;
+                        var maxDepth = _context.Scope.TraversalMaxDepth ?? minDepth;
+                        relPattern = $"{relPattern}*{minDepth}..{maxDepth}";
+                        _logger.LogDebug("Added depth range to relationship pattern: {Pattern}", relPattern);
+                    }
+                    
                     pathPattern = $"({sourceAlias}:{sourceLabel}){leftArrow}[{relPattern}]{rightArrow}({targetAlias}:{targetLabel})";
                     _logger.LogDebug("First hop pattern: {Pattern} (direction: {Direction})", pathPattern, direction);
                 }
@@ -1758,10 +1969,13 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                     
                     if (isChainedPathSegments)
                     {
-                        // Generate complete pattern: (srcX:Label)-[...]->(tgtX:Label)
-                        // The tgtX is actually the previous hop's source (e.g., src0)
-                        // We don't include the target node definition since it's already defined in the next hop
-                        pathPattern = $"({sourceAlias}:{sourceLabel}){leftArrow}[{relPattern}]{rightArrow}";
+                        // For chained patterns, we need to prepend this hop to the existing pattern
+                        // The pattern will be prepended to the existing one, connecting via the target alias
+                        // Example: If existing is "(src0:Person)-[r0:KNOWS]->(tgt0:Person)"
+                        // and we want to add hop 1, we create "(src1:Person)-[r1:KNOWS]->" 
+                        // which prepends to become "(src1:Person)-[r1:KNOWS]->(src0:Person)-[r0:KNOWS]->(tgt0:Person)"
+                        // For incoming direction, we need to include the target alias (connection point)
+                        pathPattern = $"({sourceAlias}:{sourceLabel}){leftArrow}[{relPattern}]{rightArrow}({targetAlias})";
                         _logger.LogDebug("Chained hop {Hop} pattern (to be prepended): {Pattern} (direction: {Direction})", 
                             _context.Scope.CurrentHop, pathPattern, direction);
                     }
@@ -1788,6 +2002,11 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 // This ensures queries like .PathSegments().Select(ps => ps.StartNode.Name)
                 // only return "src0.Name", not "src0, r0, tgt0, src0.Name"
                 _logger.LogDebug("PathSegments completed - no default RETURN added (will be determined by outer Select or final operator)");
+
+                // Update CurrentAlias to point to the traversal target
+                // This ensures subsequent operations (e.g., AverageAsync) use the target node
+                _context.Scope.CurrentAlias = targetAlias;
+                _logger.LogDebug("Updated CurrentAlias to target: {TargetAlias}", targetAlias);
 
                 // Advance to next hop for potential chained PathSegments
                 _context.Scope.AdvanceHop();
@@ -1914,31 +2133,31 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
     {
         _logger.LogDebug("Analyzing WHERE position for expression: {Expression}", whereNode.Method.Name);
         
-        // Simple approach: use the current builder state to determine position
-        // Since we process bottom-up:
-        // - If HasMatchPatterns is true, PathSegments already processed, so WHERE is logically PreTraversal
-        // - If HasMatchPatterns is false, this is likely a simple node query
+        // With bottom-up evaluation (visiting source before processing WHERE lambda):
+        // - Check if PathSegments exists in the WHERE's SOURCE expression (Arguments[0])
+        // - If PathSegments is in the source, WHERE is PostTraversal (applies after traversal to target nodes)
+        // - If PathSegments is NOT in the source, WHERE is PreTraversal (applies before traversal to source nodes)
         
-        if (_context.Builder.HasMatchPatterns)
+        // Check if PathSegments exists in the WHERE's source expression
+        var sourceExpression = whereNode.Arguments[0];
+        bool pathSegmentsInSource = ContainsPathSegmentsCall(sourceExpression);
+        
+        if (pathSegmentsInSource)
         {
-            _logger.LogDebug("Builder has match patterns - WHERE is PreTraversal (source filter)");
+            _logger.LogDebug("PathSegments found in WHERE source - WHERE is PostTraversal (target filter)");
+            return WherePosition.PostTraversal;
+        }
+        else if (_context.Builder.HasMatchPatterns)
+        {
+            // If we have match patterns but PathSegments is not in THIS WHERE's source,
+            // then this WHERE is BEFORE the PathSegments in the chain, so it's PreTraversal
+            _logger.LogDebug("Match patterns exist but PathSegments not in WHERE source - WHERE is PreTraversal (source filter)");
             return WherePosition.PreTraversal;
         }
         else
         {
-            _logger.LogDebug("Builder has no match patterns - checking for PathSegments in expression");
-            // Check if PathSegments exists in the overall expression to distinguish between
-            // a simple node query vs a traversal query where PathSegments hasn't processed yet
-            if (ContainsPathSegmentsCall(whereNode))
-            {
-                _logger.LogDebug("Found PathSegments in expression - WHERE is PreTraversal");
-                return WherePosition.PreTraversal;
-            }
-            else
-            {
-                _logger.LogDebug("No PathSegments found - this is a simple node query");
-                return WherePosition.Unknown;
-            }
+            _logger.LogDebug("No match patterns and no PathSegments in source - simple node query");
+            return WherePosition.Unknown;
         }
     }
     
@@ -1973,6 +2192,37 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             }
         }
         
+        return false;
+    }
+
+    /// <summary>
+    /// Checks if an expression accesses path segment properties (StartNode, EndNode, Relationship)
+    /// </summary>
+    private bool ContainsPathSegmentAccess(Expression expression)
+    {
+        if (expression is MemberExpression memberExpr)
+        {
+            // Check if accessing StartNode, EndNode, or Relationship
+            if (memberExpr.Member.Name == nameof(IGraphPathSegment.StartNode) ||
+                memberExpr.Member.Name == nameof(IGraphPathSegment.EndNode) ||
+                memberExpr.Member.Name == nameof(IGraphPathSegment.Relationship))
+            {
+                return true;
+            }
+
+            // Check nested properties like ps.EndNode.FirstName
+            if (memberExpr.Expression is MemberExpression nestedMember)
+            {
+                return ContainsPathSegmentAccess(nestedMember);
+            }
+
+            // Check if the expression is a path segment parameter
+            if (memberExpr.Expression is ParameterExpression paramExpr && IsPathSegmentType(paramExpr.Type))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -2044,6 +2294,22 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         }
         
         return null;
+    }
+
+    /// <summary>
+    /// Maps C# property names to AGE database field names.
+    /// </summary>
+    private static string MapPropertyNameForAge(string csharpPropertyName)
+    {
+        return csharpPropertyName switch
+        {
+            // Map C# "Id" property to our prefixed "user_id" field to avoid conflict with PostgreSQL internal "id"
+            // This ensures we always use our application-controlled IDs, not PostgreSQL internal IDs
+            "Id" => "user_id",
+            
+            // For all other properties, keep the same name
+            _ => csharpPropertyName
+        };
     }
 
     #endregion

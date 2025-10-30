@@ -159,7 +159,7 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
             // Create the fresh graph in PostgreSQL first
             await CreateFreshGraphAsync(freshGraphName);
             
-            var freshStore = new AgeGraphStore(connectionString, freshGraphName);
+            var freshStore = new AgeGraphStore(connectionString, freshGraphName, loggerFactory: loggerFactory );
             
             logger.LogInformation("Successfully created fresh graph {GraphName} bypassing pool", freshGraphName);
             return freshStore;
@@ -167,7 +167,7 @@ public sealed class TestInfrastructureFixture : IAsyncLifetime
 
         // Get a graph name from the pool and create an AgeGraphStore for it
         var graphName = await databasePool!.RequestDatabaseAsync();
-        var pooledStore = new AgeGraphStore(connectionString, graphName);
+        var pooledStore = new AgeGraphStore(connectionString, graphName, loggerFactory: loggerFactory );
         
         return pooledStore;
     }

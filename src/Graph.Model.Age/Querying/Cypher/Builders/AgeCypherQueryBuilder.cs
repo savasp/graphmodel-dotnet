@@ -94,11 +94,11 @@ internal class AgeCypherQueryBuilder
             _logger.LogDebug("Chained MATCH pattern: {Pattern} -> {CombinedPattern}", pattern, _matchClauses[^1]);
         }
         else if (_matchClauses.Count > 0 && pattern.Contains(")-[") && pattern.EndsWith("->") && 
-                 _matchClauses[^1].StartsWith("(src0:", StringComparison.Ordinal))
+                 _matchClauses[^1].StartsWith("(src", StringComparison.Ordinal))
         {
             // This is a hop pattern ending with "->" that should be PREPENDED to the existing pattern
-            // Pattern: "(srcX:Label)-[relX:...]->" and existing: "(src0:Label)..."
-            // Result: "(srcX:Label)-[relX:...]->(src0:Label)..."
+            // Pattern: "(srcX:Label)-[relX:...]->" and existing: "(srcY:Label)..."
+            // Result: "(srcX:Label)-[relX:...]->(srcY:Label)..."
             var existingPattern = _matchClauses[^1];
             _matchClauses[^1] = pattern + existingPattern;
             _logger.LogDebug("Prepended MATCH pattern: {Pattern} + {Existing} -> {CombinedPattern}", 
@@ -331,6 +331,18 @@ internal class AgeCypherQueryBuilder
             var distinctClause = _distinct ? "DISTINCT " : "";
             query.AppendLine($"RETURN {distinctClause}{string.Join(", ", _returnClauses)}");
         }
+        else if (_returnClauses.Count == 0 && !_includeComplexProperties && _matchClauses.Count > 0)
+        {
+            // Add default RETURN clause if none was explicitly added
+            // For traversal queries, return the last alias in the pattern
+            var defaultReturn = GetDefaultReturnClause();
+            if (!string.IsNullOrEmpty(defaultReturn))
+            {
+                var distinctClause = _distinct ? "DISTINCT " : "";
+                query.AppendLine($"RETURN {distinctClause}{defaultReturn}");
+                _logger.LogDebug("Added default RETURN clause: {Return}", defaultReturn);
+            }
+        }
 
         // Build ORDER BY - must come after RETURN but before LIMIT in AGE
         if (_orderByClauses.Count > 0)
@@ -368,6 +380,39 @@ internal class AgeCypherQueryBuilder
         _logger.LogInformation("Generated AGE query with LIMIT:\n{Query}", finalQuery);
 
         return new CypherQuery(finalQuery, _parameters);
+    }
+
+    /// <summary>
+    /// Gets a default RETURN clause when none was explicitly specified.
+    /// For traversal queries, returns the last target node alias.
+    /// </summary>
+    private string? GetDefaultReturnClause()
+    {
+        if (_matchClauses.Count == 0)
+            return null;
+
+        // Get the last MATCH clause and extract the last alias from it
+        var lastMatch = _matchClauses[_matchClauses.Count - 1];
+        
+        // Look for the last node alias in the pattern
+        // Patterns like: (src0:Person)-[r0:KNOWS]->(tgt0:Person)
+        // We want to return tgt0 (the target node)
+        var match = System.Text.RegularExpressions.Regex.Match(lastMatch, @"\((\w+):[^)]+\)[^(]*$");
+        if (match.Success)
+        {
+            var alias = match.Groups[1].Value;
+            _logger.LogDebug("Detected default return alias from pattern: {Alias}", alias);
+            return alias;
+        }
+
+        // Fallback: return the first node alias we can find
+        match = System.Text.RegularExpressions.Regex.Match(lastMatch, @"\((\w+):");
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+
+        return null;
     }
 
     /// <summary>

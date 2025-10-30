@@ -25,6 +25,8 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
     private readonly Dictionary<Type, string> typeAliases = [];
     private readonly Dictionary<string, Type> aliasTypes = [];
     private readonly Stack<string> aliasStack = new();
+    private readonly Dictionary<int, (string src, string rel, string tgt)> hopAliases = [];
+    private readonly Dictionary<int, (Type src, Type rel, Type tgt)> hopTypes = [];
     private int aliasCounter;
 
     public Type RootType { get; } = rootType;
@@ -162,6 +164,38 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
     public string GetNumberedAliasForHop(string baseAlias, int hopNumber)
     {
         return $"{baseAlias}{hopNumber}";
+    }
+
+    /// <summary>
+    /// Stores the actual aliases used for a specific hop (handles chained patterns where aliases may differ)
+    /// </summary>
+    public void StoreHopAliases(int hopNumber, string sourceAlias, string relationshipAlias, string targetAlias)
+    {
+        hopAliases[hopNumber] = (sourceAlias, relationshipAlias, targetAlias);
+    }
+
+    /// <summary>
+    /// Gets the actual aliases used for a specific hop
+    /// </summary>
+    public (string src, string rel, string tgt)? GetHopAliases(int hopNumber)
+    {
+        return hopAliases.TryGetValue(hopNumber, out var aliases) ? aliases : null;
+    }
+
+    /// <summary>
+    /// Stores the types used for a specific hop
+    /// </summary>
+    public void StoreHopTypes(int hopNumber, Type sourceType, Type relationshipType, Type targetType)
+    {
+        hopTypes[hopNumber] = (sourceType, relationshipType, targetType);
+    }
+
+    /// <summary>
+    /// Gets the types used for a specific hop
+    /// </summary>
+    public (Type src, Type rel, Type tgt)? GetHopTypes(int hopNumber)
+    {
+        return hopTypes.TryGetValue(hopNumber, out var types) ? types : null;
     }
 
     private static string GenerateAlias(Type type)

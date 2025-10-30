@@ -27,11 +27,12 @@ using Npgsql.Age.Types;
 internal sealed class AgeEntityMapper
 {
     private readonly EntityFactory entityFactory;
+    private readonly ILogger<AgeEntityMapper> _logger;
 
     public AgeEntityMapper(EntityFactory entityFactory, ILoggerFactory? loggerFactory)
     {
         this.entityFactory = entityFactory;
-        _ = loggerFactory?.CreateLogger<AgeEntityMapper>();
+        _logger = loggerFactory?.CreateLogger<AgeEntityMapper>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<AgeEntityMapper>.Instance;
     }
 
     public EntityInfo MapVertex(Vertex vertex, Type targetType)
@@ -41,12 +42,18 @@ internal sealed class AgeEntityMapper
         var simpleProperties = new Dictionary<string, Property>(StringComparer.Ordinal);
         var complexProperties = new Dictionary<string, Property>(StringComparer.Ordinal);
 
+        _logger.LogDebug("MapVertex: Label={Label}, PropertiesCount={Count}, TargetType={Type}", 
+            label, vertex.Properties.Count, targetType.Name);
+
         foreach (var (key, rawValue) in vertex.Properties)
         {
             var value = NormalizeValue(rawValue);
             
             // Reverse the property name mapping from AGE back to C# property names
             var csharpPropertyName = MapAgePropertyNameToCSharp(key);
+            
+            _logger.LogDebug("MapVertex: Processing property '{AgeKey}' -> '{CSharpKey}', Value={Value}", 
+                key, csharpPropertyName, value);
             
             // Get the property type from the target type for proper conversion
             var propertyInfo = targetType.GetProperty(csharpPropertyName);

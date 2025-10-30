@@ -253,6 +253,8 @@ internal static class Deserialization
         {
             "direction" when propertyType.Name.Contains("RelationshipDirection") => "RelationshipDirection.Outgoing",
             "id" when propertyType.SpecialType == SpecialType.System_String => "Guid.NewGuid().ToString(\"N\")",
+            "labels" when propertyType.Name.Contains("IReadOnlyList") => "Array.Empty<string>()",
+            "type" when propertyType.SpecialType == SpecialType.System_String => "string.Empty",
             _ => GetTypeDefault(propertyType, out shouldThrow)
         };
     }

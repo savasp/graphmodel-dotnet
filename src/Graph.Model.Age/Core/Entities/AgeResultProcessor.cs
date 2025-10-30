@@ -143,14 +143,37 @@ internal sealed class AgeResultProcessor
         var body = projectionExpression.Body;
         var simpleProperties = new Dictionary<string, Property>(StringComparer.Ordinal);
 
-        // Handle simple property projection: Select(p => p.FirstName)
+        // Handle simple property projection: Select(p => p.FirstName) or Select(p => p.EndNode)
         if (body is MemberExpression && reader.FieldCount == 1)
         {
             var agtype = reader.GetFieldValue<Agtype>(0);
-            var value = ExtractScalarValue(agtype, projectionResultType);
             var propertyName = ((MemberExpression)body).Member.Name;
             
-            simpleProperties[propertyName] = new Property(null!, propertyName, false, new SimpleValue(value ?? string.Empty, projectionResultType));
+            _logger.LogDebug("ProcessProjectionRecord: MemberExpression - PropertyName={PropertyName}, IsVertex={IsVertex}, IsNode={IsNode}, ResultType={ResultType}", 
+                propertyName, agtype.IsVertex, typeof(INode).IsAssignableFrom(projectionResultType), projectionResultType.Name);
+            
+            // Handle node objects (e.g., Select(p => p.EndNode))
+            // Important: Return the entity directly, not wrapped in another EntityInfo
+            if (agtype.IsVertex && typeof(INode).IsAssignableFrom(projectionResultType))
+            {
+                _logger.LogDebug("ProcessProjectionRecord: Returning node entity directly (not wrapping)");
+                var vertex = agtype.GetVertex();
+                return _entityMapper.MapVertex(vertex, projectionResultType);
+            }
+            // Handle relationship objects (e.g., Select(p => p.Relationship))
+            // Important: Return the entity directly, not wrapped in another EntityInfo
+            else if (agtype.IsEdge && typeof(IRelationship).IsAssignableFrom(projectionResultType))
+            {
+                _logger.LogDebug("ProcessProjectionRecord: Returning relationship entity directly (not wrapping)");
+                var edge = agtype.GetEdge();
+                return _entityMapper.MapEdge(edge, projectionResultType);
+            }
+            // Handle scalar properties (e.g., Select(p => p.FirstName))
+            else
+            {
+                var value = ExtractScalarValue(agtype, projectionResultType);
+                simpleProperties[propertyName] = new Property(null!, propertyName, false, new SimpleValue(value ?? string.Empty, projectionResultType));
+            }
         }
         // Handle anonymous type projection: Select(p => new { p.FirstName, p.LastName })
         else if (body is NewExpression newExpr)
