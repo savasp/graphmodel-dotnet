@@ -80,7 +80,9 @@ internal sealed class AgeCypherEngine
             var (hasProjection, projectionExpression, sourceElementType) = DetectProjection(expression);
 
             // Build and execute the Cypher query
-            var (cypher, parameters) = BuildCypherQuery(elementType, expression);
+            // For projections, use the source element type (e.g., relationship type) not the projected result type
+            var cypherElementType = hasProjection ? sourceElementType : elementType;
+            var (cypher, parameters) = BuildCypherQuery(cypherElementType, expression);
 
             _logger.LogDebug("Generated Cypher: {Cypher}", cypher);
 
@@ -312,7 +314,7 @@ internal sealed class AgeCypherEngine
                 // Handle projections
                 if (hasProjection && projectionExpression != null)
                 {
-                    var projectionCypher = BuildProjectionReturn(projectionExpression, parameters);
+                    var projectionCypher = BuildProjectionReturn(projectionExpression, parameters, "n");
                     cypherParts.Add($"RETURN {projectionCypher}");
                 }
                 else
@@ -442,7 +444,16 @@ internal sealed class AgeCypherEngine
             }
             else
             {
-                cypherParts.Add("RETURN r");
+                // Handle projections
+                if (hasProjection && projectionExpression != null)
+                {
+                    var projectionCypher = BuildProjectionReturn(projectionExpression, parameters, "r");
+                    cypherParts.Add($"RETURN {projectionCypher}");
+                }
+                else
+                {
+                    cypherParts.Add("RETURN r");
+                }
                 
                 if (!string.IsNullOrEmpty(orderByClause))
                 {
@@ -905,12 +916,9 @@ internal sealed class AgeCypherEngine
         return (false, null, typeof(object));
     }
     
-    private string BuildProjectionReturn(LambdaExpression projectionExpression, Dictionary<string, object?> parameters)
+    private string BuildProjectionReturn(LambdaExpression projectionExpression, Dictionary<string, object?> parameters, string cypherAlias = "n")
     {
         var body = projectionExpression.Body;
-        
-        // Always use 'n' as the alias in Cypher - we standardize on this
-        const string cypherAlias = "n";
         
         // Handle simple property access: Select(p => p.FirstName)
         if (body is MemberExpression memberExpr)
@@ -1209,7 +1217,38 @@ internal sealed class AgeCypherEngine
                     _ => typeof(object)
                 };
                 
-                constructorArgs[i] = ExtractScalarValue(agtype, propertyType);
+                // Special handling for relationship types
+                if (typeof(IRelationship).IsAssignableFrom(propertyType))
+                {
+                    if (agtype.IsEdge)
+                    {
+                        var edge = agtype.GetEdge();
+                        var entityInfo = _entityMapper.MapEdge(edge, propertyType);
+                        constructorArgs[i] = _entityFactory.Deserialize(entityInfo);
+                    }
+                    else
+                    {
+                        constructorArgs[i] = null;
+                    }
+                }
+                // Special handling for node types
+                else if (typeof(INode).IsAssignableFrom(propertyType))
+                {
+                    if (agtype.IsVertex)
+                    {
+                        var vertex = agtype.GetVertex();
+                        var entityInfo = _entityMapper.MapVertex(vertex, propertyType);
+                        constructorArgs[i] = _entityFactory.Deserialize(entityInfo);
+                    }
+                    else
+                    {
+                        constructorArgs[i] = null;
+                    }
+                }
+                else
+                {
+                    constructorArgs[i] = ExtractScalarValue(agtype, propertyType);
+                }
             }
             
             // Create an instance of the anonymous type

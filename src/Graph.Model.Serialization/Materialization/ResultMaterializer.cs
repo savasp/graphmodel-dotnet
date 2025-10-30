@@ -239,6 +239,13 @@ public sealed class ResultMaterializer<TValueConverter>
         _logger.LogDebug("CreateComplexObject: Creating {TypeName} from EntityInfo with {SimpleCount} simple properties, {ComplexCount} complex properties",
             typeToInstantiate.Name, entityInfo.SimpleProperties.Count, entityInfo.ComplexProperties.Count);
 
+        // Special handling for graph entities (INode and IRelationship) - use EntityFactory
+        if (typeof(INode).IsAssignableFrom(targetType) || typeof(IRelationship).IsAssignableFrom(targetType))
+        {
+            _logger.LogDebug("CreateComplexObject: Using EntityFactory for graph entity {TargetType}", targetType.Name);
+            return _entityFactory.Deserialize(entityInfo);
+        }
+
         // Special handling for anonymous types - they have a predictable constructor pattern
         if (IsAnonymousType(typeToInstantiate))
         {
@@ -335,7 +342,17 @@ public sealed class ResultMaterializer<TValueConverter>
             }
             else if (matchingProperty?.Value is EntityInfo complexEntityInfo)
             {
-                values[i] = MaterializeSingleElement<object>(complexEntityInfo, param.ParameterType);
+                // For graph entities (INode/IRelationship), use the concrete type from EntityInfo
+                if (typeof(INode).IsAssignableFrom(param.ParameterType) || typeof(IRelationship).IsAssignableFrom(param.ParameterType))
+                {
+                    // Use EntityFactory with the concrete type, then cast to interface
+                    var entity = _entityFactory.Deserialize(complexEntityInfo);
+                    values[i] = entity; // The entity should be assignable to the interface parameter type
+                }
+                else
+                {
+                    values[i] = MaterializeSingleElement<object>(complexEntityInfo, param.ParameterType);
+                }
             }
             else
             {

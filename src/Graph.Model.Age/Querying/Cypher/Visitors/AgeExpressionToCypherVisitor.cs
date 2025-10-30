@@ -207,9 +207,9 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
 
                 var propertyMapping = node.Member.Name switch
                 {
-                    nameof(IGraphPathSegment.StartNode) => "src",
-                    nameof(IGraphPathSegment.EndNode) => "tgt",
-                    nameof(IGraphPathSegment.Relationship) => "r",
+                    nameof(IGraphPathSegment.StartNode) => _sourceAlias ?? "src",
+                    nameof(IGraphPathSegment.EndNode) => _targetAlias ?? "tgt", 
+                    nameof(IGraphPathSegment.Relationship) => _relationshipAlias ?? "r",
                     _ => throw new NotSupportedException($"Path segment property '{node.Member.Name}' is not supported")
                 };
 
@@ -242,6 +242,16 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
 
             _logger.LogDebug("Path segment alias mapping: {SegmentProperty} -> {Alias} (source={Source}, target={Target}, rel={Rel})", 
                 segmentProperty, alias, _sourceAlias, _targetAlias, _relationshipAlias);
+            
+            // Add debug logging to identify the problem
+            if (segmentProperty == nameof(IGraphPathSegment.StartNode) && _sourceAlias == null)
+            {
+                _logger.LogError("CRITICAL: _sourceAlias is null for StartNode access - falling back to 'src'");
+            }
+            if (segmentProperty == nameof(IGraphPathSegment.Relationship) && _relationshipAlias == null)
+            {
+                _logger.LogError("CRITICAL: _relationshipAlias is null for Relationship access - falling back to 'r'");
+            }
 
             // Map C# property names to AGE property names
             var propertyName = MapPropertyName(nodeProperty);
@@ -411,15 +421,34 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
             var argument = node.Arguments[i];
             var memberName = node.Members?[i]?.Name ?? $"Item{i + 1}";
             
-            // Visit the argument to get the Cypher expression
-            var cypherExpression = VisitAndReturnCypher(argument);
+            Console.WriteLine($"DEBUG: VisitNew processing argument {i}: {argument}, Type: {argument.Type}, Member: {memberName}");
             
-            memberNames.Add(memberName);
-            expressions.Add($"{cypherExpression} AS c_{memberName}");
+            // Special handling for PathSegment parameter projections
+            if (argument is ParameterExpression paramExpr && IsPathSegmentType(paramExpr.Type))
+            {
+                Console.WriteLine($"DEBUG: Detected PathSegment parameter in VisitNew: {paramExpr.Name}");
+                
+                // PathSegment projections require special handling because PathSegments
+                // are complex objects composed of three separate database entities.
+                // For now, we provide a helpful error message.
+                throw new NotSupportedException(
+                    $"Direct projection of PathSegment parameter '{paramExpr.Name}' is not currently supported. " +
+                    "PathSegments are complex objects composed of StartNode, Relationship, and EndNode components. " +
+                    "Use ps.StartNode, ps.Relationship, or ps.EndNode instead to project individual components.");
+            }
+            else
+            {
+                // Visit the argument to get the Cypher expression
+                var cypherExpression = VisitAndReturnCypher(argument);
+                
+                memberNames.Add(memberName);
+                expressions.Add($"{cypherExpression} AS c_{memberName}");
+            }
         }
 
         // Return the combined expression for the SELECT clause
         var selectExpression = string.Join(", ", expressions);
+        Console.WriteLine($"DEBUG: VisitNew returning: {selectExpression}");
         return Expression.Constant(selectExpression);
     }
 
@@ -594,6 +623,50 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
         }
 
         throw new NotSupportedException("Unsupported Contains method signature");
+    }
+
+    /// <summary>
+    /// Handles parameter expressions, particularly for PathSegment parameters.
+    /// </summary>
+    protected override Expression VisitParameter(ParameterExpression node)
+    {
+        _logger.LogDebug("VisitParameter called with parameter: {Name}, Type: {Type}", node.Name, node.Type.Name);
+        Console.WriteLine($"DEBUG: VisitParameter called with parameter: {node.Name}, Type: {node.Type}");
+        Console.WriteLine($"DEBUG: Falling back to base implementation");
+        
+        // For now, let all parameters go through the base implementation
+        // to see what the normal behavior is
+        return base.VisitParameter(node);
+    }
+
+    /// <summary>
+    /// Checks if a type is a PathSegment type
+    /// </summary>
+    private static bool IsPathSegmentType(Type type)
+    {
+        if (type == null) return false;
+        
+        // Check if it's the generic IGraphPathSegment interface
+        if (type.IsGenericType)
+        {
+            var genericTypeDef = type.GetGenericTypeDefinition();
+            return genericTypeDef.Name.StartsWith("IGraphPathSegment");
+        }
+        
+        // Check if any implemented interfaces are PathSegment types
+        foreach (var interfaceType in type.GetInterfaces())
+        {
+            if (interfaceType.IsGenericType)
+            {
+                var genericTypeDef = interfaceType.GetGenericTypeDefinition();
+                if (genericTypeDef.Name.StartsWith("IGraphPathSegment"))
+                {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
 
     /// <summary>

@@ -41,6 +41,16 @@ internal class AgeCypherQueryBuilder
     private int? _skip;
     private bool _distinct;
     private bool _includeComplexProperties;
+    private bool _shouldReverseOrderBy;
+
+    /// <summary>
+    /// Sets a flag to reverse order by clauses when building the query (for Last operations).
+    /// </summary>
+    public void SetShouldReverseOrderBy(bool shouldReverse)
+    {
+        _shouldReverseOrderBy = shouldReverse;
+        _logger.LogDebug("Set should reverse ORDER BY: {ShouldReverse}", shouldReverse);
+    }
 
     /// <summary>
     /// Initializes a new instance of the AgeCypherQueryBuilder.
@@ -132,6 +142,15 @@ internal class AgeCypherQueryBuilder
     {
         _returnClauses.Add(returnClause);
         _logger.LogDebug("Added RETURN clause: {Return}", returnClause);
+    }
+
+    /// <summary>
+    /// Clears all RETURN clauses from the query.
+    /// </summary>
+    public void ClearReturn()
+    {
+        _returnClauses.Clear();
+        _logger.LogDebug("Cleared all RETURN clauses");
     }
 
     /// <summary>
@@ -269,7 +288,22 @@ internal class AgeCypherQueryBuilder
         // Build ORDER BY - must come after RETURN but before LIMIT in AGE
         if (_orderByClauses.Count > 0)
         {
+            // Apply reversal if this is a Last operation
+            if (_shouldReverseOrderBy)
+            {
+                ReverseOrderBy();
+                _logger.LogDebug("Applied deferred ORDER BY reversal for Last operation");
+            }
             query.AppendLine($"ORDER BY {string.Join(", ", _orderByClauses)}");
+        }
+        // If we have DISTINCT + SKIP but no explicit ORDER BY, add implicit ordering for deterministic results
+        else if (_distinct && _skip.HasValue && _returnClauses.Count > 0)
+        {
+            // Use the first return clause as the ordering column for deterministic results
+            var firstReturnClause = _returnClauses[0];
+            var orderDirection = _shouldReverseOrderBy ? " DESC" : "";
+            query.AppendLine($"ORDER BY {firstReturnClause}{orderDirection}");
+            _logger.LogDebug("Added implicit ORDER BY for DISTINCT + SKIP: {OrderBy}", firstReturnClause);
         }
 
         // Build SKIP/LIMIT - must come after ORDER BY in AGE

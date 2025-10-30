@@ -41,16 +41,71 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     /// <returns>A .NET object graph</returns>
     public object Deserialize(EntityInfo entity)
     {
-        // Handle dynamic entities
-        if (entity.ActualType.IsAssignableTo(typeof(DynamicNode)) || entity.ActualType.IsAssignableTo(typeof(DynamicRelationship)))
+        // Step 1: Determine the actual concrete type for deserialization
+        var actualType = ResolveActualType(entity);
+
+        // Step 2: Handle dynamic entities
+        if (actualType != null && (actualType.IsAssignableTo(typeof(DynamicNode)) || actualType.IsAssignableTo(typeof(DynamicRelationship))))
         {
             return DeserializeDynamicEntity(entity);
         }
 
-        var serializer = _serializerRegistry.GetSerializer(entity.ActualType)
-            ?? throw new GraphException($"No serializer found for type {entity.ActualType}. Ensure it is registered in the EntitySerializerRegistry.");
+        // Step 3: Get the serializer for the resolved concrete type
+        if (actualType == null)
+        {
+            throw new GraphException("Could not resolve actual type for entity deserialization");
+        }
 
-        return serializer.Deserialize(entity);
+        var serializer = _serializerRegistry.GetSerializer(actualType)
+            ?? throw new GraphException($"No serializer found for type {actualType}. Ensure it is registered in the EntitySerializerRegistry.");
+
+        // Step 4: Create a new EntityInfo with the resolved type for proper deserialization
+        var entityWithResolvedType = entity with { ActualType = actualType };
+        return serializer.Deserialize(entityWithResolvedType);
+    }
+
+    /// <summary>
+    /// Resolves the actual concrete type for an EntityInfo using polymorphic type resolution.
+    /// </summary>
+    /// <param name="entity">The entity info containing label information</param>
+    /// <returns>The concrete type to use for deserialization</returns>
+    private Type ResolveActualType(EntityInfo entity)
+    {
+        // If ActualType is already set and concrete, use it
+        if (entity.ActualType != null && !entity.ActualType.IsInterface && !entity.ActualType.IsAbstract)
+        {
+            return entity.ActualType;
+        }
+
+        // Try polymorphic resolution using labels
+        var labelRegistry = LabelTypeRegistry.Instance;
+
+        // First, try using inheritance labels to find the most specific type
+        if (entity.InheritanceLabels != null && entity.InheritanceLabels.Any())
+        {
+            var typeFromInheritance = labelRegistry.FindMostSpecificType(entity.InheritanceLabels);
+            if (typeFromInheritance != null)
+            {
+                return typeFromInheritance;
+            }
+        }
+
+        // If that fails, try direct label-to-type mapping using the primary label
+        var typeFromLabel = labelRegistry.GetTypeByLabel(entity.Label);
+        if (typeFromLabel != null && _serializerRegistry.ContainsType(typeFromLabel))
+        {
+            return typeFromLabel;
+        }
+
+        // If all polymorphic resolution fails, fall back to the original ActualType
+        // or throw an exception if it's null
+        if (entity.ActualType != null)
+        {
+            return entity.ActualType;
+        }
+
+        throw new GraphException($"Could not resolve actual type for entity with label '{entity.Label}'. " +
+                               $"Ensure the type is registered in both LabelTypeRegistry and EntitySerializerRegistry.");
     }
 
     /// <summary>
@@ -199,14 +254,20 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
     private object DeserializeDynamicEntity(EntityInfo entity)
     {
-        switch (entity.ActualType)
+        var actualType = entity.ActualType;
+        if (actualType == null)
+        {
+            throw new GraphException("Cannot deserialize dynamic entity: ActualType is null");
+        }
+
+        switch (actualType)
         {
             case var t when t.IsAssignableTo(typeof(DynamicNode)):
                 return DeserializeDynamicNode(entity);
             case var t when t.IsAssignableTo(typeof(DynamicRelationship)):
                 return DeserializeDynamicRelationship(entity);
             default:
-                throw new GraphException($"Unsupported dynamic entity type: {entity.ActualType.Name}");
+                throw new GraphException($"Unsupported dynamic entity type: {actualType.Name}");
         }
     }
 
@@ -385,7 +446,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     private object DeserializeComplexObject(EntityInfo entityInfo)
     {
         // Create an instance of the target type
-        var targetType = entityInfo.ActualType;
+        var targetType = entityInfo.ActualType ?? throw new GraphException("Cannot deserialize complex object: ActualType is null");
         var instance = Activator.CreateInstance(targetType);
 
         if (instance == null)

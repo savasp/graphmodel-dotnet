@@ -49,12 +49,33 @@ internal sealed class AgeRelationshipManager
             throw new GraphException("Relationships cannot have complex properties in the AGE provider");
         }
 
+        // For AGE inheritance support: use base type label and store hierarchy in properties
+        // Use the actual runtime type of the relationship object, not the generic type parameter
+        var actualType = relationship.GetType();
+        var baseLabel = Labels.GetBaseTypeLabel(actualType);
+        var inheritanceHierarchy = Labels.GetInheritanceHierarchy(actualType);
+        
+        // Also include interfaces that this relationship implements for interface querying
+        var allInterfaces = actualType.GetInterfaces()
+            .Where(i => typeof(IRelationship).IsAssignableFrom(i))
+            .Select(Labels.GetLabelFromType)
+            .ToArray();
+        
+        // Combine concrete types and interfaces for complete inheritance support
+        var allLabels = inheritanceHierarchy.Concat(allInterfaces).Distinct().ToArray();
+
         var properties = AgeSerializationBridge.SerializeSimpleProperties(entity);
         // Don't remove StartNodeId and EndNodeId - we want to store them as properties in AGE
         // so they can be retrieved later (AGE's internal IDs are different from our node IDs)
 
-        var labels = entity.ActualLabels.Count > 0 ? entity.ActualLabels : [entity.Label];
-        var relationshipType = string.Join(":", labels.Select(label => label.Replace("`", "``")));
+        // Add inheritance hierarchy to properties for AGE inheritance support
+        // Store labels if we have interfaces or multiple concrete types
+        if (allLabels.Length > 1)
+        {
+            properties["inheritance_labels"] = allLabels;
+        }
+
+        var relationshipType = baseLabel.Replace("`", "``");
 
         // Build property assignments for SET clause (AGE requires individual property assignments)
         // Apply the same property name mapping that we use in queries

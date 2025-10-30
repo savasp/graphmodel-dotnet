@@ -167,8 +167,26 @@ internal sealed class AgeResultProcessor
                     _ => typeof(object)
                 };
                 
-                var value = ExtractScalarValue(agtype, propertyType);
-                simpleProperties[propertyName] = new Property(null!, propertyName, false, new SimpleValue(value ?? string.Empty, propertyType));
+                // Handle relationship objects in projections
+                if (agtype.IsEdge && typeof(IRelationship).IsAssignableFrom(propertyType))
+                {
+                    var edge = agtype.GetEdge();
+                    var relationshipEntityInfo = _entityMapper.MapEdge(edge, propertyType);
+                    simpleProperties[propertyName] = new Property(null!, propertyName, false, relationshipEntityInfo);
+                }
+                // Handle node objects in projections
+                else if (agtype.IsVertex && typeof(INode).IsAssignableFrom(propertyType))
+                {
+                    var vertex = agtype.GetVertex();
+                    var nodeEntityInfo = _entityMapper.MapVertex(vertex, propertyType);
+                    simpleProperties[propertyName] = new Property(null!, propertyName, false, nodeEntityInfo);
+                }
+                // Handle scalar values
+                else
+                {
+                    var value = ExtractScalarValue(agtype, propertyType);
+                    simpleProperties[propertyName] = new Property(null!, propertyName, false, new SimpleValue(value ?? string.Empty, propertyType));
+                }
             }
         }
 

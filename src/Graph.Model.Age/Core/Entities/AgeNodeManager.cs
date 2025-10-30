@@ -51,8 +51,10 @@ internal sealed class AgeNodeManager
         var entity = entityFactory.Serialize(node);
         
         // For AGE inheritance support: use base type label and store hierarchy in properties
-        var baseLabel = Labels.GetBaseTypeLabel(typeof(TNode));
-        var inheritanceHierarchy = Labels.GetInheritanceHierarchy(typeof(TNode));
+        // Use the actual runtime type of the node object, not the generic type parameter
+        var actualType = node.GetType();
+        var baseLabel = Labels.GetBaseTypeLabel(actualType);
+        var inheritanceHierarchy = Labels.GetInheritanceHierarchy(actualType);
         
         // Use AGE's native approach: flatten ALL properties (simple + complex) directly on the main node
         // This leverages AGE's native JSON support for complex objects instead of creating separate nodes
