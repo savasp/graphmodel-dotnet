@@ -27,6 +27,7 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
 
         var sourceExpression = node.Arguments[0];
         var hasWhereClause = node.Arguments.Count == 2;
+        var alias = Context.Scope.CurrentAlias ?? "src0";
 
         // If there's a predicate, handle it as a WHERE clause
         if (hasWhereClause)
@@ -38,6 +39,15 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
                 var whereCondition = expressionVisitor.VisitAndReturnCypher(lambda.Body);
                 Context.Builder.AddWhere(whereCondition);
                 Logger.LogDebug("Added WHERE condition for Count predicate: {Condition}", whereCondition);
+
+                if (Context.UseFragmentRenderer)
+                {
+                    var whereFragment = new WhereFragment(
+                        whereCondition,
+                        ImmutableArray.Create(alias),
+                        alias);
+                    EmitFragment(whereFragment, "WhereFragment");
+                }
             }
         }
 
@@ -45,7 +55,6 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
     Context.Builder.ClearReturn();
 
     // Build COUNT expression
-        var alias = Context.Scope.CurrentAlias ?? "src0";
         var countExpression = $"count({alias})";
         Context.Builder.AddReturn(countExpression);
 
@@ -67,6 +76,7 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
 
         var sourceExpression = node.Arguments[0];
         var hasWhereClause = node.Arguments.Count == 2;
+        var alias = Context.Scope.CurrentAlias ?? "src0";
 
         if (hasWhereClause)
         {
@@ -76,13 +86,21 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
                 var expressionVisitor = CreateExpressionVisitor();
                 var whereCondition = expressionVisitor.VisitAndReturnCypher(lambda.Body);
                 Context.Builder.AddWhere(whereCondition);
+
+                if (Context.UseFragmentRenderer)
+                {
+                    var whereFragment = new WhereFragment(
+                        whereCondition,
+                        ImmutableArray.Create(alias),
+                        alias);
+                    EmitFragment(whereFragment, "WhereFragment");
+                }
             }
         }
 
     // Aggregations should override any prior projections
     Context.Builder.ClearReturn();
 
-    var alias = Context.Scope.CurrentAlias ?? "src0";
         var anyExpression = $"count({alias}) > 0";
         Context.Builder.AddReturn(anyExpression);
 
@@ -100,6 +118,7 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
         Logger.LogDebug("Processing ALL aggregation");
 
         var sourceExpression = node.Arguments[0];
+        var alias = Context.Scope.CurrentAlias ?? "src0";
 
         if (node.Arguments.Count == 2)
         {
@@ -111,13 +130,21 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
                 
                 // All() means: count where NOT condition = 0
                 Context.Builder.AddWhere($"NOT ({conditionCypher})");
+
+                if (Context.UseFragmentRenderer)
+                {
+                    var whereFragment = new WhereFragment(
+                        $"NOT ({conditionCypher})",
+                        ImmutableArray.Create(alias),
+                        alias);
+                    EmitFragment(whereFragment, "WhereFragment");
+                }
             }
         }
 
     // Aggregations should override any prior projections
     Context.Builder.ClearReturn();
 
-    var alias = Context.Scope.CurrentAlias ?? "src0";
         var allExpression = $"count({alias}) = 0";
         Context.Builder.AddReturn(allExpression);
 

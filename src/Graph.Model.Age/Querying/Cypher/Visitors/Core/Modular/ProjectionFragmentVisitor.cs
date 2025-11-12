@@ -36,8 +36,9 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
             return sourceExpression;
         }
 
-        var body = lambda.Body;
-        Console.WriteLine($"[HandleSelect] Lambda body: {body.ToString().Substring(0, Math.Min(200, body.ToString().Length))}");
+    var body = lambda.Body;
+    var bodyText = body.ToString();
+    Logger.LogTrace("HandleSelect lambda body preview: {Body}", bodyText.Substring(0, Math.Min(200, bodyText.Length)));
 
         // Identity projection: x => x
         if (body == lambda.Parameters[0])
@@ -72,9 +73,9 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
             // It used CurrentHop - 1, so that's what we should store.
             Context.Scope.LastPathSegmentHop = Context.Scope.CurrentHop - 1;
             var sourcePreview = sourceExpression.ToString().Substring(0, Math.Min(150, sourceExpression.ToString().Length));
-            Console.WriteLine($"[HandleSelect] Setting LastPathSegmentHop = {Context.Scope.LastPathSegmentHop} (CurrentHop={Context.Scope.CurrentHop}), source: {sourcePreview}");
             Logger.LogDebug("Select follows PathSegments directly, will use hop {Hop} (CurrentHop - 1)", 
                 Context.Scope.LastPathSegmentHop);
+            Logger.LogTrace("Select PathSegments source preview: {SourcePreview}", sourcePreview);
         }
         else if (isPathSegmentsSource)
         {

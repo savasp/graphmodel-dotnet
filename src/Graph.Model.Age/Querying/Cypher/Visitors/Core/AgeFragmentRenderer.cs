@@ -32,7 +32,7 @@ internal static class AgeFragmentRenderer
         var complexPropertyToggles = fragmentList.OfType<ComplexPropertyLoadingFragment>().ToList();
         var complexPropertyToggle = complexPropertyToggles.LastOrDefault();
         var isComplexPropertyLoadingEnabled = complexPropertyToggle?.IsEnabled ?? false;
-        var aggregationFragments = fragmentList.OfType<AggregationFragment>().ToList();
+    var aggregationFragments = fragmentList.OfType<AggregationFragment>().ToList();
         var groupByFragments = fragmentList.OfType<GroupByFragment>().ToList();
         var hasScalarAggregation = aggregationFragments.Count > 0 && groupByFragments.Count == 0;
         var returnClause = isComplexPropertyLoadingEnabled
@@ -215,7 +215,7 @@ internal static class AgeFragmentRenderer
         if (aggregationFragments.Count > 0)
         {
             var aggregationExpressions = aggregationFragments
-                .Select(agg => $"{agg.AggregationType}({agg.Expression})")
+                .Select(BuildAggregationExpression)
                 .ToList();
             
             if (aggregationExpressions.Count > 0)
@@ -250,6 +250,16 @@ internal static class AgeFragmentRenderer
         }
 
         return null;
+    }
+
+    private static string BuildAggregationExpression(AggregationFragment fragment)
+    {
+        return fragment.AggregationType switch
+        {
+            "any" => $"count({fragment.Expression}) > 0",
+            "all" => $"count({fragment.Expression}) = 0",
+            _ => $"{fragment.AggregationType}({fragment.Expression})"
+        };
     }
 
     private static string DetermineComplexPropertyAlias(IReadOnlyList<ComplexPropertyLoadingFragment> toggles, IReadOnlyList<QueryFragment> fragments)

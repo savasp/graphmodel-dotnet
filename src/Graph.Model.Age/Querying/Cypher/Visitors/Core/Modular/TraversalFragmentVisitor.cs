@@ -89,7 +89,11 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
 
         Context.Builder.AddMatchPattern(pathPattern);
         Logger.LogDebug("Added path segment pattern: {Pattern}", pathPattern);
-        Console.WriteLine($"[PathSegments] hop={Context.Scope.CurrentHop}, isChained={isChainedPathSegments}, pattern={pathPattern}");
+        Logger.LogTrace(
+            "PathSegments hop {Hop}, chained={IsChained}, pattern={Pattern}",
+            Context.Scope.CurrentHop,
+            isChainedPathSegments,
+            pathPattern);
 
         // Emit fragment
         EmitMatchFragment(
@@ -324,7 +328,11 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
                 if (previousHopAliases.HasValue)
                 {
                     chainSourceAlias = previousHopAliases.Value.tgt;
-                    Console.WriteLine($"[BuildMatchPattern] Chaining: using previous hop {previousHop} target '{chainSourceAlias}' as source for hop {Context.Scope.CurrentHop}");
+                    Logger.LogTrace(
+                        "Chaining: using previous hop {PreviousHop} target {ChainSourceAlias} as source for hop {CurrentHop}",
+                        previousHop,
+                        chainSourceAlias,
+                        Context.Scope.CurrentHop);
                 }
                 else
                 {

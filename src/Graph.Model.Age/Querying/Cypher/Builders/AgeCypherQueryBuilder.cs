@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Age.Querying.Cypher.Builders;
 
 using System.Text;
 using System.Text.RegularExpressions;
+using Cvoya.Graph.Model.Age.Core.Entities;
 using Cvoya.Graph.Model.Cypher.Querying.Cypher;
 using Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model;
@@ -88,10 +89,10 @@ internal class AgeCypherQueryBuilder
     /// </summary>
     public void AddMatchPattern(string pattern)
     {
-        Console.WriteLine($"[AddMatchPattern] pattern='{pattern}', existingCount={_matchClauses.Count}");
+        _logger.LogTrace("Evaluating MATCH pattern {Pattern} with existing count {Count}", pattern, _matchClauses.Count);
         if (_matchClauses.Count > 0)
         {
-            Console.WriteLine($"[AddMatchPattern] last pattern='{_matchClauses[^1]}'");
+            _logger.LogTrace("Previous MATCH pattern before evaluation: {Pattern}", _matchClauses[^1]);
         }
 
         if (_matchClauses.Count > 0 && TryGetStandaloneNodeAlias(_matchClauses[^1], out var standaloneAlias) &&
@@ -108,7 +109,6 @@ internal class AgeCypherQueryBuilder
             // This is a continuation pattern (starts with -[...]) - chain it to the last pattern
             var lastPattern = _matchClauses[^1];
             _matchClauses[^1] = lastPattern + pattern;
-            Console.WriteLine($"[AddMatchPattern] CHAINED via StartsWith('-['): {_matchClauses[^1]}");
             _logger.LogDebug("Chained MATCH pattern: {Pattern} -> {CombinedPattern}", pattern, _matchClauses[^1]);
         }
         else if (_matchClauses.Count > 0 && TryGetLeadingNodeAlias(pattern, out var leadingAlias, out var patternRemainder) &&
@@ -118,7 +118,6 @@ internal class AgeCypherQueryBuilder
             // The new pattern begins with the same alias as the terminal node of the previous pattern.
             // Append only the continuation (relationship + target node) to preserve a single chained MATCH clause.
             _matchClauses[^1] += patternRemainder;
-            Console.WriteLine($"[AddMatchPattern] CHAINED via shared node alias '{leadingAlias}': {_matchClauses[^1]}");
             _logger.LogDebug("Chained MATCH pattern using shared alias {Alias}: {CombinedPattern}", leadingAlias, _matchClauses[^1]);
         }
         else if (_matchClauses.Count > 0 && pattern.Contains(")-[") && pattern.EndsWith("->") && 
@@ -129,7 +128,6 @@ internal class AgeCypherQueryBuilder
             // Result: "(srcX:Label)-[relX:...]->(srcY:Label)..."
             var existingPattern = _matchClauses[^1];
             _matchClauses[^1] = pattern + existingPattern;
-            Console.WriteLine($"[AddMatchPattern] PREPENDED: {_matchClauses[^1]}");
             _logger.LogDebug("Prepended MATCH pattern: {Pattern} + {Existing} -> {CombinedPattern}", 
                 pattern, existingPattern, _matchClauses[^1]);
         }
@@ -137,7 +135,6 @@ internal class AgeCypherQueryBuilder
         {
             // This is a new independent pattern
             _matchClauses.Add(pattern);
-            Console.WriteLine($"[AddMatchPattern] NEW INDEPENDENT pattern");
             _logger.LogDebug("Added MATCH pattern: {Pattern}", pattern);
         }
     }
@@ -426,16 +423,18 @@ internal class AgeCypherQueryBuilder
     /// </summary>
     public string AddParameter(object? value)
     {
+        var convertedValue = AgeSerializationBridge.ToAgeValue(value);
+
         // Check if parameter already exists to avoid duplicates
-        var existingParam = _parameters.FirstOrDefault(p => Equals(p.Value, value));
+        var existingParam = _parameters.FirstOrDefault(p => Equals(p.Value, convertedValue));
         if (existingParam.Key != null)
         {
             return $"${existingParam.Key}";
         }
 
         var paramName = $"param_{_parameters.Count}";
-        _parameters[paramName] = value;
-        _logger.LogDebug("Added parameter: {ParamName} = {Value}", paramName, value);
+        _parameters[paramName] = convertedValue;
+        _logger.LogDebug("Added parameter: {ParamName} = {Value}", paramName, convertedValue);
         return $"${paramName}";
     }
 

@@ -395,6 +395,17 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 var relationshipAlias = _context.Scope.GetNumberedAlias("r");
                 _context.Builder.AddReturn(relationshipAlias);
                 _logger.LogDebug("JOIN: Returning outer parameter (relationship): {Alias}", relationshipAlias);
+
+                // Update scope so downstream operators understand we're working with the relationship alias
+                _context.Scope.CurrentAlias = relationshipAlias;
+                _context.Scope.CurrentType = resultSelector.Parameters[0].Type;
+                _context.Scope.RegisterTypeAlias(_context.Scope.CurrentType, relationshipAlias);
+
+                // Emit a projection fragment so the fragment renderer preserves the relationship return
+                var returns = ImmutableArray.Create(relationshipAlias);
+                var projectionFragment = new ProjectionFragment(returns, relationshipAlias);
+                _context.FragmentSequence.Add(projectionFragment);
+                _logger.LogDebug("JOIN: Emitted ProjectionFragment for relationship alias {Alias}", relationshipAlias);
             }
             else if (parameterIndex == 1)
             {
@@ -402,6 +413,17 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 var targetAlias = _context.Scope.GetNumberedAlias("tgt");
                 _context.Builder.AddReturn(targetAlias);
                 _logger.LogDebug("JOIN: Returning inner parameter (target node): {Alias}", targetAlias);
+
+                // Update scope/type information for the returned node so subsequent operators use the right alias
+                _context.Scope.CurrentAlias = targetAlias;
+                _context.Scope.CurrentType = resultSelector.Parameters[1].Type;
+                _context.Scope.RegisterTypeAlias(_context.Scope.CurrentType, targetAlias);
+
+                // Emit ProjectionFragment to keep fragment renderer aligned with builder results
+                var returns = ImmutableArray.Create(targetAlias);
+                var projectionFragment = new ProjectionFragment(returns, targetAlias);
+                _context.FragmentSequence.Add(projectionFragment);
+                _logger.LogDebug("JOIN: Emitted ProjectionFragment for node alias {Alias}", targetAlias);
             }
             else
             {
@@ -421,7 +443,7 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
 
     private void HandleAnonymousProjection(NewExpression newExpr)
     {
-        Console.WriteLine($"DEBUG: HandleAnonymousProjection called with {newExpr.Arguments.Count} arguments");
+    _logger.LogDebug("HandleAnonymousProjection called with {ArgumentCount} arguments", newExpr.Arguments.Count);
         
         var projections = new List<string>();
         var alias = _context.Scope.CurrentAlias ?? GetContextualAlias();
@@ -435,12 +457,11 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             // Use safe alias to avoid reserved word conflicts in AGE
             var safeAlias = $"c_{projectionAlias}";
 
-            Console.WriteLine($"DEBUG: HandleAnonymousProjection - processing argument {i}: {arg}, Type: {arg.Type}");
+            _logger.LogTrace("HandleAnonymousProjection processing argument {Index}: {Argument} (Type: {Type})", i, arg, arg.Type);
             
             // Special handling for PathSegment parameter projections
             if (arg is ParameterExpression paramExpr && IsPathSegmentType(paramExpr.Type))
             {
-                Console.WriteLine($"DEBUG: Detected PathSegment parameter projection: {paramExpr.Name}");
                 _logger.LogDebug("Detected PathSegment parameter projection: {Parameter}", paramExpr.Name);
                 
                 // For PathSegment projections, we need to return the three components
@@ -822,6 +843,14 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 var pathSegmentReturn = $"{sourceAlias}, {relAlias}, {targetAlias}";
                 _context.Builder.AddReturn(pathSegmentReturn);
                 _logger.LogDebug("Added default path segment return for hop {Hop}: {Return}", lastHop, pathSegmentReturn);
+
+                if (_context.UseFragmentRenderer)
+                {
+                    var returns = ImmutableArray.Create(sourceAlias, relAlias, targetAlias);
+                    var projectionFragment = new ProjectionFragment(returns, targetAlias);
+                    _context.FragmentSequence.Add(projectionFragment);
+                    _logger.LogDebug("Emitted ProjectionFragment for path segment return with aliases {Returns}", returns);
+                }
             }
             else
             {

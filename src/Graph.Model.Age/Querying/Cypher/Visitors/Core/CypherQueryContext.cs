@@ -24,7 +24,7 @@ using Microsoft.Extensions.Logging;
 /// </summary>
 internal sealed record CypherQueryContext
 {
-    public CypherQueryContext(Type rootType, ILoggerFactory? loggerFactory = null, bool useFragmentRenderer = false)
+    public CypherQueryContext(Type rootType, ILoggerFactory? loggerFactory = null, bool useFragmentRenderer = true)
     {
         LoggerFactory = loggerFactory;
         Scope = new CypherQueryScope(rootType);

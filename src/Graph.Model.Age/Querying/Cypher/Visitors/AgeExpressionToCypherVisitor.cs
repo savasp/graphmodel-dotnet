@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Age.Querying.Cypher.Visitors;
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Model.Age.Core.Entities;
 using Cvoya.Graph.Model.Age.Querying.Cypher.Builders;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -114,7 +115,7 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
         {
             // Legacy approach: use the dictionary
             var paramName = $"param_{_parametersDict.Count}";
-            _parametersDict[paramName] = value;
+            _parametersDict[paramName] = AgeSerializationBridge.ToAgeValue(value);
             return $"${paramName}";
         }
         else
@@ -560,14 +561,14 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
                     var pathSegmentProjection = string.Join(", ", pathSegmentParts);
                     memberNames.Add(memberName);
                     expressions.Add(pathSegmentProjection);
-                    Console.WriteLine($"DEBUG: Added PathSegment projection: {pathSegmentProjection}");
+                    _logger.LogDebug("Added PathSegment projection: {Projection}", pathSegmentProjection);
                 }
                 else
                 {
                     // All components already returned - still need to track this member for result processing
                     memberNames.Add(memberName);
                     // Add placeholder to maintain member count (will be handled by result processor)
-                    Console.WriteLine($"DEBUG: PathSegment {memberName} has no new columns - all components already returned");
+                    _logger.LogDebug("PathSegment {MemberName} has no new columns; components already returned", memberName);
                 }
             }
             else
@@ -582,7 +583,7 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
 
         // Return the combined expression for the SELECT clause
         var selectExpression = string.Join(", ", expressions);
-        Console.WriteLine($"DEBUG: VisitNew returning: {selectExpression}");
+        _logger.LogDebug("VisitNew returning select expression: {Expression}", selectExpression);
         return Expression.Constant(selectExpression);
     }
 
