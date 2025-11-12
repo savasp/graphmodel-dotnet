@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Age.Querying.Cypher.Execution;
 
+using System;
 using System.Linq.Expressions;
 using System.Reflection;
 using Cvoya.Graph.Model.Age.Core;
@@ -1732,13 +1733,29 @@ internal sealed class AgeCypherEngine
             {
                 var member = newExpr.Members?[i];
                 var columnName = member?.Name ?? $"field{i}";
+                var memberType = member switch
+                {
+                    PropertyInfo pi => pi.PropertyType,
+                    FieldInfo fi => fi.FieldType,
+                    _ => newExpr.Arguments[i].Type
+                };
                 
                 // Apache AGE doesn't support proper identifier escaping in Cypher
                 // Use c_ prefix in Cypher RETURN, then map to actual property name in SQL column definition
                 var cypherAlias = $"c_{columnName}";
                 
-                // Use double quotes for PostgreSQL identifier escaping in SQL portion
-                columns.Add($"\"{cypherAlias}\" agtype");
+                if (IsPathSegmentType(memberType))
+                {
+                    // Path segments are expanded into three columns: source node, relationship, target node
+                    columns.Add($"\"{cypherAlias}_src\" agtype");
+                    columns.Add($"\"{cypherAlias}_r\" agtype");
+                    columns.Add($"\"{cypherAlias}_tgt\" agtype");
+                }
+                else
+                {
+                    // Use double quotes for PostgreSQL identifier escaping in SQL portion
+                    columns.Add($"\"{cypherAlias}\" agtype");
+                }
             }
             
             return $"({string.Join(", ", columns)})";
@@ -1746,6 +1763,22 @@ internal sealed class AgeCypherEngine
         
         // Default fallback
         return "(result agtype)";
+    }
+
+    private static bool IsPathSegmentType(Type type)
+    {
+        if (!type.IsGenericType)
+        {
+            return false;
+        }
+
+        if (type.GetGenericTypeDefinition().Name.Contains("GraphPathSegment", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return type.GetInterfaces()
+            .Any(i => i.IsGenericType && i.GetGenericTypeDefinition().Name.Contains("IGraphPathSegment", StringComparison.Ordinal));
     }
 
     private NpgsqlCommand CreateCypherCommandWithColumns(

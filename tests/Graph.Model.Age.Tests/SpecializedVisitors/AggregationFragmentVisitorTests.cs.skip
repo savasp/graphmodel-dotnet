@@ -1,0 +1,204 @@
+// Copyright 2025 Savas Parastatidis
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+using System.Linq.Expressions;
+using Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core.Modular;
+using Cvoya.Graph.Model.Cypher.Querying.Cypher.Visitors.Core;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace Cvoya.Graph.Model.Age.Tests.SpecializedVisitors;
+
+/// <summary>
+/// Unit tests for AggregationFragmentVisitor to verify it correctly handles
+/// aggregation operations (Count, Sum, Average, Min, Max, Any, All) and emits
+/// appropriate fragments and builder calls.
+/// </summary>
+public class AggregationFragmentVisitorTests
+{
+    private record TestNode : Node
+    {
+        public string Name { get; set; } = string.Empty;
+        public int Age { get; set; }
+        public decimal Salary { get; set; }
+    }
+
+    [Fact]
+    public void HandleCount_AddsCorrectReturnClause()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        var visitor = new AggregationFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, int>> countExpr = q => q.Count();
+        var countCall = (MethodCallExpression)countExpr.Body;
+
+        // Act
+        visitor.HandleCount(countCall);
+
+        // Assert
+        var query = context.Builder.Build().Text;
+        Assert.Contains("count(n)", query);
+    }
+
+    [Fact]
+    public void HandleCount_EmitsAggregationFragment()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        var visitor = new AggregationFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, int>> countExpr = q => q.Count();
+        var countCall = (MethodCallExpression)countExpr.Body;
+
+        // Act
+        visitor.HandleCount(countCall);
+
+        // Assert
+        var fragments = context.FragmentSequence.OfType<AggregationFragment>().ToList();
+        Assert.Single(fragments);
+        Assert.Equal("count", fragments[0].AggregationType);
+        Assert.Equal("n", fragments[0].Expression);
+        Assert.True(fragments[0].IsScalar);
+    }
+
+    [Fact]
+    public void HandleCount_ClearsOrderBy()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        context.Builder.AddOrderBy("n.Age", false);
+        var visitor = new AggregationFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, int>> countExpr = q => q.Count();
+        var countCall = (MethodCallExpression)countExpr.Body;
+
+        // Act
+        visitor.HandleCount(countCall);
+
+        // Assert
+        var query = context.Builder.Build().Text;
+        Assert.DoesNotContain("ORDER BY", query);
+    }
+
+    [Fact]
+    public void HandleAny_AddsCorrectReturnClause()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        var visitor = new AggregationFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, bool>> anyExpr = q => q.Any();
+        var anyCall = (MethodCallExpression)anyExpr.Body;
+
+        // Act
+        visitor.HandleAny(anyCall);
+
+        // Assert
+        var query = context.Builder.Build().Text;
+        Assert.Contains("count(n) > 0", query);
+    }
+
+    [Fact]
+    public void HandleAll_AddsCorrectReturnClause()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        var visitor = new AggregationFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, bool>> allExpr = q => q.All(x => x.Age > 18);
+        var allCall = (MethodCallExpression)allExpr.Body;
+
+        // Act
+        visitor.HandleAll(allCall);
+
+        // Assert
+        var query = context.Builder.Build().Text;
+        Assert.Contains("count(n) = ", query);
+    }
+
+    [Fact]
+    public void HandleAggregationFunction_Sum_AddsCorrectExpression()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        var visitor = new AggregationFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, decimal>> sumExpr = q => q.Sum(x => x.Salary);
+        var sumCall = (MethodCallExpression)sumExpr.Body;
+
+        // Act
+        visitor.HandleAggregationFunction(sumCall, "Sum");
+
+        // Assert
+        var query = context.Builder.Build().Text;
+        Assert.Contains("sum(", query);
+        Assert.Contains("Salary", query);
+    }
+
+    [Fact]
+    public void HandleAggregationFunction_Average_AddsCorrectExpression()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        var visitor = new AggregationFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, double>> avgExpr = q => q.Average(x => x.Age);
+        var avgCall = (MethodCallExpression)avgExpr.Body;
+
+        // Act
+        visitor.HandleAggregationFunction(avgCall, "Average");
+
+        // Assert
+        var query = context.Builder.Build().Text;
+        Assert.Contains("avg(", query);
+        Assert.Contains("Age", query);
+    }
+
+    [Fact]
+    public void HandleAggregationFunction_EmitsAggregationFragment()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        var visitor = new AggregationFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, int>> minExpr = q => q.Min(x => x.Age);
+        var minCall = (MethodCallExpression)minExpr.Body;
+
+        // Act
+        visitor.HandleAggregationFunction(minCall, "Min");
+
+        // Assert
+        var fragments = context.FragmentSequence.OfType<AggregationFragment>().ToList();
+        Assert.Single(fragments);
+        Assert.Equal("min", fragments[0].AggregationType.ToLower());
+        Assert.True(fragments[0].IsScalar);
+    }
+}

@@ -1,0 +1,212 @@
+Running tests from /workspaces/graphmodel-dotnet/tests/Graph.Model.Age.Tests/bin/Debug/net10.0/Cvoya.Graph.Model.Age.Tests.dll (net10.0|x64)
+failed Cvoya.Graph.Model.Age.Tests.GraphModelTests.ComplexObjectGraphSerializationTests.CanCreateAndGetNodeWithComplexGraph (55ms)
+  Assert.Equal() Failure: Strings differ
+Expected: "Nested B1"
+Actual:   null
+  from /workspaces/graphmodel-dotnet/tests/Graph.Model.Age.Tests/bin/Debug/net10.0/Cvoya.Graph.Model.Age.Tests.dll (net10.0|x64)
+  Assert.Equal() Failure: Strings differ
+  Expected: "Nested B1"
+  Actual:   null
+    at Cvoya.Graph.Model.Tests.IComplexObjectGraphSerializationTests.CanCreateAndGetNodeWithComplexGraph() in /workspaces/graphmodel-dotnet/tests/Graph.Model.Tests/IComplexObjectGraphSerializationTests.cs:67
+    --- End of stack trace from previous location ---
+failed Cvoya.Graph.Model.Age.Tests.GraphModelTests.ComplexObjectGraphSerializationTests.CanCreateAndGetNodeWithComplexPropertyTree (55ms)
+  Assert.Equal() Failure: Strings differ
+Expected: "Nested B1"
+Actual:   null
+  from /workspaces/graphmodel-dotnet/tests/Graph.Model.Age.Tests/bin/Debug/net10.0/Cvoya.Graph.Model.Age.Tests.dll (net10.0|x64)
+  Assert.Equal() Failure: Strings differ
+  Expected: "Nested B1"
+  Actual:   null
+    at Cvoya.Graph.Model.Tests.IComplexObjectGraphSerializationTests.CanCreateAndGetNodeWithComplexPropertyTree() in /workspaces/graphmodel-dotnet/tests/Graph.Model.Tests/IComplexObjectGraphSerializationTests.cs:45
+    --- End of stack trace from previous location ---
+failed Cvoya.Graph.Model.Age.Tests.GraphModelTests.ComplexObjectGraphSerializationTests.CanCreateAndGetNodeWithListOfComplexProperties (53ms)
+  System.InvalidOperationException : Required collection property 'A' is missing or null
+  from /workspaces/graphmodel-dotnet/tests/Graph.Model.Age.Tests/bin/Debug/net10.0/Cvoya.Graph.Model.Age.Tests.dll (net10.0|x64)
+  Xunit.Runner.InProc.SystemConsole.TestingPlatform.XunitException: System.InvalidOperationException : Required collection property 'A' is missing or null
+    at Cvoya.Graph.Model.Tests.Generated.Class2Serializer.Deserialize(EntityInfo entity) in /workspaces/graphmodel-dotnet/tests/Graph.Model.Age.Tests/obj/Debug/net10.0/Graph.Model.Serialization.CodeGen/Cvoya.Graph.Model.Serialization.CodeGen.EntitySerializerGenerator/Cvoya_Graph_Model_Tests_Class2Serializer.g.cs:116
+    at Cvoya.Graph.Model.Serialization.EntityFactory.Deserialize(EntityInfo entity) in /workspaces/graphmodel-dotnet/src/Graph.Model.Serialization/EntityFactory.cs:64
+    at Cvoya.Graph.Model.Serialization.ResultMaterializer`1.MaterializeSingleElement[TResult](EntityInfo entityInfo, Type elementType) in /workspaces/graphmodel-dotnet/src/Graph.Model.Serialization/Materialization/ResultMaterializer.cs:120
+    at Cvoya.Graph.Model.Serialization.ResultMaterializer`1.MaterializeAsync[T](List`1 entityInfos, CancellationToken cancellationToken) in /workspaces/graphmodel-dotnet/src/Graph.Model.Serialization/Materialization/ResultMaterializer.cs:75
+    at Cvoya.Graph.Model.Age.Querying.Cypher.Execution.AgeCypherEngine.ExecuteQueryWithSharedArchitecture[T](String cypher, Dictionary`2 parameters, Type elementType, AgeGraphTransaction transaction, CancellationToken cancellationToken, LambdaExpression projectionExpression, Type projectionResultType, String aggregationType) in /workspaces/graphmodel-dotnet/src/Graph.Model.Age/Querying/Cypher/Execution/AgeCypherEngine.cs:1000
+    at Cvoya.Graph.Model.Age.Querying.Cypher.Execution.AgeCypherEngine.ExecuteQueryWithSharedArchitecture[T](String cypher, Dictionary`2 parameters, Type elementType, AgeGraphTransaction transaction, CancellationToken cancellationToken, LambdaExpression projectionExpression, Type projectionResultType, String aggregationType) in /workspaces/graphmodel-dotnet/src/Graph.Model.Age/Querying/Cypher/Execution/AgeCypherEngine.cs:1000
+    at Cvoya.Graph.Model.Age.Querying.Cypher.Execution.AgeCypherEngine.ExecuteAsync[T](Expression expression, AgeGraphTransaction transaction, CancellationToken cancellationToken) in /workspaces/graphmodel-dotnet/src/Graph.Model.Age/Querying/Cypher/Execution/AgeCypherEngine.cs:92
+    at Cvoya.Graph.Model.Age.Querying.Linq.Providers.AgeGraphQueryProvider.ExecuteAsync[TResult](Expression expression, CancellationToken cancellationToken) in /workspaces/graphmodel-dotnet/src/Graph.Model.Age/Querying/Linq/Providers/AgeGraphQueryProvider.cs:123
+    at Cvoya.Graph.Model.QueryableAsyncExtensions.FirstOrDefaultAsync[T](IQueryable`1 source, CancellationToken cancellationToken) in /workspaces/graphmodel-dotnet/src/Graph.Model/GraphQueryable/QueryableAsyncExtensions.cs:59
+    at Cvoya.Graph.Model.Age.Core.AgeGraph.GetNodeAsync[N](String id, IGraphTransaction transaction, CancellationToken cancellationToken) in /workspaces/graphmodel-dotnet/src/Graph.Model.Age/Core/AgeGraph.cs:144
+    at Cvoya.Graph.Model.Tests.IComplexObjectGraphSerializationTests.CanCreateAndGetNodeWithListOfComplexProperties() in /workspaces/graphmodel-dotnet/tests/Graph.Model.Tests/IComplexObjectGraphSerializationTests.cs:99
+    --- End of stack trace from previous location ---
+/workspaces/graphmodel-dotnet/tests/Graph.Model.Age.Tests/bin/Debug/net10.0/Cvoya.Graph.Model.Age.Tests.dll (net10.0|x64) failed with 3 error(s) (1s 982ms)
+Exit code: 2
+  Standard output: dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.TestInfrastructureFixture[0]
+        Waiting for test fixture slot...
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.TestInfrastructureFixture[0]
+        Test fixture slot acquired
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.TestInfrastructureFixture[0]
+        Starting schema registry initialization...
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.TestInfrastructureFixture[0]
+        Schema registry initialized
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Setting up graphs in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating graph graphmodeltests000 in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating or replacing graph graphmodeltests000
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests000 is now ready
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests000 is ready for use
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating graph graphmodeltests001 in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating or replacing graph graphmodeltests001
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests001 is now ready
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests001 is ready for use
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating graph graphmodeltests002 in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating or replacing graph graphmodeltests002
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests002 is now ready
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests002 is ready for use
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating graph graphmodeltests003 in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating or replacing graph graphmodeltests003
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests003 is now ready
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests003 is ready for use
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating graph graphmodeltests004 in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating or replacing graph graphmodeltests004
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests004 is now ready
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests004 is ready for use
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating graph graphmodeltests005 in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating or replacing graph graphmodeltests005
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests005 is now ready
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests005 is ready for use
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating graph graphmodeltests006 in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating or replacing graph graphmodeltests006
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests006 is now ready
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests006 is ready for use
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating graph graphmodeltests007 in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating or replacing graph graphmodeltests007
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests007 is now ready
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests007 is ready for use
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating graph graphmodeltests008 in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating or replacing graph graphmodeltests008
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests008 is now ready
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests008 is ready for use
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating graph graphmodeltests009 in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Creating or replacing graph graphmodeltests009
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests009 is now ready
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests009 is ready for use
+  info: Cvoya.Graph.Model.Age.Tests.AgeTest[0]
+        Initializing AGE test graph (newGraph: False)
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Requesting an available graph from the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        A graph is available, acquiring it
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Acquired graph graphmodeltests000 from the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.TestInfrastructureFixture[0]
+        Returning pooled graph graphmodeltests000 to pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Releasing graph graphmodeltests000 back to the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests000 is now available in the pool
+  info: Cvoya.Graph.Model.Age.Tests.AgeTest[0]
+        Initializing AGE test graph (newGraph: False)
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Requesting an available graph from the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        A graph is available, acquiring it
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Acquired graph graphmodeltests001 from the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.TestInfrastructureFixture[0]
+        Returning pooled graph graphmodeltests001 to pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Releasing graph graphmodeltests001 back to the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests001 is now available in the pool
+  info: Cvoya.Graph.Model.Age.Tests.AgeTest[0]
+        Initializing AGE test graph (newGraph: False)
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Requesting an available graph from the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        A graph is available, acquiring it
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Acquired graph graphmodeltests002 from the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.TestInfrastructureFixture[0]
+        Returning pooled graph graphmodeltests002 to pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Releasing graph graphmodeltests002 back to the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests002 is now available in the pool
+  info: Cvoya.Graph.Model.Age.Tests.AgeTest[0]
+        Initializing AGE test graph (newGraph: False)
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Requesting an available graph from the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        A graph is available, acquiring it
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Acquired graph graphmodeltests003 from the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.TestInfrastructureFixture[0]
+        Returning pooled graph graphmodeltests003 to pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Releasing graph graphmodeltests003 back to the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests003 is now available in the pool
+  info: Cvoya.Graph.Model.Age.Tests.AgeTest[0]
+        Initializing AGE test graph (newGraph: False)
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Requesting an available graph from the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        A graph is available, acquiring it
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Acquired graph graphmodeltests004 from the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.TestInfrastructureFixture[0]
+        Returning pooled graph graphmodeltests004 to pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Releasing graph graphmodeltests004 back to the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.DatabasePoolManager[0]
+        Graph graphmodeltests004 is now available in the pool
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.TestInfrastructureFixture[0]
+        Disposing test infrastructure
+  dbug: Cvoya.Graph.Model.Age.Tests.Infrastructure.TestInfrastructureFixture[0]
+        Releasing test fixture slot
+  
+
+Test run summary: Failed!
+  total: 5
+  failed: 3
+  succeeded: 2
+  skipped: 0
+  duration: 2s 245ms
+Test run completed with non-success exit code: 2 (see: https://aka.ms/testingplatform/exitcodes)

@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
 
 using Cvoya.Graph.Model.Age.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Cypher.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
@@ -23,11 +24,15 @@ using Microsoft.Extensions.Logging;
 /// </summary>
 internal sealed record CypherQueryContext
 {
-    public CypherQueryContext(Type rootType, ILoggerFactory? loggerFactory = null)
+    public CypherQueryContext(Type rootType, ILoggerFactory? loggerFactory = null, bool useFragmentRenderer = false)
     {
         LoggerFactory = loggerFactory;
         Scope = new CypherQueryScope(rootType);
         Builder = new AgeCypherQueryBuilder(this);
+        // Fragment shim support
+        FragmentSequence = new List<QueryFragment>();
+        AliasManager = new AliasManager();
+        UseFragmentRenderer = useFragmentRenderer;
     }
 
     public CypherQueryScope Scope { get; }
@@ -36,9 +41,36 @@ internal sealed record CypherQueryContext
 
     public ILoggerFactory? LoggerFactory { get; }
 
+    // Fragment shim — collects fragments produced during translation (can contain both shared and AGE-specific fragments)
+    public List<QueryFragment> FragmentSequence { get; }
+
+    // Lightweight alias manager for fragment shim
+    public AliasManager AliasManager { get; }
+
+    /// <summary>
+    /// When true, GetQuery() returns fragment-rendered output instead of builder output.
+    /// This enables progressive migration from builder-based to fragment-based query generation.
+    /// </summary>
+    public bool UseFragmentRenderer { get; }
+
+    /// <summary>
+    /// Stores the result of the most recent alias-generating operation.
+    /// Used for transitioning from implicit (CurrentAlias mutation) to explicit alias passing.
+    /// Callers can check this after operations like PathSegments to know what aliases were generated.
+    /// </summary>
+    public AliasResolutionResult? LastAliasResolution { get; set; }
+
     public IDisposable PushAlias(string alias) => new AliasScope(this, alias);
 
-    public string GetQuery() => Builder.Build().Text;
+    public string GetQuery()
+    {
+        if (UseFragmentRenderer && FragmentSequence.Count > 0)
+        {
+            return AgeFragmentRenderer.Render(FragmentSequence);
+        }
+        
+        return Builder.Build().Text;
+    }
 
     public IReadOnlyDictionary<string, object?> GetParameters() => Builder.Build().Parameters;
 

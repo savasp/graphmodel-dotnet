@@ -43,6 +43,14 @@ internal sealed class AgeRelationshipManager
         ArgumentNullException.ThrowIfNull(relationship);
         GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
 
+        await AgeEntityAttributeValidator.ValidateRelationshipAsync(
+                relationship,
+                context,
+                transaction,
+                isUpdate: false,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
         var entity = entityFactory.Serialize(relationship);
         if (entity.ComplexProperties.Count > 0)
         {
@@ -109,6 +117,14 @@ internal sealed class AgeRelationshipManager
     {
         ArgumentNullException.ThrowIfNull(relationship);
         GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
+
+        await AgeEntityAttributeValidator.ValidateRelationshipAsync(
+                relationship,
+                context,
+                transaction,
+                isUpdate: true,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
 
         var entity = entityFactory.Serialize(relationship);
         if (entity.ComplexProperties.Count > 0)

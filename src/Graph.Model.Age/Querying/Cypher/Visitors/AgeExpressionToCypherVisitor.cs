@@ -182,9 +182,9 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
 
                 var alias = segmentProperty switch
                 {
-                    nameof(IGraphPathSegment.StartNode) => _sourceAlias ?? "src",
-                    nameof(IGraphPathSegment.EndNode) => _targetAlias ?? "tgt",
-                    nameof(IGraphPathSegment.Relationship) => _relationshipAlias ?? "r",
+                    nameof(IGraphPathSegment.StartNode) => _sourceAlias ?? "src0",
+                    nameof(IGraphPathSegment.EndNode) => _targetAlias ?? "tgt0",
+                    nameof(IGraphPathSegment.Relationship) => _relationshipAlias ?? "r0",
                     _ => throw new NotSupportedException($"Path segment property '{segmentProperty}' is not supported")
                 };
 
@@ -227,9 +227,9 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
 
                 var propertyMapping = node.Member.Name switch
                 {
-                    nameof(IGraphPathSegment.StartNode) => _sourceAlias ?? "src",
-                    nameof(IGraphPathSegment.EndNode) => _targetAlias ?? "tgt", 
-                    nameof(IGraphPathSegment.Relationship) => _relationshipAlias ?? "r",
+                    nameof(IGraphPathSegment.StartNode) => _sourceAlias ?? "src0",
+                    nameof(IGraphPathSegment.EndNode) => _targetAlias ?? "tgt0", 
+                    nameof(IGraphPathSegment.Relationship) => _relationshipAlias ?? "r0",
                     _ => throw new NotSupportedException($"Path segment property '{node.Member.Name}' is not supported")
                 };
 
@@ -254,9 +254,9 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
 
             var alias = segmentProperty switch
             {
-                nameof(IGraphPathSegment.StartNode) => _sourceAlias ?? "src",
-                nameof(IGraphPathSegment.EndNode) => _targetAlias ?? "tgt",
-                nameof(IGraphPathSegment.Relationship) => _relationshipAlias ?? "r",
+                nameof(IGraphPathSegment.StartNode) => _sourceAlias ?? "src0",
+                nameof(IGraphPathSegment.EndNode) => _targetAlias ?? "tgt0",
+                nameof(IGraphPathSegment.Relationship) => _relationshipAlias ?? "r0",
                 _ => throw new NotSupportedException($"Path segment property '{segmentProperty}' is not supported")
             };
 
@@ -524,13 +524,9 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
             var argument = node.Arguments[i];
             var memberName = node.Members?[i]?.Name ?? $"Item{i + 1}";
             
-            Console.WriteLine($"DEBUG: VisitNew processing argument {i}: {argument}, Type: {argument.Type}, Member: {memberName}");
-            
             // Special handling for PathSegment parameter projections
             if (argument is ParameterExpression paramExpr && IsPathSegmentType(paramExpr.Type))
             {
-                Console.WriteLine($"DEBUG: Detected PathSegment parameter in VisitNew: {paramExpr.Name}");
-                
                 // PathSegment projections need to return all three components (source, relationship, target)
                 // so they can be reconstructed into a PathSegment object by the result processor.
                 // However, if a component is already being returned (e.g., ps.StartNode), we should
@@ -543,11 +539,6 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
                 {
                     pathSegmentParts.Add($"{_sourceAlias} AS c_{memberName}_{_sourceAlias}");
                     returnedVariables[_sourceAlias] = $"c_{memberName}_{_sourceAlias}";
-                    Console.WriteLine($"DEBUG: Added PathSegment source: {_sourceAlias}");
-                }
-                else if (_sourceAlias != null)
-                {
-                    Console.WriteLine($"DEBUG: Skipping PathSegment source {_sourceAlias} - already returned as {returnedVariables[_sourceAlias]}");
                 }
                 
                 // Check relationship - only add if not already returned
@@ -555,11 +546,6 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
                 {
                     pathSegmentParts.Add($"{_relationshipAlias} AS c_{memberName}_{_relationshipAlias}");
                     returnedVariables[_relationshipAlias] = $"c_{memberName}_{_relationshipAlias}";
-                    Console.WriteLine($"DEBUG: Added PathSegment relationship: {_relationshipAlias}");
-                }
-                else if (_relationshipAlias != null)
-                {
-                    Console.WriteLine($"DEBUG: Skipping PathSegment relationship {_relationshipAlias} - already returned as {returnedVariables[_relationshipAlias]}");
                 }
                 
                 // Check target node - only add if not already returned
@@ -567,11 +553,6 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
                 {
                     pathSegmentParts.Add($"{_targetAlias} AS c_{memberName}_{_targetAlias}");
                     returnedVariables[_targetAlias] = $"c_{memberName}_{_targetAlias}";
-                    Console.WriteLine($"DEBUG: Added PathSegment target: {_targetAlias}");
-                }
-                else if (_targetAlias != null)
-                {
-                    Console.WriteLine($"DEBUG: Skipping PathSegment target {_targetAlias} - already returned as {returnedVariables[_targetAlias]}");
                 }
                 
                 if (pathSegmentParts.Count > 0)
@@ -618,10 +599,9 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
                 Expression.Constant($"{obj} ENDS WITH {VisitAndReturnCypher(node.Arguments[0])}"),
 
             // Contains - check if string contains substring
-            // Apache AGE doesn't support CONTAINS operator, use regex =~ instead
-            // We need to build a regex pattern: '.*' + substring + '.*'
+            // Apache AGE doesn't support string concatenation in regex, so we build the pattern as a parameter
             "Contains" when node.Arguments.Count == 1 =>
-                Expression.Constant($"{obj} =~ ('.*' + {VisitAndReturnCypher(node.Arguments[0])} + '.*')"),
+                HandleStringContains(obj, node.Arguments[0]),
 
             "ToLower" when node.Arguments.Count == 0 =>
                 Expression.Constant($"toLower({obj})"),
@@ -650,6 +630,60 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
 
             _ => throw new NotSupportedException($"String method {node.Method.Name} is not supported")
         };
+    }
+
+    private Expression HandleStringContains(string? obj, Expression substringExpression)
+    {
+        // For string.Contains(), we need to create a regex pattern
+        // Try to evaluate the substring expression to get its actual value
+        
+        object? substringValue = null;
+        
+        // Try to extract the value from the expression
+        if (substringExpression is ConstantExpression constantExpr)
+        {
+            substringValue = constantExpr.Value;
+        }
+        else if (substringExpression is MemberExpression memberExpr)
+        {
+            // Try to evaluate member expressions (e.g., variable captures)
+            try
+            {
+                var lambda = Expression.Lambda<Func<object>>(Expression.Convert(memberExpr, typeof(object)));
+                var compiled = lambda.Compile();
+                substringValue = compiled();
+            }
+            catch
+            {
+                // If we can't evaluate it, fall back to parameter approach
+            }
+        }
+        
+        // If we got the value, create a regex pattern and add it as a parameter
+        if (substringValue is string substring)
+        {
+            var regexPattern = $".*{System.Text.RegularExpressions.Regex.Escape(substring)}.*";
+            var paramName = AddParameter(regexPattern);
+            return Expression.Constant($"{obj} =~ {paramName}");
+        }
+        
+        // Fallback: if we couldn't get the value, try visiting the expression
+        // This will create a parameter for the substring, then we need to wrap it in a regex pattern
+        // Unfortunately, AGE doesn't support string concatenation in expressions well,
+        // so we'll use a workaround by creating the regex inline (may fail in some cases)
+        _logger.LogWarning("Could not evaluate Contains argument, attempting fallback");
+        var substringCypher = VisitAndReturnCypher(substringExpression);
+        
+        // Try one more approach: if the result is a parameter, replace it with a regex pattern
+        if (substringCypher.StartsWith("$"))
+        {
+            // The value was parameterized. We can't easily modify it now.
+            // Best we can do is use CONTAINS if AGE supports it, or fail gracefully
+            _logger.LogError("Cannot handle parameterized Contains - this may fail");
+        }
+        
+        // Last resort: try the concatenation approach (likely to fail)
+        return Expression.Constant($"{obj} =~ ('.*' + {substringCypher} + '.*')");
     }
 
     private Expression HandleMathMethod(MethodCallExpression node)
@@ -871,12 +905,27 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
     protected override Expression VisitParameter(ParameterExpression node)
     {
         _logger.LogDebug("VisitParameter called with parameter: {Name}, Type: {Type}", node.Name, node.Type.Name);
-        Console.WriteLine($"DEBUG: VisitParameter called with parameter: {node.Name}, Type: {node.Type}");
-        Console.WriteLine($"DEBUG: Falling back to base implementation");
         
-        // For now, let all parameters go through the base implementation
-        // to see what the normal behavior is
-        return base.VisitParameter(node);
+        // Check if this is the path segment parameter we're tracking
+        if (_pathSegmentParameter != null && node == _pathSegmentParameter)
+        {
+            _logger.LogDebug("Parameter matches tracked PathSegment parameter, returning {Alias}", _alias);
+            return Expression.Constant(_alias);
+        }
+        
+        // For scalar projections (e.g., OrderBy(name => name) after Select(p => p.FirstName)),
+        // the parameter represents the projected value, so return the current alias
+        if (!typeof(INode).IsAssignableFrom(node.Type) && 
+            !typeof(IRelationship).IsAssignableFrom(node.Type) &&
+            !typeof(IGraphPathSegment).IsAssignableFrom(node.Type))
+        {
+            _logger.LogDebug("Parameter is scalar projection, returning alias: {Alias}", _alias);
+            return Expression.Constant(_alias);
+        }
+        
+        // For node/relationship parameters, return the alias
+        _logger.LogDebug("Parameter is node/relationship, returning alias: {Alias}", _alias);
+        return Expression.Constant(_alias);
     }
 
     /// <summary>

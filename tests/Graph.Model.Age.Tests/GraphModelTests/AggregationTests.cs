@@ -17,7 +17,7 @@ using Cvoya.Graph.Model.Tests;
 namespace Cvoya.Graph.Model.Age.Tests.GraphModelTests;
 
 public class AggregationTests(TestInfrastructureFixture fixture) :
-    AgeTest(fixture),
+    AgeTest(fixture, getNewGraph: true),
     IAggregationTests
 {
 }

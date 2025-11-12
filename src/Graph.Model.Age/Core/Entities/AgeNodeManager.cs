@@ -48,6 +48,14 @@ internal sealed class AgeNodeManager
         ArgumentNullException.ThrowIfNull(node);
         GraphDataModel.EnforceGraphConstraintsForNode(node);
 
+        await AgeEntityAttributeValidator.ValidateNodeAsync(
+                node,
+                context,
+                transaction,
+                isUpdate: false,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
         var entity = entityFactory.Serialize(node);
         
         // For AGE inheritance support: use base type label and store hierarchy in properties
@@ -100,6 +108,14 @@ internal sealed class AgeNodeManager
     {
         ArgumentNullException.ThrowIfNull(node);
         GraphDataModel.EnforceGraphConstraintsForNode(node);
+
+        await AgeEntityAttributeValidator.ValidateNodeAsync(
+                node,
+                context,
+                transaction,
+                isUpdate: true,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
 
         var entity = entityFactory.Serialize(node);
         

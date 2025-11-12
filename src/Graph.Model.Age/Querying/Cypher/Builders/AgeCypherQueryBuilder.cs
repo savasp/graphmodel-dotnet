@@ -15,8 +15,10 @@
 namespace Cvoya.Graph.Model.Age.Querying.Cypher.Builders;
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Cvoya.Graph.Model.Cypher.Querying.Cypher;
 using Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Model;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -41,6 +43,7 @@ internal class AgeCypherQueryBuilder
     private int? _skip;
     private bool _distinct;
     private bool _includeComplexProperties;
+    private string? _complexPropertyAlias;
     private bool _shouldReverseOrderBy;
     private GraphTraversalDirection? _traversalDirection;
 
@@ -85,13 +88,38 @@ internal class AgeCypherQueryBuilder
     /// </summary>
     public void AddMatchPattern(string pattern)
     {
+        Console.WriteLine($"[AddMatchPattern] pattern='{pattern}', existingCount={_matchClauses.Count}");
+        if (_matchClauses.Count > 0)
+        {
+            Console.WriteLine($"[AddMatchPattern] last pattern='{_matchClauses[^1]}'");
+        }
+
+        if (_matchClauses.Count > 0 && TryGetStandaloneNodeAlias(_matchClauses[^1], out var standaloneAlias) &&
+            pattern.StartsWith($"({standaloneAlias}:", StringComparison.Ordinal))
+        {
+            _matchClauses[^1] = pattern;
+            _logger.LogDebug("Replaced standalone node MATCH with traversal pattern: {Pattern}", pattern);
+            return;
+        }
+        
         // For multi-hop traversal, we need to handle pattern chaining
         if (_matchClauses.Count > 0 && pattern.StartsWith("-[", StringComparison.Ordinal))
         {
             // This is a continuation pattern (starts with -[...]) - chain it to the last pattern
             var lastPattern = _matchClauses[^1];
             _matchClauses[^1] = lastPattern + pattern;
+            Console.WriteLine($"[AddMatchPattern] CHAINED via StartsWith('-['): {_matchClauses[^1]}");
             _logger.LogDebug("Chained MATCH pattern: {Pattern} -> {CombinedPattern}", pattern, _matchClauses[^1]);
+        }
+        else if (_matchClauses.Count > 0 && TryGetLeadingNodeAlias(pattern, out var leadingAlias, out var patternRemainder) &&
+                 TryGetTerminalNodeAlias(_matchClauses[^1], out var terminalAlias) &&
+                 string.Equals(leadingAlias, terminalAlias, StringComparison.Ordinal))
+        {
+            // The new pattern begins with the same alias as the terminal node of the previous pattern.
+            // Append only the continuation (relationship + target node) to preserve a single chained MATCH clause.
+            _matchClauses[^1] += patternRemainder;
+            Console.WriteLine($"[AddMatchPattern] CHAINED via shared node alias '{leadingAlias}': {_matchClauses[^1]}");
+            _logger.LogDebug("Chained MATCH pattern using shared alias {Alias}: {CombinedPattern}", leadingAlias, _matchClauses[^1]);
         }
         else if (_matchClauses.Count > 0 && pattern.Contains(")-[") && pattern.EndsWith("->") && 
                  _matchClauses[^1].StartsWith("(src", StringComparison.Ordinal))
@@ -101,6 +129,7 @@ internal class AgeCypherQueryBuilder
             // Result: "(srcX:Label)-[relX:...]->(srcY:Label)..."
             var existingPattern = _matchClauses[^1];
             _matchClauses[^1] = pattern + existingPattern;
+            Console.WriteLine($"[AddMatchPattern] PREPENDED: {_matchClauses[^1]}");
             _logger.LogDebug("Prepended MATCH pattern: {Pattern} + {Existing} -> {CombinedPattern}", 
                 pattern, existingPattern, _matchClauses[^1]);
         }
@@ -108,8 +137,37 @@ internal class AgeCypherQueryBuilder
         {
             // This is a new independent pattern
             _matchClauses.Add(pattern);
+            Console.WriteLine($"[AddMatchPattern] NEW INDEPENDENT pattern");
             _logger.LogDebug("Added MATCH pattern: {Pattern}", pattern);
         }
+    }
+
+    private static bool TryGetLeadingNodeAlias(string pattern, out string alias, out string remainder)
+    {
+        var match = Regex.Match(pattern, @"^\((\w+):[^)]+\)([-<].*)$");
+        if (!match.Success)
+        {
+            alias = string.Empty;
+            remainder = string.Empty;
+            return false;
+        }
+
+        alias = match.Groups[1].Value;
+        remainder = match.Groups[2].Value;
+        return true;
+    }
+
+    private static bool TryGetTerminalNodeAlias(string pattern, out string alias)
+    {
+        var match = Regex.Match(pattern, @"\((\w+):[^)]+\)\s*$");
+        if (match.Success)
+        {
+            alias = match.Groups[1].Value;
+            return true;
+        }
+
+        alias = string.Empty;
+        return false;
     }
 
     /// <summary>
@@ -157,8 +215,31 @@ internal class AgeCypherQueryBuilder
     /// </summary>
     public void AddReturn(string returnClause)
     {
-        _returnClauses.Add(returnClause);
-        _logger.LogDebug("Added RETURN clause: {Return}", returnClause);
+        if (string.IsNullOrWhiteSpace(returnClause))
+        {
+            return;
+        }
+
+        var trimmedClause = returnClause.Trim();
+
+        // If this return assigns an alias (AS), remove any existing entry that referenced the same
+        // raw expression so we don't keep both "tgt1" and "tgt1 AS EndNode".
+        var asIndex = trimmedClause.IndexOf(" AS ", StringComparison.OrdinalIgnoreCase);
+        if (asIndex >= 0)
+        {
+            var expressionPortion = trimmedClause[..asIndex].Trim();
+            _returnClauses.RemoveAll(clause => string.Equals(clause.Trim(), expressionPortion, StringComparison.Ordinal));
+        }
+
+        // Avoid duplicates of identical return clauses
+        if (_returnClauses.Any(existing => string.Equals(existing.Trim(), trimmedClause, StringComparison.Ordinal)))
+        {
+            _logger.LogDebug("Skipped duplicate RETURN clause: {Return}", trimmedClause);
+            return;
+        }
+
+        _returnClauses.Add(trimmedClause);
+        _logger.LogDebug("Added RETURN clause: {Return}", trimmedClause);
     }
 
     /// <summary>
@@ -202,30 +283,67 @@ internal class AgeCypherQueryBuilder
     /// </summary>
     public void ClearOrderBy()
     {
-        if (_orderByClauses.Count > 0)
+        if (_orderByClauses.Count == 0)
         {
-            _logger.LogDebug("Clearing {Count} ORDER BY clause(s)", _orderByClauses.Count);
-            _orderByClauses.Clear();
+            return;
         }
+
+        _orderByClauses.Clear();
+        _logger.LogDebug("Cleared ORDER BY clauses");
     }
 
     /// <summary>
-    /// Reverses the order of ORDER BY clauses.
+    /// Gets a default RETURN clause when none was explicitly specified.
+    /// For traversal queries, returns the last target node alias. For relationship queries, returns the relationship alias.
     /// </summary>
-    public void ReverseOrderBy()
+    private string? GetDefaultReturnClause()
     {
-        for (int i = 0; i < _orderByClauses.Count; i++)
+        if (_matchClauses.Count == 0)
+            return null;
+
+        var lastMatch = _matchClauses[^1];
+
+        if (typeof(IRelationship).IsAssignableFrom(_context.Scope.RootType))
         {
-            if (_orderByClauses[i].EndsWith(" ASC"))
+            var relationshipMatches = Regex.Matches(lastMatch, @"\[(\w+)(?::[^\]]+)?\]");
+            if (relationshipMatches.Count > 0)
             {
-                _orderByClauses[i] = _orderByClauses[i].Replace(" ASC", " DESC");
-            }
-            else if (_orderByClauses[i].EndsWith(" DESC"))
-            {
-                _orderByClauses[i] = _orderByClauses[i].Replace(" DESC", " ASC");
+                var relationshipAlias = relationshipMatches[^1].Groups[1].Value;
+                _logger.LogDebug("Detected default relationship alias from pattern: {Alias}", relationshipAlias);
+                return relationshipAlias;
             }
         }
-        _logger.LogDebug("Reversed ORDER BY clauses");
+
+        var nodeMatch = Regex.Match(lastMatch, @"\((\w+):[^)]+\)[^(]*$");
+        if (nodeMatch.Success)
+        {
+            var alias = nodeMatch.Groups[1].Value;
+            _logger.LogDebug("Detected default return alias from pattern: {Alias}", alias);
+            return alias;
+        }
+
+        nodeMatch = Regex.Match(lastMatch, @"\((\w+):");
+        if (nodeMatch.Success)
+        {
+            var alias = nodeMatch.Groups[1].Value;
+            _logger.LogDebug("Detected fallback return alias from pattern: {Alias}", alias);
+            return alias;
+        }
+
+        return null;
+    }
+
+    private static bool TryGetStandaloneNodeAlias(string pattern, out string alias)
+    {
+        var match = Regex.Match(pattern, @"^\((\w+):[^)]+\)$");
+        if (match.Success)
+        {
+            alias = match.Groups[1].Value;
+            return true;
+        }
+
+        alias = string.Empty;
+        return false;
     }
 
     /// <summary>
@@ -270,12 +388,27 @@ internal class AgeCypherQueryBuilder
     public GraphTraversalDirection? TraversalDirection => _traversalDirection;
 
     /// <summary>
+    /// Clears any explicitly configured traversal direction so subsequent traversals use the default.
+    /// </summary>
+    public void ClearTraversalDirection()
+    {
+        if (_traversalDirection.HasValue)
+        {
+            _logger.LogDebug("Cleared traversal direction");
+        }
+
+        _traversalDirection = null;
+    }
+
+    /// <summary>
     /// Enables complex property loading using AGE-compatible syntax.
     /// </summary>
-    public void EnableComplexPropertyLoading()
+    /// <param name="alias">Alias that represents the node being hydrated.</param>
+    public void EnableComplexPropertyLoading(string? alias = null)
     {
         _includeComplexProperties = true;
-        _logger.LogDebug("Enabled AGE-compatible complex property loading");
+        _complexPropertyAlias = alias;
+        _logger.LogDebug("Enabled AGE-compatible complex property loading for alias {Alias}", alias ?? "<unspecified>");
     }
 
     /// <summary>
@@ -284,6 +417,7 @@ internal class AgeCypherQueryBuilder
     public void DisableComplexPropertyLoading()
     {
         _includeComplexProperties = false;
+        _complexPropertyAlias = null;
         _logger.LogDebug("Disabled complex property loading");
     }
 
@@ -310,7 +444,7 @@ internal class AgeCypherQueryBuilder
     /// </summary>
     public CypherQuery Build()
     {
-        _logger.LogDebug("Building AGE-compatible Cypher query");
+    _logger.LogDebug("Building AGE-compatible Cypher query");
 
         var query = new StringBuilder();
 
@@ -396,36 +530,34 @@ internal class AgeCypherQueryBuilder
     }
 
     /// <summary>
-    /// Gets a default RETURN clause when none was explicitly specified.
-    /// For traversal queries, returns the last target node alias.
+    /// Appends AGE-compatible complex property loading syntax.
     /// </summary>
-    private string? GetDefaultReturnClause()
+    public void ReverseOrderBy()
     {
-        if (_matchClauses.Count == 0)
-            return null;
-
-        // Get the last MATCH clause and extract the last alias from it
-        var lastMatch = _matchClauses[_matchClauses.Count - 1];
-        
-        // Look for the last node alias in the pattern
-        // Patterns like: (src0:Person)-[r0:KNOWS]->(tgt0:Person)
-        // We want to return tgt0 (the target node)
-        var match = System.Text.RegularExpressions.Regex.Match(lastMatch, @"\((\w+):[^)]+\)[^(]*$");
-        if (match.Success)
+        if (_orderByClauses.Count == 0)
         {
-            var alias = match.Groups[1].Value;
-            _logger.LogDebug("Detected default return alias from pattern: {Alias}", alias);
-            return alias;
+            return;
         }
 
-        // Fallback: return the first node alias we can find
-        match = System.Text.RegularExpressions.Regex.Match(lastMatch, @"\((\w+):");
-        if (match.Success)
+        for (var i = 0; i < _orderByClauses.Count; i++)
         {
-            return match.Groups[1].Value;
+            var clause = _orderByClauses[i];
+
+            if (clause.EndsWith(" DESC", StringComparison.OrdinalIgnoreCase))
+            {
+                _orderByClauses[i] = clause[..^5] + " ASC";
+            }
+            else if (clause.EndsWith(" ASC", StringComparison.OrdinalIgnoreCase))
+            {
+                _orderByClauses[i] = clause[..^4] + " DESC";
+            }
+            else
+            {
+                _orderByClauses[i] = $"{clause} DESC";
+            }
         }
 
-        return null;
+        _logger.LogDebug("Reversed ORDER BY clauses for Last() operation");
     }
 
     /// <summary>
@@ -435,7 +567,13 @@ internal class AgeCypherQueryBuilder
     {
         _logger.LogDebug("Appending AGE-compatible complex property loading");
 
-        var alias = "n"; // Default alias - could be made configurable
+        var alias = _complexPropertyAlias;
+
+        if (string.IsNullOrWhiteSpace(alias))
+        {
+            alias = _context.Scope.CurrentAlias ?? _context.Scope.GetNumberedAlias("src");
+            _logger.LogDebug("Falling back to contextual alias {Alias} for complex property loading", alias);
+        }
 
         // Simple AGE-compatible complex property loading without Neo4j list comprehensions
         query.AppendLine($@"OPTIONAL MATCH ({alias})-[prop_rel]->(prop_node)

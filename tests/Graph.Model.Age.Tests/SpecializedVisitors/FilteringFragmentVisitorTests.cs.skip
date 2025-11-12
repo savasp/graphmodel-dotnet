@@ -1,0 +1,237 @@
+// Copyright 2025 Savas Parastatidis
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+using System.Linq.Expressions;
+using Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core.Modular;
+using Cvoya.Graph.Model.Cypher.Querying.Cypher.Visitors.Core;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace Cvoya.Graph.Model.Age.Tests.SpecializedVisitors;
+
+/// <summary>
+/// Unit tests for FilteringFragmentVisitor to verify it correctly handles
+/// filtering and ordering operations (Where, OrderBy, Skip, Take, Distinct) and
+/// emits appropriate fragments and builder calls.
+/// </summary>
+public class FilteringFragmentVisitorTests
+{
+    private record TestNode : Node
+    {
+        public string Name { get; set; } = string.Empty;
+        public int Age { get; set; }
+    }
+
+    [Fact]
+    public void HandleSkip_SetsCorrectSkipValue()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        var visitor = new FilteringFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, IQueryable<TestNode>>> skipExpr = q => q.Skip(5);
+        var skipCall = (MethodCallExpression)skipExpr.Body;
+
+        // Act
+        visitor.HandleSkip(skipCall);
+
+        // Assert
+        var query = context.Builder.Build().Text;
+        Assert.Contains("SKIP 5", query);
+    }
+
+    [Fact]
+    public void HandleSkip_EmitsSkipFragment()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        var visitor = new FilteringFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, IQueryable<TestNode>>> skipExpr = q => q.Skip(10);
+        var skipCall = (MethodCallExpression)skipExpr.Body;
+
+        // Act
+        visitor.HandleSkip(skipCall);
+
+        // Assert
+        var fragments = context.FragmentSequence.OfType<SkipFragment>().ToList();
+        Assert.Single(fragments);
+        Assert.Equal(10, fragments[0].Count);
+    }
+
+    [Fact]
+    public void HandleTake_SetsCorrectLimitValue()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        var visitor = new FilteringFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, IQueryable<TestNode>>> takeExpr = q => q.Take(3);
+        var takeCall = (MethodCallExpression)takeExpr.Body;
+
+        // Act
+        visitor.HandleTake(takeCall);
+
+        // Assert
+        var query = context.Builder.Build().Text;
+        Assert.Contains("LIMIT 3", query);
+    }
+
+    [Fact]
+    public void HandleTake_EmitsLimitFragment()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        var visitor = new FilteringFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, IQueryable<TestNode>>> takeExpr = q => q.Take(7);
+        var takeCall = (MethodCallExpression)takeExpr.Body;
+
+        // Act
+        visitor.HandleTake(takeCall);
+
+        // Assert
+        var fragments = context.FragmentSequence.OfType<LimitFragment>().ToList();
+        Assert.Single(fragments);
+        Assert.Equal(7, fragments[0].Count);
+    }
+
+    [Fact]
+    public void HandleDistinct_SetsDistinctFlag()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        context.Builder.AddMatch("n", "TestNode");
+        var visitor = new FilteringFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, IQueryable<TestNode>>> distinctExpr = q => q.Distinct();
+        var distinctCall = (MethodCallExpression)distinctExpr.Body;
+
+        // Act
+        visitor.HandleDistinct(distinctCall);
+
+        // Assert
+        var query = context.Builder.Build().Text;
+        Assert.Contains("DISTINCT", query);
+    }
+
+    [Fact]
+    public void HandleDistinct_EmitsDistinctFragment()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        var visitor = new FilteringFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, IQueryable<TestNode>>> distinctExpr = q => q.Distinct();
+        var distinctCall = (MethodCallExpression)distinctExpr.Body;
+
+        // Act
+        visitor.HandleDistinct(distinctCall);
+
+        // Assert
+        var fragments = context.FragmentSequence.OfType<DistinctFragment>().ToList();
+        Assert.Single(fragments);
+    }
+
+    [Fact]
+    public void HandleOrderBy_AddsOrderByClause()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        context.Builder.AddMatch("n", "TestNode");
+        var visitor = new FilteringFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, IOrderedQueryable<TestNode>>> orderByExpr = q => q.OrderBy(x => x.Age);
+        var orderByCall = (MethodCallExpression)orderByExpr.Body;
+
+        // Act
+        visitor.HandleOrderBy(orderByCall, isDescending: false, isThenBy: false);
+
+        // Assert
+        var query = context.Builder.Build().Text;
+        Assert.Contains("ORDER BY", query);
+        Assert.Contains("Age", query);
+    }
+
+    [Fact]
+    public void HandleOrderBy_DescendingOrder()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        context.Builder.AddMatch("n", "TestNode");
+        var visitor = new FilteringFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, IOrderedQueryable<TestNode>>> orderByDescExpr = q => q.OrderByDescending(x => x.Age);
+        var orderByCall = (MethodCallExpression)orderByDescExpr.Body;
+
+        // Act
+        visitor.HandleOrderBy(orderByCall, isDescending: true, isThenBy: false);
+
+        // Assert
+        var query = context.Builder.Build().Text;
+        Assert.Contains("ORDER BY", query);
+        Assert.Contains("DESC", query);
+    }
+
+    [Fact]
+    public void HandleOrderBy_EmitsOrderFragment()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        context.Scope.CurrentAlias = "n";
+        var visitor = new FilteringFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, IOrderedQueryable<TestNode>>> orderByExpr = q => q.OrderBy(x => x.Name);
+        var orderByCall = (MethodCallExpression)orderByExpr.Body;
+
+        // Act
+        visitor.HandleOrderBy(orderByCall, isDescending: false, isThenBy: false);
+
+        // Assert
+        var fragments = context.FragmentSequence.OfType<OrderFragment>().ToList();
+        Assert.Single(fragments);
+        Assert.False(fragments[0].Descending);
+    }
+
+    [Fact]
+    public void HandleReverse_EmitsReverseOrderFragment()
+    {
+        // Arrange
+        var context = new CypherQueryContext(typeof(TestNode));
+        var visitor = new FilteringFragmentVisitor(context, NullLoggerFactory.Instance);
+
+        var queryable = new TestNode[] { }.AsQueryable();
+        Expression<Func<IQueryable<TestNode>, IQueryable<TestNode>>> reverseExpr = q => q.Reverse();
+        var reverseCall = (MethodCallExpression)reverseExpr.Body;
+
+        // Act
+        visitor.HandleReverse(reverseCall);
+
+        // Assert
+        var fragments = context.FragmentSequence.OfType<ReverseOrderFragment>().ToList();
+        Assert.Single(fragments);
+    }
+}

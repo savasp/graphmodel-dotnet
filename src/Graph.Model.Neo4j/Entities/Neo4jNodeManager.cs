@@ -211,7 +211,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         string cypher;
 
         // For dynamic nodes, use the actual labels from ActualLabels
-        if (entity.ActualType.IsAssignableTo(typeof(Model.DynamicNode)))
+        if (entity.ActualType!.IsAssignableTo(typeof(Model.DynamicNode)))
         {
             if (entity.ActualLabels != null && entity.ActualLabels.Count > 0)
             {

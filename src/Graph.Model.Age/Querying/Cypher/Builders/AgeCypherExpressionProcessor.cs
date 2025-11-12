@@ -125,9 +125,9 @@ internal sealed class AgeCypherExpressionProcessor : ICypherExpressionProcessor
             {
                 var pathAlias = nestedMember.Member.Name switch
                 {
-                    nameof(IGraphPathSegment.StartNode) => "src",
-                    nameof(IGraphPathSegment.EndNode) => "tgt",
-                    nameof(IGraphPathSegment.Relationship) => "r",
+                    nameof(IGraphPathSegment.StartNode) => "src0",
+                    nameof(IGraphPathSegment.EndNode) => "tgt0",
+                    nameof(IGraphPathSegment.Relationship) => "r0",
                     _ => throw new NotSupportedException($"Path segment member '{nestedMember.Member.Name}' is not supported by the AGE provider.")
                 };
 
