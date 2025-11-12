@@ -31,14 +31,12 @@ internal sealed class AgeNodeManager
     private readonly EntityFactory entityFactory;
     private readonly AgeEntityMapper entityMapper;
     private readonly ILogger<AgeNodeManager> logger;
-    private readonly AgeComplexPropertyManager complexPropertyManager;
 
     public AgeNodeManager(AgeGraphContext context)
     {
         this.context = context;
         entityFactory = new EntityFactory(context.LoggerFactory);
         entityMapper = new AgeEntityMapper(entityFactory, context.LoggerFactory);
-        complexPropertyManager = new AgeComplexPropertyManager(context, context.LoggerFactory);
         logger = context.LoggerFactory.CreateLogger<AgeNodeManager>();
     }
 

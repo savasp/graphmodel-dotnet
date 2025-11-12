@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
 
+using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 
 /// <summary>
@@ -48,8 +49,8 @@ using Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 /// This enables WHERE clauses to reference the correct hop's aliases.
 /// 
 /// FUTURE REFACTORING:
-/// For better architecture, could migrate to explicit alias passing where visitor methods
-/// return AliasResolutionResult indicating what aliases they reserved. This would eliminate
+/// For better architecture, we could migrate to explicit alias passing so visitor methods
+/// return structured alias information instead of mutating shared state. This would eliminate
 /// mutable state but requires updating 100+ call sites. Current pattern works but is implicit.
 /// </summary>
 internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
@@ -85,13 +86,11 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
 
     public bool IsPathSegmentContext { get; set; }
 
-    public bool PathSegmentPatternsFinalized { get; set; }
-
     public int? TraversalMinDepth { get; private set; }
 
     public int? TraversalMaxDepth { get; private set; }
 
-    public TraversalInfo? TraversalInfo { get; private set; }
+    public GraphTraversalDirection? TraversalDirection { get; private set; }
 
     public string? GroupByExpression { get; private set; }
 
@@ -122,12 +121,6 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
     /// </summary>
     public int CurrentHop { get; private set; } = 0;
 
-    /// <summary>
-    /// Maximum hop reached (used for generating final aliases).
-    /// Tracks the highest hop number seen during traversal.
-    /// </summary>
-    public int MaxHop { get; private set; } = 0;
-
     public void SetTraversalDepth(int minDepth, int maxDepth)
     {
         TraversalMinDepth = minDepth;
@@ -139,6 +132,12 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
         TraversalMinDepth = null;
         TraversalMaxDepth = null;
     }
+
+    public void SetTraversalDirection(GraphTraversalDirection direction)
+        => TraversalDirection = direction;
+
+    public void ClearTraversalDirection()
+        => TraversalDirection = null;
 
     /// <summary>
     /// Pushes the current alias onto a stack and sets a new current alias.
@@ -215,9 +214,6 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
     public string? GetAliasForType(Type type)
         => typeAliases.GetValueOrDefault(type);
 
-    public void SetTraversalInfo(Type sourceType, Type relationshipType, Type targetNodeType)
-        => TraversalInfo = new TraversalInfo(sourceType, relationshipType, targetNodeType);
-
     public void SetGroupByExpression(string expression)
         => GroupByExpression = expression;
 
@@ -240,7 +236,6 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
     public void AdvanceHop()
     {
         CurrentHop++;
-        MaxHop = Math.Max(MaxHop, CurrentHop);
     }
 
     /// <summary>
@@ -300,178 +295,6 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
         return hopTypes.TryGetValue(hopNumber, out var types) ? types : null;
     }
 
-    /// <summary>
-    /// Gets all aliases that have been reserved/registered so far.
-    /// Used for explicit alias passing to avoid conflicts when generating new aliases.
-    /// </summary>
-    public IReadOnlySet<string> GetReservedAliases()
-    {
-        return new HashSet<string>(aliasTypes.Keys);
-    }
-
-    /// <summary>
-    /// Generates a unique numbered alias that doesn't conflict with existing registrations.
-    /// </summary>
-    public string GenerateUniqueAlias(string baseAlias)
-    {
-        var alias = baseAlias;
-        var counter = 0;
-        
-        while (aliasTypes.ContainsKey(alias))
-        {
-            alias = $"{baseAlias}{++counter}";
-        }
-        
-        return alias;
-    }
-
-    /// <summary>
-    /// Checks if an alias is already reserved.
-    /// </summary>
-    public bool IsAliasReserved(string alias)
-    {
-        return aliasTypes.ContainsKey(alias);
-    }
-
-    #region Debug and Validation Helpers
-
-    /// <summary>
-    /// Dumps the current alias state for debugging.
-    /// Shows all registered aliases, types, hop mappings, and current context.
-    /// </summary>
-    public string DumpAliasState()
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("=== ALIAS STATE DUMP ===");
-        sb.AppendLine($"Current Context: Alias={CurrentAlias ?? "(none)"}, Type={CurrentType?.Name ?? "(none)"}, Hop={CurrentHop}, MaxHop={MaxHop}");
-        sb.AppendLine();
-        
-        sb.AppendLine("Type -> Alias Mappings:");
-        if (typeAliases.Count == 0)
-        {
-            sb.AppendLine("  (none)");
-        }
-        else
-        {
-            foreach (var kvp in typeAliases.OrderBy(x => x.Key.Name))
-            {
-                sb.AppendLine($"  {kvp.Key.Name} -> {kvp.Value}");
-            }
-        }
-        sb.AppendLine();
-        
-        sb.AppendLine("Alias -> Type Mappings:");
-        if (aliasTypes.Count == 0)
-        {
-            sb.AppendLine("  (none)");
-        }
-        else
-        {
-            foreach (var kvp in aliasTypes.OrderBy(x => x.Key))
-            {
-                sb.AppendLine($"  {kvp.Key} -> {kvp.Value.Name}");
-            }
-        }
-        sb.AppendLine();
-        
-        sb.AppendLine("Hop Aliases:");
-        if (hopAliases.Count == 0)
-        {
-            sb.AppendLine("  (none)");
-        }
-        else
-        {
-            foreach (var kvp in hopAliases.OrderBy(x => x.Key))
-            {
-                sb.AppendLine($"  Hop {kvp.Key}: src={kvp.Value.src}, rel={kvp.Value.rel}, tgt={kvp.Value.tgt}");
-            }
-        }
-        sb.AppendLine();
-        
-        sb.AppendLine("Hop Types:");
-        if (hopTypes.Count == 0)
-        {
-            sb.AppendLine("  (none)");
-        }
-        else
-        {
-            foreach (var kvp in hopTypes.OrderBy(x => x.Key))
-            {
-                sb.AppendLine($"  Hop {kvp.Key}: src={kvp.Value.src.Name}, rel={kvp.Value.rel.Name}, tgt={kvp.Value.tgt.Name}");
-            }
-        }
-        
-        sb.AppendLine("======================");
-        return sb.ToString();
-    }
-
-    /// <summary>
-    /// Validates alias consistency and returns any detected issues.
-    /// Checks for:
-    /// - Duplicate alias registrations
-    /// - Type/alias mapping mismatches
-    /// - Orphaned hop references
-    /// </summary>
-    public List<string> ValidateAliasConsistency()
-    {
-        var issues = new List<string>();
-        
-        // Check bidirectional mapping consistency
-        foreach (var typeKvp in typeAliases)
-        {
-            var type = typeKvp.Key;
-            var alias = typeKvp.Value;
-            
-            if (!aliasTypes.TryGetValue(alias, out var reverseType))
-            {
-                issues.Add($"Type {type.Name} maps to alias '{alias}', but reverse mapping is missing");
-            }
-            else if (reverseType != type)
-            {
-                issues.Add($"Type {type.Name} maps to alias '{alias}', but '{alias}' maps back to {reverseType.Name}");
-            }
-        }
-        
-        foreach (var aliasKvp in aliasTypes)
-        {
-            var alias = aliasKvp.Key;
-            var type = aliasKvp.Value;
-            
-            if (!typeAliases.TryGetValue(type, out var reverseAlias))
-            {
-                issues.Add($"Alias '{alias}' maps to type {type.Name}, but reverse mapping is missing");
-            }
-            else if (reverseAlias != alias)
-            {
-                issues.Add($"Alias '{alias}' maps to type {type.Name}, but {type.Name} maps back to '{reverseAlias}'");
-            }
-        }
-        
-        // Check hop consistency
-        for (int hop = 0; hop < CurrentHop; hop++)
-        {
-            var hasAliases = hopAliases.ContainsKey(hop);
-            var hasTypes = hopTypes.ContainsKey(hop);
-            
-            if (hasAliases != hasTypes)
-            {
-                issues.Add($"Hop {hop}: Has aliases={hasAliases}, has types={hasTypes} (should match)");
-            }
-        }
-        
-        // Check for gaps in hop sequence
-        for (int hop = 0; hop < MaxHop; hop++)
-        {
-            if (!hopAliases.ContainsKey(hop))
-            {
-                issues.Add($"Hop {hop}: Missing hop data (gap in sequence up to MaxHop={MaxHop})");
-            }
-        }
-        
-        return issues;
-    }
-
-    #endregion
 
     private static string GenerateAlias(Type type)
     {

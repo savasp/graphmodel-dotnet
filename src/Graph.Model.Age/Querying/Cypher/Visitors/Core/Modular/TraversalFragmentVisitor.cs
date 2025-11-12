@@ -30,7 +30,7 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
 
         // Detect if this is a chained PathSegments call
         bool isChainedPathSegments = ContainsPathSegmentsInChain(node.Arguments[0]);
-        bool hasExistingPatterns = Context.Builder.HasMatchPatterns && Context.Scope.CurrentHop > 0;
+    bool hasExistingPatterns = Context.HasMatchFragments() && Context.Scope.CurrentHop > 0;
         isChainedPathSegments = isChainedPathSegments || hasExistingPatterns;
 
         Logger.LogDebug(
@@ -62,9 +62,8 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
             targetType.Name
         );
 
-        // Set up traversal context
-        Context.Scope.SetTraversalInfo(sourceType, relationshipType, targetType);
-        Context.Scope.IsPathSegmentContext = true;
+    // Set up traversal context
+    Context.Scope.IsPathSegmentContext = true;
 
         // Generate aliases
         var (sourceAlias, relAlias, targetAlias) = GenerateAliases(sourceType, targetType, isChainedPathSegments);
@@ -76,6 +75,9 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         Context.Scope.StoreHopAliases(Context.Scope.CurrentHop, sourceAlias, relAlias, targetAlias);
         Context.Scope.StoreHopTypes(Context.Scope.CurrentHop, sourceType, relationshipType, targetType);
 
+        // Determine traversal direction for this hop (defaults to outgoing)
+        var traversalDirection = Context.Scope.TraversalDirection ?? GraphTraversalDirection.Outgoing;
+
         // Build and emit MATCH pattern
         var pathPattern = BuildMatchPattern(
             sourceType,
@@ -84,11 +86,10 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
             sourceAlias,
             relAlias,
             targetAlias,
-            isChainedPathSegments
+            isChainedPathSegments,
+            traversalDirection
         );
-
-        Context.Builder.AddMatchPattern(pathPattern);
-        Logger.LogDebug("Added path segment pattern: {Pattern}", pathPattern);
+    Logger.LogDebug("Generated path segment pattern: {Pattern}", pathPattern);
         Logger.LogTrace(
             "PathSegments hop {Hop}, chained={IsChained}, pattern={Pattern}",
             Context.Scope.CurrentHop,
@@ -103,7 +104,8 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
             targetType,
             sourceAlias,
             relAlias,
-            targetAlias
+            targetAlias,
+            traversalDirection
         );
 
         // Add relationship type filter for interface relationships
@@ -114,10 +116,10 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         Logger.LogDebug("Updated CurrentAlias to target: {TargetAlias}", targetAlias);
 
         // Advance hop counter for chaining
-        Context.Scope.AdvanceHop();
+    Context.Scope.AdvanceHop();
 
-        // Reset traversal direction after consuming it for this PathSegments call so subsequent traversals default appropriately.
-        Context.Builder.ClearTraversalDirection();
+    // Reset traversal direction after consuming it for this PathSegments call so subsequent traversals default appropriately.
+    Context.Scope.ClearTraversalDirection();
 
         // Return the source expression (caller will process it)
         return node.Arguments[0];
@@ -160,7 +162,7 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         if (node.Arguments.Count >= 2)
         {
             var direction = EvaluateConstantExpression<GraphTraversalDirection>(node.Arguments[1]);
-            Context.Builder.SetTraversalDirection(direction);
+            Context.Scope.SetTraversalDirection(direction);
             Logger.LogDebug("Set traversal direction: {Direction}", direction);
         }
 
@@ -295,7 +297,8 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         string sourceAlias,
         string relAlias,
         string targetAlias,
-        bool isChained
+        bool isChained,
+        GraphTraversalDirection direction
     )
     {
         var sourceLabel = Labels.GetBaseTypeLabel(sourceType);
@@ -303,7 +306,6 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         var targetLabel = Labels.GetBaseTypeLabel(targetType);
 
         // Determine relationship direction arrows
-        var direction = Context.Builder.TraversalDirection ?? GraphTraversalDirection.Outgoing;
         var (leftArrow, rightArrow) = GetDirectionArrows(direction);
 
         // Build relationship pattern with optional depth range
@@ -388,12 +390,12 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         Type targetType,
         string sourceAlias,
         string relAlias,
-        string targetAlias
+        string targetAlias,
+        GraphTraversalDirection direction
     )
     {
         try
         {
-            var direction = Context.Builder.TraversalDirection ?? GraphTraversalDirection.Outgoing;
             var created = ImmutableArray.Create(sourceAlias, relAlias, targetAlias);
             var fragment = new MatchSegmentFragment(
                 pathPattern,
@@ -468,8 +470,9 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
 
         var interfaceLabel = Labels.GetLabelFromType(relationshipType);
         var typeFilter = $"'{interfaceLabel}' IN {relAlias}.inheritance_labels";
-        Context.Builder.AddWhere(typeFilter);
-        Logger.LogDebug("Added relationship type filter: {Filter}", typeFilter);
+        var whereFragment = new WhereFragment(typeFilter, ImmutableArray.Create(relAlias), relAlias);
+        EmitFragment(whereFragment, "WhereFragment");
+        Logger.LogDebug("Emitted relationship type filter: {Filter}", typeFilter);
     }
 
     private static bool IsUnspecifiedRelationshipType(Type relationshipType)

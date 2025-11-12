@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
 
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model;
@@ -69,11 +70,11 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
     /// </summary>
     private AgeExpressionToCypherVisitor CreateExpressionVisitor()
     {
-        // Pass the query builder so parameters are added directly to it
+    // Keep parameter creation aligned with the active alias captured in the context
         var alias = _context.Scope.CurrentAlias ?? GetContextualAlias();
         _logger.LogDebug("CreateExpressionVisitor: Using alias '{Alias}' (CurrentAlias={CurrentAlias}, ContextualAlias={ContextualAlias})", 
             alias, _context.Scope.CurrentAlias, GetContextualAlias());
-        return new AgeExpressionToCypherVisitor(_context.Builder, _logger, alias);
+    return new AgeExpressionToCypherVisitor(_context, _logger, alias);
     }
 
     /// <summary>
@@ -238,7 +239,7 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             _logger.LogDebug("Using stored hop {Hop} aliases: src={Src}, r={Rel}, tgt={Tgt} (explicit={Explicit})", 
                 hopNumber, sourceAlias, relationshipAlias, targetAlias, explicitHopNumber.HasValue);
             
-            return new AgeExpressionToCypherVisitor(_context.Builder, _logger, "ps", pathSegmentParameter,
+            return new AgeExpressionToCypherVisitor(_context, _logger, "ps", pathSegmentParameter,
                 sourceAlias, relationshipAlias, targetAlias);
         }
         
@@ -248,7 +249,7 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         var fallbackRelAlias = _context.Scope.GetNumberedAliasForHop("r", hopNumber);
         var fallbackTargetAlias = _context.Scope.GetNumberedAliasForHop("tgt", hopNumber);
         
-        return new AgeExpressionToCypherVisitor(_context.Builder, _logger, "ps", pathSegmentParameter,
+    return new AgeExpressionToCypherVisitor(_context, _logger, "ps", pathSegmentParameter,
             fallbackSourceAlias, fallbackRelAlias, fallbackTargetAlias);
     }
 
@@ -326,10 +327,9 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         // Then delegate projection handling to specialized visitor which emits ProjectionFragment
         _projectionVisitor.HandleSelect(node);
         
-        // For projections, disable complex property loading and emit toggle fragment
-        _context.Builder.DisableComplexPropertyLoading();
-        var complexPropertyFragment = new ComplexPropertyLoadingFragment(false, _context.Scope.CurrentAlias);
-        _context.FragmentSequence.Add(complexPropertyFragment);
+    // For projections, disable complex property loading and emit toggle fragment
+    var complexPropertyFragment = new ComplexPropertyLoadingFragment(false, _context.Scope.CurrentAlias);
+    _context.AddFragment(complexPropertyFragment);
         _logger.LogDebug("Emitted ComplexPropertyLoadingFragment (disabled)");
         
         return node;
@@ -371,9 +371,6 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         // First, process the outer source (should set up the MATCH pattern)
         Visit(outer);
 
-        // Clear any existing return clauses since Join defines its own projection
-        _context.Builder.ClearReturn();
-
         // Analyze the result selector to determine what to return
         var resultBody = resultSelector.Body;
         if (resultBody is ParameterExpression paramExpr)
@@ -393,9 +390,6 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             {
                 // Returning the outer parameter (relationship) - use relationship alias
                 var relationshipAlias = _context.Scope.GetNumberedAlias("r");
-                _context.Builder.AddReturn(relationshipAlias);
-                _logger.LogDebug("JOIN: Returning outer parameter (relationship): {Alias}", relationshipAlias);
-
                 // Update scope so downstream operators understand we're working with the relationship alias
                 _context.Scope.CurrentAlias = relationshipAlias;
                 _context.Scope.CurrentType = resultSelector.Parameters[0].Type;
@@ -404,25 +398,22 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 // Emit a projection fragment so the fragment renderer preserves the relationship return
                 var returns = ImmutableArray.Create(relationshipAlias);
                 var projectionFragment = new ProjectionFragment(returns, relationshipAlias);
-                _context.FragmentSequence.Add(projectionFragment);
+                _context.AddFragment(projectionFragment);
                 _logger.LogDebug("JOIN: Emitted ProjectionFragment for relationship alias {Alias}", relationshipAlias);
             }
             else if (parameterIndex == 1)
             {
                 // Returning the inner parameter (node) - use target node alias
                 var targetAlias = _context.Scope.GetNumberedAlias("tgt");
-                _context.Builder.AddReturn(targetAlias);
-                _logger.LogDebug("JOIN: Returning inner parameter (target node): {Alias}", targetAlias);
-
                 // Update scope/type information for the returned node so subsequent operators use the right alias
                 _context.Scope.CurrentAlias = targetAlias;
                 _context.Scope.CurrentType = resultSelector.Parameters[1].Type;
                 _context.Scope.RegisterTypeAlias(_context.Scope.CurrentType, targetAlias);
 
-                // Emit ProjectionFragment to keep fragment renderer aligned with builder results
+                // Emit ProjectionFragment so the renderer keeps the returned node alias in sync
                 var returns = ImmutableArray.Create(targetAlias);
                 var projectionFragment = new ProjectionFragment(returns, targetAlias);
-                _context.FragmentSequence.Add(projectionFragment);
+                _context.AddFragment(projectionFragment);
                 _logger.LogDebug("JOIN: Emitted ProjectionFragment for node alias {Alias}", targetAlias);
             }
             else
@@ -439,80 +430,6 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         // Don't continue processing the inner sequence since we're not doing a real database join
         // The MATCH pattern should already include both the relationships and nodes
         return outer;
-    }
-
-    private void HandleAnonymousProjection(NewExpression newExpr)
-    {
-    _logger.LogDebug("HandleAnonymousProjection called with {ArgumentCount} arguments", newExpr.Arguments.Count);
-        
-        var projections = new List<string>();
-        var alias = _context.Scope.CurrentAlias ?? GetContextualAlias();
-
-        for (int i = 0; i < newExpr.Arguments.Count; i++)
-        {
-            var arg = newExpr.Arguments[i];
-            var member = newExpr.Members?[i];
-            var projectionAlias = member?.Name ?? $"field{i}";
-
-            // Use safe alias to avoid reserved word conflicts in AGE
-            var safeAlias = $"c_{projectionAlias}";
-
-            _logger.LogTrace("HandleAnonymousProjection processing argument {Index}: {Argument} (Type: {Type})", i, arg, arg.Type);
-            
-            // Special handling for PathSegment parameter projections
-            if (arg is ParameterExpression paramExpr && IsPathSegmentType(paramExpr.Type))
-            {
-                _logger.LogDebug("Detected PathSegment parameter projection: {Parameter}", paramExpr.Name);
-                
-                // For PathSegment projections, we need to return the three components
-                // that can be reconstructed into a PathSegment by the result processor.
-                // Each component gets its own alias to avoid Cypher syntax issues.
-                // Include the actual alias names (src0, r0, tgt0) in column names to avoid duplicates
-                // when multiple PathSegment projections exist in the same query.
-                var sourceAlias = _context.Scope.GetNumberedAlias("src");
-                var relationshipAlias = _context.Scope.GetNumberedAlias("r");
-                var targetAlias = _context.Scope.GetNumberedAlias("tgt");
-                
-                // Column names include both the property name and the actual Cypher aliases
-                // E.g., "c_PathSegment_src0", "c_PathSegment_r0", "c_PathSegment_tgt0"
-                var pathSegmentProjection = $"{sourceAlias} AS {safeAlias}_{sourceAlias}, {relationshipAlias} AS {safeAlias}_{relationshipAlias}, {targetAlias} AS {safeAlias}_{targetAlias}";
-                projections.Add(pathSegmentProjection);
-                
-                _logger.LogDebug("Added PathSegment projection: {Projection}", pathSegmentProjection);
-            }
-            else if (arg is MemberExpression argMemberExpr && argMemberExpr.Expression is ParameterExpression paramExpr2)
-            {
-                // Check if this is an IGrouping parameter (e.g., g.Key or g.Count())
-                if (paramExpr2.Type.IsGenericType && paramExpr2.Type.GetGenericTypeDefinition().Name.Contains("IGrouping"))
-                {
-                    // Use visitor to handle IGrouping members (g.Key, etc.)
-                    var expressionVisitor = CreateExpressionVisitor();
-                    var cypherExpr = expressionVisitor.VisitAndReturnCypher(arg);
-                    projections.Add($"{cypherExpr} AS {safeAlias}");
-                }
-                else
-                {
-                    // Simple property: p.FirstName
-                    var propertyName = argMemberExpr.Member.Name;
-                    projections.Add($"{alias}.{propertyName} AS {safeAlias}");
-                }
-            }
-            else
-            {
-                // Complex expression - use visitor
-                // Check if this expression involves path segment access
-                bool involvesPathSegment = ContainsPathSegmentAccess(arg);
-                var expressionVisitor = involvesPathSegment 
-                    ? CreatePathSegmentExpressionVisitor(null!)  // null because we're not projecting the whole path segment
-                    : CreateExpressionVisitor();
-                var cypherExpr = expressionVisitor.VisitAndReturnCypher(arg);
-                projections.Add($"{cypherExpr} AS {safeAlias}");
-            }
-        }
-
-        var projectionReturn = string.Join(", ", projections);
-        _context.Builder.AddReturn(projectionReturn);
-        _logger.LogDebug("Added anonymous projection: {Projection}", projectionReturn);
     }
 
     private Expression HandleOrderBy(MethodCallExpression node, bool descending)
@@ -647,57 +564,14 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         return node;
     }
 
-    private Expression HandleAggregationWithSelector(MethodCallExpression node, string cypherFunction, string logName)
-    {
-        // IMPORTANT: Process the source expression FIRST to set up context (especially CurrentAlias)
-        // before creating the expression visitor for the selector
-        var result = Visit(node.Arguments[0]);
-        
-        // Clear ORDER BY clauses when processing aggregations
-        // Aggregations return a single value, so ordering the input doesn't affect the output
-        // and ORDER BY on non-aggregated columns in aggregation queries causes errors
-        _context.Builder.ClearOrderBy();
-        _logger.LogDebug("Cleared ORDER BY clauses for {LogName} aggregation", logName);
-        
-        if (node.Arguments.Count == 2 || node.Arguments.Count == 3)
-        {
-            // Aggregation with selector: Sum(p => p.Age) or Sum(p => p.Age, cancellationToken)
-            // Lambda is always at index 1, cancellation token (if present) is at index 2
-            var lambda = ExtractLambda(node.Arguments[1]);
-            if (lambda != null)
-            {
-                var expressionVisitor = CreateExpressionVisitor();
-                var selector = expressionVisitor.VisitAndReturnCypher(lambda.Body);
-                _context.Builder.AddReturn($"{cypherFunction}({selector})");
-                _logger.LogDebug("Added {LogName} aggregation with selector: {Selector}", logName, selector);
-            }
-            else
-            {
-                var alias = _context.Scope.CurrentAlias ?? GetContextualAlias();
-                _context.Builder.AddReturn($"{cypherFunction}({alias})");
-                _logger.LogDebug("Added simple {LogName} aggregation (lambda extraction failed)", logName);
-            }
-        }
-        else
-        {
-            // Simple aggregation: Sum() - use the node itself
-            var alias = _context.Scope.CurrentAlias ?? GetContextualAlias();
-            _context.Builder.AddReturn($"{cypherFunction}({alias})");
-            _logger.LogDebug("Added simple {LogName} aggregation", logName);
-        }
-
-        return result;
-    }
-
     private Expression HandleFirst(MethodCallExpression node)
     {
         // Visit source FIRST (proper visitor pattern: children before parent)
         Visit(node.Arguments[0]);
         
-        // Emit LimitFragment for LIMIT 1 directly (don't delegate to HandleTake - First doesn't have Take's signature)
-        _context.Builder.SetLimit(1);
+    // Emit LimitFragment for LIMIT 1 directly (don't delegate to HandleTake - First doesn't have Take's signature)
         var limitFragment = new LimitFragment(1, _context.Scope.CurrentAlias);
-        _context.FragmentSequence.Add(limitFragment);
+    _context.AddFragment(limitFragment);
         _logger.LogDebug("Emitted LimitFragment for First/FirstOrDefault with limit 1");
         
         // Handle optional predicate: First(p => p.Age > 18)
@@ -708,7 +582,7 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             {
                 var expressionVisitor = CreateExpressionVisitor();
                 var whereCondition = expressionVisitor.VisitAndReturnCypher(lambda.Body);
-                _context.Builder.AddWhere(whereCondition);
+                EmitWhereFragment(whereCondition);
             }
         }
         
@@ -722,16 +596,12 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         
         // Emit ReverseOrderFragment to reverse ORDER BY
         var reverseFragment = new ReverseOrderFragment();
-        _context.FragmentSequence.Add(reverseFragment);
+    _context.AddFragment(reverseFragment);
         _logger.LogDebug("Emitted ReverseOrderFragment for Last()");
         
-        // Also coordinate with builder for backward compatibility
-        _context.Builder.SetShouldReverseOrderBy(true);
-        
-        // Emit LimitFragment for LIMIT 1
-        _context.Builder.SetLimit(1); // Coordinate with builder
+    // Emit LimitFragment for LIMIT 1
         var limitFragment = new LimitFragment(1, _context.Scope.CurrentAlias);
-        _context.FragmentSequence.Add(limitFragment);
+    _context.AddFragment(limitFragment);
         _logger.LogDebug("Emitted LimitFragment for Last()");
         
         // Handle optional predicate: Last(p => p.Age > 18)
@@ -742,7 +612,7 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             {
                 var expressionVisitor = CreateExpressionVisitor();
                 var whereCondition = expressionVisitor.VisitAndReturnCypher(lambda.Body);
-                _context.Builder.AddWhere(whereCondition);
+                EmitWhereFragment(whereCondition);
             }
         }
         
@@ -754,10 +624,9 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         // Visit source FIRST (proper visitor pattern: children before parent)
         Visit(node.Arguments[0]);
         
-        // Single needs LIMIT 2 to detect if there's more than one
-        _context.Builder.SetLimit(2); // Coordinate with builder
+    // Single needs LIMIT 2 to detect if there's more than one
         var limitFragment = new LimitFragment(2, _context.Scope.CurrentAlias);
-        _context.FragmentSequence.Add(limitFragment);
+    _context.AddFragment(limitFragment);
         _logger.LogDebug("Emitted LimitFragment for Single()");
         
         // Handle optional predicate: Single(p => p.Age > 18)
@@ -768,49 +637,25 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             {
                 var expressionVisitor = CreateExpressionVisitor();
                 var whereCondition = expressionVisitor.VisitAndReturnCypher(lambda.Body);
-                _context.Builder.AddWhere(whereCondition);
+                EmitWhereFragment(whereCondition);
             }
         }
         
         return node;
     }
 
-    private Expression HandleElementAccess(MethodCallExpression node, int limit, string methodName)
+    private void EmitWhereFragment(string predicate, string? alias = null, ImmutableArray<string> consumedAliases = default)
     {
-        _context.Builder.SetLimit(limit);
-
-        // Handle optional predicate: First(p => p.Age > 18)
-        if (node.Arguments.Count == 2)
+        if (string.IsNullOrWhiteSpace(predicate))
         {
-            var lambda = ExtractLambda(node.Arguments[1]);
-            if (lambda != null)
-            {
-                var expressionVisitor = CreateExpressionVisitor();
-                var whereCondition = expressionVisitor.VisitAndReturnCypher(lambda.Body);
-                _context.Builder.AddWhere(whereCondition);
-            }
+            return;
         }
 
-        // Element access methods need a basic RETURN clause for simple queries
-        // Check if we're dealing with a node or relationship query
-        var resultType = node.Type;
-        if (typeof(INode).IsAssignableFrom(resultType))
-        {
-            var nodeAlias = GetContextualAlias();
-            _context.Builder.AddReturn(nodeAlias);
-            _logger.LogDebug("Added basic RETURN {Alias} for node element access", nodeAlias);
-        }
-        else if (typeof(IRelationship).IsAssignableFrom(resultType))
-        {
-            var relAlias = _context.Scope.GetNumberedAlias("r");
-            _context.Builder.AddReturn(relAlias);
-            _logger.LogDebug("Added basic RETURN {Alias} for relationship element access", relAlias);
-        }
-
-        _logger.LogDebug("Added LIMIT {Limit} for {Method}", limit, methodName);
-
-        // Continue processing the source expression
-        return Visit(node.Arguments[0]);
+        var normalizedConsumed = consumedAliases.IsDefault ? ImmutableArray<string>.Empty : consumedAliases;
+        var currentAlias = alias ?? _context.Scope.CurrentAlias ?? "src0";
+        var fragment = new WhereFragment(predicate, normalizedConsumed, currentAlias);
+    _context.AddFragment(fragment);
+        _logger.LogDebug("Emitted WhereFragment for alias {Alias}: {Predicate}", currentAlias, predicate);
     }
 
     private Expression HandleToList(MethodCallExpression node)
@@ -825,6 +670,7 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         
         // Check if this expression tree contains PathSegments calls
         bool containsPathSegments = ContainsPathSegmentsCall(node);
+        var hasExplicitReturns = _context.HasExplicitReturnFragments();
         
         if (resultType != null && resultType.IsGenericType && 
             resultType.GetGenericTypeDefinition().Name.Contains("IGraphPathSegment"))
@@ -832,7 +678,7 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             _logger.LogDebug("Processing path segment query of type {Type}", resultType.Name);
             
             // For path segment queries, return the path components ONLY if no projection exists
-            if (!_context.Builder.HasReturnClauses)
+            if (!hasExplicitReturns)
             {
                 // Path segments should reference the LAST hop (where traversal ends), not CurrentHop
                 // For simple queries with one traversal, this is hop 0: (src0)-[r0]->(tgt0)
@@ -841,16 +687,10 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 var relAlias = _context.Scope.GetNumberedAliasForHop("r", lastHop);
                 var targetAlias = _context.Scope.GetNumberedAliasForHop("tgt", lastHop);
                 var pathSegmentReturn = $"{sourceAlias}, {relAlias}, {targetAlias}";
-                _context.Builder.AddReturn(pathSegmentReturn);
-                _logger.LogDebug("Added default path segment return for hop {Hop}: {Return}", lastHop, pathSegmentReturn);
-
-                if (_context.UseFragmentRenderer)
-                {
-                    var returns = ImmutableArray.Create(sourceAlias, relAlias, targetAlias);
-                    var projectionFragment = new ProjectionFragment(returns, targetAlias);
-                    _context.FragmentSequence.Add(projectionFragment);
-                    _logger.LogDebug("Emitted ProjectionFragment for path segment return with aliases {Returns}", returns);
-                }
+                var returns = ImmutableArray.Create(sourceAlias, relAlias, targetAlias);
+                var projectionFragment = new ProjectionFragment(returns, targetAlias);
+                _context.AddFragment(projectionFragment);
+                _logger.LogDebug("Emitted default path segment ProjectionFragment for hop {Hop}: {Return}", lastHop, pathSegmentReturn);
             }
             else
             {
@@ -862,12 +702,13 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             _logger.LogDebug("Processing simple node query of type {Type}", resultType.Name);
             
             // For node queries, add context-aware return clause ONLY if no projection exists and not in path context
-            if (!containsPathSegments && !_context.Scope.IsPathSegmentContext && !_context.Builder.HasReturnClauses)
+            if (!containsPathSegments && !_context.Scope.IsPathSegmentContext && !hasExplicitReturns)
             {
                 var nodeAlias = GetContextualAlias();
-                _context.Builder.AddReturn(nodeAlias);
-                _logger.LogDebug("Added default node return with alias: {Alias}", nodeAlias);
-                
+                var nodeProjection = new ProjectionFragment(ImmutableArray.Create(nodeAlias), nodeAlias);
+                _context.AddFragment(nodeProjection);
+                _logger.LogDebug("Emitted default node ProjectionFragment with alias: {Alias}", nodeAlias);
+
                 // Check if the node type has complex properties (INode properties)
                 var hasComplexProperties = resultType.GetProperties()
                     .Any(p => typeof(INode).IsAssignableFrom(p.PropertyType));
@@ -875,25 +716,18 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 if (hasComplexProperties)
                 {
                     // Enable complex property loading for nodes with INode properties
-                    _context.Builder.EnableComplexPropertyLoading(nodeAlias);
-                    
-                    // Emit OptionalMatchFragment only when using fragment renderer
-                    // Builder generates OPTIONAL MATCH internally from EnableComplexPropertyLoading
-                    if (_context.UseFragmentRenderer)
-                    {
-                        var optionalPattern = $"({nodeAlias})-[prop_rel]->(prop_node)";
-                        var optionalFragment = new OptionalMatchFragment(
-                            optionalPattern,
-                            ImmutableArray.Create("prop_rel", "prop_node"),
-                            ImmutableArray.Create(nodeAlias),
-                            nodeAlias);
-                        _context.FragmentSequence.Add(optionalFragment);
-                        _logger.LogDebug("Emitted OptionalMatchFragment for complex property loading");
-                    }
-                    
+                    var optionalPattern = $"({nodeAlias})-[prop_rel]->(prop_node)";
+                    var optionalFragment = new OptionalMatchFragment(
+                        optionalPattern,
+                        ImmutableArray.Create("prop_rel", "prop_node"),
+                        ImmutableArray.Create(nodeAlias),
+                        nodeAlias);
+                    _context.AddFragment(optionalFragment);
+                    _logger.LogDebug("Emitted OptionalMatchFragment for complex property loading");
+
                     // Always emit ComplexPropertyLoadingFragment to track state
                     var complexPropertyFragment = new ComplexPropertyLoadingFragment(true, nodeAlias);
-                    _context.FragmentSequence.Add(complexPropertyFragment);
+                    _context.AddFragment(complexPropertyFragment);
                     _logger.LogDebug("Emitted ComplexPropertyLoadingFragment (enabled) for node query with complex properties");
                 }
             }
@@ -909,11 +743,12 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             // For relationship queries, add default return ONLY if:
             // 1. No projection exists AND 
             // 2. This is not part of a PathSegments chain (which handles its own returns)
-            if (!_context.Builder.HasReturnClauses && !containsPathSegments)
+            if (!hasExplicitReturns && !containsPathSegments)
             {
                 var relAlias = _context.Scope.GetNumberedAlias("r");
-                _context.Builder.AddReturn(relAlias);
-                _logger.LogDebug("Added default relationship return with alias: {Alias}", relAlias);
+                var relationshipProjection = new ProjectionFragment(ImmutableArray.Create(relAlias), relAlias);
+                _context.AddFragment(relationshipProjection);
+                _logger.LogDebug("Emitted default relationship ProjectionFragment with alias: {Alias}", relAlias);
             }
             else
             {
@@ -985,9 +820,9 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
     private void SetupInitialMatch(Type elementType)
     {
         // Skip setup if we already have path patterns (e.g., from PathSegments)
-        if (_context.Builder.HasMatchPatterns)
+        if (_context.HasMatchFragments())
         {
-            _logger.LogDebug("Skipping initial match setup - path patterns already exist");
+            _logger.LogDebug("Skipping initial match setup - match fragments already exist");
             return;
         }
 
@@ -997,15 +832,13 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             // For AGE inheritance support, always use base type label
             var baseLabel = Labels.GetBaseTypeLabel(elementType);
             var alias = _context.Scope.CurrentAlias ?? GetContextualAlias();
-            _context.Builder.AddMatch(alias, baseLabel);
-            
             // Set CurrentAlias so subsequent operations (WHERE, SELECT, etc.) use the correct alias
             _context.Scope.CurrentAlias = alias;
             
             // Emit MatchRootFragment for root node queries
             var pattern = $"({alias}:{baseLabel})";
             var fragment = new MatchRootFragment(pattern, baseLabel, elementType, ImmutableArray.Create(alias), alias);
-            _context.FragmentSequence.Add(fragment);
+            _context.AddFragment(fragment);
             _logger.LogDebug("Emitted MatchRootFragment for {Type} with alias {Alias}", elementType.Name, alias);
             
             // Add inheritance filter if querying for a derived type
@@ -1014,8 +847,8 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             {
                 // Add WHERE clause to filter by inheritance hierarchy
                 var inheritanceFilter = $"{alias}.inheritance_labels[0] = '{actualLabel}'";
-                _context.Builder.AddWhere(inheritanceFilter);
-                _logger.LogDebug("Added inheritance filter: {Filter}", inheritanceFilter);
+                EmitWhereFragment(inheritanceFilter, alias, ImmutableArray.Create(alias));
+                _logger.LogDebug("Emitted inheritance filter: {Filter}", inheritanceFilter);
             }
             
             // Set up complex properties for node types
@@ -1033,14 +866,12 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 ? alias
                 : $"{alias}:{relationshipLabel}";
             var pattern = $"({srcAlias})-[{relationshipPattern}]->({tgtAlias})";
-            _context.Builder.AddMatchPattern(pattern);
-            
             // Set CurrentAlias so subsequent operations use the correct alias
             _context.Scope.CurrentAlias = alias;
             
             // Emit MatchRootFragment for root relationship queries
             var fragment = new MatchRootFragment(pattern, relationshipLabel, elementType, ImmutableArray.Create(srcAlias, alias, tgtAlias), alias);
-            _context.FragmentSequence.Add(fragment);
+            _context.AddFragment(fragment);
             _logger.LogDebug("Emitted MatchRootFragment for {Type} with alias {Alias}", elementType.Name, alias);
             
             AddRelationshipTypeFilter(elementType, alias);
@@ -1066,8 +897,13 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         {
             var relType = GraphDataModel.PropertyNameToRelationshipTypeName(prop.Name);
             var optionalMatch = $"OPTIONAL MATCH ({alias})-[r_{prop.Name}:{relType}]->(cp_{prop.Name})";
-            _context.Builder.AddOptionalMatch(optionalMatch);
-            _logger.LogDebug("Added optional match for complex property '{Property}': {Match}", prop.Name, optionalMatch);
+            var optionalFragment = new OptionalMatchFragment(
+                optionalMatch,
+                ImmutableArray.Create($"r_{prop.Name}", $"cp_{prop.Name}"),
+                ImmutableArray.Create(alias),
+                alias);
+            _context.AddFragment(optionalFragment);
+            _logger.LogDebug("Emitted optional match fragment for complex property '{Property}': {Match}", prop.Name, optionalMatch);
         }
     }
 
@@ -1163,8 +999,8 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         // Use standard Cypher IN syntax for AGE compatibility
         // Generate: WHERE 'IRelationship' IN r0.inheritance_labels
         var whereClause = $"'{interfaceLabel}' IN {relationshipAlias}.inheritance_labels";
-        _context.Builder.AddWhere(whereClause);
-        _logger.LogDebug("Added inheritance-based relationship filter: {WhereClause}", whereClause);
+    EmitWhereFragment(whereClause, relationshipAlias, ImmutableArray.Create(relationshipAlias));
+    _logger.LogDebug("Emitted inheritance-based relationship filter: {WhereClause}", whereClause);
     }
 
     private static bool IsUnspecifiedRelationshipType(Type relationshipType)
@@ -1220,8 +1056,8 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
         {
             var direction = EvaluateConstantExpression<GraphTraversalDirection>(node.Arguments[1]);
             
-            // Set the traversal direction in the builder so PathSegments can use it
-            _context.Builder.SetTraversalDirection(direction);
+            // Persist the traversal direction on the scope so PathSegments can use it
+            _context.Scope.SetTraversalDirection(direction);
             _logger.LogDebug("Set traversal direction: {Direction}", direction);
         }
 
@@ -1279,11 +1115,11 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             _logger.LogDebug("PathSegments found in WHERE source - WHERE is PostTraversal (target filter)");
             return WherePosition.PostTraversal;
         }
-        else if (_context.Builder.HasMatchPatterns)
+        else if (_context.HasMatchFragments())
         {
             // If we have match patterns but PathSegments is not in THIS WHERE's source,
             // then this WHERE is BEFORE the PathSegments in the chain, so it's PreTraversal
-            _logger.LogDebug("Match patterns exist but PathSegments not in WHERE source - WHERE is PreTraversal (source filter)");
+            _logger.LogDebug("Match fragments exist but PathSegments not in WHERE source - WHERE is PreTraversal (source filter)");
             return WherePosition.PreTraversal;
         }
         else
@@ -1395,7 +1231,7 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
     /// </summary>
     private string? FindColumnAliasForProperty(string propertyName)
     {
-        var returnClauses = _context.Builder.GetReturnClauses();
+        var returnClauses = _context.GetLatestProjectionReturns();
         
         foreach (var returnClause in returnClauses)
         {

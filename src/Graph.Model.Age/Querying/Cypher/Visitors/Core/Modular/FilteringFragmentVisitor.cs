@@ -50,7 +50,7 @@ internal sealed class FilteringFragmentVisitor : FragmentEmittingVisitorBase
             var targetAlias = Context.Scope.GetNumberedAliasForHop("tgt", hopNumber);
             
             expressionVisitor = new AgeExpressionToCypherVisitor(
-                Context.Builder,
+                Context,
                 Logger,
                 Context.Scope.CurrentAlias ?? "src0",
                 parameter,
@@ -63,10 +63,8 @@ internal sealed class FilteringFragmentVisitor : FragmentEmittingVisitorBase
             expressionVisitor = CreateExpressionVisitor();
         }
         
-        var whereCondition = expressionVisitor.VisitAndReturnCypher(lambda.Body);
-
-        Context.Builder.AddWhere(whereCondition);
-        Logger.LogDebug("Added WHERE condition: {Condition}", whereCondition);
+    var whereCondition = expressionVisitor.VisitAndReturnCypher(lambda.Body);
+    Logger.LogDebug("Resolved WHERE condition: {Condition}", whereCondition);
 
         // Emit WhereFragment
         var consumedAliases = ImmutableArray<string>.Empty; // TODO: Track actual consumed aliases
@@ -101,7 +99,7 @@ internal sealed class FilteringFragmentVisitor : FragmentEmittingVisitorBase
         // use the last return clause as the order expression
         if (lambda.Body is ParameterExpression)
         {
-            var lastReturn = Context.Builder.GetLastReturnClause();
+            var lastReturn = Context.GetLastReturnClause();
             if (lastReturn != null)
             {
                 // Extract the expression from the return clause (e.g., "src0.FirstName" from "src0.FirstName AS Name")
@@ -124,8 +122,7 @@ internal sealed class FilteringFragmentVisitor : FragmentEmittingVisitorBase
             orderExpression = expressionVisitor.VisitAndReturnCypher(lambda.Body);
         }
 
-        Context.Builder.AddOrderBy(orderExpression, isDescending);
-        Logger.LogDebug("Added {Operation}: {Expression} {Direction}", operation, orderExpression, direction);
+    Logger.LogDebug("Emitting {Operation}: {Expression} {Direction}", operation, orderExpression, direction);
 
         // Emit OrderFragment with current alias
         var fragment = new OrderFragment(orderExpression, isDescending, Context.Scope.CurrentAlias);
@@ -145,12 +142,10 @@ internal sealed class FilteringFragmentVisitor : FragmentEmittingVisitorBase
 
         if (node.Arguments[1] is ConstantExpression constantExpr && constantExpr.Value is int skipCount)
         {
-            Context.Builder.SetSkip(skipCount);
-            Logger.LogDebug("Added SKIP: {Count}", skipCount);
-
             // Emit SkipFragment with current alias
             var fragment = new SkipFragment(skipCount, Context.Scope.CurrentAlias);
             EmitFragment(fragment, "SkipFragment");
+            Logger.LogDebug("Emitted SKIP fragment: {Count}", skipCount);
         }
         else
         {
@@ -171,12 +166,10 @@ internal sealed class FilteringFragmentVisitor : FragmentEmittingVisitorBase
 
         if (node.Arguments[1] is ConstantExpression constantExpr && constantExpr.Value is int takeCount)
         {
-            Context.Builder.SetLimit(takeCount);
-            Logger.LogDebug("Added LIMIT: {Count}", takeCount);
-
             // Emit LimitFragment with current alias
             var fragment = new LimitFragment(takeCount, Context.Scope.CurrentAlias);
             EmitFragment(fragment, "LimitFragment");
+            Logger.LogDebug("Emitted LIMIT fragment: {Count}", takeCount);
         }
         else
         {
@@ -195,12 +188,10 @@ internal sealed class FilteringFragmentVisitor : FragmentEmittingVisitorBase
 
         var sourceExpression = node.Arguments[0];
 
-        Context.Builder.SetDistinct(true);
-        Logger.LogDebug("Added DISTINCT");
-
         // Emit DistinctFragment with current alias
         var fragment = new DistinctFragment(Context.Scope.CurrentAlias);
         EmitFragment(fragment, "DistinctFragment");
+    Logger.LogDebug("Emitted DISTINCT fragment");
 
         return sourceExpression;
     }
@@ -214,12 +205,10 @@ internal sealed class FilteringFragmentVisitor : FragmentEmittingVisitorBase
 
         var sourceExpression = node.Arguments[0];
 
-        Context.Builder.ReverseOrderBy();
-        Logger.LogDebug("Added REVERSE (reversed ORDER BY)");
-
         // Emit ReverseOrderFragment
         var fragment = new ReverseOrderFragment();
         EmitFragment(fragment, "ReverseOrderFragment");
+    Logger.LogDebug("Emitted REVERSE fragment");
 
         return sourceExpression;
     }

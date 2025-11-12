@@ -15,7 +15,6 @@
 namespace Cvoya.Graph.Model.Age.Core.Entities;
 
 using Cvoya.Graph.Model.Serialization;
-using System.Collections;
 
 /// <summary>
 /// Age-specific implementation of IValueConverter that delegates to AgeSerializationBridge.
@@ -36,126 +35,28 @@ internal sealed class AgeValueConverter : IValueConverter
     {
         ArgumentNullException.ThrowIfNull(property);
 
-        return property.Value switch
+        if (property.Value is null)
         {
-            SimpleValue simple => ConvertSimpleValue<T>(simple),
-            SimpleCollection collection => ConvertSimpleCollection<T>(collection),
-            EntityInfo entityInfo => ConvertEntityInfo<T>(entityInfo),
-            EntityCollection entityCollection => ConvertEntityCollection<T>(entityCollection),
-            null => default(T),
-            _ => throw new NotSupportedException($"Unsupported property value type: {property.Value.GetType()}")
-        };
-    }
+            return default;
+        }
 
-    /// <summary>
-    /// Converts a SimpleValue using Age-specific type conversion logic.
-    /// </summary>
-    private static T? ConvertSimpleValue<T>(SimpleValue simpleValue)
-    {
-        try
+        if (property.Value is SimpleValue simpleValue)
         {
-            // Handle DBNull values (common for aggregation over empty sets)
             if (simpleValue.Object is DBNull)
             {
-                // Return appropriate default/null value for the target type
-                return default(T);
+                return default;
             }
-            
-            // Delegate to AgeSerializationBridge for Age-specific type conversions
-            var converted = AgeSerializationBridge.FromAgeValue(simpleValue.Object, typeof(T));
-            return (T?)converted;
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Failed to convert SimpleValue of type {simpleValue.Type.Name} to {typeof(T).Name}", ex);
-        }
-    }
 
-    /// <summary>
-    /// Converts a SimpleCollection to the target type T, handling arrays and various collection interfaces.
-    /// </summary>
-    private static T? ConvertSimpleCollection<T>(SimpleCollection collection)
-    {
-        try
-        {
-            var targetType = typeof(T);
-            
-            // If T is not a collection type, try to convert the first element
-            if (!CollectionTypeHelper.IsCollectionType(targetType))
+            try
             {
-                return collection.Values.Count > 0 
-                    ? ConvertSimpleValue<T>(collection.Values.First())
-                    : default(T);
+                return (T?)AgeSerializationBridge.FromAgeValue(simpleValue.Object, typeof(T));
             }
-            
-            // Convert all elements using the collection's element type
-            var elementType = CollectionTypeHelper.GetElementType(targetType);
-            var convertedValues = collection.Values
-                .Select(v => AgeSerializationBridge.FromAgeValue(v.Object, elementType))
-                .ToList();
-            
-            return targetType.IsArray 
-                ? ConvertToArray<T>(convertedValues, elementType)
-                : ConvertToList<T>(convertedValues, elementType);
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to convert SimpleValue of type {simpleValue.Type.Name} to {typeof(T).Name}", ex);
+            }
         }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Failed to convert SimpleCollection to {typeof(T).Name}", ex);
-        }
-    }
 
-    /// <summary>
-    /// Converts a list of values to an array of the target type.
-    /// </summary>
-    private static T ConvertToArray<T>(List<object?> values, Type elementType)
-    {
-        var array = Array.CreateInstance(elementType, values.Count);
-        for (int i = 0; i < values.Count; i++)
-        {
-            array.SetValue(values[i], i);
-        }
-        return (T)(object)array;
-    }
-
-    /// <summary>
-    /// Converts a list of values to a List&lt;T&gt; and returns it as the target type.
-    /// </summary>
-    private static T ConvertToList<T>(List<object?> values, Type elementType)
-    {
-        var listType = typeof(List<>).MakeGenericType(elementType);
-        var list = (IList)Activator.CreateInstance(listType)!;
-        foreach (var value in values)
-        {
-            list.Add(value);
-        }
-        return (T)list;
-    }
-
-    /// <summary>
-    /// Converts EntityInfo to the target type. EntityInfo typically requires higher-level processing.
-    /// </summary>
-    private static T? ConvertEntityInfo<T>(EntityInfo entityInfo) => ConvertEntityType<T>(entityInfo, "EntityInfo");
-
-    /// <summary>
-    /// Converts EntityCollection to the target type. EntityCollection typically requires higher-level processing.
-    /// </summary>
-    private static T? ConvertEntityCollection<T>(EntityCollection entityCollection) => ConvertEntityType<T>(entityCollection, "EntityCollection");
-
-    /// <summary>
-    /// Common conversion logic for EntityInfo and EntityCollection types.
-    /// </summary>
-    private static T? ConvertEntityType<T>(object entityObject, string typeName)
-    {
-        var targetType = typeof(T);
-        
-        // Return the entity object directly if types match
-        if (targetType == entityObject.GetType() || targetType == typeof(object))
-        {
-            return (T)entityObject;
-        }
-        
-        // For other types, we can't directly convert without more context
-        throw new InvalidOperationException(
-            $"Cannot directly convert {typeName} to {targetType.Name}. {typeName} requires materialization through EntityFactory.");
+        throw new NotSupportedException($"Unsupported property value type: {property.Value.GetType()}");
     }
 }

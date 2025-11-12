@@ -168,9 +168,6 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
     {
         Logger.LogDebug("Anonymous type projection with {Count} members", newExpr.Arguments.Count);
 
-        // Select projections should override any RETURNS emitted by earlier operations
-        Context.Builder.ClearReturn();
-
         var returnsBuilder = ImmutableArray.CreateBuilder<string>();
         var effectiveParameter = isPathSegmentsSource ? pathSegmentParameter : null;
         var hopNumber = isPathSegmentsSource ? DeterminePathSegmentHop() : -1;
@@ -240,8 +237,6 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
 
             var returnClause = $"{memberExpression} AS {EscapeIdentifier(memberName)}";
             returnsBuilder.Add(returnClause);
-
-            Context.Builder.AddReturn(returnClause);
             Logger.LogDebug("Projected member: {Name} = {Expression}", memberName, memberExpression);
         }
 
@@ -249,6 +244,7 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
         var currentAlias = Context.Scope.CurrentAlias ?? "src0";
         var fragment = new ProjectionFragment(returns, currentAlias);
         EmitFragment(fragment, "ProjectionFragment");
+        Context.Scope.LastProjectedExpression = returns.LastOrDefault();
     }
 
     private void AddPathSegmentParameterProjection(string memberName, int hopNumber, ImmutableArray<string>.Builder returnsBuilder)
@@ -279,7 +275,6 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
             var columnAlias = $"{aliasPrefix}_{columnAliasSuffix}";
             var returnClause = $"{expressionAlias} AS {columnAlias}";
             returnsBuilder.Add(returnClause);
-            Context.Builder.AddReturn(returnClause);
             Logger.LogDebug("Projected PathSegment parameter component: {Clause}", returnClause);
         }
 
@@ -321,7 +316,7 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
         if (hopAliases.HasValue)
         {
             var (src, rel, tgt) = hopAliases.Value;
-            return new AgeExpressionToCypherVisitor(Context.Builder, Logger, "ps", pathSegmentParameter, src, rel, tgt);
+            return new AgeExpressionToCypherVisitor(Context, Logger, "ps", pathSegmentParameter, src, rel, tgt);
         }
 
         Logger.LogWarning("Hop {Hop} aliases missing, using numbered aliases", hopNumber);
@@ -329,7 +324,7 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
         var fallbackRel = Context.Scope.GetNumberedAliasForHop("r", hopNumber);
         var fallbackTgt = Context.Scope.GetNumberedAliasForHop("tgt", hopNumber);
 
-        return new AgeExpressionToCypherVisitor(Context.Builder, Logger, "ps", pathSegmentParameter, fallbackSrc, fallbackRel, fallbackTgt);
+    return new AgeExpressionToCypherVisitor(Context, Logger, "ps", pathSegmentParameter, fallbackSrc, fallbackRel, fallbackTgt);
     }
 
     private sealed class ParameterReferenceFinder : ExpressionVisitor
@@ -365,9 +360,6 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
     /// </summary>
     private void HandleSingleMemberProjection(MemberExpression memberExpr, bool isPathSegmentsSource)
     {
-        // Each Select should override prior RETURN clauses
-        Context.Builder.ClearReturn();
-
         // Check if this is a PathSegment property projection (StartNode, EndNode, Relationship)
         if (isPathSegmentsSource && memberExpr.Expression is ParameterExpression paramExpr)
         {
@@ -426,7 +418,6 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
                 Context.Scope.IsPathSegmentContext = false;
                 Context.Scope.LastProjectedExpression = aliasToUse;
 
-                Context.Builder.AddReturn(aliasToUse);
                 Logger.LogDebug("Projected PathSegment member: {Property} -> {Alias} (hop {Hop})", propertyName, aliasToUse, hopNumber);
 
                 var pathSegmentReturns = ImmutableArray.Create(aliasToUse);
@@ -441,9 +432,8 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
         var propertyExpression = expressionVisitor2.VisitAndReturnCypher(memberExpr);
 
         // Check if this is a complex property (INode type) that requires OPTIONAL MATCH
-        // Only emit OptionalMatchFragment when using fragment renderer
         var memberType = memberExpr.Type;
-        if (Context.UseFragmentRenderer && typeof(INode).IsAssignableFrom(memberType))
+        if (typeof(INode).IsAssignableFrom(memberType))
         {
             Logger.LogDebug("Complex property projection detected for type: {Type}", memberType.Name);
             
@@ -459,7 +449,7 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
             Logger.LogDebug("Emitted OptionalMatchFragment for complex property traversal");
         }
 
-    Context.Builder.AddReturn(propertyExpression);
+        Context.Scope.LastProjectedExpression = propertyExpression;
         Logger.LogDebug("Projected single member: {Expression}", propertyExpression);
 
         // Emit ProjectionFragment with single field
@@ -474,14 +464,12 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
     /// </summary>
     private void HandleCalculatedProjection(Expression expression)
     {
-        // Calculated projections also replace prior RETURN clauses
-        Context.Builder.ClearReturn();
-
         var expressionVisitor = CreateExpressionVisitor();
         var calculatedExpression = expressionVisitor.VisitAndReturnCypher(expression);
 
-        Context.Builder.AddReturn(calculatedExpression);
         Logger.LogDebug("Projected calculated expression: {Expression}", calculatedExpression);
+
+    Context.Scope.LastProjectedExpression = calculatedExpression;
 
         // Emit ProjectionFragment with single calculated field
         var returns = ImmutableArray.Create(calculatedExpression);
@@ -514,14 +502,16 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
                     : "group";
 
                 var aggregationExpression = $"{aggregation}({targetExpression})";
-                projectionBuilder.Add(memberName, aggregationExpression);
-                Context.Builder.AddReturn($"{aggregationExpression} AS {EscapeIdentifier(memberName)}");
+                var returnClause = $"{aggregationExpression} AS {EscapeIdentifier(memberName)}";
+                projectionBuilder.Add(memberName, returnClause);
+                Logger.LogDebug("GroupBy aggregation projection: {Member} -> {Clause}", memberName, returnClause);
             }
             else
             {
                 var memberExpression = expressionVisitor.VisitAndReturnCypher(argument);
-                projectionBuilder.Add(memberName, memberExpression);
-                Context.Builder.AddReturn($"{memberExpression} AS {EscapeIdentifier(memberName)}");
+                var returnClause = $"{memberExpression} AS {EscapeIdentifier(memberName)}";
+                projectionBuilder.Add(memberName, returnClause);
+                Logger.LogDebug("GroupBy projection member: {Member} -> {Clause}", memberName, returnClause);
             }
         }
 
@@ -530,6 +520,7 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
         var currentAlias = Context.Scope.CurrentAlias ?? "src0";
         var fragment = new ProjectionFragment(returns, currentAlias);
         EmitFragment(fragment, "ProjectionFragment");
+        Context.Scope.LastProjectedExpression = returns.LastOrDefault();
     }
 
     /// <summary>

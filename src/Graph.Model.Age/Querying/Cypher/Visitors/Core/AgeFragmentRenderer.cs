@@ -215,7 +215,7 @@ internal static class AgeFragmentRenderer
         if (aggregationFragments.Count > 0)
         {
             var aggregationExpressions = aggregationFragments
-                .Select(BuildAggregationExpression)
+                .Select(FragmentFormatting.BuildAggregationExpression)
                 .ToList();
             
             if (aggregationExpressions.Count > 0)
@@ -250,16 +250,6 @@ internal static class AgeFragmentRenderer
         }
 
         return null;
-    }
-
-    private static string BuildAggregationExpression(AggregationFragment fragment)
-    {
-        return fragment.AggregationType switch
-        {
-            "any" => $"count({fragment.Expression}) > 0",
-            "all" => $"count({fragment.Expression}) = 0",
-            _ => $"{fragment.AggregationType}({fragment.Expression})"
-        };
     }
 
     private static string DetermineComplexPropertyAlias(IReadOnlyList<ComplexPropertyLoadingFragment> toggles, IReadOnlyList<QueryFragment> fragments)

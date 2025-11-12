@@ -14,30 +14,28 @@
 
 namespace Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
 
-using Cvoya.Graph.Model.Age.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Cypher.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
-/// Aggregates the state and builder dependencies required to translate LINQ expressions into AGE Cypher queries.
-/// Uses AGE-specific builder to avoid Neo4j syntax generation.
+/// Aggregates the state required to translate LINQ expressions into AGE Cypher queries.
+/// Collects fragments and provides shared services (scope, parameters, alias management).
 /// </summary>
 internal sealed record CypherQueryContext
 {
-    public CypherQueryContext(Type rootType, ILoggerFactory? loggerFactory = null, bool useFragmentRenderer = true)
+    public CypherQueryContext(Type rootType, ILoggerFactory? loggerFactory = null)
     {
         LoggerFactory = loggerFactory;
         Scope = new CypherQueryScope(rootType);
-        Builder = new AgeCypherQueryBuilder(this);
-        // Fragment shim support
-        FragmentSequence = new List<QueryFragment>();
-        AliasManager = new AliasManager();
-        UseFragmentRenderer = useFragmentRenderer;
+        ParameterStore = new QueryParameterStore(loggerFactory);
+    // Fragment shim support
+    FragmentSequence = new List<QueryFragment>();
+    AliasManager = new AliasManager();
     }
 
     public CypherQueryScope Scope { get; }
 
-    public AgeCypherQueryBuilder Builder { get; }
+    public QueryParameterStore ParameterStore { get; }
 
     public ILoggerFactory? LoggerFactory { get; }
 
@@ -47,32 +45,36 @@ internal sealed record CypherQueryContext
     // Lightweight alias manager for fragment shim
     public AliasManager AliasManager { get; }
 
-    /// <summary>
-    /// When true, GetQuery() returns fragment-rendered output instead of builder output.
-    /// This enables progressive migration from builder-based to fragment-based query generation.
-    /// </summary>
-    public bool UseFragmentRenderer { get; }
-
-    /// <summary>
-    /// Stores the result of the most recent alias-generating operation.
-    /// Used for transitioning from implicit (CurrentAlias mutation) to explicit alias passing.
-    /// Callers can check this after operations like PathSegments to know what aliases were generated.
-    /// </summary>
-    public AliasResolutionResult? LastAliasResolution { get; set; }
-
     public IDisposable PushAlias(string alias) => new AliasScope(this, alias);
+
+    public void AddFragment(QueryFragment fragment)
+    {
+        FragmentSequence.Add(fragment);
+    }
+
+    public bool HasMatchFragments()
+        => FragmentSequenceInsights.HasMatchFragments(FragmentSequence);
+
+    public string? GetLastReturnClause()
+        => FragmentSequenceInsights.GetLastReturnClause(FragmentSequence);
+
+    public IReadOnlyList<string> GetLatestProjectionReturns()
+        => FragmentSequenceInsights.GetLatestProjectionReturns(FragmentSequence);
+
+    public bool HasExplicitReturnFragments()
+        => FragmentSequenceInsights.HasExplicitReturnFragments(FragmentSequence);
 
     public string GetQuery()
     {
-        if (UseFragmentRenderer && FragmentSequence.Count > 0)
+        if (FragmentSequence.Count == 0)
         {
-            return AgeFragmentRenderer.Render(FragmentSequence);
+            return string.Empty;
         }
-        
-        return Builder.Build().Text;
+
+        return AgeFragmentRenderer.Render(FragmentSequence);
     }
 
-    public IReadOnlyDictionary<string, object?> GetParameters() => Builder.Build().Parameters;
+    public IReadOnlyDictionary<string, object?> GetParameters() => ParameterStore.Snapshot();
 
     private sealed class AliasScope : IDisposable
     {

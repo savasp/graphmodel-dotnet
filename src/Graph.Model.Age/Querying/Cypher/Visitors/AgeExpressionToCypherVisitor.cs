@@ -14,9 +14,10 @@
 
 namespace Cvoya.Graph.Model.Age.Querying.Cypher.Visitors;
 
+using System.Collections.Generic;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Age.Core.Entities;
-using Cvoya.Graph.Model.Age.Querying.Cypher.Builders;
+using Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -26,8 +27,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// </summary>
 internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
 {
-    private readonly AgeCypherQueryBuilder? _queryBuilder;
-    private readonly Dictionary<string, object?>? _parametersDict;
+    private readonly CypherQueryContext _context;
+    private readonly QueryParameterStore _parameterStore;
     private readonly ILogger _logger;
     private readonly string _alias;
     private readonly ParameterExpression? _pathSegmentParameter;
@@ -35,51 +36,17 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
     private readonly string? _relationshipAlias;
     private readonly string? _targetAlias;
 
-    // Constructor for new approach using builder
     public AgeExpressionToCypherVisitor(
-        AgeCypherQueryBuilder queryBuilder,
+        CypherQueryContext context,
         ILogger? logger = null,
-        string alias = "n")
+        string alias = "n",
+        ParameterExpression? pathSegmentParameter = null,
+        string? sourceAlias = null,
+        string? relationshipAlias = null,
+        string? targetAlias = null)
     {
-        _queryBuilder = queryBuilder ?? throw new ArgumentNullException(nameof(queryBuilder));
-        _parametersDict = null;
-        _logger = logger ?? NullLogger.Instance;
-        _alias = alias;
-        _pathSegmentParameter = null;
-        _sourceAlias = null;
-        _relationshipAlias = null;
-        _targetAlias = null;
-    }
-
-    // Constructor for path segment context
-    public AgeExpressionToCypherVisitor(
-        AgeCypherQueryBuilder queryBuilder,
-        ILogger? logger,
-        string alias,
-        ParameterExpression pathSegmentParameter)
-    {
-        _queryBuilder = queryBuilder ?? throw new ArgumentNullException(nameof(queryBuilder));
-        _parametersDict = null;
-        _logger = logger ?? NullLogger.Instance;
-        _alias = alias;
-        _pathSegmentParameter = pathSegmentParameter;
-        _sourceAlias = null;
-        _relationshipAlias = null;
-        _targetAlias = null;
-    }
-
-    // Constructor for path segment context with hop-specific aliases
-    public AgeExpressionToCypherVisitor(
-        AgeCypherQueryBuilder queryBuilder,
-        ILogger? logger,
-        string alias,
-        ParameterExpression pathSegmentParameter,
-        string sourceAlias,
-        string relationshipAlias,
-        string targetAlias)
-    {
-        _queryBuilder = queryBuilder ?? throw new ArgumentNullException(nameof(queryBuilder));
-        _parametersDict = null;
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _parameterStore = context.ParameterStore;
         _logger = logger ?? NullLogger.Instance;
         _alias = alias;
         _pathSegmentParameter = pathSegmentParameter;
@@ -88,40 +55,9 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
         _targetAlias = targetAlias;
     }
 
-    // Constructor for legacy approach using dictionary
-    public AgeExpressionToCypherVisitor(
-        Dictionary<string, object?> parameters,
-        ILogger? logger = null,
-        string alias = "n")
-    {
-        _parametersDict = parameters ?? throw new ArgumentNullException(nameof(parameters));
-        _queryBuilder = null;
-        _logger = logger ?? NullLogger.Instance;
-        _alias = alias;
-        _pathSegmentParameter = null;
-        _sourceAlias = null;
-        _relationshipAlias = null;
-        _targetAlias = null;
-    }
-
     private string AddParameter(object? value)
     {
-        if (_queryBuilder != null)
-        {
-            // New approach: use the builder
-            return _queryBuilder.AddParameter(value);
-        }
-        else if (_parametersDict != null)
-        {
-            // Legacy approach: use the dictionary
-            var paramName = $"param_{_parametersDict.Count}";
-            _parametersDict[paramName] = AgeSerializationBridge.ToAgeValue(value);
-            return $"${paramName}";
-        }
-        else
-        {
-            throw new InvalidOperationException("Neither query builder nor parameters dictionary is available");
-        }
+        return _parameterStore.Add(value);
     }
 
     /// <summary>
@@ -209,7 +145,7 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
                 // g.Key should map to the GROUP BY expression stored in the context
                 if (node.Member.Name == "Key")
                 {
-                    var groupByExpr = _queryBuilder?.Context.Scope.GroupByExpression;
+                    var groupByExpr = _context.Scope.GroupByExpression;
                     if (string.IsNullOrEmpty(groupByExpr))
                     {
                         throw new InvalidOperationException("GroupBy expression not found in context for g.Key access");

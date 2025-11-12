@@ -636,7 +636,7 @@ public sealed class FragmentRendererTests
             .Skip(2)
             .Take(3);
 
-        var context = new CypherQueryContext(typeof(PersonWithAddressNode), useFragmentRenderer: true);
+    var context = new CypherQueryContext(typeof(PersonWithAddressNode));
         var visitor = new AgeCypherQueryVisitor(context);
         visitor.Visit(query.Expression);
 
@@ -668,7 +668,7 @@ public sealed class FragmentRendererTests
 
         var toListExpression = Expression.Call(null, toListMethod, source.Expression);
 
-        var context = new CypherQueryContext(typeof(PersonWithAddressNode), useFragmentRenderer: true);
+    var context = new CypherQueryContext(typeof(PersonWithAddressNode));
         var visitor = new AgeCypherQueryVisitor(context);
         visitor.Visit(toListExpression);
 
@@ -704,7 +704,7 @@ public sealed class FragmentRendererTests
 
         var toListExpression = Expression.Call(null, toListMethod, query.Expression);
 
-        var context = new CypherQueryContext(typeof(PersonWithAddressNode), useFragmentRenderer: true);
+    var context = new CypherQueryContext(typeof(PersonWithAddressNode));
         var visitor = new AgeCypherQueryVisitor(context);
         visitor.Visit(toListExpression);
 
@@ -739,7 +739,7 @@ public sealed class FragmentRendererTests
 
         var toListExpression = Expression.Call(null, toListMethod, query.Expression);
 
-        var context = new CypherQueryContext(typeof(PersonWithAddressNode), useFragmentRenderer: true);
+    var context = new CypherQueryContext(typeof(PersonWithAddressNode));
         var visitor = new AgeCypherQueryVisitor(context);
         visitor.Visit(toListExpression);
 
@@ -899,7 +899,7 @@ public sealed class FragmentRendererTests
             .Take(20);
 
         // Use fragment renderer as the query source
-        var context = new CypherQueryContext(typeof(PersonNode), useFragmentRenderer: true);
+    var context = new CypherQueryContext(typeof(PersonNode));
         var visitor = new AgeCypherQueryVisitor(context);
         visitor.Visit(query.Expression);
 
@@ -913,14 +913,13 @@ public sealed class FragmentRendererTests
         Assert.Contains("SKIP 10", fragmentQuery);
         Assert.Contains("LIMIT 20", fragmentQuery);
         
-        // Now compare with builder output
-        var builderContext = new CypherQueryContext(typeof(PersonNode), useFragmentRenderer: false);
-        var builderVisitor = new AgeCypherQueryVisitor(builderContext);
-        builderVisitor.Visit(query.Expression);
-        var builderQuery = builderContext.GetQuery();
-        
-        // They should produce identical queries
-        Assert.Equal(builderQuery, fragmentQuery);
+        // Run translation again to ensure determinism
+        var secondContext = new CypherQueryContext(typeof(PersonNode));
+        var secondVisitor = new AgeCypherQueryVisitor(secondContext);
+        secondVisitor.Visit(query.Expression);
+        var secondQuery = secondContext.GetQuery();
+
+        Assert.Equal(secondQuery, fragmentQuery);
     }
 
     public sealed record PersonNode : Node

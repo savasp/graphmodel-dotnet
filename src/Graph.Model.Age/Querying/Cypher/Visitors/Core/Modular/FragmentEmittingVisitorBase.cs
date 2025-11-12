@@ -29,7 +29,7 @@ internal abstract class FragmentEmittingVisitorBase
     {
         try
         {
-            Context.FragmentSequence.Add(fragment);
+            Context.AddFragment(fragment);
             Logger.LogDebug("Emitted {FragmentType}: {Fragment}", fragmentType, fragment);
         }
         catch (Exception ex)
@@ -45,7 +45,7 @@ internal abstract class FragmentEmittingVisitorBase
     {
         var alias = Context.Scope.CurrentAlias ?? "src0";
         Logger.LogDebug("CreateExpressionVisitor: Using alias '{Alias}'", alias);
-        return new AgeExpressionToCypherVisitor(Context.Builder, Logger, alias);
+    return new AgeExpressionToCypherVisitor(Context, Logger, alias);
     }
 
     /// <summary>

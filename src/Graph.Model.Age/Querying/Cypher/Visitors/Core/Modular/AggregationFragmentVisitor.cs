@@ -37,32 +37,19 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
             {
                 var expressionVisitor = CreateExpressionVisitor();
                 var whereCondition = expressionVisitor.VisitAndReturnCypher(lambda.Body);
-                Context.Builder.AddWhere(whereCondition);
-                Logger.LogDebug("Added WHERE condition for Count predicate: {Condition}", whereCondition);
-
-                if (Context.UseFragmentRenderer)
-                {
-                    var whereFragment = new WhereFragment(
-                        whereCondition,
-                        ImmutableArray.Create(alias),
-                        alias);
-                    EmitFragment(whereFragment, "WhereFragment");
-                }
+                var whereFragment = new WhereFragment(
+                    whereCondition,
+                    ImmutableArray.Create(alias),
+                    alias);
+                EmitFragment(whereFragment, "WhereFragment");
+                Logger.LogDebug("Emitted WHERE condition for Count predicate: {Condition}", whereCondition);
             }
         }
 
-    // Aggregations should override any prior projections
-    Context.Builder.ClearReturn();
-
-    // Build COUNT expression
         var countExpression = $"count({alias})";
-        Context.Builder.AddReturn(countExpression);
-
-        // Emit aggregation fragment
         EmitAggregationFragment("count", alias, isScalar: true);
 
-        // Clear ORDER BY for scalar aggregations
-        Context.Builder.ClearOrderBy();
+    Logger.LogDebug("Emitted COUNT aggregation for alias {Alias}", alias);
 
         return sourceExpression;
     }
@@ -85,27 +72,18 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
             {
                 var expressionVisitor = CreateExpressionVisitor();
                 var whereCondition = expressionVisitor.VisitAndReturnCypher(lambda.Body);
-                Context.Builder.AddWhere(whereCondition);
-
-                if (Context.UseFragmentRenderer)
-                {
-                    var whereFragment = new WhereFragment(
-                        whereCondition,
-                        ImmutableArray.Create(alias),
-                        alias);
-                    EmitFragment(whereFragment, "WhereFragment");
-                }
+                var whereFragment = new WhereFragment(
+                    whereCondition,
+                    ImmutableArray.Create(alias),
+                    alias);
+                EmitFragment(whereFragment, "WhereFragment");
+                Logger.LogDebug("Emitted WHERE condition for Any predicate: {Condition}", whereCondition);
             }
         }
 
-    // Aggregations should override any prior projections
-    Context.Builder.ClearReturn();
-
         var anyExpression = $"count({alias}) > 0";
-        Context.Builder.AddReturn(anyExpression);
-
         EmitAggregationFragment("any", alias, isScalar: true);
-        Context.Builder.ClearOrderBy();
+        Logger.LogDebug("Emitted ANY aggregation for alias {Alias}", alias);
 
         return sourceExpression;
     }
@@ -129,27 +107,18 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
                 var conditionCypher = expressionVisitor.VisitAndReturnCypher(condition);
                 
                 // All() means: count where NOT condition = 0
-                Context.Builder.AddWhere($"NOT ({conditionCypher})");
-
-                if (Context.UseFragmentRenderer)
-                {
-                    var whereFragment = new WhereFragment(
-                        $"NOT ({conditionCypher})",
-                        ImmutableArray.Create(alias),
-                        alias);
-                    EmitFragment(whereFragment, "WhereFragment");
-                }
+                var whereFragment = new WhereFragment(
+                    $"NOT ({conditionCypher})",
+                    ImmutableArray.Create(alias),
+                    alias);
+                EmitFragment(whereFragment, "WhereFragment");
+                Logger.LogDebug("Emitted WHERE condition for All predicate: NOT ({Condition})", conditionCypher);
             }
         }
 
-    // Aggregations should override any prior projections
-    Context.Builder.ClearReturn();
-
         var allExpression = $"count({alias}) = 0";
-        Context.Builder.AddReturn(allExpression);
-
         EmitAggregationFragment("all", alias, isScalar: true);
-        Context.Builder.ClearOrderBy();
+        Logger.LogDebug("Emitted ALL aggregation for alias {Alias}", alias);
 
         return sourceExpression;
     }
@@ -161,11 +130,7 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
     {
         Logger.LogDebug("Processing {Function} aggregation", functionName);
 
-    var sourceExpression = node.Arguments[0];
-    Context.Builder.ClearOrderBy();
-
-    // Aggregations should override any prior projections
-    Context.Builder.ClearReturn();
+        var sourceExpression = node.Arguments[0];
 
         // Handle both 2-arg (selector) and 3-arg (selector + cancellationToken) cases
         // SumAsync(p => p.Age) has 2 args: [source, selector]
@@ -177,19 +142,15 @@ internal sealed class AggregationFragmentVisitor : FragmentEmittingVisitorBase
             {
                 var alias = Context.Scope.CurrentAlias ?? "src0";
                 var propertyName = memberExpr.Member.Name;
-                var aggregationExpression = $"{functionName.ToLowerInvariant()}({alias}.{propertyName})";
-                Context.Builder.AddReturn(aggregationExpression);
-
                 EmitAggregationFragment(functionName.ToLowerInvariant(), $"{alias}.{propertyName}", isScalar: true);
+                Logger.LogDebug("Emitted {Function} aggregation over property {Property}", functionName, $"{alias}.{propertyName}");
             }
             else if (lambda != null)
             {
                 var expressionVisitor = CreateExpressionVisitor();
                 var expression = expressionVisitor.VisitAndReturnCypher(lambda.Body);
-                var aggregationExpression = $"{functionName.ToLowerInvariant()}({expression})";
-                Context.Builder.AddReturn(aggregationExpression);
-
                 EmitAggregationFragment(functionName.ToLowerInvariant(), expression, isScalar: true);
+                Logger.LogDebug("Emitted {Function} aggregation over expression {Expression}", functionName, expression);
             }
             else
             {
