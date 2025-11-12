@@ -264,6 +264,68 @@ public sealed class FragmentRendererTests
     }
 
     [Fact]
+    public void RendererMatchesBuilderForJoinReturningNodeProjection()
+    {
+        var provider = new TestGraphQueryProvider();
+        var relationships = new TestGraphRelationshipQueryable<KnowsRelationship>(provider);
+        var people = new TestGraphNodeQueryable<PersonNode>(provider);
+
+        var query = relationships.Join(
+            people,
+            relationship => relationship.EndNodeId,
+            person => person.Id,
+            (relationship, person) => person);
+
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+        visitor.Visit(query.Expression);
+
+        var fragments = context.FragmentSequence.ToList();
+
+        Assert.NotEmpty(fragments);
+        var projection = Assert.IsType<ProjectionFragment>(fragments.Last());
+        Assert.Single(projection.Returns);
+        Assert.Equal(projection.CurrentAlias, projection.Returns.Single());
+
+        var builderOutput = context.GetQuery();
+        var fragmentOutput = AgeFragmentRenderer.Render(fragments);
+
+        Assert.Contains($"RETURN {projection.CurrentAlias}", builderOutput, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(builderOutput, fragmentOutput);
+    }
+
+    [Fact]
+    public void RendererMatchesBuilderForJoinReturningRelationshipProjection()
+    {
+        var provider = new TestGraphQueryProvider();
+        var relationships = new TestGraphRelationshipQueryable<KnowsRelationship>(provider);
+        var people = new TestGraphNodeQueryable<PersonNode>(provider);
+
+        var query = relationships.Join(
+            people,
+            relationship => relationship.EndNodeId,
+            person => person.Id,
+            (relationship, _) => relationship);
+
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+        visitor.Visit(query.Expression);
+
+        var fragments = context.FragmentSequence.ToList();
+
+        Assert.NotEmpty(fragments);
+        var projection = Assert.IsType<ProjectionFragment>(fragments.Last());
+        Assert.Single(projection.Returns);
+        Assert.Equal(projection.CurrentAlias, projection.Returns.Single());
+
+        var builderOutput = context.GetQuery();
+        var fragmentOutput = AgeFragmentRenderer.Render(fragments);
+
+        Assert.Contains($"RETURN {projection.CurrentAlias}", builderOutput, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(builderOutput, fragmentOutput);
+    }
+
+    [Fact]
     public void PathSegmentsWithInterfaceRelationship_UsesUnspecifiedRelationshipPattern()
     {
         var provider = new TestGraphQueryProvider();
