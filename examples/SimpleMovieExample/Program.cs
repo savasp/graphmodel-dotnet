@@ -1,14 +1,25 @@
 ﻿namespace SimpleMovieExample;
 
 using Cvoya.Graph.Model;
+using Cvoya.Graph.Model.Age.Core;
 using Cvoya.Graph.Model.Neo4j;
+using Microsoft.Extensions.Hosting;
 using Neo4j.Driver;
+using RazorConsole.Core;
+using SimpleMovieExample.Components;
 
-static class Program
+static partial class Program
 {
     static string databaseName = "SimpleMovieExample";
 
     async static Task Main()
+    {
+        var hostBuilder = Host.CreateDefaultBuilder()
+            .UseRazorConsole<App>();
+        hostBuilder.Build().Run();
+    }
+
+    async static Task OldMain()
     {
         var driver = GraphDatabase.Driver("bolt://localhost:7687", AuthTokens.Basic("neo4j", "password"));
         await using (var session = driver.AsyncSession(sc => sc.WithDatabase("system")))

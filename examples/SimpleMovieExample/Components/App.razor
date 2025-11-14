@@ -1,0 +1,55 @@
+﻿@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@using RazorConsole.Components
+<h3>Welcome to Graphs</h3>
+
+<Panel Expand=true>
+    <Rows>
+        <Padder>
+            <Rows>
+                @foreach (var tab in tabs)
+                {
+                    <Padder>
+                        <TextButton Content="@tab.Label" OnClick="@(() => SelectTab(tab.Value))" />
+                    </Padder>
+                }
+            </Rows>
+        </Padder>
+        <Padder Padding="@(new(0, 1, 0, 0))">
+            @if (_selectedTab is not null)
+            {
+                switch (_selectedTab)
+                {
+                    case SupportedDatabases.Neo4j:
+                        <DatabaseView DatabaseType=@SupportedDatabases.Neo4j />
+                        break;
+                    case SupportedDatabases.AgeGraph:
+                        <DatabaseView DatabaseType=@SupportedDatabases.AgeGraph />
+                        break;
+                    default:
+                        <Text>Unknown database selected.</Text>
+                        break;
+                }
+                
+            }
+            else
+            {
+                <Text>Select a database to get started.</Text>
+            }
+        </Padder>
+    </Rows>
+</Panel>
+
+@code {
+    TabInfo[] tabs = Enum.GetNames(typeof(SupportedDatabases))
+    .Select(name => new TabInfo(name, Enum.Parse<SupportedDatabases>(name)))
+    .ToArray();
+
+    SupportedDatabases? _selectedTab = null;
+
+    private void SelectTab(SupportedDatabases tab)
+    {
+        _selectedTab = tab;
+    }
+    record TabInfo(string Label, SupportedDatabases Value);
+}

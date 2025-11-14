@@ -1,0 +1,209 @@
+﻿@using Cvoya.Graph.Model
+@using Cvoya.Graph.Model.Age.Core
+@using Cvoya.Graph.Model.Neo4j
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@using Neo4j.Driver
+@using Npgsql
+@using RazorConsole.Components
+@using System.Diagnostics.CodeAnalysis
+@using System.Threading.Tasks
+@implements IAsyncDisposable
+
+<Rows>
+    <h3>Database View for @DatabaseType.ToString()</h3>
+
+    @if (Loading)
+    {
+        <Spinner SpinnerType="Spectre.Console.Spinner.Known.BouncingBar" />
+    }
+    @if (ErrorMessage is not null)
+    {
+        <Panel Title="Error" Color="Color.Red">
+            <Text>@ErrorMessage</Text>
+        </Panel>
+    }
+
+    @if (Graph is null)
+    {
+        <Text>Graph not initialized.</Text>
+        <TextButton Content="Initialize Graph" OnClick="@(async () => await InitializeGraphAsync(DatabaseType))" />
+    }
+    else
+    {
+        <Text>Graph initialized successfully!</Text>
+        <TextButton Content="Load graph data to database" OnClick="@(() => LoadGraphDataAsync())" />
+    }
+
+    @if (DataAvailable && Graph is not null)
+    {
+        <Panel Title="Movies Watched by Alice">
+            <Grid Columns="2">
+                <Markup Content="Movie Title" />
+                <Markup Content="Release Year" />
+                @foreach (var movie in Graph.Nodes<Person>()
+                            .Where(p => p.Name == "Alice")
+                            .Traverse<Person, Watched, Movie>()
+                            .Distinct())
+                {
+                    <Markup Content=@movie.Title />
+                    <Markup Content=@movie.ReleaseYear.ToString() />
+                }
+            </Grid>
+        </Panel>
+        <Panel Title="Movies Alice paid for">
+            <Grid Columns="3">
+                <Markup Content="Movie Title" />
+                <Markup Content="Credit card number" />
+                <Markup Content="Expiry" />
+                @foreach (var creditCard in Graph.Nodes<Person>()
+                            .Where(p => p.Name == "Alice")
+                            .PathSegments<Person, Paid, CreditCard>()
+                            .Select(s => new { Movie = s.Relationship.MovieName, CreditCard = s.EndNode }))
+                {
+                    <Markup Content=@creditCard.Movie />
+                    <Markup Content=@creditCard.CreditCard.Number />
+                    <Markup Content=@creditCard.CreditCard.Expiry />
+                }
+            </Grid>
+        </Panel>
+    }
+</Rows>
+
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public required SupportedDatabases DatabaseType { get; set; }
+    IGraph? Graph { get; set; } = null;
+    bool Loading { get; set; } = false;
+    string? ErrorMessage { get; set; } = null;
+    bool DataAvailable { get; set; } = false;
+
+    private async Task InitializeGraphAsync(SupportedDatabases dbType)
+    {
+        var databaseName = "SimpleMovieExample";
+        Loading = true;
+        ErrorMessage = null;
+        try
+        {
+            var schemaRegistery = new SchemaRegistry();
+            await schemaRegistery.InitializeAsync(); // This discovers ALL types automatically
+            switch (dbType)
+            {
+                case SupportedDatabases.Neo4j:
+                    var driver = GraphDatabase.Driver("bolt://localhost:7687", AuthTokens.Basic("neo4j", "password"));
+                    await using (var session = driver.AsyncSession(sc => sc.WithDatabase("system")))
+                    {
+                        await session.RunAsync($"CREATE OR REPLACE DATABASE {databaseName}");
+                    }
+                    Graph = new Neo4jGraphStore("bolt://localhost:7687", "neo4j", "password", databaseName, schemaRegistery).Graph;
+                    return;
+                case SupportedDatabases.AgeGraph:
+                    var connectionString = "Host=localhost;Port=5432;Username=postgres;Password=postgres;";
+                    {
+                        await using var dataSource = NpgsqlDataSource.Create(connectionString + "Database=postgres");
+                        await dataSource.CreateCommand($"DROP DATABASE IF EXISTS {databaseName.ToLower()} WITH (FORCE);")
+                            .ExecuteReaderAsync();
+                        await dataSource.CreateCommand($"CREATE DATABASE {databaseName.ToLower()};")
+                            .ExecuteReaderAsync();
+                        await using var dataSource2 = NpgsqlDataSource.Create(connectionString + $"Database={databaseName.ToLower()}");
+                        await dataSource2.CreateCommand($"CREATE EXTENSION age;")
+                            .ExecuteReaderAsync();
+                        await dataSource2.CreateCommand($"LOAD 'age';")
+                            .ExecuteReaderAsync();
+                        await dataSource2.CreateCommand($"SET search_path = ag_catalog, \"$user\", public;")
+                            .ExecuteReaderAsync();
+                    }
+                    // Implement AgeGraph initialization if needed
+                    Graph = new AgeGraphStore(connectionString + $"Database={databaseName.ToLower()}", schemaRegistry: schemaRegistery).Graph;
+                    return;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(dbType), dbType, null);
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            Loading = false;
+        }
+
+    }
+
+    private async Task LoadGraphDataAsync()
+    {
+        if (Graph is null)
+        {
+            throw new InvalidOperationException("Graph is not initialized.");
+        }
+        try
+        {
+            Loading = true;
+
+            var movieInception = new Movie { Title = "Inception", ReleaseYear = 2010 };
+            var movieTheMatrix = new Movie { Title = "The Matrix", ReleaseYear = 1999 };
+            var movieInterstellar = new Movie { Title = "Interstellar", ReleaseYear = 2014 };
+
+            var personAlice = new Person { Name = "Alice", Age = 30 };
+            var personBob = new Person { Name = "Bob", Age = 25 };
+            var personCharlie = new Person { Name = "Charlie", Age = 28 };
+
+            var creditCardAlice = new CreditCard { Number = "1234-5678-9012-3456", Expiry = "12/25" };
+            var creditCardBob = new CreditCard { Number = "2345-6789-0123-4567", Expiry = "11/24" };
+            var creditCardCharlie = new CreditCard { Number = "3456-7890-1234-5678", Expiry = "10/23" };
+
+            var aliceWatchedInception = new Watched(personAlice.Id, movieInception.Id) { Date = DateTime.UtcNow };
+            var aliceWatchedTheMatrix = new Watched(personAlice.Id, movieTheMatrix.Id) { Date = DateTime.UtcNow };
+            var aliceWatchedInterstellar = new Watched(personAlice.Id, movieInterstellar.Id) { Date = DateTime.UtcNow };
+            var bobWatchedTheMatrix = new Watched(personBob.Id, movieTheMatrix.Id) { Date = DateTime.UtcNow };
+            var charlieWatchedInterstellar = new Watched(personCharlie.Id, movieInterstellar.Id) { Date = DateTime.UtcNow };
+
+            var alicePaidForInception = new Paid(personAlice.Id, creditCardAlice.Id)
+            {
+                Amount = 15.99m,
+                Date = DateTime.UtcNow,
+                MovieName = "Inception"
+            };
+
+
+            await Graph.CreateNodeAsync(movieInception);
+            await Graph.CreateNodeAsync(movieTheMatrix);
+            await Graph.CreateNodeAsync(movieInterstellar);
+            await Graph.CreateNodeAsync(personAlice);
+            await Graph.CreateNodeAsync(personBob);
+            await Graph.CreateNodeAsync(personCharlie);
+            await Graph.CreateNodeAsync(creditCardAlice);
+            await Graph.CreateNodeAsync(creditCardBob);
+            await Graph.CreateNodeAsync(creditCardCharlie);
+
+            await Graph.CreateRelationshipAsync(alicePaidForInception);
+            await Graph.CreateRelationshipAsync(aliceWatchedInception);
+            await Graph.CreateRelationshipAsync(aliceWatchedTheMatrix);
+            await Graph.CreateRelationshipAsync(aliceWatchedInterstellar);
+            await Graph.CreateRelationshipAsync(bobWatchedTheMatrix);
+            await Graph.CreateRelationshipAsync(charlieWatchedInterstellar);
+            DataAvailable = true;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            throw;
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Graph is not null){
+            await Graph.DisposeAsync();
+        }
+    }
+
+}
