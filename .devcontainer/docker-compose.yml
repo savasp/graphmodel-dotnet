@@ -23,8 +23,6 @@ services:
     restart: unless-stopped
     # Runs app on the same network as the database container, allows "forwardPorts" in devcontainer.json function.
     network_mode: service:app
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
@@ -50,5 +48,4 @@ services:
       NEO4J_PLUGINS: '["apoc"]'
 
 volumes:
-  postgres-data:
   neo4j-data5:
