@@ -131,6 +131,10 @@ internal sealed class AgeCypherEngine
             // Let the visitor handle the expression tree traversal
             visitor.Visit(expression);
             
+            // Finalize the query - adds default projections if needed
+            // This ensures path segment queries work correctly even without explicit ToList/ToArray
+            visitor.FinalizeQuery(elementType);
+            
             // Get the built query and parameters
             var query = context.GetQuery();
             var parameters = context.GetParameters().ToDictionary(kv => kv.Key, kv => kv.Value);

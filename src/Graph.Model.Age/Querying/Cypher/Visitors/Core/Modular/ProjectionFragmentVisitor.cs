@@ -136,8 +136,6 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
         var expressionVisitor = CreateExpressionVisitor();
         var groupByKey = expressionVisitor.VisitAndReturnCypher(keyLambda.Body);
 
-        // Store the GROUP BY expression in the scope for later use
-        Context.Scope.SetGroupByExpression(groupByKey);
         Logger.LogDebug("Set GROUP BY expression: {Key}", groupByKey);
 
         // Emit GroupByFragment
@@ -414,8 +412,6 @@ internal sealed class ProjectionFragmentVisitor : FragmentEmittingVisitorBase
                 }
 
                 Context.Scope.CurrentAlias = aliasToUse;
-                Context.Scope.CurrentType = projectedType ?? Context.Scope.CurrentType;
-                Context.Scope.IsPathSegmentContext = false;
                 Context.Scope.LastProjectedExpression = aliasToUse;
 
                 Logger.LogDebug("Projected PathSegment member: {Property} -> {Alias} (hop {Hop})", propertyName, aliasToUse, hopNumber);

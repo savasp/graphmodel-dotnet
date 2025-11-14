@@ -18,11 +18,11 @@ using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 
 /// <summary>
-/// Tracks alias, traversal, and grouping state while building Cypher queries for AGE.
-/// Implementation aligns with the Neo4j provider so shared visitors can reuse expectations.
+/// Tracks alias and multi-hop traversal state while building Cypher queries for AGE.
+/// Implementation aligns with the Neo4j provider's ICypherQueryScope interface.
 /// 
 /// ALIAS MUTATION PATTERN:
-/// This class uses mutable state (CurrentAlias, CurrentType) to track the "current" node/entity
+/// This class uses mutable state (CurrentAlias) to track the "current" node/entity
 /// being processed during query translation. The pattern follows the inside-out visitor execution:
 /// 
 /// 1. Innermost expression visits first (e.g., root Nodes&lt;Person&gt;())
@@ -48,19 +48,17 @@ using Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
 /// Each hop stores its aliases via StoreHopAliases(hop, src, rel, tgt).
 /// This enables WHERE clauses to reference the correct hop's aliases.
 /// 
-/// FUTURE REFACTORING:
-/// For better architecture, we could migrate to explicit alias passing so visitor methods
-/// return structured alias information instead of mutating shared state. This would eliminate
-/// mutable state but requires updating 100+ call sites. Current pattern works but is implicit.
+/// ARCHITECTURAL NOTES:
+/// - Essential state (CurrentAlias, hopAliases, hopTypes) must remain for visitor coordination
+/// - Traversal modifiers (TraversalDepth/Direction) serve as temporary config for fluent API
+/// - Type/alias tracking has been simplified - dead code removed (Steps 1-3)
+/// - Traversal state now uses local parameters instead of deep scope reads (Step 4)
+/// - No-op stubs (PushAlias/PopAlias) satisfy shared interface with Neo4j provider
 /// </summary>
 internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
 {
-    private readonly Dictionary<Type, string> typeAliases = [];
-    private readonly Dictionary<string, Type> aliasTypes = [];
-    private readonly Stack<string> aliasStack = new();
     private readonly Dictionary<int, (string src, string rel, string tgt)> hopAliases = [];
     private readonly Dictionary<int, (Type src, Type rel, Type tgt)> hopTypes = [];
-    private int aliasCounter;
 
     public Type RootType { get; } = rootType;
 
@@ -76,23 +74,11 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
     /// </summary>
     public string? CurrentAlias { get; set; }
 
-    /// <summary>
-    /// The CLR type corresponding to CurrentAlias.
-    /// Used for type-specific logic like label generation.
-    /// 
-    /// WARNING: Mutable state - changes alongside CurrentAlias.
-    /// </summary>
-    public Type? CurrentType { get; set; }
-
-    public bool IsPathSegmentContext { get; set; }
-
     public int? TraversalMinDepth { get; private set; }
 
     public int? TraversalMaxDepth { get; private set; }
 
     public GraphTraversalDirection? TraversalDirection { get; private set; }
-
-    public string? GroupByExpression { get; private set; }
 
     /// <summary>
     /// Tracks the Cypher expression from the last Select projection.
@@ -140,95 +126,29 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
         => TraversalDirection = null;
 
     /// <summary>
-    /// Pushes the current alias onto a stack and sets a new current alias.
-    /// Used for nested scopes where we need to temporarily work with a different alias.
-    /// 
-    /// USAGE: Typically paired with PopAlias() in a using/finally block.
-    /// See CypherQueryContext.PushAlias() for the preferred pattern.
-    /// 
-    /// WARNING: Manual push/pop is error-prone. Prefer using PushAlias() scope pattern.
+    /// No-op implementation to satisfy ICypherQueryScope interface.
+    /// AGE provider doesn't use alias stack - CurrentAlias is managed directly.
     /// </summary>
     public void PushAlias(string alias)
     {
-        aliasStack.Push(CurrentAlias ?? string.Empty);
-        CurrentAlias = alias;
+        // No-op: AGE provider manages CurrentAlias directly without a stack
     }
 
     /// <summary>
-    /// Restores the previous alias from the stack.
-    /// Must be called after PushAlias() to maintain correct alias context.
+    /// No-op implementation to satisfy ICypherQueryScope interface.
+    /// AGE provider doesn't use alias stack - CurrentAlias is managed directly.
     /// </summary>
     public void PopAlias()
     {
-        if (aliasStack.Count > 0)
-        {
-            CurrentAlias = aliasStack.Pop();
-            if (string.IsNullOrEmpty(CurrentAlias))
-            {
-                CurrentAlias = null;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Gets or creates an alias for a given type.
-    /// 
-    /// CACHING: Returns existing alias if type was previously registered.
-    /// GENERATION: Creates new alias if type not seen before.
-    /// UNIQUENESS: Ensures generated alias doesn't conflict with existing aliases.
-    /// 
-    /// ALIAS PATTERNS:
-    /// - Type-based: PersonNode -> "p", AddressNode -> "a"
-    /// - Interface stripping: IPersonNode -> "p" (removes I prefix)
-    /// - Conflict resolution: If "p" taken, generates "p_1", "p_2", etc.
-    /// 
-    /// NOTE: PathSegment handling uses numbered aliases (src0, r0, tgt0) instead,
-    /// generated via GetNumberedAlias(). This method is for non-PathSegment nodes.
-    /// </summary>
-    public string GetOrCreateAlias(Type type, string? preferredAlias = null)
-    {
-        if (typeAliases.TryGetValue(type, out var alias))
-        {
-            if (alias == preferredAlias)
-            {
-                return string.Concat(alias);
-            }
-        }
-
-        alias = preferredAlias ?? GenerateAlias(type);
-
-        while (aliasTypes.ContainsKey(alias))
-        {
-            alias = $"{alias}_{++aliasCounter}";
-        }
-
-        typeAliases[type] = alias;
-        aliasTypes[alias] = type;
-
-        return alias;
-    }
-
-    public Type? GetTypeForAlias(string alias)
-        => aliasTypes.GetValueOrDefault(alias);
-
-    public string? GetAliasForType(Type type)
-        => typeAliases.GetValueOrDefault(type);
-
-    public void SetGroupByExpression(string expression)
-        => GroupByExpression = expression;
-
-    /// <summary>
-    /// Manually registers a type-to-alias mapping. Useful when aliases are generated
-    /// without using GetOrRegisterAlias (e.g., numbered aliases like src0, src1).
-    /// </summary>
-    public void RegisterTypeAlias(Type type, string alias)
-    {
-        typeAliases[type] = alias;
-        aliasTypes[alias] = type;
+        // No-op: AGE provider manages CurrentAlias directly without a stack
     }
 
     public bool IsInPathSegmentContext()
-        => IsPathSegmentContext;
+    {
+        // This method is kept for interface compatibility but isn't actively used.
+        // AGE provider checks FragmentSequence directly for PathSegmentFragment instead.
+        return false;
+    }
 
     /// <summary>
     /// Advances to the next hop in multi-hop traversal
@@ -293,18 +213,5 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
     public (Type src, Type rel, Type tgt)? GetHopTypes(int hopNumber)
     {
         return hopTypes.TryGetValue(hopNumber, out var types) ? types : null;
-    }
-
-
-    private static string GenerateAlias(Type type)
-    {
-        var name = type.Name;
-
-        if (name.StartsWith("I", StringComparison.Ordinal) && name.Length > 1 && char.IsUpper(name[1]))
-        {
-            name = name[1..];
-        }
-
-        return char.ToLower(name[0]).ToString();
     }
 }

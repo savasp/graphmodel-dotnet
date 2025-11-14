@@ -22,7 +22,7 @@ using Cvoya.Graph.Model.Age.Querying.Linq.Providers;
 /// <summary>
 /// Base class for AGE graph queryables.
 /// </summary>
-internal abstract class AgeGraphQueryableBase<TElement> : IGraphQueryable<TElement>, IAsyncDisposable, IDisposable
+internal abstract class AgeGraphQueryableBase<TElement> : IGraphQueryable<TElement>, IAsyncEnumerable<TElement>, IAsyncDisposable, IDisposable
 {
     protected AgeGraphQueryableBase(
         Type elementType,

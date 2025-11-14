@@ -19,7 +19,10 @@ using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Aggregates the state required to translate LINQ expressions into AGE Cypher queries.
-/// Collects fragments and provides shared services (scope, parameters, alias management).
+/// Provides:
+/// - Scope: Tracks aliases and multi-hop traversal state
+/// - ParameterStore: Manages query parameters
+/// - FragmentSequence: Accumulates query fragments for rendering
 /// </summary>
 internal sealed record CypherQueryContext
 {
@@ -28,9 +31,7 @@ internal sealed record CypherQueryContext
         LoggerFactory = loggerFactory;
         Scope = new CypherQueryScope(rootType);
         ParameterStore = new QueryParameterStore(loggerFactory);
-    // Fragment shim support
-    FragmentSequence = new List<QueryFragment>();
-    AliasManager = new AliasManager();
+        FragmentSequence = new List<QueryFragment>();
     }
 
     public CypherQueryScope Scope { get; }
@@ -39,13 +40,11 @@ internal sealed record CypherQueryContext
 
     public ILoggerFactory? LoggerFactory { get; }
 
-    // Fragment shim — collects fragments produced during translation (can contain both shared and AGE-specific fragments)
+    /// <summary>
+    /// Fragment sequence accumulates query fragments during translation.
+    /// Fragments are rendered in order by AgeFragmentRenderer.
+    /// </summary>
     public List<QueryFragment> FragmentSequence { get; }
-
-    // Lightweight alias manager for fragment shim
-    public AliasManager AliasManager { get; }
-
-    public IDisposable PushAlias(string alias) => new AliasScope(this, alias);
 
     public void AddFragment(QueryFragment fragment)
     {
@@ -75,26 +74,4 @@ internal sealed record CypherQueryContext
     }
 
     public IReadOnlyDictionary<string, object?> GetParameters() => ParameterStore.Snapshot();
-
-    private sealed class AliasScope : IDisposable
-    {
-        private readonly CypherQueryContext context;
-        private readonly string previousAlias;
-
-        public AliasScope(CypherQueryContext context, string alias)
-        {
-            this.context = context;
-            previousAlias = context.Scope.CurrentAlias ?? string.Empty;
-            context.Scope.PushAlias(alias);
-        }
-
-        public void Dispose()
-        {
-            context.Scope.PopAlias();
-            if (string.IsNullOrEmpty(previousAlias))
-            {
-                context.Scope.CurrentAlias = null;
-            }
-        }
-    }
 }

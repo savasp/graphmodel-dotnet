@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Linq.Expressions;
 using Cvoya.Graph.Model.Age.Core.Entities;
 using Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Model.Cypher.Querying.Cypher.Visitors.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -142,16 +143,16 @@ internal sealed class AgeExpressionToCypherVisitor : ExpressionVisitor
             {
                 _logger.LogDebug("Processing IGrouping parameter property: {Property}", node.Member.Name);
                 
-                // g.Key should map to the GROUP BY expression stored in the context
+                // g.Key should map to the GROUP BY expression from the last GroupByFragment
                 if (node.Member.Name == "Key")
                 {
-                    var groupByExpr = _context.Scope.GroupByExpression;
-                    if (string.IsNullOrEmpty(groupByExpr))
+                    var groupByFragment = _context.FragmentSequence.OfType<GroupByFragment>().LastOrDefault();
+                    if (groupByFragment == null)
                     {
-                        throw new InvalidOperationException("GroupBy expression not found in context for g.Key access");
+                        throw new InvalidOperationException("GroupBy fragment not found in context for g.Key access");
                     }
-                    _logger.LogDebug("Mapped g.Key to GROUP BY expression: {Expression}", groupByExpr);
-                    return Expression.Constant(groupByExpr);
+                    _logger.LogDebug("Mapped g.Key to GROUP BY expression: {Expression}", groupByFragment.Expression);
+                    return Expression.Constant(groupByFragment.Expression);
                 }
                 
                 throw new NotSupportedException($"IGrouping property '{node.Member.Name}' is not supported. Use g.Key for the grouping key.");

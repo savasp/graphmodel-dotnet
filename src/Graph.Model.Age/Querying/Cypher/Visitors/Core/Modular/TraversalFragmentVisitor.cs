@@ -62,21 +62,17 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
             targetType.Name
         );
 
-    // Set up traversal context
-    Context.Scope.IsPathSegmentContext = true;
-
         // Generate aliases
         var (sourceAlias, relAlias, targetAlias) = GenerateAliases(sourceType, targetType, isChainedPathSegments);
-
-        // Register type-to-alias mappings
-        RegisterTypeAliases(sourceType, relationshipType, targetType, sourceAlias, relAlias, targetAlias, isChainedPathSegments);
 
         // Store hop information for WHERE clause resolution and Select projections
         Context.Scope.StoreHopAliases(Context.Scope.CurrentHop, sourceAlias, relAlias, targetAlias);
         Context.Scope.StoreHopTypes(Context.Scope.CurrentHop, sourceType, relationshipType, targetType);
 
-        // Determine traversal direction for this hop (defaults to outgoing)
+        // Capture traversal modifiers from scope (set by WithDepth/Direction) and default if not set
         var traversalDirection = Context.Scope.TraversalDirection ?? GraphTraversalDirection.Outgoing;
+        var minDepth = Context.Scope.TraversalMinDepth;
+        var maxDepth = Context.Scope.TraversalMaxDepth;
 
         // Build and emit MATCH pattern
         var pathPattern = BuildMatchPattern(
@@ -87,7 +83,9 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
             relAlias,
             targetAlias,
             isChainedPathSegments,
-            traversalDirection
+            traversalDirection,
+            minDepth,
+            maxDepth
         );
     Logger.LogDebug("Generated path segment pattern: {Pattern}", pathPattern);
         Logger.LogTrace(
@@ -116,10 +114,11 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         Logger.LogDebug("Updated CurrentAlias to target: {TargetAlias}", targetAlias);
 
         // Advance hop counter for chaining
-    Context.Scope.AdvanceHop();
+        Context.Scope.AdvanceHop();
 
-    // Reset traversal direction after consuming it for this PathSegments call so subsequent traversals default appropriately.
-    Context.Scope.ClearTraversalDirection();
+        // Reset traversal modifiers after consuming them for this PathSegments call
+        Context.Scope.ClearTraversalDirection();
+        Context.Scope.ClearTraversalDepth();
 
         // Return the source expression (caller will process it)
         return node.Arguments[0];
@@ -185,11 +184,26 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         {
             var previousHop = Context.Scope.CurrentHop - 1;
             var previousHopAliases = Context.Scope.GetHopAliases(previousHop);
+            var previousHopTypes = Context.Scope.GetHopTypes(previousHop);
             var currentAlias = Context.Scope.CurrentAlias;
 
-            if (!string.IsNullOrWhiteSpace(currentAlias))
+            if (!string.IsNullOrWhiteSpace(currentAlias) && previousHopAliases.HasValue && previousHopTypes.HasValue)
             {
-                var currentAliasType = Context.Scope.GetTypeForAlias(currentAlias);
+                // Determine which alias CurrentAlias matches in the previous hop to get the correct type
+                Type? currentAliasType = null;
+                if (currentAlias == previousHopAliases.Value.src)
+                {
+                    currentAliasType = previousHopTypes.Value.src;
+                }
+                else if (currentAlias == previousHopAliases.Value.rel)
+                {
+                    currentAliasType = previousHopTypes.Value.rel;
+                }
+                else if (currentAlias == previousHopAliases.Value.tgt)
+                {
+                    currentAliasType = previousHopTypes.Value.tgt;
+                }
+
                 if (currentAliasType != null &&
                     (currentAliasType == sourceType || sourceType.IsAssignableFrom(currentAliasType) || currentAliasType.IsAssignableFrom(sourceType)))
                 {
@@ -260,35 +274,7 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         return (sourceAlias, relAlias, targetAlias);
     }
 
-    private void RegisterTypeAliases(
-        Type sourceType,
-        Type relationshipType,
-        Type targetType,
-        string sourceAlias,
-        string relAlias,
-        string targetAlias,
-        bool isChained
-    )
-    {
-        Context.Scope.RegisterTypeAlias(sourceType, sourceAlias);
-        Context.Scope.RegisterTypeAlias(relationshipType, relAlias);
 
-        // Only register targetType if not chained or first hop
-        if (!isChained || Context.Scope.CurrentHop == 0)
-        {
-            Context.Scope.RegisterTypeAlias(targetType, targetAlias);
-        }
-
-        Logger.LogDebug(
-            "Registered type aliases: {SourceType}={SourceAlias}, {RelType}={RelAlias}, {TargetType}={TargetAlias}",
-            sourceType.Name,
-            sourceAlias,
-            relationshipType.Name,
-            relAlias,
-            targetType.Name,
-            targetAlias
-        );
-    }
 
     private string BuildMatchPattern(
         Type sourceType,
@@ -297,8 +283,10 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         string sourceAlias,
         string relAlias,
         string targetAlias,
-        bool isChained,
-        GraphTraversalDirection direction
+        bool isChainedPathSegments,
+        GraphTraversalDirection direction,
+        int? minDepth,
+        int? maxDepth
     )
     {
         var sourceLabel = Labels.GetBaseTypeLabel(sourceType);
@@ -309,7 +297,7 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         var (leftArrow, rightArrow) = GetDirectionArrows(direction);
 
         // Build relationship pattern with optional depth range
-        var relPattern = BuildRelationshipPattern(relAlias, relationshipLabel);
+        var relPattern = BuildRelationshipPattern(relAlias, relationshipLabel, minDepth, maxDepth);
 
         // Build path pattern based on hop position and chaining
         string pathPattern;
@@ -319,7 +307,7 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
             pathPattern = $"({sourceAlias}:{sourceLabel}){leftArrow}[{relPattern}]{rightArrow}({targetAlias}:{targetLabel})";
             Logger.LogDebug("First hop pattern: {Pattern} (direction: {Direction})", pathPattern, direction);
         }
-        else if (isChained)
+        else if (isChainedPathSegments)
         {
             // Determine the alias that represents the current source for this chained hop.
             var chainSourceAlias = Context.Scope.CurrentAlias;
@@ -357,16 +345,16 @@ internal sealed class TraversalFragmentVisitor : FragmentEmittingVisitorBase
         return pathPattern;
     }
 
-    private string BuildRelationshipPattern(string relAlias, string relationshipLabel)
+    private string BuildRelationshipPattern(string relAlias, string relationshipLabel, int? minDepth, int? maxDepth)
     {
         var relPattern = string.IsNullOrEmpty(relationshipLabel) ? relAlias : $"{relAlias}:{relationshipLabel}";
 
         // Add depth range if specified (for variable-length paths)
-        if (Context.Scope.TraversalMinDepth.HasValue || Context.Scope.TraversalMaxDepth.HasValue)
+        if (minDepth.HasValue || maxDepth.HasValue)
         {
-            var minDepth = Context.Scope.TraversalMinDepth ?? 1;
-            var maxDepth = Context.Scope.TraversalMaxDepth ?? minDepth;
-            relPattern = $"{relPattern}*{minDepth}..{maxDepth}";
+            var min = minDepth ?? 1;
+            var max = maxDepth ?? min;
+            relPattern = $"{relPattern}*{min}..{max}";
             Logger.LogDebug("Added depth range to relationship pattern: {Pattern}", relPattern);
         }
 

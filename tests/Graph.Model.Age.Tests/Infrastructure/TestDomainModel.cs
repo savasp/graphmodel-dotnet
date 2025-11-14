@@ -206,6 +206,9 @@ internal class TestGraphQueryable<TElement> : IOrderedGraphQueryable<TElement>
     public IEnumerator<TElement> GetEnumerator() => throw new NotSupportedException();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    public IAsyncEnumerator<TElement> GetAsyncEnumerator(CancellationToken cancellationToken = default) => 
+        throw new NotSupportedException();
 }
 
 /// <summary>

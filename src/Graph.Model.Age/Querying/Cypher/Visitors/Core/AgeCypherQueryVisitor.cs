@@ -283,6 +283,7 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
 
             // Aggregation methods
             "Count" or "CountAsync" or "CountAsyncMarker" => HandleCount(node),
+            "LongCount" or "LongCountAsync" or "LongCountAsyncMarker" => HandleCount(node),
             "Any" or "AnyAsync" or "AnyAsyncMarker" => HandleAny(node),
             "All" or "AllAsync" or "AllAsyncMarker" => HandleAll(node),
             "Sum" or "SumAsync" or "SumAsyncMarker" => HandleSum(node),
@@ -392,8 +393,6 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 var relationshipAlias = _context.Scope.GetNumberedAlias("r");
                 // Update scope so downstream operators understand we're working with the relationship alias
                 _context.Scope.CurrentAlias = relationshipAlias;
-                _context.Scope.CurrentType = resultSelector.Parameters[0].Type;
-                _context.Scope.RegisterTypeAlias(_context.Scope.CurrentType, relationshipAlias);
 
                 // Emit a projection fragment so the fragment renderer preserves the relationship return
                 var returns = ImmutableArray.Create(relationshipAlias);
@@ -407,8 +406,6 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
                 var targetAlias = _context.Scope.GetNumberedAlias("tgt");
                 // Update scope/type information for the returned node so subsequent operators use the right alias
                 _context.Scope.CurrentAlias = targetAlias;
-                _context.Scope.CurrentType = resultSelector.Parameters[1].Type;
-                _context.Scope.RegisterTypeAlias(_context.Scope.CurrentType, targetAlias);
 
                 // Emit ProjectionFragment so the renderer keeps the returned node alias in sync
                 var returns = ImmutableArray.Create(targetAlias);
@@ -702,7 +699,8 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             _logger.LogDebug("Processing simple node query of type {Type}", resultType.Name);
             
             // For node queries, add context-aware return clause ONLY if no projection exists and not in path context
-            if (!containsPathSegments && !_context.Scope.IsPathSegmentContext && !hasExplicitReturns)
+            bool isInPathContext = _context.FragmentSequence.OfType<MatchSegmentFragment>().Any();
+            if (!containsPathSegments && !isInPathContext && !hasExplicitReturns)
             {
                 var nodeAlias = GetContextualAlias();
                 var nodeProjection = new ProjectionFragment(ImmutableArray.Create(nodeAlias), nodeAlias);
@@ -1074,7 +1072,8 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
     /// <returns>The contextual alias to use for queries.</returns>
     private string GetContextualAlias()
     {
-        if (_context.Scope.IsPathSegmentContext)
+        bool isInPathContext = _context.FragmentSequence.OfType<MatchSegmentFragment>().Any();
+        if (isInPathContext)
         {
             return _context.Scope.GetNumberedAlias("src"); // Use numbered source node alias in path segment contexts
         }
@@ -1278,6 +1277,28 @@ internal sealed class AgeCypherQueryVisitor : ExpressionVisitor
             // For all other properties, keep the same name
             _ => csharpPropertyName
         };
+    }
+
+    /// <summary>
+    /// Finalizes the query by adding any missing default projections.
+    /// This should be called after Visit() completes to ensure path segment queries
+    /// without explicit ToList/ToArray calls still get proper projections.
+    /// </summary>
+    public void FinalizeQuery(Type elementType)
+    {
+        // Check if the element type is a path segment and if no projection has been added yet
+        if (IsPathSegmentType(elementType) && !_context.HasExplicitReturnFragments())
+        {
+            // Add the default path segment projection
+            var lastHop = Math.Max(0, _context.Scope.CurrentHop - 1);
+            var sourceAlias = _context.Scope.GetNumberedAliasForHop("src", lastHop);
+            var relAlias = _context.Scope.GetNumberedAliasForHop("r", lastHop);
+            var targetAlias = _context.Scope.GetNumberedAliasForHop("tgt", lastHop);
+            var returns = ImmutableArray.Create(sourceAlias, relAlias, targetAlias);
+            var projectionFragment = new ProjectionFragment(returns, targetAlias);
+            _context.AddFragment(projectionFragment);
+            _logger.LogDebug("Finalized path segment query with default projection for hop {Hop}", lastHop);
+        }
     }
 
     #endregion

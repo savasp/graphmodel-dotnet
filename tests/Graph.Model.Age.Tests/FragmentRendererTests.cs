@@ -374,6 +374,113 @@ public sealed class FragmentRendererTests
         Assert.Equal(builderOutput, fragmentOutput);
     }
 
+    /// <summary>
+    /// Tests that ToListAsync execution path (ExecuteAsync&lt;List&lt;T&gt;&gt;) generates correct query for path segments.
+    /// This mimics the behavior of QueryableAsyncExtensions.ToListAsync which calls ExecuteAsync with List&lt;T&gt; directly.
+    /// </summary>
+    [Fact]
+    public void PathSegments_WithToListAsyncExecution_GeneratesCorrectProjection()
+    {
+        var provider = new TestGraphQueryProvider();
+        var source = new TestGraphNodeQueryable<PersonNode>(provider);
+
+        // Simulate what ToListAsync does: it calls ExecuteAsync<List<IGraphPathSegment<...>>>
+        var query = source
+            .PathSegments<PersonNode, KnowsRelationship, PersonNode>();
+
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+        
+        // ToListAsync creates an expression that requests List<IGraphPathSegment<...>>
+        var toListMethod = typeof(Enumerable)
+            .GetMethods()
+            .Single(method => method.Name == nameof(Enumerable.ToList) && method.GetParameters().Length == 1)
+            .MakeGenericMethod(typeof(IGraphPathSegment<PersonNode, KnowsRelationship, PersonNode>));
+        
+        var toListExpression = Expression.Call(null, toListMethod, query.Expression);
+        visitor.Visit(toListExpression);
+
+        var cypher = context.GetQuery();
+        Console.WriteLine($"ToListAsync path query:\n{cypher}");
+
+        // Should return all three components for path segments: src, r, tgt
+        Assert.Contains("RETURN src0, r0, tgt0", cypher);
+        Assert.Contains("MATCH (src0:PersonNode)-[r0:KnowsRelationship]->(tgt0:PersonNode)", cypher);
+    }
+
+    /// <summary>
+    /// Tests that await foreach execution path (ExecuteAsync&lt;IEnumerable&lt;T&gt;&gt;) generates correct query for path segments.
+    /// This mimics the behavior of GetAsyncEnumerator which calls ExecuteAsync with IEnumerable&lt;T&gt;.
+    /// </summary>
+    [Fact]
+    public void PathSegments_WithAsyncEnumeratorExecution_GeneratesCorrectProjection()
+    {
+        var provider = new TestGraphQueryProvider();
+        var source = new TestGraphNodeQueryable<PersonNode>(provider);
+
+        // Simulate what GetAsyncEnumerator does: it calls ExecuteAsync<IEnumerable<IGraphPathSegment<...>>>
+        var query = source
+            .PathSegments<PersonNode, KnowsRelationship, PersonNode>();
+
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+        
+        // GetAsyncEnumerator uses IEnumerable<T> type hint
+        // We visit the expression as-is since PathSegments returns IGraphQueryable<IGraphPathSegment<...>>
+        // which is an IEnumerable<IGraphPathSegment<...>>
+        visitor.Visit(query.Expression);
+        
+        // Finalize the query to add missing default projections
+        visitor.FinalizeQuery(typeof(IGraphPathSegment<PersonNode, KnowsRelationship, PersonNode>));
+
+        var cypher = context.GetQuery();
+        Console.WriteLine($"await foreach path query:\n{cypher}");
+
+        // Should return all three components for path segments: src, r, tgt
+        // This is the KEY test: both execution paths should generate the same projection
+        Assert.Contains("RETURN src0, r0, tgt0", cypher);
+        Assert.Contains("MATCH (src0:PersonNode)-[r0:KnowsRelationship]->(tgt0:PersonNode)", cypher);
+    }
+
+    /// <summary>
+    /// Tests that both execution paths (ToListAsync and await foreach) generate identical queries for path segments.
+    /// This is a regression test to ensure consistency between the two async enumeration strategies.
+    /// </summary>
+    [Fact]
+    public void PathSegments_BothExecutionPaths_GenerateIdenticalQueries()
+    {
+        var provider = new TestGraphQueryProvider();
+        
+        // Path 1: ToListAsync (ExecuteAsync<List<T>>)
+        var source1 = new TestGraphNodeQueryable<PersonNode>(provider);
+        var query1 = source1.PathSegments<PersonNode, KnowsRelationship, PersonNode>();
+        var context1 = new CypherQueryContext(typeof(PersonNode));
+        var visitor1 = new AgeCypherQueryVisitor(context1);
+        var toListMethod = typeof(Enumerable)
+            .GetMethods()
+            .Single(method => method.Name == nameof(Enumerable.ToList) && method.GetParameters().Length == 1)
+            .MakeGenericMethod(typeof(IGraphPathSegment<PersonNode, KnowsRelationship, PersonNode>));
+        var toListExpression = Expression.Call(null, toListMethod, query1.Expression);
+        visitor1.Visit(toListExpression);
+        var cypherFromToList = context1.GetQuery();
+
+        // Path 2: await foreach (ExecuteAsync<IEnumerable<T>>)
+        var source2 = new TestGraphNodeQueryable<PersonNode>(provider);
+        var query2 = source2.PathSegments<PersonNode, KnowsRelationship, PersonNode>();
+        var context2 = new CypherQueryContext(typeof(PersonNode));
+        var visitor2 = new AgeCypherQueryVisitor(context2);
+        visitor2.Visit(query2.Expression);
+        // Finalize to add default projection (simulating what BuildCypherQuery does)
+        visitor2.FinalizeQuery(typeof(IGraphPathSegment<PersonNode, KnowsRelationship, PersonNode>));
+        var cypherFromAwaitForeach = context2.GetQuery();
+
+        // Both should generate identical Cypher queries
+        Console.WriteLine($"ToListAsync:     {cypherFromToList}");
+        Console.WriteLine($"await foreach:   {cypherFromAwaitForeach}");
+        
+        Assert.Equal(cypherFromToList, cypherFromAwaitForeach);
+    }
+
     [Fact]
     public void TraverseThenPathSegments_EmitsOrderedMatchPattern()
     {
@@ -1078,6 +1185,9 @@ public sealed class FragmentRendererTests
         public IEnumerator<TElement> GetEnumerator() => throw new NotSupportedException();
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public IAsyncEnumerator<TElement> GetAsyncEnumerator(CancellationToken cancellationToken = default) => 
+            throw new NotSupportedException();
     }
 
     internal sealed class TestGraphNodeQueryable<TElement> : TestGraphQueryable<TElement>, IGraphNodeQueryable<TElement>
