@@ -19,10 +19,8 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using Cvoya.Graph.Model;
-using Cvoya.Graph.Model.Cypher.Querying.Cypher;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-
 
 /// <summary>
 /// General-purpose Cypher query builder that works with any Cypher-compatible graph database.
@@ -30,7 +28,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// </summary>
 public class CypherQueryBuilder
 {
-    private readonly ILogger<CypherQueryBuilder> _logger;
+    // private readonly ILogger<CypherQueryBuilder> _logger; // Logging removed
     private readonly ICypherQueryBuilderContext _context;
     private readonly ICypherExpressionProcessor _expressionProcessor;
     private readonly ICypherCollectionProvider _collectionProvider;
@@ -57,8 +55,9 @@ public class CypherQueryBuilder
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _expressionProcessor = expressionProcessor ?? throw new ArgumentNullException(nameof(expressionProcessor));
         _collectionProvider = collectionProvider ?? throw new ArgumentNullException(nameof(collectionProvider));
-        _logger = _context.LoggerFactory?.CreateLogger<CypherQueryBuilder>()
-            ?? NullLogger<CypherQueryBuilder>.Instance;
+        // Logging removed
+        //_logger = _context.LoggerFactory?.CreateLogger<CypherQueryBuilder>()
+        //    ?? NullLogger<CypherQueryBuilder>.Instance;
 
         // Initialize query parts
         _matchPart = new MatchQueryPart(_context.LoggerFactory);
@@ -101,6 +100,7 @@ public class CypherQueryBuilder
     private int _parameterCounter;
     private bool _loadPathSegment;
     private bool _hasMultiplePathSegments;
+    private bool _isTraverseWithPathSegments;  // True for Traverse + PathSegments pattern (complex properties)
 
     /// <summary>
     /// Gets or sets the projection mode for path segments when querying graph relationships.
@@ -208,7 +208,7 @@ public class CypherQueryBuilder
     public void SetAggregationQuery()
     {
         _orderByPart.SetAggregationQuery();
-        _logger.LogDebug("Query marked as aggregation query - ORDER BY clauses will be disabled");
+
     }
 
     /// <summary>
@@ -244,8 +244,7 @@ public class CypherQueryBuilder
             sourceType, relType, targetType, sourceAlias, relAlias, targetAlias);
         _pathSegmentPatterns.Add(pattern);
         _pendingPathSegmentPattern = pattern; // Keep for backward compatibility
-        _logger.LogDebug("Added path segment pattern: ({Source}:{SourceType})-[{Rel}:{RelType}]->({Target}:{TargetType})",
-            sourceAlias, sourceType.Name, relAlias, relType.Name, targetAlias, targetType.Name);
+
     }
 
     /// <summary>
@@ -449,7 +448,7 @@ public class CypherQueryBuilder
     /// <returns>The parameter name to use in the Cypher query.</returns>
     public string AddParameter(object? value)
     {
-        _logger.LogDebug("Adding parameter with value: {Value}", value);
+
 
         // Check if we already have this value as a parameter
         var existingParam = _parameters.FirstOrDefault(p => Equals(p.Value, value));
@@ -471,7 +470,7 @@ public class CypherQueryBuilder
     /// <returns>A complete Cypher query ready for execution.</returns>
     public CypherQuery Build()
     {
-        _logger.LogDebug("Building Cypher query");
+
 
         // Build any pending path segment patterns now that we have full context
         BuildPendingPathSegmentPattern();
@@ -515,7 +514,7 @@ public class CypherQueryBuilder
 
     public void AddRelationshipMatch(string relationshipType)
     {
-        _logger.LogDebug("AddRelationshipMatch called with type: {Type}", relationshipType);
+
 
         _matchPart.AddRelationshipMatch(relationshipType, TraversalDirection, _minDepth, _maxDepth);
         _mainNodeAlias = "r"; // Set main alias to the relationship
@@ -537,49 +536,49 @@ public class CypherQueryBuilder
     public void SetPathSegmentProjection(PathSegmentProjectionEnum projection)
     {
         PathSegmentProjection = projection;
-        _logger.LogDebug("Set path segment projection: {Projection}", projection);
+
     }
 
     public void AddOptionalMatch(string pattern)
     {
-        _logger.LogDebug("AddOptionalMatch called with pattern: '{Pattern}'", pattern);
+
         _matchPart.AddOptionalMatch(pattern);
     }
 
     public void AddLimit(int limit)
     {
-        _logger.LogDebug("AddLimit called with value: {Limit}", limit);
+
         _paginationPart.AddLimit(limit);
     }
 
     public void AddSkip(int skip)
     {
-        _logger.LogDebug("AddSkip called with value: {Skip}", skip);
+
         _paginationPart.AddSkip(skip);
     }
 
     public void AddWith(string expression)
     {
-        _logger.LogDebug("AddWith called with expression: '{Expression}'", expression);
+
         _returnPart.AddWith(expression);
     }
 
     public void AddUnwind(string expression)
     {
-        _logger.LogDebug("AddUnwind called with expression: '{Expression}'", expression);
+
         _returnPart.AddUnwind(expression);
     }
 
     public void AddFullTextNodeSearch(string indexName, string queryParam, string nodeAlias)
     {
-        _logger.LogDebug("AddFullTextNodeSearch called with index: {IndexName}, query: {QueryParam}, alias: {NodeAlias}", indexName, queryParam, nodeAlias);
+
         var searchPattern = $"CALL db.index.fulltext.queryNodes('{indexName}', {queryParam}) YIELD node AS {nodeAlias}";
         _matchPart.AddCallClause(searchPattern);
     }
 
     public void AddFullTextRelationshipSearch(string indexName, string queryParam, string relAlias, string? relationshipType = null)
     {
-        _logger.LogDebug("AddFullTextRelationshipSearch called with index: {IndexName}, query: {QueryParam}, alias: {RelAlias}, type: {Type}", indexName, queryParam, relAlias, relationshipType);
+
 
         var whereClause = string.IsNullOrEmpty(relationshipType) ? "" : $" WHERE type({relAlias}) = '{relationshipType}'";
         var searchPattern = $@"CALL db.index.fulltext.queryRelationships('{indexName}', {queryParam}) YIELD relationship AS {relAlias}{whereClause}
@@ -590,7 +589,7 @@ public class CypherQueryBuilder
 
     public void AddFullTextEntitySearch(string nodeIndexName, string relIndexName, string queryParam, string nodeAlias, string relAlias)
     {
-        _logger.LogDebug("AddFullTextEntitySearch called with nodeIndex: {NodeIndexName}, relIndex: {RelIndexName}, query: {QueryParam}, nodeAlias: {NodeAlias}, relAlias: {RelAlias}", nodeIndexName, relIndexName, queryParam, nodeAlias, relAlias);
+
         var unionQuery = $@"
             CALL {{
                 CALL db.index.fulltext.queryNodes('{nodeIndexName}', {queryParam}) YIELD node AS {nodeAlias}
@@ -608,13 +607,13 @@ public class CypherQueryBuilder
 
     public void AddGroupBy(string expression)
     {
-        _logger.LogDebug("AddGroupBy called with expression: '{Expression}'", expression);
+
         _groupByPart.AddGroupBy(expression);
     }
 
     public void SetDistinct(bool distinct)
     {
-        _logger.LogDebug("SetDistinct called with value: {Value}", distinct);
+
         _returnPart.SetDistinct(distinct);
     }
 
@@ -640,7 +639,7 @@ public class CypherQueryBuilder
 
     public void ReverseOrderBy()
     {
-        _logger.LogDebug("Reversing ORDER BY clauses");
+
         _orderByPart.ReverseOrderBy();
     }
 
@@ -653,15 +652,35 @@ public class CypherQueryBuilder
     {
         // The WhereQueryPart now handles pending WHERE clauses internally
         // This method is kept for compatibility but delegates to the focused part
-        _logger.LogDebug("FinalizeWhereClause called - delegating to WhereQueryPart");
+
         _wherePart.FinalizePendingClauses();
 
-        // For Traverse + PathSegments pattern, we need to update the WHERE clause aliases
-        // The WHERE clause should filter on the intermediate target (Memory node), not the final target (MemorySourceNode)
-        if (PathSegmentSourceAlias != null && _intermediateTargetAlias != null)
+        // For path segment patterns, we need to update the WHERE clause aliases
+        if (PathSegmentSourceAlias != null && PathSegmentTargetAlias != null)
         {
-            _wherePart.UpdateAliasesForPathSegments(PathSegmentSourceAlias, _intermediateTargetAlias);
-            _orderByPart.UpdateAliasesForPathSegments(PathSegmentSourceAlias, _intermediateTargetAlias);
+            // Rules for choosing target alias:
+            // 1. Traverse + PathSegments (complex properties): use intermediate target alias.
+            // 2. Incoming direction two-segment chain: intermediate alias represents original EndNode.
+            // 3. Two-segment chained same-type (outgoing): only replace 'tgt' with final target, keep 'src'.
+            // 4. Multi-hop (>2): preserve 'src' untouched, replace both if needed.
+            var useIntermediateForIncomingChain = (TraversalDirection == GraphTraversalDirection.Incoming) && _intermediateTargetAlias != null;
+            var targetAliasForWhere = _isTraverseWithPathSegments
+                ? (_intermediateTargetAlias ?? PathSegmentTargetAlias)
+                : (useIntermediateForIncomingChain ? _intermediateTargetAlias! : PathSegmentTargetAlias);
+
+            var isTwoSegmentChained = !_isTraverseWithPathSegments && _intermediateTargetAlias != null && PathSegmentTargetAlias != _intermediateTargetAlias && !_hasMultiplePathSegments;
+            if (isTwoSegmentChained)
+            {
+
+                _wherePart.UpdateOnlyTargetAlias(targetAliasForWhere);
+                _orderByPart.UpdateAliasesForPathSegments("src", targetAliasForWhere);
+            }
+            else
+            {
+                var sourceAliasForWhere = _hasMultiplePathSegments ? "src" : PathSegmentSourceAlias;
+                _wherePart.UpdateAliasesForPathSegments(sourceAliasForWhere, targetAliasForWhere);
+                _orderByPart.UpdateAliasesForPathSegments(sourceAliasForWhere, targetAliasForWhere);
+            }
             // Don't update the RETURN clause here - it will be updated in BuildMixedProjectionWithComplexProperties
             // if (PathSegmentTargetAlias != null)
             // {
@@ -679,12 +698,28 @@ public class CypherQueryBuilder
             // not the individual pending pattern
             if (_pathSegmentPatterns.Count > 1)
             {
-                // We have nested path segments - use the combined pattern aliases
+                // We have nested path segments - use the PathSegmentXxxAlias properties
+                // which are set by BuildCombinedPathSegmentPattern to point to the correct
+                // aliases in the combined pattern
+                //
+                // IMPORTANT: During SELECT processing (before Build() is called), 
+                // PathSegmentSourceAlias is null. In this case, we need to map "src" to the 
+                // actual source alias in the chain, which is the TARGET of the previous PathSegment.
+                bool isTwoSameTypeChain = _pathSegmentPatterns.Count == 2
+                    && !_isTraverseWithPathSegments
+                    && _pathSegmentPatterns[0].SourceType == _pathSegmentPatterns[0].TargetType
+                    && _pathSegmentPatterns[0].TargetType == _pathSegmentPatterns[1].SourceType;
+
                 return originalAlias switch
                 {
-                    "src" => PathSegmentSourceAlias ?? _pathSegmentPatterns[0].SourceAlias,
+                    // Only remap 'src' to first segment target alias for two same-type chained PathSegments.
+                    // For different-type chains (e.g. Memory->User then Memory->Source) keep original source alias.
+                    "src" => isTwoSameTypeChain
+                        ? _pathSegmentPatterns[0].TargetAlias
+                        : (PathSegmentSourceAlias ?? (_pathSegmentPatterns.Count > 2 ?
+                            _pathSegmentPatterns[^2].TargetAlias : _pathSegmentPatterns[0].SourceAlias)),
                     "tgt" => PathSegmentTargetAlias ?? _pathSegmentPatterns[^1].TargetAlias,
-                    "r" => PathSegmentRelationshipAlias ?? _pathSegmentPatterns[0].RelAlias,
+                    "r" => PathSegmentRelationshipAlias ?? _pathSegmentPatterns[^1].RelAlias,
                     _ => originalAlias
                 };
             }
@@ -767,13 +802,40 @@ public class CypherQueryBuilder
 
     private CypherQuery BuildSimpleQuery()
     {
-        _logger.LogDebug("Building simple query using focused query parts");
+
 
         var query = new StringBuilder();
 
         // IMPORTANT: Process WHERE expressions first to ensure any complex property 
         // MATCH clauses are added before we write the MATCH section
         _wherePart.FinalizePendingClauses();
+
+        // For path segment patterns in simple queries we still need to update alias references
+        // in WHERE/ORDER BY clauses. Previously this only happened for complex property paths.
+        // This caused chained PathSegments filtering (e.g. Age > 35 on second hop) to use the
+        // intermediate alias (tgt) instead of the final target alias (tgt_3) because the replacement
+        // never ran for simple queries.
+        if (PathSegmentSourceAlias != null && PathSegmentTargetAlias != null)
+        {
+            var useIntermediateForIncomingChain = (TraversalDirection == GraphTraversalDirection.Incoming) && _intermediateTargetAlias != null;
+            var targetAliasForWhere = _isTraverseWithPathSegments
+                ? (_intermediateTargetAlias ?? PathSegmentTargetAlias)
+                : (useIntermediateForIncomingChain ? _intermediateTargetAlias! : PathSegmentTargetAlias);
+
+            var isTwoSegmentChained = !_isTraverseWithPathSegments && _intermediateTargetAlias != null && PathSegmentTargetAlias != _intermediateTargetAlias && !_hasMultiplePathSegments;
+            if (isTwoSegmentChained)
+            {
+
+                _wherePart.UpdateOnlyTargetAlias(targetAliasForWhere);
+                _orderByPart.UpdateAliasesForPathSegments("src", targetAliasForWhere);
+            }
+            else
+            {
+                var sourceAliasForWhere = _hasMultiplePathSegments ? "src" : PathSegmentSourceAlias;
+                _wherePart.UpdateAliasesForPathSegments(sourceAliasForWhere, targetAliasForWhere);
+                _orderByPart.UpdateAliasesForPathSegments(sourceAliasForWhere, targetAliasForWhere);
+            }
+        }
 
         // Build the query using the focused query parts
         var parts = new List<Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders.ICypherQueryPart> { _matchPart, _wherePart, _groupByPart, _returnPart, _orderByPart, _paginationPart };
@@ -782,15 +844,23 @@ public class CypherQueryBuilder
         {
             part.AppendTo(query, _parameters);
         }
+        var finalQuery = query.ToString().Trim();
+        try
+        {
+            var debugPath = "/workspaces/graphmodel-dotnet/temp/cypher_debug.log";
+            System.IO.File.AppendAllText(debugPath,
+                $"\n=== SIMPLE QUERY BUILT {DateTime.UtcNow:O} ===\nPathSegmentsCount={_pathSegmentPatterns.Count} Direction={TraversalDirection} TraverseFlag={_isTraverseWithPathSegments} HasMultiple={_hasMultiplePathSegments} SourceAlias={PathSegmentSourceAlias} TargetAlias={PathSegmentTargetAlias} IntermediateAlias={_intermediateTargetAlias}\n{finalQuery}\n");
+        }
+        catch { }
 
-        return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
+        return new CypherQuery(finalQuery, new Dictionary<string, object?>(_parameters));
     }
 
     // Old private methods removed - functionality now handled by focused query parts
 
     private CypherQuery BuildExistsQuery()
     {
-        _logger.LogDebug("Building EXISTS query using focused query parts");
+
 
         var query = new StringBuilder();
 
@@ -806,7 +876,7 @@ public class CypherQueryBuilder
 
     private CypherQuery BuildNotExistsQuery()
     {
-        _logger.LogDebug("Building NOT EXISTS query using focused query parts");
+
 
         var query = new StringBuilder();
 
@@ -822,7 +892,7 @@ public class CypherQueryBuilder
 
     private CypherQuery BuildWithComplexProperties()
     {
-        _logger.LogDebug("Building query with complex properties using focused query parts");
+
 
         var query = new StringBuilder();
 
@@ -855,12 +925,20 @@ public class CypherQueryBuilder
             AppendComplexPropertyMatchesForSingleNode(query);
         }
 
-        return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
+        var finalQuery = query.ToString().Trim();
+        try
+        {
+            var debugPath = "/workspaces/graphmodel-dotnet/temp/cypher_debug.log";
+            System.IO.File.AppendAllText(debugPath,
+                $"\n=== COMPLEX QUERY BUILT {DateTime.UtcNow:O} ===\nPathSegmentsCount={_pathSegmentPatterns.Count} Direction={TraversalDirection} TraverseFlag={_isTraverseWithPathSegments} HasMultiple={_hasMultiplePathSegments} SourceAlias={PathSegmentSourceAlias} TargetAlias={PathSegmentTargetAlias} IntermediateAlias={_intermediateTargetAlias}\n{finalQuery}\n");
+        }
+        catch { }
+        return new CypherQuery(finalQuery, new Dictionary<string, object?>(_parameters));
     }
 
     private void AppendComplexPropertyMatchesForSingleNode(StringBuilder query)
     {
-        _logger.LogDebug("Appending complex property matches for single node");
+
 
         query.AppendLine(@$"
             // All complex property paths from src
@@ -895,7 +973,7 @@ public class CypherQueryBuilder
 
     private void AppendComplexPropertyMatchesForPathSegment(StringBuilder query)
     {
-        _logger.LogDebug("Appending complex property matches for path segment with projection: {Projection}", PathSegmentProjection);
+
 
         var src = PathSegmentSourceAlias ?? "src";
         var rel = PathSegmentRelationshipAlias ?? "r";
@@ -911,8 +989,7 @@ public class CypherQueryBuilder
             _ => (false, false)
         };
 
-        _logger.LogDebug("Complex property loading - Source: {NeedsSource}, Target: {NeedsTarget}",
-            needsSourceProps, needsTargetProps);
+
 
         // Build the WITH clause components we'll need
         // For nested path segments, we need to include the intermediate target alias
@@ -924,7 +1001,7 @@ public class CypherQueryBuilder
         if (!string.IsNullOrEmpty(_intermediateTargetAlias) && _intermediateTargetAlias != tgt)
         {
             baseWith = $"{src}, {rel}, {_intermediateTargetAlias}, {tgt}";
-            _logger.LogDebug("Including intermediate target alias in WITH clause: {Alias}", _intermediateTargetAlias);
+
         }
 
         var currentWith = baseWith;
@@ -1047,7 +1124,7 @@ public class CypherQueryBuilder
 
     private CypherQuery BuildMixedProjectionWithComplexProperties()
     {
-        _logger.LogDebug("Building mixed projection query with complex properties");
+
 
         var query = new StringBuilder();
 
@@ -1066,17 +1143,21 @@ public class CypherQueryBuilder
         if (!string.IsNullOrEmpty(_intermediateTargetAlias) && _intermediateTargetAlias != tgt)
         {
             withClause = $"{src}, {rel}, {_intermediateTargetAlias}, {tgt}";
-            _logger.LogDebug("Including intermediate target alias in WITH clause for mixed projection: {Alias}", _intermediateTargetAlias);
+
         }
 
         // For combined Traverse + PathSegments pattern, we need to load complex properties
         // for the StartNode of the projection, which is the intermediate target (tgt), not the original source (src)
         var startNodeAlias = src;
-        if (!string.IsNullOrEmpty(_intermediateTargetAlias) && _intermediateTargetAlias != tgt)
+        // Only remap StartNode to intermediate target for outgoing (or both) direction combined Traverse+PathSegments.
+        // For incoming direction the StartNode must remain the original source alias.
+        if (!string.IsNullOrEmpty(_intermediateTargetAlias)
+            && _intermediateTargetAlias != tgt
+            && TraversalDirection != GraphTraversalDirection.Incoming)
         {
-            // For combined pattern: StartNode should be the intermediate target (T1), not the original source (S)
+            // Outgoing combined pattern: StartNode should be the intermediate target (T1), not the original source (S)
             startNodeAlias = _intermediateTargetAlias;
-            _logger.LogDebug("Using intermediate target alias for StartNode complex properties: {Alias}", startNodeAlias);
+
         }
 
         // Load complex properties for StartNode (which is the intermediate target in combined patterns)
@@ -1130,10 +1211,10 @@ public class CypherQueryBuilder
         // Traverse + PathSegments patterns start with (src:...), while multiple PathSegments start with (tgt_2:...)
         if (!string.IsNullOrEmpty(_intermediateTargetAlias) && src == "src" && PathSegmentSourceAlias == "src" && !_hasMultiplePathSegments)
         {
-            _logger.LogDebug("Updating user projections for combined pattern - replacing {OldAlias} with {NewAlias}", src, _intermediateTargetAlias);
-            _logger.LogDebug("Return clauses before update: {Clauses}", string.Join(", ", _returnPart.ReturnClauses));
+
+
             _returnPart.UpdateAliasesForPathSegments(src, _intermediateTargetAlias);
-            _logger.LogDebug("Return clauses after update: {Clauses}", string.Join(", ", _returnPart.ReturnClauses));
+
         }
 
         // Add ordering and pagination before the final return
@@ -1143,7 +1224,15 @@ public class CypherQueryBuilder
         // Use the user projections with complex property structures for special types
         _returnPart.AppendTo(query, _parameters);
 
-        return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
+        var finalQuery = query.ToString().Trim();
+        try
+        {
+            var debugPath = "/workspaces/graphmodel-dotnet/temp/cypher_debug.log";
+            System.IO.File.AppendAllText(debugPath,
+                $"\n=== MIXED COMPLEX QUERY BUILT {DateTime.UtcNow:O} ===\nPathSegmentsCount={_pathSegmentPatterns.Count} Direction={TraversalDirection} TraverseFlag={_isTraverseWithPathSegments} HasMultiple={_hasMultiplePathSegments} SourceAlias={PathSegmentSourceAlias} TargetAlias={PathSegmentTargetAlias} IntermediateAlias={_intermediateTargetAlias}\n{finalQuery}\n");
+        }
+        catch { }
+        return new CypherQuery(finalQuery, new Dictionary<string, object?>(_parameters));
     }
 
     private void BuildPendingPathSegmentPattern()
@@ -1153,7 +1242,7 @@ public class CypherQueryBuilder
         // If we have multiple path segments, combine them into a single pattern
         if (_pathSegmentPatterns.Count > 1)
         {
-            _logger.LogDebug("Building combined path segment pattern from {Count} segments", _pathSegmentPatterns.Count);
+
             BuildCombinedPathSegmentPattern();
             return;
         }
@@ -1188,20 +1277,20 @@ public class CypherQueryBuilder
             _ => throw new NotSupportedException($"Unknown traversal direction: {direction}")
         };
 
-        _logger.LogDebug($"Building deferred path segment pattern with direction {direction}: {pattern}");
+
 
         // Check if we have nested path segments by looking at the source alias
         // If the source alias is "tgt", it means we're extending an existing pattern
         if (p.SourceAlias == "tgt" && p.SourceType.Name == "Memory")
         {
-            _logger.LogDebug("Building combined nested path segment pattern");
+
 
             // We have nested path segments - build a combined pattern
             // The pattern should be: (src:User)-[r:UserMemory]->(tgt:Memory)-[r2:MemoryToMemorySourceNode]->(tgt2:MemorySourceNode)
 
             // For now, just use the second pattern and let the WHERE clause handle the first part
             // This is a temporary fix - we need to properly combine the patterns
-            _logger.LogDebug("Using second pattern for now: {Pattern}", pattern);
+
 
             // Only clear the main match clauses, not the additional match statements (complex properties)
             _matchPart.ClearMainMatches();
@@ -1231,7 +1320,7 @@ public class CypherQueryBuilder
     {
         if (_pathSegmentPatterns.Count < 2) return;
 
-        _logger.LogDebug("Building combined path segment pattern from {Count} segments", _pathSegmentPatterns.Count);
+
 
         // Check if this is a Traverse + PathSegments pattern
         // Since Traverse<S, R, T> is internally PathSegments<S, R, T>, we need to chain both patterns
@@ -1241,10 +1330,27 @@ public class CypherQueryBuilder
             var pathSegmentPattern = _pathSegmentPatterns[1]; // PathSegments pattern (T1, R1, T2)
 
             // Check if the second pattern's source type matches the first pattern's target type
-            // This indicates a Traverse + PathSegments pattern
+            // This indicates a potential Traverse + PathSegments OR chained PathSegments pattern
             if (traversePattern.TargetType == pathSegmentPattern.SourceType)
             {
-                _logger.LogDebug("Detected Traverse + PathSegments pattern. Building combined pattern that chains both PathSegments calls.");
+                // Check if this is truly a Traverse + PathSegments pattern (for complex properties)
+                // vs chained PathSegments (both same type). The key difference is whether the
+                // intermediate target type needs complex properties loaded.
+                // Treat as Traverse + PathSegments only when the first hop changes node type.
+                // Chained PathSegments of the same node type (e.g. Person->Person->Person) should NOT
+                // be marked as Traverse+PathSegments so that WHERE alias rewriting can upgrade 'tgt'
+                // to the final target alias (e.g. 'tgt_3').
+                var isComplexPropertyTraversal = traversePattern.SourceType != traversePattern.TargetType && NeedsComplexProperties(traversePattern.TargetType);
+                
+                if (isComplexPropertyTraversal)
+                {
+
+                    _isTraverseWithPathSegments = true;
+                }
+                else
+                {
+
+                }
 
                 // Build a combined pattern that chains both PathSegments calls
                 // Pattern: (src1:S)-[r1:R]->(tgt1:T1)-[r2:R1]->(tgt2:T2)
@@ -1276,7 +1382,7 @@ public class CypherQueryBuilder
                     _ => throw new NotSupportedException($"Unknown traversal direction: {pathDirection}")
                 };
 
-                _logger.LogDebug("Combined PathSegments pattern: {Pattern}", combinedPathPattern);
+
 
                 // Only clear the main match clauses, not the additional match statements (complex properties)
                 _matchPart.ClearMainMatches();
@@ -1286,14 +1392,19 @@ public class CypherQueryBuilder
                 // For incoming direction, the pattern is reversed, so we need to adjust aliases accordingly
                 if (pathDirection == GraphTraversalDirection.Incoming)
                 {
-                    // For incoming direction, the pattern is: (tgt2)<-[r2]-(tgt)<-[r1]-(src)
-                    // So the source is the second pattern's target, and the target is the first pattern's source
-                    PathSegmentSourceAlias = pathSegmentPattern.TargetAlias;
-                    PathSegmentRelationshipAlias = pathSegmentPattern.RelAlias;
-                    PathSegmentTargetAlias = traversePattern.SourceAlias;
+                    // For incoming direction, the combined pattern is: (tgt2)<-[r2]-(tgt)<-[r1]-(src)
+                    // Semantically for the final PathSegments projection we want:
+                    //   StartNode = original source (src: MemoryWithoutSourceProperty)
+                    //   Relationship = second hop relationship (r2 / pathSegmentPattern.RelAlias)
+                    //   EndNode = second pattern's target (tgt2: MemorySourceNode)
+                    // The intermediate target alias (tgt: User) is only used for filtering and MUST NOT
+                    // replace the StartNode in incoming direction (unlike the outgoing Traverse+PathSegments case).
+                    PathSegmentSourceAlias = traversePattern.SourceAlias;          // src
+                    PathSegmentRelationshipAlias = pathSegmentPattern.RelAlias;    // r_1
+                    PathSegmentTargetAlias = pathSegmentPattern.TargetAlias;       // tgt_2
 
-                    // Store the intermediate target alias (tgt) for WHERE clause filtering
-                    _intermediateTargetAlias = traversePattern.TargetAlias;
+                    // Store the intermediate target alias (tgt) for WHERE clause filtering only.
+                    _intermediateTargetAlias = traversePattern.TargetAlias;        // tgt
                 }
                 else
                 {
@@ -1389,7 +1500,7 @@ public class CypherQueryBuilder
         }
 
         var pattern = combinedPattern.ToString();
-        _logger.LogDebug("Combined path segment pattern: {Pattern}", pattern);
+
 
         // Only clear the main match clauses, not the additional match statements (complex properties)
         _matchPart.ClearMainMatches();
@@ -1399,10 +1510,23 @@ public class CypherQueryBuilder
         var lastPattern = _pathSegmentPatterns[^1];
         var firstPattern = _pathSegmentPatterns[0];
 
-        // For nested path segments, use the aliases from the first pattern for source and relationship
-        // since the main MATCH clause uses those aliases
-        PathSegmentSourceAlias = firstPattern.SourceAlias;
-        PathSegmentRelationshipAlias = firstPattern.RelAlias;
+        // For chained path segments (3+), the "src" in the final projection should be 
+        // the source of the LAST PathSegment in the chain, which is the TARGET of the 
+        // second-to-last PathSegment
+        if (direction == GraphTraversalDirection.Incoming)
+        {
+            // For incoming: pattern is reversed, so source is at the end
+            PathSegmentSourceAlias = _pathSegmentPatterns.Count > 2 ? 
+                _pathSegmentPatterns[1].SourceAlias : firstPattern.SourceAlias;
+        }
+        else
+        {
+            // For outgoing: the last PathSegment's source is the previous one's target
+            PathSegmentSourceAlias = _pathSegmentPatterns.Count > 2 ? 
+                _pathSegmentPatterns[^2].TargetAlias : firstPattern.SourceAlias;
+        }
+        
+        PathSegmentRelationshipAlias = lastPattern.RelAlias;
         PathSegmentTargetAlias = lastPattern.TargetAlias;
 
         // Store the intermediate target alias (tgt) for ORDER BY and WHERE clauses
@@ -1410,7 +1534,7 @@ public class CypherQueryBuilder
         if (_pathSegmentPatterns.Count > 1)
         {
             var intermediateTarget = _pathSegmentPatterns[0].TargetAlias; // This is 'tgt'
-            _logger.LogDebug("Storing intermediate target alias for ORDER BY: {Alias}", intermediateTarget);
+
             // Store this for use in complex property loading
             _intermediateTargetAlias = intermediateTarget;
         }

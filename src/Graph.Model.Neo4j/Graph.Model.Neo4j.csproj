@@ -21,6 +21,11 @@
     <ItemGroup>
         <PackageReference Include="Neo4j.Driver" Version="5.28.3" />
     </ItemGroup>
+    
+    <!-- System.Linq.Async is only needed for .NET 9.0; .NET 10.0 has built-in async LINQ support -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+        <PackageReference Include="System.Linq.Async" Version="6.0.1" />
+    </ItemGroup>
 
     <!-- Use project references for development (default) -->
     <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">

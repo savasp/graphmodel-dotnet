@@ -137,6 +137,29 @@ public class WhereQueryPart : ICypherQueryPart
     }
 
     /// <summary>
+    /// Updates only the target alias (tgt) in WHERE clauses for chained PathSegments
+    /// while preserving the original source alias 'src'. This is needed for scenarios
+    /// where an initial root filter (on src) must remain intact but the EndNode alias
+    /// has advanced to a later hop (e.g., from 'tgt' to 'tgt_3').
+    /// </summary>
+    public void UpdateOnlyTargetAlias(string newTargetAlias)
+    {
+        for (int i = 0; i < _whereClauses.Count; i++)
+        {
+            var clause = _whereClauses[i];
+            var originalClause = clause;
+            clause = System.Text.RegularExpressions.Regex.Replace(clause, @"\btgt\b", newTargetAlias);
+            _whereClauses[i] = clause;
+            try
+            {
+                System.IO.File.AppendAllText("/workspaces/graphmodel-dotnet/temp/cypher_debug.log",
+                    $"\n=== WHERE TARGET ALIAS UPDATED ===\nOriginal: {originalClause}\nUpdated: {clause}\n");
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>
     /// Processes all pending WHERE clauses and converts them to Cypher conditions.
     /// </summary>
     private void ProcessPendingWhereClauses()

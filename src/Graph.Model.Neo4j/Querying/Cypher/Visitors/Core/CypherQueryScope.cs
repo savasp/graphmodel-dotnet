@@ -138,6 +138,26 @@ internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
         return alias;
     }
 
+    /// <summary>
+    /// Generates a unique alias without caching it by type.
+    /// Useful for relationships in chained PathSegments where we need distinct aliases.
+    /// </summary>
+    public string GenerateUniqueAlias(string baseAlias)
+    {
+        var alias = baseAlias;
+        
+        // Ensure uniqueness
+        while (_aliasTypes.ContainsKey(alias))
+        {
+            alias = $"{baseAlias}_{++_aliasCounter}";
+        }
+
+        // Register the alias but don't cache by type
+        _aliasTypes[alias] = typeof(object); // Use a placeholder type
+        
+        return alias;
+    }
+
     public Type? GetTypeForAlias(string alias)
     {
         return _aliasTypes.GetValueOrDefault(alias);

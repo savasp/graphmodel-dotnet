@@ -1046,7 +1046,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
                 // Set up the pending path segment pattern with appropriate aliases
                 var sourceAlias = _context.Scope.GetOrCreateAlias(sourceType, "src");
-                var relAlias = _context.Scope.GetOrCreateAlias(relationshipType, "r");
+                // For chained PathSegments, always create new unique relationship aliases to avoid conflicts
+                var relAlias = _context.Scope.GenerateUniqueAlias("r");
                 var targetAlias = _context.Scope.GetOrCreateAlias(targetType, "tgt");
 
                 _context.Builder.SetPendingPathSegmentPattern(
@@ -1089,7 +1090,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
                 // Set up the pending path segment pattern with appropriate aliases
                 var sourceAlias = _context.Scope.GetOrCreateAlias(targetType, "src");
-                var relAlias = _context.Scope.GetOrCreateAlias(relationshipType, "r");
+                // For chained PathSegments, always create new unique relationship aliases to avoid conflicts
+                var relAlias = _context.Scope.GenerateUniqueAlias("r");
                 var targetAlias = _context.Scope.GetOrCreateAlias(sourceType, "tgt");
 
                 _context.Builder.SetPendingPathSegmentPattern(
