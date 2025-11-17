@@ -370,6 +370,18 @@ public class CypherQueryBuilder
     }
 
     /// <summary>
+    /// Resets relationship-specific query state so subsequent operations treat the query as a node query.
+    /// Used when transforming a relationship-based source into a JOIN that projects a node.
+    /// </summary>
+    public void ResetRelationshipQueryState()
+    {
+        _isRelationshipQuery = false;
+        _loadPathSegment = false; // disable path segment loading for join returning nodes
+        _mainNodeAlias = null; // allow next AddMatch to set node alias
+        _returnPart.SetMainNodeAlias(_mainNodeAlias);
+    }
+
+    /// <summary>
     /// Removes all user-defined projections from the RETURN clause.
     /// </summary>
     public void ClearUserProjections()
@@ -409,6 +421,8 @@ public class CypherQueryBuilder
     public void SetMainNodeAlias(string alias)
     {
         _mainNodeAlias = alias;
+        // Ensure the RETURN part uses the updated alias for fallback node wrapping.
+        _returnPart.SetMainNodeAlias(alias);
     }
 
     /// <summary>

@@ -847,6 +847,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
         _context.Builder.ClearMatches();
         _context.Builder.ClearWhere();
         _context.Builder.DisableComplexPropertyLoading();
+        // Reset relationship state so JOIN can establish a fresh node-centric main alias
+        _context.Builder.ResetRelationshipQueryState();
 
         // Extract the outer source (relationship queryable) manually
         var outerSource = node.Arguments[0];
@@ -924,6 +926,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 // Set the main node alias in the builder so RETURN uses the correct alias
                 _context.Builder.SetMainNodeAlias(innerAlias);
                 _logger.LogDebug("JOIN result: selecting joined entity with alias {Alias}", innerAlias);
+
+                // Explicitly add a RETURN clause for the joined node to avoid fallback using prior relationship alias.
+                // We wrap in the standard Node structure expected by the materializer.
+                _context.Builder.ClearReturn();
+                _context.Builder.AddInfrastructureReturn($"{{\n                  Node: {innerAlias},\n                  ComplexProperties: []\n              }}", "Node");
             }
             else if (paramIndex == 0 && outerAlias != null) // Selecting the outer (first) parameter
             {
@@ -1648,7 +1655,6 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 ? Model.Labels.GetLabelFromType(searchExpr.EntityType) : null;
             _context.Builder.AddFullTextRelationshipSearch(indexName, paramName, alias, relType);
             _context.Scope.CurrentAlias = alias;
-            _context.Builder.SetMainNodeAlias(alias);
             var builderType = _context.Builder.GetType();
             var field = builderType.GetField("_isRelationshipQuery", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             field?.SetValue(_context.Builder, true);
@@ -1663,7 +1669,6 @@ internal class CypherQueryVisitor : ExpressionVisitor
             var relIndexName = "rel_fulltext_index";
             _context.Builder.AddFullTextEntitySearch(nodeIndexName, relIndexName, paramName, nodeAlias, relAlias);
             _context.Scope.CurrentAlias = nodeAlias; // Default to node alias
-            _context.Builder.SetMainNodeAlias(nodeAlias);
             _context.Builder.DisableComplexPropertyLoading();
         }
     }
