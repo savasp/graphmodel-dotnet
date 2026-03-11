@@ -104,7 +104,7 @@ body:
       description: "Information about your environment (if relevant)"
       value: |
         - **OS**: [e.g. Windows 11, macOS 14, Ubuntu 22.04]
-        - **.NET Version**: [e.g. .NET 8.0]
+        - **.NET Version**: [e.g. .NET 10.0]
         - **Neo4j Version**: [e.g. 5.15.0]
         - **GraphModel Version**: [e.g. 1.0.0]
     validations:

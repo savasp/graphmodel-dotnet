@@ -81,7 +81,7 @@ dotnet build --configuration Release
 
 ## 📖 Complete Documentation
 
-For comprehensive build system documentation, see: **[docs/BUILD_SYSTEM.md](../docs/BUILD_SYSTEM.md)**
+For comprehensive build system documentation, see: **[docs/graph-model-developers.md](../docs/graph-model-developers.md)**
 
 ## 📦 Build Configurations
 

@@ -1,7 +1,7 @@
 # GraphModel
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![.NET](https://img.shields.io/badge/.NET-9.0%20%7C%2010.0+-purple.svg)](https://dotnet.microsoft.com/download)
+[![.NET](https://img.shields.io/badge/.NET-10.0+-purple.svg)](https://dotnet.microsoft.com/download)
 [![GitHub release](https://img.shields.io/github/release/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel-dotnet/releases)
 [![Build Status](https://github.com/savasp/graphmodel-dotnet/workflows/🧪%20Tests/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/tests.yml)
 [![Coverage](https://github.com/savasp/graphmodel-dotnet/workflows/📊%20Code%20Coverage/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/coverage.yml)
@@ -208,10 +208,11 @@ catch
 - **[Best Practices](docs/best-practices.md)** - Performance tips and patterns
 - **[Neo4j Provider](src/Graph.Model.Neo4j/README.md)** - Neo4j-specific features and configuration
 - **[Code Analyzers](src/Graph.Model.Analyzers/README.md)** - Compile-time validation rules
-- **[Code Generation](src/Graph.Model.Serialization.CodeGen/README.md)** - Compile-time validation rules
+- **[Code Generation](src/Graph.Model.Serialization.CodeGen/README.md)** - Build-time code generation for serialization
 - **[API Reference](docs/api)** - API documentation generated from the source code
 - **[Troubleshooting](docs/troubleshooting.md)** - In case you encounter issues
 - **[Building Graph Model](docs/graph-model-developers.md)** - Building the projects in this repository
+- **[AI agent documentation](docs/ai-agents.md)** - Where to find context for Claude Code, Cursor, and other AI coding tools
 
 ## 💡 Examples
 
@@ -256,7 +257,7 @@ dotnet build --configuration Release
 dotnet msbuild -target:CleanLocalFeed
 ```
 
-See **[Build System Documentation](docs/BUILD_SYSTEM.md)** for complete details.
+See **[Build System Documentation](docs/graph-model-developers.md)** for complete details.
 
 ## 🏗️ Architecture
 
@@ -284,7 +285,7 @@ GraphModel follows a clean, layered architecture:
 
 ## 🔧 Requirements
 
-- **.NET 9.0** or **.NET 10.0** or later
+- **.NET 10.0** or later
 - **Neo4j 4.0+** (5.x recommended for Neo4j provider)
 - **C# 12** language features
 
@@ -294,6 +295,10 @@ GraphModel follows a clean, layered architecture:
 - [Blog Post: Playing with graphs and neo4j](https://savas.me/2025/05/23/playing-with-graphs-and-neo4j/) by [Savas Parastatidis](https://savas.me)
 - [Neo4j Documentation](https://neo4j.com/docs/)
 - [Graph Database Concepts](https://neo4j.com/developer/graph-database/)
+
+## 🤖 AI agent documentation
+
+This repo provides context for AI coding agents (Claude Code, Cursor, and others). See **[docs/ai-agents.md](docs/ai-agents.md)** for where to find project memory, skills, and rules for your tool.
 
 ## 🤝 Contributing
 
