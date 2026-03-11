@@ -167,14 +167,14 @@ var friendship = new Knows(alice, bob)
 await graph.CreateRelationshipAsync(friendship);
 
 // Query with LINQ
-var youngPeople = await graph.Nodes<Person>()
+var youngPeople = await (await graph.NodesAsync<Person>())
     .Where(p => p.Age < 30)
     .Where(p => p.HomeAddress != null && p.HomeAddress.City == "Portland")
     .OrderBy(p => p.FirstName)
     .ToListAsync();
 
 // Graph traversal
-var alicesFriends = await graph.Nodes<Person>()
+var alicesFriends = await (await graph.NodesAsync<Person>())
     .Where(p => p.FirstName == "Alice")
     .Traverse<Person, Knows, Person>()
     .WithDepth(1, 2)

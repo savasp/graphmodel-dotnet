@@ -370,11 +370,21 @@ public static class GraphDataModel
         }
     }
 
-    // Reference equality comparer for HashSet
+    /// <summary>
+    /// An equality comparer that uses reference equality (<see cref="object.ReferenceEquals"/>) for comparisons.
+    /// Used internally for cycle detection in graph data models.
+    /// </summary>
     public sealed class ReferenceEqualityComparer : IEqualityComparer<object>
     {
+        /// <summary>
+        /// Gets the singleton instance of <see cref="ReferenceEqualityComparer"/>.
+        /// </summary>
         public static ReferenceEqualityComparer Instance { get; } = new ReferenceEqualityComparer();
+
+        /// <inheritdoc />
         bool IEqualityComparer<object>.Equals(object? x, object? y) => ReferenceEquals(x, y);
+
+        /// <inheritdoc />
         public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
     }
 

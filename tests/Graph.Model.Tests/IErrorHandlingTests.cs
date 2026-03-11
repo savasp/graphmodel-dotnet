@@ -216,7 +216,7 @@ public interface IErrorHandlingTests : IGraphModelTest
         // Test with a complex expression that might cause issues
         try
         {
-            var results = await Graph.Nodes<TestNode>()
+            var results = await (await Graph.NodesAsync<TestNode>())
                 .Where(n => n.Name.Substring(0, n.Name.Length / 0) == "test") // Division by zero
                 .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -243,7 +243,7 @@ public interface IErrorHandlingTests : IGraphModelTest
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
         // Test querying with null values
-        var results = await Graph.Nodes<TestNode>()
+        var results = await (await Graph.NodesAsync<TestNode>())
             .Where(n => n.Name != null)
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -264,7 +264,7 @@ public interface IErrorHandlingTests : IGraphModelTest
         }
 
         // Query should handle large result sets
-        var results = await Graph.Nodes<TestNode>()
+        var results = await (await Graph.NodesAsync<TestNode>())
             .Where(n => n.Name.StartsWith("Node"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -293,7 +293,7 @@ public interface IErrorHandlingTests : IGraphModelTest
         try
         {
             // Try to perform an operation that might take longer than 1ms
-            var results = await Graph.Nodes<TestNode>()
+            var results = await (await Graph.NodesAsync<TestNode>())
                 .ToListAsync(cts.Token);
         }
         catch (OperationCanceledException)

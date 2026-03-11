@@ -25,12 +25,12 @@ internal sealed class GraphRelationshipQueryable<TRel> : GraphQueryableBase<TRel
     IOrderedGraphRelationshipQueryable<TRel>
     where TRel : IRelationship
 {
-    public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext, GraphTransaction transaction)
+    public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext, GraphTransaction? transaction)
         : base(typeof(TRel), provider, graphContext, transaction, CreateRootExpression())
     {
     }
 
-    public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext, GraphTransaction transaction, Expression expression)
+    public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext, GraphTransaction? transaction, Expression expression)
         : base(typeof(TRel), provider, graphContext, transaction, expression)
     {
     }
@@ -58,5 +58,6 @@ internal sealed class GraphRelationshipQueryable<TRel> : GraphQueryableBase<TRel
         public IEnumerator<T> GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
         IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
         public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) => throw new NotSupportedException("Placeholder queryable");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

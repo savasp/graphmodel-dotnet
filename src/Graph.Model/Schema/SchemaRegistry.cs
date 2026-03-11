@@ -334,7 +334,7 @@ public class SchemaRegistry : IDisposable
             {
                 types = assembly.GetTypes();
             }
-            catch
+            catch (ReflectionTypeLoadException)
             {
                 continue;
             }

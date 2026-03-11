@@ -57,7 +57,7 @@ static class Program
         await graph.CreateRelationshipAsync(charlieWatchedInterstellar);
 
 
-        var moviesAliceWatched = graph.Nodes<Person>()
+        var moviesAliceWatched = (await graph.NodesAsync<Person>())
             .Where(p => p.Name == "Alice")
             .Traverse<Person, Watched, Movie>()
             .Distinct();
@@ -67,7 +67,7 @@ static class Program
             Console.WriteLine($"Alice watched: {movie.Title} ({movie.ReleaseYear})");
         }
 
-        var moviesAlicePaidFor = graph.Nodes<Person>()
+        var moviesAlicePaidFor = (await graph.NodesAsync<Person>())
             .Where(p => p.Name == "Alice")
             .PathSegments<Person, Paid, CreditCard>()
             .Select(s => new { Movie = s.Relationship.MovieName, CreditCard = s.EndNode });

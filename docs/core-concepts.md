@@ -436,8 +436,8 @@ The `IGraph` interface is the main entry point for all graph operations:
 public interface IGraph : IAsyncDisposable
 {
     // Queryable interfaces for LINQ support
-    IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null) where N : INode;
-    IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null) where R : IRelationship;
+    Task<IGraphNodeQueryable<N>> NodesAsync<N>(IGraphTransaction? transaction = null) where N : INode;
+    Task<IGraphRelationshipQueryable<R>> RelationshipsAsync<R>(IGraphTransaction? transaction = null) where R : IRelationship;
 
     // CRUD operations
     Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : INode;
@@ -567,7 +567,7 @@ Usage example:
 
 ```csharp
 // Analyze connection paths
-var connectionAnalysis = await graph.Nodes<Person>()
+var connectionAnalysis = await (await graph.NodesAsync<Person>())
     .Where(p => p.FirstName == "Alice")
     .PathSegments<Person, Knows, Person>()
     .Where(path => path.EndNode.Age > 25)
@@ -588,11 +588,11 @@ Graph Model provides comprehensive full-text search capabilities that integrate 
 
 ```csharp
 // Search across all entities
-var allResults = await graph.Search("machine learning").ToListAsync();
+var allResults = await (await graph.SearchAsync("machine learning")).ToListAsync();
 
 // Type-specific searches
-var nodes = await graph.SearchNodes<Article>("artificial intelligence").ToListAsync();
-var relationships = await graph.SearchRelationships<Knows>("college").ToListAsync();
+var nodes = await (await graph.SearchNodesAsync<Article>("artificial intelligence")).ToListAsync();
+var relationships = await (await graph.SearchRelationshipsAsync<Knows>("college")).ToListAsync();
 ```
 
 ### LINQ Integration
@@ -601,13 +601,13 @@ The `Search()` method can be used anywhere in a LINQ chain:
 
 ```csharp
 // Search in basic LINQ chain
-var results = await graph.Nodes<Person>()
+var results = await (await graph.NodesAsync<Person>())
     .Where(p => p.Age > 25)
     .Search("software engineer")
     .ToListAsync();
 
 // Search in path segments traversal
-var memories = await graph.Nodes<User>()
+var memories = await (await graph.NodesAsync<User>())
     .Where(u => u.Id == "...")
     .PathSegments<User, UserMemory, Memory>()
     .Select(p => p.EndNode)
@@ -615,7 +615,7 @@ var memories = await graph.Nodes<User>()
     .ToListAsync();
 
 // Search with multiple conditions
-var filtered = await graph.Nodes<Article>()
+var filtered = await (await graph.NodesAsync<Article>())
     .Where(a => a.PublishedDate > DateTime.UtcNow.AddDays(-30))
     .Search("machine learning")
     .Where(a => a.Author.StartsWith("Dr."))

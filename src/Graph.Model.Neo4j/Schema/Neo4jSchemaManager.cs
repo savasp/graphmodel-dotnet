@@ -217,8 +217,8 @@ internal class Neo4jSchemaManager
 
     private async Task CreateNodeConstraintsAsync(string label, EntitySchemaInfo schema)
     {
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
+        await using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        await using var tx = await session.BeginTransactionAsync();
 
         try
         {
@@ -314,8 +314,8 @@ internal class Neo4jSchemaManager
 
     private async Task CreateRelationshipConstraintsAsync(string type, EntitySchemaInfo schema)
     {
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
+        await using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        await using var tx = await session.BeginTransactionAsync();
 
         try
         {
@@ -440,8 +440,8 @@ internal class Neo4jSchemaManager
         var schema = await _schemaRegistry.GetNodeSchemaAsync(label, cancellationToken);
         if (schema == null) return;
 
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
+        await using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        await using var tx = await session.BeginTransactionAsync();
 
         try
         {
@@ -473,8 +473,8 @@ internal class Neo4jSchemaManager
         var schema = await _schemaRegistry.GetRelationshipSchemaAsync(type, cancellationToken);
         if (schema == null) return;
 
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
+        await using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        await using var tx = await session.BeginTransactionAsync();
 
         try
         {
@@ -505,8 +505,8 @@ internal class Neo4jSchemaManager
     {
         _logger.LogDebug("Creating global full text indexes");
 
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
+        await using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        await using var tx = await session.BeginTransactionAsync();
 
         try
         {
@@ -595,8 +595,8 @@ internal class Neo4jSchemaManager
 
     private async Task DropAllIndexesAsync()
     {
-        using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
-        using var tx = await session.BeginTransactionAsync();
+        await using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        await using var tx = await session.BeginTransactionAsync();
 
         try
         {

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -11,10 +11,6 @@
 
     <!-- Use the new testing platform -->
     <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
-    <RuntimeIdentifiers>osx-arm64;win-x64;linux-x64</RuntimeIdentifiers>
-
-    <!-- Prevent MTP from emitting its own Main -->
-    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
 
     <!-- Enable live output -->
     <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
@@ -24,13 +20,10 @@
 
   <ItemGroup>
     <!-- xunit -->
-    <PackageReference Include="xunit.v3" Version="3.1.0" />
+    <PackageReference Include="xunit.v3.mtp-v2" Version="3.2.2" />
 
-    <!-- coverlet -->
-    <PackageReference Include="coverlet.collector" Version="6.0.4">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <!-- code coverage -->
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.4.1" />
   </ItemGroup>
 
   <ItemGroup>

@@ -33,13 +33,13 @@ This guide provides best practices and optimization techniques for maximizing pe
 
 ```csharp
 // ✅ Good - specific query with projection
-var userEmails = await graph.Nodes<User>()
+var userEmails = await (await graph.NodesAsync<User>())
     .Where(u => u.IsActive && u.CreatedDate > DateTime.Now.AddDays(-30))
     .Select(u => new { u.Id, u.Email })
     .ToListAsync();
 
 // ❌ Avoid - loading full objects when only emails needed
-var users = await graph.Nodes<User>()
+var users = await (await graph.NodesAsync<User>())
     .Where(u => u.IsActive)
     .ToListAsync();
 var emails = users.Select(u => u.Email).ToList();
@@ -49,7 +49,7 @@ var emails = users.Select(u => u.Email).ToList();
 
 ```csharp
 // ✅ Good - depth-limited traversal
-var nearbyFriends = await graph.Nodes<User>()
+var nearbyFriends = await (await graph.NodesAsync<User>())
     .Where(u => u.Id == userId)
     .Traverse<Person, FriendOf, Person>()
     .WithDepth(1, 2)  // Limit to 2 degrees of separation
@@ -57,7 +57,7 @@ var nearbyFriends = await graph.Nodes<User>()
     .ToListAsync();
 
 // ❌ Avoid - unlimited depth traversal
-var allConnections = await graph.Nodes<User>()
+var allConnections = await (await graph.NodesAsync<User>())
     .Where(u => u.Id == userId)
     .Traverse<Person, FriendOf, Person>()  // By default, Traverse() only traverses 1 hop
     .WithDepth(1, 100) // Large depth limit
@@ -71,14 +71,14 @@ var allConnections = await graph.Nodes<User>()
 var pageSize = 100;
 var page = 0;
 
-var users = await graph.Nodes<User>()
+var users = await (await graph.NodesAsync<User>())
     .OrderBy(u => u.CreatedDate)
     .Skip(page * pageSize)
     .Take(pageSize)
     .ToListAsync();
 
 // For very large datasets, consider cursor-based pagination
-var users = await graph.Nodes<User>()
+var users = await (await graph.NodesAsync<User>())
     .Where(u => u.CreatedDate > lastSeenDate)
     .OrderBy(u => u.CreatedDate)
     .Take(pageSize)
@@ -166,7 +166,7 @@ var graph = new Neo4jGraph(connectionString, username, password, loggerFactory);
 
 // Time critical operations
 var stopwatch = Stopwatch.StartNew();
-var results = await graph.Nodes<User>().Where(u => u.Email == email).ToListAsync();
+var results = await (await graph.NodesAsync<User>()).Where(u => u.Email == email).ToListAsync();
 stopwatch.Stop();
 
 if (stopwatch.ElapsedMilliseconds > 1000)
@@ -182,14 +182,14 @@ if (stopwatch.ElapsedMilliseconds > 1000)
 using var graph = new Neo4jGraph(connectionString, username, password);
 
 // ✅ Good - use streaming for large datasets
-await foreach (var user in graph.Nodes<User>().AsAsyncEnumerable())
+await foreach (var user in (await graph.NodesAsync<User>()).AsAsyncEnumerable())
 {
     // Process one at a time instead of loading all into memory
     ProcessUser(user);
 }
 
 // ❌ Avoid - loading huge datasets into memory
-var allUsers = await graph.Nodes<User>().ToListAsync();  // Could use lots of RAM
+var allUsers = await (await graph.NodesAsync<User>()).ToListAsync();  // Could use lots of RAM
 ```
 
 ## 🎛️ Configuration Tuning
@@ -231,7 +231,7 @@ public async Task<User> GetUserAsync(string userId)
         return cachedUser;
     }
 
-    var user = await graph.Nodes<User>()
+    var user = await (await graph.NodesAsync<User>())
         .Where(u => u.Id == userId)
         .FirstOrDefaultAsync();
 
@@ -295,14 +295,14 @@ RETURN ...
 // ❌ Avoid - Loading related data in loops (N+1 problem)
 foreach (var user in users)
 {
-    user.Friends = await graph.Relationships<FriendOf>()
+    user.Friends = await (await graph.RelationshipsAsync<FriendOf>())
         .Where(f => f.SourceId == user.Id)
         .ToListAsync();
 }
 
 // ✅ Better - Load related data in batch
 var userIds = users.Select(u => u.Id).ToList();
-var friendships = await graph.Relationships<FriendOf>()
+var friendships = await (await graph.RelationshipsAsync<FriendOf>())
     .Where(f => userIds.Contains(f.SourceId))
     .ToListAsync();
 ```
@@ -327,7 +327,7 @@ public class GraphModelBenchmarks
     [Benchmark]
     public async Task<List<User>> QueryUsers()
     {
-        return await _graph.Nodes<User>()
+        return await (await _graph.NodesAsync<User>())
             .Where(u => u.IsActive)
             .Take(1000)
             .ToListAsync();
@@ -526,7 +526,7 @@ public class MyCustomBenchmark
     public async Task<int> MyOperation()
     {
         // Your benchmark code here
-        return await _graph.Nodes<MyNode>().CountAsync();
+        return await (await _graph.NodesAsync<MyNode>()).CountAsync();
     }
 
     [GlobalCleanup]

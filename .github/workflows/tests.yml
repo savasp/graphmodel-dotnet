@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
-    
+    - uses: actions/checkout@v4
+
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
     
@@ -23,20 +23,18 @@ jobs:
 
     - name: Restore dependencies
       run: dotnet restore
-      working-directory: .
     
     - name: Set up local feed
       run: dotnet build --configuration LocalFeed --no-restore
-      working-directory: .
 
     - name: Build
       run: dotnet build --no-restore --configuration Release
-      working-directory: .
     
+    - name: Test Core
+      run: dotnet test --project tests/Graph.Model.Tests/Graph.Model.Tests.csproj --no-build --configuration Release --verbosity normal
+
     - name: Test Analyzers
       run: dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj --no-build --configuration Release --verbosity normal
-      
+
     - name: Test Neo4j Provider
-      env:
-        USE_NEO4J_CONTAINERS: true
       run: dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj --no-build --configuration Release --verbosity normal

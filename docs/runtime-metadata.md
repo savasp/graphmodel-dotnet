@@ -47,12 +47,12 @@ public interface INode : IEntity
 
 ```csharp
 // Query nodes and filter by runtime labels
-var adminUsers = graph.Nodes<User>()
+var adminUsers = (await graph.NodesAsync<User>())
     .Where(u => u.Labels.Contains("Admin"))
     .ToList();
 
 // Filter in path traversal
-var query = graph.Nodes<User>()
+var query = (await graph.NodesAsync<User>())
     .Where(u => u.Id == userId)
     .PathSegments<User, IRelationship, INode>()
     .Where(ps => ps.EndNode.Labels.Contains("Memory"))
@@ -97,14 +97,14 @@ public interface IRelationship : IEntity
 
 ```csharp
 // Filter relationships by type in path traversal
-var query = graph.Nodes<User>()
+var query = (await graph.NodesAsync<User>())
     .Where(u => u.Id == userId)
     .PathSegments<User, UserMemory, Memory>()
     .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == "REMEMBERS")
     .ToList();
 
 // Filter polymorphic relationships
-var adminRelationships = graph.Relationships<IRelationship>()
+var adminRelationships = (await graph.RelationshipsAsync<IRelationship>())
     .Where(r => r.Type.StartsWith("ADMIN_"))
     .ToList();
 ```

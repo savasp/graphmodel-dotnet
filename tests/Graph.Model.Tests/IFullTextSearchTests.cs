@@ -31,7 +31,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
 
         // Search for "John"
-        var results = await this.Graph.SearchNodes<Person>("John").ToListAsync(TestContext.Current.CancellationToken);
+        var results = await (await this.Graph.SearchNodesAsync<Person>("John")).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(results);
         Assert.Equal("John", results[0].FirstName);
@@ -61,7 +61,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
 
         // Search for "cloud" - this should find Alice and load her complex Address property
-        var results = await this.Graph.SearchNodes<PersonWithComplexProperties>("cloud").ToListAsync(TestContext.Current.CancellationToken);
+        var results = await (await this.Graph.SearchNodesAsync<PersonWithComplexProperties>("cloud")).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(results);
         var foundPerson = results[0];
@@ -95,7 +95,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(friendship, null, TestContext.Current.CancellationToken);
 
         // Search for "college"
-        var results = await this.Graph.SearchRelationships<KnowsWell>("college").ToListAsync(TestContext.Current.CancellationToken);
+        var results = await (await this.Graph.SearchRelationshipsAsync<KnowsWell>("college")).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(results);
         Assert.Contains("college", results[0].HowWell);
@@ -121,7 +121,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
 
         // Search for "SearchUser" across all entities
-        var results = await this.Graph.Search("SearchUser").ToListAsync(TestContext.Current.CancellationToken);
+        var results = await (await this.Graph.SearchAsync("SearchUser")).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.True(results.Count >= 1, "Should find at least one entity containing 'SearchUser'");
         Assert.True(results.Any(e => e is INode), "Should find node entities");
@@ -138,7 +138,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
 
         // Search using generic INode interface
-        var results = await this.Graph.SearchNodes("Wonder").ToListAsync(TestContext.Current.CancellationToken);
+        var results = await (await this.Graph.SearchNodesAsync("Wonder")).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(results);
         Assert.IsType<Person>(results[0]);
@@ -166,7 +166,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
 
         // Search using generic IRelationship interface
-        var results = await this.Graph.SearchRelationships("unique_search_term_12345").ToListAsync(TestContext.Current.CancellationToken);
+        var results = await (await this.Graph.SearchRelationshipsAsync("unique_search_term_12345")).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(results);
         Assert.IsType<KnowsWell>(results[0]);
@@ -182,7 +182,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Search for something that doesn't exist
-        var results = await this.Graph.SearchNodes<Person>("NonExistentTerm").ToListAsync(TestContext.Current.CancellationToken);
+        var results = await (await this.Graph.SearchNodesAsync<Person>("NonExistentTerm")).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(results);
     }
@@ -195,9 +195,9 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Search with different cases
-        var lowerResults = await this.Graph.SearchNodes<Person>("casesensitive").ToListAsync(TestContext.Current.CancellationToken);
-        var upperResults = await this.Graph.SearchNodes<Person>("CASESENSITIVE").ToListAsync(TestContext.Current.CancellationToken);
-        var mixedResults = await this.Graph.SearchNodes<Person>("CaseSensitive").ToListAsync(TestContext.Current.CancellationToken);
+        var lowerResults = await (await this.Graph.SearchNodesAsync<Person>("casesensitive")).ToListAsync(TestContext.Current.CancellationToken);
+        var upperResults = await (await this.Graph.SearchNodesAsync<Person>("CASESENSITIVE")).ToListAsync(TestContext.Current.CancellationToken);
+        var mixedResults = await (await this.Graph.SearchNodesAsync<Person>("CaseSensitive")).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(lowerResults);
         Assert.Single(upperResults);
@@ -217,7 +217,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
 
         // Search with where clause
-        var results = await this.Graph.SearchNodes<Person>("John").Where(p => p.Age > 25).ToListAsync(TestContext.Current.CancellationToken);
+        var results = await (await this.Graph.SearchNodesAsync<Person>("John")).Where(p => p.Age > 25).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(results);
         Assert.Equal(person.Id, results[0].Id);
@@ -233,7 +233,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
 
         // Search with where clause and multiple properties
-        var results = await this.Graph.SearchNodes<Person>("John").Where(p => p.Age > 25 && p.LastName == "Doe").ToListAsync(TestContext.Current.CancellationToken);
+        var results = await (await this.Graph.SearchNodesAsync<Person>("John")).Where(p => p.Age > 25 && p.LastName == "Doe").ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(results);
         Assert.Equal(person.Id, results[0].Id);
@@ -247,7 +247,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Search with select clause
-        var results = await this.Graph.SearchNodes<Person>("John").Select(p => p.LastName).ToListAsync(TestContext.Current.CancellationToken);
+        var results = await (await this.Graph.SearchNodesAsync<Person>("John")).Select(p => p.LastName).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(results);
         Assert.Equal("Doe", results[0]);
@@ -266,7 +266,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
 
         // Search in LINQ chain
-        var results = await this.Graph.Nodes<Person>()
+        var results = await (await this.Graph.NodesAsync<Person>())
             .Where(p => p.Age > 20)
             .Search("cloud computing")
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -306,7 +306,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(userMemory2, null, TestContext.Current.CancellationToken);
 
         // Search in path segments chain
-        var results = await this.Graph.Nodes<Person>()
+        var results = await (await this.Graph.NodesAsync<Person>())
             .Where(u => u.Id == user.Id)
             .PathSegments<Person, KnowsWell, Person>()
             .Select(p => p.EndNode)
@@ -331,7 +331,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
 
         // Search with multiple conditions
-        var results = await this.Graph.Nodes<Person>()
+        var results = await (await this.Graph.NodesAsync<Person>())
             .Where(p => p.Age > 25)
             .Search("engineer")
             .Where(p => p.FirstName.StartsWith("A"))
@@ -350,7 +350,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Search with select projection
-        var results = await this.Graph.Nodes<Person>()
+        var results = await (await this.Graph.NodesAsync<Person>())
             .Search("cloud computing")
             .Select(p => new { p.FirstName, p.Bio })
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -368,7 +368,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Search for something that doesn't exist
-        var results = await this.Graph.Nodes<Person>()
+        var results = await (await this.Graph.NodesAsync<Person>())
             .Where(p => p.Age > 20)
             .Search("NonExistentTerm")
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -384,15 +384,15 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Search with different cases
-        var lowerResults = await this.Graph.Nodes<Person>()
+        var lowerResults = await (await this.Graph.NodesAsync<Person>())
             .Search("cloud computing")
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var upperResults = await this.Graph.Nodes<Person>()
+        var upperResults = await (await this.Graph.NodesAsync<Person>())
             .Search("CLOUD COMPUTING")
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var mixedResults = await this.Graph.Nodes<Person>()
+        var mixedResults = await (await this.Graph.NodesAsync<Person>())
             .Search("Cloud Computing")
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -414,10 +414,10 @@ public interface IFullTextSearchTests : IGraphModelTest
         var manager = new Manager { FirstName = "Alice", LastName = "Builder", Bio = "Manager with expertise in project management", Department = "Construction" };
         await this.Graph.CreateNodeAsync(manager, null, TestContext.Current.CancellationToken);
 
-        var personInDepartment = await this.Graph.SearchNodes<Person>("Construction").ToListAsync(TestContext.Current.CancellationToken);
+        var personInDepartment = await (await this.Graph.SearchNodesAsync<Person>("Construction")).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(personInDepartment);
 
-        var personCalledAlice = await this.Graph.SearchNodes<Person>("Alice").ToListAsync(TestContext.Current.CancellationToken);
+        var personCalledAlice = await (await this.Graph.SearchNodesAsync<Person>("Alice")).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, personCalledAlice.Count);
         Assert.Contains(personCalledAlice, p => p.LastName == "Wonder" && p is Person);
         Assert.Contains(personCalledAlice, p => p.LastName == "Builder" && p is Manager);
@@ -430,7 +430,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Should find node when searching for property value
-        var found = await this.Graph.SearchNodes<DynamicNode>("Wonder").ToListAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var found = await (await this.Graph.SearchNodesAsync<DynamicNode>("Wonder")).ToListAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Single(found);
         Assert.Equal(person.FirstName, found[0].Properties["FirstName"]);
         Assert.Equal(person.LastName, found[0].Properties["LastName"]);
@@ -452,7 +452,7 @@ public interface IFullTextSearchTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
 
         // Should find relationship when searching for property value
-        var found = await this.Graph.SearchRelationships<DynamicRelationship>("Good friends").ToListAsync(TestContext.Current.CancellationToken);
+        var found = await (await this.Graph.SearchRelationshipsAsync<DynamicRelationship>("Good friends")).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(found);
         Assert.Equal("Good friends", found[0].Properties["HowWell"]);
     }

@@ -112,7 +112,7 @@ try
     Console.WriteLine("3. Querying polymorphic content...");
 
     // Query all content (base type)
-    var allContent = graph.Nodes<Content>().ToList();
+    var allContent = (await graph.NodesAsync<Content>()).ToList();
     Console.WriteLine($"Total content items: {allContent.Count}");
     foreach (var content in allContent)
     {
@@ -120,7 +120,7 @@ try
     }
 
     // Query specific types
-    var articles = graph.Nodes<Article>()
+    var articles = (await graph.NodesAsync<Article>())
         .Where(a => a.WordCount > 1000)
         .ToList();
 
@@ -134,7 +134,7 @@ try
     Console.WriteLine("\n4. Basic graph traversal...");
 
     // Find content with tags
-    var taggedContent = await graph.Nodes<Content>()
+    var taggedContent = await (await graph.NodesAsync<Content>())
         .PathSegments<Content, TaggedWith, Tag>()
         .ToListAsync();
 
@@ -148,7 +148,7 @@ try
     Console.WriteLine("\n5. Aggregation and statistics...");
 
     // Group content by author
-    var contentByAuthor = graph.Nodes<Content>()
+    var contentByAuthor = (await graph.NodesAsync<Content>())
         .GroupBy(c => c.Author)
         .Select(g => new { Author = g.Key, Count = g.Count() })
         .ToList();
@@ -160,9 +160,9 @@ try
     }
 
     // Find most viewed video
-    var mostViewedVideo = graph.Nodes<Video>()
+    var mostViewedVideo = await (await graph.NodesAsync<Video>())
         .OrderByDescending(v => v.Views)
-        .FirstOrDefault();
+        .FirstOrDefaultAsync();
 
     if (mostViewedVideo != null)
     {
@@ -173,7 +173,7 @@ try
     Console.WriteLine("\n6. Conditional updates based on content properties...");
 
     // Update view count for popular videos
-    var popularVideos = graph.Nodes<Video>()
+    var popularVideos = (await graph.NodesAsync<Video>())
         .Where(v => v.Views > 10000)
         .ToList();
 

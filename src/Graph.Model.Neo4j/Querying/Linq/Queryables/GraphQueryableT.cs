@@ -21,7 +21,7 @@ using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 
 internal sealed class GraphQueryable<T> : GraphQueryableBase<T>, IGraphQueryable<T>, IOrderedGraphQueryable<T>
 {
-    public GraphQueryable(GraphQueryProvider provider, GraphContext context, GraphTransaction transaction, Expression expression)
+    public GraphQueryable(GraphQueryProvider provider, GraphContext context, GraphTransaction? transaction, Expression expression)
         : base(typeof(T), provider, context, transaction, expression)
     {
     }

@@ -63,7 +63,7 @@ try
     // ==== SUCCESSFUL TRANSACTION ====
     Console.WriteLine("2. Successful money transfer...");
 
-    using (var transaction = await graph.GetTransactionAsync())
+    await using (var transaction = await graph.GetTransactionAsync())
     {
         try
         {
@@ -110,7 +110,7 @@ try
     // ==== FAILED TRANSACTION (ROLLBACK) ====
     Console.WriteLine("3. Failed transaction with rollback...");
 
-    using (var transaction = await graph.GetTransactionAsync())
+    await using (var transaction = await graph.GetTransactionAsync())
     {
         try
         {
@@ -151,7 +151,7 @@ try
     // ==== COMPLEX TRANSACTION ====
     Console.WriteLine("4. Complex transaction with multiple operations...");
 
-    using (var transaction = await graph.GetTransactionAsync())
+    await using (var transaction = await graph.GetTransactionAsync())
     {
         try
         {
@@ -209,7 +209,7 @@ try
     // ==== TRANSACTION HISTORY ====
     Console.WriteLine("\n5. Transaction history...");
 
-    var transfers = await graph.Nodes<Account>()
+    var transfers = await (await graph.NodesAsync<Account>())
         .PathSegments<Account, Transfer, Account>()
         .ToListAsync();
 
