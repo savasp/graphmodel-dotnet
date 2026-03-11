@@ -10,6 +10,8 @@ Thank you for your interest in contributing to GraphModel! This document provide
 - Docker (for running Neo4j tests)
 - Git
 
+For AI coding agents and automation, see [CLAUDE.md](CLAUDE.md) at the repo root for project context, build, and test commands.
+
 ### Development Setup
 
 1. **Clone the repository**

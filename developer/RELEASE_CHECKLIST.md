@@ -106,8 +106,7 @@ This checklist ensures GraphModel is ready for public release with proper qualit
   - [ ] macOS
   - [ ] Linux
 - [ ] **Test with different .NET versions**
-  - [ ] .NET 8.0
-  - [ ] .NET 9.0 (if available)
+  - [ ] .NET 10.0
 
 ### User Experience Testing
 

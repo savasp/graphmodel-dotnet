@@ -472,7 +472,7 @@ The performance workflow runs:
 - Uses .NET 10 runtime for latest performance optimizations
 - Uses **Benchmark** configuration for optimal performance with project references
 - Benchmarks run on the host process runtime (.NET 10) for accurate performance measurement
-- GraphModel supports both .NET 9 and .NET 10 for production use
+- GraphModel targets .NET 10 for production use
 
 ## 📈 Interpreting Results
 

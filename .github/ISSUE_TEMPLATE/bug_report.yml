@@ -115,7 +115,7 @@ body:
       description: "Information about your environment"
       value: |
         - **OS**: [e.g. Windows 11, macOS 14, Ubuntu 22.04]
-        - **.NET Version**: [e.g. .NET 8.0]
+        - **.NET Version**: [e.g. .NET 10.0]
         - **Neo4j Version**: [e.g. 5.15.0]
         - **IDE**: [e.g. Visual Studio 2022, VS Code, Rider]
     validations:
