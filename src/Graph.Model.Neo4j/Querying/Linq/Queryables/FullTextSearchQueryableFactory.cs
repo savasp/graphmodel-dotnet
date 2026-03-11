@@ -24,7 +24,7 @@ internal static class FullTextSearchQueryableFactory
 {
     public static GraphQueryable<T> CreateSearchQueryable<T>(
         GraphQueryProvider provider,
-        GraphTransaction transaction,
+        GraphTransaction? transaction,
         GraphContext context,
         string searchQuery)
     {
@@ -34,7 +34,7 @@ internal static class FullTextSearchQueryableFactory
 
     public static GraphNodeQueryable<T> CreateNodeSearchQueryable<T>(
         GraphQueryProvider provider,
-        GraphTransaction transaction,
+        GraphTransaction? transaction,
         GraphContext context,
         string searchQuery)
         where T : INode
@@ -45,7 +45,7 @@ internal static class FullTextSearchQueryableFactory
 
     public static GraphRelationshipQueryable<T> CreateRelationshipSearchQueryable<T>(
         GraphQueryProvider provider,
-        GraphTransaction transaction,
+        GraphTransaction? transaction,
         GraphContext context,
         string searchQuery)
         where T : IRelationship

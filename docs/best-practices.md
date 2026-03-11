@@ -60,7 +60,7 @@ The `Labels` property on `INode` and `Type` property on `IRelationship` are **ru
 
 ```csharp
 // Querying with runtime metadata
-var query = graph.Nodes<User>()
+var query = (await graph.NodesAsync<User>())
     .Where(u => u.Id == userId)
     .PathSegments<User, UserMemory, Memory>()
     .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == relationshipType); // Using runtime Type property
@@ -153,7 +153,7 @@ public class WorkedAt : IRelationship<Person, Company>
 
 ```csharp
 // Good: Only fetch required fields
-var names = graph.Nodes<Person>()
+var names = (await graph.NodesAsync<Person>())
     .Where(p => p.Department == "Sales")
     .Select(p => new { p.FirstName, p.LastName })
     .ToList();
@@ -163,7 +163,7 @@ var names = graph.Nodes<Person>()
 
 ```csharp
 // Avoid: Fetching entire entities
-var people = graph.Nodes<Person>()
+var people = (await graph.NodesAsync<Person>())
     .Where(p => p.Department == "Sales")
     .ToList();
 var names = people.Select(p => p.FirstName); // Inefficient
@@ -175,7 +175,7 @@ var names = people.Select(p => p.FirstName); // Inefficient
 
 ```csharp
 // Good: Filter at the database level
-var results = graph.Nodes<Order>()
+var results = (await graph.NodesAsync<Order>())
     .Where(o => o.Status == "Pending" && o.Amount > 1000)
     .Take(10)
     .ToList();
@@ -185,7 +185,7 @@ var results = graph.Nodes<Order>()
 
 ```csharp
 // Avoid: Filtering in memory
-var allOrders = graph.Nodes<Order>().ToList();
+var allOrders = (await graph.NodesAsync<Order>()).ToList();
 var results = allOrders
     .Where(o => o.Status == "Pending" && o.Amount > 1000)
     .Take(10);
@@ -198,7 +198,7 @@ var results = allOrders
 ```csharp
 // Good: Load only what you need
 var options = new GraphOperationOptions { TraversalDepth = 1 };
-var peopleWithFriends = graph.Nodes<Person>(options)
+var peopleWithFriends = (await graph.NodesAsync<Person>(options))
     .Where(p => p.City == "Seattle")
     .ToList();
 ```
@@ -208,7 +208,7 @@ var peopleWithFriends = graph.Nodes<Person>(options)
 ```csharp
 // Avoid: Loading too much data
 var options = new GraphOperationOptions { TraversalDepth = -1 }; // Unlimited
-var everyone = graph.Nodes<Person>(options).ToList(); // May be huge!
+var everyone = (await graph.NodesAsync<Person>(options)).ToList(); // May be huge!
 ```
 
 ## Transaction Management
@@ -258,7 +258,7 @@ public async Task<bool> SafeCreatePerson(Person person)
         await using var tx = await graph.BeginTransaction();
 
         // Check for duplicates
-        var existing = graph.Nodes<Person>(transaction: tx)
+        var existing = (await graph.NodesAsync<Person>(transaction: tx))
             .FirstOrDefault(p => p.Email == person.Email);
 
         if (existing != null)
@@ -311,7 +311,7 @@ public async Task ImportPeople(List<PersonData> peopleData)
 
 ```csharp
 // Good: Direct relationship query
-var knows = graph.Relationships<Knows>()
+var knows = (await graph.RelationshipsAsync<Knows>())
     .Where(k => k.StartNodeId == personId || k.EndNodeId == personId)
     .ToList();
 ```
@@ -320,7 +320,7 @@ var knows = graph.Relationships<Knows>()
 
 ```csharp
 // Avoid: Inefficient relationship discovery
-var allPeople = graph.Nodes<Person>(new GraphOperationOptions { TraversalDepth = 1 })
+var allPeople = (await graph.NodesAsync<Person>(new GraphOperationOptions { TraversalDepth = 1 }))
     .ToList();
 var personRelationships = allPeople
     .First(p => p.Id == personId)
@@ -413,7 +413,7 @@ public async Task Transaction_RollsBackOnError()
     await tx.Rollback();
 
     // Verify person wasn't created
-    var exists = graph.Nodes<Person>()
+    var exists = (await graph.NodesAsync<Person>())
         .Any(p => p.FirstName == "Test");
     Assert.False(exists);
 }
@@ -452,7 +452,7 @@ public async Task<Person> CreatePerson(PersonInput input)
 public async Task<IEnumerable<Document>> GetUserDocuments(string userId)
 {
     // Only return documents the user has access to
-    return graph.Nodes<Document>()
+    return (await graph.NodesAsync<Document>())
         .Where(d => d.OwnerId == userId || d.IsPublic)
         .ToList();
 }

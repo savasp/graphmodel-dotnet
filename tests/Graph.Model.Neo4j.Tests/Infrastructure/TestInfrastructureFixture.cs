@@ -92,8 +92,20 @@ public class TestInfrastructureFixture : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        logger.LogDebug("Disposing database pool and test infrastructure");
-        await testInfrastructure.DisposeAsync();
+        logger.LogDebug("Disposing test infrastructure fixture");
+
+        // Release the database back to the pool so other test classes can use it
+        if (cachedDatabaseName != null && databasePool != null)
+        {
+            if (cachedStore != null)
+            {
+                await cachedStore.DisposeAsync();
+                cachedStore = null;
+            }
+
+            await databasePool.ReleaseDatabaseAsync(cachedDatabaseName);
+            cachedDatabaseName = null;
+        }
     }
 
     public async Task<IGraph> GetGraph(bool getNewDatabase)

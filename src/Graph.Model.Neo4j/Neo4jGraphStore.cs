@@ -91,8 +91,7 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
         Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
     {
         ArgumentNullException.ThrowIfNull(driver, nameof(driver));
-        _databaseName = databaseName;
-        _databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
+        _databaseName = databaseName ?? Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
         _driver = driver;
         _ownsDriver = false; // This constructor receives an external driver, don't dispose it
         _schemaRegistry = schemaRegistry ?? new SchemaRegistry();
@@ -113,7 +112,7 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     /// </remarks>
     public static async Task CreateDatabaseIfNotExistsAsync(IDriver driver, string databaseName)
     {
-        using var session = driver.AsyncSession(o => o.WithDatabase("system"));
+        await using var session = driver.AsyncSession(o => o.WithDatabase("system"));
         var result = await session.RunAsync($"CREATE DATABASE `{databaseName}` IF NOT EXISTS");
         await result.ConsumeAsync();
     }

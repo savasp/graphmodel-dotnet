@@ -94,7 +94,7 @@ public class RelationshipBenchmark
         _companies = companyFaker.Generate(50);
 
         // Create nodes
-        using var transaction = await _graph.GetTransactionAsync();
+        await using var transaction = await _graph.GetTransactionAsync();
         foreach (var person in _persons)
         {
             await _graph.CreateNodeAsync(person);
@@ -110,16 +110,16 @@ public class RelationshipBenchmark
     public async Task Cleanup()
     {
         // Clean up test data
-        using var transaction = await _graph.GetTransactionAsync();
+        await using var transaction = await _graph.GetTransactionAsync();
 
-        var relationships = await _graph.Relationships<WorksAt>().ToListAsync();
+        var relationships = await (await _graph.RelationshipsAsync<WorksAt>()).ToListAsync();
         foreach (var rel in relationships)
         {
             await _graph.DeleteRelationshipAsync(rel.Id);
         }
 
-        var allPersons = await _graph.Nodes<Person>().ToListAsync();
-        var allCompanies = await _graph.Nodes<Company>().ToListAsync();
+        var allPersons = await (await _graph.NodesAsync<Person>()).ToListAsync();
+        var allCompanies = await (await _graph.NodesAsync<Company>()).ToListAsync();
 
         foreach (var person in allPersons)
         {
@@ -183,7 +183,7 @@ public class RelationshipBenchmark
     {
         var person = _persons[_random.Next(_persons.Count)];
 
-        var companies = await _graph.Nodes<Person>()
+        var companies = await (await _graph.NodesAsync<Person>())
             .Where(p => p.Id == person.Id)
             .Traverse<Person, WorksAt, Company>()
             .ToListAsync();
@@ -194,7 +194,7 @@ public class RelationshipBenchmark
     {
         var company = _companies[_random.Next(_companies.Count)];
 
-        var employees = await _graph.Nodes<Company>()
+        var employees = await (await _graph.NodesAsync<Company>())
             .Where(c => c.Id == company.Id)
             .Traverse<Company, WorksAt, Person>()
             .ToListAsync();
@@ -204,7 +204,7 @@ public class RelationshipBenchmark
     public async Task ComplexTraversal()
     {
         // Find all people who work at companies in "Technology" industry
-        var techEmployees = await _graph.Nodes<Person>()
+        var techEmployees = await (await _graph.NodesAsync<Person>())
             .Where(p => p.FirstName.StartsWith("A"))
             .Traverse<Person, WorksAt, Company>()
             .Where(c => c.Industry.Contains("Technology"))

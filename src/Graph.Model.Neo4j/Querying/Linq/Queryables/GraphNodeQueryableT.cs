@@ -26,7 +26,7 @@ internal sealed class GraphNodeQueryable<TNode> :
     IOrderedGraphNodeQueryable<TNode>
     where TNode : INode
 {
-    public GraphNodeQueryable(GraphQueryProvider provider, GraphTransaction transaction, GraphContext graphContext)
+    public GraphNodeQueryable(GraphQueryProvider provider, GraphTransaction? transaction, GraphContext graphContext)
         : base(typeof(TNode), provider, graphContext, transaction, CreateRootExpression())
     {
     }
@@ -34,7 +34,7 @@ internal sealed class GraphNodeQueryable<TNode> :
     public GraphNodeQueryable(
         GraphQueryProvider provider,
         GraphContext graphContext,
-        GraphTransaction transaction,
+        GraphTransaction? transaction,
         Expression expression)
         : base(typeof(TNode), provider, graphContext, transaction, expression)
     {
@@ -63,5 +63,6 @@ internal sealed class GraphNodeQueryable<TNode> :
         public IEnumerator<T> GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
         IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
         public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) => throw new NotSupportedException("Placeholder queryable");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

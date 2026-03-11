@@ -181,7 +181,7 @@ try
 
     // ==== Search across all entities ====
     Console.WriteLine("🔍 Searching across ALL entities for 'British':");
-    var allBritishResults = await graph.Search("British").ToListAsync();
+    var allBritishResults = await (await graph.SearchAsync("British")).ToListAsync();
     Console.WriteLine($"Found {allBritishResults.Count} entities containing 'British':");
     foreach (var result in allBritishResults)
     {
@@ -199,7 +199,7 @@ try
 
     // ==== Search specific node types ====
     Console.WriteLine("🔍 Searching for Authors containing 'science':");
-    var scienceAuthors = await graph.SearchNodes<Author>("science").ToListAsync();
+    var scienceAuthors = await (await graph.SearchNodesAsync<Author>("science")).ToListAsync();
     Console.WriteLine($"Found {scienceAuthors.Count} authors:");
     foreach (var author in scienceAuthors)
     {
@@ -209,7 +209,7 @@ try
     Console.WriteLine();
 
     Console.WriteLine("🔍 Searching for Books containing 'adventure':");
-    var adventureBooks = await graph.SearchNodes<Book>("adventure").ToListAsync();
+    var adventureBooks = await (await graph.SearchNodesAsync<Book>("adventure")).ToListAsync();
     Console.WriteLine($"Found {adventureBooks.Count} books:");
     foreach (var book in adventureBooks)
     {
@@ -220,7 +220,7 @@ try
 
     // ==== Search relationships ====
     Console.WriteLine("🔍 Searching relationships for 'mathematical':");
-    var mathRelationships = await graph.SearchRelationships("mathematical").ToListAsync();
+    var mathRelationships = await (await graph.SearchRelationshipsAsync("mathematical")).ToListAsync();
     Console.WriteLine($"Found {mathRelationships.Count} relationships containing 'mathematical':");
     foreach (var rel in mathRelationships)
     {
@@ -236,7 +236,7 @@ try
 
     // ==== Search specific relationship types ====
     Console.WriteLine("🔍 Searching Wrote relationships for 'world-building':");
-    var worldBuildingWrites = await graph.SearchRelationships<Wrote>("world-building").ToListAsync();
+    var worldBuildingWrites = await (await graph.SearchRelationshipsAsync<Wrote>("world-building")).ToListAsync();
     Console.WriteLine($"Found {worldBuildingWrites.Count} writing relationships:");
     foreach (var wrote in worldBuildingWrites)
     {
@@ -247,7 +247,7 @@ try
 
     // ==== Search using generic interfaces ====
     Console.WriteLine("🔍 Searching all nodes for 'fantasy':");
-    var fantasyNodes = await graph.SearchNodes("fantasy").ToListAsync();
+    var fantasyNodes = await (await graph.SearchNodesAsync("fantasy")).ToListAsync();
     Console.WriteLine($"Found {fantasyNodes.Count} nodes:");
     foreach (var node in fantasyNodes)
     {
@@ -263,7 +263,7 @@ try
 
     // ==== Demonstrate case insensitivity ====
     Console.WriteLine("🔍 Demonstrating case-insensitive search for 'CHOCOLATE' (uppercase):");
-    var chocolateResults = await graph.SearchNodes<Book>("CHOCOLATE").ToListAsync();
+    var chocolateResults = await (await graph.SearchNodesAsync<Book>("CHOCOLATE")).ToListAsync();
     Console.WriteLine($"Found {chocolateResults.Count} books:");
     foreach (var book in chocolateResults)
     {
@@ -274,14 +274,14 @@ try
 
     // ==== Demonstrate property exclusion ====
     Console.WriteLine("🔍 Searching for 'Secret' (should NOT find anything because PersonalNotes is excluded):");
-    var secretResults = await graph.Search("Secret").ToListAsync();
+    var secretResults = await (await graph.SearchAsync("Secret")).ToListAsync();
     Console.WriteLine($"Found {secretResults.Count} entities containing 'Secret'");
     Console.WriteLine("(PersonalNotes with 'Secret information' is excluded from search using [Property(IncludeInFullTextSearch = false)])");
 
     Console.WriteLine();
 
     Console.WriteLine("🔍 Searching for 'British' in author name/bio (should find results):");
-    var britishResults = await graph.SearchNodes<Author>("British").ToListAsync();
+    var britishResults = await (await graph.SearchNodesAsync<Author>("British")).ToListAsync();
     Console.WriteLine($"Found {britishResults.Count} authors:");
     foreach (var author in britishResults)
     {
@@ -292,14 +292,14 @@ try
 
     // ==== Search with no results ====
     Console.WriteLine("🔍 Searching for non-existent term 'Klingon':");
-    var klingonResults = await graph.Search("Klingon").ToListAsync();
+    var klingonResults = await (await graph.SearchAsync("Klingon")).ToListAsync();
     Console.WriteLine($"Found {klingonResults.Count} entities containing 'Klingon'");
 
     Console.WriteLine();
 
     // ==== Complex search terms ====
     Console.WriteLine("🔍 Searching for 'golden ticket' (multi-word search):");
-    var goldenTicketResults = await graph.SearchNodes<Book>("golden ticket").ToListAsync();
+    var goldenTicketResults = await (await graph.SearchNodesAsync<Book>("golden ticket")).ToListAsync();
     Console.WriteLine($"Found {goldenTicketResults.Count} books:");
     foreach (var book in goldenTicketResults)
     {
@@ -309,10 +309,10 @@ try
     Console.WriteLine("\n=== Full Text Search Demo Complete! ===");
 
     Console.WriteLine("\n📋 Summary of demonstrated features:");
-    Console.WriteLine("✓ Search across all entity types with Search(query)");
-    Console.WriteLine("✓ Search specific node types with SearchNodes<T>(query)");
-    Console.WriteLine("✓ Search specific relationship types with SearchRelationships<T>(query)");
-    Console.WriteLine("✓ Search using generic interfaces (SearchNodes, SearchRelationships)");
+    Console.WriteLine("✓ Search across all entity types with SearchAsync(query)");
+    Console.WriteLine("✓ Search specific node types with SearchNodesAsync<T>(query)");
+    Console.WriteLine("✓ Search specific relationship types with SearchRelationshipsAsync<T>(query)");
+    Console.WriteLine("✓ Search using generic interfaces (SearchNodesAsync, SearchRelationshipsAsync)");
     Console.WriteLine("✓ Case-insensitive searching");
     Console.WriteLine("✓ Property-level search exclusion with [Property(IncludeInFullTextSearch = false)]");
     Console.WriteLine("✓ Multi-word search terms");

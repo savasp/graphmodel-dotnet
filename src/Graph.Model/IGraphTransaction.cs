@@ -39,7 +39,7 @@ namespace Cvoya.Graph.Model;
 /// }
 /// </code>
 /// </example>
-public interface IGraphTransaction : IAsyncDisposable, IDisposable
+public interface IGraphTransaction : IAsyncDisposable
 {
     /// <summary>
     /// Commits the transaction, making all changes permanent.

@@ -77,7 +77,7 @@ TimeoutException: The request timed out after 30 seconds
 #### Problem: "No nodes found" when you expect results
 
 ```csharp
-var users = await graph.Nodes<User>().ToListAsync();
+var users = await (await graph.NodesAsync<User>()).ToListAsync();
 // Returns empty list when you expect data
 ```
 
@@ -234,13 +234,13 @@ TransientException: Deadlock detected
 
    ```csharp
    // ❌ Large depth - could traverse a large path of the graph
-   var connections = await graph.Nodes<User>()
+   var connections = await (await graph.NodesAsync<User>())
        .Traverse<User, FriendOf, User>()
        .WithDepth(1, 100)
        .ToListAsync();
 
    // ✅ Limited depth
-   var connections = await graph.Nodes<User>()
+   var connections = await (await graph.NodesAsync<User>())
        .Traverse<User, FriendOf, User>()
        .WithDepth(1, 3)  // Max 3 hops
        .ToListAsync();
@@ -254,7 +254,7 @@ TransientException: Deadlock detected
 
    ```csharp
    // ❌ Loading everything at once
-   var allUsers = await graph.Nodes<User>().ToListAsync();
+   var allUsers = await (await graph.NodesAsync<User>()).ToListAsync();
 
    // ✅ Paginated loading
    var pageSize = 1000;
@@ -262,7 +262,7 @@ TransientException: Deadlock detected
    List<User> batch;
    do
    {
-       batch = await graph.Nodes<User>()
+       batch = await (await graph.NodesAsync<User>())
            .OrderBy(u => u.Id)
            .Skip(page * pageSize)
            .Take(pageSize)
@@ -277,7 +277,7 @@ TransientException: Deadlock detected
 
 ```csharp
    // ✅ Process one at a time
-   await foreach (var user in graph.Nodes<User>().AsAsyncEnumerable())
+   await foreach (var user in (await graph.NodesAsync<User>()).AsAsyncEnumerable())
    {
        ProcessUser(user);
    }
@@ -341,7 +341,7 @@ public async Task<bool> TestConnection(string connectionString, string username,
     try
     {
         using var graph = new Neo4jGraph(connectionString, username, password);
-        await graph.Nodes<object>().Take(1).ToListAsync();
+        await (await graph.NodesAsync<object>()).Take(1).ToListAsync();
         return true;
     }
     catch (Exception ex)

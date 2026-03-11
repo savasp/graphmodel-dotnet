@@ -28,14 +28,16 @@ using Microsoft.Extensions.Logging.Abstractions;
 internal sealed class GraphQueryProvider : IGraphQueryProvider
 {
     private readonly GraphContext _graphContext;
-    private readonly GraphTransaction _transaction;
+    private readonly GraphTransaction? _transaction;
+    private readonly bool _isReadOnly;
     private readonly ILogger<GraphQueryProvider> _logger;
     private readonly CypherEngine _cypherEngine;
 
-    public GraphQueryProvider(GraphContext context, GraphTransaction transaction)
+    public GraphQueryProvider(GraphContext context, GraphTransaction? transaction, bool isReadOnly = false)
     {
         _graphContext = context ?? throw new ArgumentNullException(nameof(context));
-        _transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
+        _transaction = transaction;
+        _isReadOnly = isReadOnly;
         _logger = context.LoggerFactory?.CreateLogger<GraphQueryProvider>() ?? NullLogger<GraphQueryProvider>.Instance;
         _cypherEngine = new CypherEngine(context.EntityFactory, context.LoggerFactory);
     }
@@ -128,12 +130,9 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
 
         try
         {
-            // Use the transaction from the provider context
-            var transaction = _transaction;
-
             var result = await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
-                transaction,
+                _transaction,
                 tx =>
                 {
                     // Execute using the CypherEngine
@@ -143,7 +142,8 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
                         cancellationToken);
                 },
                 "Error executing query",
-                _logger);
+                _logger,
+                isReadOnly: _isReadOnly);
 
             return result!;
         }
@@ -157,7 +157,9 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
 
     private TResult ExecuteInternal<TResult>(Expression expression)
     {
-        return ExecuteAsync<TResult>(expression, CancellationToken.None)
+        // Use Task.Run to avoid SynchronizationContext deadlocks when sync callers
+        // (e.g. IQueryable.GetEnumerator / .ToList()) block on async execution.
+        return Task.Run(() => ExecuteAsync<TResult>(expression, CancellationToken.None))
             .GetAwaiter()
             .GetResult();
     }

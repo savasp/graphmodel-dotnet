@@ -24,9 +24,10 @@ internal static class TransactionHelpers
         IGraphTransaction? transaction,
         Func<GraphTransaction, Task<T>> function,
         string errorMessage,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        bool isReadOnly = false)
     {
-        var tx = await GetOrCreateTransactionAsync(graphContext, transaction);
+        var tx = await GetOrCreateTransactionAsync(graphContext, transaction, isReadOnly);
 
         try
         {

@@ -127,14 +127,6 @@ internal class GraphTransaction : IGraphTransaction
         }
     }
 
-    /// <summary>
-    /// Disposes the transaction synchronously.
-    /// </summary>
-    public void Dispose()
-    {
-        DisposeAsync().GetAwaiter().GetResult();
-    }
-
     internal async Task BeginTransactionAsync()
     {
         _logger.LogDebug("Beginning new transaction");

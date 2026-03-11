@@ -37,6 +37,7 @@ fi
 
 # Always strip any .YYYYMMDD.rev from SEMVER in case user pasted a full version string
 SEMVER=$(echo "$SEMVER" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
+SEMVER=$(echo "$SEMVER" | sed -E 's/\.[0-9]{8}\.[0-9]+.*$//')
 
 if [ -z "$SEMVER" ]; then
     echo -e "${RED}❌ Semantic version cannot be empty${NC}"

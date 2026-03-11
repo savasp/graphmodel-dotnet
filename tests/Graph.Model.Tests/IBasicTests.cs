@@ -106,7 +106,7 @@ public interface IBasicTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         var ids = new[] { p1.Id, p2.Id };
-        var fetched = await this.Graph.Nodes<Person>().Where(x => ids.Contains(x.Id)).ToListAsync(TestContext.Current.CancellationToken);
+        var fetched = await (await this.Graph.NodesAsync<Person>()).Where(x => ids.Contains(x.Id)).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, ((ICollection<Person>)fetched).Count);
         Assert.Contains(fetched, x => x.Id == p1.Id);
         Assert.Contains(fetched, x => x.Id == p2.Id);
@@ -125,7 +125,7 @@ public interface IBasicTests : IGraphModelTest
         var knows2 = new Knows { StartNodeId = p2.Id, EndNodeId = p3.Id, Since = DateTime.UtcNow };
         await this.Graph.CreateRelationshipAsync(knows1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateRelationshipAsync(knows2, null, TestContext.Current.CancellationToken);
-        var rels = await this.Graph.Relationships<Knows>()
+        var rels = await (await this.Graph.RelationshipsAsync<Knows>())
             .Where(r => r.StartNodeId == p1.Id || r.StartNodeId == p2.Id)
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, rels.Count);
@@ -207,16 +207,16 @@ public interface IBasicTests : IGraphModelTest
     }
 
     [Fact]
-    public void CanQueryNodesLinq()
+    public async Task CanQueryNodesLinq()
     {
-        var queryable = this.Graph.Nodes<Person>();
+        var queryable = await this.Graph.NodesAsync<Person>();
         Assert.NotNull(queryable);
     }
 
     [Fact]
-    public void CanCreateRelationshipsQuery()
+    public async Task CanCreateRelationshipsQuery()
     {
-        var queryable = this.Graph.Relationships<Knows>();
+        var queryable = await this.Graph.RelationshipsAsync<Knows>();
         Assert.NotNull(queryable);
     }
 
@@ -242,10 +242,10 @@ public interface IBasicTests : IGraphModelTest
 
         await this.Graph.CreateNodeAsync(memory, null, TestContext.Current.CancellationToken);
 
-        var memories = await this.Graph.Nodes<Memory>().ToListAsync(TestContext.Current.CancellationToken);
+        var memories = await (await this.Graph.NodesAsync<Memory>()).ToListAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(memories);
 
-        var retrievedMemory = await this.Graph.Nodes<Memory>()
+        var retrievedMemory = await (await this.Graph.NodesAsync<Memory>())
             .Where(m => m.Id == memory.Id)
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
 
@@ -268,7 +268,7 @@ public interface IBasicTests : IGraphModelTest
 
         await this.Graph.CreateNodeAsync(user, null, TestContext.Current.CancellationToken);
 
-        var fetchedUser = await this.Graph.Nodes<User>()
+        var fetchedUser = await (await this.Graph.NodesAsync<User>())
             .Where(u => u.Id == user.Id)
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
 

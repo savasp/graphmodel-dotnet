@@ -35,7 +35,7 @@ internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGrap
         Type elementType,
         GraphQueryProvider provider,
         GraphContext graphContext,
-        GraphTransaction transaction,
+        GraphTransaction? transaction,
         Expression expression)
     {
         ElementType = elementType;
@@ -46,6 +46,8 @@ internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGrap
     }
 
     protected GraphTransaction? Transaction => _transaction;
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     #region IQueryable Implementation
 

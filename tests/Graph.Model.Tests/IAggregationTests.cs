@@ -42,7 +42,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var totalAge = await Graph.Nodes<PersonWithNumbers>()
+        var totalAge = await (await Graph.NodesAsync<PersonWithNumbers>())
             .SumAsync(p => p.Age, TestContext.Current.CancellationToken);
 
         Assert.Equal(90, totalAge);
@@ -63,7 +63,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var totalSalary = await Graph.Nodes<PersonWithNumbers>()
+        var totalSalary = await (await Graph.NodesAsync<PersonWithNumbers>())
             .SumAsync(p => p.Salary, TestContext.Current.CancellationToken);
 
         Assert.Equal(225000L, totalSalary);
@@ -84,7 +84,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var totalNetWorth = await Graph.Nodes<PersonWithNumbers>()
+        var totalNetWorth = await (await Graph.NodesAsync<PersonWithNumbers>())
             .SumAsync(p => p.NetWorth, TestContext.Current.CancellationToken);
 
         Assert.Equal(850001.50m, totalNetWorth);
@@ -105,7 +105,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var totalHeight = await Graph.Nodes<PersonWithNumbers>()
+        var totalHeight = await (await Graph.NodesAsync<PersonWithNumbers>())
             .SumAsync(p => p.Height, TestContext.Current.CancellationToken);
 
         Assert.Equal(17.3, totalHeight, 1);
@@ -126,7 +126,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var totalWeight = await Graph.Nodes<PersonWithNumbers>()
+        var totalWeight = await (await Graph.NodesAsync<PersonWithNumbers>())
             .SumAsync(p => p.Weight, TestContext.Current.CancellationToken);
 
         Assert.Equal(466.5f, totalWeight, 1);
@@ -147,7 +147,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var averageAge = await Graph.Nodes<PersonWithNumbers>()
+        var averageAge = await (await Graph.NodesAsync<PersonWithNumbers>())
             .AverageAsync(p => p.Age, TestContext.Current.CancellationToken);
 
         Assert.Equal(30.0, averageAge, 1);
@@ -168,7 +168,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var averageSalary = await Graph.Nodes<PersonWithNumbers>()
+        var averageSalary = await (await Graph.NodesAsync<PersonWithNumbers>())
             .AverageAsync(p => p.Salary, TestContext.Current.CancellationToken);
 
         Assert.Equal(60000.0, averageSalary, 1);
@@ -189,7 +189,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var averageNetWorth = await Graph.Nodes<PersonWithNumbers>()
+        var averageNetWorth = await (await Graph.NodesAsync<PersonWithNumbers>())
             .AverageAsync(p => p.NetWorth, TestContext.Current.CancellationToken);
 
         Assert.Equal(200000.0, averageNetWorth);
@@ -211,7 +211,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var count = await Graph.Nodes<PersonWithNumbers>()
+        var count = await (await Graph.NodesAsync<PersonWithNumbers>())
             .CountAsync(TestContext.Current.CancellationToken);
 
         Assert.True(count >= 4); // May be more due to other tests
@@ -233,7 +233,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var adultCount = await Graph.Nodes<PersonWithNumbers>()
+        var adultCount = await (await Graph.NodesAsync<PersonWithNumbers>())
             .CountAsync(p => p.Age >= 30, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, adultCount);
@@ -255,7 +255,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var totalSalaryOver30 = await Graph.Nodes<PersonWithNumbers>()
+        var totalSalaryOver30 = await (await Graph.NodesAsync<PersonWithNumbers>())
             .Where(p => p.Age >= 30)
             .SumAsync(p => p.Salary, TestContext.Current.CancellationToken);
 
@@ -278,7 +278,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var averageHeightOver30 = await Graph.Nodes<PersonWithNumbers>()
+        var averageHeightOver30 = await (await Graph.NodesAsync<PersonWithNumbers>())
             .Where(p => p.Age >= 30)
             .AverageAsync(p => p.Height, TestContext.Current.CancellationToken);
 
@@ -288,7 +288,7 @@ public interface IAggregationTests : IGraphModelTest
     [Fact]
     public async Task SumEmptySet_ReturnsZero()
     {
-        var sum = await Graph.Nodes<PersonWithNumbers>()
+        var sum = await (await Graph.NodesAsync<PersonWithNumbers>())
             .Where(p => p.FirstName == "NonExistent")
             .SumAsync(p => p.Age, TestContext.Current.CancellationToken);
 
@@ -300,7 +300,7 @@ public interface IAggregationTests : IGraphModelTest
     {
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         {
-            await Graph.Nodes<PersonWithNumbers>()
+            await (await Graph.NodesAsync<PersonWithNumbers>())
                 .Where(p => p.FirstName == "NonExistent")
                 .AverageAsync(p => p.Age, TestContext.Current.CancellationToken);
         });
@@ -309,7 +309,7 @@ public interface IAggregationTests : IGraphModelTest
     [Fact]
     public async Task CountEmptySet_ReturnsZero()
     {
-        var count = await Graph.Nodes<PersonWithNumbers>()
+        var count = await (await Graph.NodesAsync<PersonWithNumbers>())
             .Where(p => p.FirstName == "NonExistent")
             .CountAsync(TestContext.Current.CancellationToken);
 
@@ -334,7 +334,7 @@ public interface IAggregationTests : IGraphModelTest
         }
 
         // Find average salary of people aged 30-50
-        var averageSalaryMiddleAged = await Graph.Nodes<PersonWithNumbers>()
+        var averageSalaryMiddleAged = await (await Graph.NodesAsync<PersonWithNumbers>())
             .Where(p => p.Age >= 30 && p.Age <= 50)
             .OrderBy(p => p.Age)
             .AverageAsync(p => p.Salary, TestContext.Current.CancellationToken);
@@ -358,7 +358,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
         }
 
-        var query = Graph.Nodes<PersonWithNumbers>()
+        var query = (await Graph.NodesAsync<PersonWithNumbers>())
             .Where(p => p.FirstName.Length > 3);
 
         var sum = await query.SumAsync(p => p.Age, TestContext.Current.CancellationToken);
@@ -387,7 +387,7 @@ public interface IAggregationTests : IGraphModelTest
             await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
         }
 
-        var sum = await Graph.Nodes<PersonWithNumbers>(transaction)
+        var sum = await (await Graph.NodesAsync<PersonWithNumbers>(transaction))
             .Where(p => p.FirstName == "Alice" || p.FirstName == "Bob")
             .SumAsync(p => p.Age, TestContext.Current.CancellationToken);
 

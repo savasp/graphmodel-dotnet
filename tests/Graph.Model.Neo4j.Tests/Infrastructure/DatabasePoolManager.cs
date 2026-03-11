@@ -31,20 +31,17 @@ public sealed class DatabasePoolManager : IAsyncDisposable
 
         lock (initLock)
         {
-            if (instanceTask == null)
-            {
-                instanceTask = CreateAsync(connectionString, username, password, loggerFactory, maxPoolSize);
-            }
+            instanceTask ??= CreateAsync(connectionString, username, password, loggerFactory, maxPoolSize);
         }
 
         return instanceTask;
     }
 
-    private static Task<DatabasePoolManager> CreateAsync(string connectionString, string username, string password, ILoggerFactory loggerFactory, int databaseCount)
+    private static async Task<DatabasePoolManager> CreateAsync(string connectionString, string username, string password, ILoggerFactory loggerFactory, int databaseCount)
     {
         var manager = new DatabasePoolManager(connectionString, username, password, loggerFactory, databaseCount);
-        _ = manager.SetupDatabasesAsync(); // don't wait for setup to complete
-        return Task.FromResult(manager);
+        await manager.SetupDatabasesAsync();
+        return manager;
     }
 
     // -- Instance definition --
@@ -56,7 +53,8 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     private readonly IDriver driver;
     private readonly ILogger<DatabasePoolManager> logger;
 
-    private BackgroundWorker worker;
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromMinutes(2);
+    private const int MaxSetupConcurrency = 4;
 
     private DatabasePoolManager(string connectionString, string username, string password, ILoggerFactory loggerFactory, int maxPoolSize)
     {
@@ -78,14 +76,11 @@ public sealed class DatabasePoolManager : IAsyncDisposable
 
         this.maxPoolSize = maxPoolSize;
         this.databasesAreAvailableSemaphore = new SemaphoreSlim(0, maxPoolSize);
-        this.worker = new BackgroundWorker(loggerFactory);
     }
 
     public async ValueTask DisposeAsync()
     {
         logger.LogDebug("Disposing DatabasePool");
-
-        await worker.DisposeAsync();
 
         // Drop all databases
         for (int i = 0; i < maxPoolSize; i++)
@@ -100,7 +95,13 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     public async Task<string> RequestDatabaseAsync()
     {
         logger.LogDebug("Requesting an available database from the pool");
-        await databasesAreAvailableSemaphore.WaitAsync();
+        if (!await databasesAreAvailableSemaphore.WaitAsync(RequestTimeout))
+        {
+            throw new TimeoutException(
+                $"Timed out after {RequestTimeout} waiting for an available database from the pool. " +
+                "This likely means databases are not being released back to the pool, or setup failed.");
+        }
+
         logger.LogDebug("A database is available, acquiring it");
         availableDatabases.TryDequeue(out var databaseName);
         if (databaseName != null)
@@ -114,14 +115,9 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     public async Task ReleaseDatabaseAsync(string databaseName)
     {
         logger.LogDebug("Releasing database {DatabaseName} back to the pool", databaseName);
-        await worker.Schedule(async () =>
-        {
-            await CreateOrReplaceDatabaseAsync(databaseName);
-            availableDatabases.Enqueue(databaseName);
-            // Let the semaphore know that a database is available
-            databasesAreAvailableSemaphore.Release();
-        });
-
+        await CleanDatabaseAsync(databaseName);
+        availableDatabases.Enqueue(databaseName);
+        databasesAreAvailableSemaphore.Release();
         logger.LogDebug("Database {DatabaseName} is now available in the pool", databaseName);
     }
 
@@ -132,45 +128,66 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     public async Task CleanDatabaseAsync(string databaseName)
     {
         ArgumentNullException.ThrowIfNull(databaseName, nameof(databaseName));
-        logger.LogDebug("Scheduling cleaning of database {DatabaseName}", databaseName);
-        await worker.Schedule(async () =>
-        {
-            logger.LogDebug("Cleaning database {DatabaseName}", databaseName);
-            await using var session = driver.AsyncSession(builder => builder.WithDatabase(databaseName));
-            var result = await session.RunAsync("MATCH (n) DETACH DELETE n");
-            await result.ConsumeAsync();
-            logger.LogDebug("Database {DatabaseName} cleaned successfully", databaseName);
-        });
+        logger.LogDebug("Cleaning database {DatabaseName}", databaseName);
+        await using var session = driver.AsyncSession(builder => builder.WithDatabase(databaseName));
+        var result = await session.RunAsync("MATCH (n) DETACH DELETE n");
+        await result.ConsumeAsync();
+        logger.LogDebug("Database {DatabaseName} cleaned successfully", databaseName);
     }
 
     private async Task SetupDatabasesAsync()
     {
-        logger.LogDebug("Setting up databases in the pool");
-        for (var i = 0; i < maxPoolSize; i++)
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        logger.LogInformation("Setting up {Count} databases in the pool (max concurrency: {Concurrency})", maxPoolSize, MaxSetupConcurrency);
+
+        // Use bounded parallelism to avoid exhausting the driver connection pool
+        using var concurrencyLimiter = new SemaphoreSlim(MaxSetupConcurrency);
+        int successCount = 0;
+        int failCount = 0;
+
+        var tasks = Enumerable.Range(0, maxPoolSize).Select(async i =>
         {
             var databaseName = GenerateDatabaseName(i);
-
-            // Schedule the creation of each database
-            // We don't schedule the creation of all the databases at once
-            // so that tests don't have to wait until all databases are created
-            // before they can start running. This is because
-            // the scheduler queues all workloads.
-            await worker.Schedule(async () =>
+            await concurrencyLimiter.WaitAsync();
+            try
             {
                 logger.LogDebug("Creating database {DatabaseName} in the pool", databaseName);
-                await CreateOrReplaceDatabaseAsync(databaseName);
+                await CreateDatabaseIfNotExistsAsync(databaseName);
+                await CleanDatabaseAsync(databaseName);
                 availableDatabases.Enqueue(databaseName);
-                logger.LogDebug("Database {DatabaseName} is ready for use", databaseName);
-                databasesAreAvailableSemaphore.Release(); // Signal that a database is available
-            });
+                databasesAreAvailableSemaphore.Release();
+                var count = Interlocked.Increment(ref successCount);
+                logger.LogDebug("Database {DatabaseName} is ready for use ({Count}/{Total}, {Elapsed:F1}s)", databaseName, count, maxPoolSize, sw.Elapsed.TotalSeconds);
+            }
+            catch (Exception ex)
+            {
+                Interlocked.Increment(ref failCount);
+                logger.LogError(ex, "Failed to create database {DatabaseName}, skipping", databaseName);
+            }
+            finally
+            {
+                concurrencyLimiter.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+
+        if (successCount == 0)
+        {
+            throw new InvalidOperationException(
+                $"Failed to create any databases in the pool ({failCount} failures). " +
+                "Ensure Neo4j is running and accessible.");
         }
+
+        logger.LogInformation("Database pool setup complete: {SuccessCount} ready, {FailCount} failed in {Elapsed:F1}s",
+            successCount, failCount, sw.Elapsed.TotalSeconds);
     }
 
-    private async Task CreateOrReplaceDatabaseAsync(string databaseName)
+    private async Task CreateDatabaseIfNotExistsAsync(string databaseName)
     {
-        logger.LogDebug("Creating or replacing database {DatabaseName}", databaseName);
-        using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
-        var result = await session.RunAsync($"CREATE OR REPLACE DATABASE {databaseName}");
+        logger.LogDebug("Creating database {DatabaseName} if it does not exist", databaseName);
+        await using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
+        var result = await session.RunAsync($"CREATE DATABASE {databaseName} IF NOT EXISTS");
         await result.ConsumeAsync();
         await WaitForDatabaseOnlineAsync(databaseName);
         logger.LogDebug("Database {DatabaseName} is now ready", databaseName);
@@ -182,7 +199,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         try
         {
             logger.LogDebug("Dropping database {DatabaseName}", databaseName);
-            using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
+            await using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
             var result = await session.RunAsync($"DROP DATABASE {databaseName}");
             await result.ConsumeAsync();
             logger.LogDebug("Database {DatabaseName} dropped successfully", databaseName);
@@ -202,7 +219,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         {
             try
             {
-                using var session = driver.AsyncSession(builder => builder.WithDatabase(databaseName));
+                await using var session = driver.AsyncSession(builder => builder.WithDatabase(databaseName));
                 var result = await session.RunAsync("RETURN 1");
                 await result.ConsumeAsync();
                 logger.LogDebug("Database {DatabaseName} is now online", databaseName);

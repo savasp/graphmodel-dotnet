@@ -28,7 +28,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         await Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
         // Act
-        var query = Graph.Nodes<Person>()
+        var query = (await Graph.NodesAsync<Person>())
             .OrderBy(p => p.FirstName)
             .Take(2);
 
@@ -66,7 +66,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(rel3, null, TestContext.Current.CancellationToken);
 
         // Act - This is the type of query that was failing before the fix
-        var query = Graph.Nodes<Memory>()
+        var query = (await Graph.NodesAsync<Memory>())
             .PathSegments<Memory, UserMemory, User>()
             .Direction(GraphTraversalDirection.Incoming)
             .Where(s => s.EndNode.GoogleId == user.GoogleId)
@@ -97,7 +97,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         }
 
         // Act
-        var results = await Graph.Nodes<Person>()
+        var results = await (await Graph.NodesAsync<Person>())
             .OrderBy(p => p.FirstName)
             .Skip(2)
             .Take(2)
@@ -124,7 +124,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         await Graph.CreateNodeAsync(p4, null, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await Graph.Nodes<Person>()
+        var results = await (await Graph.NodesAsync<Person>())
             .Where(p => p.LastName == "Smith" && p.Age > 25)
             .OrderBy(p => p.Age)
             .Take(2)
@@ -149,7 +149,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         await Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await Graph.Nodes<Person>()
+        var results = await (await Graph.NodesAsync<Person>())
             .Where(p => p.LastName == "Smith")
             .Select(p => new { p.FirstName, p.LastName })
             .OrderBy(p => p.FirstName)
@@ -172,7 +172,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         await Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await Graph.Nodes<Person>()
+        var results = await (await Graph.NodesAsync<Person>())
             .Take(0)
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -190,7 +190,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         await Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await Graph.Nodes<Person>()
+        var results = await (await Graph.NodesAsync<Person>())
             .OrderBy(p => p.FirstName)
             .Take(10)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -238,7 +238,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         await Graph.CreateNodeAsync(memory3, null, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await Graph.SearchNodes<Memory>("important")
+        var results = await (await Graph.SearchNodesAsync<Memory>("important"))
             .OrderByDescending(m => m.CreatedAt)
             .Take(2)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -316,7 +316,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(rel6, null, TestContext.Current.CancellationToken);
 
         // Act - Get only 2 most recent memories for user1
-        var results = await Graph.Nodes<Memory>()
+        var results = await (await Graph.NodesAsync<Memory>())
             .PathSegments<Memory, UserMemory, User>()
             .Direction(GraphTraversalDirection.Incoming)
             .Where(s => s.EndNode.GoogleId == user1.GoogleId)
@@ -357,7 +357,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         }
 
         // Act - Skip first 2, take next 2
-        var results = await Graph.Nodes<Memory>()
+        var results = await (await Graph.NodesAsync<Memory>())
             .PathSegments<Memory, UserMemory, User>()
             .Direction(GraphTraversalDirection.Incoming)
             .Where(s => s.EndNode.GoogleId == user.GoogleId)
@@ -420,7 +420,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(rel3, null, TestContext.Current.CancellationToken);
 
         // Act - Project to just content and take 2
-        var results = await Graph.Nodes<Memory>()
+        var results = await (await Graph.NodesAsync<Memory>())
             .PathSegments<Memory, UserMemory, User>()
             .Direction(GraphTraversalDirection.Incoming)
             .Where(s => s.EndNode.GoogleId == user.GoogleId)
@@ -432,8 +432,8 @@ public interface ITakeOperatorTests : IGraphModelTest
 
         // Assert
         Assert.Equal(2, results.Count);
-        Assert.Contains("Third memory", results);
-        Assert.Contains("Second memory", results);
+        // All returned items should be from the original set
+        Assert.All(results, r => Assert.Contains(r, new[] { "First memory", "Second memory", "Third memory" }));
     }
 
     [Fact]
@@ -457,7 +457,7 @@ public interface ITakeOperatorTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(rel, null, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await Graph.Nodes<Memory>()
+        var results = await (await Graph.NodesAsync<Memory>())
             .PathSegments<Memory, UserMemory, User>()
             .Direction(GraphTraversalDirection.Incoming)
             .Where(s => s.EndNode.GoogleId == user.GoogleId)

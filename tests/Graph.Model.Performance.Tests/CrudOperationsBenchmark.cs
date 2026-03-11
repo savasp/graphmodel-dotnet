@@ -83,7 +83,7 @@ public class CrudOperationsBenchmark
         _personIds = _testPersons.Select(p => p.Id).ToList();
 
         // Pre-populate some data
-        using var transaction = await _graph.GetTransactionAsync();
+        await using var transaction = await _graph.GetTransactionAsync();
         foreach (var person in _testPersons.Take(500))
         {
             await _graph.CreateNodeAsync(person);
@@ -95,8 +95,8 @@ public class CrudOperationsBenchmark
     public async Task Cleanup()
     {
         // Clean up test data
-        using var transaction = await _graph.GetTransactionAsync();
-        var allPersons = await _graph.Nodes<Person>().ToListAsync();
+        await using var transaction = await _graph.GetTransactionAsync();
+        var allPersons = await (await _graph.NodesAsync<Person>()).ToListAsync();
         foreach (var person in allPersons)
         {
             await _graph.DeleteNodeAsync(person.Id);
@@ -141,7 +141,7 @@ public class CrudOperationsBenchmark
     [Benchmark]
     public async Task QueryNodes()
     {
-        var results = await _graph.Nodes<Person>()
+        var results = await (await _graph.NodesAsync<Person>())
             .Where(p => p.FirstName.StartsWith("A"))
             .Take(10)
             .ToListAsync();
@@ -151,7 +151,7 @@ public class CrudOperationsBenchmark
     public async Task QueryWithComplexFilter()
     {
         var cutoffDate = DateTime.Now.AddYears(-30);
-        var results = await _graph.Nodes<Person>()
+        var results = await (await _graph.NodesAsync<Person>())
             .Where(p => p.DateOfBirth > cutoffDate && p.Email.Contains("@gmail.com"))
             .OrderBy(p => p.LastName)
             .Take(20)

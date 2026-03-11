@@ -67,7 +67,7 @@ internal static class Deserialization
             }
             else
             {
-                GenerateConstructorBasedDeserialization(sb, type, constructors.First(), allProperties);
+                GenerateConstructorBasedDeserialization(sb, type, constructors[0], allProperties);
             }
         }
         else

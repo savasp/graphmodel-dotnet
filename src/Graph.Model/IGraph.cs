@@ -39,7 +39,7 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A queryable interface to the dynamic nodes</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
-    IGraphNodeQueryable<DynamicNode> DynamicNodes(IGraphTransaction? transaction = null);
+    Task<IGraphNodeQueryable<DynamicNode>> DynamicNodesAsync(IGraphTransaction? transaction = null);
 
     /// <summary>
     /// Gets a queryable interface to dynamic relationships in the graph
@@ -48,7 +48,7 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A queryable interface to the dynamic relationships</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
-    IGraphRelationshipQueryable<DynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null);
+    Task<IGraphRelationshipQueryable<DynamicRelationship>> DynamicRelationshipsAsync(IGraphTransaction? transaction = null);
 
     /// <summary>
     /// Gets a dynamic node by ID
@@ -82,7 +82,7 @@ public interface IGraph : IAsyncDisposable
     /// <typeparam name="N">The type of the nodes to query</typeparam>
     /// <returns>A queryable interface to the nodes</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
-    IGraphNodeQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
+    Task<IGraphNodeQueryable<N>> NodesAsync<N>(IGraphTransaction? transaction = null)
         where N : INode;
 
     /// <summary>
@@ -93,7 +93,7 @@ public interface IGraph : IAsyncDisposable
     /// <typeparam name="R">The type of the relationships to query</typeparam>
     /// <returns>A queryable interface to the relationships</returns>
     /// <exception cref="GraphException">Thrown when the query fails</exception>
-    IGraphRelationshipQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
+    Task<IGraphRelationshipQueryable<R>> RelationshipsAsync<R>(IGraphTransaction? transaction = null)
         where R : IRelationship;
 
     /// <summary>
@@ -203,7 +203,7 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A queryable interface to the search results</returns>
     /// <exception cref="GraphException">Thrown when the search fails</exception>
-    IGraphQueryable<IEntity> Search(string query, IGraphTransaction? transaction = null);
+    Task<IGraphQueryable<IEntity>> SearchAsync(string query, IGraphTransaction? transaction = null);
 
     /// <summary>
     /// Performs a full text search across all nodes in the graph
@@ -213,7 +213,7 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A queryable interface to the node search results</returns>
     /// <exception cref="GraphException">Thrown when the search fails</exception>
-    IGraphNodeQueryable<INode> SearchNodes(string query, IGraphTransaction? transaction = null);
+    Task<IGraphNodeQueryable<INode>> SearchNodesAsync(string query, IGraphTransaction? transaction = null);
 
     /// <summary>
     /// Performs a full text search across all relationships in the graph
@@ -223,7 +223,7 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A queryable interface to the relationship search results</returns>
     /// <exception cref="GraphException">Thrown when the search fails</exception>
-    IGraphRelationshipQueryable<IRelationship> SearchRelationships(string query, IGraphTransaction? transaction = null);
+    Task<IGraphRelationshipQueryable<IRelationship>> SearchRelationshipsAsync(string query, IGraphTransaction? transaction = null);
 
     /// <summary>
     /// Performs a full text search across nodes of a specific type in the graph
@@ -234,7 +234,7 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A queryable interface to the typed node search results</returns>
     /// <exception cref="GraphException">Thrown when the search fails</exception>
-    IGraphNodeQueryable<T> SearchNodes<T>(string query, IGraphTransaction? transaction = null) where T : INode;
+    Task<IGraphNodeQueryable<T>> SearchNodesAsync<T>(string query, IGraphTransaction? transaction = null) where T : INode;
 
     /// <summary>
     /// Performs a full text search across relationships of a specific type in the graph
@@ -245,7 +245,7 @@ public interface IGraph : IAsyncDisposable
     /// If null, a new transaction will be automatically created and used.</param>
     /// <returns>A queryable interface to the typed relationship search results</returns>
     /// <exception cref="GraphException">Thrown when the search fails</exception>
-    IGraphRelationshipQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : IRelationship;
+    Task<IGraphRelationshipQueryable<T>> SearchRelationshipsAsync<T>(string query, IGraphTransaction? transaction = null) where T : IRelationship;
 
     /// <summary>
     /// Recreates all indexes in the graph database.

@@ -164,7 +164,7 @@ internal sealed class ResultMaterializer
     {
         if (entityInfo.SimpleProperties.Count == 1)
         {
-            var singleProperty = entityInfo.SimpleProperties.First().Value;
+            var singleProperty = entityInfo.SimpleProperties.Values.First();
             if (singleProperty.Value is SimpleValue simpleValue)
             {
                 return ConvertValueToTargetType(simpleValue.Object, targetType);

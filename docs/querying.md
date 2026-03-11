@@ -8,17 +8,17 @@ Graph Model provides powerful querying capabilities through enhanced LINQ suppor
 
 ```csharp
 // Simple where clause
-var adults = await graph.Nodes<Person>()
+var adults = await (await graph.NodesAsync<Person>())
     .Where(p => p.Age >= 18)
     .ToListAsync();
 
 // Multiple conditions
-var youngEngineers = await graph.Nodes<Person>()
+var youngEngineers = await (await graph.NodesAsync<Person>())
     .Where(p => p.Age < 30 && p.Bio.Contains("engineer"))
     .ToListAsync();
 
 // String operations
-var smiths = await graph.Nodes<Person>()
+var smiths = await (await graph.NodesAsync<Person>())
     .Where(p => p.LastName.StartsWith("Sm"))
     .ToListAsync();
 ```
@@ -27,18 +27,18 @@ var smiths = await graph.Nodes<Person>()
 
 ```csharp
 // Order by single property
-var byAge = await graph.Nodes<Person>()
+var byAge = await (await graph.NodesAsync<Person>())
     .OrderBy(p => p.Age)
     .ToListAsync();
 
 // Order by multiple properties
-var sorted = await graph.Nodes<Person>()
+var sorted = await (await graph.NodesAsync<Person>())
     .OrderBy(p => p.LastName)
     .ThenBy(p => p.FirstName)
     .ToListAsync();
 
 // Pagination
-var page = await graph.Nodes<Person>()
+var page = await (await graph.NodesAsync<Person>())
     .OrderBy(p => p.LastName)
     .Skip(20)
     .Take(10)
@@ -51,12 +51,12 @@ var page = await graph.Nodes<Person>()
 
 ```csharp
 // Load nodes with relationships up to 2 levels deep
-var peopleWithConnections = await graph.Nodes<Person>()
+var peopleWithConnections = await (await graph.NodesAsync<Person>())
     .WithDepth(2)
     .ToListAsync();
 
 // Specify depth range
-var connections = await graph.Nodes<Person>()
+var connections = await (await graph.NodesAsync<Person>())
     .WithDepth(1, 3) // Minimum 1 level, maximum 3 levels
     .ToListAsync();
 ```
@@ -65,20 +65,20 @@ var connections = await graph.Nodes<Person>()
 
 ```csharp
 // Use caching for expensive queries
-var cachedResults = await graph.Nodes<Person>()
+var cachedResults = await (await graph.NodesAsync<Person>())
     .Where(p => p.Age > 30)
     .Cached(TimeSpan.FromMinutes(5))
     .ToListAsync();
 
 // Provide query hints
-var optimizedQuery = await graph.Nodes<Person>()
+var optimizedQuery = await (await graph.NodesAsync<Person>())
     .WithHint("USE_INDEX")
     .UseIndex("person_age_idx")
     .Where(p => p.Age > 30)
     .ToListAsync();
 
 // Enable profiling for performance analysis
-var profiledQuery = await graph.Nodes<Person>()
+var profiledQuery = await (await graph.NodesAsync<Person>())
     .WithProfiling()
     .Where(p => p.Age > 30)
     .ToListAsync();
@@ -89,7 +89,7 @@ var profiledQuery = await graph.Nodes<Person>()
 ```csharp
 await using var transaction = await graph.BeginTransaction();
 
-var results = await graph.Nodes<Person>()
+var results = await (await graph.NodesAsync<Person>())
     .InTransaction(transaction)
     .Where(p => p.Age > 30)
     .ToListAsync();
@@ -134,7 +134,7 @@ foreach (var p in people)
 await tx.CommitAsync();
 
 // Query for those who live in WA state
-var waStateResidents = await graph.Nodes<Person>()
+var waStateResidents = await (await graph.NodesAsync<Person>())
     .Where(p => p.HomeAddress.State == StateEnum.WA)
     .ToListAsync();
 ```
@@ -145,7 +145,7 @@ var waStateResidents = await graph.Nodes<Person>()
 
 ```csharp
 // Multi-hop traversal with relationship filtering
-var friendsOfFriends = await graph.Nodes<Person>()
+var friendsOfFriends = await (await graph.NodesAsync<Person>())
     .Where(p => p.FirstName == "Alice")
     .Traverse<Person, Knows, Person>()
     .WhereRelationship(k => k.Since > DateTime.Now.AddYears(-1)) // Recent friendships only
@@ -159,7 +159,7 @@ var friendsOfFriends = await graph.Nodes<Person>()
 ### Anonymous Types
 
 ```csharp
-var names = await graph.Nodes<Person>()
+var names = await (await graph.NodesAsync<Person>())
     .Where(p => p.Age > 25)
     .Select(p => new
     {
@@ -173,7 +173,7 @@ var names = await graph.Nodes<Person>()
 ### Transformations
 
 ```csharp
-var projected = await graph.Nodes<Person>()
+var projected = await (await graph.NodesAsync<Person>())
     .Select(p => new
     {
         UpperName = p.FirstName.ToUpper(),
@@ -191,15 +191,15 @@ var projected = await graph.Nodes<Person>()
 
 ```csharp
 // Count with predicate
-var adultCount = await graph.Nodes<Person>()
+var adultCount = await (await graph.NodesAsync<Person>())
     .CountAsync(p => p.Age >= 18);
 
 // Check existence
-var hasMinors = await graph.Nodes<Person>()
+var hasMinors = await (await graph.NodesAsync<Person>())
     .AnyAsync(p => p.Age < 18);
 
 // Check all match condition
-var allAdults = await graph.Nodes<Person>()
+var allAdults = await (await graph.NodesAsync<Person>())
     .AllAsync(p => p.Age >= 18);
 ```
 
@@ -207,17 +207,17 @@ var allAdults = await graph.Nodes<Person>()
 
 ```csharp
 // Get first matching
-var firstSmith = await graph.Nodes<Person>()
+var firstSmith = await (await graph.NodesAsync<Person>())
     .Where(p => p.LastName == "Smith")
     .OrderBy(p => p.FirstName)
     .FirstOrDefaultAsync();
 
 // Get exactly one matching (throws if zero or multiple)
-var specificPerson = await graph.Nodes<Person>()
+var specificPerson = await (await graph.NodesAsync<Person>())
     .SingleAsync(p => p.Id == "unique-id");
 
 // Get last matching
-var youngestPerson = await graph.Nodes<Person>()
+var youngestPerson = await (await graph.NodesAsync<Person>())
     .OrderBy(p => p.Age)
     .LastOrDefaultAsync();
 ```
@@ -226,7 +226,7 @@ var youngestPerson = await graph.Nodes<Person>()
 
 ```csharp
 // Sum, average, min, max
-var stats = await graph.Nodes<Person>()
+var stats = await (await graph.NodesAsync<Person>())
     .GroupBy(p => 1) // Group all into single group
     .Select(g => new
     {
@@ -239,16 +239,16 @@ var stats = await graph.Nodes<Person>()
     .FirstAsync();
 
 // Get single (throws if multiple)
-var theAlice = graph.Nodes<Person>()
+var theAlice = (await graph.NodesAsync<Person>())
     .SingleAsync(p => p.FirstName == "Alice");
 
 // Get last
-var youngest = graph.Nodes<Person>()
+var youngest = (await graph.NodesAsync<Person>())
     .OrderBy(p => p.Age)
     .LastAsync();
 
 // Safe versions that return null
-var maybeAlice = graph.Nodes<Person>()
+var maybeAlice = (await graph.NodesAsync<Person>())
     .FirstOrDefault(p => p.FirstName == "Alice");
 ```
 
@@ -256,7 +256,7 @@ var maybeAlice = graph.Nodes<Person>()
 
 ```csharp
 // Group by with count
-var byLastName = graph.Nodes<Person>()
+var byLastName = (await graph.NodesAsync<Person>())
     .GroupBy(p => p.LastName)
     .Select(g => new
     {
@@ -266,7 +266,7 @@ var byLastName = graph.Nodes<Person>()
     .ToListAsync();
 
 // Multiple aggregations
-var ageStats = graph.Nodes<Person>()
+var ageStats = (await graph.NodesAsync<Person>())
     .GroupBy(p => p.Department)
     .Select(g => new
     {
@@ -285,17 +285,17 @@ var ageStats = graph.Nodes<Person>()
 
 ```csharp
 // Filter relationships
-var recentConnections = graph.Relationships<Knows>()
+var recentConnections = (await graph.RelationshipsAsync<Knows>())
     .Where(k => k.Since > DateTime.UtcNow.AddDays(-30))
     .ToList();
 
 // Relationships from specific node
-var aliceKnows = graph.Relationships<Knows>()
+var aliceKnows = (await graph.RelationshipsAsync<Knows>())
     .Where(k => k.StartNodeId == aliceId)
     .ToList();
 
 // Bidirectional search
-var connectedToAlice = graph.Relationships<Knows>()
+var connectedToAlice = (await graph.RelationshipsAsync<Knows>())
     .Where(k => k.StartNodeId == aliceId || k.EndNodeId == aliceId)
     .ToList();
 ```
@@ -308,17 +308,17 @@ Graph Model provides comprehensive full-text search capabilities through both di
 
 ```csharp
 // Search across all entities (nodes and relationships)
-var allResults = await graph.Search("machine learning").ToListAsync();
+var allResults = await (await graph.SearchAsync("machine learning")).ToListAsync();
 
 // Search specific node types
-var articleResults = await graph.SearchNodes<Article>("artificial intelligence").ToListAsync();
+var articleResults = await (await graph.SearchNodesAsync<Article>("artificial intelligence")).ToListAsync();
 
 // Search specific relationship types
-var relationshipResults = await graph.SearchRelationships<Knows>("college").ToListAsync();
+var relationshipResults = await (await graph.SearchRelationshipsAsync<Knows>("college")).ToListAsync();
 
 // Search using generic interfaces
-var allNodes = await graph.SearchNodes("graph database").ToListAsync();
-var allRelationships = await graph.SearchRelationships("friendship").ToListAsync();
+var allNodes = await (await graph.SearchNodesAsync("graph database")).ToListAsync();
+var allRelationships = await (await graph.SearchRelationshipsAsync("friendship")).ToListAsync();
 ```
 
 ### LINQ Integration with Search
@@ -327,13 +327,13 @@ The `Search()` method can be used in LINQ chains to perform full-text search on 
 
 ```csharp
 // Basic search in LINQ chain
-var results = await graph.Nodes<Person>()
+var results = await (await graph.NodesAsync<Person>())
     .Where(p => p.Age > 25)
     .Search("software engineer")
     .ToListAsync();
 
 // Search in path segments traversal
-var memories = await graph.Nodes<User>()
+var memories = await (await graph.NodesAsync<User>())
     .Where(u => u.Id == "...")
     .PathSegments<User, UserMemory, Memory>()
     .Select(p => p.EndNode)
@@ -341,14 +341,14 @@ var memories = await graph.Nodes<User>()
     .ToListAsync();
 
 // Search with multiple conditions
-var filteredResults = await graph.Nodes<Article>()
+var filteredResults = await (await graph.NodesAsync<Article>())
     .Where(a => a.PublishedDate > DateTime.UtcNow.AddDays(-30))
     .Search("machine learning")
     .Where(a => a.Author.StartsWith("Dr."))
     .ToListAsync();
 
 // Search with projections
-var summaries = await graph.Nodes<Article>()
+var summaries = await (await graph.NodesAsync<Article>())
     .Search("artificial intelligence")
     .Select(a => new { a.Title, a.Summary })
     .ToListAsync();
@@ -358,22 +358,22 @@ var summaries = await graph.Nodes<Article>()
 
 ```csharp
 // Contains search
-var results = graph.Nodes<Article>()
+var results = (await graph.NodesAsync<Article>())
     .Where(a => a.Content.Contains("machine learning"))
     .ToList();
 
 // Case-insensitive search
-var caseInsensitive = graph.Nodes<Article>()
+var caseInsensitive = (await graph.NodesAsync<Article>())
     .Where(a => a.Title.ToLower().Contains("graph"))
     .ToList();
 
 // Multiple term search
-var multiTerm = graph.Nodes<Article>()
+var multiTerm = (await graph.NodesAsync<Article>())
     .Where(a => a.Content.Contains("graph") && a.Content.Contains("database"))
     .ToList();
 
 // Starts with / Ends with
-var prefixSearch = graph.Nodes<Person>()
+var prefixSearch = (await graph.NodesAsync<Person>())
     .Where(p => p.Email.StartsWith("admin@"))
     .ToList();
 ```
@@ -392,8 +392,8 @@ For complex scenarios, you can execute multiple queries and join in memory:
 
 ```csharp
 // Get all data
-var people = graph.Nodes<Person>().ToList();
-var knows = graph.Relationships<Knows>().ToList();
+var people = (await graph.NodesAsync<Person>()).ToList();
+var knows = (await graph.RelationshipsAsync<Knows>()).ToList();
 
 // Join to find connections
 var connections = from person in people
@@ -436,7 +436,7 @@ var popular = knows
 ### Conditional Logic in Projections
 
 ```csharp
-var categorized = graph.Nodes<Person>()
+var categorized = (await graph.NodesAsync<Person>())
     .Select(p => new
     {
         p.FirstName,

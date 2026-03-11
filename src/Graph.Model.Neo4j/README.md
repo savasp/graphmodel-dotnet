@@ -22,7 +22,7 @@ var graph = new Neo4jGraph(
 );
 
 // Use GraphModel APIs
-var users = await graph.Nodes<User>()
+var users = await (await graph.NodesAsync<User>())
     .Where(u => u.IsActive)
     .OrderBy(u => u.CreatedDate)
     .ToListAsync();

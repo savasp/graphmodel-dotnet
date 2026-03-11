@@ -411,11 +411,11 @@ public interface IAttributeValidationTests : IGraphModelTest
         Assert.Equal(30, retrieved.Age);
 
         // Now, if we search for "John", we should find this person
-        var searchResults = await Graph.SearchNodes<PersonWithFullTextSearchProperties>("John").ToListAsync(TestContext.Current.CancellationToken);
+        var searchResults = await (await Graph.SearchNodesAsync<PersonWithFullTextSearchProperties>("John")).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Contains(searchResults, p => p.Id == person.Id);
 
         // Searching for "Confidential" should not return this person since InternalNotes is excluded from indexing
-        searchResults = await Graph.SearchNodes<PersonWithFullTextSearchProperties>("Confidential").ToListAsync(TestContext.Current.CancellationToken);
+        searchResults = await (await Graph.SearchNodesAsync<PersonWithFullTextSearchProperties>("Confidential")).ToListAsync(TestContext.Current.CancellationToken);
         Assert.DoesNotContain(searchResults, p => p.Id == person.Id);
     }
 
@@ -785,7 +785,7 @@ public interface IAttributeValidationTests : IGraphModelTest
         }
 
         // Query by property with custom label
-        var brownPeople = await Graph.Nodes<PersonWithCustomPropertyLabels>()
+        var brownPeople = await (await Graph.NodesAsync<PersonWithCustomPropertyLabels>())
             .Where(p => p.LastName == "Brown")
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -794,7 +794,7 @@ public interface IAttributeValidationTests : IGraphModelTest
         Assert.Contains(brownPeople, p => p.FirstName == "Bob");
 
         // Query by email property
-        var alice = await Graph.Nodes<PersonWithCustomPropertyLabels>()
+        var alice = await (await Graph.NodesAsync<PersonWithCustomPropertyLabels>())
             .Where(p => p.Email == "alice@example.com")
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
 
@@ -914,14 +914,14 @@ public interface IAttributeValidationTests : IGraphModelTest
         }
 
         // Query by property with custom label
-        var smiths = await Graph.Nodes<PersonWithCustomPropertyLabels>()
+        var smiths = await (await Graph.NodesAsync<PersonWithCustomPropertyLabels>())
             .Where(p => p.LastName == "Smith")
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(10, smiths.Count);
 
         // Query by property with custom label
-        var person50 = await Graph.Nodes<PersonWithCustomPropertyLabels>()
+        var person50 = await (await Graph.NodesAsync<PersonWithCustomPropertyLabels>())
             .Where(p => p.FirstName == "Person50")
             .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
 
@@ -963,7 +963,7 @@ public interface IAttributeValidationTests : IGraphModelTest
         }
 
         // Query using multiple properties with custom labels
-        var aliceSmith = await Graph.Nodes<PersonWithCustomPropertyLabels>()
+        var aliceSmith = await (await Graph.NodesAsync<PersonWithCustomPropertyLabels>())
             .Where(p => p.FirstName == "Alice" && p.LastName == "Smith")
             .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
 
