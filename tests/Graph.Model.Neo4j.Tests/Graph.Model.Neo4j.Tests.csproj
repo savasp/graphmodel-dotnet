@@ -31,9 +31,9 @@
         <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.4.1" />
 
         <!-- OpenTelemetry -->
-        <PackageReference Include="OpenTelemetry" Version="1.15.0" />
+        <PackageReference Include="OpenTelemetry" Version="1.15.2" />
         <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.15.0" />
-        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.0" />
+        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.2" />
 
         <!-- Serilog -->
         <PackageReference Include="Serilog" Version="4.3.1" />
