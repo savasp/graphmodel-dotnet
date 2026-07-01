@@ -1153,6 +1153,49 @@ public interface IQueryTraversalTests : IGraphModelTest
         Assert.Equal("memory", results[0].Memory.Text);
         Assert.Equal("Source1", results[0].MemorySource.Name);
     }
- 
+
+    [Fact]
+    public async Task CanProjectPathSegmentToRecordWithEndNode()
+    {
+        // Setup: Alice knows Bob and Charlie (with Since dates)
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+
+        var knowSince = DateTime.UtcNow.AddYears(-2);
+        await Graph.CreateRelationshipAsync(
+            new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = knowSince },
+            null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows { StartNodeId = alice.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow.AddYears(-1) },
+            null, TestContext.Current.CancellationToken);
+
+        // Act: Query with PathSegments and Select to a record type (like SimpleMovieExample)
+        var results = await (await Graph.NodesAsync<Person>())
+            .Where(p => p.FirstName == "Alice")
+            .PathSegments<Person, Knows, Person>()
+            .Select(s => new PathSegmentProjection(s.Relationship.Since, s.EndNode))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(2, results.Count);
+        Assert.Equal(knowSince, results[0].Since);
+        Assert.NotNull(results[0].EndNode);
+        Assert.Equal("Bob", results[0].EndNode.FirstName);
+        Assert.NotNull(results[1].EndNode);
+        Assert.Equal("Charlie", results[1].EndNode.FirstName);
+    }
+
     #endregion
 }
+
+/// <summary>
+/// Helper record used by CanProjectPathSegmentToRecordWithEndNode.
+/// Reproduces the SimpleMovieExample pattern of selecting relationship property + end node
+/// from a path segment query into a custom record type.
+/// </summary>
+public record PathSegmentProjection(DateTime Since, Person EndNode);

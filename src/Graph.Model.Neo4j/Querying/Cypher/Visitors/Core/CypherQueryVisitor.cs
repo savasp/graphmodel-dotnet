@@ -271,7 +271,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
             for (int i = 0; i < newExpr.Arguments.Count; i++)
             {
                 var propertyExpr = newExpr.Arguments[i];
-                var propertyName = newExpr.Members?[i].Name ?? $"Property{i}";
+                // When Members is null (named record types like `new Foo(x, y)`),
+                // extract parameter names from the constructor via reflection so column
+                // aliases match the record's constructor parameter names (e.g., "Since", "EndNode")
+                // instead of falling back to "Property0", "Property1" etc.
+                var propertyName = newExpr.Members?[i].Name ?? GetNewExpressionParameterName(newExpr, i) ?? $"Property{i}";
 
                 // Check if this property is a special type that requires complex property loading
                 if (IsSpecialTypeProjection(propertyExpr))
@@ -1680,5 +1684,21 @@ internal class CypherQueryVisitor : ExpressionVisitor
             // Should not be used, but fallback to node index
             return "node_fulltext_index";
         }
+    }
+
+    /// <summary>
+    /// When a NewExpression's Members array is null (happens for named record types like
+    /// <c>new PathSegmentProjection(since, endNode)</c>), extracts the constructor parameter
+    /// name at the given index so column aliases match the record's parameter names.
+    /// </summary>
+    private static string? GetNewExpressionParameterName(NewExpression newExpr, int parameterIndex)
+    {
+        var constructor = newExpr.Type.GetConstructors().FirstOrDefault();
+        if (constructor == null)
+            return null;
+        var parameters = constructor.GetParameters();
+        if (parameterIndex < 0 || parameterIndex >= parameters.Length)
+            return null;
+        return parameters[parameterIndex].Name;
     }
 }

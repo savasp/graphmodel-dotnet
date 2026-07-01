@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Library</OutputType>
+        <RootNamespace>Cvoya.Graph.Model.Age</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Model.Age</AssemblyName>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <PackageId>Cvoya.Graph.Model.Age</PackageId>
+        <Description>PostgreSQL Apache AGE provider for the GraphModel abstraction with LINQ and Cypher support.</Description>
+        <PackageTags>graph;database;postgres;age;cypher</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Model.Age.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Konnektr.Npgsql.Age" Version="2.0.0" />
+        <PackageReference Include="Npgsql" Version="10.0.3" />
+    </ItemGroup>
+
+    <!-- Use project references for development (default) -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
+        <ProjectReference Include="../Graph.Model/Graph.Model.csproj" />
+        <ProjectReference Include="../Graph.Model.Cypher/Graph.Model.Cypher.csproj" />
+        <ProjectReference Include="../Graph.Model.Serialization/Graph.Model.Serialization.csproj" />
+        <ProjectReference Include="../Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
+
+    <!-- Use package references for releases -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'false'">
+        <PackageReference Include="Cvoya.Graph.Model" Version="$(Version)" />
+        <PackageReference Include="Cvoya.Graph.Model.Cypher" Version="$(Version)" />
+        <PackageReference Include="Cvoya.Graph.Model.Serialization" Version="$(Version)" />
+    </ItemGroup>
+
+    <!-- Include the CodeGen analyzer in the package when building packages -->
+    <ItemGroup Condition="'$(GeneratePackageOnBuild)' == 'true'">
+        <None Include="../Graph.Model.Serialization.CodeGen/bin/$(Configuration)/netstandard2.0/Graph.Model.Serialization.CodeGen.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
+    </ItemGroup>
+
+</Project>

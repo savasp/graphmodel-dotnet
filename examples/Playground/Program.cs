@@ -13,7 +13,6 @@
 // limitations under the License.
 
 
-using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j;
 using Neo4j.Driver;
 

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>library</OutputType>
+        <RootNamespace>Cvoya.Graph.Model.Cypher</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Model.Cypher</AssemblyName>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <PackageId>Cvoya.Graph.Model.Cypher</PackageId>
+        <Description>Shared Cypher query generation components for GraphModel providers.</Description>
+        <PackageTags>graph;cypher;linq;query</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Model.Neo4j.Tests</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Model.Age.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <!-- Use project references for development (default) -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
+        <ProjectReference Include="../Graph.Model/Graph.Model.csproj" />
+        <ProjectReference Include="../Graph.Model.Serialization/Graph.Model.Serialization.csproj" />
+    </ItemGroup>
+
+    <!-- Use package references for releases -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'false'">
+        <PackageReference Include="Cvoya.Graph.Model" Version="$(Version)" />
+        <PackageReference Include="Cvoya.Graph.Model.Serialization" Version="$(Version)" />
+    </ItemGroup>
+
+</Project>

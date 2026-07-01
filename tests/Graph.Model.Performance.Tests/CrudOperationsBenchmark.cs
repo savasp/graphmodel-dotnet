@@ -17,7 +17,6 @@ namespace Graph.Model.Performance.Tests;
 #pragma warning disable RS1035 // Do not use APIs banned for analyzers
 
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Bogus;
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j;

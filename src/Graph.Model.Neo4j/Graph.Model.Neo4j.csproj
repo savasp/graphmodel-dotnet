@@ -25,6 +25,7 @@
     <!-- Use project references for development (default) -->
     <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
         <ProjectReference Include="../Graph.Model/Graph.Model.csproj" />
+        <ProjectReference Include="../Graph.Model.Cypher/Graph.Model.Cypher.csproj" />
         <ProjectReference Include="../Graph.Model.Serialization/Graph.Model.Serialization.csproj" />
         <ProjectReference Include="../Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
@@ -32,6 +33,7 @@
     <!-- Use package references for releases -->
     <ItemGroup Condition="'$(UseProjectReferences)' == 'false'">
         <PackageReference Include="Cvoya.Graph.Model" Version="$(Version)" />
+        <PackageReference Include="Cvoya.Graph.Model.Cypher" Version="$(Version)" />
         <PackageReference Include="Cvoya.Graph.Model.Serialization" Version="$(Version)" />
     </ItemGroup>
 

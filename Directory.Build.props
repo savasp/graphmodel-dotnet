@@ -56,15 +56,16 @@
     </ItemGroup>
 
     <!-- Test project settings -->
-    <PropertyGroup Condition=" $(MSBuildProjectDirectory.Contains('/tests/')) ">
+    <PropertyGroup Condition=" $(MSBuildProjectDirectory.Contains('/tests/')) OR $(MSBuildProjectDirectory.Contains('\tests\')) ">
         <IsTestProject>true</IsTestProject>
         <GenerateDocumentationFile>false</GenerateDocumentationFile>
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
         <IsPackable>false</IsPackable>
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
     </PropertyGroup>
 
     <!-- Example project settings -->
-    <PropertyGroup Condition=" $(MSBuildProjectDirectory.Contains('/examples/')) ">
+    <PropertyGroup Condition=" $(MSBuildProjectDirectory.Contains('/examples/')) OR $(MSBuildProjectDirectory.Contains('\examples\')) ">
         <GenerateDocumentationFile>false</GenerateDocumentationFile>
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
         <IsPackable>false</IsPackable>

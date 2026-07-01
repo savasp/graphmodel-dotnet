@@ -14,7 +14,9 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 
-internal sealed class CypherQueryScope(Type rootType)
+using Cvoya.Graph.Model.Cypher.Querying.Cypher.Builders;
+
+internal sealed class CypherQueryScope(Type rootType) : ICypherQueryScope
 {
     private readonly Dictionary<Type, string> _typeAliases = [];
     private readonly Dictionary<string, Type> _aliasTypes = [];
