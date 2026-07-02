@@ -11,13 +11,13 @@ Scaffold a new Roslyn analyzer with code fix and tests.
 
 ## Arguments
 
-- `$0` — Diagnostic ID (e.g., `GM0010`)
-- `$1` — Short title describing what the analyzer checks
+- `$1` — Diagnostic ID (e.g., `GM0010`)
+- `$2` — Short title describing what the analyzer checks
 
 ## Steps
 
 1. **Read existing analyzers** in `src/Graph.Model.Analyzers/` to understand:
-   - Naming conventions (e.g., `GM0001`, `GM0002`)
+   - Naming conventions (e.g., `GM001`, `GM002`)
    - Diagnostic categories and severities used
    - How analyzers are registered
    - Code fix patterns
@@ -28,16 +28,14 @@ Scaffold a new Roslyn analyzer with code fix and tests.
    - Add a meaningful message format and description
    - Register for the appropriate syntax/symbol actions
 
-3. **Create a code fix provider** if applicable:
-   - Follow existing code fix patterns
-   - Register for the analyzer's diagnostic ID
+3. **Create a code fix provider** if applicable, registered for the analyzer's diagnostic ID.
 
-4. **Add tests** following existing analyzer test patterns — typically using `Microsoft.CodeAnalysis.Testing`.
+4. **Add tests** in `tests/Graph.Model.Analyzers.Tests/` — one test class per diagnostic, following the existing `GM00X_*Tests.cs` pattern (uses `Microsoft.CodeAnalysis.Testing`).
 
-5. **Build and test**:
+5. **Build and test** (no Docker needed for analyzer work):
    ```bash
    dotnet build src/Graph.Model.Analyzers/ --configuration Debug
-   dotnet test tests/Graph.Model.Tests/ --configuration Debug --no-build
+   dotnet test tests/Graph.Model.Analyzers.Tests --configuration Debug
    ```
 
 ## References

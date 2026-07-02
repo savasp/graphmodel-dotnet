@@ -1,17 +1,65 @@
-# GraphModel
+# GraphModel — Project instructions
 
-Type-safe .NET graph library for Neo4j with LINQ, transactions, and optional analyzers/codegen. Targets .NET 10.
+Type-safe .NET library for graph data and graph databases, with LINQ querying, transactions, and optional Roslyn analyzers and serialization codegen. Neo4j is the in-tree provider; a PostgreSQL + Apache AGE provider is planned (#53, #90). Apache 2.0 licensed. Targets **.NET 10** (`LangVersion` is set in [Directory.Build.props](Directory.Build.props)).
 
-For full project context, build, test, and conventions, see **[CLAUDE.md](CLAUDE.md)**.
+This file is the canonical instruction set for AI coding agents (Claude Code, Codex, Copilot, and others) and a good orientation for humans. Tool-specific configuration lives in `.claude/`, `.codex/`, and `.github/copilot-instructions.md`; see [docs/ai-agents.md](docs/ai-agents.md) for the map.
 
-## Agents
+## Layout
 
-Agent definitions are in `.claude/agents/`:
+```
+src/Graph.Model/                    provider-neutral core: IGraph, INode, IRelationship, LINQ surface, attributes
+src/Graph.Model.Neo4j/              Neo4j provider: LINQ-to-Cypher, transactions, entity managers
+src/Graph.Model.Analyzers/          Roslyn analyzers (GM001…) for consumer domain models
+src/Graph.Model.Serialization/      runtime serialization representation (EntityInfo, schemas)
+src/Graph.Model.Serialization.CodeGen/  incremental source generator for entity serializers
+tests/                              see "Build and test" — the four projects differ in what they need
+examples/                           runnable usage examples
+docs/                               concept docs, developer/build docs
+scripts/                            release + container helper scripts
+```
 
-| Agent | Description |
-|-------|-------------|
-| **engineer** | Implements features, fixes bugs, refactors code |
-| **qa-engineer** | Writes tests, validates changes, checks coverage |
-| **reviewer** | Reviews code for correctness, style, architecture |
+## Build and test
 
-All agents must work in isolated worktrees. See [CLAUDE.md](CLAUDE.md) for worktree rules.
+```bash
+dotnet build --configuration Debug     # day-to-day build (project references)
+dotnet test  --configuration Debug     # full suite — needs a local Neo4j (see below)
+```
+
+The four test projects have different requirements — get this right:
+
+| Project | What it is | Needs |
+|---------|------------|-------|
+| `tests/Graph.Model.Tests` | **Abstract provider contract suite.** Test classes are inherited by provider test projects; it executes ~no tests standalone. Add provider-agnostic tests here so every provider inherits them. | nothing (but running it alone proves nothing) |
+| `tests/Graph.Model.Neo4j.Tests` | The contract suite bound to Neo4j + provider-specific tests. This is where the suite actually runs. | a running Neo4j at `NEO4J_URI` (default `bolt://localhost:7687`; user/password via `NEO4J_USER`/`NEO4J_PASSWORD`). Start one with `scripts/containers/start-neo4j.sh` (Docker). There is **no** automatic container startup — `CI=true` does nothing (that path is disabled; see #88). |
+| `tests/Graph.Model.Analyzers.Tests` | Analyzer tests. | nothing — runs anywhere; the fast no-Docker lane |
+| `tests/Graph.Model.Performance.Tests` | Benchmarks. | not part of the normal gate |
+
+Package testing before publishing: `dotnet build --configuration LocalFeed`, then `--configuration Release`. Release builds require the `VERSION` file; the release process is described in [docs/graph-model-developers.md](docs/graph-model-developers.md) (being rebuilt under #71).
+
+## Conventions
+
+- C#/.NET conventions per [CONTRIBUTING.md](CONTRIBUTING.md); match the style of surrounding code, don't reformat.
+- One public type per file; XML documentation on all new public APIs.
+- Apache 2.0 copyright header on new source files (copy from any existing file).
+- Conventional commit messages: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`.
+- Async: public async APIs take a `CancellationToken` and have an `Async` suffix.
+- Keep changes minimal and focused; prefer editing existing files; file follow-up issues instead of expanding scope.
+
+## Multi-agent workflow
+
+- **The lead session owns isolation.** Task agents are dispatched into an already-prepared worktree/branch — verify with `git status` / `git branch --show-current` before changing anything, and never work in the user's main checkout. (Worktrees live under `~/dev/worktrees/graphmodel-dotnet/<task>`, based on latest `origin/main`.)
+- One focused branch + PR per task (`feat/…`, `fix/…`, `chore/…`); coordinate through branch state and PR comments, not shared files.
+- Build and test before pushing. Docs-only changes may skip the test gate.
+- **Shared-file discipline:** `graphmodel.sln`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `VERSION`, and `.github/` workflows are high-conflict and/or protected — change them additively, and ask the user before modifying the protected ones (a PreToolUse hook enforces this for Claude; it is advisory, not a security boundary).
+
+## Issue tracking
+
+- **Native relationships over prose:** dependencies use GitHub's sub-issue / blocked-by links, not "blocked by #N" in text. Umbrella issues (e.g. #90) group work via sub-issues.
+- **Labels** carry area/kind: `bug`, `enhancement`, `documentation`, `ci`, `security`, `release`, `code-quality`, `testing`, `architecture`, `agents`. This repo has no issue types (user-owned repo); milestones are used only for release-bounded groups.
+- PRs reference their issue; repeat the closing keyword per issue: `Closes #64, closes #65` (comma-separated bare numbers silently don't close).
+- Follow-ups become issues, not TODO comments or scope creep.
+
+## Documentation discipline
+
+- Ship doc updates with the code that changes behavior (`docs/`, XML docs, README).
+- Code samples in docs must compile against the current API — if you change a public API, grep the docs for it.

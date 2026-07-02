@@ -11,31 +11,32 @@ Scaffold a new node type with proper conventions.
 
 ## Arguments
 
-- `$0` — The type name (e.g., `Person`, `Organization`)
-- `$1` — Optional namespace (defaults to the project's root namespace)
+- `$1` — The type name (e.g., `Person`, `Organization`)
+- `$2` — Optional namespace (defaults to the project's root namespace)
 
 ## Steps
 
-1. **Read existing node types** in `src/Graph.Model/` to understand the conventions (base class, attributes, property patterns).
+1. **Read existing node types** in `src/Graph.Model/` and the examples in `examples/` to understand the conventions (the `Node` base record, `[Node]` / `[Property]` attributes, property patterns).
 
 2. **Create the node class** following the existing pattern:
-   - Inherit from the correct base class
-   - Add `[Node]` attribute (or equivalent)
-   - Use C# record types if the existing codebase does
-   - Add XML documentation
+   - Inherit from the `Node` base record (or implement `INode` if the surrounding code does)
+   - Add the `[Node("Label")]` attribute
+   - Use C# records, matching the existing codebase
+   - Add XML documentation and the Apache 2.0 header
 
-3. **Add unit tests** in `tests/Graph.Model.Tests/` following existing test patterns.
+3. **Add tests** in `tests/Graph.Model.Tests/` (the provider-agnostic contract suite — tests there are inherited and executed by provider test projects) following existing test patterns.
 
-4. **Add serialization support** if the project uses `Graph.Model.Serialization.CodeGen` — check if codegen picks up the new type automatically or needs registration.
+4. **Serialization** is handled by the `Graph.Model.Serialization.CodeGen` source generator automatically for types visible to the compilation — verify the generated serializer appears by building.
 
 5. **Build and test** to verify everything compiles:
    ```bash
    dotnet build --configuration Debug
-   dotnet test tests/Graph.Model.Tests/ --configuration Debug --no-build
+   dotnet test --configuration Debug --no-build   # full run needs Neo4j; see AGENTS.md
    ```
 
 ## References
 
-- [docs/core-concepts.md](../../docs/core-concepts.md) — node and relationship model
-- [docs/attributes.md](../../docs/attributes.md) — available attributes
-- [docs/best-practices.md](../../docs/best-practices.md) — design patterns
+- [AGENTS.md](../../../AGENTS.md) — test-project semantics
+- [docs/core-concepts.md](../../../docs/core-concepts.md) — node and relationship model
+- [docs/attributes.md](../../../docs/attributes.md) — available attributes
+- [docs/best-practices.md](../../../docs/best-practices.md) — design patterns
