@@ -212,7 +212,7 @@ catch
 - **[API Reference](docs/api)** - API documentation generated from the source code
 - **[Troubleshooting](docs/troubleshooting.md)** - In case you encounter issues
 - **[Building Graph Model](docs/graph-model-developers.md)** - Building the projects in this repository
-- **[AI agent documentation](docs/ai-agents.md)** - Where to find context for Claude Code, Cursor, and other AI coding tools
+- **[AI agent documentation](docs/ai-agents.md)** - Where to find context for Claude Code, Codex, Copilot, and other AI coding tools
 
 ## 💡 Examples
 
@@ -298,7 +298,7 @@ GraphModel follows a clean, layered architecture:
 
 ## 🤖 AI agent documentation
 
-This repo provides context for AI coding agents (Claude Code, Cursor, and others). See **[docs/ai-agents.md](docs/ai-agents.md)** for where to find project memory, skills, and rules for your tool.
+This repo provides context for AI coding agents (Claude Code, Codex, Copilot, and others). The canonical instruction set is **[AGENTS.md](AGENTS.md)**; see **[docs/ai-agents.md](docs/ai-agents.md)** for the per-tool map.
 
 ## 🤝 Contributing
 

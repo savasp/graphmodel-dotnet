@@ -1,24 +1,41 @@
-#!/bin/bash
-# After editing a .cs file, do a quick build check.
-# Non-zero exit (other than 2) is logged but doesn't block.
+#!/usr/bin/env bash
+# PostToolUse hook for Edit/Write: after a .cs file changes, build its project
+# so compile errors reach the agent immediately. PostToolUse feedback only
+# flows back on exit 2 with the message on STDERR — anything else is invisible
+# to the agent, so failures must exit 2.
+set -u
 
-INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+input="$(cat)"
 
-# Only check C# source files
-if [[ "$FILE_PATH" != *.cs ]]; then
-  exit 0
-fi
+# Fail open: a missing jq must not wedge the session.
+command -v jq >/dev/null 2>&1 || exit 0
 
-# Find the nearest .csproj to build just the affected project
-DIR=$(dirname "$FILE_PATH")
-while [ "$DIR" != "/" ]; do
-  CSPROJ=$(find "$DIR" -maxdepth 1 -name "*.csproj" -print -quit 2>/dev/null)
-  if [ -n "$CSPROJ" ]; then
-    dotnet build "$CSPROJ" --configuration Debug --no-restore --verbosity quiet 2>&1
-    exit $?
-  fi
-  DIR=$(dirname "$DIR")
+path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')"
+case "$path" in
+  *.cs) ;;
+  *) exit 0 ;;
+esac
+
+# Find the nearest .csproj to build just the affected project.
+dir="$(dirname "$path")"
+csproj=""
+while [ "$dir" != "/" ] && [ -n "$dir" ]; do
+  csproj="$(find "$dir" -maxdepth 1 -name '*.csproj' -print -quit 2>/dev/null)"
+  [ -n "$csproj" ] && break
+  dir="$(dirname "$dir")"
 done
+[ -z "$csproj" ] && exit 0
+
+# No --no-restore: fresh worktrees have no restored packages yet.
+output="$(dotnet build "$csproj" --configuration Debug --verbosity quiet 2>&1)"
+status=$?
+
+if [ $status -ne 0 ]; then
+  {
+    printf 'Build failed for %s after editing %s:\n' "$(basename "$csproj")" "$path"
+    printf '%s\n' "$output" | tail -n 40
+  } >&2
+  exit 2
+fi
 
 exit 0

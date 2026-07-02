@@ -23,7 +23,7 @@ description: GraphModel .NET library context. Use when working on GraphModel, gr
 - **Core:** `src/Graph.Model/` — `IGraph`, `INode`, `IRelationship`, LINQ, attributes.
 - **Neo4j:** `src/Graph.Model.Neo4j/` — provider, LINQ-to-Cypher, transactions.
 - **Serialization:** `src/Graph.Model.Serialization/`, `src/Graph.Model.Serialization.CodeGen/`.
-- **Tests:** `tests/Graph.Model.Tests/` (unit), `tests/Graph.Model.Neo4j.Tests/` (integration; Docker/CI for Neo4j).
+- **Tests:** `tests/Graph.Model.Tests/` (abstract provider contract suite — executes via provider test projects), `tests/Graph.Model.Neo4j.Tests/` (the contract suite bound to Neo4j + provider tests; needs a running Neo4j — `scripts/containers/start-neo4j.sh`), `tests/Graph.Model.Analyzers.Tests/` (no external deps). See [AGENTS.md](AGENTS.md).
 
 ## References
 

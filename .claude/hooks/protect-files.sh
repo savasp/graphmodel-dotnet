@@ -1,27 +1,35 @@
-#!/bin/bash
-# Prevent agents from editing protected files (VERSION, .csproj, CI config).
-# Exit 2 = block the tool call; exit 0 = allow.
+#!/usr/bin/env bash
+# PreToolUse guard for Edit/Write: blocks edits to protected files so the agent
+# asks the user first. Reads the tool-call JSON from stdin; exit 2 + stderr =
+# block (the message is fed back to the agent), exit 0 = allow.
+#
+# This is ADVISORY, not a security boundary — Bash commands are not intercepted.
+# Protected paths (relative to the repo root):
+#   VERSION, .github/**, Directory.Build.props, Directory.Packages.props,
+#   nuget.config, .claude/**, .codex/**
+set -u
 
-INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.file_path // empty')
+input="$(cat)"
 
-if [ -z "$FILE_PATH" ]; then
+# Fail open: a missing jq must not wedge the session.
+if ! command -v jq >/dev/null 2>&1; then
+  printf 'protect-files: jq not found, guard skipped\n' >&2
   exit 0
 fi
 
-PROTECTED_PATTERNS=(
-  "VERSION"
-  ".github/"
-  "Directory.Build.props"
-  "Directory.Packages.props"
-  "nuget.config"
-)
+path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')"
+[ -z "$path" ] && exit 0
 
-for pattern in "${PROTECTED_PATTERNS[@]}"; do
-  if [[ "$FILE_PATH" == *"$pattern"* ]]; then
-    echo "Blocked: $FILE_PATH is a protected file. Ask the user before modifying." >&2
+# Normalize to a repo-relative path so patterns anchor at the repo root
+# instead of substring-matching anywhere in the path.
+root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+rel="${path#"$root"/}"
+
+case "$rel" in
+  VERSION|.github/*|Directory.Build.props|Directory.Packages.props|nuget.config|.claude/*|.codex/*)
+    printf 'Blocked: %s is a protected file (see AGENTS.md "Shared-file discipline"). Ask the user before modifying it.\n' "$rel" >&2
     exit 2
-  fi
-done
+    ;;
+esac
 
 exit 0

@@ -1,0 +1,6 @@
+# Codex configuration for GraphModel.
+#
+# Project instructions live in AGENTS.md at the repo root (Codex reads it
+# natively). Agent role definitions are under .codex/agents/, mirroring the
+# Claude Code agents in .claude/agents/. MCP servers (e.g. a Neo4j server)
+# can be configured here if/when needed.
