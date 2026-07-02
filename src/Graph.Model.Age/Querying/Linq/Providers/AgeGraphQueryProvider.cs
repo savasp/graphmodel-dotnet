@@ -22,7 +22,7 @@ using Cvoya.Graph.Model.Age.Querying.Linq.Queryables;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-internal sealed class AgeGraphQueryProvider : IGraphQueryProvider, IAsyncDisposable
+internal sealed class AgeGraphQueryProvider : IGraphQueryProvider
 {
     private readonly AgeGraphContext _graphContext;
     private readonly AgeGraphTransaction? _transaction;
@@ -86,9 +86,4 @@ internal sealed class AgeGraphQueryProvider : IGraphQueryProvider, IAsyncDisposa
     private TResult ExecuteInternal<TResult>(Expression expression)
         => ExecuteAsync<TResult>(expression, CancellationToken.None).GetAwaiter().GetResult();
 
-    public async ValueTask DisposeAsync()
-    {
-        if (_transaction is not null)
-            await _transaction.DisposeAsync();
-    }
 }

@@ -247,4 +247,50 @@ public interface ITransactionTests : IGraphModelTest
         await Assert.ThrowsAsync<GraphException>(
             () => transaction.Rollback());
     }
+
+    [Fact]
+    public async Task QueryableDisposal_DoesNotDisruptCallerTransaction()
+    {
+        // Regression test for Bug #3: disposing a queryable obtained via
+        // NodesAsync<T>(tx) must not rollback/dispose the caller's transaction.
+        var person = new Person { FirstName = "Alice", LastName = "QueryableDispose" };
+
+        await using var transaction = await Graph.GetTransactionAsync();
+
+        // Get a queryable with the caller's transaction and dispose it
+        await using (var queryable = await Graph.NodesAsync<Person>(transaction))
+        {
+            _ = await queryable.ToListAsync(TestContext.Current.CancellationToken);
+        } // DisposeAsync must NOT rollback/dispose the transaction
+
+        // Transaction should still be usable after queryable disposal
+        await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
+        await transaction.CommitAsync();
+
+        // Verify the data was committed successfully
+        var retrieved = await Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken);
+        Assert.NotNull(retrieved);
+        Assert.Equal("Alice", retrieved.FirstName);
+    }
+
+    [Fact]
+    public async Task ForeignTransaction_ThrowsGraphException()
+    {
+        // passing a non-provider IGraphTransaction
+        // to any graph method must throw GraphException.
+        var fakeTx = new FakeGraphTransaction();
+
+        // NodesAsync
+        await Assert.ThrowsAsync<GraphException>(() =>
+            Graph.NodesAsync<Person>(fakeTx));
+
+        // RelationshipsAsync
+        await Assert.ThrowsAsync<GraphException>(() =>
+            Graph.RelationshipsAsync<AssignedTo>(fakeTx));
+
+        // CreateNodeAsync
+        var person = new Person { FirstName = "Foreign", LastName = "Tx" };
+        await Assert.ThrowsAsync<GraphException>(() =>
+            Graph.CreateNodeAsync(person, fakeTx, TestContext.Current.CancellationToken));
+    }
 }

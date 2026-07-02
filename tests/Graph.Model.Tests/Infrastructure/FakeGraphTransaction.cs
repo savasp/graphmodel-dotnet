@@ -12,12 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model.Tests;
+namespace Cvoya.Graph.Model.Tests;
 
-namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
-
-public class TransactionTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.ITransactionTests
+public class FakeGraphTransaction : IGraphTransaction
 {
+    public bool IsCommitted { get; private set; }
+    public bool IsRolledBack { get; private set; }
+    public bool IsDisposed { get; private set; }
+
+    public Task CommitAsync()
+    {
+        IsCommitted = true;
+        return Task.CompletedTask;
+    }
+
+    public Task Rollback()
+    {
+        IsRolledBack = true;
+        return Task.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        IsDisposed = true;
+        return ValueTask.CompletedTask;
+    }
 }

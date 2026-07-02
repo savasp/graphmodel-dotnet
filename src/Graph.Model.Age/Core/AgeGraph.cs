@@ -102,7 +102,14 @@ internal sealed class AgeGraph : IGraph
             () =>
             {
                 logger.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
-                var provider = new Querying.Linq.Providers.AgeGraphQueryProvider(graphContext, (AgeGraphTransaction?)transaction);
+
+                if (transaction is not null and not AgeGraphTransaction)
+                {
+                    throw new GraphException("The given transaction is not a valid AGE transaction. You need to use AgeGraph.BeginTransactionAsync() to create a transaction.");
+                }
+
+                var ageTx = transaction as AgeGraphTransaction;
+                var provider = new Querying.Linq.Providers.AgeGraphQueryProvider(graphContext, ageTx);
                 var queryable = new Querying.Linq.Queryables.AgeGraphNodeQueryable<N>(provider, graphContext);
                 return Task.FromResult<IGraphNodeQueryable<N>>(queryable);
             });
@@ -118,7 +125,13 @@ internal sealed class AgeGraph : IGraph
             () =>
             {
                 logger.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
-                var ageTx = (AgeGraphTransaction?)transaction;
+
+                if (transaction is not null and not AgeGraphTransaction)
+                {
+                    throw new GraphException("The given transaction is not a valid AGE transaction. You need to use AgeGraph.BeginTransactionAsync() to create a transaction.");
+                }
+
+                var ageTx = transaction as AgeGraphTransaction;
                 var provider = new Querying.Linq.Providers.AgeGraphQueryProvider(graphContext, ageTx);
                 var queryable = new Querying.Linq.Queryables.AgeGraphRelationshipQueryable<R>(provider, graphContext);
                 return Task.FromResult<IGraphRelationshipQueryable<R>>(queryable);

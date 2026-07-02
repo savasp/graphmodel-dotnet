@@ -50,6 +50,13 @@ internal static class TransactionHelpers
 
             throw;
         }
+        finally
+        {
+            if (transaction == null)
+            {
+                await ageTransaction.DisposeAsync().ConfigureAwait(false);
+            }
+        }
     }
 
     public static async Task<AgeGraphTransaction> GetOrCreateTransactionAsync(
@@ -72,6 +79,11 @@ internal static class TransactionHelpers
             }
 
             return ageTransaction;
+        }
+
+        if (transaction is not null && transaction is not AgeGraphTransaction)
+        {
+            throw new GraphException("The given transaction is not a valid AGE transaction. You need to use AgeGraph.BeginTransactionAsync() to create a transaction.");
         }
 
         // Create a new transaction

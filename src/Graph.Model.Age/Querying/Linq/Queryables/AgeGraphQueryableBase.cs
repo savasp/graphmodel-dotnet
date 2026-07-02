@@ -53,8 +53,5 @@ internal abstract class AgeGraphQueryableBase<TElement> : IGraphQueryable<TEleme
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    public ValueTask DisposeAsync()
-    {
-        return ((AgeGraphQueryProvider)Provider).DisposeAsync();
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
