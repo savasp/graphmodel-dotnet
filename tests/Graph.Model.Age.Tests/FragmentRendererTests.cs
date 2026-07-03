@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Age.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Cypher.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Model.Tests;
 using Xunit;
 
 public sealed class FragmentRendererTests
@@ -2238,5 +2239,44 @@ public sealed class FragmentRendererTests
         var secondCypher = secondContext.GetQuery();
         Assert.Contains("toInteger(substring(src0.CreatedAt, 17, 2))", secondCypher);
         Console.WriteLine($"Second Cypher:\n{secondCypher}");
+    }
+
+    // -----------------------------------------------------------------------
+    //  Polymorphic Inheritance Label Filtering Tests (§8.2.8)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Verifies that querying for a derived type (Manager : Person) generates
+    /// the correct inheritance_labels filter using the IN operator, not [0] indexing.
+    /// Expected: MATCH (src0:Person)
+    ///           WHERE 'Manager' IN src0.inheritance_labels
+    ///           RETURN src0
+    /// </summary>
+    [Fact]
+    public void PolymorphicDerivedType_GeneratesInOperator_ForInheritanceLabels()
+    {
+        var provider = new TestGraphQueryProvider();
+        var source = new TestGraphNodeQueryable<Manager>(provider);
+
+        var context = new CypherQueryContext(typeof(Manager));
+        var visitor = new AgeCypherQueryVisitor(context);
+        visitor.Visit(source.Expression);
+
+        var cypher = context.GetQuery();
+        Console.WriteLine($"Generated Cypher:\n{cypher}");
+
+        // Should MATCH on the base type label (Person), not the derived type
+        Assert.Contains("(src0:Person)", cypher);
+
+        // Should use IN operator for inheritance_labels filtering (the fix)
+        Assert.Contains("'Manager' IN src0.inheritance_labels", cypher);
+
+        // Should NOT use [0] index access (the bug)
+        Assert.DoesNotContain("inheritance_labels[0]", cypher);
+
+        // Verify fragment renderer parity
+        var fragments = context.FragmentSequence.ToList();
+        var fragmentOutput = AgeFragmentRenderer.Render(fragments);
+        Assert.Equal(cypher, fragmentOutput);
     }
 }

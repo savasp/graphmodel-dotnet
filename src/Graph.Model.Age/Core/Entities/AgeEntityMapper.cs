@@ -147,9 +147,11 @@ internal sealed class AgeEntityMapper
             label,
             labels.ToArray(),
             simpleProperties,
-            complexProperties,
-            InheritanceLabels: labels.ToArray()
-        );
+            complexProperties
+        )
+        {
+            InheritanceLabels = labels.ToArray()
+        };
     }
 
     public EntityInfo MapEdge(Edge edge, Type targetType)
@@ -200,9 +202,11 @@ internal sealed class AgeEntityMapper
             edge.Label,
             allLabels.ToArray(),
             simpleProperties,
-            new Dictionary<string, Property>(StringComparer.Ordinal),
-            InheritanceLabels: allLabels.ToArray()
-        );
+            new Dictionary<string, Property>(StringComparer.Ordinal)
+        )
+        {
+            InheritanceLabels = allLabels.ToArray()
+        };
     }
 
     private static string MapAgePropertyNameToCSharp(string ageKey)

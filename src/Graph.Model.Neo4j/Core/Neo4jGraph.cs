@@ -176,17 +176,10 @@ internal class Neo4jGraph : IGraph
 
             _logger.LogDebug("Successfully created node {NodeId}", node.Id);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
             var message = $"Failed to create node of type {typeof(N).Name}";
             _logger.LogError(ex, message);
-
-            if (ex is GraphException)
-            {
-                // If it's already a GraphException, rethrow it
-                throw;
-            }
-
             throw new GraphException(message, ex);
         }
     }

@@ -36,7 +36,7 @@ internal static class GraphOperationHelper
         {
             return await operation().ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not GraphException)
+        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
             logger.LogError(ex, errorMessage);
             throw new GraphException(errorMessage, ex);
@@ -55,7 +55,7 @@ internal static class GraphOperationHelper
         {
             await operation().ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not GraphException)
+        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
             logger.LogError(ex, errorMessage);
             throw new GraphException(errorMessage, ex);
@@ -74,7 +74,7 @@ internal static class GraphOperationHelper
         {
             return operation();
         }
-        catch (Exception ex) when (ex is not GraphException)
+        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
             logger.LogError(ex, errorMessage);
             throw new GraphException(errorMessage, ex);
