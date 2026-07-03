@@ -84,6 +84,5 @@ internal sealed class AgeGraphQueryProvider : IGraphQueryProvider
         => ExecuteAsync<object?>(expression, cancellationToken);
 
     private TResult ExecuteInternal<TResult>(Expression expression)
-        => ExecuteAsync<TResult>(expression, CancellationToken.None).GetAwaiter().GetResult();
-
+        => Task.Run(() => ExecuteAsync<TResult>(expression, CancellationToken.None)).GetAwaiter().GetResult();
 }

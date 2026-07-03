@@ -92,7 +92,7 @@ public sealed class AgeGraphStore : IAsyncDisposable
     /// <summary>
     /// Gets the graph abstraction for the configured AGE data source.
     /// </summary>
-    public IGraph Graph => graphInitTask.GetAwaiter().GetResult();
+    public IGraph Graph => Task.Run(() => graphInitTask).GetAwaiter().GetResult();
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()

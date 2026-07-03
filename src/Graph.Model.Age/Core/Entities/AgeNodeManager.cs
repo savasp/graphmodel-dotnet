@@ -190,15 +190,8 @@ internal sealed class AgeNodeManager
         var cypher = """MATCH (n {user_id: $id}) RETURN n LIMIT 1""";
         await using var cmd = context.Connection.CreateCypherCommand(context.GraphName, cypher, new Dictionary<string, object?> { ["id"] = id });
         cmd.Transaction = transaction.Transaction;
-        try
-        {
-            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            return await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            return false;
-        }
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<Vertex> ExecuteSingleVertexAsync(

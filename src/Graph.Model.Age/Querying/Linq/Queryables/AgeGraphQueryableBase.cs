@@ -15,12 +15,16 @@
 namespace Cvoya.Graph.Model.Age.Querying.Linq.Queryables;
 
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq.Expressions;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Age.Core;
+using Cvoya.Graph.Model.Age.Querying.Linq.Helpers;
 using Cvoya.Graph.Model.Age.Querying.Linq.Providers;
 
-internal abstract class AgeGraphQueryableBase<TElement> : IGraphQueryable<TElement>, IAsyncDisposable
+internal abstract class AgeGraphQueryableBase<TElement> : IGraphQueryable<TElement>, IAsyncEnumerable<TElement>, IAsyncDisposable
 {
     protected AgeGraphQueryableBase(
         Type elementType,
@@ -52,6 +56,119 @@ internal abstract class AgeGraphQueryableBase<TElement> : IGraphQueryable<TEleme
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    #region IAsyncEnumerable Implementation
+
+    public async IAsyncEnumerator<TElement> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    {
+        var results = await Provider.ExecuteAsync<IEnumerable<TElement>>(Expression, cancellationToken);
+        foreach (var item in results)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return item;
+        }
+    }
+
+    #endregion
+
+    #region Async Terminal Operations
+
+    public Task<TElement> FirstAsync(CancellationToken cancellationToken = default)
+    {
+        var expression = Expression.Call(
+            null,
+            GetAsyncMethod(nameof(FirstAsync)),
+            Expression,
+            Expression.Constant(cancellationToken));
+
+        return Provider.ExecuteAsync<TElement>(expression, cancellationToken);
+    }
+
+    public Task<TElement?> FirstOrDefaultAsync(CancellationToken cancellationToken = default)
+    {
+        var expression = Expression.Call(
+            null,
+            GetAsyncMethod(nameof(FirstOrDefaultAsync)),
+            Expression,
+            Expression.Constant(cancellationToken));
+
+        return Provider.ExecuteAsync<TElement?>(expression, cancellationToken);
+    }
+
+    public Task<TElement> SingleAsync(CancellationToken cancellationToken = default)
+    {
+        var expression = Expression.Call(
+            null,
+            GetAsyncMethod(nameof(SingleAsync)),
+            Expression,
+            Expression.Constant(cancellationToken));
+
+        return Provider.ExecuteAsync<TElement>(expression, cancellationToken);
+    }
+
+    public Task<TElement?> SingleOrDefaultAsync(CancellationToken cancellationToken = default)
+    {
+        var expression = Expression.Call(
+            null,
+            GetAsyncMethod(nameof(SingleOrDefaultAsync)),
+            Expression,
+            Expression.Constant(cancellationToken));
+
+        return Provider.ExecuteAsync<TElement?>(expression, cancellationToken);
+    }
+
+    public Task<int> CountAsync(CancellationToken cancellationToken = default)
+    {
+        var expression = Expression.Call(
+            null,
+            GetAsyncMethod(nameof(CountAsync)),
+            Expression,
+            Expression.Constant(cancellationToken));
+
+        return Provider.ExecuteAsync<int>(expression, cancellationToken);
+    }
+
+    public Task<bool> AnyAsync(CancellationToken cancellationToken = default)
+    {
+        var expression = Expression.Call(
+            null,
+            GetAsyncMethod(nameof(AnyAsync)),
+            Expression,
+            Expression.Constant(cancellationToken));
+
+        return Provider.ExecuteAsync<bool>(expression, cancellationToken);
+    }
+
+    public Task<List<TElement>> ToListAsync(CancellationToken cancellationToken = default)
+    {
+        var expression = Expression.Call(
+            null,
+            GetAsyncMethod(nameof(ToListAsync)),
+            Expression,
+            Expression.Constant(cancellationToken));
+
+        return Provider.ExecuteAsync<List<TElement>>(expression, cancellationToken);
+    }
+
+    public Task<TElement[]> ToArrayAsync(CancellationToken cancellationToken = default)
+    {
+        var expression = Expression.Call(
+            null,
+            GetAsyncMethod(nameof(ToArrayAsync)),
+            Expression,
+            Expression.Constant(cancellationToken));
+
+        return Provider.ExecuteAsync<TElement[]>(expression, cancellationToken);
+    }
+
+    private static MethodInfo GetAsyncMethod(string methodName)
+    {
+        return typeof(AgeGraphQueryableAsyncExtensions)
+            .GetMethod(methodName, BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException($"Async method {methodName} not found");
+    }
+
+    #endregion
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

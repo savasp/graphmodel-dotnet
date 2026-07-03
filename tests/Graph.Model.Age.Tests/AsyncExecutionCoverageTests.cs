@@ -144,25 +144,21 @@ public class AsyncExecutionCoverageTests : AgeTest
         Assert.Equal("Ivy", result.FirstName);
     }
 
-    // Note: SingleAsync with predicate can be flaky if there's duplicate data in the database
-    // Keeping it commented to avoid test instability
-    /*
     [Fact]
     public async Task SingleAsync_WithPredicate_ExecutesQueryAsynchronously()
     {
         // Arrange
         var person = new Person { FirstName = "Jack", LastName = "Thomas" };
-        await Graph.CreateNodeAsync(person, null, default);
+        await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Act
         var result = await (await Graph.NodesAsync<Person>())
-            .SingleAsync(p => p.FirstName == "Jack", default);
+            .SingleAsync(p => p.FirstName == "Jack", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("Jack", result.FirstName);
         Assert.Equal("Thomas", result.LastName);
     }
-    */
 
     [Fact]
     public async Task SingleAsync_WithoutPredicate_ExecutesQueryAsynchronously()
@@ -394,5 +390,63 @@ public class AsyncExecutionCoverageTests : AgeTest
         Assert.Equal(2, names.Count);
         Assert.Equal("Adam", names[0]);
         Assert.Equal("Zoe", names[1]);
+    }
+
+    [Fact]
+    public async Task FirstOrDefaultAsync_WithMatchingPredicate_ReturnsFirstElement()
+    {
+        // Arrange
+        var person = new Person { FirstName = "TestFODefault", LastName = "User" };
+        await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+
+        // Act
+        var result = await (await Graph.NodesAsync<Person>())
+            .Where(p => p.FirstName == "TestFODefault")
+            .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("TestFODefault", result.FirstName);
+    }
+
+    [Fact]
+    public async Task FirstOrDefaultAsync_WithNonMatchingPredicate_ReturnsDefault()
+    {
+        // Act
+        var result = await (await Graph.NodesAsync<Person>())
+            .Where(p => p.FirstName == "NonExistentFirstOrDefault")
+            .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task SingleOrDefaultAsync_WithMatchingPredicate_ReturnsSingleElement()
+    {
+        // Arrange
+        var person = new Person { FirstName = "TestSODefault", LastName = "User" };
+        await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+
+        // Act
+        var result = await (await Graph.NodesAsync<Person>())
+            .Where(p => p.FirstName == "TestSODefault")
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("TestSODefault", result.FirstName);
+    }
+
+    [Fact]
+    public async Task SingleOrDefaultAsync_WithNonMatchingPredicate_ReturnsDefault()
+    {
+        // Act
+        var result = await (await Graph.NodesAsync<Person>())
+            .Where(p => p.FirstName == "NonExistentSingleOrDefault")
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Null(result);
     }
 }
