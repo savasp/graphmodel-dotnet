@@ -150,7 +150,7 @@ internal static class ColumnDefinitionBuilder
     /// </summary>
     private static string? GetNewExpressionParameterName(NewExpression newExpr, int parameterIndex)
     {
-        var constructor = newExpr.Type.GetConstructors().FirstOrDefault();
+        var constructor = newExpr.Constructor;
         if (constructor == null)
             return null;
         var parameters = constructor.GetParameters();

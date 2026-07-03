@@ -60,14 +60,23 @@ internal static class ScalarResultMaterializer
         [typeof(bool?)] = ag => { try { return ag.GetBoolean(); } catch { return null; } },
         [typeof(byte)] = ag => { try { return ag.GetByte(); } catch { return null; } },
 
-        // DateTime: AGE returns date/time as string; parse it via the Agtype string representation
+        // DateTime: AGE returns date/time as string; parse with InvariantCulture and RoundtripKind
         [typeof(DateTime)] = ag =>
         {
             try
             {
                 var strVal = ag.ToString()?.Trim('"', ' ', '\'');
-                if (DateTime.TryParse(strVal, out var dtVal))
-                    return dtVal;
+                if (DateTime.TryParse(strVal, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var dtVal)
+                    || DateTime.TryParseExact(strVal,
+                        ["yyyy-MM-ddTHH:mm:ss.FFFFFFF", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-dd",
+                         "yyyy-MM-dd HH:mm:ss.FFFFFFF", "yyyy-MM-dd HH:mm:ss"],
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out dtVal))
+                {
+                    return dtVal.Kind == DateTimeKind.Unspecified
+                        ? DateTime.SpecifyKind(dtVal, DateTimeKind.Local) : dtVal;
+                }
                 return null;
             }
             catch { return null; }
@@ -77,8 +86,123 @@ internal static class ScalarResultMaterializer
             try
             {
                 var strVal = ag.ToString()?.Trim('"', ' ', '\'');
-                if (DateTime.TryParse(strVal, out var dtVal))
-                    return dtVal;
+                if (DateTime.TryParse(strVal, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var dtVal)
+                    || DateTime.TryParseExact(strVal,
+                        ["yyyy-MM-ddTHH:mm:ss.FFFFFFF", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-dd",
+                         "yyyy-MM-dd HH:mm:ss.FFFFFFF", "yyyy-MM-dd HH:mm:ss"],
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out dtVal))
+                {
+                    return dtVal.Kind == DateTimeKind.Unspecified
+                        ? DateTime.SpecifyKind(dtVal, DateTimeKind.Local) : dtVal;
+                }
+                return null;
+            }
+            catch { return null; }
+        },
+
+        // DateTimeOffset: parse with InvariantCulture and RoundtripKind
+        [typeof(DateTimeOffset)] = ag =>
+        {
+            try
+            {
+                var strVal = ag.ToString()?.Trim('"', ' ', '\'');
+                if (DateTimeOffset.TryParse(strVal, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var dtoVal))
+                    return dtoVal;
+                return null;
+            }
+            catch { return null; }
+        },
+        [typeof(DateTimeOffset?)] = ag =>
+        {
+            try
+            {
+                var strVal = ag.ToString()?.Trim('"', ' ', '\'');
+                if (DateTimeOffset.TryParse(strVal, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var dtoVal))
+                    return dtoVal;
+                return null;
+            }
+            catch { return null; }
+        },
+
+        // DateOnly: parse with InvariantCulture using ISO 8601 date format
+        [typeof(DateOnly)] = ag =>
+        {
+            try
+            {
+                var strVal = ag.ToString()?.Trim('"', ' ', '\'');
+                if (DateOnly.TryParseExact(strVal, "yyyy-MM-dd",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None, out var dateVal))
+                    return dateVal;
+                return null;
+            }
+            catch { return null; }
+        },
+        [typeof(DateOnly?)] = ag =>
+        {
+            try
+            {
+                var strVal = ag.ToString()?.Trim('"', ' ', '\'');
+                if (DateOnly.TryParseExact(strVal, "yyyy-MM-dd",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None, out var dateVal))
+                    return dateVal;
+                return null;
+            }
+            catch { return null; }
+        },
+
+        // TimeOnly: parse with InvariantCulture using ISO 8601 time format
+        [typeof(TimeOnly)] = ag =>
+        {
+            try
+            {
+                var strVal = ag.ToString()?.Trim('"', ' ', '\'');
+                if (TimeOnly.TryParseExact(strVal, "HH:mm:ss.FFFFFFF",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None, out var timeVal))
+                    return timeVal;
+                return null;
+            }
+            catch { return null; }
+        },
+        [typeof(TimeOnly?)] = ag =>
+        {
+            try
+            {
+                var strVal = ag.ToString()?.Trim('"', ' ', '\'');
+                if (TimeOnly.TryParseExact(strVal, "HH:mm:ss.FFFFFFF",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None, out var timeVal))
+                    return timeVal;
+                return null;
+            }
+            catch { return null; }
+        },
+
+        // TimeSpan: parse with InvariantCulture
+        [typeof(TimeSpan)] = ag =>
+        {
+            try
+            {
+                var strVal = ag.ToString()?.Trim('"', ' ', '\'');
+                if (TimeSpan.TryParse(strVal, System.Globalization.CultureInfo.InvariantCulture, out var tsVal))
+                    return tsVal;
+                return null;
+            }
+            catch { return null; }
+        },
+        [typeof(TimeSpan?)] = ag =>
+        {
+            try
+            {
+                var strVal = ag.ToString()?.Trim('"', ' ', '\'');
+                if (TimeSpan.TryParse(strVal, System.Globalization.CultureInfo.InvariantCulture, out var tsVal))
+                    return tsVal;
                 return null;
             }
             catch { return null; }

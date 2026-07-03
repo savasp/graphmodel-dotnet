@@ -66,7 +66,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
             return node;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Error creating node of type {NodeType}", typeof(TNode).Name);
             throw new GraphException($"Failed to create node: {ex.Message}", ex);

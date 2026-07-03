@@ -97,6 +97,81 @@ public sealed class AgeValueConvertersTests
     }
 
     [Fact]
+    public void ConvertScalarAgtype_DateTime_WithInvariantCulture_ParsesIso8601()
+    {
+        var result = AgeValueConverters.ConvertScalarAgtype("2024-06-15T14:30:00", typeof(DateTime));
+        var dt = Assert.IsType<DateTime>(result);
+        Assert.Equal(2024, dt.Year);
+        Assert.Equal(6, dt.Month);
+        Assert.Equal(15, dt.Day);
+        Assert.Equal(14, dt.Hour);
+        Assert.Equal(30, dt.Minute);
+        Assert.Equal(0, dt.Second);
+    }
+
+    [Fact]
+    public void ConvertScalarAgtype_DateTime_PreservesUtcKind()
+    {
+        var result = AgeValueConverters.ConvertScalarAgtype("2024-06-15T14:30:00Z", typeof(DateTime));
+        var dt = Assert.IsType<DateTime>(result);
+        Assert.Equal(DateTimeKind.Utc, dt.Kind);
+        Assert.Equal(14, dt.Hour);
+    }
+
+    [Fact]
+    public void ConvertScalarAgtype_DateTime_PreservesUtcKindWithOffset()
+    {
+        // +00:00 offset uses RoundtripKind which yields Local kind adjusted for offset.
+        // To preserve Utc kind, values should use Z suffix.
+        var result = AgeValueConverters.ConvertScalarAgtype("2024-06-15T14:30:00+00:00", typeof(DateTime));
+        var dt = Assert.IsType<DateTime>(result);
+        Assert.Equal(DateTimeKind.Local, dt.Kind);
+    }
+
+    [Fact]
+    public void ConvertScalarAgtype_DateTime_WithFractionalSeconds()
+    {
+        var result = AgeValueConverters.ConvertScalarAgtype("2024-06-15T14:30:00.1234567", typeof(DateTime));
+        var dt = Assert.IsType<DateTime>(result);
+        Assert.Equal(2024, dt.Year);
+        Assert.Equal(6, dt.Month);
+        Assert.Equal(15, dt.Day);
+    }
+
+    [Fact]
+    public void ConvertScalarAgtype_DateTime_ParseWithSpaceSeparator()
+    {
+        var result = AgeValueConverters.ConvertScalarAgtype("2024-06-15 14:30:00", typeof(DateTime));
+        var dt = Assert.IsType<DateTime>(result);
+        Assert.Equal(2024, dt.Year);
+        Assert.Equal(6, dt.Month);
+        Assert.Equal(15, dt.Day);
+        Assert.Equal(14, dt.Hour);
+        Assert.Equal(30, dt.Minute);
+    }
+
+    [Fact]
+    public void ConvertScalarAgtype_DateTimeOffset_ReturnsDateTimeOffset()
+    {
+        var result = AgeValueConverters.ConvertScalarAgtype("2024-06-15T14:30:00+02:00", typeof(DateTimeOffset));
+        var dto = Assert.IsType<DateTimeOffset>(result);
+        Assert.Equal(2024, dto.Year);
+        Assert.Equal(6, dto.Month);
+        Assert.Equal(15, dto.Day);
+        Assert.Equal(14, dto.Hour);
+        Assert.Equal(30, dto.Minute);
+        Assert.Equal(new TimeSpan(2, 0, 0), dto.Offset);
+    }
+
+    [Fact]
+    public void ConvertScalarAgtype_DateTimeOffset_UtcOffset()
+    {
+        var result = AgeValueConverters.ConvertScalarAgtype("2024-06-15T12:30:00Z", typeof(DateTimeOffset));
+        var dto = Assert.IsType<DateTimeOffset>(result);
+        Assert.Equal(TimeSpan.Zero, dto.Offset);
+    }
+
+    [Fact]
     public void ConvertScalarAgtype_UnmatchedType_ReturnsString()
     {
         var result = AgeValueConverters.ConvertScalarAgtype("anything", typeof(Guid));

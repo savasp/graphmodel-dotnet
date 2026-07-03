@@ -87,7 +87,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             return relationship;
         }
-        catch (Exception ex) when (ex is not GraphException)
+        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Error creating relationship of type {RelationshipType}", typeof(TRelationship).Name);
             throw new GraphException($"Failed to create relationship: {ex.Message}", ex);
@@ -141,7 +141,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             return true;
         }
-        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException)
+        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Error updating relationship {RelationshipId} of type {RelationshipType}",
                 relationship.Id, typeof(TRelationship).Name);
@@ -178,7 +178,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             _logger.LogInformation("Deleted relationship with ID {RelationshipId}", relationshipId);
             return true;
         }
-        catch (Exception ex) when (ex is not KeyNotFoundException)
+        catch (Exception ex) when (ex is not KeyNotFoundException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Error deleting relationship with ID {RelationshipId}", relationshipId);
             throw new GraphException($"Failed to delete relationship: {ex.Message}", ex);

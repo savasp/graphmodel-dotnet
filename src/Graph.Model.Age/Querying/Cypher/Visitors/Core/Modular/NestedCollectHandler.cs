@@ -191,7 +191,7 @@ internal sealed class NestedCollectHandler
         string collectExpr;
         try
         {
-            collectExpr = CollectExpressionTranslator.TranslateInnerSelectBody(innerLambda.Body, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
+            collectExpr = CollectExpressionTranslator.TranslateInnerSelectBody(innerLambda.Body, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter: _context.ParameterStore.Add);
         }
         catch (Exception ex)
         {
@@ -209,7 +209,7 @@ internal sealed class NestedCollectHandler
                 try
                 {
                     var orderExpr = CollectExpressionTranslator.TranslateInnerExpression(
-                        orderLambda.Body, orderLambda.Parameters[0], srcAlias, relAlias, tgtAlias, isPathContext);
+                        orderLambda.Body, orderLambda.Parameters[0], srcAlias, relAlias, tgtAlias, isPathContext, addParameter: _context.ParameterStore.Add);
                     orderByParts.Add(descending ? $"{orderExpr} DESC" : orderExpr);
                 }
                 catch (Exception ex)
@@ -232,7 +232,7 @@ internal sealed class NestedCollectHandler
             try
             {
                 var whereCypher = CollectExpressionTranslator.TranslateInnerExpression(
-                    wherePred.Body, wherePred.Parameters[0], srcAlias, relAlias, tgtAlias, isPathContext);
+                    wherePred.Body, wherePred.Parameters[0], srcAlias, relAlias, tgtAlias, isPathContext, addParameter: _context.ParameterStore.Add);
                 _context.AddFragment(new WhereFragment(
                     whereCypher, ImmutableArray<string>.Empty, alias));
                 _logger.LogDebug("Injected inner Where filter for collect: {Where}", whereCypher);

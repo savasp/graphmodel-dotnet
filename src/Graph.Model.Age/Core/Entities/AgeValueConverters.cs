@@ -53,7 +53,28 @@ internal static class AgeValueConverters
         if (targetType == typeof(float) && float.TryParse(agTypeStr, out var floatVal)) return floatVal;
         if (targetType == typeof(decimal) && decimal.TryParse(agTypeStr, out var decVal)) return decVal;
         if (targetType == typeof(bool) && bool.TryParse(agTypeStr, out var boolVal)) return boolVal;
-        if (targetType == typeof(DateTime) && DateTime.TryParse(agTypeStr, out var dtVal)) return dtVal;
+        if (targetType == typeof(DateTime) || targetType == typeof(DateTime?))
+        {
+            var strVal = agTypeStr.Trim('"', ' ', '\'');
+            if (DateTime.TryParse(strVal, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var dtVal)
+                || DateTime.TryParseExact(strVal,
+                    ["yyyy-MM-ddTHH:mm:ss.FFFFFFF", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-dd",
+                     "yyyy-MM-dd HH:mm:ss.FFFFFFF", "yyyy-MM-dd HH:mm:ss"],
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out dtVal))
+            {
+                return dtVal.Kind == DateTimeKind.Unspecified
+                    ? DateTime.SpecifyKind(dtVal, DateTimeKind.Local) : dtVal;
+            }
+        }
+        if (targetType == typeof(DateTimeOffset) || targetType == typeof(DateTimeOffset?))
+        {
+            var strVal = agTypeStr.Trim('"', ' ', '\'');
+            if (DateTimeOffset.TryParse(strVal, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var dtoVal))
+                return dtoVal;
+        }
         return agTypeStr;
     }
 

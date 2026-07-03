@@ -27,13 +27,17 @@ namespace Cvoya.Graph.Model.Serialization;
 /// <see cref="GraphDataModel.IsSimple(Type)"/> determines if a property is considered simple.</param>
 /// <param name="ComplexProperties">A dictionary of complex properties.
 /// <see cref="GraphDataModel.IsSimple(Type)"/> determines if a property is considered complex.</param>
-/// <param name="InheritanceLabels">For AGE provider: contains the inheritance hierarchy stored in inheritance_labels.
-/// Used for polymorphic type resolution when ActualType is not predetermined.</param>
 public record EntityInfo(
     Type ActualType,
     string Label,
     IReadOnlyList<string> ActualLabels,
     IDictionary<string, Property> SimpleProperties,
-    IDictionary<string, Property> ComplexProperties,
-    IReadOnlyList<string>? InheritanceLabels = null
-) : Serialized;
+    IDictionary<string, Property> ComplexProperties
+) : Serialized
+{
+    /// <summary>
+    /// For AGE provider: contains the inheritance hierarchy stored in inheritance_labels.
+    /// Used for polymorphic type resolution when ActualType is not predetermined.
+    /// </summary>
+    public IReadOnlyList<string>? InheritanceLabels { get; init; }
+}

@@ -2279,4 +2279,144 @@ public sealed class FragmentRendererTests
         var fragmentOutput = AgeFragmentRenderer.Render(fragments);
         Assert.Equal(cypher, fragmentOutput);
     }
+
+    // -----------------------------------------------------------------------
+    //  Collect-projection parameterization tests (Issue 1)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Verifies that constant string values in collect-projection are parameterized
+    /// instead of being inlined as raw .ToString() output, preventing Cypher injection.
+    /// </summary>
+    [Fact]
+    public void CollectProjection_ConstantStringValue_IsParameterized()
+    {
+        var provider = new TestGraphQueryProvider();
+        var source = new TestGraphNodeQueryable<PersonNode>(provider);
+
+        // Query: constant string "hello" inside collect projection
+        var query = source
+            .GroupBy(p => p.Name)
+            .Select(g => new { Name = g.Key, Items = g.Select(p => "hello").ToList() });
+
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+        visitor.Visit(query.Expression);
+
+        var cypher = context.GetQuery();
+        Console.WriteLine($"Generated Cypher:\n{cypher}");
+
+        // The constant string should be parameterized (produce $param_N), not inlined
+        Assert.Contains("$param_", cypher);
+
+        // The literal "hello" should NOT appear as a Cypher identifier in the collect expression
+        // (old behavior would inline it as `hello` via .ToString())
+        Assert.DoesNotContain("hello", cypher);
+
+        // Verify fragment renderer parity
+        var fragments = context.FragmentSequence.ToList();
+        var fragmentOutput = AgeFragmentRenderer.Render(fragments);
+        Assert.Equal(cypher, fragmentOutput);
+    }
+
+    /// <summary>
+    /// Verifies that numeric constant values in collect-projection are parameterized,
+    /// preventing culture-dependent decimal separators (e.g., "3,14" under de-DE).
+    /// </summary>
+    [Fact]
+    public void CollectProjection_NumericConstant_IsParameterized()
+    {
+        var provider = new TestGraphQueryProvider();
+        var source = new TestGraphNodeQueryable<PersonNode>(provider);
+
+        // Query: numeric constant 3.14 inside collect projection
+        var query = source
+            .GroupBy(p => p.Name)
+            .Select(g => new { Name = g.Key, Items = g.Select(p => 42).ToList() });
+
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+        visitor.Visit(query.Expression);
+
+        var cypher = context.GetQuery();
+        Console.WriteLine($"Generated Cypher:\n{cypher}");
+
+        // The numeric constant should be parameterized (produce $param_N)
+        Assert.Contains("$param_", cypher);
+
+        // The literal "42" should NOT appear inlined in the collect expression
+        Assert.DoesNotContain(" 42", cypher);
+
+        // Verify fragment renderer parity
+        var fragments = context.FragmentSequence.ToList();
+        var fragmentOutput = AgeFragmentRenderer.Render(fragments);
+        Assert.Equal(cypher, fragmentOutput);
+    }
+
+    /// <summary>
+    /// Verifies that SQL injection characters in constant values inside collect-projection
+    /// are properly parameterized, preventing Cypher injection attacks.
+    /// </summary>
+    [Fact]
+    public void CollectProjection_SqlInjectionValue_IsParameterized()
+    {
+        var provider = new TestGraphQueryProvider();
+        var source = new TestGraphNodeQueryable<PersonNode>(provider);
+
+        // Query: string with SQL injection characters inside collect projection
+        var query = source
+            .GroupBy(p => p.Name)
+            .Select(g => new { Name = g.Key, Items = g.Select(p => "' OR 1=1 --").ToList() });
+
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+        visitor.Visit(query.Expression);
+
+        var cypher = context.GetQuery();
+        Console.WriteLine($"Generated Cypher:\n{cypher}");
+
+        // The malicious string should be parameterized (produce $param_N)
+        Assert.Contains("$param_", cypher);
+
+        // The injection characters should NOT appear literally in the Cypher
+        Assert.DoesNotContain("OR 1=1", cypher);
+        Assert.DoesNotContain("' OR", cypher);
+
+        // Verify fragment renderer parity
+        var fragments = context.FragmentSequence.ToList();
+        var fragmentOutput = AgeFragmentRenderer.Render(fragments);
+        Assert.Equal(cypher, fragmentOutput);
+    }
+
+    /// <summary>
+    /// Verifies that method call results in collect-projection fallback are parameterized
+    /// instead of splicing raw .ToString() output into Cypher.
+    /// </summary>
+    [Fact]
+    public void CollectProjection_MethodCallResult_IsParameterized()
+    {
+        var provider = new TestGraphQueryProvider();
+        var source = new TestGraphNodeQueryable<PersonNode>(provider);
+
+        // Query: method call String.ToUpper() inside collect projection on a constant
+        // This exercises the TranslateInnerExpression final fallback path
+        var query = source
+            .GroupBy(p => p.Name)
+            .Select(g => new { Name = g.Key, Items = g.Select(p => "value".ToUpper()).ToList() });
+
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+        visitor.Visit(query.Expression);
+
+        var cypher = context.GetQuery();
+        Console.WriteLine($"Generated Cypher:\n{cypher}");
+
+        // The result should be parameterized (produce $param_N), not inlined as literal "VALUE"
+        Assert.Contains("$param_", cypher);
+
+        // Verify fragment renderer parity
+        var fragments = context.FragmentSequence.ToList();
+        var fragmentOutput = AgeFragmentRenderer.Render(fragments);
+        Assert.Equal(cypher, fragmentOutput);
+    }
 }

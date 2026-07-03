@@ -34,13 +34,15 @@ internal static class CollectExpressionTranslator
     /// <param name="relAlias">The Cypher alias for the relationship.</param>
     /// <param name="tgtAlias">The Cypher alias for the target node.</param>
     /// <param name="isPathContext">Whether the collect is inside a path segment traversal context.</param>
+    /// <param name="addParameter">Optional callback to add a parameter value and get a Cypher parameter reference. When provided, values are parameterized instead of being inlined via <c>.ToString()</c>.</param>
     public static string TranslateInnerSelectBody(
         Expression body,
         ParameterExpression innerParam,
         string srcAlias,
         string relAlias,
         string tgtAlias,
-        bool isPathContext = false)
+        bool isPathContext = false,
+        Func<object?, string>? addParameter = null)
     {
         if (body is NewExpression newExpr)
         {
@@ -48,7 +50,7 @@ internal static class CollectExpressionTranslator
             for (int i = 0; i < newExpr.Arguments.Count; i++)
             {
                 var memberName = newExpr.Members?[i]?.Name ?? $"Prop{i}";
-                var argCypher = TranslateInnerExpression(newExpr.Arguments[i], innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
+                var argCypher = TranslateInnerExpression(newExpr.Arguments[i], innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
                 mapParts.Add($"{memberName}: {argCypher}");
             }
             return $"{{{string.Join(", ", mapParts)}}}";
@@ -56,13 +58,13 @@ internal static class CollectExpressionTranslator
 
         if (body is MemberExpression)
         {
-            return TranslateInnerExpression(body, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
+            return TranslateInnerExpression(body, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
         }
 
         if (body is BinaryExpression binary)
         {
-            var left = TranslateInnerExpression(binary.Left, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
-            var right = TranslateInnerExpression(binary.Right, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
+            var left = TranslateInnerExpression(binary.Left, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
+            var right = TranslateInnerExpression(binary.Right, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
             var op = binary.NodeType switch
             {
                 ExpressionType.Add => "+",
@@ -84,7 +86,7 @@ internal static class CollectExpressionTranslator
 
         if (body is UnaryExpression unary && unary.NodeType == ExpressionType.Convert)
         {
-            return TranslateInnerExpression(unary.Operand, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
+            return TranslateInnerExpression(unary.Operand, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
         }
 
         // Fallback: try to evaluate as constant
@@ -92,11 +94,11 @@ internal static class CollectExpressionTranslator
         {
             var lambda = Expression.Lambda<Func<object>>(Expression.Convert(body, typeof(object)));
             var val = lambda.Compile()();
-            return val?.ToString() ?? "null";
+            return addParameter != null ? addParameter(val) : (val?.ToString() ?? "null");
         }
         catch
         {
-            return body.ToString() ?? "unknown";
+            return addParameter != null ? addParameter("null") : (body.ToString() ?? "unknown");
         }
     }
 
@@ -110,13 +112,15 @@ internal static class CollectExpressionTranslator
     /// <param name="relAlias">The Cypher alias for the relationship.</param>
     /// <param name="tgtAlias">The Cypher alias for the target node.</param>
     /// <param name="isPathContext">Whether we are in a path segment traversal context. When false, simple node member access resolves against srcAlias.</param>
+    /// <param name="addParameter">Optional callback to add a parameter value and get a Cypher parameter reference.</param>
     public static string TranslateInnerExpression(
         Expression expr,
         ParameterExpression innerParam,
         string srcAlias,
         string relAlias,
         string tgtAlias,
-        bool isPathContext = false)
+        bool isPathContext = false,
+        Func<object?, string>? addParameter = null)
     {
         // p.EndNode.FirstName → tgt0.FirstName
         if (expr is MemberExpression memberExpr)
@@ -182,11 +186,11 @@ internal static class CollectExpressionTranslator
             if (innerExpr is BinaryExpression || innerExpr is MethodCallExpression ||
                 innerExpr is UnaryExpression || innerExpr is ConditionalExpression)
             {
-                var baseCypher = TranslateInnerExpression(innerExpr, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
+                var baseCypher = TranslateInnerExpression(innerExpr, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
                 var prop = ExpressionTranslationHelper.MapPropertyName(memberExpr.Member.Name);
 
                 if (memberExpr.Member.DeclaringType == typeof(TimeSpan))
-                    return TranslateTimeSpanProperty(memberExpr, baseCypher, innerExpr, innerParam, srcAlias, relAlias, tgtAlias);
+                    return TranslateTimeSpanProperty(memberExpr, baseCypher, innerExpr, innerParam, srcAlias, relAlias, tgtAlias, addParameter);
 
                 return $"{baseCypher}.{prop}";
             }
@@ -205,7 +209,7 @@ internal static class CollectExpressionTranslator
             {
                 var lambda = Expression.Lambda<Func<object>>(Expression.Convert(memberExpr, typeof(object)));
                 var val = lambda.Compile()();
-                return val?.ToString() ?? "null";
+                return addParameter != null ? addParameter(val) : (val?.ToString() ?? "null");
             }
             catch
             {
@@ -232,8 +236,8 @@ internal static class CollectExpressionTranslator
         // Binary, Unary, etc.
         if (expr is BinaryExpression bin)
         {
-            var left = TranslateInnerExpression(bin.Left, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
-            var right = TranslateInnerExpression(bin.Right, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
+            var left = TranslateInnerExpression(bin.Left, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
+            var right = TranslateInnerExpression(bin.Right, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
             var op = bin.NodeType switch
             {
                 ExpressionType.Add => "+",
@@ -254,10 +258,10 @@ internal static class CollectExpressionTranslator
         }
 
         if (expr is UnaryExpression ue && ue.NodeType == ExpressionType.Convert)
-            return TranslateInnerExpression(ue.Operand, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
+            return TranslateInnerExpression(ue.Operand, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
 
         if (expr is ConstantExpression ce)
-            return ce.Value?.ToString() ?? "null";
+            return addParameter != null ? addParameter(ce.Value) : (ce.Value?.ToString() ?? "null");
 
         // When the inner param itself is referenced:
         // In path context, the param is a path segment → resolve to tgtAlias
@@ -268,18 +272,18 @@ internal static class CollectExpressionTranslator
         }
 
         if (expr is MethodCallExpression mc)
-            return TranslateInnerMethodCall(mc, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
+            return TranslateInnerMethodCall(mc, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
 
         // Fallback evaluation
         try
         {
             var lambda = Expression.Lambda<Func<object>>(Expression.Convert(expr, typeof(object)));
             var val = lambda.Compile()();
-            return val?.ToString() ?? "null";
+            return addParameter != null ? addParameter(val) : (val?.ToString() ?? "null");
         }
         catch
         {
-            return expr.ToString() ?? "unknown";
+            return addParameter != null ? addParameter("null") : (expr.ToString() ?? "unknown");
         }
     }
 
@@ -351,12 +355,13 @@ internal static class CollectExpressionTranslator
         string srcAlias,
         string relAlias,
         string tgtAlias,
-        bool isPathContext = false)
+        bool isPathContext = false,
+        Func<object?, string>? addParameter = null)
     {
         if (mc.Method.Name == "Subtract" && mc.Method.DeclaringType == typeof(DateTime) && mc.Arguments.Count == 1)
         {
-            var left = TranslateInnerExpression(mc.Object!, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
-            var right = TranslateInnerExpression(mc.Arguments[0], innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
+            var left = TranslateInnerExpression(mc.Object!, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
+            var right = TranslateInnerExpression(mc.Arguments[0], innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
             return $"({left} - {right})";
         }
 
@@ -364,7 +369,7 @@ internal static class CollectExpressionTranslator
         {
             return mc.Method.Name switch
             {
-                "AddDays" or "AddMonths" or "AddYears" or "AddHours" or "AddMinutes" or "AddSeconds" => TryCompileDateTime(mc),
+                "AddDays" or "AddMonths" or "AddYears" or "AddHours" or "AddMinutes" or "AddSeconds" => TryCompileDateTime(mc, addParameter),
                 _ => TryCompileEval(mc)
             };
         }
@@ -375,11 +380,11 @@ internal static class CollectExpressionTranslator
             {
                 var lambda = Expression.Lambda<Func<object>>(Expression.Convert(mc, typeof(object)));
                 var val = lambda.Compile()();
-                return val?.ToString() ?? "0";
+                return addParameter != null ? addParameter(val) : (val?.ToString() ?? "0");
             }
             catch
             {
-                var obj = TranslateInnerExpression(mc.Object, innerParam, srcAlias, relAlias, tgtAlias, isPathContext);
+                var obj = TranslateInnerExpression(mc.Object, innerParam, srcAlias, relAlias, tgtAlias, isPathContext, addParameter);
                 return $"toInteger({obj} / 86400000)";
             }
         }
@@ -389,11 +394,11 @@ internal static class CollectExpressionTranslator
         {
             var lambda = Expression.Lambda<Func<object>>(Expression.Convert(mc, typeof(object)));
             var val = lambda.Compile()();
-            return val?.ToString() ?? "null";
+            return addParameter != null ? addParameter(val) : (val?.ToString() ?? "null");
         }
         catch
         {
-            return mc.ToString() ?? "unknown";
+            return addParameter != null ? addParameter("null") : (mc.ToString() ?? "unknown");
         }
     }
 
@@ -404,13 +409,14 @@ internal static class CollectExpressionTranslator
         ParameterExpression innerParam,
         string srcAlias,
         string relAlias,
-        string tgtAlias)
+        string tgtAlias,
+        Func<object?, string>? addParameter = null)
     {
         try
         {
             var lambda = Expression.Lambda<Func<object>>(Expression.Convert(memberExpr, typeof(object)));
             var val = lambda.Compile()();
-            return val?.ToString() ?? "0";
+            return addParameter != null ? addParameter(val) : (val?.ToString() ?? "0");
         }
         catch
         {
@@ -418,7 +424,7 @@ internal static class CollectExpressionTranslator
         }
     }
 
-    private static string TryCompileDateTime(MethodCallExpression mc)
+    private static string TryCompileDateTime(MethodCallExpression mc, Func<object?, string>? addParameter = null)
     {
         try
         {
@@ -427,7 +433,7 @@ internal static class CollectExpressionTranslator
             return val switch
             {
                 DateTime dt => $"'{dt:yyyy-MM-ddTHH:mm:ss}'",
-                _ => val?.ToString() ?? "null"
+                _ => addParameter != null ? addParameter(val) : (val?.ToString() ?? "null")
             };
         }
         catch { return "null"; }
