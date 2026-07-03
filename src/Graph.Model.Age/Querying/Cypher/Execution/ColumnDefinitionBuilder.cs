@@ -111,7 +111,8 @@ internal static class ColumnDefinitionBuilder
         var parametersJson = System.Text.Json.JsonSerializer.Serialize(parameters);
         var agtypeParams = new Agtype(parametersJson);
 
-        var sql = $"SELECT * FROM ag_catalog.cypher('{graphName}', $$ {cypher} $$, @agtypeParams) as {columnDefinitions};";
+        var escapedCypher = cypher.Replace("$$", "\\$\\$");
+        var sql = $"SELECT * FROM ag_catalog.cypher('{graphName}', $$ {escapedCypher} $$, @agtypeParams) as {columnDefinitions};";
 
         var command = new NpgsqlCommand(sql, connection);
         command.Parameters.Add(new NpgsqlParameter { ParameterName = "agtypeParams", Value = agtypeParams, DataTypeName = "ag_catalog.agtype" });

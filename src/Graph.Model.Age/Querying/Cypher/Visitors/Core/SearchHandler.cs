@@ -67,6 +67,7 @@ internal sealed class SearchHandler
             if (searchQuery != null)
             {
                 var alias = _context.Scope.CurrentAlias ?? "src0";
+                var searchQueryParam = _context.ParameterStore.Add(searchQuery);
                 var elementType = _context.Scope.RootType;
                 var stringProperties = elementType.GetProperties()
                     .Where(p => p.PropertyType == typeof(string) && p.CanRead)
@@ -77,7 +78,7 @@ internal sealed class SearchHandler
                 if (stringProperties.Count > 0)
                 {
                     var conditions = stringProperties
-                        .Select(prop => $"{alias}.{prop} =~ '(?i)\\\\m{searchQuery}\\\\M'")
+                        .Select(prop => $"{alias}.{prop} =~ '(?i)\\\\m' + {searchQueryParam} + '\\\\M'")
                         .ToList();
                     var whereCondition = string.Join(" OR ", conditions);
                     _emitWhereFragment(whereCondition, alias, ImmutableArray.Create(alias));
@@ -85,7 +86,7 @@ internal sealed class SearchHandler
                 }
                 else
                 {
-                    _emitWhereFragment($"toString({alias}) =~ '(?i)\\\\m{searchQuery}\\\\M'", alias, ImmutableArray.Create(alias));
+                    _emitWhereFragment($"toString({alias}) =~ '(?i)\\\\m' + {searchQueryParam} + '\\\\M'", alias, ImmutableArray.Create(alias));
                 }
             }
         }
@@ -122,10 +123,12 @@ internal sealed class SearchHandler
             .Select(p => p.Name)
             .ToList();
 
+        var searchQueryParam = _context.ParameterStore.Add(searchQuery);
+
         if (stringProperties.Count > 0)
         {
             var conditions = stringProperties
-                .Select(prop => $"{alias}.{prop} =~ '(?i)\\\\m{searchQuery}\\\\M'")
+                .Select(prop => $"{alias}.{prop} =~ '(?i)\\\\m' + {searchQueryParam} + '\\\\M'")
                 .ToList();
 
             var whereCondition = string.Join(" OR ", conditions);
@@ -134,7 +137,7 @@ internal sealed class SearchHandler
         }
         else
         {
-            _emitWhereFragment($"toString({alias}) =~ '(?i)\\\\m{searchQuery}\\\\M'", alias, ImmutableArray.Create(alias));
+            _emitWhereFragment($"toString({alias}) =~ '(?i)\\\\m' + {searchQueryParam} + '\\\\M'", alias, ImmutableArray.Create(alias));
             _logger.LogDebug("Emitted fallback full text search WHERE for alias {Alias}", alias);
         }
     }
@@ -148,7 +151,8 @@ internal sealed class SearchHandler
         // For all-entities search, we search nodes
         _setupInitialMatch(typeof(INode));
         var alias = _context.Scope.CurrentAlias ?? "src0";
-        _emitWhereFragment($"toString({alias}) =~ '(?i).*{searchQuery}.*'", alias, ImmutableArray.Create(alias));
+        var searchQueryParam = _context.ParameterStore.Add(searchQuery);
+        _emitWhereFragment($"toString({alias}) =~ '(?i).*' + {searchQueryParam} + '.*'", alias, ImmutableArray.Create(alias));
     }
 
     /// <summary>

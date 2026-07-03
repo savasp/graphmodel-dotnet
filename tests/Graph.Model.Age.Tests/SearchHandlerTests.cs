@@ -81,7 +81,7 @@ public sealed class SearchHandlerTests
 
         var cypher = context.GetQuery();
 
-        Assert.Contains("Alice", cypher);
+        Assert.Contains("$param_0", cypher);
         Assert.Contains("MATCH", cypher);
     }
 
@@ -90,5 +90,115 @@ public sealed class SearchHandlerTests
     {
         var method = typeof(TestGraphQueryable<PersonNode>).GetMethod("Search");
         Assert.Null(method);
+    }
+
+    [Fact]
+    public void SearchWithSpecialCharacters_ParameterizesValue()
+    {
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+
+        var searchExpr = new AgeFullTextSearchExpression("it's \"wild\" $$ dollar", typeof(PersonNode));
+        visitor.Visit(searchExpr);
+
+        var cypher = context.GetQuery();
+
+        Assert.Contains("$param_0", cypher);
+        Assert.DoesNotContain("it's", cypher);
+        Assert.DoesNotContain("$$", cypher);
+    }
+
+    [Fact]
+    public void SearchWithApostrophe_ParameterizesValue()
+    {
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+
+        var searchExpr = new AgeFullTextSearchExpression("O'Brien", typeof(PersonNode));
+        visitor.Visit(searchExpr);
+
+        var cypher = context.GetQuery();
+
+        Assert.Contains("$param_0", cypher);
+        Assert.DoesNotContain("O'Brien", cypher);
+    }
+
+    [Fact]
+    public void SearchWithBackslash_ParameterizesValue()
+    {
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+
+        var searchExpr = new AgeFullTextSearchExpression("test\\path", typeof(PersonNode));
+        visitor.Visit(searchExpr);
+
+        var cypher = context.GetQuery();
+
+        Assert.Contains("$param_0", cypher);
+        Assert.DoesNotContain("\\path", cypher);
+    }
+
+    [Fact]
+    public void SearchWithInjectionAttempt_ParameterizesValue()
+    {
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+
+        // Attempt SQL/Cypher injection via search string
+        var searchExpr = new AgeFullTextSearchExpression("' OR 1=1 RETURN * //", typeof(PersonNode));
+        visitor.Visit(searchExpr);
+
+        var cypher = context.GetQuery();
+
+        Assert.Contains("$param_0", cypher);
+        // The injection payload should NOT appear as raw text in the Cypher output.
+        // (It is safely stored in the ParameterStore and referenced via $param_0.)
+        Assert.DoesNotContain("1=1", cypher);
+        // Do NOT assert !Contains("RETURN") — Cypher output naturally has RETURN keyword
+    }
+
+    [Fact]
+    public void HandleAgeFullTextSearch_NodeType_EmitsParameterReference()
+    {
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+
+        var searchExpr = new AgeFullTextSearchExpression("John", typeof(PersonNode));
+        visitor.Visit(searchExpr);
+
+        var cypher = context.GetQuery();
+
+        Assert.Contains("$param_0", cypher);
+    }
+
+    [Fact]
+    public void HandleAgeFullTextSearch_MultipleStringProperties_EmitsParameterReference()
+    {
+        var context = new CypherQueryContext(typeof(PersonWithAddressNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+
+        var searchExpr = new AgeFullTextSearchExpression("query", typeof(PersonWithAddressNode));
+        visitor.Visit(searchExpr);
+
+        var cypher = context.GetQuery();
+
+        Assert.Contains("$param_0", cypher);
+        Assert.Contains("OR", cypher);
+    }
+
+    [Fact]
+    public void HandleAgeFullTextSearch_IEntitySearch_EmitsParameterReference()
+    {
+        var context = new CypherQueryContext(typeof(IEntity));
+        var visitor = new AgeCypherQueryVisitor(context);
+
+        var searchExpr = new AgeFullTextSearchExpression("test", typeof(IEntity));
+        visitor.Visit(searchExpr);
+
+        var cypher = context.GetQuery();
+
+        Assert.Contains("$param_0", cypher);
+        Assert.Contains("MATCH", cypher);
+        Assert.Contains("WHERE", cypher);
     }
 }
