@@ -275,7 +275,7 @@ internal sealed class MemberExpressionHandler
                     "Hour" => Expression.Constant($"toInteger(substring({innerValue}, 11, 2))"),
                     "Minute" => Expression.Constant($"toInteger(substring({innerValue}, 14, 2))"),
                     "Second" => Expression.Constant($"toInteger(substring({innerValue}, 17, 2))"),
-                    "DayOfWeek" => Expression.Constant($"toInteger(substring({innerValue}, 0, 4)) % 7"),
+                    "DayOfWeek" => Expression.Constant($"pg_catalog.date_part('dow', CAST(substring(toString({innerValue}), 0, 10) AS date))::integer"),
                     _ => throw new NotSupportedException($"DateTime property {node.Member.Name} is not supported")
                 };
                 return true;

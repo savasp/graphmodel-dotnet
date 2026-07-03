@@ -20,6 +20,7 @@ public sealed record PersonNode : Node
     public override IReadOnlyList<string> Labels { get; set; } = new List<string> { nameof(PersonNode) };
     public int Age { get; init; }
     public string Name { get; init; } = string.Empty;
+    public DateTime CreatedAt { get; init; }
     public List<KnowsRelationship> Friends { get; init; } = new();
 }
 

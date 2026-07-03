@@ -2121,4 +2121,122 @@ public sealed class FragmentRendererTests
         Assert.Equal(builderOutput, fragmentOutput);
     }
 
+    // -----------------------------------------------------------------------
+    //  DateTime Member Translation Tests (§8.2.7)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// TC1: DayOfWeek translation uses pg_catalog.date_part for correct weekday computation.
+    /// Previously used year extraction (substring 0,4) which was completely incorrect.
+    /// Expected: MATCH (src0:PersonNode)
+    ///           WHERE pg_catalog.date_part('dow', CAST(substring(toString(src0.CreatedAt), 0, 10) AS date))::integer = 0
+    ///           RETURN src0
+    /// .NET DayOfWeek enum: Sunday=0, Monday=1, ..., Saturday=6
+    /// date_part('dow', ...) returns: 0=Sunday, 1=Monday, ..., 6=Saturday (matching .NET exactly)
+    /// </summary>
+    [Fact]
+    public void DateTimeDayOfWeek_GeneratesCorrectCypherExpression()
+    {
+        var provider = new TestGraphQueryProvider();
+        var source = new TestGraphNodeQueryable<PersonNode>(provider);
+
+        // Query: Where(p => p.CreatedAt.DayOfWeek == DayOfWeek.Sunday)
+        // DayOfWeek.Sunday == 0, so the WHERE clause compares against 0
+        var query = source.Where(p => p.CreatedAt.DayOfWeek == DayOfWeek.Sunday);
+
+        var context = new CypherQueryContext(typeof(PersonNode));
+        var visitor = new AgeCypherQueryVisitor(context);
+        visitor.Visit(query.Expression);
+
+        var cypher = context.GetQuery();
+        Console.WriteLine($"Generated Cypher:\n{cypher}");
+
+        // Should NOT contain the broken year-mod-7 computation (the bug)
+        Assert.DoesNotContain("% 7", cypher);
+
+        // Should NOT extract only 4 characters (the year) — substring 0,10 is for the date
+        Assert.DoesNotContain("substring(src0.CreatedAt, 0, 4)", cypher);
+
+        // Should use pg_catalog.date_part with 'dow' for correct day-of-week
+        Assert.Contains("pg_catalog.date_part('dow'", cypher);
+
+        // Should cast the result to integer
+        Assert.Contains("::integer", cypher);
+
+        // Should reference the DateTime property
+        Assert.Contains("src0.CreatedAt", cypher);
+
+        // The expression should be part of a WHERE clause
+        Assert.Contains("WHERE", cypher);
+
+        // Verify fragment renderer parity
+        var fragments = context.FragmentSequence.ToList();
+        var fragmentOutput = AgeFragmentRenderer.Render(fragments);
+        Assert.Equal(cypher, fragmentOutput);
+    }
+
+    /// <summary>
+    /// TC2: Year, Month, Day, Hour, Minute, Second translations remain UNCHANGED
+    /// after the DayOfWeek fix. Verifies no regression on other DateTime members.
+    /// </summary>
+    [Fact]
+    public void DateTimeMembers_YearMonthDayHourMinuteSecond_Unchanged()
+    {
+        var provider = new TestGraphQueryProvider();
+        var source = new TestGraphNodeQueryable<PersonNode>(provider);
+
+        // Test Year translation
+        var yearQuery = source.Where(p => p.CreatedAt.Year == 2026);
+        var yearContext = new CypherQueryContext(typeof(PersonNode));
+        var yearVisitor = new AgeCypherQueryVisitor(yearContext);
+        yearVisitor.Visit(yearQuery.Expression);
+        var yearCypher = yearContext.GetQuery();
+        Assert.Contains("toInteger(substring(src0.CreatedAt, 0, 4))", yearCypher);
+        Console.WriteLine($"Year Cypher:\n{yearCypher}");
+
+        // Test Month translation
+        var monthQuery = source.Where(p => p.CreatedAt.Month == 7);
+        var monthContext = new CypherQueryContext(typeof(PersonNode));
+        var monthVisitor = new AgeCypherQueryVisitor(monthContext);
+        monthVisitor.Visit(monthQuery.Expression);
+        var monthCypher = monthContext.GetQuery();
+        Assert.Contains("toInteger(substring(src0.CreatedAt, 5, 2))", monthCypher);
+        Console.WriteLine($"Month Cypher:\n{monthCypher}");
+
+        // Test Day translation
+        var dayQuery = source.Where(p => p.CreatedAt.Day == 3);
+        var dayContext = new CypherQueryContext(typeof(PersonNode));
+        var dayVisitor = new AgeCypherQueryVisitor(dayContext);
+        dayVisitor.Visit(dayQuery.Expression);
+        var dayCypher = dayContext.GetQuery();
+        Assert.Contains("toInteger(substring(src0.CreatedAt, 8, 2))", dayCypher);
+        Console.WriteLine($"Day Cypher:\n{dayCypher}");
+
+        // Test Hour translation
+        var hourQuery = source.Where(p => p.CreatedAt.Hour == 5);
+        var hourContext = new CypherQueryContext(typeof(PersonNode));
+        var hourVisitor = new AgeCypherQueryVisitor(hourContext);
+        hourVisitor.Visit(hourQuery.Expression);
+        var hourCypher = hourContext.GetQuery();
+        Assert.Contains("toInteger(substring(src0.CreatedAt, 11, 2))", hourCypher);
+        Console.WriteLine($"Hour Cypher:\n{hourCypher}");
+
+        // Test Minute translation
+        var minuteQuery = source.Where(p => p.CreatedAt.Minute == 43);
+        var minuteContext = new CypherQueryContext(typeof(PersonNode));
+        var minuteVisitor = new AgeCypherQueryVisitor(minuteContext);
+        minuteVisitor.Visit(minuteQuery.Expression);
+        var minuteCypher = minuteContext.GetQuery();
+        Assert.Contains("toInteger(substring(src0.CreatedAt, 14, 2))", minuteCypher);
+        Console.WriteLine($"Minute Cypher:\n{minuteCypher}");
+
+        // Test Second translation
+        var secondQuery = source.Where(p => p.CreatedAt.Second == 51);
+        var secondContext = new CypherQueryContext(typeof(PersonNode));
+        var secondVisitor = new AgeCypherQueryVisitor(secondContext);
+        secondVisitor.Visit(secondQuery.Expression);
+        var secondCypher = secondContext.GetQuery();
+        Assert.Contains("toInteger(substring(src0.CreatedAt, 17, 2))", secondCypher);
+        Console.WriteLine($"Second Cypher:\n{secondCypher}");
+    }
 }
