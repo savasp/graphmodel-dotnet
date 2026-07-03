@@ -1,0 +1,6 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+RETURN COUNT(src) > 0 AS exists
+
+== Parameters ==
+(none)

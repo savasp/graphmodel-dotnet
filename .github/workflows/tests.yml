@@ -36,5 +36,11 @@ jobs:
     - name: Test Analyzers
       run: dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj --no-build --configuration Release --verbosity normal
 
+    - name: Test LINQ-to-Cypher translation (no Neo4j required)
+      run: dotnet test --project tests/Graph.Model.Neo4j.Translation.Tests/Graph.Model.Neo4j.Translation.Tests.csproj --no-build --configuration Release --verbosity normal
+
+    - name: Test serialization code generator (no Neo4j required)
+      run: dotnet test --project tests/Graph.Model.Serialization.CodeGen.Tests/Graph.Model.Serialization.CodeGen.Tests.csproj --no-build --configuration Release --verbosity normal
+
     - name: Test Neo4j Provider
       run: dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj --no-build --configuration Release --verbosity normal
