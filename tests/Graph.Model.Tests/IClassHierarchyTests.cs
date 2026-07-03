@@ -320,4 +320,66 @@ public interface IClassHierarchyTests : IGraphModelTest
         var daveRelationships = connectionStats.Count(ps => ps.StartNode.FirstName == "Dave");
         Assert.Equal(0, daveRelationships);
     }
+
+    [Fact]
+    public async Task CanQueryMultipleDerivedNodeTypesViaBaseType()
+    {
+        var manager1 = new Manager
+        {
+            FirstName = "Alice",
+            LastName = "Manager",
+            Age = 35,
+            Department = "Engineering",
+            TeamSize = 5
+        };
+
+        var manager2 = new Manager
+        {
+            FirstName = "Bob",
+            LastName = "Manager",
+            Age = 40,
+            Department = "Marketing",
+            TeamSize = 8
+        };
+
+        await this.Graph.CreateNodeAsync(manager1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(manager2, null, TestContext.Current.CancellationToken);
+
+        // Query by base type Person - should return both Managers
+        var allPeople = await (await this.Graph.NodesAsync<Person>())
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Verify both derived types are returned
+        Assert.Contains(allPeople, p => p is Manager { FirstName: "Alice", Department: "Engineering" });
+        Assert.Contains(allPeople, p => p is Manager { FirstName: "Bob", Department: "Marketing" });
+
+        // Verify exactly 2 nodes
+        Assert.Equal(2, allPeople.Count(p => p is Manager));
+    }
+
+    [Fact]
+    public async Task CanQueryMultipleDerivedRelationshipTypesViaBaseType()
+    {
+        var alice = new Person { FirstName = "Alice", LastName = "Test", Age = 30 };
+        var bob = new Person { FirstName = "Bob", LastName = "Test", Age = 25 };
+        var carol = new Person { FirstName = "Carol", LastName = "Test", Age = 28 };
+
+        await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(carol, null, TestContext.Current.CancellationToken);
+
+        var knowsWell1 = new KnowsWell(alice, bob) { HowWell = "Very well" };
+        var knowsWell2 = new KnowsWell(alice, carol) { HowWell = "Extremely well" };
+
+        await this.Graph.CreateRelationshipAsync(knowsWell1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(knowsWell2, null, TestContext.Current.CancellationToken);
+
+        // Query by base type Knows - should return both KnowsWell relationships
+        var allRelationships = await (await this.Graph.RelationshipsAsync<Knows>())
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains(allRelationships, r => r is KnowsWell { HowWell: "Very well" });
+        Assert.Contains(allRelationships, r => r is KnowsWell { HowWell: "Extremely well" });
+        Assert.Equal(2, allRelationships.Count(r => r is KnowsWell));
+    }
 }

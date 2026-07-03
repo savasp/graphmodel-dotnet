@@ -99,7 +99,7 @@ internal sealed class QueryInitializationHandler
             if (baseLabel != actualLabel)
             {
                 // Add WHERE clause to filter by inheritance hierarchy
-                var inheritanceFilter = $"{alias}.inheritance_labels[0] = '{actualLabel}'";
+                var inheritanceFilter = $"'{actualLabel}' IN {alias}.inheritance_labels";
                 _emitWhereFragment(inheritanceFilter, alias, ImmutableArray.Create(alias));
                 _logger.LogDebug("Emitted inheritance filter: {Filter}", inheritanceFilter);
             }
