@@ -60,7 +60,11 @@ internal static class SerializationBridge
             DateTime dt => dt.ToUniversalTime(),
             DateTimeOffset dto => dto.UtcDateTime,
             DateOnly date => date.ToDateTime(TimeOnly.MinValue),
-            TimeOnly time => time.ToTimeSpan().TotalMilliseconds,
+            // Stored as raw ticks (not TotalMilliseconds) to preserve full 100ns
+            // precision; TimeOnly.FromDateTime(DateTime.UtcNow) routinely carries
+            // sub-millisecond ticks that a millisecond-granularity round trip would
+            // silently truncate.
+            TimeOnly time => time.Ticks,
             TimeSpan ts => ts.TotalMilliseconds,
 
             // Convert Guid to string
@@ -132,7 +136,7 @@ internal static class SerializationBridge
             _ when underlyingType == typeof(DateTime) => ConvertToDateTime(value),
             _ when underlyingType == typeof(DateTimeOffset) => ConvertToDateTimeOffset(value),
             _ when underlyingType == typeof(DateOnly) => DateOnly.FromDateTime(ConvertToDateTime(value)),
-            _ when underlyingType == typeof(TimeOnly) => TimeOnly.FromTimeSpan(ConvertToTimeSpan(value)),
+            _ when underlyingType == typeof(TimeOnly) => new TimeOnly(Convert.ToInt64(value)),
             _ when underlyingType == typeof(TimeSpan) => ConvertToTimeSpan(value),
 
             // Other conversions
