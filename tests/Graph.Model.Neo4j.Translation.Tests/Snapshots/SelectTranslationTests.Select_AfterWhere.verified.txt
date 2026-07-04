@@ -1,0 +1,7 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WHERE src.Age > $p0
+RETURN src.FirstName
+
+== Parameters ==
+p0 = 18

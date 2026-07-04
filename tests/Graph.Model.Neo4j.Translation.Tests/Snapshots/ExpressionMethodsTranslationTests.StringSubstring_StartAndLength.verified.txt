@@ -1,0 +1,7 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+RETURN substring(src.FirstName, $p0, $p1)
+
+== Parameters ==
+p0 = 0
+p1 = 3
