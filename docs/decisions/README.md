@@ -12,4 +12,4 @@ changed decision gets a new ADR that supersedes the old one.
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| [0001](0001-shared-cypher-translation-layer.md) | Shared Cypher translation layer and multi-provider architecture | Proposed |
+| [0001](0001-shared-cypher-translation-layer.md) | Shared Cypher translation layer and multi-provider architecture | Accepted |

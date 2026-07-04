@@ -1,6 +1,6 @@
 # 0001 — Shared Cypher translation layer and multi-provider architecture
 
-- **Status:** Proposed
+- **Status:** Accepted (all decisions ratified by @savasp on PR #97; contributor comments on the PR #66 landing path remain welcome via #86)
 - **Date:** 2026-07-02
 - **Related:** #53, #66, #67, #80, #81, #84, #85, #86, #90, #93, #94, #95, #96
 - **Related code:** src/Graph.Model/GraphQueryable/, src/Graph.Model.Neo4j/Querying/
@@ -89,11 +89,11 @@ convention (see [README.md](README.md)).
    right shape — typed fragments rendered per dialect — and is the design input for #84. Credit belongs in
    the #84 PR descriptions as well as here.
 
-### Settled by this ADR — proposed, open for comment
+### Settled by this ADR (ratified by @savasp on PR #97)
 
 **(a) Package layout: fold the shared querying front-end into `Graph.Model`; the shared Cypher package is
 `Graph.Model.Cypher`.** The #93 §A decomposition left open whether the shared queryable implementations,
-provider base, and LINQ front-end live in core or a separate `Graph.Model.Querying`. Recommendation: fold
+provider base, and LINQ front-end live in core or a separate `Graph.Model.Querying`. Decision: fold
 into `Graph.Model`. The operator surface and the front-end that recognizes it are one release unit — the
 `MethodInfo` dispatch table binds directly to operator identities defined in the same assembly, so a
 separate package would version in lockstep anyway (pure SemVer coupling with no independent consumer) while
@@ -106,7 +106,7 @@ with #66. Alternatives (`Graph.Model.OpenCypher`, `Graph.Model.Cypher.Core`) add
 wire-model/materialization code (#85) follows the same folding logic into `Graph.Model`, since a non-Cypher
 provider needs it too; final placement is an #85 implementation detail.
 
-**(b) `Graph.Model.Cypher` ships as a public NuGet package.** Recommendation: public from the release in
+**(b) `Graph.Model.Cypher` ships as a public NuGet package.** Decision: public from the release in
 which #84 lands, not internal shared source. The multi-provider story is the point of this ADR; an external
 Cypher-dialect provider (and eventually AGE, whether in-tree or out) needs the planner/dialect SPI as a
 package, and #95 already commits to shipping a provider-author-facing package — a provider SPI without the
@@ -121,7 +121,7 @@ package family it certifies.
 **(d) PR #66 landing path: stage, then converge (path (a) of #86).** #86 lists three candidates:
 (a) merge nothing until the shared layer lands, then converge the AGE provider as dialect + adapter;
 (b) merge now as an explicitly-experimental preview package; (c) split — land the shareable pieces first,
-hold the fork pipeline. Recommendation: **(a)**, because the now-fixed plan removes what (b) and (c) would
+hold the fork pipeline. Decision: **(a)**, because the now-fixed plan removes what (b) and (c) would
 buy. Merging the fork now (b) means merging ~40 classes that #94 breaks (surface rewrite) and #84/#85 then
 delete (the pipeline it forks), maintaining a second CI lane through that churn, with 864 lines of
 self-reported security issues (docs/age/issues/security-issues.md in the PR) still to triage. Splitting (c)
@@ -180,7 +180,7 @@ means" checklist on #66/#53.
 - **A fresh fragment-IR design, ignoring PR #66's.** Rejected: `AgeQueryFragments`/`AgeFragmentRenderer`
   already validate the fragments + per-dialect-renderer shape in a working provider; a third design would
   re-derive the same structure while discarding both the validation and the contribution.
-- **Separate `Graph.Model.Querying` package** — see open question (a); rejected in the recommendation
+- **Separate `Graph.Model.Querying` package** — see decision (a); rejected
   (SemVer-coupled with no independent consumer).
-- **Hold `Graph.Model.Cypher` as internal shared source** — see open question (b); rejected in the
-  recommendation (pre-1.0 versioning already disclaims the stability that internalizing would protect).
+- **Hold `Graph.Model.Cypher` as internal shared source** — see decision (b); rejected
+  (pre-1.0 versioning already disclaims the stability that internalizing would protect).
