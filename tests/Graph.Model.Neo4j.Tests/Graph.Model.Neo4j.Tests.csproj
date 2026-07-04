@@ -11,6 +11,14 @@
         <!-- Use the new testing platform -->
         <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
 
+        <!--
+          xunit.v3's own generated entry point already dispatches to Microsoft.Testing.Platform
+          when invoked in server mode, so the separately-generated Microsoft.Testing.Platform.MSBuild
+          entry point is redundant and triggers CS8892 (unused entry point because a synchronous
+          entry point was found).
+        -->
+        <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+
         <!-- Enable live output -->
         <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
         <TestingPlatformShowProgress>true</TestingPlatformShowProgress>
