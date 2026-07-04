@@ -372,7 +372,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Brown" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
-        var names = await (await this.Graph.NodesAsync<Person>()).Select(p => p.FirstName).Distinct().Skip(1).ToListAsync(TestContext.Current.CancellationToken);
+        var names = await (await this.Graph.NodesAsync<Person>()).OrderBy(p => p.FirstName).Select(p => p.FirstName).Distinct().Skip(1).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(names);
         Assert.Equal("Bob", names[0]);
     }

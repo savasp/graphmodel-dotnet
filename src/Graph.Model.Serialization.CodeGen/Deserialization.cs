@@ -590,6 +590,17 @@ internal static class Deserialization
                    type.Name == "String" ? "string.Empty" :
                    type.Name == "Uri" ? "new System.Uri(\"about:blank\")" :
                    null;
+
+            // Collection-shaped properties (e.g. INode.Labels: IReadOnlyList<string>)
+            // that aren't present in the query result get an empty collection rather
+            // than throwing - List<T> is assignable to IEnumerable<T>/ICollection<T>/
+            // IList<T>/IReadOnlyCollection<T>/IReadOnlyList<T> alike.
+            if (value is null && GraphDataModel.GetCollectionElementType(type) is ITypeSymbol elementType)
+            {
+                value = type is IArrayTypeSymbol
+                    ? $"System.Array.Empty<{elementType.ToDisplayString()}>()"
+                    : $"new System.Collections.Generic.List<{elementType.ToDisplayString()}>()";
+            }
         }
         else if (GraphDataModel.IsSimple(type))
         {
@@ -606,6 +617,15 @@ internal static class Deserialization
                 _ when type.TypeKind == TypeKind.Enum => $"default({type.ToDisplayString()})",
                 _ => null
             };
+        }
+        if (value is null && type.IsValueType)
+        {
+            // Structs not covered above (e.g. complex value-type properties like
+            // Point, which GraphDataModel treats as "simple" but whose SpecialType
+            // switch above doesn't match) still have a well-defined default: C#
+            // guarantees every struct supports `new T()`, which runs its
+            // parameterless constructor (including any field initializers).
+            value = $"new {type.ToDisplayString()}()";
         }
 
         if (value is null)
