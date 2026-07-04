@@ -61,11 +61,22 @@ internal static class CypherTranslator
             var result = Translate(rootType, expression);
             return "NO EXCEPTION THROWN. Result:" + Environment.NewLine + result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (IsNonFatal(ex))
         {
             return $"{ex.GetType().FullName}: {ex.Message}";
         }
     }
+
+    private static bool IsNonFatal(Exception ex) =>
+        ex is not (
+            OutOfMemoryException
+            or StackOverflowException
+            or AccessViolationException
+            or AppDomainUnloadedException
+            or BadImageFormatException
+            or CannotUnloadAppDomainException
+            or InvalidProgramException
+            or ThreadAbortException);
 
     private static string Render(CypherQuery query)
     {
