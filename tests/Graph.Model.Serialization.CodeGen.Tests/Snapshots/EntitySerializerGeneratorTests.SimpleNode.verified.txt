@@ -146,7 +146,7 @@ internal sealed class PersonSerializer : IEntitySerializer
         }
         else
         {
-            throw new InvalidOperationException("No sensible default value for property 'Labels' of type 'System.Collections.Generic.IReadOnlyList<string>'.");
+            result.Labels = new System.Collections.Generic.List<string>();
         }
         return result;
     }

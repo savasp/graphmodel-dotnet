@@ -118,7 +118,7 @@ internal sealed class PersonSerializer : IEntitySerializer
         }
         else
         {
-            throw new InvalidOperationException("No sensible default value for property 'PhoneNumbers' of type 'System.Collections.Generic.List<TestNamespace.PhoneNumber>'.");
+            result.PhoneNumbers = new System.Collections.Generic.List<TestNamespace.PhoneNumber>();
         }
         // Look for property 'Labels' in both simple and complex properties
         var labelsPropRep = entity.SimpleProperties.TryGetValue("Labels", out var labelsSimpleProp) ? labelsSimpleProp
@@ -145,7 +145,7 @@ internal sealed class PersonSerializer : IEntitySerializer
         }
         else
         {
-            throw new InvalidOperationException("No sensible default value for property 'Labels' of type 'System.Collections.Generic.IReadOnlyList<string>'.");
+            result.Labels = new System.Collections.Generic.List<string>();
         }
         return result;
     }
