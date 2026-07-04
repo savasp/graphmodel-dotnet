@@ -1,0 +1,6 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+RETURN avg(src.Age)
+
+== Parameters ==
+(none)

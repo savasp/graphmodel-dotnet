@@ -175,6 +175,64 @@ jobs:
       - name: Test Analyzers
         run: dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj --no-build --configuration Release --verbosity normal
 
+  test-translation:
+    name: Test LINQ-to-Cypher translation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            Directory.Packages.props
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test LINQ-to-Cypher translation (no Neo4j required)
+        run: dotnet test --project tests/Graph.Model.Neo4j.Translation.Tests/Graph.Model.Neo4j.Translation.Tests.csproj --no-build --configuration Release --verbosity normal
+
+  test-codegen:
+    name: Test serialization code generator
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            Directory.Packages.props
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test serialization code generator (no Neo4j required)
+        run: dotnet test --project tests/Graph.Model.Serialization.CodeGen.Tests/Graph.Model.Serialization.CodeGen.Tests.csproj --no-build --configuration Release --verbosity normal
+
   test-neo4j:
     name: Test Neo4j Provider
     runs-on: ubuntu-latest
@@ -218,6 +276,8 @@ jobs:
       - build
       - test-core
       - test-analyzers
+      - test-translation
+      - test-codegen
       - test-neo4j
     # Always runs - branch protection depends on a single "Required checks"
     # context, so this job must report a status regardless of which
@@ -234,6 +294,8 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           TEST_CORE_RESULT: ${{ needs.test-core.result }}
           TEST_ANALYZERS_RESULT: ${{ needs.test-analyzers.result }}
+          TEST_TRANSLATION_RESULT: ${{ needs.test-translation.result }}
+          TEST_CODEGEN_RESULT: ${{ needs.test-codegen.result }}
           TEST_NEO4J_RESULT: ${{ needs.test-neo4j.result }}
         run: |
           echo "changes=$CHANGES_RESULT"
@@ -241,6 +303,8 @@ jobs:
           echo "build=$BUILD_RESULT"
           echo "test-core=$TEST_CORE_RESULT"
           echo "test-analyzers=$TEST_ANALYZERS_RESULT"
+          echo "test-translation=$TEST_TRANSLATION_RESULT"
+          echo "test-codegen=$TEST_CODEGEN_RESULT"
           echo "test-neo4j=$TEST_NEO4J_RESULT"
 
           if [[ "$CHANGES_RESULT" != "success" ]]; then
@@ -250,8 +314,10 @@ jobs:
 
           ok() { [[ "$1" == "success" || "$1" == "skipped" ]]; }
 
-          ok "$WORKFLOW_YAML_RESULT"   || { echo "::error::workflow-yaml failed"; exit 1; }
-          ok "$BUILD_RESULT"           || { echo "::error::build failed"; exit 1; }
-          ok "$TEST_CORE_RESULT"       || { echo "::error::test-core failed"; exit 1; }
-          ok "$TEST_ANALYZERS_RESULT"  || { echo "::error::test-analyzers failed"; exit 1; }
-          ok "$TEST_NEO4J_RESULT"      || { echo "::error::test-neo4j failed"; exit 1; }
+          ok "$WORKFLOW_YAML_RESULT"    || { echo "::error::workflow-yaml failed"; exit 1; }
+          ok "$BUILD_RESULT"            || { echo "::error::build failed"; exit 1; }
+          ok "$TEST_CORE_RESULT"        || { echo "::error::test-core failed"; exit 1; }
+          ok "$TEST_ANALYZERS_RESULT"   || { echo "::error::test-analyzers failed"; exit 1; }
+          ok "$TEST_TRANSLATION_RESULT" || { echo "::error::test-translation failed"; exit 1; }
+          ok "$TEST_CODEGEN_RESULT"     || { echo "::error::test-codegen failed"; exit 1; }
+          ok "$TEST_NEO4J_RESULT"       || { echo "::error::test-neo4j failed"; exit 1; }

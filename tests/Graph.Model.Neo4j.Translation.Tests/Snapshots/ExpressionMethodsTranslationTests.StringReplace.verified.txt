@@ -1,0 +1,7 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+RETURN replace(src.FirstName, $p0, $p1)
+
+== Parameters ==
+p0 = "a"
+p1 = "e"
