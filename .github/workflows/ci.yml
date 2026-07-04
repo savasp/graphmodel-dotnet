@@ -1,0 +1,199 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  workflow-yaml:
+    name: Workflow YAML syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse workflow YAML files
+        shell: bash
+        run: |
+          ruby -e '
+            require "yaml"
+
+            paths = Dir[".github/workflows/*.yml"] + Dir[".github/workflows/*.yaml"]
+            paths.sort.each do |path|
+              YAML.load_file(path)
+              puts "ok #{path}"
+            rescue Psych::SyntaxError => e
+              warn "::error file=#{path},line=#{e.line},col=#{e.column}::#{e.message}"
+              exit 1
+            end
+          '
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            Directory.Packages.props
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+  test-core:
+    name: Test Core
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            Directory.Packages.props
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test Core
+        run: dotnet test --project tests/Graph.Model.Tests/Graph.Model.Tests.csproj --no-build --configuration Release --verbosity normal
+
+  test-analyzers:
+    name: Test Analyzers
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            Directory.Packages.props
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test Analyzers
+        run: dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj --no-build --configuration Release --verbosity normal
+
+  test-neo4j:
+    name: Test Neo4j Provider
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            Directory.Packages.props
+
+      - name: Start Neo4j
+        run: scripts/containers/start-neo4j.sh
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test Neo4j Provider
+        run: dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj --no-build --configuration Release --verbosity normal
+
+  required-checks:
+    name: Required checks
+    runs-on: ubuntu-latest
+    needs:
+      - workflow-yaml
+      - build
+      - test-core
+      - test-analyzers
+      - test-neo4j
+    # Always runs - branch protection depends on a single "Required checks"
+    # context, so this job must report a status regardless of which
+    # individual jobs above passed, failed, or were cancelled.
+    if: ${{ always() }}
+    timeout-minutes: 5
+
+    steps:
+      - name: Verify all required jobs passed
+        shell: bash
+        env:
+          WORKFLOW_YAML_RESULT: ${{ needs.workflow-yaml.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_CORE_RESULT: ${{ needs.test-core.result }}
+          TEST_ANALYZERS_RESULT: ${{ needs.test-analyzers.result }}
+          TEST_NEO4J_RESULT: ${{ needs.test-neo4j.result }}
+        run: |
+          echo "workflow-yaml=$WORKFLOW_YAML_RESULT"
+          echo "build=$BUILD_RESULT"
+          echo "test-core=$TEST_CORE_RESULT"
+          echo "test-analyzers=$TEST_ANALYZERS_RESULT"
+          echo "test-neo4j=$TEST_NEO4J_RESULT"
+
+          ok() { [[ "$1" == "success" ]]; }
+
+          ok "$WORKFLOW_YAML_RESULT"   || { echo "::error::workflow-yaml failed"; exit 1; }
+          ok "$BUILD_RESULT"           || { echo "::error::build failed"; exit 1; }
+          ok "$TEST_CORE_RESULT"       || { echo "::error::test-core failed"; exit 1; }
+          ok "$TEST_ANALYZERS_RESULT"  || { echo "::error::test-analyzers failed"; exit 1; }
+          ok "$TEST_NEO4J_RESULT"      || { echo "::error::test-neo4j failed"; exit 1; }
