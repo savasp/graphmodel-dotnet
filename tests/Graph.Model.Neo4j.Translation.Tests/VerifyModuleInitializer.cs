@@ -29,7 +29,7 @@ public static class VerifyModuleInitializer
         VerifierSettings.UseUtf8NoBom();
         Verifier.DerivePathInfo(
             (sourceFile, projectDirectory, type, method) => new PathInfo(
-                directory: Path.Combine(Path.GetDirectoryName(sourceFile)!, "Snapshots"),
+                directory: Path.Join(Path.GetDirectoryName(sourceFile)!, "Snapshots"),
                 typeName: type.Name,
                 methodName: method.Name));
     }
