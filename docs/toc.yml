@@ -36,7 +36,7 @@
   - name: Full Text Search
     href: ../examples/Example6.FullTextSearch/README.md
   - name: Simple Movie Example
-    href: ../examples/SimpleMovieExample/README.md
+    href: ../examples/SimpleMovieExample/Program.cs
 - name: Troubleshooting
   href: troubleshooting.md
 - name: Building Graph Model
