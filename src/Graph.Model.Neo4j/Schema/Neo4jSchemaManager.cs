@@ -32,6 +32,7 @@ internal class Neo4jSchemaManager
     private readonly SchemaRegistry _schemaRegistry;
     private readonly HashSet<string> _processedSchemas = new();
     private readonly SemaphoreSlim _initializationSemaphore = new(1, 1);
+    private Task<bool>? _supportsPropertyExistenceConstraintsTask;
     private volatile bool _isSchemaInitialized = false;
 
     public Neo4jSchemaManager(GraphContext context, SchemaRegistry schemaRegistry)
@@ -217,6 +218,7 @@ internal class Neo4jSchemaManager
 
     private async Task CreateNodeConstraintsAsync(string label, EntitySchemaInfo schema)
     {
+        var supportsPropertyExistenceConstraints = await SupportsPropertyExistenceConstraintsAsync();
         await using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         await using var tx = await session.BeginTransactionAsync();
 
@@ -288,6 +290,12 @@ internal class Neo4jSchemaManager
                         continue;
                     }
 
+                    if (!supportsPropertyExistenceConstraints)
+                    {
+                        _logger.LogDebug("Skipping NOT NULL constraint for property {Property} on label {Label} because Neo4j Community does not support property existence constraints", propertySchema.Name, label);
+                        continue;
+                    }
+
                     var requiredExists = existingConstraints.Any(c =>
                         c.Contains(propertySchema.Name) && c.Contains("NOT NULL"));
 
@@ -314,6 +322,7 @@ internal class Neo4jSchemaManager
 
     private async Task CreateRelationshipConstraintsAsync(string type, EntitySchemaInfo schema)
     {
+        var supportsPropertyExistenceConstraints = await SupportsPropertyExistenceConstraintsAsync();
         await using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         await using var tx = await session.BeginTransactionAsync();
 
@@ -377,6 +386,12 @@ internal class Neo4jSchemaManager
 
                 if (propertySchema.IsRequired)
                 {
+                    if (!supportsPropertyExistenceConstraints)
+                    {
+                        _logger.LogDebug("Skipping NOT NULL constraint for property {Property} on relationship type {Type} because Neo4j Community does not support property existence constraints", propertySchema.Name, type);
+                        continue;
+                    }
+
                     var requiredExists = existingConstraints.Any(c =>
                         c.Contains(propertySchema.Name) && c.Contains("NOT NULL"));
 
@@ -398,6 +413,35 @@ internal class Neo4jSchemaManager
             await tx.RollbackAsync();
             _logger.LogError(ex, "Failed to create constraints for relationship type: {Type}", type);
             throw;
+        }
+    }
+
+    private Task<bool> SupportsPropertyExistenceConstraintsAsync()
+    {
+        return _supportsPropertyExistenceConstraintsTask ??= DetectPropertyExistenceConstraintSupportAsync();
+    }
+
+    private async Task<bool> DetectPropertyExistenceConstraintSupportAsync()
+    {
+        try
+        {
+            await using var session = _context.Driver.AsyncSession(builder => builder.WithDatabase("system"));
+            var result = await session.RunAsync("CALL dbms.components() YIELD edition RETURN edition");
+            var record = await result.SingleAsync();
+            var edition = record["edition"].As<string>();
+
+            var supported = !edition.Equals("community", StringComparison.OrdinalIgnoreCase);
+            if (!supported)
+            {
+                _logger.LogInformation("Neo4j Community detected; required-property constraints will be skipped because they require Enterprise Edition");
+            }
+
+            return supported;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to detect Neo4j edition; assuming property existence constraints are supported");
+            return true;
         }
     }
 
