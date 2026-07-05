@@ -79,6 +79,10 @@ internal class CypherQueryVisitor : ExpressionVisitor
         {
             throw;
         }
+        catch (NotSupportedException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             throw new GraphException(
@@ -171,6 +175,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
                 return HandleMax(node, result);
 
             case "ContainsAsyncMarker":
+            case "Contains":
                 return HandleContains(node, result);
 
             case "ElementAtAsyncMarker":
@@ -753,17 +758,47 @@ internal class CypherQueryVisitor : ExpressionVisitor
         if (node.Arguments.Count != 2)
             throw new GraphException("Contains method must have exactly 2 arguments");
 
-        var lambda = ExtractLambda(node.Arguments[1]);
-        if (lambda == null)
-            throw new GraphException("Contains method requires a lambda expression");
-
         _logger.LogDebug("Processing CONTAINS method");
 
-        var containsExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
-        _context.Builder.AddWhere($"({containsExpression})");
+        var itemValue = EvaluateExpression(node.Arguments[1]);
+        var itemParameter = _context.Builder.AddParameter(itemValue);
+        var sourceExpression = GetContainsSourceExpression();
+        var distinct = _context.Builder.IsDistinct ? "DISTINCT " : string.Empty;
+        var containsExpression = $"""
+            CASE WHEN {itemParameter} IS NULL
+            THEN count(CASE WHEN {sourceExpression} IS NULL THEN 1 END) > 0
+            ELSE coalesce({itemParameter} IN collect({distinct}{sourceExpression}), false)
+            END
+            """.ReplaceLineEndings(" ");
 
-        _logger.LogDebug("Added CONTAINS condition");
+        _context.Builder.ClearReturn();
+        _context.Builder.DisableComplexPropertyLoading();
+        _context.Builder.SetAggregationQuery();
+        _context.Builder.AddReturn(containsExpression, "contains");
+
+        _logger.LogDebug("Added CONTAINS return expression: {Expression}", containsExpression);
         return result ?? node.Arguments[0];
+    }
+
+    private string GetContainsSourceExpression()
+    {
+        if (_context.Builder.ReturnClauses.Count == 1)
+        {
+            return StripReturnAlias(_context.Builder.ReturnClauses[0]);
+        }
+
+        return _context.Scope.CurrentAlias
+            ?? _context.Builder.RootNodeAlias
+            ?? "src";
+    }
+
+    private static string StripReturnAlias(string returnClause)
+    {
+        const string aliasSeparator = " AS ";
+        var separatorIndex = returnClause.IndexOf(aliasSeparator, StringComparison.OrdinalIgnoreCase);
+        return separatorIndex >= 0
+            ? returnClause[..separatorIndex]
+            : returnClause;
     }
 
     private Expression HandleElementAt(MethodCallExpression node, Expression? result, bool orDefault)
@@ -791,42 +826,12 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleSelectMany(MethodCallExpression node, Expression? result)
     {
-        if (node.Arguments.Count != 2)
-            throw new GraphException("SelectMany method must have exactly 2 arguments");
-
-        var lambda = ExtractLambda(node.Arguments[1]);
-        if (lambda == null)
-            throw new GraphException("SelectMany method requires a lambda expression");
-
-        _logger.LogDebug("Processing SELECT MANY method");
-
-        var selectManyExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
-        _context.Builder.AddReturn(selectManyExpression);
-
-        _logger.LogDebug("Added SELECT MANY projection");
-        return result ?? node.Arguments[0];
+        throw new NotSupportedException("SelectMany is not supported by LINQ-to-Cypher translation yet; see #100.");
     }
 
     private Expression HandleGroupBy(MethodCallExpression node, Expression? result)
     {
-        if (node.Arguments.Count != 2)
-            throw new GraphException("GroupBy method must have exactly 2 arguments");
-
-        var lambda = ExtractLambda(node.Arguments[1]);
-        if (lambda == null)
-            throw new GraphException("GroupBy method requires a lambda expression");
-
-        _logger.LogDebug("Processing GROUP BY method");
-
-        var groupByExpression = _expressionVisitor.VisitAndReturnCypher(lambda.Body);
-
-        // Store the group by expression for later use in g.Key references
-        // But don't add an explicit GROUP BY clause since Neo4j handles grouping implicitly
-        // when there are aggregation functions in the RETURN clause
-        _context.Scope.SetGroupByExpression(groupByExpression);
-
-        _logger.LogDebug("Stored GROUP BY expression for implicit grouping: {Expression}", groupByExpression);
-        return result ?? node.Arguments[0];
+        throw new NotSupportedException("GroupBy is not supported by LINQ-to-Cypher translation yet; see #100.");
     }
 
     private Expression HandleJoin(MethodCallExpression node, Expression? result)
@@ -1406,6 +1411,18 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
 
         throw new GraphException($"Unable to evaluate expression as {typeof(T).Name}: {expression}");
+    }
+
+    private static object? EvaluateExpression(Expression expression)
+    {
+        if (expression is ConstantExpression constant)
+        {
+            return constant.Value;
+        }
+
+        var converted = Expression.Convert(expression, typeof(object));
+        var lambda = Expression.Lambda<Func<object?>>(converted);
+        return lambda.Compile().Invoke();
     }
 
     private static bool IsLinqMethod(MethodCallExpression node)

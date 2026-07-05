@@ -1,6 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-WHERE datetime(src.CreatedAt).year = $p0
+WHERE (datetime(src.CreatedAt).month = $p0 AND datetime(src.CreatedAt).day = $p1)
 
             // All complex property paths from src
             OPTIONAL MATCH src_path = (src)-[rels*1..]->(prop)
@@ -31,4 +31,5 @@ WHERE datetime(src.CreatedAt).year = $p0
             } AS Node
 
 == Parameters ==
-p0 = 2024
+p0 = 7
+p1 = 4

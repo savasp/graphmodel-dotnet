@@ -238,6 +238,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     public void SetMainNodeAlias(string alias)
     {
         _mainNodeAlias = alias;
+        _returnPart.SetMainNodeAlias(_mainNodeAlias);
     }
 
     public void AddOrderBy(string expression, bool isDescending = false)
