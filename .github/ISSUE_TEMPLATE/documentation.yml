@@ -1,6 +1,7 @@
 name: 📖 Documentation Issue
 description: Report documentation issues or suggest improvements
 title: "[Docs]: "
+type: task
 labels: 
   - "documentation"
   - "triage"
@@ -107,4 +108,4 @@ body:
       label: "🤝 Contribution"
       options:
         - label: "I'd be willing to contribute to fixing this documentation issue"
-          required: false 
+          required: false

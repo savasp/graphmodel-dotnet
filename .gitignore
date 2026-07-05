@@ -62,6 +62,9 @@ nunit-*.xml
 # VS Code
 .vscode/
 
+# Local Claude settings
+.claude/settings.local.json
+
 #Mac OS
 .DS_Store
 

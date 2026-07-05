@@ -1,0 +1,7 @@
+# Default owner for repository changes.
+* @savasp
+
+# CI, community, and agent configuration are review-sensitive.
+/.github/ @savasp
+/.claude/ @savasp
+/.codex/ @savasp

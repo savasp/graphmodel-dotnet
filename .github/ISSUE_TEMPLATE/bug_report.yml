@@ -1,8 +1,8 @@
 name: 🐛 Bug Report
 description: Report a bug or unexpected behavior
 title: "[Bug]: "
+type: bug
 labels: 
-  - "bug"
   - "triage"
 assignees: []
 
@@ -141,4 +141,4 @@ body:
         - "🟡 Medium - Workaround available"
         - "🟢 Low - Minor issue"
     validations:
-      required: true 
+      required: true

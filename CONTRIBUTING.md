@@ -17,8 +17,8 @@ For AI coding agents and automation, see [CLAUDE.md](CLAUDE.md) at the repo root
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/[your-org]/graphmodel-dotnet.git
-   cd GraphModel
+   git clone https://github.com/cvoya-com/graphmodel-dotnet.git
+   cd graphmodel-dotnet
    ```
 
 2. **Restore dependencies**
@@ -36,8 +36,11 @@ For AI coding agents and automation, see [CLAUDE.md](CLAUDE.md) at the repo root
 4. **Run tests**
 
    ```bash
-   # Integration tests (requires Docker)
-   CI=true dotnet test tests/Graph.Model.Neo4j.Tests
+   # Fast provider-free tests
+   dotnet test tests/Graph.Model.Analyzers.Tests --configuration Debug
+
+   # Full suite; requires a running Neo4j instance
+   dotnet test --configuration Debug
    ```
 
 ## 🐛 Reporting Issues
@@ -90,16 +93,10 @@ When reporting issues, please include:
 
 3. **Test Thoroughly**
 
-   Test with a local Neo4j instance (e.g. Neo4j Desktop):
+   Test with a local Neo4j instance (e.g. Neo4j Desktop or Docker via `scripts/containers/start-neo4j.sh`):
 
    ```bash
-   dotnet test
-   ```
-
-   Test using docker containers. The neo4j container will be automatically downloaded:
-
-   ```bash
-   CI=true dotnet test
+   dotnet test --configuration Debug
    ```
 
 4. **Commit with Clear Messages**
