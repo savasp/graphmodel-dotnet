@@ -288,7 +288,7 @@ GraphModel follows a clean, layered architecture:
 
 - **.NET 10.0** or later
 - **Neo4j 4.0+** (5.x recommended for Neo4j provider)
-- **C# 12** language features
+- **C# 14** language features
 
 ## 📖 Related Resources
 

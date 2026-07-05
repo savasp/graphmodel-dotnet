@@ -28,10 +28,10 @@
 
   <ItemGroup>
     <!-- xunit -->
-    <PackageReference Include="xunit.v3.mtp-v2" Version="3.2.2" />
+    <PackageReference Include="xunit.v3.mtp-v2" />
 
     <!-- code coverage -->
-    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.8.0" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
   </ItemGroup>
 
   <ItemGroup>

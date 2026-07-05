@@ -1153,6 +1153,6 @@ public interface IQueryTraversalTests : IGraphModelTest
         Assert.Equal("memory", results[0].Memory.Text);
         Assert.Equal("Source1", results[0].MemorySource.Name);
     }
- 
+
     #endregion
 }
