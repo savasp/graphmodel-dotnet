@@ -40,7 +40,7 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     /// The environment variables used for configuration, if not provided, are:
     /// - NEO4J_URI: The URI of the Neo4j database. Default: "bolt://localhost:7687".
     /// - NEO4J_USER: The username for authentication. Default: "neo4j".
-    /// - NEO4J_PASSWORD: The password for authentication. Default: "password".
+    /// - NEO4J_PASSWORD: The password for authentication. Required when <paramref name="password"/> is not provided.
     /// - NEO4J_DATABASE: The name of the database. Default: "neo4j".
     /// </remarks>
     public Neo4jGraphStore(
@@ -53,8 +53,14 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     {
         uri ??= Environment.GetEnvironmentVariable("NEO4J_URI") ?? "bolt://localhost:7687";
         username ??= Environment.GetEnvironmentVariable("NEO4J_USER") ?? "neo4j";
-        password ??= Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "password";
+        password ??= Environment.GetEnvironmentVariable("NEO4J_PASSWORD");
         databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
+
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            throw new InvalidOperationException(
+                "Neo4j password must be provided through the password argument or the NEO4J_PASSWORD environment variable.");
+        }
 
         _databaseName = databaseName;
         _schemaRegistry = schemaRegistry ?? new SchemaRegistry();

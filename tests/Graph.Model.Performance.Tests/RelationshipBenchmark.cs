@@ -28,6 +28,7 @@ using global::Neo4j.Driver;
 [HtmlExporter]
 public class RelationshipBenchmark
 {
+    private static readonly DateTime BenchmarkReferenceDate = new(2026, 1, 15, 12, 0, 0, DateTimeKind.Utc);
     private static readonly Random _random = new();
     private IGraph _graph = null!;
     private List<Person> _persons = null!;
@@ -83,7 +84,7 @@ public class RelationshipBenchmark
             .RuleFor(p => p.FirstName, f => f.Name.FirstName())
             .RuleFor(p => p.LastName, f => f.Name.LastName())
             .RuleFor(p => p.Email, f => f.Internet.Email())
-            .RuleFor(p => p.DateOfBirth, f => f.Date.Past(50, DateTime.Now.AddYears(-18)));
+            .RuleFor(p => p.DateOfBirth, f => f.Date.Past(50, BenchmarkReferenceDate.AddYears(-18)));
 
         var companyFaker = new Faker<Company>()
             .RuleFor(c => c.Id, f => f.Random.Guid().ToString())
@@ -147,7 +148,7 @@ public class RelationshipBenchmark
             StartNodeId = person.Id,
             EndNodeId = company.Id,
             Position = "Software Developer",
-            StartDate = DateTime.Now.AddYears(-_random.Next(1, 5))
+            StartDate = BenchmarkReferenceDate.AddYears(-_random.Next(1, 5))
         };
 
         await _graph.CreateRelationshipAsync(relationship);
@@ -168,7 +169,7 @@ public class RelationshipBenchmark
                 StartNodeId = person.Id,
                 EndNodeId = company.Id,
                 Position = "Developer",
-                StartDate = DateTime.Now.AddYears(-_random.Next(1, 5))
+                StartDate = BenchmarkReferenceDate.AddYears(-_random.Next(1, 5))
             });
         }
 

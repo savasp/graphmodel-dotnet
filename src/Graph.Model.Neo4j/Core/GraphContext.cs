@@ -46,13 +46,13 @@ internal class GraphContext
         Neo4jGraph graph,
         IDriver driver,
         string databaseName,
-        ILoggerFactory? loggerFactory = null,
-        SchemaRegistry? schemaRegistry = null)
+        ILoggerFactory? loggerFactory,
+        SchemaRegistry schemaRegistry)
     {
         Graph = graph ?? throw new ArgumentNullException(nameof(graph));
         Driver = driver ?? throw new ArgumentNullException(nameof(driver));
         DatabaseName = databaseName ?? throw new ArgumentNullException(nameof(databaseName));
         LoggerFactory = loggerFactory;
-        _schemaRegistry = schemaRegistry ?? new SchemaRegistry();
+        _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
     }
 }

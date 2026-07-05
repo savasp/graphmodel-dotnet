@@ -37,10 +37,10 @@ internal class Neo4jGraph : IGraph
     /// <summary>
     /// Initializes a new instance of the <see cref="Neo4jGraph"/> class.
     /// </summary>
-    public Neo4jGraph(Neo4jGraphStore store, string databaseName, SchemaRegistry? schemaRegistry = null, ILoggerFactory? loggerFactory = null)
+    public Neo4jGraph(Neo4jGraphStore store, string databaseName, SchemaRegistry schemaRegistry, ILoggerFactory? loggerFactory = null)
     {
         _logger = loggerFactory?.CreateLogger<Neo4jGraph>() ?? NullLogger<Neo4jGraph>.Instance;
-        _schemaRegistry = schemaRegistry ?? new SchemaRegistry();
+        _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
         _graphStore = store ?? throw new ArgumentNullException(nameof(store));
 
         ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);

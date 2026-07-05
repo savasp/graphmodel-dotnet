@@ -577,26 +577,11 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
     private static async Task<IRecord> GetSingleRecordAsync(IResultCursor result, CancellationToken cancellationToken)
     {
-#if NET10_0
         return await result.SingleAsync(cancellationToken);
-#else
-        var records = await result.ToListAsync(cancellationToken);
-        return records.Count switch
-        {
-            0 => throw new InvalidOperationException("Sequence contains no elements"),
-            1 => records[0],
-            _ => throw new InvalidOperationException("Sequence contains more than one element")
-        };
-#endif
     }
 
     private static async Task<int> GetCountAsync(IResultCursor result, CancellationToken cancellationToken)
     {
-#if NET10_0
         return await result.CountAsync(cancellationToken);
-#else
-        var records = await result.ToListAsync(cancellationToken);
-        return records.Count;
-#endif
     }
 }
