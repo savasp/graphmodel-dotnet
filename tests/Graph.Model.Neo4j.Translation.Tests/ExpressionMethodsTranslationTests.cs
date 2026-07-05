@@ -16,7 +16,6 @@ namespace Cvoya.Graph.Model.Neo4j.Translation.Tests;
 
 using Cvoya.Graph.Model.Neo4j.Translation.Tests.Harness;
 using Cvoya.Graph.Model.Neo4j.Translation.Tests.Model;
-using Clock = System.DateTime;
 
 /// <summary>
 /// Covers expression-level constructs handled by <c>ExpressionToCypherVisitor</c>: string
@@ -99,7 +98,7 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
     [Fact]
     public Task DateTimeNow_AddDays()
     {
-        var query = Root.Nodes<Person>().Where(p => p.CreatedAt < Clock.Now.AddDays(-7));
+        var query = Root.Nodes<Person>().Where(p => p.CreatedAt < DateTime.Now.AddDays(-7));
         return VerifyTranslation(query);
     }
 

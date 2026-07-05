@@ -14,8 +14,6 @@
 
 namespace Cvoya.Graph.Model.Tests;
 
-using Clock = System.DateTime;
-
 public interface IAdvancedQueryTests : IGraphModelTest
 {
     [Fact]
@@ -143,12 +141,12 @@ public interface IAdvancedQueryTests : IGraphModelTest
                 Power = Math.Pow(2, 3),
 
                 // DateTime functions
-                Now = Clock.Now,
+                Now = DateTime.Now,
                 Today = DateTime.Today,
                 UtcNow = DateTime.UtcNow,
-                Year = Clock.Now.Year,
-                Month = Clock.Now.Month,
-                Day = Clock.Now.Day
+                Year = DateTime.Now.Year,
+                Month = DateTime.Now.Month,
+                Day = DateTime.Now.Day
             })
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -464,12 +462,12 @@ public interface IAdvancedQueryTests : IGraphModelTest
             .Select(p => new
             {
                 PersonName = p.FirstName,
-                CurrentDateTime = Clock.Now,
+                CurrentDateTime = DateTime.Now,
                 CurrentDate = DateTime.Today,
                 CurrentUtc = DateTime.UtcNow,
-                Year = Clock.Now.Year,
-                Month = Clock.Now.Month,
-                Day = Clock.Now.Day
+                Year = DateTime.Now.Year,
+                Month = DateTime.Now.Month,
+                Day = DateTime.Now.Day
             })
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -480,7 +478,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         // Verify person name to ensure we got the right record
         Assert.Equal("Eve", result.PersonName);
 
-        // Clock.Now in Neo4j maps to localdatetime() - this returns local time
+        // DateTime.Now in Neo4j maps to localdatetime() - this returns local time
         var localReferenceTime = referenceTime.ToLocalTime();
         var actual = result.CurrentDateTime.ToLocalTime();
         Assert.True(Math.Abs((localReferenceTime - actual).TotalSeconds) < 120,
