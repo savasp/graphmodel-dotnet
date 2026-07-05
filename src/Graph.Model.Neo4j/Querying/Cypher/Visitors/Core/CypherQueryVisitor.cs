@@ -1238,10 +1238,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
             _context.Builder.AddFullTextRelationshipSearch(indexName, paramName, alias, relType);
             _context.Scope.CurrentAlias = alias;
             _context.Builder.SetMainNodeAlias(alias);
-            var builderType = _context.Builder.GetType();
-            var field = builderType.GetField("_isRelationshipQuery", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            field?.SetValue(_context.Builder, true);
-            _context.Builder.DisableComplexPropertyLoading();
+            _context.Builder.PathSegmentSourceAlias = "src";
+            _context.Builder.PathSegmentRelationshipAlias = alias;
+            _context.Builder.PathSegmentTargetAlias = "tgt";
+            _context.Builder.SetPathSegmentProjection(CypherQueryBuilder.PathSegmentProjectionEnum.Full);
+            _context.Builder.EnablePathSegmentLoading();
         }
         else
         {
@@ -1251,8 +1252,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
             var nodeIndexName = "node_fulltext_index";
             var relIndexName = "rel_fulltext_index";
             _context.Builder.AddFullTextEntitySearch(nodeIndexName, relIndexName, paramName, nodeAlias, relAlias);
-            _context.Scope.CurrentAlias = nodeAlias; // Default to node alias
-            _context.Builder.SetMainNodeAlias(nodeAlias);
+            _context.Scope.CurrentAlias = "entity";
+            _context.Builder.AddReturn("entity");
             _context.Builder.DisableComplexPropertyLoading();
         }
     }
@@ -1663,10 +1664,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
             _context.Builder.AddFullTextRelationshipSearch(indexName, paramName, alias, relType);
             _context.Scope.CurrentAlias = alias;
             _context.Builder.SetMainNodeAlias(alias);
-            var builderType = _context.Builder.GetType();
-            var field = builderType.GetField("_isRelationshipQuery", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            field?.SetValue(_context.Builder, true);
-            _context.Builder.DisableComplexPropertyLoading();
+            _context.Builder.PathSegmentSourceAlias = "src";
+            _context.Builder.PathSegmentRelationshipAlias = alias;
+            _context.Builder.PathSegmentTargetAlias = "tgt";
+            _context.Builder.SetPathSegmentProjection(CypherQueryBuilder.PathSegmentProjectionEnum.Full);
+            _context.Builder.EnablePathSegmentLoading();
         }
         else
         {
@@ -1676,8 +1678,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
             var nodeIndexName = "node_fulltext_index";
             var relIndexName = "rel_fulltext_index";
             _context.Builder.AddFullTextEntitySearch(nodeIndexName, relIndexName, paramName, nodeAlias, relAlias);
-            _context.Scope.CurrentAlias = nodeAlias; // Default to node alias
-            _context.Builder.SetMainNodeAlias(nodeAlias);
+            _context.Scope.CurrentAlias = "entity";
+            _context.Builder.AddReturn("entity");
             _context.Builder.DisableComplexPropertyLoading();
         }
     }

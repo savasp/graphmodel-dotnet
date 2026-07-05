@@ -826,7 +826,7 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, T, bool>)QueryableAsyncExtensionsMarkers.ContainsAsyncMarker).Method,
                     source.Expression,
-                    Expression.Constant(item)),
+                    Expression.Constant(item, typeof(T))),
                 cancellationToken);
         }
 
