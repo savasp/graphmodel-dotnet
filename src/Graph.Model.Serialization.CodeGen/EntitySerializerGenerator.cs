@@ -214,12 +214,9 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
 
         void AddTypes(ImmutableArray<INamedTypeSymbol> types)
         {
-            foreach (var type in types)
+            foreach (var type in types.Where(seen.Add))
             {
-                if (seen.Add(type))
-                {
-                    builder.Add(type);
-                }
+                builder.Add(type);
             }
         }
     }
