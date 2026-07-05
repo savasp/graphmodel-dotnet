@@ -151,6 +151,28 @@ public interface IErrorHandlingTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task DeleteNodeAsync_SameIdUnderDifferentLabels_ThrowsAndLeavesNodesUntouched()
+    {
+        var id = Guid.NewGuid().ToString("N");
+        var person = new Person { Id = id, FirstName = "Shared", LastName = "Person" };
+        var address = new Address { Id = id, Street = "1 Graph St", City = "Neo" };
+
+        await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(address, null, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<GraphException>(async () =>
+        {
+            await Graph.DeleteNodeAsync(id, true, null, TestContext.Current.CancellationToken);
+        });
+
+        var remainingPerson = await Graph.GetNodeAsync<Person>(id, null, TestContext.Current.CancellationToken);
+        var remainingAddress = await Graph.GetNodeAsync<Address>(id, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(person.FirstName, remainingPerson.FirstName);
+        Assert.Equal(address.Street, remainingAddress.Street);
+    }
+
+    [Fact]
     public async Task DeleteRelationshipAsync_NonExistentId_ThrowsGraphException()
     {
         var nonExistentId = Guid.NewGuid().ToString("N");
