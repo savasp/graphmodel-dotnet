@@ -32,6 +32,7 @@
         <RepositoryType>git</RepositoryType>
         <PackageOutputPath>$(MSBuildThisFileDirectory)artifacts</PackageOutputPath>
         <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
 
         <!-- Development mode uses project references by default -->
         <!-- This ensures that CI/CD workflows and local development work without requiring pre-built packages -->
@@ -60,9 +61,14 @@
         <EmbedUntrackedSources>true</EmbedUntrackedSources>
     </PropertyGroup>
 
+    <ItemGroup Condition="'$(IsSourcePackageProject)' == 'true'">
+        <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+    </ItemGroup>
+
     <!-- Include README in the package -->
     <ItemGroup>
         <None Include="$(MSBuildProjectDirectory)\README.md" Pack="true" PackagePath="\" />
+        <None Include="$(MSBuildThisFileDirectory)assets\nuget-icon.png" Pack="true" PackagePath="\icon.png" />
     </ItemGroup>
 
     <!-- Test project settings -->
@@ -137,7 +143,8 @@
 
     <Target Name="PublishToLocalFeed" AfterTargets="Pack" Condition="'$(Configuration)' == 'LocalFeed' AND '$(IsPackable)' != 'false'">
         <ItemGroup>
-            <PackageFiles Include="$(PackageOutputPath)\*.nupkg" />
+            <PackageFiles Include="$(PackageOutputPath)\$(PackageId).$(PackageVersion).nupkg"
+                          Condition="Exists('$(PackageOutputPath)\$(PackageId).$(PackageVersion).nupkg')" />
         </ItemGroup>
 
         <Copy SourceFiles="@(PackageFiles)" DestinationFolder="$(LocalFeedPath)" Condition="@(PackageFiles) != ''" />
