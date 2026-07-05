@@ -184,34 +184,11 @@ public interface IQueryTests : IGraphModelTest
         Assert.Contains(skipped, p => p.FirstName == "C");
     }
 
-    [Fact]
-    public async Task CanQueryWithTakeZero()
-    {
-        var p1 = new Person { FirstName = "A" };
-        var p2 = new Person { FirstName = "B" };
-        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
-
-        var taken = await (await this.Graph.NodesAsync<Person>()).Take(0).ToListAsync(TestContext.Current.CancellationToken);
-        Assert.Empty(taken);
-    }
-
-    [Fact]
-    public async Task CanQueryWithTakeLargerThanAvailable()
-    {
-        var p1 = new Person { FirstName = "A" };
-        var p2 = new Person { FirstName = "B" };
-        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
-
-        var taken = await (await this.Graph.NodesAsync<Person>()).OrderBy(p => p.FirstName).Take(10).ToListAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(2, taken.Count);
-        Assert.Equal("A", taken[0].FirstName);
-        Assert.Equal("B", taken[1].FirstName);
-    }
-
-    [Fact]
-    public async Task CanQueryWithTakeOne()
+    [Theory]
+    [InlineData(0, "")]
+    [InlineData(1, "A")]
+    [InlineData(10, "A,B,C")]
+    public async Task CanQueryWithTakeEdgeCases(int take, string expectedCsv)
     {
         var p1 = new Person { FirstName = "A" };
         var p2 = new Person { FirstName = "B" };
@@ -220,9 +197,13 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var taken = await (await this.Graph.NodesAsync<Person>()).OrderBy(p => p.FirstName).Take(1).ToListAsync(TestContext.Current.CancellationToken);
-        Assert.Single(taken);
-        Assert.Equal("A", taken[0].FirstName);
+        var taken = await (await this.Graph.NodesAsync<Person>())
+            .OrderBy(p => p.FirstName)
+            .Take(take)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var expected = string.IsNullOrEmpty(expectedCsv) ? Array.Empty<string>() : expectedCsv.Split(',');
+        Assert.Equal(expected, taken.Select(p => p.FirstName).ToArray());
     }
 
     [Fact]
