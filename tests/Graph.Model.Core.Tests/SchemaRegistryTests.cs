@@ -60,14 +60,9 @@ public class SchemaRegistryTests
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
         {
-            if (nodeLookup)
-            {
-                _ = registry.GetNodeSchema("CoreRegistryNode");
-            }
-            else
-            {
-                _ = registry.GetRelationshipSchema("CORE_REGISTRY_REL");
-            }
+            _ = nodeLookup
+                ? registry.GetNodeSchema("CoreRegistryNode")
+                : registry.GetRelationshipSchema("CORE_REGISTRY_REL");
         });
 
         Assert.Contains("must be initialized", exception.Message, StringComparison.Ordinal);
