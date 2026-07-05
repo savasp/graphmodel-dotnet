@@ -415,12 +415,16 @@ jobs:
 
     services:
       neo4j:
-        image: neo4j:5-community
+        image: neo4j:5-enterprise
         ports:
           - 7687:7687
           - 7474:7474
         env:
           NEO4J_AUTH: neo4j/password
+          NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
+          NEO4J_PLUGINS: '["apoc"]'
+          NEO4J_dbms_security_procedures_unrestricted: apoc.*
+          NEO4J_dbms_security_procedures_allowlist: apoc.*
         options: >-
           --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"
           --health-interval 10s
