@@ -65,19 +65,19 @@ public record TaggedWith(string startNodeId, string endNodeId) : Relationship(st
 
 ```csharp
 // Query base type - gets all content types
-var allContent = graph.Nodes<Content>().ToList();
+var allContent = await (await graph.NodesAsync<Content>()).ToListAsync();
 
 // Query specific type with filtering
-var articles = graph.Nodes<Article>()
+var articles = await (await graph.NodesAsync<Article>())
     .Where(a => a.WordCount > 1000)
-    .ToList();
+    .ToListAsync();
 ```
 
 ### 4. Path Traversal
 
 ```csharp
 // Find content with their tags
-var taggedContent = await graph.Nodes<Content>()
+var taggedContent = await (await graph.NodesAsync<Content>())
     .PathSegments<Content, TaggedWith, Tag>()
     .ToListAsync();
 ```

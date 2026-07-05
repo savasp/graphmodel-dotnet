@@ -67,19 +67,20 @@ This is not a supported product but we will do our best to provide:
 
 ```csharp
 // ✅ Good - encrypted connection
-var graph = new Neo4jGraph("neo4j+s://your-server:7687",
-    "username", "password");
+var store = new Neo4jGraphStore("neo4j+s://your-server:7687",
+    "username", "password", "neo4j");
+var graph = store.Graph;
 
 // ❌ Avoid - unencrypted connection
-var graph = new Neo4jGraph("neo4j://your-server:7687",
-    "username", "password");
+var insecureStore = new Neo4jGraphStore("neo4j://your-server:7687",
+    "username", "password", "neo4j");
 ```
 
 ### Input Validation
 
 ```csharp
 // ✅ Good - parameterized queries
-var users = await graph.Nodes<User>()
+var users = await (await graph.NodesAsync<User>())
     .Where(u => u.Email == email)  // Automatically parameterized
     .ToListAsync();
 
@@ -97,7 +98,7 @@ var username = Environment.GetEnvironmentVariable("NEO4J_USERNAME");
 var password = Environment.GetEnvironmentVariable("NEO4J_PASSWORD");
 
 // ❌ Avoid - hardcoded credentials
-var graph = new Neo4jGraph("neo4j://localhost:7687", "neo4j", "password123");
+var store = new Neo4jGraphStore("neo4j://localhost:7687", "neo4j", "password123");
 ```
 
 ## 🚀 Security Updates
@@ -134,8 +135,8 @@ Before deploying to production:
 For security-related questions or concerns:
 
 - **Security Email**: [savas@parastatidis.name]
-- **General Issues**: [GitHub Issues](https://github.com/savasp/graphmodel-dotnet/issues)
-- **Documentation**: [GitHub Discussions](https://github.com/savasp/graphmodel-dotnet/discussions/)
+- **General Issues**: [GitHub Issues](https://github.com/cvoya-com/graphmodel-dotnet/issues)
+- **Documentation**: [GitHub Discussions](https://github.com/cvoya-com/graphmodel-dotnet/discussions/)
 
 ---
 

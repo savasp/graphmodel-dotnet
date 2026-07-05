@@ -511,7 +511,7 @@ public interface IGraphTransaction : IAsyncDisposable
     /// <summary>
     /// Commits all changes made in this transaction.
     /// </summary>
-    Task Commit(CancellationToken cancellationToken = default);
+    Task CommitAsync();
 
     /// <summary>
     /// Rolls back all changes made in this transaction.
@@ -529,7 +529,7 @@ try
 {
     await graph.CreateNodeAsync(node, transaction: transaction);
     await graph.CreateRelationshipAsync(relationship, transaction: transaction);
-    await transaction.Commit();
+    await transaction.CommitAsync();
 }
 catch
 {
@@ -541,7 +541,7 @@ catch
 await using var transaction = await graph.GetTransactionAsync();
 await graph.CreateNodeAsync(node, transaction: transaction);
 await graph.CreateRelationshipAsync(relationship, transaction: transaction);
-await transaction.Commit(); // Must explicitly commit
+await transaction.CommitAsync(); // Must explicitly commit
 ```
 
 ## 🔍 Path Segments
