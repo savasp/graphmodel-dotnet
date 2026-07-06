@@ -53,6 +53,27 @@ public class SchemaRegistryTests
         Assert.Equal("CORE_REGISTRY_REL", relationshipSchema.Label);
     }
 
+    [Fact]
+    public async Task InitializeAsync_AgainstCurrentlyLoadedAssemblies_DoesNotThrow()
+    {
+        // Canary for #155: SchemaRegistry.InitializeAsync scans every assembly in
+        // AppDomain.CurrentDomain and throws a single aggregated GraphException the moment any two
+        // node types (or two relationship types, or two properties within one type) resolve to the
+        // same label - see RuntimeLabelCollisionTests for the mirrored allow/deny matrix. This test
+        // deliberately asserts nothing more specific than "it doesn't throw": its only job is to fail
+        // loudly, in this project, the moment an in-tree fixture collides with another - e.g. two
+        // identically-named nested test types added to different files - rather than that surfacing
+        // only in another test project or in CI. It is safe alongside RuntimeLabelCollisionTests'
+        // isolated (AssemblyLoadContext-compiled) fixtures precisely because those are never ordinary
+        // members of this assembly, so a real scan of this assembly never sees them.
+        using var registry = new SchemaRegistry();
+
+        var exception = await Record.ExceptionAsync(
+            () => registry.InitializeAsync(TestContext.Current.CancellationToken));
+
+        Assert.Null(exception);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
