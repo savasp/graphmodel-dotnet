@@ -277,7 +277,7 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
     private static INamedTypeSymbol? GetBaseListEntityTarget(GeneratorSyntaxContext context, CancellationToken ct)
     {
         var typeDecl = (TypeDeclarationSyntax)context.Node;
-        var symbol = context.SemanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol;
+        var symbol = context.SemanticModel.GetDeclaredSymbol(typeDecl, ct);
 
         if (symbol is null) return null;
 
@@ -292,7 +292,7 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
     private static INamedTypeSymbol? GetConcreteDeclaredType(GeneratorSyntaxContext context, CancellationToken ct)
     {
         var typeDecl = (TypeDeclarationSyntax)context.Node;
-        var symbol = context.SemanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol;
+        var symbol = context.SemanticModel.GetDeclaredSymbol(typeDecl, ct);
 
         if (symbol is null || symbol.TypeKind == TypeKind.Interface || symbol.IsAbstract)
             return null;
@@ -355,13 +355,11 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
             // instance silently serializes/deserializes via the base type's serializer instead
             // of its own (see #146/#136) - each subtype needs its own generated serializer and
             // registry entry to preserve its ActualType and derived-only properties.
-            foreach (var subtype in FindSubtypes(currentType, allDeclaredTypes))
+            foreach (var subtype in FindSubtypes(currentType, allDeclaredTypes)
+                .Where(subtype => !allTypesToGenerate.Contains(subtype)))
             {
-                if (!allTypesToGenerate.Contains(subtype))
-                {
-                    allTypesToGenerate.Add(subtype);
-                    typesToAnalyze.Enqueue(subtype);
-                }
+                allTypesToGenerate.Add(subtype);
+                typesToAnalyze.Enqueue(subtype);
             }
 
             // Find complex property types
