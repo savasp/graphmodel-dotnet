@@ -74,7 +74,7 @@ internal class GraphTransaction : IGraphTransaction
         if (_transaction == null || _committed || _rolledBack)
             throw new GraphException("Transaction is not active.");
 
-        await _transaction.CommitAsync();
+        await _transaction.CommitAsync().ConfigureAwait(false);
         _committed = true;
     }
 
@@ -87,7 +87,7 @@ internal class GraphTransaction : IGraphTransaction
         if (_transaction == null || _committed || _rolledBack)
             throw new GraphException("Transaction is not active.");
 
-        await _transaction.RollbackAsync();
+        await _transaction.RollbackAsync().ConfigureAwait(false);
         _rolledBack = true;
     }
 
@@ -101,7 +101,7 @@ internal class GraphTransaction : IGraphTransaction
             try
             {
                 // Auto-rollback uncommitted transactions
-                await _transaction.RollbackAsync();
+                await _transaction.RollbackAsync().ConfigureAwait(false);
                 _transaction.Dispose();
                 _transaction = null;
             }
@@ -115,7 +115,7 @@ internal class GraphTransaction : IGraphTransaction
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await _session.CloseAsync().WaitAsync(cts.Token);
+            await _session.CloseAsync().WaitAsync(cts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -130,7 +130,7 @@ internal class GraphTransaction : IGraphTransaction
     internal async Task BeginTransactionAsync()
     {
         _logger.LogDebug("Beginning new transaction");
-        _transaction = await _session.BeginTransactionAsync();
+        _transaction = await _session.BeginTransactionAsync().ConfigureAwait(false);
         _logger.LogDebug("Successfully began transaction");
     }
 }

@@ -143,7 +143,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
                 },
                 "Error executing query",
                 _logger,
-                isReadOnly: _isReadOnly);
+                isReadOnly: _isReadOnly).ConfigureAwait(false);
 
             return result!;
         }

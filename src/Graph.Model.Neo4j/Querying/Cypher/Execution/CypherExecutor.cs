@@ -38,8 +38,8 @@ internal sealed class CypherExecutor
     {
         _logger.LogDebug("Executing Cypher query: {Query}", cypher);
 
-        var cursor = await transaction.Transaction.RunAsync(cypher, parameters);
-        var records = await cursor.ToListAsync(cancellationToken);
+        var cursor = await transaction.Transaction.RunAsync(cypher, parameters).ConfigureAwait(false);
+        var records = await cursor.ToListAsync(cancellationToken).ConfigureAwait(false);
 
         _logger.LogDebug("Query returned {Count} records", records.Count);
 

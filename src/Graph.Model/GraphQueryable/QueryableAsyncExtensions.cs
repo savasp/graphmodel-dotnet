@@ -38,11 +38,11 @@ public static class QueryableAsyncExtensions
                 Expression.Call(
                     null,
                     ((Func<IQueryable<T>, List<T>>)QueryTerminals.ToListAsyncMarker).Method, source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
         // Fallback to sync execution
-        return await Task.Run(() => source.ToList(), cancellationToken);
+        return await Task.Run(() => source.ToList(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -66,7 +66,7 @@ public static class QueryableAsyncExtensions
 
         if (source is IGraphQueryable<T> graphQueryable)
         {
-            return await graphQueryable.ToListAsync(cancellationToken);
+            return await graphQueryable.ToListAsync(cancellationToken).ConfigureAwait(false);
         }
 
         if (source.Provider is IGraphQueryProvider graphProvider)
@@ -75,10 +75,10 @@ public static class QueryableAsyncExtensions
                 Expression.Call(
                     null,
                     ((Func<IQueryable<T>, List<T>>)QueryTerminals.ToListAsyncMarker).Method, source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.ToList(), cancellationToken);
+        return await Task.Run(() => source.ToList(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -97,10 +97,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, T?>)QueryTerminals.FirstOrDefaultAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.FirstOrDefault(), cancellationToken);
+        return await Task.Run(() => source.FirstOrDefault(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -119,10 +119,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, int>)QueryTerminals.CountAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Count(), cancellationToken);
+        return await Task.Run(() => source.Count(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -141,10 +141,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, bool>)QueryTerminals.AnyAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Any(), cancellationToken);
+        return await Task.Run(() => source.Any(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -170,10 +170,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, bool>>, bool>)QueryTerminals.AnyAsyncMarker).Method,
                     source.Expression,
                     predicate),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Any(predicate), cancellationToken);
+        return await Task.Run(() => source.Any(predicate), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -194,10 +194,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, bool>>, bool>)QueryTerminals.AllAsyncMarker).Method,
                     source.Expression,
                     predicate),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.All(predicate), cancellationToken);
+        return await Task.Run(() => source.All(predicate), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -219,10 +219,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, T>)QueryTerminals.SingleAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Single(), cancellationToken);
+        return await Task.Run(() => source.Single(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -246,10 +246,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, bool>>, T>)QueryTerminals.SingleAsyncMarker).Method,
                     source.Expression,
                     predicate),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Single(predicate), cancellationToken);
+        return await Task.Run(() => source.Single(predicate), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -270,10 +270,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, T>)QueryTerminals.LastAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Last(), cancellationToken);
+        return await Task.Run(() => source.Last(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -292,10 +292,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, T>)QueryTerminals.FirstAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.First(), cancellationToken);
+        return await Task.Run(() => source.First(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -314,10 +314,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, T[]>)QueryTerminals.ToArrayAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.ToArray(), cancellationToken);
+        return await Task.Run(() => source.ToArray(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -343,10 +343,10 @@ public static class QueryableAsyncExtensions
                     source.Expression,
                     keySelector,
                     elementSelector),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.ToDictionary(keySelector.Compile(), elementSelector.Compile()), cancellationToken);
+        return await Task.Run(() => source.ToDictionary(keySelector.Compile(), elementSelector.Compile()), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -369,10 +369,10 @@ public static class QueryableAsyncExtensions
                         QueryTerminals.ToDictionaryAsyncMarker).Method,
                     source.Expression,
                     keySelector),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.ToDictionary(keySelector.Compile()), cancellationToken);
+        return await Task.Run(() => source.ToDictionary(keySelector.Compile()), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -398,10 +398,10 @@ public static class QueryableAsyncExtensions
                     source.Expression,
                     keySelector,
                     elementSelector),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.ToLookup(keySelector.Compile(), elementSelector.Compile()), cancellationToken);
+        return await Task.Run(() => source.ToLookup(keySelector.Compile(), elementSelector.Compile()), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -424,10 +424,10 @@ public static class QueryableAsyncExtensions
                         QueryTerminals.ToLookupAsyncMarker).Method,
                     source.Expression,
                     keySelector),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.ToLookup(keySelector.Compile()), cancellationToken);
+        return await Task.Run(() => source.ToLookup(keySelector.Compile()), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -449,10 +449,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, bool>>, T>)QueryTerminals.FirstAsyncMarker).Method,
                     source.Expression,
                     predicate),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.First(predicate), cancellationToken);
+        return await Task.Run(() => source.First(predicate), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -474,10 +474,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, bool>>, T?>)QueryTerminals.FirstOrDefaultAsyncMarker).Method,
                     source.Expression,
                     predicate),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.FirstOrDefault(predicate), cancellationToken);
+        return await Task.Run(() => source.FirstOrDefault(predicate), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -499,10 +499,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, bool>>, T>)QueryTerminals.LastAsyncMarker).Method,
                     source.Expression,
                     predicate),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Last(predicate), cancellationToken);
+        return await Task.Run(() => source.Last(predicate), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -521,10 +521,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, T?>)QueryTerminals.LastOrDefaultAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.LastOrDefault(), cancellationToken);
+        return await Task.Run(() => source.LastOrDefault(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -546,10 +546,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, bool>>, T?>)QueryTerminals.LastOrDefaultAsyncMarker).Method,
                     source.Expression,
                     predicate),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.LastOrDefault(predicate), cancellationToken);
+        return await Task.Run(() => source.LastOrDefault(predicate), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -568,10 +568,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, T?>)QueryTerminals.SingleOrDefaultAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.SingleOrDefault(), cancellationToken);
+        return await Task.Run(() => source.SingleOrDefault(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -593,10 +593,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, bool>>, T?>)QueryTerminals.SingleOrDefaultAsyncMarker).Method,
                     source.Expression,
                     predicate),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.SingleOrDefault(predicate), cancellationToken);
+        return await Task.Run(() => source.SingleOrDefault(predicate), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -618,10 +618,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, bool>>, int>)QueryTerminals.CountAsyncMarker).Method,
                     source.Expression,
                     predicate),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Count(predicate), cancellationToken);
+        return await Task.Run(() => source.Count(predicate), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -640,10 +640,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, long>)QueryTerminals.LongCountAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.LongCount(), cancellationToken);
+        return await Task.Run(() => source.LongCount(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -665,10 +665,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, bool>>, long>)QueryTerminals.LongCountAsyncMarker).Method,
                     source.Expression,
                     predicate),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.LongCount(predicate), cancellationToken);
+        return await Task.Run(() => source.LongCount(predicate), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -689,10 +689,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, T, bool>)QueryTerminals.ContainsAsyncMarker).Method,
                     source.Expression,
                     Expression.Constant(item, typeof(T))),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Contains(item), cancellationToken);
+        return await Task.Run(() => source.Contains(item), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -713,10 +713,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, int, T>)QueryTerminals.ElementAtAsyncMarker).Method,
                     source.Expression,
                     Expression.Constant(index)),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.ElementAt(index), cancellationToken);
+        return await Task.Run(() => source.ElementAt(index), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -737,10 +737,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, int, T?>)QueryTerminals.ElementAtOrDefaultAsyncMarker).Method,
                     source.Expression,
                     Expression.Constant(index)),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.ElementAtOrDefault(index), cancellationToken);
+        return await Task.Run(() => source.ElementAtOrDefault(index), cancellationToken).ConfigureAwait(false);
     }
 
     #region Aggregation Methods (Sum/Average - collapsed to a single generic definition per shape)
@@ -760,10 +760,10 @@ public static class QueryableAsyncExtensions
             var method = ((Func<IQueryable<TResult>, TResult>)QueryTerminals.SumAsyncMarker).Method;
             return await graphProvider.ExecuteAsync<TResult>(
                 Expression.Call(null, method, source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => Enumerable.Aggregate(source, TResult.Zero, (acc, x) => acc + x), cancellationToken);
+        return await Task.Run(() => Enumerable.Aggregate(source, TResult.Zero, (acc, x) => acc + x), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -783,11 +783,11 @@ public static class QueryableAsyncExtensions
             var method = ((Func<IQueryable<TSource>, Expression<Func<TSource, TResult>>, TResult>)QueryTerminals.SumAsyncMarker).Method;
             return await graphProvider.ExecuteAsync<TResult>(
                 Expression.Call(null, method, source.Expression, selector),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
         var compiled = selector.Compile();
-        return await Task.Run(() => Enumerable.Aggregate(source, TResult.Zero, (acc, x) => acc + compiled(x)), cancellationToken);
+        return await Task.Run(() => Enumerable.Aggregate(source, TResult.Zero, (acc, x) => acc + compiled(x)), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -805,7 +805,7 @@ public static class QueryableAsyncExtensions
             var method = ((Func<IQueryable<TResult>, TResult>)QueryTerminals.AverageAsyncMarker<TResult, TResult>).Method;
             return await graphProvider.ExecuteAsync<TResult>(
                 Expression.Call(null, method, source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
         return await Task.Run(() =>
@@ -819,7 +819,7 @@ public static class QueryableAsyncExtensions
             }
 
             return count == TResult.Zero ? TResult.Zero : sum / count;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -839,7 +839,7 @@ public static class QueryableAsyncExtensions
             var method = ((Func<IQueryable<TSource>, Expression<Func<TSource, TResult>>, TResult>)QueryTerminals.AverageAsyncMarker).Method;
             return await graphProvider.ExecuteAsync<TResult>(
                 Expression.Call(null, method, source.Expression, selector),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
         var compiled = selector.Compile();
@@ -854,7 +854,7 @@ public static class QueryableAsyncExtensions
             }
 
             return count == TResult.Zero ? TResult.Zero : sum / count;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     #endregion
@@ -875,10 +875,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, T?>)QueryTerminals.MinAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Min(), cancellationToken);
+        return await Task.Run(() => source.Min(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -900,10 +900,10 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, TResult>>, TResult?>)QueryTerminals.MinAsyncMarker).Method,
                     source.Expression,
                     selector),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Min(selector.Compile()), cancellationToken);
+        return await Task.Run(() => source.Min(selector.Compile()), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -922,10 +922,10 @@ public static class QueryableAsyncExtensions
                     null,
                     ((Func<IQueryable<T>, T?>)QueryTerminals.MaxAsyncMarker).Method,
                     source.Expression),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Max(), cancellationToken);
+        return await Task.Run(() => source.Max(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -947,9 +947,9 @@ public static class QueryableAsyncExtensions
                     ((Func<IQueryable<T>, Expression<Func<T, TResult>>, TResult?>)QueryTerminals.MaxAsyncMarker).Method,
                     source.Expression,
                     selector),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
-        return await Task.Run(() => source.Max(selector.Compile()), cancellationToken);
+        return await Task.Run(() => source.Max(selector.Compile()), cancellationToken).ConfigureAwait(false);
     }
 }

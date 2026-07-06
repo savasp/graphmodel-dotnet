@@ -46,12 +46,12 @@ internal sealed class ComplexPropertyManager(GraphContext context)
             {
                 case EntityInfo childEntity:
                     allCreated &= await CreateSingleComplexPropertyAsync(
-                        transaction, parentId, propertyName, childEntity, 0, cancellationToken);
+                        transaction, parentId, propertyName, childEntity, 0, cancellationToken).ConfigureAwait(false);
                     break;
 
                 case EntityCollection collection:
                     allCreated &= await CreateComplexPropertyCollectionAsync(
-                        transaction, parentId, propertyName, collection, cancellationToken);
+                        transaction, parentId, propertyName, collection, cancellationToken).ConfigureAwait(false);
                     break;
 
                 case null:
@@ -78,10 +78,10 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         CancellationToken cancellationToken = default)
     {
         // First, delete all existing complex property relationships
-        await DeleteExistingComplexPropertiesAsync(transaction, parentId, cancellationToken);
+        await DeleteExistingComplexPropertiesAsync(transaction, parentId, cancellationToken).ConfigureAwait(false);
 
         // Then create the new ones
-        return await CreateComplexPropertiesAsync(transaction, parentId, entity, cancellationToken);
+        return await CreateComplexPropertiesAsync(transaction, parentId, entity, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<bool> CreateSingleComplexPropertyAsync(
@@ -109,9 +109,9 @@ internal sealed class ComplexPropertyManager(GraphContext context)
             parentId,
             props = nodeProps,
             relProps
-        });
+        }).ConfigureAwait(false);
 
-        var record = await GetSingleRecordAsync(result, cancellationToken);
+        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
         var complexNodeId = record["nodeId"].As<string>()
             ?? throw new GraphException($"Failed to create complex property node");
 
@@ -120,7 +120,7 @@ internal sealed class ComplexPropertyManager(GraphContext context)
             complexNodeId, propertyName, parentId);
 
         // Recursively create nested complex properties
-        return await CreateComplexPropertiesAsync(transaction, complexNodeId, entity, cancellationToken);
+        return await CreateComplexPropertiesAsync(transaction, complexNodeId, entity, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<bool> CreateComplexPropertyCollectionAsync(
@@ -136,7 +136,7 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         foreach (var entity in collection.Entities)
         {
             allCreated &= await CreateSingleComplexPropertyAsync(
-                transaction, parentId, propertyName, entity, index++, cancellationToken);
+                transaction, parentId, propertyName, entity, index++, cancellationToken).ConfigureAwait(false);
         }
 
         return allCreated;
@@ -158,9 +158,9 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         {
             parentId,
             propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix
-        });
+        }).ConfigureAwait(false);
 
-        var deletedCount = (await GetFirstRecordAsync(result, cancellationToken))["deletedCount"].As<int>();
+        var deletedCount = (await GetFirstRecordAsync(result, cancellationToken).ConfigureAwait(false))["deletedCount"].As<int>();
 
         logger.LogDebug(
             "Deleted {DeletedCount} complex property relationships for parent {ParentId}",
@@ -169,11 +169,11 @@ internal sealed class ComplexPropertyManager(GraphContext context)
 
     private static async Task<IRecord> GetSingleRecordAsync(IResultCursor result, CancellationToken cancellationToken)
     {
-        return await result.SingleAsync(cancellationToken);
+        return await result.SingleAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<IRecord> GetFirstRecordAsync(IResultCursor result, CancellationToken cancellationToken)
     {
-        return await result.FirstAsync(cancellationToken);
+        return await result.FirstAsync(cancellationToken).ConfigureAwait(false);
     }
 }

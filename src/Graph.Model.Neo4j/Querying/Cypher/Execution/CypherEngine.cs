@@ -66,10 +66,10 @@ internal sealed class CypherEngine
                 cypherQuery.Text,
                 cypherQuery.Parameters,
                 transaction,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             // Let the materializer handle everything - no need to duplicate logic here
-            var result = await _materializer.MaterializeAsync<T>(records, cypherQuery.GraphPathTypes, cancellationToken);
+            var result = await _materializer.MaterializeAsync<T>(records, cypherQuery.GraphPathTypes, cancellationToken).ConfigureAwait(false);
             return result;
         }
         catch (Exception ex)

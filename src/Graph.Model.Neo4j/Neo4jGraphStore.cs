@@ -124,9 +124,10 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
         // originate from caller-supplied configuration.
         var escapedDatabaseName = CypherIdentifier.Escape(databaseName, "database name");
 
-        await using var session = driver.AsyncSession(o => o.WithDatabase("system"));
-        var result = await session.RunAsync($"CREATE DATABASE {escapedDatabaseName} IF NOT EXISTS");
-        await result.ConsumeAsync();
+        var session = driver.AsyncSession(o => o.WithDatabase("system"));
+        await using var sessionLease = session.ConfigureAwait(false);
+        var result = await session.RunAsync($"CREATE DATABASE {escapedDatabaseName} IF NOT EXISTS").ConfigureAwait(false);
+        await result.ConsumeAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -146,12 +147,12 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        await Graph.DisposeAsync();
+        await Graph.DisposeAsync().ConfigureAwait(false);
 
         // Only dispose the driver if we own it
         if (_ownsDriver)
         {
-            await _driver.DisposeAsync();
+            await _driver.DisposeAsync().ConfigureAwait(false);
         }
     }
 

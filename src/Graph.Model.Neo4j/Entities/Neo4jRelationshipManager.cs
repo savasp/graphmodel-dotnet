@@ -75,7 +75,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 relationship.StartNodeId,
                 relationship.EndNodeId,
                 transaction.Transaction,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             if (!created)
             {
@@ -130,7 +130,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 relationship.Id,
                 entity,
                 transaction.Transaction,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             if (!updated)
             {
@@ -166,9 +166,9 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             var result = await transaction.Transaction.RunAsync(
                 cypher,
-                new { relId = relationshipId });
+                new { relId = relationshipId }).ConfigureAwait(false);
 
-            var record = await GetSingleRecordAsync(result, cancellationToken);
+            var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
             var deletedCount = record["deletedCount"].As<int>();
 
             if (deletedCount == 0)
@@ -216,9 +216,9 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             startNodeId,
             endNodeId,
             props = properties
-        });
+        }).ConfigureAwait(false);
 
-        var record = await GetSingleRecordAsync(result, cancellationToken);
+        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
         return record["created"].As<bool>();
     }
 
@@ -239,9 +239,9 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         {
             relId = relationshipId,
             props = properties
-        });
+        }).ConfigureAwait(false);
 
-        var record = await GetSingleRecordAsync(result, cancellationToken);
+        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
         return record["updated"].As<bool>();
     }
 
@@ -433,6 +433,6 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
     private static async Task<IRecord> GetSingleRecordAsync(IResultCursor result, CancellationToken cancellationToken)
     {
-        return await result.SingleAsync(cancellationToken);
+        return await result.SingleAsync(cancellationToken).ConfigureAwait(false);
     }
 }
