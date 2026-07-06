@@ -31,7 +31,7 @@
     <PackageReference Include="xunit.v3.mtp-v2" Version="3.2.2" />
 
     <!-- code coverage -->
-    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.4.1" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.8.0" />
   </ItemGroup>
 
   <ItemGroup>
