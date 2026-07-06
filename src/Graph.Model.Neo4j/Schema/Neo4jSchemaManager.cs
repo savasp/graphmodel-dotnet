@@ -438,7 +438,12 @@ internal class Neo4jSchemaManager
 
             return supported;
         }
-        catch (Exception ex)
+        catch (Neo4jException ex)
+        {
+            _logger.LogWarning(ex, "Failed to detect Neo4j edition; assuming property existence constraints are supported");
+            return true;
+        }
+        catch (InvalidOperationException ex)
         {
             _logger.LogWarning(ex, "Failed to detect Neo4j edition; assuming property existence constraints are supported");
             return true;
