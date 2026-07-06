@@ -31,6 +31,45 @@ public record Manager : Person
     public int TeamSize { get; set; } = 0;
 }
 
+// 3-level polymorphic node hierarchy for base/derived deserialization scenarios (see #136).
+public record Animal : Node
+{
+    public string Name { get; set; } = string.Empty;
+}
+
+public record Dog : Animal
+{
+    public string Breed { get; set; } = string.Empty;
+}
+
+public record PoliceDog : Dog
+{
+    public string Badge { get; set; } = string.Empty;
+}
+
+// 3-level polymorphic complex-property (POCO) hierarchy, mirroring Animal/Dog/PoliceDog, used to test
+// whether a collection of base-typed complex properties preserves mixed derived instances (see #136).
+public class AnimalDescription
+{
+    public string Name { get; set; } = string.Empty;
+}
+
+public class DogDescription : AnimalDescription
+{
+    public string Breed { get; set; } = string.Empty;
+}
+
+public class PoliceDogDescription : DogDescription
+{
+    public string Badge { get; set; } = string.Empty;
+}
+
+public record Kennel : Node
+{
+    public string Name { get; set; } = string.Empty;
+    public List<AnimalDescription> Animals { get; set; } = new();
+}
+
 public record Address : Node
 {
     public string Street { get; set; } = string.Empty;

@@ -276,6 +276,71 @@ public interface IClassHierarchyTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task CanCreateAndRetrieveThreeLevelHierarchyNodeViaBaseType()
+    {
+        var policeDog = new PoliceDog
+        {
+            Name = "K9",
+            Breed = "Shepherd",
+            Badge = "K9-42",
+        };
+
+        await this.Graph.CreateNodeAsync(policeDog, null, TestContext.Current.CancellationToken);
+
+        var retrieved = await this.Graph.GetNodeAsync<Animal>(policeDog.Id, null, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(retrieved);
+        var typedRetrieved = Assert.IsType<PoliceDog>(retrieved);
+        Assert.Equal(policeDog.Id, typedRetrieved.Id);
+        Assert.Equal(policeDog.Name, typedRetrieved.Name);
+        Assert.Equal(policeDog.Breed, typedRetrieved.Breed);
+        Assert.Equal(policeDog.Badge, typedRetrieved.Badge);
+    }
+
+    [Fact]
+    public async Task CanCreateAndRetrieveThreeLevelHierarchyNodeViaMidHierarchyType()
+    {
+        var policeDog = new PoliceDog
+        {
+            Name = "K9",
+            Breed = "Shepherd",
+            Badge = "K9-42",
+        };
+
+        await this.Graph.CreateNodeAsync(policeDog, null, TestContext.Current.CancellationToken);
+
+        // Request via the mid-hierarchy type (Dog), still get the most-derived PoliceDog back.
+        var retrieved = await this.Graph.GetNodeAsync<Dog>(policeDog.Id, null, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(retrieved);
+        var typedRetrieved = Assert.IsType<PoliceDog>(retrieved);
+        Assert.Equal(policeDog.Id, typedRetrieved.Id);
+        Assert.Equal(policeDog.Name, typedRetrieved.Name);
+        Assert.Equal(policeDog.Breed, typedRetrieved.Breed);
+        Assert.Equal(policeDog.Badge, typedRetrieved.Badge);
+    }
+
+    [Fact]
+    public async Task CanCreateAndRetrieveThreeLevelHierarchyNodeViaOwnType()
+    {
+        var dog = new Dog
+        {
+            Name = "Rex",
+            Breed = "Labrador",
+        };
+
+        await this.Graph.CreateNodeAsync(dog, null, TestContext.Current.CancellationToken);
+
+        var retrieved = await this.Graph.GetNodeAsync<Animal>(dog.Id, null, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(retrieved);
+        var typedRetrieved = Assert.IsType<Dog>(retrieved);
+        Assert.Equal(dog.Id, typedRetrieved.Id);
+        Assert.Equal(dog.Name, typedRetrieved.Name);
+        Assert.Equal(dog.Breed, typedRetrieved.Breed);
+    }
+
+    [Fact]
     public async Task CanQueryOverAnyRelationship()
     {
         // Setup

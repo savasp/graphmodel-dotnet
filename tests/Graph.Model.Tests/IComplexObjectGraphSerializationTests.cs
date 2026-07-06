@@ -110,4 +110,45 @@ public interface IComplexObjectGraphSerializationTests : IGraphModelTest
         Assert.Equal(n1.A[1].Property1, fetched.A[1].Property1);
         Assert.Equal(n1.A[1].Property2, fetched.A[1].Property2);
     }
+
+    [Fact(Skip = "Known gap (#136): the generated deserializer for a complex-property collection looks up " +
+        "the item serializer by the statically-declared element type (Deserialization.cs " +
+        "GenerateCollectionDeserialization: `_serializerRegistry.GetSerializer(typeof(elementType))`), not by " +
+        "the serialized entity's ActualType. Mixed derived instances in a List<BaseType> complex property " +
+        "therefore all deserialize as the base type and lose derived-only properties. Contrast with top-level " +
+        "Node/Relationship polymorphism, which the provider resolves via labels/metadata into ActualType before " +
+        "EntityFactory.Deserialize dispatches (see CanCreateAndRetrieveThreeLevelHierarchyNodeViaBaseType in " +
+        "IClassHierarchyTests). Reported in PR for #136; lead to decide whether this blocks or is filed as a " +
+        "follow-up.")]
+    public async Task CanCreateAndGetNodeWithMixedDerivedInstancesInBaseTypedComplexPropertyCollection()
+    {
+        var kennel = new Kennel
+        {
+            Name = "Central Kennel",
+            Animals =
+            [
+                new DogDescription { Name = "Rex", Breed = "Labrador" },
+                new PoliceDogDescription { Name = "K9", Breed = "Shepherd", Badge = "K9-42" },
+                new DogDescription { Name = "Fido", Breed = "Poodle" },
+            ],
+        };
+
+        await this.Graph.CreateNodeAsync(kennel, null, TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.GetNodeAsync<Kennel>(kennel.Id, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(kennel.Animals.Count, fetched.Animals.Count);
+
+        // Order preserved.
+        for (var i = 0; i < kennel.Animals.Count; i++)
+        {
+            Assert.Equal(kennel.Animals[i].GetType(), fetched.Animals[i].GetType());
+            Assert.Equal(kennel.Animals[i].Name, fetched.Animals[i].Name);
+        }
+
+        // Types preserved, including the mixed derived instance.
+        Assert.IsType<DogDescription>(fetched.Animals[0]);
+        var policeDog = Assert.IsType<PoliceDogDescription>(fetched.Animals[1]);
+        Assert.Equal("K9-42", policeDog.Badge);
+        Assert.IsType<DogDescription>(fetched.Animals[2]);
+    }
 }
