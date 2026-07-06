@@ -111,6 +111,43 @@ public class EntitySerializerGeneratorTests
         return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
     }
 
+    /// <summary>
+    /// A collection declared with a base complex-property type (<c>List&lt;AnimalDescription&gt;</c>)
+    /// can hold mixed derived instances at runtime. <c>DogDescription</c> is never itself a
+    /// declared property type anywhere - the generator must still discover it (by scanning the
+    /// compilation for subtypes of the complex types it already generates serializers for) and
+    /// give it its own generated serializer and registry entry, or a derived instance silently
+    /// serializes/deserializes as its base type instead (see #146).
+    /// </summary>
+    [Fact]
+    public Task NodeWithCollectionOfComplexProperties_MixedDerivedInstances()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using Cvoya.Graph.Model;
+
+            namespace TestNamespace;
+
+            public class AnimalDescription
+            {
+                public string Name { get; set; } = string.Empty;
+            }
+
+            public class DogDescription : AnimalDescription
+            {
+                public string Breed { get; set; } = string.Empty;
+            }
+
+            [Node("Kennel")]
+            public record Kennel : Node
+            {
+                public List<AnimalDescription> Animals { get; set; } = new();
+            }
+            """;
+
+        return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
+    }
+
     [Fact]
     public void EntityTypeDiscovery_CachesOnUnchangedSecondRun()
     {

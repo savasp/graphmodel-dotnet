@@ -88,7 +88,27 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
             })
             .WithTrackingName("GraphModel.EntityTypes");
 
-        context.RegisterSourceOutput(allTypes, GenerateSerializers);
+        // Every concrete type declared in the current compilation, regardless of what it
+        // implements. DiscoverComplexPropertyTypes (in GenerateSerializers) only finds a complex
+        // property's DECLARED type (e.g. AnimalDescription from `List<AnimalDescription>`) - a
+        // derived type used only as a mixed instance in that collection (e.g. DogDescription) is
+        // never itself a property type anywhere, so it can only be found by scanning every type
+        // declaration for one whose base-type chain reaches a type we already generate a
+        // serializer for. Mirrors baseListTypes' shape/cost (a symbol-carrying, not yet
+        // equatable-value-modeled provider over CreateSyntaxProvider) rather than introducing a
+        // new pattern; see #148 for folding this into that broader incrementality pass.
+        var allDeclaredTypes = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: IsTargetType,
+                transform: GetConcreteDeclaredType)
+            .Where(static symbol => symbol is not null)
+            .Select(static (symbol, _) => symbol!)
+            .Collect()
+            .WithTrackingName("GraphModel.AllConcreteDeclaredTypes");
+
+        context.RegisterSourceOutput(
+            allTypes.Combine(allDeclaredTypes),
+            static (context, combined) => GenerateSerializers(context, combined.Left, combined.Right));
     }
 
     private static ImmutableArray<INamedTypeSymbol> GetEntityTypesFromReferences(
@@ -264,7 +284,49 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         return ShouldGenerateSerializerFor(symbol) ? symbol : null;
     }
 
-    private static void GenerateSerializers(SourceProductionContext context, ImmutableArray<INamedTypeSymbol> types)
+    /// <summary>
+    /// Returns the declared symbol for any concrete (non-interface, non-abstract) type
+    /// declaration, with no further filtering - used to build the subtype-discovery candidate
+    /// set for complex property types (see the `allDeclaredTypes` provider in Initialize).
+    /// </summary>
+    private static INamedTypeSymbol? GetConcreteDeclaredType(GeneratorSyntaxContext context, CancellationToken ct)
+    {
+        var typeDecl = (TypeDeclarationSyntax)context.Node;
+        var symbol = context.SemanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol;
+
+        if (symbol is null || symbol.TypeKind == TypeKind.Interface || symbol.IsAbstract)
+            return null;
+
+        return symbol;
+    }
+
+    /// <summary>
+    /// Types among <paramref name="candidates"/> whose base-type chain reaches <paramref name="baseType"/>.
+    /// </summary>
+    private static IEnumerable<INamedTypeSymbol> FindSubtypes(
+        INamedTypeSymbol baseType,
+        ImmutableArray<INamedTypeSymbol> candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            var current = candidate.BaseType;
+            while (current is not null)
+            {
+                if (SymbolEqualityComparer.Default.Equals(current, baseType))
+                {
+                    yield return candidate;
+                    break;
+                }
+
+                current = current.BaseType;
+            }
+        }
+    }
+
+    private static void GenerateSerializers(
+        SourceProductionContext context,
+        ImmutableArray<INamedTypeSymbol> types,
+        ImmutableArray<INamedTypeSymbol> allDeclaredTypes)
     {
         if (types.IsDefaultOrEmpty) return;
 
@@ -286,6 +348,21 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
             var currentType = typesToAnalyze.Dequeue();
             if (analyzed.Contains(currentType)) continue;
             analyzed.Add(currentType);
+
+            // A collection property declared as the base type (e.g. `List<AnimalDescription>`)
+            // may hold mixed derived instances (DogDescription, PoliceDogDescription, ...) that
+            // are never themselves a property type anywhere. Without this, such a derived
+            // instance silently serializes/deserializes via the base type's serializer instead
+            // of its own (see #146/#136) - each subtype needs its own generated serializer and
+            // registry entry to preserve its ActualType and derived-only properties.
+            foreach (var subtype in FindSubtypes(currentType, allDeclaredTypes))
+            {
+                if (!allTypesToGenerate.Contains(subtype))
+                {
+                    allTypesToGenerate.Add(subtype);
+                    typesToAnalyze.Enqueue(subtype);
+                }
+            }
 
             // Find complex property types
             var complexPropertyTypes = DiscoverComplexPropertyTypes(currentType);
