@@ -2,6 +2,7 @@
     <PropertyGroup>
         <!-- Default to Debug configuration for local development -->
         <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+        <IsSourcePackageProject Condition="$(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)src/'))">true</IsSourcePackageProject>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -10,10 +11,11 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-        <LangVersion>preview</LangVersion>
+        <LangVersion>14.0</LangVersion>
         <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
         <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
         <WarningsAsErrors>$(WarningsAsErrors);Nullable;NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
+        <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
 
         <!-- Build settings -->
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -22,6 +24,7 @@
 
         <!-- Package settings -->
         <IncludeBuildOutput>true</IncludeBuildOutput>
+        <Authors>Cvoya</Authors>
         <Company>Cvoya</Company>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/cvoya-com/graphmodel-dotnet</PackageProjectUrl>
@@ -29,6 +32,7 @@
         <RepositoryType>git</RepositoryType>
         <PackageOutputPath>$(MSBuildThisFileDirectory)artifacts</PackageOutputPath>
         <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
 
         <!-- Development mode uses project references by default -->
         <!-- This ensures that CI/CD workflows and local development work without requiring pre-built packages -->
@@ -50,9 +54,21 @@
         <GeneratePackageOnBuild Condition="'$(GeneratePackageOnBuild)' == ''">false</GeneratePackageOnBuild>
     </PropertyGroup>
 
+    <!-- Source package build metadata -->
+    <PropertyGroup Condition="'$(IsSourcePackageProject)' == 'true'">
+        <Deterministic>true</Deterministic>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(IsSourcePackageProject)' == 'true'">
+        <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+    </ItemGroup>
+
     <!-- Include README in the package -->
     <ItemGroup>
         <None Include="$(MSBuildProjectDirectory)\README.md" Pack="true" PackagePath="\" />
+        <None Include="$(MSBuildThisFileDirectory)assets\nuget-icon.png" Pack="true" PackagePath="\icon.png" />
     </ItemGroup>
 
     <!-- Test project settings -->
@@ -127,7 +143,9 @@
 
     <Target Name="PublishToLocalFeed" AfterTargets="Pack" Condition="'$(Configuration)' == 'LocalFeed' AND '$(IsPackable)' != 'false'">
         <ItemGroup>
-            <PackageFiles Include="$(PackageOutputPath)\*.nupkg" />
+            <!-- Publish only this project's package; artifacts may contain dependency packages too. -->
+            <PackageFiles Include="$(PackageOutputPath)\$(PackageId).$(PackageVersion).nupkg"
+                          Condition="Exists('$(PackageOutputPath)\$(PackageId).$(PackageVersion).nupkg')" />
         </ItemGroup>
 
         <Copy SourceFiles="@(PackageFiles)" DestinationFolder="$(LocalFeedPath)" Condition="@(PackageFiles) != ''" />

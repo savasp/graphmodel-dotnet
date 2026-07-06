@@ -22,7 +22,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Neo4j.Driver" Version="6.2.1" />
+        <PackageReference Include="Neo4j.Driver" />
     </ItemGroup>
 
     <!-- Use project references for development (default) -->
@@ -34,8 +34,8 @@
 
     <!-- Use package references for releases -->
     <ItemGroup Condition="'$(UseProjectReferences)' == 'false'">
-        <PackageReference Include="Cvoya.Graph.Model" Version="$(Version)" />
-        <PackageReference Include="Cvoya.Graph.Model.Serialization" Version="$(Version)" />
+        <PackageReference Include="Cvoya.Graph.Model" />
+        <PackageReference Include="Cvoya.Graph.Model.Serialization" />
     </ItemGroup>
 
     <!-- Include the CodeGen analyzer in the package when building packages -->

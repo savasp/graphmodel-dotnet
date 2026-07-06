@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cvoya.Graph.Model.Neo4j" Version="1.0.0-alpha.20250909.0" />
-    <PackageReference Include="Cvoya.Graph.Model.Analyzers" Version="1.0.0-alpha.20250909.0" />
+    <PackageReference Include="Cvoya.Graph.Model.Neo4j" />
+    <PackageReference Include="Cvoya.Graph.Model.Analyzers" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,43 @@
+<Project>
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+        <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+        <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
+        <PackageVersion Include="Bogus" Version="35.6.5" />
+        <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+        <PackageVersion Include="Cvoya.Graph.Model" Version="$(Version)" />
+        <PackageVersion Include="Cvoya.Graph.Model.Analyzers" Version="$(Version)" />
+        <PackageVersion Include="Cvoya.Graph.Model.Neo4j" Version="$(Version)" />
+        <PackageVersion Include="Cvoya.Graph.Model.Serialization" Version="$(Version)" />
+        <PackageVersion Include="Cvoya.Graph.Model.Serialization.CodeGen" Version="$(Version)" />
+        <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.6.0" />
+        <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
+        <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.XUnit" Version="1.1.2" />
+        <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing.XUnit" Version="1.1.2" />
+        <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0" />
+        <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.9" />
+        <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.9" />
+        <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.9" />
+        <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+        <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.8.0" />
+        <PackageVersion Include="Neo4j.Driver" Version="6.2.1" />
+        <PackageVersion Include="OpenTelemetry" Version="1.16.0" />
+        <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.16.0" />
+        <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
+        <PackageVersion Include="Serilog" Version="4.3.1" />
+        <PackageVersion Include="Serilog.Enrichers.Process" Version="3.0.0" />
+        <PackageVersion Include="Serilog.Enrichers.Thread" Version="4.0.0" />
+        <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" />
+        <PackageVersion Include="Serilog.Settings.Configuration" Version="10.0.1" />
+        <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
+        <PackageVersion Include="Serilog.Sinks.OpenTelemetry" Version="4.2.0" />
+        <PackageVersion Include="Serilog.Sinks.Seq" Version="9.1.0" />
+        <PackageVersion Include="Testcontainers.Neo4j" Version="4.13.0" />
+        <PackageVersion Include="Verify.XunitV3" Version="31.20.0" />
+        <PackageVersion Include="xunit.v3.mtp-v2" Version="3.2.2" />
+    </ItemGroup>
+</Project>

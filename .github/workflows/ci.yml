@@ -18,6 +18,8 @@ permissions:
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
+  ContinuousIntegrationBuild: true
+  SourceRevisionId: ${{ github.sha }}
 
 jobs:
   changes:
@@ -43,6 +45,7 @@ jobs:
               - '**/*.cs'
               - '**/*.csproj'
               - '**/*.sln'
+              - '.editorconfig'
               - '**/*.props'
               - '**/*.targets'
               - '**/*.resx'
@@ -118,6 +121,31 @@ jobs:
 
       - name: Build
         run: dotnet build --no-restore --configuration Release
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            Directory.Packages.props
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Verify formatting
+        run: dotnet format --verify-no-changes --no-restore --verbosity normal
 
   test-core:
     name: Test Core
@@ -511,6 +539,7 @@ jobs:
       - changes
       - workflow-yaml
       - build
+      - format
       - test-core
       - test-analyzers
       - test-translation
@@ -531,6 +560,7 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           WORKFLOW_YAML_RESULT: ${{ needs.workflow-yaml.result }}
           BUILD_RESULT: ${{ needs.build.result }}
+          FORMAT_RESULT: ${{ needs.format.result }}
           TEST_CORE_RESULT: ${{ needs.test-core.result }}
           TEST_ANALYZERS_RESULT: ${{ needs.test-analyzers.result }}
           TEST_TRANSLATION_RESULT: ${{ needs.test-translation.result }}
@@ -540,6 +570,7 @@ jobs:
           echo "changes=$CHANGES_RESULT"
           echo "workflow-yaml=$WORKFLOW_YAML_RESULT"
           echo "build=$BUILD_RESULT"
+          echo "format=$FORMAT_RESULT"
           echo "test-core=$TEST_CORE_RESULT"
           echo "test-analyzers=$TEST_ANALYZERS_RESULT"
           echo "test-translation=$TEST_TRANSLATION_RESULT"
@@ -555,6 +586,7 @@ jobs:
 
           ok "$WORKFLOW_YAML_RESULT"    || { echo "::error::workflow-yaml failed"; exit 1; }
           ok "$BUILD_RESULT"            || { echo "::error::build failed"; exit 1; }
+          ok "$FORMAT_RESULT"           || { echo "::error::format failed"; exit 1; }
           ok "$TEST_CORE_RESULT"        || { echo "::error::test-core failed"; exit 1; }
           ok "$TEST_ANALYZERS_RESULT"   || { echo "::error::test-analyzers failed"; exit 1; }
           ok "$TEST_TRANSLATION_RESULT" || { echo "::error::test-translation failed"; exit 1; }

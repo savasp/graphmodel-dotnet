@@ -17,10 +17,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
-    <PackageReference Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
-    <PackageReference Include="Bogus" Version="35.6.5" />
-    <PackageReference Include="coverlet.collector" Version="10.0.1">
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="BenchmarkDotNet.Diagnostics.Windows" />
+    <PackageReference Include="Bogus" />
+    <PackageReference Include="coverlet.collector">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -36,10 +36,10 @@
 
   <!-- Use package references for releases -->
   <ItemGroup Condition="'$(UseProjectReferences)' != 'true'">
-    <PackageReference Include="Cvoya.Graph.Model" Version="$(Version)" />
-    <PackageReference Include="Cvoya.Graph.Model.Neo4j" Version="$(Version)" />
-    <PackageReference Include="Cvoya.Graph.Model.Serialization" Version="$(Version)" />
-    <PackageReference Include="Cvoya.Graph.Model.Serialization.CodeGen" Version="$(Version)" />
+    <PackageReference Include="Cvoya.Graph.Model" />
+    <PackageReference Include="Cvoya.Graph.Model.Neo4j" />
+    <PackageReference Include="Cvoya.Graph.Model.Serialization" />
+    <PackageReference Include="Cvoya.Graph.Model.Serialization.CodeGen" />
   </ItemGroup>
 
 </Project> 
