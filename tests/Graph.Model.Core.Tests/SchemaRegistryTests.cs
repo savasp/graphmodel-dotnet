@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Core.Tests;
 
+using System.Reflection;
 
 [Trait("Area", "SchemaRegistry")]
 public class SchemaRegistryTests
@@ -172,6 +173,87 @@ public class SchemaRegistryTests
         Assert.False(registry.IsInitialized);
         Assert.Null(await registry.GetNodeSchemaAsync("CoreRegistryNode", cancellationToken));
         Assert.Null(await registry.GetRelationshipSchemaAsync("CORE_REGISTRY_REL", cancellationToken));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RegisteredLookup_DoesNotBlockOnSemaphore(bool nodeLookup)
+    {
+        // #139: a hit on an already-registered label/type must return without ever awaiting the
+        // internal semaphore. Prove it structurally by holding the semaphore for the entire call
+        // and asserting the lookup still completes promptly.
+        using var registry = new SchemaRegistry();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await registry.InitializeAsync(cancellationToken);
+
+        // Warm the fast path for a synchronous miss-then-hit sanity check.
+        Assert.NotNull(nodeLookup
+            ? await registry.GetNodeSchemaAsync("CoreRegistryNode", cancellationToken)
+            : await registry.GetRelationshipSchemaAsync("CORE_REGISTRY_REL", cancellationToken));
+
+        var semaphore = GetSemaphore(registry);
+        await semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            var lookupTask = nodeLookup
+                ? registry.GetNodeSchemaAsync("CoreRegistryNode", cancellationToken)
+                : registry.GetRelationshipSchemaAsync("CORE_REGISTRY_REL", cancellationToken);
+
+            var completed = await Task.WhenAny(lookupTask, Task.Delay(TimeSpan.FromSeconds(5), cancellationToken));
+
+            Assert.Same(lookupTask, completed);
+            Assert.NotNull(await lookupTask);
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+    }
+
+    [Fact]
+    public async Task ParallelReadsAndConcurrentRegistration_AreSafeAndConsistent()
+    {
+        // #139: many concurrent readers (some hitting the fast path, some missing and
+        // triggering a rescan) racing a fresh registration must never throw, deadlock, or
+        // observe a torn/partial EntitySchemaInfo.
+        using var registry = new SchemaRegistry();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await registry.InitializeAsync(cancellationToken);
+
+        var readers = Enumerable.Range(0, 64).Select(async i =>
+        {
+            for (var iteration = 0; iteration < 50; iteration++)
+            {
+                var schema = i % 2 == 0
+                    ? await registry.GetNodeSchemaAsync("CoreRegistryNode", cancellationToken)
+                    : await registry.GetRelationshipSchemaAsync("CORE_REGISTRY_REL", cancellationToken);
+
+                Assert.NotNull(schema);
+                Assert.NotNull(schema.Type);
+                Assert.False(string.IsNullOrEmpty(schema.Label));
+            }
+        });
+
+        var concurrentRegistration = Task.Run(async () =>
+        {
+            for (var iteration = 0; iteration < 10; iteration++)
+            {
+                await registry.InitializeAsync(cancellationToken);
+            }
+        }, cancellationToken);
+
+        await Task.WhenAll([.. readers, concurrentRegistration]);
+
+        Assert.True(registry.IsInitialized);
+    }
+
+    private static SemaphoreSlim GetSemaphore(SchemaRegistry registry)
+    {
+        var field = typeof(SchemaRegistry).GetField("_semaphore", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("SchemaRegistry._semaphore field was not found.");
+
+        return (SemaphoreSlim)field.GetValue(registry)!;
     }
 
     [Node("CoreRegistryNode")]
