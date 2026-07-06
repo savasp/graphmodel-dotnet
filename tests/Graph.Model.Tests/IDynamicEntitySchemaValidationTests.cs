@@ -425,6 +425,32 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task CanCreateAndGetDynamicRelationship_PreservesId()
+    {
+        // Arrange
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
+
+        var startNode = new DynamicNode { Labels = [nameof(Person)] };
+        var endNode = new DynamicNode { Labels = [nameof(Person)] };
+
+        await Graph.CreateNodeAsync(startNode, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(endNode, null, TestContext.Current.CancellationToken);
+
+        var relationship = new DynamicRelationship(
+            startNode.Id,
+            endNode.Id,
+            "KNOWS",
+            new Dictionary<string, object?> { ["since"] = 2024 });
+
+        // Act
+        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.GetRelationshipAsync<DynamicRelationship>(relationship.Id, null, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(relationship.Id, retrieved.Id);
+    }
+
+    [Fact]
     public async Task DynamicNode_AllOptionalProperties_AreValidated()
     {
         // Arrange
