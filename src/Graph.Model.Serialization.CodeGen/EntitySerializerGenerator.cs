@@ -99,13 +99,13 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
                 cacheKey,
                 _ => GetEntityTypeMetadataNames(assembly));
 
-            foreach (var metadataName in metadataNames)
+            foreach (var type in metadataNames
+                .Select(compilation.GetTypeByMetadataName)
+                .Where(static type => type is not null)
+                .Select(static type => type!)
+                .Where(ShouldGenerateSerializerFor))
             {
-                if (compilation.GetTypeByMetadataName(metadataName) is { } type &&
-                    ShouldGenerateSerializerFor(type))
-                {
-                    builder.Add(type);
-                }
+                builder.Add(type);
             }
         }
 
