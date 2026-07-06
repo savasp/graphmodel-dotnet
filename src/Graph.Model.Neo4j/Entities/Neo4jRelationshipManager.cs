@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Neo4j.Entities;
 
 using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Core;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
@@ -193,10 +194,15 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         IAsyncTransaction transaction,
         CancellationToken cancellationToken)
     {
+        // entity.Label is a relationship type, not a Cypher parameter value: it must be validated
+        // and escaped before interpolation, since it can originate from caller-supplied input
+        // (DynamicRelationship.Type is set at runtime and cannot be parameterized by the driver).
+        var relationshipType = CypherIdentifier.Escape(entity.Label, "relationship type");
+
         var cypher = $@"
             MATCH (source {{Id: $startNodeId}})
             MATCH (target {{Id: $endNodeId}})
-            CREATE (source)-[r:{entity.Label} $props]->(target)
+            CREATE (source)-[r:{relationshipType} $props]->(target)
             RETURN r IS NOT NULL AS created";
 
         var properties = SerializationHelpers.SerializeSimpleProperties(entity)
@@ -244,6 +250,9 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         // For DynamicRelationship, validate against existing schemas if any
         if (relationship is DynamicRelationship dynamicRelationship)
         {
+            // The relationship type is a Cypher identifier, not a value: reject it here, before any
+            // Cypher is built, rather than relying solely on escaping at the point of interpolation.
+            CypherIdentifier.Validate(dynamicRelationship.Type, "relationship type");
             ValidateDynamicRelationshipProperties(dynamicRelationship);
             return;
         }

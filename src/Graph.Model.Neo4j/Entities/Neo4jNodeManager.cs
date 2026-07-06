@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Neo4j.Entities;
 
 using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Core;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher;
 using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
@@ -287,7 +288,10 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         {
             if (entity.ActualLabels != null && entity.ActualLabels.Count > 0)
             {
-                var labels = string.Join(":", entity.ActualLabels);
+                // Labels are Cypher identifiers, not parameter values: they can originate from
+                // caller-supplied input (DynamicNode.Labels is set at runtime), so validate and
+                // escape each one before interpolation.
+                var labels = CypherIdentifier.EscapeLabels(entity.ActualLabels);
                 cypher = $"CREATE (n:{labels} $props) RETURN elementId(n) AS nodeId";
             }
             else
@@ -298,7 +302,11 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         }
         else
         {
-            cypher = $"CREATE (n:{entity.Label} $props) RETURN elementId(n) AS nodeId";
+            // entity.Label is derived from the compile-time type name or a [Node] attribute for
+            // strongly-typed nodes, but is still routed through the same escaping for consistency
+            // and defense-in-depth.
+            var label = CypherIdentifier.Escape(entity.Label, "node label");
+            cypher = $"CREATE (n:{label} $props) RETURN elementId(n) AS nodeId";
         }
 
         var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
@@ -338,13 +346,20 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var getLabelsRecord = await GetSingleRecordAsync(getLabelsResult, cancellationToken);
             var currentLabels = getLabelsRecord["currentLabels"].As<List<string>>() ?? new List<string>();
 
+            // Labels read back from the database or supplied on the entity are still Cypher
+            // identifiers, not parameter values, and must be validated/escaped before
+            // interpolation - the current labels may predate this validation (data written by an
+            // older version of this library, or by another client) and the new labels can
+            // originate from caller-supplied input (DynamicNode.Labels).
+            var escapedCurrentLabels = currentLabels.Select(label => CypherIdentifier.Escape(label, "node label")).ToList();
+
             // Build the REMOVE clause for current labels
-            var removeLabelsClause = currentLabels.Count > 0
-                ? $"REMOVE n:{string.Join(":n:", currentLabels)} "
+            var removeLabelsClause = escapedCurrentLabels.Count > 0
+                ? $"REMOVE n:{string.Join(":n:", escapedCurrentLabels)} "
                 : "";
 
             // Build the SET clause for new labels
-            var newLabels = string.Join(":", entity.ActualLabels);
+            var newLabels = CypherIdentifier.EscapeLabels(entity.ActualLabels);
             var setLabelsClause = $"SET n:{newLabels} ";
 
             cypher = $"MATCH (n {{Id: $nodeId}}) {removeLabelsClause}SET n = $props {setLabelsClause}RETURN n";
@@ -364,6 +379,13 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         // For DynamicNode, validate against existing schemas if any
         if (node is DynamicNode dynamicNode)
         {
+            // Labels are Cypher identifiers, not values: reject hostile labels here, before any
+            // Cypher is built, rather than relying solely on escaping at the point of interpolation.
+            foreach (var dynamicNodeLabel in dynamicNode.Labels)
+            {
+                CypherIdentifier.Validate(dynamicNodeLabel, "node label");
+            }
+
             ValidateDynamicNodeProperties(dynamicNode);
             return;
         }
