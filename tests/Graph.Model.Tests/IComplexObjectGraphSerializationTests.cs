@@ -111,24 +111,26 @@ public interface IComplexObjectGraphSerializationTests : IGraphModelTest
         Assert.Equal(n1.A[1].Property2, fetched.A[1].Property2);
     }
 
-    [Fact(Skip = "Known gap (#136): the generated deserializer for a complex-property collection looks up " +
-        "the item serializer by the statically-declared element type (Deserialization.cs " +
-        "GenerateCollectionDeserialization: `_serializerRegistry.GetSerializer(typeof(elementType))`), not by " +
-        "the serialized entity's ActualType. Mixed derived instances in a List<BaseType> complex property " +
-        "therefore all deserialize as the base type and lose derived-only properties. Contrast with top-level " +
-        "Node/Relationship polymorphism, which the provider resolves via labels/metadata into ActualType before " +
-        "EntityFactory.Deserialize dispatches (see CanCreateAndRetrieveThreeLevelHierarchyNodeViaBaseType in " +
-        "IClassHierarchyTests). Reported in PR for #136; lead to decide whether this blocks or is filed as a " +
-        "follow-up.")]
+    [Fact]
     public async Task CanCreateAndGetNodeWithMixedDerivedInstancesInBaseTypedComplexPropertyCollection()
     {
+        // 3-level hierarchy (AnimalDescription <- DogDescription <- PoliceDogDescription), mixed order,
+        // and a nested complex property (Handler) only present on the most-derived level - all three
+        // must survive the round trip through a `List<AnimalDescription>` complex-property collection (#146).
         var kennel = new Kennel
         {
             Name = "Central Kennel",
             Animals =
             [
                 new DogDescription { Name = "Rex", Breed = "Labrador" },
-                new PoliceDogDescription { Name = "K9", Breed = "Shepherd", Badge = "K9-42" },
+                new PoliceDogDescription
+                {
+                    Name = "K9",
+                    Breed = "Shepherd",
+                    Badge = "K9-42",
+                    Handler = new HandlerDescription { Name = "Officer Diaz" },
+                },
+                new AnimalDescription { Name = "Generic Animal" },
                 new DogDescription { Name = "Fido", Breed = "Poodle" },
             ],
         };
@@ -145,10 +147,16 @@ public interface IComplexObjectGraphSerializationTests : IGraphModelTest
             Assert.Equal(kennel.Animals[i].Name, fetched.Animals[i].Name);
         }
 
-        // Types preserved, including the mixed derived instance.
+        // Types preserved, including the mixed derived instances at every level of the hierarchy.
         Assert.IsType<DogDescription>(fetched.Animals[0]);
         var policeDog = Assert.IsType<PoliceDogDescription>(fetched.Animals[1]);
         Assert.Equal("K9-42", policeDog.Badge);
-        Assert.IsType<DogDescription>(fetched.Animals[2]);
+
+        // Nested complex property on the derived element is intact.
+        Assert.NotNull(policeDog.Handler);
+        Assert.Equal("Officer Diaz", policeDog.Handler!.Name);
+
+        Assert.IsType<AnimalDescription>(fetched.Animals[2]);
+        Assert.IsType<DogDescription>(fetched.Animals[3]);
     }
 }
