@@ -23,9 +23,23 @@ using System.Text;
 /// </summary>
 internal class ReturnQueryPart : ICypherQueryPart
 {
+    private enum ClauseKind { With, Unwind }
+
     private readonly List<string> _returnClauses = [];
-    private readonly List<string> _withClauses = [];
-    private readonly List<string> _unwindClauses = [];
+
+    /// <summary>
+    /// WITH and UNWIND clauses in the order <see cref="AddWith"/>/<see cref="AddUnwind"/> were
+    /// called, not grouped by clause type. This matters: Cypher's WITH is a scope barrier (only
+    /// variables it names survive past it) and UNWIND introduces its variable only for clauses
+    /// that follow it - a caller building e.g. <c>WITH collect(p) AS __paths</c>, then
+    /// <c>UNWIND range(0, size(__paths) - 1) AS pathIndex</c>, then
+    /// <c>WITH __paths[pathIndex] AS p, pathIndex</c> depends on that exact interleaving surviving
+    /// to <see cref="AppendTo"/> - rendering "all WITHs, then all UNWINDs" (as an earlier version
+    /// of this type did) would reference <c>pathIndex</c> in the second WITH before the UNWIND
+    /// that defines it ever runs, an undefined-variable error at query execution time (see
+    /// CypherQueryVisitor.HandleTraversePaths and the #94 TraversePaths Cypher scoping fix).
+    /// </summary>
+    private readonly List<(ClauseKind Kind, string Expression)> _withUnwindClauses = [];
     private string? _aggregation;
     private bool _isDistinct;
     private bool _isExistsQuery;
@@ -127,7 +141,7 @@ internal class ReturnQueryPart : ICypherQueryPart
     /// </summary>
     public void AddWith(string expression)
     {
-        _withClauses.Add(expression);
+        _withUnwindClauses.Add((ClauseKind.With, expression));
     }
 
     /// <summary>
@@ -135,10 +149,8 @@ internal class ReturnQueryPart : ICypherQueryPart
     /// </summary>
     public void AddUnwind(string expression)
     {
-        _unwindClauses.Add(expression);
+        _withUnwindClauses.Add((ClauseKind.Unwind, expression));
     }
-
-
 
     /// <summary>
     /// Clears all return-related clauses.
@@ -194,16 +206,12 @@ internal class ReturnQueryPart : ICypherQueryPart
             return;
         }
 
-        // Handle WITH clauses first
-        foreach (var withClause in _withClauses)
+        // Render WITH/UNWIND clauses in the order they were added (see _withUnwindClauses'
+        // doc comment) - Cypher's variable scoping depends on this interleaving, not on
+        // grouping every WITH before every UNWIND.
+        foreach (var (kind, expression) in _withUnwindClauses)
         {
-            builder.AppendLine($"WITH {withClause}");
-        }
-
-        // Handle UNWIND clauses
-        foreach (var unwindClause in _unwindClauses)
-        {
-            builder.AppendLine($"UNWIND {unwindClause}");
+            builder.AppendLine(kind == ClauseKind.With ? $"WITH {expression}" : $"UNWIND {expression}");
         }
 
         // Build the RETURN clause

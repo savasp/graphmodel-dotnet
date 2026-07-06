@@ -19,8 +19,8 @@ using System.Reflection;
 
 /// <summary>
 /// Builds <see cref="MethodCallExpression"/> nodes for the internal
-/// <c>Cvoya.Graph.Model.QueryableAsyncExtensionsMarkers</c> methods that
-/// <c>CypherQueryVisitor.HandleLinqMethod</c> dispatches on (e.g. <c>FirstAsyncMarker</c>,
+/// <see cref="QueryTerminals"/> methods that <c>CypherQueryVisitor.HandleLinqMethod</c> (via
+/// <c>LinqOperatorDispatch</c>) dispatches on (e.g. <c>FirstAsyncMarker</c>,
 /// <c>CountAsyncMarker</c>). The real async extension methods
 /// (<see cref="GraphQueryableExtensions"/>, <c>QueryableAsyncExtensions</c>) build these same
 /// marker calls internally but then immediately execute them via the provider - since this
@@ -29,9 +29,7 @@ using System.Reflection;
 /// </summary>
 internal static class MarkerExpressions
 {
-    private static readonly Type MarkersType =
-        typeof(GraphQueryableExtensions).Assembly.GetType("Cvoya.Graph.Model.QueryableAsyncExtensionsMarkers")
-        ?? throw new InvalidOperationException("Could not find QueryableAsyncExtensionsMarkers via reflection.");
+    private static readonly Type MarkersType = typeof(QueryTerminals);
 
     /// <summary>
     /// Builds a call to a marker method by name, generic element type, and argument list. The

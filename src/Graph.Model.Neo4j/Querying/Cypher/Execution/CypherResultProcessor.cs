@@ -368,6 +368,49 @@ internal sealed class CypherResultProcessor
         return entityInfo;
     }
 
+    /// <summary>
+    /// A single decomposed hop of a <c>TraversePaths</c> result: which path and hop position it
+    /// belongs to, and the (already-deserialized-to-<see cref="EntityInfo"/>) start node,
+    /// relationship, and end node for that hop.
+    /// </summary>
+    public sealed record GraphPathHop(
+        int PathIndex,
+        int HopIndex,
+        EntityInfo StartNode,
+        EntityInfo Relationship,
+        EntityInfo EndNode);
+
+    /// <summary>
+    /// Processes the rows produced by <c>CypherQueryVisitor.HandleTraversePaths</c> - one row per
+    /// hop, each carrying <c>pathIndex</c>, <c>hopIndex</c>, and a <c>PathSegment</c> column shaped
+    /// like the single-hop path-segment projection - into per-hop <see cref="EntityInfo"/> triples,
+    /// reusing the same node/relationship deserialization as the single-hop <c>PathSegments</c> path.
+    /// </summary>
+    public List<GraphPathHop> ProcessGraphPathHops(List<IRecord> records, Type sourceType, Type relationshipType, Type targetType)
+    {
+        var results = new List<GraphPathHop>(records.Count);
+
+        foreach (var record in records)
+        {
+            var pathIndex = record["pathIndex"].As<int>();
+            var hopIndex = record["hopIndex"].As<int>();
+
+            var pathSegment = DeserializePathSegment(record["PathSegment"].As<Dictionary<string, object>>())
+                ?? throw new GraphException("Failed to deserialize path segment hop from record.");
+
+            var startNodeEntityInfo = ProcessSingleNodeResult(pathSegment.StartNode, sourceType);
+            var relEntityInfo = ProcessSingleRelationshipFromPathSegment(
+                pathSegment.Relationship, relationshipType,
+                GetNodeId(pathSegment.StartNode.Node),
+                GetNodeId(pathSegment.EndNode.Node));
+            var endNodeEntityInfo = ProcessSingleNodeResult(pathSegment.EndNode, targetType);
+
+            results.Add(new GraphPathHop(pathIndex, hopIndex, startNodeEntityInfo, relEntityInfo, endNodeEntityInfo));
+        }
+
+        return results;
+    }
+
     private List<EntityInfo> ProcessProjections(List<IRecord> records, Type targetType)
     {
         var results = new List<EntityInfo>();

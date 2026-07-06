@@ -81,59 +81,36 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<IGraphNodeQueryable<N>> NodesAsync<N>(IGraphTransaction? transaction = null)
-        where N : Model.INode
+    public IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
+        where N : class, Model.INode
     {
-        try
-        {
-            _logger.LogDebug("Getting nodes queryable for type {NodeType}", typeof(N).Name);
+        _logger.LogDebug("Building nodes queryable for type {NodeType}", typeof(N).Name);
 
-            // When no transaction is provided, pass null so that ExecuteInTransactionAsync
-            // creates a per-execution transaction with proper lifecycle management.
-            // This prevents session/connection leaks from long-lived queryables.
-            GraphTransaction? neo4jTx = transaction != null
-                ? await TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true)
-                : null;
-
-            var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-            return new GraphNodeQueryable<N>(provider, neo4jTx, _graphContext);
-        }
-        catch (Exception ex) when (ex is not GraphException)
-        {
-            var message = $"Failed to create nodes queryable for type {typeof(N).Name}";
-            _logger.LogError(ex, message);
-            throw new GraphException(message, ex);
-        }
+        // Building a queryable performs no I/O. When no transaction is provided, execution time
+        // (GraphQueryProvider.ExecuteAsync -> TransactionHelpers.ExecuteInTransactionAsync)
+        // creates a per-execution transaction with proper lifecycle management, which prevents
+        // session/connection leaks from long-lived queryables.
+        var neo4jTx = ToNeo4jTransaction(transaction);
+        var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
+        return new GraphNodeQueryable<N>(provider, neo4jTx, _graphContext);
     }
 
     /// <inheritdoc />
-    public async Task<IGraphRelationshipQueryable<R>> RelationshipsAsync<R>(IGraphTransaction? transaction = null)
-        where R : Model.IRelationship
+    public IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
+        where R : class, Model.IRelationship
     {
-        try
-        {
-            _logger.LogDebug("Getting relationships queryable for type {RelationshipType}", typeof(R).Name);
+        _logger.LogDebug("Building relationships queryable for type {RelationshipType}", typeof(R).Name);
 
-            GraphTransaction? neo4jTx = transaction != null
-                ? await TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true)
-                : null;
-
-            var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-            return new GraphRelationshipQueryable<R>(provider, _graphContext, neo4jTx);
-        }
-        catch (Exception ex) when (ex is not GraphException)
-        {
-            var message = $"Failed to create relationships queryable for type {typeof(R).Name}";
-            _logger.LogError(ex, message);
-            throw new GraphException(message, ex);
-        }
+        var neo4jTx = ToNeo4jTransaction(transaction);
+        var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
+        return new GraphRelationshipQueryable<R>(provider, _graphContext, neo4jTx);
     }
 
     /// <inheritdoc />
     public async Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : Model.INode
+        where N : class, Model.INode
     {
-        var query = (await NodesAsync<N>(transaction))
+        var query = Nodes<N>(transaction)
             .Where(n => n.Id == id);
 
         return await query.FirstOrDefaultAsync(cancellationToken)
@@ -142,18 +119,31 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : Model.IRelationship
+        where R : class, Model.IRelationship
     {
-        var query = (await RelationshipsAsync<R>(transaction))
+        var query = Relationships<R>(transaction)
             .Where(r => r.Id == id);
 
         return await query.FirstOrDefaultAsync(cancellationToken)
             ?? throw new GraphException($"Relationship with ID {id} not found");
     }
 
+    /// <summary>
+    /// Converts a public <see cref="IGraphTransaction"/> to the internal <see cref="GraphTransaction"/>
+    /// used by queryable construction, or <see langword="null"/> if none was given (in which case
+    /// execution creates a per-execution transaction).
+    /// </summary>
+    private static GraphTransaction? ToNeo4jTransaction(IGraphTransaction? transaction) => transaction switch
+    {
+        null => null,
+        GraphTransaction neo4jTx => neo4jTx,
+        _ => throw new GraphException(
+            "The given transaction is not a valid Neo4j transaction. You need to use Neo4jStore.Graph.GetTransactionAsync() to create a transaction.")
+    };
+
     /// <inheritdoc />
     public async Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : Model.INode
+        where N : class, Model.INode
     {
         if (node is null)
             throw new ArgumentException(nameof(node), "Node cannot be null.");
@@ -193,7 +183,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : Model.IRelationship
+        where R : class, Model.IRelationship
     {
         if (relationship is null)
             throw new ArgumentException(nameof(relationship), "Relationship cannot be null.");
@@ -237,7 +227,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : Model.INode
+        where N : class, Model.INode
     {
         if (node is null)
             throw new ArgumentException("Node cannot be null.", nameof(node));
@@ -280,7 +270,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : Model.IRelationship
+        where R : class, Model.IRelationship
     {
         if (relationship is null)
             throw new ArgumentException("Relationship cannot be null.", nameof(relationship));
@@ -398,53 +388,29 @@ internal class Neo4jGraph : IGraph
     // Dynamic entity methods
 
     /// <inheritdoc />
-    public async Task<IGraphNodeQueryable<DynamicNode>> DynamicNodesAsync(IGraphTransaction? transaction = null)
+    public IGraphQueryable<DynamicNode> DynamicNodes(IGraphTransaction? transaction = null)
     {
-        try
-        {
-            _logger.LogDebug("Getting dynamic nodes queryable");
+        _logger.LogDebug("Building dynamic nodes queryable");
 
-            GraphTransaction? neo4jTx = transaction != null
-                ? await TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true)
-                : null;
-
-            var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-            return new GraphNodeQueryable<DynamicNode>(provider, neo4jTx, _graphContext);
-        }
-        catch (Exception ex) when (ex is not GraphException)
-        {
-            var message = "Failed to create dynamic nodes queryable";
-            _logger.LogError(ex, message);
-            throw new GraphException(message, ex);
-        }
+        var neo4jTx = ToNeo4jTransaction(transaction);
+        var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
+        return new GraphNodeQueryable<DynamicNode>(provider, neo4jTx, _graphContext);
     }
 
     /// <inheritdoc />
-    public async Task<IGraphRelationshipQueryable<DynamicRelationship>> DynamicRelationshipsAsync(IGraphTransaction? transaction = null)
+    public IGraphQueryable<DynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null)
     {
-        try
-        {
-            _logger.LogDebug("Getting dynamic relationships queryable");
+        _logger.LogDebug("Building dynamic relationships queryable");
 
-            GraphTransaction? neo4jTx = transaction != null
-                ? await TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true)
-                : null;
-
-            var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-            return new GraphRelationshipQueryable<DynamicRelationship>(provider, _graphContext, neo4jTx);
-        }
-        catch (Exception ex) when (ex is not GraphException)
-        {
-            var message = "Failed to create dynamic relationships queryable";
-            _logger.LogError(ex, message);
-            throw new GraphException(message, ex);
-        }
+        var neo4jTx = ToNeo4jTransaction(transaction);
+        var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
+        return new GraphRelationshipQueryable<DynamicRelationship>(provider, _graphContext, neo4jTx);
     }
 
     /// <inheritdoc />
     public async Task<DynamicNode> GetDynamicNodeAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
     {
-        var query = (await DynamicNodesAsync(transaction))
+        var query = DynamicNodes(transaction)
             .Where(n => n.Id == id);
 
         return await query.FirstOrDefaultAsync(cancellationToken)
@@ -454,7 +420,7 @@ internal class Neo4jGraph : IGraph
     /// <inheritdoc />
     public async Task<DynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
     {
-        var query = (await DynamicRelationshipsAsync(transaction))
+        var query = DynamicRelationships(transaction)
             .Where(r => r.Id == id);
 
         return await query.FirstOrDefaultAsync(cancellationToken)
@@ -462,123 +428,63 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public async Task<IGraphQueryable<Model.IEntity>> SearchAsync(string query, IGraphTransaction? transaction = null)
+    public IGraphQueryable<Model.IEntity> Search(string query, IGraphTransaction? transaction = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        try
-        {
-            _logger.LogDebug("Performing full text search with query: {Query}", query);
+        _logger.LogDebug("Building full text search queryable for query: {Query}", query);
 
-            GraphTransaction? neo4jTx = transaction != null
-                ? await TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true)
-                : null;
-
-            var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-            return FullTextSearchQueryableFactory.CreateSearchQueryable<Model.IEntity>(provider, neo4jTx, _graphContext, query);
-        }
-        catch (Exception ex) when (ex is not GraphException)
-        {
-            var message = $"Failed to create search queryable for query: {query}";
-            _logger.LogError(ex, message);
-            throw new GraphException(message, ex);
-        }
+        var neo4jTx = ToNeo4jTransaction(transaction);
+        var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
+        return FullTextSearchQueryableFactory.CreateSearchQueryable<Model.IEntity>(provider, neo4jTx, _graphContext, query);
     }
 
     /// <inheritdoc />
-    public async Task<IGraphNodeQueryable<Model.INode>> SearchNodesAsync(string query, IGraphTransaction? transaction = null)
+    public IGraphQueryable<Model.INode> SearchNodes(string query, IGraphTransaction? transaction = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        try
-        {
-            _logger.LogDebug("Performing full text search on nodes with query: {Query}", query);
+        _logger.LogDebug("Building full text search queryable for nodes with query: {Query}", query);
 
-            GraphTransaction? neo4jTx = transaction != null
-                ? await TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true)
-                : null;
-
-            var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-            return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<Model.INode>(provider, neo4jTx, _graphContext, query);
-        }
-        catch (Exception ex) when (ex is not GraphException)
-        {
-            var message = $"Failed to create node search queryable for query: {query}";
-            _logger.LogError(ex, message);
-            throw new GraphException(message, ex);
-        }
+        var neo4jTx = ToNeo4jTransaction(transaction);
+        var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
+        return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<Model.INode>(provider, neo4jTx, _graphContext, query);
     }
 
     /// <inheritdoc />
-    public async Task<IGraphRelationshipQueryable<Model.IRelationship>> SearchRelationshipsAsync(string query, IGraphTransaction? transaction = null)
+    public IGraphQueryable<Model.IRelationship> SearchRelationships(string query, IGraphTransaction? transaction = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        try
-        {
-            _logger.LogDebug("Performing full text search on relationships with query: {Query}", query);
+        _logger.LogDebug("Building full text search queryable for relationships with query: {Query}", query);
 
-            GraphTransaction? neo4jTx = transaction != null
-                ? await TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true)
-                : null;
-
-            var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-            return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<Model.IRelationship>(provider, neo4jTx, _graphContext, query);
-        }
-        catch (Exception ex) when (ex is not GraphException)
-        {
-            var message = $"Failed to create relationship search queryable for query: {query}";
-            _logger.LogError(ex, message);
-            throw new GraphException(message, ex);
-        }
+        var neo4jTx = ToNeo4jTransaction(transaction);
+        var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
+        return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<Model.IRelationship>(provider, neo4jTx, _graphContext, query);
     }
 
     /// <inheritdoc />
-    public async Task<IGraphNodeQueryable<T>> SearchNodesAsync<T>(string query, IGraphTransaction? transaction = null) where T : Model.INode
+    public IGraphQueryable<T> SearchNodes<T>(string query, IGraphTransaction? transaction = null) where T : class, Model.INode
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        try
-        {
-            _logger.LogDebug("Performing full text search on nodes of type {NodeType} with query: {Query}", typeof(T).Name, query);
+        _logger.LogDebug("Building full text search queryable for nodes of type {NodeType} with query: {Query}", typeof(T).Name, query);
 
-            GraphTransaction? neo4jTx = transaction != null
-                ? await TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true)
-                : null;
-
-            var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-            return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<T>(provider, neo4jTx, _graphContext, query);
-        }
-        catch (Exception ex) when (ex is not GraphException)
-        {
-            var message = $"Failed to create typed node search queryable for type {typeof(T).Name} and query: {query}";
-            _logger.LogError(ex, message);
-            throw new GraphException(message, ex);
-        }
+        var neo4jTx = ToNeo4jTransaction(transaction);
+        var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
+        return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<T>(provider, neo4jTx, _graphContext, query);
     }
 
     /// <inheritdoc />
-    public async Task<IGraphRelationshipQueryable<T>> SearchRelationshipsAsync<T>(string query, IGraphTransaction? transaction = null) where T : Model.IRelationship
+    public IGraphQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : class, Model.IRelationship
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        try
-        {
-            _logger.LogDebug("Performing full text search on relationships of type {RelationshipType} with query: {Query}", typeof(T).Name, query);
+        _logger.LogDebug("Building full text search queryable for relationships of type {RelationshipType} with query: {Query}", typeof(T).Name, query);
 
-            GraphTransaction? neo4jTx = transaction != null
-                ? await TransactionHelpers.GetOrCreateTransactionAsync(_graphContext, transaction, true)
-                : null;
-
-            var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-            return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<T>(provider, neo4jTx, _graphContext, query);
-        }
-        catch (Exception ex) when (ex is not GraphException)
-        {
-            var message = $"Failed to create typed relationship search queryable for type {typeof(T).Name} and query: {query}";
-            _logger.LogError(ex, message);
-            throw new GraphException(message, ex);
-        }
+        var neo4jTx = ToNeo4jTransaction(transaction);
+        var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
+        return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<T>(provider, neo4jTx, _graphContext, query);
     }
 
     /// <inheritdoc />

@@ -18,8 +18,13 @@ namespace Cvoya.Graph.Model;
 /// Represents a queryable graph data source that supports LINQ operations.
 /// This interface extends IQueryable&lt;T&gt; with graph-specific functionality.
 /// </summary>
+/// <remarks>
+/// A single <see cref="IGraphQueryable{T}"/> represents both node and relationship queries;
+/// graph-specific operators (e.g. traversal) are gated by generic constraints
+/// (<c>where T : INode</c>) on the operator, not by a separate receiver interface.
+/// </remarks>
 /// <typeparam name="T">The type of elements in the graph queryable</typeparam>
-public interface IGraphQueryable<out T> : IQueryable<T>, IGraphQueryable
+public interface IGraphQueryable<out T> : IQueryable<T>, IGraphQueryable, IAsyncEnumerable<T>
 {
     /// <summary>
     /// Gets the graph instance associated with this queryable

@@ -80,7 +80,7 @@ TimeoutException: The request timed out after 30 seconds
 #### Problem: "No nodes found" when you expect results
 
 ```csharp
-var users = await (await graph.NodesAsync<User>()).ToListAsync();
+var users = await graph.Nodes<User>().ToListAsync();
 // Returns empty list when you expect data
 ```
 
@@ -237,15 +237,13 @@ TransientException: Deadlock detected
 
    ```csharp
    // ❌ Large depth - could traverse a large path of the graph
-   var connections = await (await graph.NodesAsync<User>())
-       .Traverse<User, FriendOf, User>()
-       .WithDepth(1, 100)
+   var connections = await graph.Nodes<User>()
+       .Traverse<FriendOf, User>(minDepth: 1, maxDepth: 100)
        .ToListAsync();
 
    // ✅ Limited depth
-   var connections = await (await graph.NodesAsync<User>())
-       .Traverse<User, FriendOf, User>()
-       .WithDepth(1, 3)  // Max 3 hops
+   var connections = await graph.Nodes<User>()
+       .Traverse<FriendOf, User>(minDepth: 1, maxDepth: 3)  // Max 3 hops
        .ToListAsync();
    ```
 
@@ -257,7 +255,7 @@ TransientException: Deadlock detected
 
    ```csharp
    // ❌ Loading everything at once
-   var allUsers = await (await graph.NodesAsync<User>()).ToListAsync();
+   var allUsers = await graph.Nodes<User>().ToListAsync();
 
    // ✅ Paginated loading
    var pageSize = 1000;
@@ -265,7 +263,7 @@ TransientException: Deadlock detected
    List<User> batch;
    do
    {
-       batch = await (await graph.NodesAsync<User>())
+       batch = await graph.Nodes<User>()
            .OrderBy(u => u.Id)
            .Skip(page * pageSize)
            .Take(pageSize)
@@ -280,7 +278,7 @@ TransientException: Deadlock detected
 
 ```csharp
    // ✅ Process one at a time
-   await foreach (var user in (await graph.NodesAsync<User>()).AsAsyncEnumerable())
+   await foreach (var user in graph.Nodes<User>().AsAsyncEnumerable())
    {
        ProcessUser(user);
    }
@@ -344,7 +342,7 @@ public async Task<bool> TestConnection(string connectionString, string username,
     try
     {
         await using var store = new Neo4jGraphStore(connectionString, username, password);
-        await (await store.Graph.NodesAsync<DynamicNode>()).Take(1).ToListAsync();
+        await store.Graph.Nodes<DynamicNode>().Take(1).ToListAsync();
         return true;
     }
     catch (Exception ex)

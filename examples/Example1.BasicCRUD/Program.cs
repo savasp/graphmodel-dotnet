@@ -111,7 +111,7 @@ try
     Console.WriteLine("3. Reading data...");
 
     // Find all people
-    var allPeople = (await graph.NodesAsync<Person>()).ToList();
+    var allPeople = graph.Nodes<Person>().ToList();
     Console.WriteLine($"Found {allPeople.Count} people:");
     foreach (var person in allPeople)
     {
@@ -119,7 +119,7 @@ try
     }
 
     // Find specific person by name
-    var foundAlice = await (await graph.NodesAsync<Person>())
+    var foundAlice = await graph.Nodes<Person>()
         .Where(p => p.Name == "Alice Johnson")
         .FirstOrDefaultAsync();
 
@@ -129,7 +129,7 @@ try
     }
 
     // Find company
-    var foundCompany = await (await graph.NodesAsync<Company>())
+    var foundCompany = await graph.Nodes<Company>()
         .Where(c => c.Name == "TechCorp")
         .FirstOrDefaultAsync();
 
@@ -139,7 +139,7 @@ try
     }
 
     // Find relationships
-    var paths = await (await graph.NodesAsync<Person>())
+    var paths = await graph.Nodes<Person>()
         .PathSegments<Person, WorksFor, Company>()
         .ToListAsync();
     Console.WriteLine($"\nFound {paths.Count} work relationships:");
@@ -161,7 +161,7 @@ try
     }
 
     // Update Bob's salary
-    var bobRelationship = await (await graph.NodesAsync<Person>())
+    var bobRelationship = await graph.Nodes<Person>()
         .PathSegments<Person, WorksFor, Company>()
         .Where(r => r.StartNode.Name == "Bob Smith")
         .Select(r => r.Relationship)
@@ -177,7 +177,7 @@ try
     // ==== VERIFY UPDATES ====
     Console.WriteLine("\n5. Verifying updates...");
 
-    var updatedAlice = await (await graph.NodesAsync<Person>())
+    var updatedAlice = await graph.Nodes<Person>()
         .Where(p => p.Name == "Alice Johnson")
         .FirstOrDefaultAsync();
 
@@ -206,7 +206,7 @@ try
     Console.WriteLine($"✓ Deleted temporary employee: {tempPerson.Name}");
 
     // Verify deletion
-    var deletedPerson = await (await graph.NodesAsync<Person>())
+    var deletedPerson = await graph.Nodes<Person>()
         .Where(p => p.Name == "Temporary Employee")
         .FirstOrDefaultAsync();
 

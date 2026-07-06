@@ -29,7 +29,7 @@ public static class DynamicEntityExtensions
     /// <returns>A dynamic node with all properties and labels from the original node.</returns>
     /// <exception cref="ArgumentNullException">Thrown when the node is null.</exception>
     public static DynamicNode ToDynamicNode<TNode>(this TNode node)
-        where TNode : INode
+        where TNode : class, INode
     {
         ArgumentNullException.ThrowIfNull(node);
 
@@ -54,7 +54,7 @@ public static class DynamicEntityExtensions
     /// <returns>A dynamic relationship with all properties and type from the original relationship.</returns>
     /// <exception cref="ArgumentNullException">Thrown when the relationship is null.</exception>
     public static DynamicRelationship ToDynamicRelationship<TRelationship>(this TRelationship relationship)
-        where TRelationship : IRelationship
+        where TRelationship : class, IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
 

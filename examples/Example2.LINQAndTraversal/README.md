@@ -33,13 +33,13 @@ var ageRange = await (await graph.NodesAsync<Person>())
 // Immediate relationships
 var directConnections = await (await graph.NodesAsync<Person>())
     .Where(p => p.Name == "Alice")
-    .Traverse<Person, Knows, Person>(1)
+    .Traverse<Knows, Person>(1)
     .ToListAsync();
 
 // Up to two hops
 var extendedConnections = await (await graph.NodesAsync<Person>())
     .Where(p => p.Name == "Alice")
-    .Traverse<Person, Knows, Person>(1, 2)
+    .Traverse<Knows, Person>(1, 2)
     .ToListAsync();
 ```
 
@@ -57,7 +57,7 @@ var pathSegments = await (await graph.NodesAsync<Person>())
 ```csharp
 // Find people who know someone in a specific city
 var results = await (await graph.NodesAsync<Person>())
-    .Traverse<Person, Knows, Person>(1)
+    .Traverse<Knows, Person>(1)
     .Where(p => p.City == "San Francisco")
     .ToListAsync();
 ```

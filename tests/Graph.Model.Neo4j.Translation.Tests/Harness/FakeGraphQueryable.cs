@@ -62,7 +62,7 @@ internal class FakeGraphQueryable<T> : IGraphQueryable<T>, IOrderedGraphQueryabl
 /// recognizes the root as a node source.
 /// </summary>
 internal sealed class FakeGraphNodeQueryable<T> : FakeGraphQueryable<T>, IGraphNodeQueryable<T>
-    where T : INode
+    where T : class, INode
 {
     public FakeGraphNodeQueryable(FakeGraphQueryProvider provider, Expression expression)
         : base(provider, expression)
@@ -76,7 +76,7 @@ internal sealed class FakeGraphNodeQueryable<T> : FakeGraphQueryable<T>, IGraphN
 /// <c>CypherQueryVisitor.VisitConstant</c> recognizes the root as a relationship source.
 /// </summary>
 internal sealed class FakeGraphRelationshipQueryable<T> : FakeGraphQueryable<T>, IGraphRelationshipQueryable<T>
-    where T : IRelationship
+    where T : class, IRelationship
 {
     public FakeGraphRelationshipQueryable(FakeGraphQueryProvider provider, Expression expression)
         : base(provider, expression)

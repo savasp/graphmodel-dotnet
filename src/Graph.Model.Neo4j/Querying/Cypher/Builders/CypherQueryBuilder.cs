@@ -50,8 +50,30 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         string TargetAlias
     );
 
+    /// <summary>
+    /// Everything <c>HandleTraversePaths</c> knows at <c>TraversePaths(...)</c> call time, except
+    /// the traversal direction - which a later <c>.Direction(...)</c> call in the same chain (the
+    /// sanctioned composition <c>source.TraversePaths(...).Direction(...)</c> builds - see
+    /// <see cref="GraphQueryable.GraphTraversalExtensions.TraversePaths"/>'s options-lambda
+    /// overload) may still set. Deferring pattern construction to <see cref="Build"/> (mirroring
+    /// <see cref="PendingPathSegmentPattern"/>/<see cref="BuildPendingPathSegmentPattern"/>'s
+    /// existing solution to the identical problem for single-hop <c>PathSegments</c>) means the
+    /// MATCH pattern's arrow direction reflects whatever <see cref="TraversalDirection"/> is by
+    /// the time the whole expression tree has been visited, not whatever it happened to be at the
+    /// moment <c>TraversePaths</c> itself was visited (i.e. before its own source-first visit order
+    /// gives a following <c>.Direction(...)</c> a chance to run).
+    /// </summary>
+    private record PendingGraphPathPattern(
+        Type SourceType,
+        Type RelationshipType,
+        Type TargetType,
+        int MinDepth,
+        int MaxDepth
+    );
+
     private PendingPathSegmentPattern? _pendingPathSegmentPattern;
     private readonly List<PendingPathSegmentPattern> _pathSegmentPatterns = new();
+    private PendingGraphPathPattern? _pendingGraphPathPattern;
     private string? _intermediateTargetAlias;
 
     private static readonly Type[] ComplexPropertyInterfaces =
@@ -71,6 +93,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     private int _parameterCounter;
     private bool _loadPathSegment;
     private bool _hasMultiplePathSegments;
+    private bool _isGraphPathResult;
 
     public PathSegmentProjectionEnum PathSegmentProjection = PathSegmentProjectionEnum.Full;
 
@@ -86,6 +109,29 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     public bool HasExplicitReturn => _returnPart.HasExplicitReturn;
 
     public bool IsRelationshipQuery => _isRelationshipQuery;
+
+    /// <summary>
+    /// Whether this query's RETURN shape is a decomposed <c>TraversePaths</c> result (one row per
+    /// hop, tagged with a path/hop index) rather than the single-hop path-segment or
+    /// complex-property shapes. When set, <see cref="Build"/> uses the simple-query path and
+    /// callers must not auto-enable complex property loading based on the source element type.
+    /// </summary>
+    public bool IsGraphPathResult => _isGraphPathResult;
+
+    /// <summary>
+    /// The source/relationship/target types for a <c>TraversePaths</c> result, or
+    /// <see langword="null"/> if <see cref="IsGraphPathResult"/> is <see langword="false"/>.
+    /// </summary>
+    public (Type Source, Type Relationship, Type Target)? GraphPathTypes { get; private set; }
+
+    /// <summary>
+    /// Marks this query as a <c>TraversePaths</c> result. See <see cref="IsGraphPathResult"/>.
+    /// </summary>
+    public void SetGraphPathResult(Type sourceType, Type relationshipType, Type targetType)
+    {
+        _isGraphPathResult = true;
+        GraphPathTypes = (sourceType, relationshipType, targetType);
+    }
 
     public GraphTraversalDirection? TraversalDirection { get; private set; }
 
@@ -145,6 +191,17 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         _pendingPathSegmentPattern = pattern; // Keep for backward compatibility
         _logger.LogDebug("Added path segment pattern: ({Source}:{SourceType})-[{Rel}:{RelType}]->({Target}:{TargetType})",
             sourceAlias, sourceType.Name, relAlias, relType.Name, targetAlias, targetType.Name);
+    }
+
+    /// <summary>
+    /// Records a <c>TraversePaths</c> call's shape without committing to a MATCH pattern yet - see
+    /// <see cref="PendingGraphPathPattern"/> for why this must be deferred to <see cref="Build"/>.
+    /// </summary>
+    public void SetPendingGraphPathPattern(Type sourceType, Type relationshipType, Type targetType, int minDepth, int maxDepth)
+    {
+        _pendingGraphPathPattern = new PendingGraphPathPattern(sourceType, relationshipType, targetType, minDepth, maxDepth);
+        _logger.LogDebug("Added pending graph path pattern: {Source}-[{Rel}*{Min}..{Max}]->{Target}",
+            sourceType.Name, relationshipType.Name, minDepth, maxDepth, targetType.Name);
     }
 
     public enum PathSegmentProjectionEnum
@@ -272,6 +329,10 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
         // Build any pending path segment patterns now that we have full context
         BuildPendingPathSegmentPattern();
+
+        // Likewise for a pending TraversePaths pattern - deferred so a following .Direction(...)
+        // in the same chain (source.TraversePaths(...).Direction(...)) has already run by now.
+        BuildPendingGraphPathPattern();
 
         // Handle special query types first
         if (_returnPart.IsExistsQuery)
@@ -941,6 +1002,61 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         _returnPart.AppendTo(query, _parameters);
 
         return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
+    }
+
+    /// <summary>
+    /// Materializes a pending <c>TraversePaths</c> pattern (see <see cref="PendingGraphPathPattern"/>)
+    /// into the actual MATCH/WITH/UNWIND/ORDER BY/RETURN clauses, using whatever
+    /// <see cref="TraversalDirection"/> is in effect now that the full expression tree - including
+    /// any <c>.Direction(...)</c> chained after <c>TraversePaths</c> - has been visited.
+    /// </summary>
+    private void BuildPendingGraphPathPattern()
+    {
+        if (_pendingGraphPathPattern is not { } p) return;
+
+        var sourceLabels = Labels.GetCompatibleLabels(p.SourceType);
+        var relLabels = Labels.GetCompatibleLabels(p.RelationshipType);
+        var targetLabels = Labels.GetCompatibleLabels(p.TargetType);
+        var sourceLabel = sourceLabels.Count == 1 ? sourceLabels[0] : string.Join("|", sourceLabels);
+        var relLabel = relLabels.Count == 1 ? relLabels[0] : string.Join("|", relLabels);
+        var targetLabel = targetLabels.Count == 1 ? targetLabels[0] : string.Join("|", targetLabels);
+
+        var direction = TraversalDirection ?? GraphTraversalDirection.Outgoing;
+        var depthPattern = $"{p.MinDepth}..{p.MaxDepth}";
+        var pattern = direction switch
+        {
+            GraphTraversalDirection.Outgoing => $"(src:{sourceLabel})-[r:{relLabel}*{depthPattern}]->(tgt:{targetLabel})",
+            GraphTraversalDirection.Incoming => $"(src:{sourceLabel})<-[r:{relLabel}*{depthPattern}]-(tgt:{targetLabel})",
+            GraphTraversalDirection.Both => $"(src:{sourceLabel})-[r:{relLabel}*{depthPattern}]-(tgt:{targetLabel})",
+            _ => throw new NotSupportedException($"Unknown traversal direction: {direction}")
+        };
+
+        _logger.LogDebug("Building deferred TraversePaths pattern with direction {Direction}: MATCH p = {Pattern}", direction, pattern);
+
+        // Build the query directly (bypassing the single-hop PathSegments pattern machinery,
+        // which is not designed for variable-length results): capture the whole path as `p`, then
+        // decompose it into one row per hop so the existing single-hop materialization pipeline
+        // (CypherResultProcessor/ResultMaterializer, which already knows how to turn a
+        // { StartNode, Relationship, EndNode } projection into entities) can be reused unchanged.
+        // A `pathIndex` column (assigned via collect+range over the distinct captured paths, not
+        // derived from graph element IDs) lets the client group hop rows back into ordered
+        // IGraphPath instances without relying on result-set row order across paths.
+        //
+        // Scope note: unlike PathSegments, intermediate/path nodes here are not given complex
+        // (dynamic navigation) properties - only their declared properties are populated. Adding
+        // that support is a candidate follow-up; it was not required to land IGraphPath itself.
+        ClearMatches();
+        AddMatchPattern($"p = {pattern}");
+        AddWith("collect(p) AS __paths");
+        AddUnwind("range(0, size(__paths) - 1) AS pathIndex");
+        AddWith("__paths[pathIndex] AS p, pathIndex");
+        AddUnwind("range(0, length(p) - 1) AS hopIndex");
+        AddWith("pathIndex, hopIndex, nodes(p)[hopIndex] AS src, relationships(p)[hopIndex] AS r, nodes(p)[hopIndex + 1] AS tgt");
+        AddOrderBy("pathIndex", isDescending: false);
+        AddOrderBy("hopIndex", isDescending: false);
+        AddReturn(
+            "pathIndex, hopIndex, { StartNode: { Node: src, ComplexProperties: [] }, Relationship: r, EndNode: { Node: tgt, ComplexProperties: [] } }",
+            "PathSegment");
     }
 
     private void BuildPendingPathSegmentPattern()

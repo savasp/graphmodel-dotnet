@@ -25,7 +25,7 @@ using System.Linq.Expressions;
 /// </summary>
 internal static class Root
 {
-    public static IGraphNodeQueryable<T> Nodes<T>() where T : INode
+    public static IGraphNodeQueryable<T> Nodes<T>() where T : class, INode
     {
         var provider = new FakeGraphQueryProvider();
         var placeholder = new FakeGraphNodeQueryable<T>(provider, Expression.Constant(null, typeof(Expression)));
@@ -33,7 +33,7 @@ internal static class Root
         return new FakeGraphNodeQueryable<T>(provider, expression);
     }
 
-    public static IGraphRelationshipQueryable<T> Relationships<T>() where T : IRelationship
+    public static IGraphRelationshipQueryable<T> Relationships<T>() where T : class, IRelationship
     {
         var provider = new FakeGraphQueryProvider();
         var placeholder = new FakeGraphRelationshipQueryable<T>(provider, Expression.Constant(null, typeof(Expression)));

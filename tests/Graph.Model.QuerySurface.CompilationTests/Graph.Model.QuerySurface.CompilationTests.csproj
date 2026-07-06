@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+      Dedicated project for issue #94's "compilation-fixture" testing requirement: chains that
+      MUST/MUST NOT compile against the new query surface, verified via a raw
+      Microsoft.CodeAnalysis.CSharp.CSharpCompilation (not the Roslyn analyzer-testing framework
+      used by Graph.Model.Analyzers.Tests, which is designed for diagnostics from a specific
+      analyzer, not whole-compilation success/failure). Kept separate from
+      Graph.Model.Analyzers.Tests because that project's Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.XUnit
+      dependency transitively pulls in the old xunit v2 Assert (via
+      Microsoft.CodeAnalysis.Testing.Verifiers.XUnit -> xunit.assert 2.3.0), which collides
+      (CS0433) with xunit.v3.mtp-v2's own Assert/Fact as soon as any file references them directly
+      rather than only through that framework's VerifyCS helpers - a project with no Roslyn
+      analyzer-testing package at all avoids the conflict entirely.
+    -->
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <IsPackable>false</IsPackable>
+        <RootNamespace>Cvoya.Graph.Model.QuerySurface.CompilationTests</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Model.QuerySurface.CompilationTests</AssemblyName>
+
+        <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
+        <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+
+        <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+        <TestingPlatformShowProgress>true</TestingPlatformShowProgress>
+        <TestingPlatformCaptureOutput>true</TestingPlatformCaptureOutput>
+
+        <!--
+          Directory.Build.props sets EnforceExtendedAnalyzerRules repo-wide for the
+          Graph.Model.Analyzers project (an actual Roslyn analyzer), but it also applies analyzer-
+          authoring restrictions (e.g. RS1035 banning File/Environment access) to any project that
+          merely references Microsoft.CodeAnalysis.CSharp - including this project, which uses it
+          only to build CSharpCompilation fixtures in ordinary test code, not to author an
+          analyzer. Override back to false here.
+        -->
+        <EnforceExtendedAnalyzerRules>false</EnforceExtendedAnalyzerRules>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+        <PackageReference Include="xunit.v3.mtp-v2" />
+        <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/Graph.Model/Graph.Model.csproj" />
+    </ItemGroup>
+
+</Project>

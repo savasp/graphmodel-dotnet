@@ -209,7 +209,7 @@ try
     // ==== TRANSACTION HISTORY ====
     Console.WriteLine("\n5. Transaction history...");
 
-    var transfers = await (await graph.NodesAsync<Account>())
+    var transfers = await graph.Nodes<Account>()
         .PathSegments<Account, Transfer, Account>()
         .ToListAsync();
 

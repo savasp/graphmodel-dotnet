@@ -37,7 +37,7 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(aliceKnowsCharlie, null, TestContext.Current.CancellationToken);
 
         // Act: Traverse from Alice to people she knows
-        var knownPeople = await (await Graph.NodesAsync<Person>())
+        var knownPeople = await Graph.Nodes<Person>()
             .PathSegments<Person, Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -68,9 +68,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(aliceKnowsCharlie, null, TestContext.Current.CancellationToken);
 
         // Act: Traverse from Alice to people she knows
-        var knownPeople = await (await Graph.NodesAsync<Person>())
+        var knownPeople = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -98,20 +98,18 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(bobKnowsCharlie, null, TestContext.Current.CancellationToken);
 
         // Act & Assert: Depth 1 - should only get Bob
-        var depth1Results = await (await Graph.NodesAsync<Person>())
+        var depth1Results = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
-            .WithDepth(1)
+            .Traverse<Knows, Person>(1)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(depth1Results);
         Assert.Equal("Bob", depth1Results[0].FirstName);
 
         // Act & Assert: Depth 2 - should get Bob and Charlie
-        var depth2Results = await (await Graph.NodesAsync<Person>())
+        var depth2Results = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
-            .WithDepth(2)
+            .Traverse<Knows, Person>(2)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, depth2Results.Count);
@@ -138,10 +136,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = david.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Traverse with depth range 2-3 (should get Charlie and David)
-        var results = await (await Graph.NodesAsync<Person>())
+        var results = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
-            .WithDepth(2, 3)
+            .Traverse<Knows, Person>(2, 3)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -152,10 +149,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         Assert.DoesNotContain(results, p => p.FirstName == "Alice");
 
         // Act: Traverse with depth range 1-3 (should get Bob, Charlie, and David)
-        results = await (await Graph.NodesAsync<Person>())
+        results = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
-            .WithDepth(1, 3)
+            .Traverse<Knows, Person>(1, 3)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -186,10 +182,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Traverse outgoing from Alice (should only get Bob)
-        var outgoingResults = await (await Graph.NodesAsync<Person>())
+        var outgoingResults = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
-            .Direction(GraphTraversalDirection.Outgoing)
+            .Traverse<Knows, Person>(GraphTraversalDirection.Outgoing)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -213,10 +208,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Traverse incoming to Alice (should only get Charlie)
-        var incomingResults = await (await Graph.NodesAsync<Person>())
+        var incomingResults = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
-            .Direction(GraphTraversalDirection.Incoming)
+            .Traverse<Knows, Person>(GraphTraversalDirection.Incoming)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -240,10 +234,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Traverse in both directions from Alice (should get both Bob and Charlie)
-        var bothDirectionsResults = await (await Graph.NodesAsync<Person>())
+        var bothDirectionsResults = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
-            .Direction(GraphTraversalDirection.Both)
+            .Traverse<Knows, Person>(GraphTraversalDirection.Both)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -272,9 +265,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Reverse traverse from Alice to find who knows her (should get Charlie)
-        var reverseResults = await (await Graph.NodesAsync<Person>())
+        var reverseResults = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .ReverseTraverse<Person, Knows, Person>()
+            .ReverseTraverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -298,7 +291,7 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Use PathSegments with incoming direction to find who knows Alice
-        var pathSegments = await (await Graph.NodesAsync<Person>())
+        var pathSegments = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .Direction(GraphTraversalDirection.Incoming)
@@ -326,9 +319,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Use Traverse with incoming direction to find who knows Alice
-        var reverseResults = await (await Graph.NodesAsync<Person>())
+        var reverseResults = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>(GraphTraversalDirection.Incoming)
+            .Traverse<Knows, Person>(GraphTraversalDirection.Incoming)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -355,9 +348,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = david.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Reverse traverse from Alice to find who knows her
-        var reverseResults = await (await Graph.NodesAsync<Person>())
+        var reverseResults = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .ReverseTraverse<Person, Knows, Person>()
+            .ReverseTraverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -380,9 +373,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Reverse traverse from Alice to find who knows her
-        var reverseResults = await (await Graph.NodesAsync<Person>())
+        var reverseResults = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .ReverseTraverse<Person, Knows, Person>()
+            .ReverseTraverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -405,9 +398,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new LivesAt { StartNodeId = charlie.Id, EndNodeId = alice.Id, MovedInDate = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Reverse traverse from Alice using LivesAt relationship
-        var reverseResults = await (await Graph.NodesAsync<Person>())
+        var reverseResults = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .ReverseTraverse<Person, LivesAt, Person>()
+            .ReverseTraverse<LivesAt, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -433,21 +426,19 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = david.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
-        // Act: Reverse traverse from Alice with depth constraint
-        var reverseResults = await (await Graph.NodesAsync<Person>())
+        // Act: Reverse traverse from Alice (single hop, the only depth ReverseTraverse supports)
+        var reverseResults = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .ReverseTraverse<Person, Knows, Person>()
-            .WithDepth(1) // Only direct relationships
+            .ReverseTraverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert - Alice has no incoming relationships, so should be empty
         Assert.Empty(reverseResults);
 
-        // Act: Reverse traverse from Bob with depth constraint
-        var bobReverseResults = await (await Graph.NodesAsync<Person>())
+        // Act: Reverse traverse from Bob (single hop, the only depth ReverseTraverse supports)
+        var bobReverseResults = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Bob")
-            .ReverseTraverse<Person, Knows, Person>()
-            .WithDepth(1)
+            .ReverseTraverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert - Bob should have Alice as incoming
@@ -478,7 +469,7 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(oldKnows, null, TestContext.Current.CancellationToken);
 
         // Act: Find people Alice has known for less than a year
-        var recentFriends = await (await Graph.NodesAsync<Person>())
+        var recentFriends = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .Where(k => k.Relationship.Since > DateTime.UtcNow.AddYears(-1))
@@ -513,9 +504,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = elen.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Find people Alice knows directly who are over 50
-        var olderFriends = await (await Graph.NodesAsync<Person>())
+        var olderFriends = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .Where(p => p.Age > 50)
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -549,9 +540,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         // Act: Find people Alice knows directly who are over 25
         // This should return Bob (30) and Elen (45)
         // Charlie isn't directly connected to Alice, so he won't be included
-        var olderFriends = await (await Graph.NodesAsync<Person>())
+        var olderFriends = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .Where(p => p.Age > 25)
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -586,10 +577,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         // Act: Find people Alice knows with two hops who are over 35
         // We should get Charlie (40) through Bob, and Elen directly
 
-        var olderFriends = await (await Graph.NodesAsync<Person>())
+        var olderFriends = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
-            .WithDepth(2)
+            .Traverse<Knows, Person>(2)
             .Where(p => p.Age > 35)
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -620,12 +610,18 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = elen.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
-        // Act: Find people Alice knows who are over 35 with one hop
-        var olderFriends = await (await Graph.NodesAsync<Person>())
+        // Act: Find people Alice knows who are over 35 with one hop. Alice's direct (one-hop)
+        // connections are Bob (30) and Elen (45) - Charlie (40) is two hops away via Bob, so
+        // PathSegments (single-hop) must not surface him here; only Elen clears the age filter.
+        var olderFriends = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .Where(ps => ps.EndNode.Age > 35)
+            .Select(ps => ps.EndNode)
             .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(olderFriends);
+        Assert.Equal("Elen", olderFriends[0].FirstName);
     }
 
 
@@ -654,7 +650,7 @@ public interface IQueryTraversalTests : IGraphModelTest
         // Act: Find people Alice knows directly who are over 25
         // This should return Bob (30) and Elen (45)
         // Charlie isn't directly connected to Alice, so he won't be included
-        var olderFriends = await (await Graph.NodesAsync<Person>())
+        var olderFriends = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .Where(ps => ps.EndNode.Age > 25)
@@ -666,7 +662,7 @@ public interface IQueryTraversalTests : IGraphModelTest
         Assert.Contains(olderFriends, ps => ps.EndNode.FirstName == "Elen");
     }
 
-    [Fact(Skip = "Not supported yet - see #126")]
+    [Fact]
     public async Task CanFilterTargetNodesByPropertyWithoutTraverseTwoHops()
     {
         // Setup:
@@ -688,19 +684,24 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = elen.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
-        // Act: Find people Alice knows with two hops who are over 35
-        // We should get Charlie (40) through Bob, and Elen directly
+        // Act: Find people Alice knows within up to two hops who are over 35, using the
+        // IGraphPath-returning TraversePaths operator (the #94/#126 resolution for variable-length
+        // traversal - a single IGraphPathSegment cannot represent more than one hop). Filtering on
+        // IGraphPath members (path.End, etc.) within the LINQ expression itself is not yet
+        // translated server-side (see follow-up note in the PR); filter client-side on the
+        // materialized paths instead - materialization itself is the behavior under test here.
+        // We should get Charlie (40) through Bob, and Elen directly (1 hop).
 
-        var olderFriends = await (await Graph.NodesAsync<Person>())
+        var allPaths = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .PathSegments<Person, Knows, Person>()
-            .WithDepth(2)
-            .Where(ps => ps.EndNode.Age > 35)
+            .TraversePaths<Knows, Person>(minDepth: 1, maxDepth: 2)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, olderFriends.Count);
-        Assert.Contains(olderFriends, ps => ps.EndNode.FirstName == "Charlie");
-        Assert.Contains(olderFriends, ps => ps.EndNode.FirstName == "Elen");
+        var olderFriendPaths = allPaths.Where(path => ((Person)path.End).Age > 35).ToList();
+
+        Assert.Equal(2, olderFriendPaths.Count);
+        Assert.Contains(olderFriendPaths, path => ((Person)path.End).FirstName == "Charlie" && path.Segments.Count == 2);
+        Assert.Contains(olderFriendPaths, path => ((Person)path.End).FirstName == "Elen" && path.Segments.Count == 1);
     }
 
     #endregion
@@ -723,18 +724,18 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new LivesAt { StartNodeId = alice.Id, EndNodeId = address1.Id, MovedInDate = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Test traversing Knows relationships
-        var knownPeople = await (await Graph.NodesAsync<Person>())
+        var knownPeople = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(knownPeople);
         Assert.Equal("Bob", knownPeople[0].FirstName);
 
         // Test traversing LivesAt relationships
-        var addresses = await (await Graph.NodesAsync<Person>())
+        var addresses = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, LivesAt, Address>()
+            .Traverse<LivesAt, Address>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(addresses);
@@ -764,7 +765,7 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(oldKnows, null, TestContext.Current.CancellationToken);
 
         // Act: Get the relationships themselves
-        var relationships = await (await Graph.NodesAsync<Person>())
+        var relationships = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .Select(p => p.Relationship)
@@ -795,7 +796,7 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(oldKnows, null, TestContext.Current.CancellationToken);
 
         // Act: Get only recent relationships
-        var recentRelationships = await (await Graph.NodesAsync<Person>())
+        var recentRelationships = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .Where(k => k.Relationship.Since > DateTime.UtcNow.AddYears(-1))
@@ -826,7 +827,7 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
 
         // Act: Get paths from Alice to other people
-        var paths = await (await Graph.NodesAsync<Person>())
+        var paths = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -856,10 +857,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Get 2-hop paths from Alice
-        var aliceKnowsTransitively = await (await Graph.NodesAsync<Person>())
+        var aliceKnowsTransitively = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
-            .WithDepth(2)
+            .Traverse<Knows, Person>(2)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -891,9 +891,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = diana.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Find people Alice knows who are over 30, ordered by age
-        var results = await (await Graph.NodesAsync<Person>())
+        var results = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .Where(p => p.Age > 30)
             .OrderBy(p => p.Age)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -923,18 +923,18 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = diana.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Count people Alice knows
-        var friendCount = await (await Graph.NodesAsync<Person>())
+        var friendCount = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .CountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, friendCount);
 
         // Act: Get average age of people Alice knows
-        var averageAge = await (await Graph.NodesAsync<Person>())
+        var averageAge = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .AverageAsync(p => p.Age, TestContext.Current.CancellationToken);
 
         // Assert
@@ -957,7 +957,7 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow.AddMonths(-6) }, null, TestContext.Current.CancellationToken);
 
         // Act: Find people Alice has known for over a year who are developers or engineers and a custom project
-        var techFriendsBios = await (await Graph.NodesAsync<Person>())
+        var techFriendsBios = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .Where(k => k.Relationship.Since < DateTime.UtcNow.AddYears(-1))
@@ -992,9 +992,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows(charlie.Id, eve.Id) { Since = DateTime.UtcNow.AddYears(-1) }, null, TestContext.Current.CancellationToken);
         await Graph.CreateRelationshipAsync(new Knows(diana.Id, eve.Id) { Since = DateTime.UtcNow.AddMonths(-6) }, null, TestContext.Current.CancellationToken);
 
-        var aliceConnections = await (await Graph.NodesAsync<Person>())
+        var aliceConnections = await Graph.Nodes<Person>()
             .Where(p => p.Id == alice.Id)
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .Select(p => p.Id)
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -1016,9 +1016,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
 
         // Act: Try to traverse from Alice
-        var results = await (await Graph.NodesAsync<Person>())
+        var results = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -1033,9 +1033,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
 
         // Act: Try to traverse from a non-existent person
-        var results = await (await Graph.NodesAsync<Person>())
+        var results = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "NonExistent")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -1065,9 +1065,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         }
 
         // Act: Traverse to all friends
-        var results = await (await Graph.NodesAsync<Person>())
+        var results = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -1092,10 +1092,9 @@ public interface IQueryTraversalTests : IGraphModelTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Traverse with max depth 3 to potentially encounter the cycle
-        var results = await (await Graph.NodesAsync<Person>())
+        var results = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
-            .WithDepth(3)
+            .Traverse<Knows, Person>(3)
             .Distinct() // Use Distinct to avoid duplicates from cycles
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -1139,7 +1138,7 @@ public interface IQueryTraversalTests : IGraphModelTest
 
         // Act: Use multiple PathSegments with incoming direction
         // This should generate: (tgt_2:MemorySourceNode)<-[r_1:MemoryToMemorySourceNode]-(src:MemoryWithoutSourceProperty)<-[r:MEMORY]-(tgt:User)
-        var results = await (await Graph.NodesAsync<MemoryWithoutSourceProperty>())
+        var results = await Graph.Nodes<MemoryWithoutSourceProperty>()
             .PathSegments<MemoryWithoutSourceProperty, UserMemory, User>()
             .Direction(GraphTraversalDirection.Incoming)
             .Where(ps => ps.EndNode.Name == "Alice")
@@ -1152,6 +1151,121 @@ public interface IQueryTraversalTests : IGraphModelTest
         Assert.Single(results);
         Assert.Equal("memory", results[0].Memory.Text);
         Assert.Equal("Source1", results[0].MemorySource.Name);
+    }
+
+    #endregion
+
+    #region Depth/Direction Options and IGraphPath Round-Trip Tests (issue #94)
+
+    [Fact]
+    public async Task Traverse_OptionsLambda_AppliesDepthAndDirection()
+    {
+        // Setup: Alice knows Bob and Charlie; Bob knows Dave (2 hops from Alice)
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+        var dave = new Person { FirstName = "Dave", LastName = "White" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = dave.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        // Act: depth 1..2 via the options-lambda overload should reach Dave (2 hops) but not
+        // introduce anyone unreachable within 2 hops.
+        var reachable = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .Traverse<Knows, Person>(o => o.Depth(1, 2))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, reachable.Count);
+        Assert.Contains(reachable, p => p.FirstName == "Bob");
+        Assert.Contains(reachable, p => p.FirstName == "Charlie");
+        Assert.Contains(reachable, p => p.FirstName == "Dave");
+
+        // Act: the options-lambda direction, applied to a 1-hop-only depth, must flip to incoming -
+        // from Bob's perspective, only Alice is reachable via Incoming (Alice -> Bob).
+        var reverseFromBob = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Bob")
+            .Traverse<Knows, Person>(o => o.Depth(1).Direction(GraphTraversalDirection.Incoming))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(reverseFromBob);
+        Assert.Equal("Alice", reverseFromBob[0].FirstName);
+    }
+
+    [Fact]
+    public async Task TraversePaths_OptionsLambda_AppliesDepthAndDirection()
+    {
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        var paths = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .TraversePaths<Knows, Person>(o => o.Depth(1, 2))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, paths.Count);
+        Assert.Contains(paths, p => ((Person)p.End).FirstName == "Bob" && p.Segments.Count == 1);
+        Assert.Contains(paths, p => ((Person)p.End).FirstName == "Charlie" && p.Segments.Count == 2);
+    }
+
+    [Fact]
+    public async Task TraversePaths_IGraphPath_RoundTripsOrderedSegmentsAndStartEndConsistency()
+    {
+        // Setup a 3-hop chain: Alice -> Bob -> Charlie -> Dave.
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+        var dave = new Person { FirstName = "Dave", LastName = "White" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(dave, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = bob.Id, EndNodeId = charlie.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = dave.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
+
+        var paths = await Graph.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .TraversePaths<Knows, Person>(minDepth: 3, maxDepth: 3)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var path = Assert.Single(paths);
+
+        // IGraphPath contract (issue #94 scope item 3): Start/End must be consistent with the
+        // path's own ordered Segments - Start is the first segment's StartNode, End is the last
+        // segment's EndNode, and consecutive segments chain (each segment's EndNode is the next
+        // segment's StartNode).
+        Assert.Equal(3, path.Segments.Count);
+        Assert.Equal("Alice", ((Person)path.Start).FirstName);
+        Assert.Equal("Dave", ((Person)path.End).FirstName);
+
+        Assert.Equal(path.Start.Id, path.Segments[0].StartNode.Id);
+        Assert.Equal(path.End.Id, path.Segments[^1].EndNode.Id);
+
+        for (var i = 0; i < path.Segments.Count - 1; i++)
+        {
+            Assert.Equal(path.Segments[i].EndNode.Id, path.Segments[i + 1].StartNode.Id);
+        }
+
+        Assert.Equal("Bob", ((Person)path.Segments[0].EndNode).FirstName);
+        Assert.Equal("Charlie", ((Person)path.Segments[1].EndNode).FirstName);
+        Assert.Equal("Dave", ((Person)path.Segments[2].EndNode).FirstName);
     }
 
     #endregion

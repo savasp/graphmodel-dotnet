@@ -113,7 +113,7 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         }
 
         // Handle dynamic entity extension methods
-        if (node.Method.DeclaringType?.Name == "DynamicEntityExtensions")
+        if (node.Method.DeclaringType == typeof(Neo4jDynamicEntityExtensions))
         {
             return VisitDynamicEntityMethod(node);
         }

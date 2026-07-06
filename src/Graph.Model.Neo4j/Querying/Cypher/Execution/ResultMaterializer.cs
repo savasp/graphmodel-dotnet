@@ -39,6 +39,7 @@ internal sealed class ResultMaterializer
 
     public async Task<T?> MaterializeAsync<T>(
         List<IRecord> records,
+        (Type Source, Type Relationship, Type Target)? graphPathTypes = null,
         CancellationToken cancellationToken = default)
     {
         var targetType = typeof(T);
@@ -54,6 +55,17 @@ internal sealed class ResultMaterializer
             return isCollectionType
                 ? ConvertToCollectionType<T>([], elementType)
                 : default;
+        }
+
+        // TraversePaths decomposes a variable-length path into one row per hop; group those rows
+        // back into ordered IGraphPath instances instead of going through the single-element
+        // EntityInfo pipeline below (which has no notion of "many rows make up one result").
+        if (graphPathTypes is { } types && elementType == typeof(IGraphPath))
+        {
+            var paths = MaterializeGraphPaths(records, types);
+            return isCollectionType
+                ? ConvertToCollectionType<T>([.. paths], elementType)
+                : (T?)paths.FirstOrDefault();
         }
 
         // Process records to EntityInfo objects
@@ -72,6 +84,35 @@ internal sealed class ResultMaterializer
         }
 
         return result;
+    }
+
+    private List<IGraphPath> MaterializeGraphPaths(List<IRecord> records, (Type Source, Type Relationship, Type Target) types)
+    {
+        var hops = _resultProcessor.ProcessGraphPathHops(records, types.Source, types.Relationship, types.Target);
+
+        var paths = new List<IGraphPath>();
+        var orderedHopsByPath = hops
+            .GroupBy(h => h.PathIndex)
+            .OrderBy(g => g.Key)
+            .Select(g => g.OrderBy(h => h.HopIndex).ToList());
+        foreach (var orderedHops in orderedHopsByPath)
+        {
+            var segments = new List<IGraphPathSegment>(orderedHops.Count);
+            foreach (var hop in orderedHops)
+            {
+                var startNode = (Model.INode)MaterializeSingleElement<object>(hop.StartNode, types.Source)!;
+                var relationship = (Model.IRelationship)MaterializeSingleElement<object>(hop.Relationship, types.Relationship)!;
+                var endNode = (Model.INode)MaterializeSingleElement<object>(hop.EndNode, types.Target)!;
+                segments.Add(new GraphPathHopSegment(startNode, relationship, endNode));
+            }
+
+            if (segments.Count == 0)
+                continue;
+
+            paths.Add(new GraphPath(segments[0].StartNode, segments[^1].EndNode, segments));
+        }
+
+        return paths;
     }
 
     private T MaterializeAsCollection<T>(List<EntityInfo> entityInfos, Type elementType)

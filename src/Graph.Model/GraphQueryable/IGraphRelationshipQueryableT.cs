@@ -15,13 +15,17 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents a queryable graph data source that supports LINQ operations.
-/// This interface extends <see cref="IGraphQueryable{T}"/> with graph-specific functionality.
-/// It allows for traversing relationships and querying nodes within a graph.
-/// This interface is designed to be used with graph databases and provides methods for traversing relationships.
+/// Represents a queryable graph data source that supports LINQ operations over relationships.
 /// </summary>
+/// <remarks>
+/// Obsolete: use <see cref="IGraphQueryable{T}"/> directly (with <c>T : IRelationship</c>).
+/// Kept for one release to ease migration.
+/// </remarks>
 /// <typeparam name="TRel">An <see cref="IRelationship"/>-derived type.</typeparam>
+[Obsolete("Use IGraphQueryable<T> instead; relationship-only operators are gated by generic constraints. This alias will be removed in a future release.")]
+#pragma warning disable CS0618 // Type or member is obsolete
 public interface IGraphRelationshipQueryable<out TRel> : IGraphQueryable<TRel>, IGraphRelationshipQueryable
-    where TRel : IRelationship
+#pragma warning restore CS0618
+    where TRel : class, IRelationship
 {
 }

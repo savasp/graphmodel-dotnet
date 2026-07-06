@@ -33,22 +33,23 @@ public interface IGraph : IAsyncDisposable
     Task<IGraphTransaction> GetTransactionAsync();
 
     /// <summary>
-    /// Gets a queryable interface to dynamic nodes in the graph
+    /// Gets a queryable interface to dynamic nodes in the graph. Building the queryable performs
+    /// no I/O; any transaction/session acquisition happens when the query is executed (e.g. via
+    /// <c>ToListAsync</c> or <c>await foreach</c>).
     /// </summary>
     /// <param name="transaction">The transaction to use.
-    /// If null, a new transaction will be automatically created and used.</param>
+    /// If null, a new transaction will be automatically created and used at execution time.</param>
     /// <returns>A queryable interface to the dynamic nodes</returns>
-    /// <exception cref="GraphException">Thrown when the query fails</exception>
-    Task<IGraphNodeQueryable<DynamicNode>> DynamicNodesAsync(IGraphTransaction? transaction = null);
+    IGraphQueryable<DynamicNode> DynamicNodes(IGraphTransaction? transaction = null);
 
     /// <summary>
-    /// Gets a queryable interface to dynamic relationships in the graph
+    /// Gets a queryable interface to dynamic relationships in the graph. Building the queryable
+    /// performs no I/O; any transaction/session acquisition happens when the query is executed.
     /// </summary>
     /// <param name="transaction">The transaction to use.
-    /// If null, a new transaction will be automatically created and used.</param>
+    /// If null, a new transaction will be automatically created and used at execution time.</param>
     /// <returns>A queryable interface to the dynamic relationships</returns>
-    /// <exception cref="GraphException">Thrown when the query fails</exception>
-    Task<IGraphRelationshipQueryable<DynamicRelationship>> DynamicRelationshipsAsync(IGraphTransaction? transaction = null);
+    IGraphQueryable<DynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null);
 
     /// <summary>
     /// Gets a dynamic node by ID
@@ -75,26 +76,27 @@ public interface IGraph : IAsyncDisposable
     Task<DynamicRelationship> GetDynamicRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets a queryable interface to nodes in the graph with options for relationship loading
+    /// Gets a queryable interface to nodes in the graph. Building the queryable performs no I/O;
+    /// any transaction/session acquisition happens when the query is executed (e.g. via
+    /// <c>ToListAsync</c> or <c>await foreach</c>).
     /// </summary>
     /// <param name="transaction">The transaction to use.
-    /// If null, a new transaction will be automatically created and used.</param>
+    /// If null, a new transaction will be automatically created and used at execution time.</param>
     /// <typeparam name="N">The type of the nodes to query</typeparam>
     /// <returns>A queryable interface to the nodes</returns>
-    /// <exception cref="GraphException">Thrown when the query fails</exception>
-    Task<IGraphNodeQueryable<N>> NodesAsync<N>(IGraphTransaction? transaction = null)
-        where N : INode;
+    IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
+        where N : class, INode;
 
     /// <summary>
-    /// Gets a queryable interface to relationships in the graph with options for node loading
+    /// Gets a queryable interface to relationships in the graph. Building the queryable performs
+    /// no I/O; any transaction/session acquisition happens when the query is executed.
     /// </summary>
     /// <param name="transaction">The transaction to use.
-    /// If null, a new transaction will be automatically created and used.</param>
+    /// If null, a new transaction will be automatically created and used at execution time.</param>
     /// <typeparam name="R">The type of the relationships to query</typeparam>
     /// <returns>A queryable interface to the relationships</returns>
-    /// <exception cref="GraphException">Thrown when the query fails</exception>
-    Task<IGraphRelationshipQueryable<R>> RelationshipsAsync<R>(IGraphTransaction? transaction = null)
-        where R : IRelationship;
+    IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
+        where R : class, IRelationship;
 
     /// <summary>
     /// Gets a node by ID with options for relationship loading
@@ -108,7 +110,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="KeyNotFoundException">Thrown when the node is not found</exception>
     /// <exception cref="GraphException">Thrown when the node cannot be retrieved or there is another issue</exception>
     Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : INode;
+        where N : class, INode;
 
     /// <summary>
     /// Gets a relationship by ID with options for node loading
@@ -122,7 +124,7 @@ public interface IGraph : IAsyncDisposable
     /// <exception cref="KeyNotFoundException">Thrown when any of the relationship is not found</exception>
     /// <exception cref="GraphException">Thrown when the relationship cannot be retrieved or there is another issue</exception>
     Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : IRelationship;
+        where R : class, IRelationship;
 
     /// <summary>
     /// Creates a new node in the graph with options for relationship handling
@@ -134,7 +136,7 @@ public interface IGraph : IAsyncDisposable
     /// <typeparam name="N">The type of the node</typeparam>
     /// <exception cref="GraphException">Thrown when the node cannot be created or there is another issue</exception>
     Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : INode;
+        where N : class, INode;
 
     /// <summary>
     /// Creates a new relationship in the graph with options for node handling
@@ -146,7 +148,7 @@ public interface IGraph : IAsyncDisposable
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <exception cref="GraphException">Thrown when the relationship cannot be created or there is another issue</exception>
     Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : IRelationship;
+        where R : class, IRelationship;
 
     /// <summary>
     /// Updates an existing node in the graph with options for relationship handling
@@ -158,7 +160,7 @@ public interface IGraph : IAsyncDisposable
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <exception cref="GraphException">Thrown when the update cannot be performed or there is another issue</exception>
     Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : INode;
+        where N : class, INode;
 
     /// <summary>
     /// Updates an existing relationship in the graph with options for node handling
@@ -170,7 +172,7 @@ public interface IGraph : IAsyncDisposable
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <exception cref="GraphException">Thrown when the relationship cannot be updated or there is another issue</exception>
     Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : IRelationship;
+        where R : class, IRelationship;
 
     /// <summary>
     /// Deletes a node from the graph by ID.
@@ -201,56 +203,65 @@ public interface IGraph : IAsyncDisposable
     Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Performs a full text search across all entities (nodes and relationships) in the graph
+    /// Gets a queryable interface that performs a full text search across all entities (nodes and
+    /// relationships) in the graph. This is a thin convenience over the <c>Search</c> LINQ
+    /// operator; building the queryable performs no I/O.
     /// </summary>
     /// <param name="query">The search query string</param>
     /// <param name="transaction">The transaction to use.
-    /// If null, a new transaction will be automatically created and used.</param>
+    /// If null, a new transaction will be automatically created and used at execution time.</param>
     /// <returns>A queryable interface to the search results</returns>
-    /// <exception cref="GraphException">Thrown when the search fails</exception>
-    Task<IGraphQueryable<IEntity>> SearchAsync(string query, IGraphTransaction? transaction = null);
+    IGraphQueryable<IEntity> Search(string query, IGraphTransaction? transaction = null);
 
     /// <summary>
-    /// Performs a full text search across all nodes in the graph
+    /// Gets a queryable interface that performs a full text search across all nodes in the graph.
+    /// This is a thin convenience over the <c>Search</c> LINQ operator, equivalent to
+    /// <c>graph.Nodes&lt;INode&gt;(transaction).Search(query)</c>; building the queryable
+    /// performs no I/O.
     /// </summary>
     /// <param name="query">The search query string</param>
     /// <param name="transaction">The transaction to use.
-    /// If null, a new transaction will be automatically created and used.</param>
+    /// If null, a new transaction will be automatically created and used at execution time.</param>
     /// <returns>A queryable interface to the node search results</returns>
-    /// <exception cref="GraphException">Thrown when the search fails</exception>
-    Task<IGraphNodeQueryable<INode>> SearchNodesAsync(string query, IGraphTransaction? transaction = null);
+    IGraphQueryable<INode> SearchNodes(string query, IGraphTransaction? transaction = null);
 
     /// <summary>
-    /// Performs a full text search across all relationships in the graph
+    /// Gets a queryable interface that performs a full text search across all relationships in
+    /// the graph. This is a thin convenience over the <c>Search</c> LINQ operator, equivalent to
+    /// <c>graph.Relationships&lt;IRelationship&gt;(transaction).Search(query)</c>; building the
+    /// queryable performs no I/O.
     /// </summary>
     /// <param name="query">The search query string</param>
     /// <param name="transaction">The transaction to use.
-    /// If null, a new transaction will be automatically created and used.</param>
+    /// If null, a new transaction will be automatically created and used at execution time.</param>
     /// <returns>A queryable interface to the relationship search results</returns>
-    /// <exception cref="GraphException">Thrown when the search fails</exception>
-    Task<IGraphRelationshipQueryable<IRelationship>> SearchRelationshipsAsync(string query, IGraphTransaction? transaction = null);
+    IGraphQueryable<IRelationship> SearchRelationships(string query, IGraphTransaction? transaction = null);
 
     /// <summary>
-    /// Performs a full text search across nodes of a specific type in the graph
+    /// Gets a queryable interface that performs a full text search across nodes of the specified
+    /// type in the graph. This is a thin convenience over the <c>Search</c> LINQ operator,
+    /// equivalent to <c>graph.Nodes&lt;T&gt;(transaction).Search(query)</c>; building the
+    /// queryable performs no I/O.
     /// </summary>
     /// <typeparam name="T">The type of the nodes to search</typeparam>
     /// <param name="query">The search query string</param>
     /// <param name="transaction">The transaction to use.
-    /// If null, a new transaction will be automatically created and used.</param>
+    /// If null, a new transaction will be automatically created and used at execution time.</param>
     /// <returns>A queryable interface to the typed node search results</returns>
-    /// <exception cref="GraphException">Thrown when the search fails</exception>
-    Task<IGraphNodeQueryable<T>> SearchNodesAsync<T>(string query, IGraphTransaction? transaction = null) where T : INode;
+    IGraphQueryable<T> SearchNodes<T>(string query, IGraphTransaction? transaction = null) where T : class, INode;
 
     /// <summary>
-    /// Performs a full text search across relationships of a specific type in the graph
+    /// Gets a queryable interface that performs a full text search across relationships of the
+    /// specified type in the graph. This is a thin convenience over the <c>Search</c> LINQ
+    /// operator, equivalent to <c>graph.Relationships&lt;T&gt;(transaction).Search(query)</c>;
+    /// building the queryable performs no I/O.
     /// </summary>
     /// <typeparam name="T">The type of the relationships to search</typeparam>
     /// <param name="query">The search query string</param>
     /// <param name="transaction">The transaction to use.
-    /// If null, a new transaction will be automatically created and used.</param>
+    /// If null, a new transaction will be automatically created and used at execution time.</param>
     /// <returns>A queryable interface to the typed relationship search results</returns>
-    /// <exception cref="GraphException">Thrown when the search fails</exception>
-    Task<IGraphRelationshipQueryable<T>> SearchRelationshipsAsync<T>(string query, IGraphTransaction? transaction = null) where T : IRelationship;
+    IGraphQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : class, IRelationship;
 
     /// <summary>
     /// Recreates all indexes in the graph database.

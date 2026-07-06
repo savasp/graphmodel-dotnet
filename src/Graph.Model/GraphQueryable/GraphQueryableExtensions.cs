@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model;
 
 using System.Linq.Expressions;
+using System.Reflection;
 
 
 using static Cvoya.Graph.Model.ExtensionUtils;
@@ -60,12 +61,15 @@ public static class GraphQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(selector);
 
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(Select),
-            2, // TSource, TResult
-            2  // source, selector
-        ).MakeGenericMethod(typeof(TSource), typeof(TResult));
+        // NOTE: this overload and the with-index Select below both have 2 generic arguments and 2
+        // parameters, so GetGenericExtensionMethod(type, name, genericArgCount, paramCount) cannot
+        // tell them apart (it previously picked whichever reflection returned first, silently
+        // building an Expression.Call against the *other* overload's MethodInfo - caught by an
+        // expression-shape test). Resolve via the currently-executing method's own generic
+        // definition instead, which is unambiguous by construction.
+        var methodInfo = ((MethodInfo)MethodBase.GetCurrentMethod()!)
+            .GetGenericMethodDefinition()
+            .MakeGenericMethod(typeof(TSource), typeof(TResult));
 
         var expression = Expression.Call(
             null,
@@ -86,12 +90,11 @@ public static class GraphQueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(selector);
 
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(Select),
-            2, // TSource, TResult
-            2  // source, selector
-        ).MakeGenericMethod(typeof(TSource), typeof(TResult));
+        // See the note in the other Select<TSource, TResult> overload above: resolved via the
+        // currently-executing method rather than the ambiguous (genericArgCount, paramCount) match.
+        var methodInfo = ((MethodInfo)MethodBase.GetCurrentMethod()!)
+            .GetGenericMethodDefinition()
+            .MakeGenericMethod(typeof(TSource), typeof(TResult));
 
         var expression = Expression.Call(
             null,
@@ -363,6 +366,14 @@ public static class GraphQueryableExtensions
     /// <summary>
     /// Specifies the traversal depth for graph operations.
     /// </summary>
+    /// <remarks>
+    /// Obsolete: this is a free-floating postfix modifier whose meaning ("mutate the preceding
+    /// traversal") is not enforced by the type system — it compiles (and does nothing useful) on
+    /// any <see cref="IGraphQueryable{T}"/>, not just the result of a traversal operator. Use the
+    /// depth overloads on <c>Traverse</c>/<c>TraversePaths</c>, or their options-lambda overload
+    /// (e.g. <c>o =&gt; o.Depth(1, 3)</c>), instead.
+    /// </remarks>
+    [Obsolete("Use the Traverse/TraversePaths depth overloads or an options lambda (e.g. o => o.Depth(min, max)) instead. This method will be removed in a future release.")]
     public static IGraphQueryable<TSource> WithDepth<TSource>(
         this IGraphQueryable<TSource> source,
         int maxDepth)
@@ -393,6 +404,10 @@ public static class GraphQueryableExtensions
     /// <summary>
     /// Specifies the traversal depth range for graph operations.
     /// </summary>
+    /// <remarks>
+    /// Obsolete: see <see cref="WithDepth{TSource}(IGraphQueryable{TSource}, int)"/>.
+    /// </remarks>
+    [Obsolete("Use the Traverse/TraversePaths depth overloads or an options lambda (e.g. o => o.Depth(min, max)) instead. This method will be removed in a future release.")]
     public static IGraphQueryable<TSource> WithDepth<TSource>(
         this IGraphQueryable<TSource> source,
         int minDepth,
@@ -430,6 +445,12 @@ public static class GraphQueryableExtensions
     /// <summary>
     /// Specifies the direction of traversal for graph operations.
     /// </summary>
+    /// <remarks>
+    /// Obsolete: this is a free-floating postfix modifier whose meaning ("mutate the preceding
+    /// traversal") is not enforced by the type system. Use the direction overload on
+    /// <c>Traverse</c>, or the options-lambda overload (e.g. <c>o =&gt; o.Direction(...)</c>), instead.
+    /// </remarks>
+    [Obsolete("Use the Traverse direction overload or an options lambda (e.g. o => o.Direction(direction)) instead. This method will be removed in a future release.")]
     public static IGraphQueryable<TSource> Direction<TSource>(
         this IGraphQueryable<TSource> source,
         GraphTraversalDirection direction)
@@ -451,360 +472,6 @@ public static class GraphQueryableExtensions
 
         return source.Provider.CreateQuery<TSource>(expression);
     }
-
-    #region Aggregation Methods
-
-    /// <summary>
-    /// Asynchronously computes the sum of the values obtained by invoking a transform function on each element.
-    /// </summary>
-    /// <typeparam name="TSource">The type of the elements in the source sequence.</typeparam>
-    /// <typeparam name="TResult">The type of the values to sum.</typeparam>
-    /// <param name="source">The graph queryable to compute the sum over.</param>
-    /// <param name="selector">A transform function to apply to each element.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the sum of the projected values.</returns>
-    public static Task<TResult> SumAsync<TSource, TResult>(
-        this IGraphQueryable<TSource> source,
-        Expression<Func<TSource, TResult>> selector,
-        CancellationToken cancellationToken = default)
-        where TResult : struct, IComparable<TResult>
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(SumAsync),
-            2, // TSource, TResult
-            3  // source, selector, cancellationToken
-        ).MakeGenericMethod(typeof(TSource), typeof(TResult));
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            selector,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<TResult>(expression, cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of the values obtained by invoking a transform function on each element.
-    /// </summary>
-    /// <typeparam name="TSource">The type of the elements in the source sequence.</typeparam>
-    /// <typeparam name="TResult">The type of the values to average.</typeparam>
-    /// <param name="source">The graph queryable to compute the average over.</param>
-    /// <param name="selector">A transform function to apply to each element.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the average of the projected values.</returns>
-    public static Task<double> AverageAsync<TSource, TResult>(
-        this IGraphQueryable<TSource> source,
-        Expression<Func<TSource, TResult>> selector,
-        CancellationToken cancellationToken = default)
-        where TResult : struct, IComparable<TResult>
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(AverageAsync),
-            2, // TSource, TResult
-            3  // source, selector, cancellationToken
-        ).MakeGenericMethod(typeof(TSource), typeof(TResult));
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            selector,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<double>(expression, cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of int values.
-    /// </summary>
-    /// <param name="source">A sequence of int values to calculate the sum of.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the sum of the values in the sequence.</returns>
-    public static Task<int> SumAsync(
-        this IGraphQueryable<int> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(SumAsync),
-            0, // no generic types
-            2  // source, cancellationToken
-        );
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<int>(expression, cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of int values.
-    /// </summary>
-    /// <param name="source">A sequence of int values to calculate the average of.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the average of the values in the sequence.</returns>
-    public static Task<double> AverageAsync(
-        this IGraphQueryable<int> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(AverageAsync),
-            0, // no generic types
-            2  // source, cancellationToken
-        );
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<double>(expression, cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of long values.
-    /// </summary>
-    /// <param name="source">A sequence of long values to calculate the sum of.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the sum of the values in the sequence.</returns>
-    public static Task<long> SumAsync(
-        this IGraphQueryable<long> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(SumAsync),
-            0, // no generic types
-            2  // source, cancellationToken
-        );
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<long>(expression, cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of long values.
-    /// </summary>
-    /// <param name="source">A sequence of long values to calculate the average of.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the average of the values in the sequence.</returns>
-    public static Task<double> AverageAsync(
-        this IGraphQueryable<long> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(AverageAsync),
-            0, // no generic types
-            2  // source, cancellationToken
-        );
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<double>(expression, cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of decimal values.
-    /// </summary>
-    /// <param name="source">A sequence of decimal values to calculate the sum of.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the sum of the values in the sequence.</returns>
-    public static Task<decimal> SumAsync(
-        this IGraphQueryable<decimal> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(SumAsync),
-            0, // no generic types
-            2  // source, cancellationToken
-        );
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<decimal>(expression, cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of decimal values.
-    /// </summary>
-    /// <param name="source">A sequence of decimal values to calculate the average of.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the average of the values in the sequence.</returns>
-    public static Task<decimal> AverageAsync(
-        this IGraphQueryable<decimal> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(AverageAsync),
-            0, // no generic types
-            2  // source, cancellationToken
-        );
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<decimal>(expression, cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of double values.
-    /// </summary>
-    /// <param name="source">A sequence of double values to calculate the sum of.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the sum of the values in the sequence.</returns>
-    public static Task<double> SumAsync(
-        this IGraphQueryable<double> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(SumAsync),
-            0, // no generic types
-            2  // source, cancellationToken
-        );
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<double>(expression, cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of double values.
-    /// </summary>
-    /// <param name="source">A sequence of double values to calculate the average of.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the average of the values in the sequence.</returns>
-    public static Task<double> AverageAsync(
-        this IGraphQueryable<double> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(AverageAsync),
-            0, // no generic types
-            2  // source, cancellationToken
-        );
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<double>(expression, cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of float values.
-    /// </summary>
-    /// <param name="source">A sequence of float values to calculate the sum of.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the sum of the values in the sequence.</returns>
-    public static Task<float> SumAsync(
-        this IGraphQueryable<float> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(SumAsync),
-            0, // no generic types
-            2  // source, cancellationToken
-        );
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<float>(expression, cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of float values.
-    /// </summary>
-    /// <param name="source">A sequence of float values to calculate the average of.</param>
-    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the average of the values in the sequence.</returns>
-    public static Task<float> AverageAsync(
-        this IGraphQueryable<float> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        var methodInfo = GetGenericExtensionMethod(
-            typeof(GraphQueryableExtensions),
-            nameof(AverageAsync),
-            0, // no generic types
-            2  // source, cancellationToken
-        );
-
-        var expression = Expression.Call(
-            null,
-            methodInfo,
-            source.Expression,
-            Expression.Constant(cancellationToken));
-
-        return source.Provider.ExecuteAsync<float>(expression, cancellationToken);
-    }
-
-    #endregion
 
     /// <summary>
     /// Performs a full text search on the queryable results.

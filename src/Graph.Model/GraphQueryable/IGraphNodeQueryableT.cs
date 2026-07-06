@@ -16,12 +16,17 @@ namespace Cvoya.Graph.Model;
 
 /// <summary>
 /// Represents a queryable graph data source that supports LINQ operations over nodes.
-/// This interface extends IGraphQueryable&lt;T&gt; with additional functionality specific to graph nodes.
-/// It allows for traversing relationships and querying nodes in a graph context.
-/// This interface is designed to be used with graph databases and provides methods for traversing relationships
 /// </summary>
+/// <remarks>
+/// Obsolete: use <see cref="IGraphQueryable{T}"/> directly (with <c>T : INode</c>). Traversal and
+/// other node-only operators are now gated by generic constraints on the operator itself, so this
+/// receiver interface is no longer needed. Kept for one release to ease migration.
+/// </remarks>
 /// <typeparam name="TNode">An <see cref="INode"/>-derived type.</typeparam>
+[Obsolete("Use IGraphQueryable<T> instead; node-only operators are gated by generic constraints. This alias will be removed in a future release.")]
+#pragma warning disable CS0618 // Type or member is obsolete
 public interface IGraphNodeQueryable<out TNode> : IGraphQueryable<TNode>, IGraphNodeQueryable
-    where TNode : INode
+#pragma warning restore CS0618
+    where TNode : class, INode
 {
 }

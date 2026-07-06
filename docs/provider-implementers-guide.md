@@ -2,7 +2,7 @@
 
 This guide documents the current provider contract. It describes what a provider must implement today and the storage/query conventions that must remain compatible across providers.
 
-Future provider work is tracked separately: the shared `GraphQueryModel` layer is #84, dialect capabilities are #85, MethodInfo-based terminal dispatch is #94, and reusable provider certification is #95.
+Future provider work is tracked separately: the shared `GraphQueryModel` layer is #84, dialect capabilities are #85, and reusable provider certification is #95.
 
 ## Public SPI
 
@@ -10,10 +10,10 @@ A provider exposes a store type that owns database connectivity and returns an `
 
 The public interfaces to implement are:
 
-- `IGraph` in `src/Graph.Model/IGraph.cs`: CRUD, query roots, full-text search, schema/index provisioning, transactions, and disposal.
+- `IGraph` in `src/Graph.Model/IGraph.cs`: CRUD, synchronous query roots, full-text search, schema/index provisioning, transactions, and disposal.
 - `IGraphTransaction` in `src/Graph.Model/IGraphTransaction.cs`: `CommitAsync()`, `Rollback()`, and `IAsyncDisposable`.
 - `IGraphQueryProvider` in `src/Graph.Model/GraphQueryable/IGraphQueryProvider.cs`: expression execution, query creation, and async terminal execution.
-- `IGraphQueryable<T>`, `IGraphNodeQueryable<TNode>`, and `IGraphRelationshipQueryable<TRel>` in `src/Graph.Model/GraphQueryable/`: LINQ roots returned by `IGraph`.
+- `IGraphQueryable<T>` in `src/Graph.Model/GraphQueryable/`: the single LINQ root returned by `IGraph.Nodes<N>`/`Relationships<R>`/`DynamicNodes`/`DynamicRelationships`/search methods. Node-only and relationship-only operators (e.g. traversal) are gated by generic constraints on the operator itself (`where T : INode`), not by a separate receiver interface — `IGraphNodeQueryable<T>`/`IGraphRelationshipQueryable<T>` are `[Obsolete]` aliases kept for one release.
 
 `IGraph` methods accept an optional `IGraphTransaction`. A null transaction means the provider creates a per-operation or per-query execution transaction and owns its lifecycle. A non-null transaction means the caller owns commit/rollback/disposal, and the provider must reject foreign transaction implementations with a clear graph exception.
 
@@ -36,9 +36,9 @@ Runtime metadata properties are provider-populated. `INode.Labels` and `IRelatio
 
 ## Marker-Method Protocol
 
-Async terminal LINQ operators are represented in expression trees by internal marker methods in `src/Graph.Model/GraphQueryable/QueryableAsyncExtensionsMarkers.cs`. `QueryableAsyncExtensions` builds `MethodCallExpression` nodes for these marker methods, then calls `IGraphQueryProvider.ExecuteAsync`.
+Async terminal LINQ operators are represented in expression trees by internal marker methods in `src/Graph.Model/GraphQueryable/QueryTerminals.cs`. `QueryableAsyncExtensions` builds `MethodCallExpression` nodes for these marker methods, then calls `IGraphQueryProvider.ExecuteAsync`. `QueryTerminals` is `internal`, not public API — a provider needs `InternalsVisibleTo` from `Cvoya.Graph.Model` (already granted to `Cvoya.Graph.Model.Neo4j`) to reference its members directly.
 
-Current providers must recognize marker methods by string `MethodInfo.Name`. The Neo4j provider dispatches names in `CypherQueryVisitor.HandleLinqMethod`. This is intentionally documented as current behavior, not a stable design: #94 replaces the string-name switch with MethodInfo-table dispatch.
+Providers recognize marker methods (and the rest of the LINQ surface) by `MethodInfo` identity — comparing a call's generic method definition (or the method itself, for non-generic methods) against a table built once via reflection — not by matching `MethodInfo.Name` as a string. The Neo4j provider's table lives in `CypherQueryVisitor`'s `LinqOperatorDispatch` helper; a new provider should build an equivalent table rather than switching on method names, since name-based dispatch cannot distinguish overloads and can silently mis-dispatch if an unrelated method happens to share a name.
 
 Marker overload families to support:
 
@@ -47,13 +47,19 @@ Marker overload families to support:
 - Quantifiers/counts: `AnyAsyncMarker`, `AllAsyncMarker`, `ContainsAsyncMarker`, `CountAsyncMarker`, `LongCountAsyncMarker`.
 - Aggregates: `SumAsyncMarker`, `AverageAsyncMarker`, `MinAsyncMarker`, `MaxAsyncMarker`.
 
-The current Neo4j visitor dispatch list is:
+The current Neo4j visitor dispatch table covers:
 
-- Standard LINQ: `Where`, `Select`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Take`, `Skip`, `Distinct`, `SelectMany`, `GroupBy`, `Join`, `Union`.
+- Standard LINQ (both `System.Linq.Queryable`'s methods, reached when a chain degrades to plain `IQueryable<T>`, and `GraphQueryableExtensions`'s own graph-typed-chain-preserving equivalents): `Where`, `Select`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Take`, `Skip`, `Distinct`, `SelectMany`, `GroupBy`, `Join`, `Union`.
 - Async marker terminals: `ToListAsyncMarker`, `ToArrayAsyncMarker`, `FirstAsyncMarker`, `FirstOrDefaultAsyncMarker`, `SingleAsyncMarker`, `SingleOrDefaultAsyncMarker`, `LastAsyncMarker`, `LastOrDefaultAsyncMarker`, `AnyAsyncMarker`, `AllAsyncMarker`, `CountAsyncMarker`, `LongCountAsyncMarker`, `SumAsyncMarker`, `AverageAsyncMarker`, `MinAsyncMarker`, `MaxAsyncMarker`, `ContainsAsyncMarker`, `ElementAtAsyncMarker`, `ElementAtOrDefaultAsyncMarker`.
-- Temporary direct async names accepted by Neo4j: `SumAsync`, `AverageAsync`.
-- Graph extensions: `PathSegments`, `ReverseTraverse`, `Direction`, `WithDepth`, `Search`.
+- Direct async names accepted by Neo4j (built by `QueryableAsyncExtensions.SumAsync`/`AverageAsync` alongside the marker path): `SumAsync`, `AverageAsync`.
+- Graph extensions: `PathSegments`, `TraversePaths`, `Direction`, `WithDepth` (the last two are `[Obsolete]` free-floating modifiers, still dispatched for backward compatibility — new code should use the depth/direction overloads on `Traverse`/`TraversePaths` or an options lambda), `Search`.
 - Synchronous fallbacks currently accepted for a subset: `First`, `FirstOrDefault`.
+
+Note: `ReverseTraverse` is intentionally *not* in the dispatch table. It is a client-side extension method that eagerly composes `PathSegments().Direction(Incoming).Select(ps => ps.EndNode)` and calls `source.Provider.CreateQuery<T>` immediately rather than deferring, so the literal method call never reaches the visitor as a `MethodCallExpression` node — registering a handler for it would be dead code (this was a finding from the #80 characterization work).
+
+**Two-arg traversal surface (issue #94, "Option C").** `Traverse<TRel, TEnd>`, `TraverseRelationships<TRel, TEnd>`, and `TraversePaths<TRel, TEnd>` are declared `this IGraphQueryable<INode> source` — the start node type is not one of the method's own generic arguments (`IGraphQueryable<T>` is covariant, so any `IGraphQueryable<TStart>` where `TStart : INode` converts to `IGraphQueryable<INode>` at the call site). A provider must therefore recover the start type from the **source expression's static element type** (`TypeHelpers.GetElementType(node.Arguments[0].Type)` in the Neo4j visitor), not from the call's generic arguments — by the time a `TraversePaths` `MethodCallExpression` is visited, its own generic arguments are only `(TRel, TEnd)`. `PathSegments<TStart, TRel, TEnd>` is unaffected: it keeps all three type arguments (its result type names the start type), so its dispatch handler still reads `TStart` directly off the call's generic arguments. The three-arg forms of `Traverse`/`TraverseRelationships`/`TraversePaths`/`ReverseTraverse` are `[Obsolete]` shims that delegate to the two-arg implementation client-side before any expression reaches the provider — a provider only ever needs to translate the two-arg shape (or, for `PathSegments`-derived compositions like `Traverse`, the `PathSegments` call the two-arg operator builds internally).
+
+**Operators chained after `TraversePaths` — reject, don't mistranslate.** `TraversePaths` produces a per-hop RETURN shape (one row per hop of a captured variable-length path), not one row per `IGraphPath` — so almost no downstream LINQ operator has a well-defined row/alias to translate against. The Neo4j visitor enforces this with a single choke point (`CypherQueryVisitor.ThrowIfUnsupportedAfterTraversePaths`, called from `HandleLinqMethod` immediately after the source is visited, before dispatching to any handler): every operator is rejected with a `NotSupportedException` naming the operator, **except** a small whitelist that's actually safe (`ToListOrArray`/materializing terminals, and `Direction`/`WithDepth` when they're the wrapper the `TraversePaths(configure)` options-lambda overload itself builds). A new provider should implement the equivalent whitelist-at-a-single-choke-point shape rather than adding a per-handler check to every operator — the latter is easy to miss for a newly-added operator and reintroduces exactly the silent-mistranslation risk this guard exists to prevent.
 
 Not every marker family is fully dispatched by Neo4j today. A new provider should match current behavior for compatibility and clearly fail unsupported methods with `GraphException` rather than falling back to client-side execution unexpectedly.
 
@@ -109,7 +115,7 @@ Transaction behavior:
 - Caller transaction: execute inside the supplied provider transaction and do not commit or roll it back automatically.
 - `CommitAsync()` completes the transaction; `Rollback()` aborts it; disposal should clean up uncommitted transactions.
 
-Full-text search is part of `IGraph`: `SearchAsync`, `SearchNodesAsync`, `SearchRelationshipsAsync`, and typed overloads. Providers should respect `[Property(IncludeInFullTextSearch = false)]`, support dynamic entities, and initialize required full-text indexes.
+Full-text search is part of `IGraph`: `Search`, `SearchNodes`, `SearchRelationships`, and typed overloads — thin synchronous conveniences over the `.Search()` LINQ operator (building a queryable performs no I/O). Providers should respect `[Property(IncludeInFullTextSearch = false)]`, support dynamic entities, and initialize required full-text indexes.
 
 Exception behavior is not fully cleaned up yet; #76 owns the final API contract. Until then, wrap provider/backend failures in `GraphException`, use `KeyNotFoundException` or `GraphException` consistently for missing entities based on the existing tests, and preserve argument exceptions for invalid caller input where the public API already does so.
 

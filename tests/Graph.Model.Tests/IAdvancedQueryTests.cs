@@ -26,8 +26,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var smiths = await (await this.Graph
-            .NodesAsync<Person>())
+        var smiths = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith" && p.FirstName.StartsWith('A'))
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(smiths);
@@ -41,8 +40,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Beta" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Gamma" }, null, TestContext.Current.CancellationToken);
 
-        var ordered = await (await this.Graph
-            .NodesAsync<Person>())
+        var ordered = await this.Graph.Nodes<Person>()
             .OrderBy(p => p.FirstName).Take(2)
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, ordered.Count);
@@ -55,8 +53,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Alice", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
-        var names = await (await this.Graph
-            .NodesAsync<Person>())
+        var names = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .Select(p => p.FirstName)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -69,8 +66,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Alice", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
-        var count = await (await this.Graph
-            .NodesAsync<Person>())
+        var count = await this.Graph.Nodes<Person>()
             .CountAsync(TestContext.Current.CancellationToken);
         Assert.True(count >= 2);
     }
@@ -80,7 +76,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Alice", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
-        var projected = await (await this.Graph.NodesAsync<Person>())
+        var projected = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .Select(p => new { Name = p.FirstName })
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -94,7 +90,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Alice", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
-        var projected = await (await this.Graph.NodesAsync<Person>())
+        var projected = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .Select(p => new { Name = p.FirstName + " " + p.LastName })
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -117,7 +113,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Act - test all supported functions in a single projection
-        var projected = await (await this.Graph.NodesAsync<Person>())
+        var projected = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "John")
             .Select(p => new
             {
@@ -194,11 +190,9 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(knows2, null, TestContext.Current.CancellationToken);
 
         // Fetch all people and relationships
-        var people = await (await this.Graph
-            .NodesAsync<Person>())
+        var people = await this.Graph.Nodes<Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
-        var relationships = await (await this.Graph
-            .RelationshipsAsync<Knows>())
+        var relationships = await this.Graph.Relationships<Knows>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Find all people Bob knows (outgoing)
@@ -229,8 +223,8 @@ public interface IAdvancedQueryTests : IGraphModelTest
         var knows = new Knows(alice, bob) { Since = DateTime.UtcNow };
         await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
 
-        var people = await (await this.Graph.NodesAsync<Person>()).ToListAsync(TestContext.Current.CancellationToken);
-        var rels = await (await this.Graph.RelationshipsAsync<Knows>()).ToListAsync(TestContext.Current.CancellationToken);
+        var people = await this.Graph.Nodes<Person>().ToListAsync(TestContext.Current.CancellationToken);
+        var rels = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
 
         // Join: Find all (person, friend) pairs
         var pairs = (from p in people
@@ -247,7 +241,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Alice", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
-        var projected = await (await this.Graph.NodesAsync<Person>())
+        var projected = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .Select(p => new
             {
@@ -268,7 +262,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Alice", LastName = "Smith", Age = 30 }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith", Age = 40 }, null, TestContext.Current.CancellationToken);
-        var projected = await (await this.Graph.NodesAsync<Person>())
+        var projected = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .Select(p => new
             {
@@ -289,7 +283,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Alice", LastName = "Smith", Age = 30 }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith", Age = 40 }, null, TestContext.Current.CancellationToken);
-        var projected = await (await this.Graph.NodesAsync<Person>())
+        var projected = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .Select(p => new
             {
@@ -314,14 +308,13 @@ public interface IAdvancedQueryTests : IGraphModelTest
         var knows = new Knows(alice, bob) { Since = DateTime.UtcNow };
         await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
 
-        var rels = await (await this.Graph
-            .RelationshipsAsync<Knows>(null))
+        var rels = await this.Graph.Relationships<Knows>(null)
             .Where(r => r.StartNodeId == alice.Id)
             .Select(r => r.Since).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(rels);
         Assert.True(rels[0] > DateTime.MinValue);
 
-        rels = await (await this.Graph.RelationshipsAsync<Knows>())
+        rels = await this.Graph.Relationships<Knows>()
             .Where(r => alice.Id == r.StartNodeId)
             .Select(r => r.Since).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(rels);
@@ -342,10 +335,10 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(r1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateRelationshipAsync(r2, null, TestContext.Current.CancellationToken);
 
-        var rels = await (await this.Graph.RelationshipsAsync<Knows>()).ToListAsync(TestContext.Current.CancellationToken);
+        var rels = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, rels.Count);
 
-        var ordered = await (await this.Graph.RelationshipsAsync<Knows>()).OrderBy(r => r.Since).ToListAsync(TestContext.Current.CancellationToken);
+        var ordered = await this.Graph.Relationships<Knows>().OrderBy(r => r.Since).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, ordered.Count);
         Assert.True(ordered[0].Since < ordered[1].Since);
     }
@@ -356,7 +349,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Brown" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
-        var ordered = await (await this.Graph.NodesAsync<Person>()).OrderBy(p => p.FirstName).ThenBy(p => p.LastName).ToListAsync(TestContext.Current.CancellationToken);
+        var ordered = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).ThenBy(p => p.LastName).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(3, ordered.Count);
         Assert.Equal("Ann", ordered[0].FirstName);
         Assert.Equal("Brown", ordered[0].LastName);
@@ -372,7 +365,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Brown" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
-        var names = await (await this.Graph.NodesAsync<Person>()).OrderBy(p => p.FirstName).Select(p => p.FirstName).Distinct().Skip(1).ToListAsync(TestContext.Current.CancellationToken);
+        var names = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Select(p => p.FirstName).Distinct().Skip(1).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(names);
         Assert.Equal("Bob", names[0]);
     }
@@ -382,11 +375,11 @@ public interface IAdvancedQueryTests : IGraphModelTest
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
-        var anyAnn = await (await this.Graph.NodesAsync<Person>()).AnyAsync(TestContext.Current.CancellationToken);
-        var allSmith = await (await this.Graph.NodesAsync<Person>()).AllAsync(p => p.LastName == "Smith", TestContext.Current.CancellationToken);
-        var first = await (await this.Graph.NodesAsync<Person>()).OrderBy(p => p.FirstName).FirstAsync(TestContext.Current.CancellationToken);
-        var single = await (await this.Graph.NodesAsync<Person>()).Where(p => p.FirstName == "Ann").SingleAsync(TestContext.Current.CancellationToken);
-        var last = await (await this.Graph.NodesAsync<Person>()).OrderBy(p => p.FirstName).LastAsync(TestContext.Current.CancellationToken);
+        var anyAnn = await this.Graph.Nodes<Person>().AnyAsync(TestContext.Current.CancellationToken);
+        var allSmith = await this.Graph.Nodes<Person>().AllAsync(p => p.LastName == "Smith", TestContext.Current.CancellationToken);
+        var first = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).FirstAsync(TestContext.Current.CancellationToken);
+        var single = await this.Graph.Nodes<Person>().Where(p => p.FirstName == "Ann").SingleAsync(TestContext.Current.CancellationToken);
+        var last = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).LastAsync(TestContext.Current.CancellationToken);
         Assert.True(anyAnn);
         Assert.True(allSmith);
         Assert.Equal("Ann", first.FirstName);
@@ -398,7 +391,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
     public async Task CanQueryWithStringAndMathFunctionsAdvanced()
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Eve", LastName = "Smith", Age = 25 }, null, TestContext.Current.CancellationToken);
-        var projected = await (await this.Graph.NodesAsync<Person>())
+        var projected = await this.Graph.Nodes<Person>()
             .Select(p => new
             {
                 Len = p.FirstName.Length,
@@ -422,7 +415,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Brown" }, null, TestContext.Current.CancellationToken);
 
         var ex = await Assert.ThrowsAsync<NotSupportedException>(async () =>
-            await (await this.Graph.NodesAsync<Person>())
+            await this.Graph.Nodes<Person>()
                 .GroupBy(p => p.FirstName)
                 .Select(g => new { Name = g.Key, Count = g.Count() })
                 .ToListAsync(TestContext.Current.CancellationToken));
@@ -438,7 +431,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Smith", Bio = "abc" }, null, TestContext.Current.CancellationToken);
 
         var ex = await Assert.ThrowsAsync<NotSupportedException>(async () =>
-            await (await this.Graph.NodesAsync<Person>())
+            await this.Graph.Nodes<Person>()
                 .SelectMany(p => p.Bio)
                 .ToListAsync(TestContext.Current.CancellationToken));
 
@@ -457,7 +450,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         var referenceTime = DateTime.UtcNow;
 
         // Act
-        var projected = await (await this.Graph.NodesAsync<Person>())
+        var projected = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Eve")
             .Select(p => new
             {
@@ -511,7 +504,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Eve", LastName = "Smith", Age = 25 }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Alice", LastName = "Johnson", Age = 30 }, null, TestContext.Current.CancellationToken);
 
-        var projected = await (await this.Graph.NodesAsync<Person>())
+        var projected = await this.Graph.Nodes<Person>()
             .Select(p => new
             {
                 Name = p.FirstName,
@@ -562,7 +555,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(knows2, null, TestContext.Current.CancellationToken);
 
         // Act: Get all friends with their details
-        var friendsPattern = await (await this.Graph.NodesAsync<Person>())
+        var friendsPattern = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .GroupBy(p => p.StartNode)
@@ -603,7 +596,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie) { Since = DateTime.UtcNow.AddDays(-15) }, null, TestContext.Current.CancellationToken);
 
         // Act: Get only young friends (under 30)
-        var youngFriendsPattern = await (await this.Graph.NodesAsync<Person>())
+        var youngFriendsPattern = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .Where(path => path.EndNode.Age < 30)
@@ -640,7 +633,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie) { Since = DateTime.UtcNow.AddDays(-15) }, null, TestContext.Current.CancellationToken);
 
         // Act: Aggregate friend data
-        var friendAggregation = await (await this.Graph.NodesAsync<Person>())
+        var friendAggregation = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .GroupBy(ks => ks.StartNode)
@@ -680,7 +673,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie) { Since = DateTime.UtcNow.AddDays(-20) }, null, TestContext.Current.CancellationToken);
 
         // Act: Get recent friendships (within last 12 days)
-        var recentFriendships = await (await this.Graph.NodesAsync<Person>())
+        var recentFriendships = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .GroupBy(ks => ks.StartNode)
@@ -717,7 +710,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
 
         // Act: Get friends ordered by age
-        var orderedFriendsPattern = await (await this.Graph.NodesAsync<Person>())
+        var orderedFriendsPattern = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .GroupBy(ks => ks.StartNode)
@@ -766,7 +759,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(new Knows(alice, diana), null, TestContext.Current.CancellationToken);
 
         // Act: Group friends by age category
-        var ageGroupedPattern = await (await this.Graph.NodesAsync<Person>())
+        var ageGroupedPattern = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
             .GroupBy(ks => ks.StartNode)
@@ -816,7 +809,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
         // Simple text contains search
-        var engineerResults = await (await this.Graph.NodesAsync<Person>())
+        var engineerResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.Contains("engineer"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -840,7 +833,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
         // Case-insensitive search
-        var aiResults = await (await this.Graph.NodesAsync<Person>())
+        var aiResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLower().Contains("artificial intelligence"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -863,7 +856,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
         // Multiple word search with AND logic
-        var techResults = await (await this.Graph.NodesAsync<Person>())
+        var techResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLower().Contains("data") && p.Bio.ToLower().Contains("scientist"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -886,7 +879,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
         // StartsWith for prefix/suffix matching
-        var startsWithResults = await (await this.Graph.NodesAsync<Person>())
+        var startsWithResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.StartsWith("Software"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -909,7 +902,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
         // EndsWith for prefix/suffix matching
-        var endsWithResults = await (await this.Graph.NodesAsync<Person>())
+        var endsWithResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.EndsWith("automation"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -932,7 +925,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
         // Combine text search with other filters
-        var filteredResults = await (await this.Graph.NodesAsync<Person>())
+        var filteredResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.Contains("engineer") && p.FirstName.StartsWith("A"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -955,7 +948,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
         // Project results with text matching
-        var projectedResults = await (await this.Graph.NodesAsync<Person>())
+        var projectedResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLower().Contains("data") || p.Bio.ToLower().Contains("user"))
             .Select(p => new
             {
@@ -1003,7 +996,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         // Act & Assert: Test navigation at different levels
 
         // Test 1: Simple relationship query - who does Alice know?
-        var aliceKnows = await (await this.Graph.RelationshipsAsync<Knows>())
+        var aliceKnows = await this.Graph.Relationships<Knows>()
             .Where(k => k.StartNodeId == alice.Id)
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -1011,8 +1004,8 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Equal(bob.Id, aliceKnows[0].EndNodeId);
 
         // Test 2: Get all people and relationships
-        var allPeople = await this.Graph.NodesAsync<Person>();
-        var allKnows = await this.Graph.RelationshipsAsync<Knows>();
+        var allPeople = this.Graph.Nodes<Person>();
+        var allKnows = this.Graph.Relationships<Knows>();
 
         // Find Bob's friends
         var bobsFriends = await allKnows
@@ -1089,7 +1082,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
 
         // Test projection with navigation properties
         // First, verify the data exists
-        var aliceNode = await (await this.Graph.NodesAsync<Person>())
+        var aliceNode = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
 
@@ -1098,7 +1091,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
 
         // Add diagnostic queries to verify the data
         // First, check if relationships exist at all
-        var allKnowsRelationships = await (await this.Graph.RelationshipsAsync<Knows>()).ToListAsync(TestContext.Current.CancellationToken);
+        var allKnowsRelationships = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, allKnowsRelationships.Count); // This should pass if relationships are created
 
         foreach (var relationship in allKnowsRelationships)
@@ -1108,13 +1101,13 @@ public interface IAdvancedQueryTests : IGraphModelTest
         }
 
         // Check if we can find relationships by source ID
-        var aliceRelationships = await (await this.Graph.RelationshipsAsync<Knows>())
+        var aliceRelationships = await this.Graph.Relationships<Knows>()
             .Where(k => k.StartNodeId == alice.Id)
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, aliceRelationships.Count); // This should also pass
 
         // Now try simple projection without TraversalDepth
-        var simpleProjection = await (await this.Graph.NodesAsync<Person>())
+        var simpleProjection = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .Select(p => new
             {
@@ -1126,16 +1119,16 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.NotNull(simpleProjection.Name);
         Assert.Equal("Alice", simpleProjection.Name);
 
-        var people = await (await this.Graph.NodesAsync<Person>())
-            .Traverse<Person, Knows, Person>()
+        var people = await this.Graph.Nodes<Person>()
+            .Traverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(people); // Ensure we have people
         Assert.Equal(2, people.Count); // Alice, Bob, Charlie
 
         // Get the paths using TraversePath
-        var paths = await (await this.Graph.NodesAsync<Person>())
-            .Traverse<Person, Knows, Person>()
+        var paths = await this.Graph.Nodes<Person>()
+            .Traverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(paths); // Ensure we have paths
@@ -1145,17 +1138,17 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Contains(paths, p => p.FirstName == "Charlie");
 
         // Now get the paths with TraversePath and a Where clause
-        var filteredPaths = await (await this.Graph.NodesAsync<Person>())
+        var filteredPaths = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, filteredPaths.Count);
 
         // Group the paths in memory instead of in the query
-        var projectedAlice = await (await this.Graph.NodesAsync<Person>())
+        var projectedAlice = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Person, Knows, Person>()
+            .Traverse<Knows, Person>()
             .GroupBy(path => path)
             .Select(group => new
             {
@@ -1188,8 +1181,8 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
 
         // Execute separate queries and combine in memory
-        var people = await (await this.Graph.NodesAsync<Person>()).ToDictionaryAsync(p => p.Id, TestContext.Current.CancellationToken);
-        var relationships = await (await this.Graph.RelationshipsAsync<Knows>()).ToListAsync(TestContext.Current.CancellationToken);
+        var people = await this.Graph.Nodes<Person>().ToDictionaryAsync(p => p.Id, TestContext.Current.CancellationToken);
+        var relationships = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
 
         // Build a connection map
         var connectionMap = relationships
@@ -1228,10 +1221,10 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
 
         // Get all relationships once
-        var allRelationships = await (await this.Graph.RelationshipsAsync<Knows>()).ToListAsync(TestContext.Current.CancellationToken);
+        var allRelationships = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
 
         // Project connection counts
-        var connectionStats = await (await this.Graph.NodesAsync<Person>())
+        var connectionStats = await this.Graph.Nodes<Person>()
             .Select(p => new
             {
                 Name = p.FirstName,
@@ -1279,7 +1272,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
 
         // Get Alice's relationships
-        var connectionStats = await (await this.Graph.NodesAsync<Person>())
+        var connectionStats = await this.Graph.Nodes<Person>()
             .PathSegments<Person, IRelationship, Person>()
             .Select(ps => new
             {
@@ -1319,7 +1312,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
 
         // Get Alice's relationships
-        var connectionStats = await (await this.Graph.NodesAsync<Person>())
+        var connectionStats = await this.Graph.Nodes<Person>()
             .PathSegments<Person, IRelationship, Person>()
             .Select(ps => new
             {
@@ -1360,7 +1353,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
 
         // Get Alice's relationships
-        var connectionStats = await (await this.Graph.NodesAsync<Person>())
+        var connectionStats = await this.Graph.Nodes<Person>()
             .PathSegments<Person, IRelationship, Person>()
             .Select(ps => new
             {

@@ -37,7 +37,7 @@ internal static class FullTextSearchQueryableFactory
         GraphTransaction? transaction,
         GraphContext context,
         string searchQuery)
-        where T : INode
+        where T : class, INode
     {
         var searchExpression = new FullTextSearchExpression(searchQuery, typeof(T));
         return new GraphNodeQueryable<T>(provider, context, transaction, searchExpression);
@@ -48,7 +48,7 @@ internal static class FullTextSearchQueryableFactory
         GraphTransaction? transaction,
         GraphContext context,
         string searchQuery)
-        where T : IRelationship
+        where T : class, IRelationship
     {
         var searchExpression = new FullTextSearchExpression(searchQuery, typeof(T));
         return new GraphRelationshipQueryable<T>(provider, context, transaction, searchExpression);

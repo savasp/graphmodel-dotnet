@@ -99,11 +99,11 @@ await graph.DeleteRelationshipAsync(id, transaction: transaction);
 
 ```csharp
 // Queries also support transactions
-var results = (await graph.NodesAsync<Person>(transaction: transaction))
+var results = graph.Nodes<Person>(transaction: transaction)
     .Where(p => p.Department == "Engineering")
     .ToListAsync();
 
-var relationships = (await graph.RelationshipsAsync<Knows>(transaction: transaction))
+var relationships = graph.Relationships<Knows>(transaction: transaction)
     .Where(k => k.Since > DateTime.UtcNow.AddDays(-7))
     .ToListAsync();
 ```
@@ -121,7 +121,7 @@ await graph.CreateNodeAsync(alice, transaction: tx1);
 // Transaction 2 (concurrent)
 await using var tx2 = await graph.GetTransactionAsync();
 // This won't see Alice until tx1 commits
-var count = await (await graph.NodesAsync<Person>(transaction: tx2)).CountAsync();
+var count = await graph.Nodes<Person>(transaction: tx2).CountAsync();
 
 await tx1.CommitAsync();
 // Now tx2 can see Alice
@@ -190,7 +190,7 @@ try
         // Create relationships if needed
         if (personData.ManagerEmail != null)
         {
-            var manager = await (await graph.NodesAsync<Person>(transaction: transaction))
+            var manager = await graph.Nodes<Person>(transaction: transaction)
                 .FirstOrDefaultAsync(p => p.Email == personData.ManagerEmail);
 
             if (manager != null)
@@ -225,7 +225,7 @@ try
     await graph.CreateNodeAsync(employee, transaction: transaction);
 
     // Validate business rules
-    var employeeCount = await (await graph.NodesAsync<Employee>(transaction: transaction))
+    var employeeCount = await graph.Nodes<Employee>(transaction: transaction)
         .CountAsync(e => e.DepartmentId == department.Id);
 
     if (employeeCount > department.MaxEmployees)
@@ -334,7 +334,7 @@ await using var transaction = await graph.GetTransactionAsync();
 
 // Read with the transaction to ensure consistency
 var person = await graph.GetNodeAsync<Person>(id, transaction: transaction);
-var currentFriends = await (await graph.RelationshipsAsync<Knows>(transaction: transaction))
+var currentFriends = await graph.Relationships<Knows>(transaction: transaction)
     .CountAsync(k => k.StartNodeId == person.Id);
 
 if (currentFriends < 100)
@@ -390,7 +390,7 @@ For read-only operations or when atomicity isn't required, you can omit the tran
 ```csharp
 // Simple reads don't require transactions
 var person = await graph.GetNodeAsync<Person>(id);
-var friends = await (await graph.NodesAsync<Person>())
+var friends = await graph.Nodes<Person>()
     .Where(p => p.Department == "Sales")
     .ToListAsync();
 
