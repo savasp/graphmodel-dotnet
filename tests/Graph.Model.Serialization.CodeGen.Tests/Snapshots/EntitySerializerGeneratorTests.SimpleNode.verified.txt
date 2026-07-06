@@ -338,7 +338,7 @@ internal sealed class PersonSerializer : IEntitySerializer
                 ?? typeof(Cvoya.Graph.Model.INode).GetProperty("Labels")!;
             simpleProperties["Labels"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Labels",
+                PropertyName: "Labels",
                 PropertyType: PropertyType.SimpleCollection,
                 ElementType: typeof(string),
                 IsNullable: false
@@ -351,7 +351,7 @@ internal sealed class PersonSerializer : IEntitySerializer
                 ?? typeof(Cvoya.Graph.Model.IEntity).GetProperty("Id")!;
             simpleProperties["Id"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Id",
+                PropertyName: "Id",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -362,7 +362,7 @@ internal sealed class PersonSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.Person).GetProperty("FirstName")!;
             simpleProperties["FirstName"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "FirstName",
+                PropertyName: "FirstName",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -373,7 +373,7 @@ internal sealed class PersonSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.Person).GetProperty("LastName")!;
             simpleProperties["LastName"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "LastName",
+                PropertyName: "LastName",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -384,7 +384,7 @@ internal sealed class PersonSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.Person).GetProperty("Age")!;
             simpleProperties["Age"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Age",
+                PropertyName: "Age",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );

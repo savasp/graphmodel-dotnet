@@ -170,21 +170,20 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
         return VerifyTranslation(typeof(Person), expr);
     }
 
-    /// <summary>
-    /// NOTE (characterization bug): the real <c>ContainsAsync&lt;T&gt;(source, item)</c> extension
-    /// builds <c>ContainsAsyncMarker(source.Expression, Expression.Constant(item))</c> - a plain
-    /// value, not a predicate lambda. But <c>CypherQueryVisitor.HandleContains</c> unconditionally
-    /// calls <c>ExtractLambda</c> on that second argument and throws
-    /// <c>GraphException("Contains method requires a lambda expression")</c> when it isn't a
-    /// lambda. So <c>IGraphQueryable&lt;T&gt;.ContainsAsync(item)</c> is unreachable as currently
-    /// wired: it always throws. This snapshots that as current behavior.
-    /// </summary>
     [Fact]
-    public Task Contains_OnScalarProjection_ThrowsBecauseArgumentIsNotALambda()
+    public Task Contains_OnScalarProjection()
     {
         var source = Root.Nodes<Person>().Select(p => p.FirstName);
         var expr = MarkerExpressions.Call<string>("ContainsAsyncMarker", source.Expression, Expression.Constant("Alice"));
-        return VerifyTranslationThrows(typeof(string), expr);
+        return VerifyTranslation(typeof(string), expr);
+    }
+
+    [Fact]
+    public Task Contains_OnScalarProjection_NullItem()
+    {
+        var source = Root.Nodes<Person>().Select(p => p.FirstName);
+        var expr = MarkerExpressions.Call<string>("ContainsAsyncMarker", source.Expression, Expression.Constant(null, typeof(string)));
+        return VerifyTranslation(typeof(string), expr);
     }
 
     [Fact]

@@ -27,19 +27,19 @@ using Cvoya.Graph.Model.Neo4j.Translation.Tests.Model;
 public class SetOperationsTranslationTests : TranslationTestBase
 {
     [Fact]
-    public Task SelectMany_FlattensCollectionProperty()
+    public Task SelectMany_ThrowsNotSupported()
     {
         IQueryable<Person> source = Root.Nodes<Person>();
         var query = source.SelectMany(p => p.Nicknames);
-        return VerifyTranslation(query);
+        return VerifyTranslationThrows(query);
     }
 
     [Fact]
-    public Task GroupBy_SingleKey()
+    public Task GroupBy_ThrowsNotSupported()
     {
         IQueryable<Person> source = Root.Nodes<Person>();
         var query = source.GroupBy(p => p.LastName);
-        return VerifyTranslation(query);
+        return VerifyTranslationThrows(query);
     }
 
     /// <summary>
@@ -64,6 +64,21 @@ public class SetOperationsTranslationTests : TranslationTestBase
         var query = relationships.Join(
             people,
             r => r.EndNodeId,
+            p => p.Id,
+            (r, p) => p);
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Join_AsymmetricStartNodeKey_SelectsInnerNode()
+    {
+        IQueryable<Knows> relationships = Root.Relationships<Knows>();
+        IQueryable<Person> people = Root.Nodes<Person>();
+
+        var query = relationships.Join(
+            people,
+            r => r.StartNodeId,
             p => p.Id,
             (r, p) => p);
 

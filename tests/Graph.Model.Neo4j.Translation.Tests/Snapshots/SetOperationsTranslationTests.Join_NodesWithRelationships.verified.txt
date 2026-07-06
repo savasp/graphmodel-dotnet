@@ -3,7 +3,7 @@ MATCH (joined:Person)
 MATCH (src)-[r:KNOWS]->(tgt)
 WHERE tgt.Id = joined.Id
 RETURN {
-                Node: r,
+                Node: joined,
                 ComplexProperties: []
             } AS Node
 

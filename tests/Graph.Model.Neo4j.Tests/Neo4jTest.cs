@@ -49,7 +49,15 @@ public class Neo4jTest : IAsyncLifetime, IClassFixture<TestInfrastructureFixture
         TestContextCorrelation.CorrelationId.Value = testId;
         correlationScope = LogContext.PushProperty("CorrelationId", testId);
 
-        graph = await fixture.GetGraph(getNewDatabase);
+        try
+        {
+            graph = await fixture.GetGraph(getNewDatabase);
+        }
+        catch (TestInfrastructureFixture.Neo4jTestInfrastructureUnavailableException ex)
+        {
+            Assert.Skip(ex.Message);
+            throw;
+        }
 
         logger.LogInformation("Test {TestName} initialized successfully", testName);
     }

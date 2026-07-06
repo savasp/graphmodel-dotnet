@@ -369,7 +369,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
                 ?? typeof(Cvoya.Graph.Model.IRelationship).GetProperty("Type")!;
             simpleProperties["Type"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Type",
+                PropertyName: "Type",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -381,7 +381,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
                 ?? typeof(Cvoya.Graph.Model.IRelationship).GetProperty("Direction")!;
             simpleProperties["Direction"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Direction",
+                PropertyName: "Direction",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -393,7 +393,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
                 ?? typeof(Cvoya.Graph.Model.IRelationship).GetProperty("StartNodeId")!;
             simpleProperties["StartNodeId"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "StartNodeId",
+                PropertyName: "StartNodeId",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -405,7 +405,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
                 ?? typeof(Cvoya.Graph.Model.IRelationship).GetProperty("EndNodeId")!;
             simpleProperties["EndNodeId"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "EndNodeId",
+                PropertyName: "EndNodeId",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -417,7 +417,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
                 ?? typeof(Cvoya.Graph.Model.IEntity).GetProperty("Id")!;
             simpleProperties["Id"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Id",
+                PropertyName: "Id",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -428,7 +428,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.Knows).GetProperty("Since")!;
             simpleProperties["Since"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Since",
+                PropertyName: "Since",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );

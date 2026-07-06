@@ -173,10 +173,15 @@ public interface IGraph : IAsyncDisposable
         where R : IRelationship;
 
     /// <summary>
-    /// Deletes a node from the graph by ID
+    /// Deletes a node from the graph by ID.
     /// </summary>
     /// <param name="id">The ID of the node to delete</param>
-    /// <param name="cascadeDelete">Whether to cascade delete related nodes and relationships. The default is false.</param>
+    /// <param name="cascadeDelete">
+    /// Whether to delete the node when it has user-defined relationships.
+    /// When false, deleting a node with user-defined relationships throws a <see cref="GraphException"/>.
+    /// When true, those relationships are deleted with the node, but the related user nodes are left intact.
+    /// Complex-property nodes owned by the deleted node are always deleted.
+    /// </param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>

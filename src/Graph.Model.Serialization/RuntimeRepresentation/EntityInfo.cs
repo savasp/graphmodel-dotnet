@@ -21,7 +21,7 @@ namespace Cvoya.Graph.Model.Serialization;
 /// expects. If it is different, then it has to be a derived type.</param>
 /// <param name="Label">The label for the entity. For strongly-typed entities, this is the primary label.
 /// For dynamic entities, this may be the first label or a derived label.</param>
-/// <param name="ActualLabels">The actual labels from Neo4j. For nodes, this contains all labels.
+/// <param name="ActualLabels">The actual labels from the backing graph store. For nodes, this contains all labels.
 /// For relationships, this is null since relationships have a single type.</param>
 /// <param name="SimpleProperties">An <see cref="IDictionary{String, Property}"/> of simple properties.
 /// <see cref="GraphDataModel.IsSimple(Type)"/> determines if a property is considered simple.</param>

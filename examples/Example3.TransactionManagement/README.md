@@ -15,13 +15,13 @@ This example demonstrates transaction support in the GraphModel library, includi
 ### 1. Basic Transaction Usage
 
 ```csharp
-using (var transaction = await graph.BeginTransactionAsync())
+await using (var transaction = await graph.GetTransactionAsync())
 {
     try
     {
         // Perform operations
-        await transaction.CreateNode(node);
-        await transaction.UpdateNode(node);
+        await graph.CreateNodeAsync(node, transaction: transaction);
+        await graph.UpdateNodeAsync(node, transaction: transaction);
 
         // Commit if successful
         await transaction.CommitAsync();
@@ -29,7 +29,7 @@ using (var transaction = await graph.BeginTransactionAsync())
     catch
     {
         // Rollback on failure
-        await transaction.RollbackAsync();
+        await transaction.Rollback();
         throw;
     }
 }

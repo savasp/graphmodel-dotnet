@@ -238,6 +238,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     public void SetMainNodeAlias(string alias)
     {
         _mainNodeAlias = alias;
+        _returnPart.SetMainNodeAlias(_mainNodeAlias);
     }
 
     public void AddOrderBy(string expression, bool isDescending = false)
@@ -377,10 +378,11 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     {
         _logger.LogDebug("AddFullTextRelationshipSearch called with index: {IndexName}, query: {QueryParam}, alias: {RelAlias}, type: {Type}", indexName, queryParam, relAlias, relationshipType);
 
-        var whereClause = string.IsNullOrEmpty(relationshipType) ? "" : $" WHERE type({relAlias}) = '{relationshipType}'";
-        var searchPattern = $@"CALL db.index.fulltext.queryRelationships('{indexName}', {queryParam}) YIELD relationship AS {relAlias}{whereClause}
-            MATCH (src)-[{relAlias}]->(tgt)
-            RETURN {{ StartNode: {{ Node: src, ComplexProperties: [] }}, Relationship: {relAlias}, EndNode: {{ Node: tgt, ComplexProperties: [] }} }} AS PathSegment";
+        var relationshipPattern = string.IsNullOrEmpty(relationshipType)
+            ? $"[{relAlias}]"
+            : $"[{relAlias}:{relationshipType}]";
+        var searchPattern = $@"CALL db.index.fulltext.queryRelationships('{indexName}', {queryParam}) YIELD relationship AS {relAlias}
+            MATCH (src)-{relationshipPattern}->(tgt)";
         _matchPart.AddCallClause(searchPattern);
     }
 
@@ -395,8 +397,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
                 CALL db.index.fulltext.queryRelationships('{relIndexName}', {queryParam}) YIELD relationship AS {relAlias}
                 MATCH (src)-[{relAlias}]->(tgt)
                 RETURN {{ StartNode: {{ Node: src, ComplexProperties: [] }}, Relationship: {relAlias}, EndNode: {{ Node: tgt, ComplexProperties: [] }} }} AS entity
-            }}
-            RETURN entity";
+            }}";
         _matchPart.AddCallClause(unionQuery);
     }
 

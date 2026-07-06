@@ -414,18 +414,36 @@ public interface IAdvancedQueryTests : IGraphModelTest
     }
 
     [Fact]
-    public async Task CanQueryWithGroupByAndAggregate()
+    [Trait("GraphModel", "ExpectedUnsupported")]
+    public async Task GroupByThrowsNotSupportedUntilIssue100()
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Brown" }, null, TestContext.Current.CancellationToken);
-        var grouped = await (await this.Graph.NodesAsync<Person>())
-            .GroupBy(p => p.FirstName)
-            .Select(g => new { Name = g.Key, Count = g.Count() })
-            .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Contains(grouped, g => g.Name == "Ann" && g.Count == 2);
-        Assert.Contains(grouped, g => g.Name == "Bob" && g.Count == 1);
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(async () =>
+            await (await this.Graph.NodesAsync<Person>())
+                .GroupBy(p => p.FirstName)
+                .Select(g => new { Name = g.Key, Count = g.Count() })
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("GroupBy", ex.Message);
+        Assert.Contains("#100", ex.Message);
+    }
+
+    [Fact]
+    [Trait("GraphModel", "ExpectedUnsupported")]
+    public async Task SelectManyThrowsNotSupportedUntilIssue100()
+    {
+        await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Smith", Bio = "abc" }, null, TestContext.Current.CancellationToken);
+
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(async () =>
+            await (await this.Graph.NodesAsync<Person>())
+                .SelectMany(p => p.Bio)
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("SelectMany", ex.Message);
+        Assert.Contains("#100", ex.Message);
     }
 
     [Fact]
@@ -525,7 +543,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Equal("Alice Johnson", alice.FullName);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested collections not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #120")]
     public async Task CanQueryWithBasicPatternComprehension()
     {
         // Arrange: Create a simple social network
@@ -569,7 +587,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Contains(friendsPattern.FriendDetails, f => f.FriendName == "Charlie" && f.FriendAge == 35);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested collections not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #120")]
     public async Task CanQueryWithFilteredPatternComprehension()
     {
         // Arrange
@@ -606,7 +624,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Equal(1, youngFriendsPattern.YoungFriendCount);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested collections not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #120")]
     public async Task CanQueryWithAggregatedPatternComprehension()
     {
         // Arrange
@@ -645,7 +663,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Equal(25, friendAggregation.YoungestFriend);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested collections not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #120")]
     public async Task CanQueryWithTimeBasedPatternComprehension()
     {
         // Arrange
@@ -683,7 +701,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Contains("Bob", recentFriendships.RecentFriends);
     }
 
-    [Fact(Skip = "Too complex for now")]
+    [Fact(Skip = "Not supported yet - see #122")]
     public async Task CanQueryWithOrderedPatternComprehension()
     {
         // Arrange
@@ -729,7 +747,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Equal(35, orderedFriendsPattern.FriendsByAge[1].Age);
     }
 
-    [Fact(Skip = "Too complex for now")]
+    [Fact(Skip = "Not supported yet - see #122")]
     public async Task CanQueryWithGroupedPatternComprehension()
     {
         // Arrange
@@ -1005,6 +1023,16 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Single(bobsFriends);
         Assert.Equal("Charlie", bobsFriends[0].FirstName);
 
+        var relationshipStartPeople = await allKnows
+            .Join(allPeople, k => k.StartNodeId, p => p.Id, (k, p) => p)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, relationshipStartPeople.Count);
+        Assert.Contains(relationshipStartPeople, p => p.Id == alice.Id);
+        Assert.Contains(relationshipStartPeople, p => p.Id == bob.Id);
+        Assert.Contains(relationshipStartPeople, p => p.Id == charlie.Id);
+        Assert.DoesNotContain(relationshipStartPeople, p => p.Id == david.Id);
+
         // Test 3: Find friends of friends
         // TODO: SelectMany with nested queries is not yet implemented - would require advanced Cypher generation
         // "Friends of friend" can be easily implemented with a simple graph traversal instead of Join() and SelectMany().
@@ -1041,7 +1069,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Equal("Charlie", charlie.FirstName);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested Select().ToList() not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #123")]
     public async Task CanQueryWithTraversePathAndGroupBy()
     {
         // This test uses the Person class that has IList<Knows> Knows property
@@ -1144,7 +1172,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Contains("Charlie", projectedAlice.FriendNames);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested Select().ToList() not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #123")]
     public async Task CanCombineNodeAndRelationshipQueries()
     {
         // Setup
@@ -1178,7 +1206,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Contains(connectionMap, m => m.PersonName == "Bob" && m.Connections.Contains("Charlie"));
     }
 
-    [Fact(Skip = "Cross-collection correlation in projections not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #124")]
     public async Task CanProjectRelationshipCounts()
     {
         // Setup
