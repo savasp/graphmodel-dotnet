@@ -873,14 +873,22 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
                 $"{VisitAndReturnCypher(arguments[0])} IN labels({target})",
             "HasType" when arguments.Count == 1 =>
                 $"type({target}) = {VisitAndReturnCypher(arguments[0])}",
+            // The property name is a Cypher identifier, not a value, so it can only be translated
+            // when it is a compile-time constant: it is validated and escaped before
+            // interpolation since DynamicNode/DynamicRelationship property names are supplied by
+            // the caller. A non-constant property name (e.g. a captured variable) has no safe
+            // Cypher translation here - Cypher has no parameterized property-access syntax - so it
+            // is rejected rather than interpolated.
             "HasProperty" when arguments.Count == 1 =>
-                arguments[0] is ConstantExpression constExpr && constExpr.Value is string propName
-                    ? $"{target}.{propName} IS NOT NULL"
-                    : $"{target}.{{{VisitAndReturnCypher(arguments[0])}}} IS NOT NULL",
+                arguments[0] is ConstantExpression { Value: string propName }
+                    ? $"{target}.{CypherIdentifier.Escape(propName, "property name")} IS NOT NULL"
+                    : throw new NotSupportedException(
+                        "HasProperty requires a compile-time constant property name; a computed or variable property name cannot be translated to Cypher."),
             "GetProperty" when arguments.Count == 1 =>
-                arguments[0] is ConstantExpression constExpr && constExpr.Value is string propName
-                    ? $"{target}.{propName}"
-                    : $"{target}.{{{VisitAndReturnCypher(arguments[0])}}}",
+                arguments[0] is ConstantExpression { Value: string propName }
+                    ? $"{target}.{CypherIdentifier.Escape(propName, "property name")}"
+                    : throw new NotSupportedException(
+                        "GetProperty requires a compile-time constant property name; a computed or variable property name cannot be translated to Cypher."),
             _ => throw new NotSupportedException($"Dynamic entity method {node.Method.Name} is not supported")
         };
 

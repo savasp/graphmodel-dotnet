@@ -1,0 +1,1 @@
+System.NotSupportedException: GetProperty requires a compile-time constant property name; a computed or variable property name cannot be translated to Cypher.

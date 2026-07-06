@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j;
 
 using Cvoya.Graph.Model.Neo4j.Core;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher;
 using global::Neo4j.Driver;
 
 /// <summary>
@@ -118,8 +119,13 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     /// </remarks>
     public static async Task CreateDatabaseIfNotExistsAsync(IDriver driver, string databaseName)
     {
+        // The database name is a Cypher identifier, not a parameter value, and cannot be
+        // parameterized by the driver; validate and escape it before interpolation since it can
+        // originate from caller-supplied configuration.
+        var escapedDatabaseName = CypherIdentifier.Escape(databaseName, "database name");
+
         await using var session = driver.AsyncSession(o => o.WithDatabase("system"));
-        var result = await session.RunAsync($"CREATE DATABASE `{databaseName}` IF NOT EXISTS");
+        var result = await session.RunAsync($"CREATE DATABASE {escapedDatabaseName} IF NOT EXISTS");
         await result.ConsumeAsync();
     }
 
