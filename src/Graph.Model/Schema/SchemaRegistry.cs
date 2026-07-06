@@ -371,25 +371,17 @@ public class SchemaRegistry : IDisposable
             return (nodeTypes, relationshipTypes);
         }
 
-        foreach (var type in types)
+        foreach (var type in types.Where(static type => !type.IsAbstract && !type.IsInterface))
         {
-            if (type.IsAbstract || type.IsInterface) continue;
-
-            if (typeof(INode).IsAssignableFrom(type))
+            if (typeof(INode).IsAssignableFrom(type) &&
+                type != typeof(DynamicNode))
             {
-                // Exclude DynamicNode from schema discovery
-                if (type != typeof(DynamicNode))
-                {
-                    nodeTypes.Add(type);
-                }
+                nodeTypes.Add(type);
             }
-            else if (typeof(IRelationship).IsAssignableFrom(type))
+            else if (typeof(IRelationship).IsAssignableFrom(type) &&
+                type != typeof(DynamicRelationship))
             {
-                // Exclude DynamicRelationship from schema discovery
-                if (type != typeof(DynamicRelationship))
-                {
-                    relationshipTypes.Add(type);
-                }
+                relationshipTypes.Add(type);
             }
         }
 
