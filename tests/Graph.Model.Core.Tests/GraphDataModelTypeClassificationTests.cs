@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Core.Tests;
 
 using System.Collections;
+using System.Collections.ObjectModel;
 
 
 [Trait("Area", "GraphDataModel")]
@@ -90,11 +91,12 @@ public class GraphDataModelTypeClassificationTests
         { typeof(List<List<int>>), false },
         { typeof(List<FlatValueObject>), false },
         { typeof(Dictionary<string, int>), false },
-        { typeof(IDictionary<string, int>), true }, // Characterizes https://github.com/cvoya-com/graphmodel-dotnet/issues/128.
+        { typeof(IDictionary<string, int>), false },
+        { typeof(IReadOnlyDictionary<string, int>), false },
         { typeof(Dictionary<string, FlatValueObject>), false },
     };
 
-    public static TheoryData<Type, bool> CollectionOfComplexCurrentBehaviorCases => new()
+    public static TheoryData<Type, bool> CollectionOfComplexCases => new()
     {
         { typeof(string), false },
         { typeof(List<int>), false },
@@ -102,15 +104,18 @@ public class GraphDataModelTypeClassificationTests
         { typeof(int[]), false },
         { typeof(List<object>), false },
         { typeof(object[]), false },
-        { typeof(FlatValueObject[]), false },
-        { typeof(List<FlatValueObject>), false },
-        { typeof(IReadOnlyList<FlatValueObject>), false },
-        { typeof(List<RecursiveValueObject>), false },
+        { typeof(FlatValueObject[]), true },
+        { typeof(List<FlatValueObject>), true },
+        { typeof(IReadOnlyList<FlatValueObject>), true },
+        { typeof(List<RecursiveValueObject>), true },
+        { typeof(List<SimpleStruct>), true },
         { typeof(List<List<FlatValueObject>>), false },
         { typeof(Dictionary<string, FlatValueObject>), false },
+        { typeof(IDictionary<string, FlatValueObject>), false },
+        { typeof(IReadOnlyDictionary<string, FlatValueObject>), false },
     };
 
-    public static TheoryData<Type, bool> ComplexCurrentBehaviorCases => new()
+    public static TheoryData<Type, bool> ComplexCases => new()
     {
         { typeof(string), false },
         { typeof(int), false },
@@ -119,11 +124,28 @@ public class GraphDataModelTypeClassificationTests
         { typeof(Uri), false },
         { typeof(byte[]), false },
         { typeof(List<int>), false },
+        { typeof(List<FlatValueObject>), false },
         { typeof(Dictionary<string, int>), false },
+        { typeof(IDictionary<string, int>), false },
+        { typeof(IReadOnlyDictionary<string, int>), false },
         { typeof(object), false },
+        { typeof(GraphDataModelTestEnum), false },
+        { typeof(FlatValueObject), true },
+        { typeof(RecursiveValueObject), true },
+        { typeof(SimpleStruct), true },
+    };
+
+    public static TheoryData<Type, bool> DictionaryCases => new()
+    {
+        { typeof(Dictionary<string, int>), true },
+        { typeof(IDictionary<string, int>), true },
+        { typeof(IReadOnlyDictionary<string, int>), true },
+        { typeof(Dictionary<string, FlatValueObject>), true },
+        { typeof(ReadOnlyDictionary<string, int>), true },
+        { typeof(List<int>), false },
+        { typeof(int[]), false },
+        { typeof(string), false },
         { typeof(FlatValueObject), false },
-        { typeof(RecursiveValueObject), false },
-        { typeof(SimpleStruct), false },
     };
 
     public static TheoryData<string> PropertyNameCases => new()
@@ -165,19 +187,24 @@ public class GraphDataModelTypeClassificationTests
     }
 
     [Theory]
-    [MemberData(nameof(CollectionOfComplexCurrentBehaviorCases))]
-    public void IsCollectionOfComplex_ReturnsCurrentBehavior(Type type, bool expected)
+    [MemberData(nameof(CollectionOfComplexCases))]
+    public void IsCollectionOfComplex_ReturnsExpectedResult(Type type, bool expected)
     {
-        // Characterizes https://github.com/cvoya-com/graphmodel-dotnet/issues/121.
         Assert.Equal(expected, GraphDataModel.IsCollectionOfComplex(type));
     }
 
     [Theory]
-    [MemberData(nameof(ComplexCurrentBehaviorCases))]
-    public void IsComplex_ReturnsCurrentBehavior(Type type, bool expected)
+    [MemberData(nameof(ComplexCases))]
+    public void IsComplex_ReturnsExpectedResult(Type type, bool expected)
     {
-        // Characterizes https://github.com/cvoya-com/graphmodel-dotnet/issues/121.
         Assert.Equal(expected, GraphDataModel.IsComplex(type));
+    }
+
+    [Theory]
+    [MemberData(nameof(DictionaryCases))]
+    public void IsDictionary_ReturnsExpectedResult(Type type, bool expected)
+    {
+        Assert.Equal(expected, GraphDataModel.IsDictionary(type));
     }
 
     [Theory]

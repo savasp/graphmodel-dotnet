@@ -241,18 +241,55 @@ public static class GraphDataModel
     /// Checks if a type is considered to be a "complex" type in the context of the graph model.
     /// A "complex" type is one that is not a simple type and can be used as the type of the property of an <see cref="INode"/>.
     /// Complex types are typically user-defined classes or structs that do not fall into the simple type categories.
+    /// Dictionaries are never considered complex; see <see cref="IsDictionary(Type)"/>.
     /// </summary>
     /// <param name="type"></param>
     /// <returns></returns>
-    public static bool IsComplex(Type type) => IsComplex(type, DefaultDepthAllowed);
+    public static bool IsComplex(Type type)
+    {
+        var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+
+        if (underlyingType == typeof(object))
+            return false;
+
+        if (IsSimple(underlyingType) || IsCollectionOfSimple(underlyingType) || IsCollectionOfComplex(underlyingType))
+            return false;
+
+        if (IsDictionary(underlyingType))
+            return false;
+
+        // Must be a class or struct to be complex (e.g. excludes interfaces like IEnumerable).
+        return underlyingType.IsClass || (underlyingType.IsValueType && !underlyingType.IsEnum);
+    }
+
+    /// <summary>
+    /// Checks if a type is a dictionary shape (a concrete type implementing the non-generic <see cref="IDictionary"/>,
+    /// or any type that is or implements <see cref="IDictionary{TKey,TValue}"/> or <see cref="IReadOnlyDictionary{TKey,TValue}"/>).
+    /// Dictionaries are not supported as graph properties; see <see cref="IsComplex(Type)"/>, <see cref="IsCollectionOfSimple(Type)"/>,
+    /// and <see cref="IsCollectionOfComplex(Type)"/>, all of which exclude dictionary shapes.
+    /// </summary>
+    public static bool IsDictionary(Type type)
+    {
+        if (typeof(IDictionary).IsAssignableFrom(type))
+            return true;
+
+        if (type.IsGenericType && IsDictionaryGenericTypeDefinition(type.GetGenericTypeDefinition()))
+            return true;
+
+        return type.GetInterfaces().Any(i => i.IsGenericType && IsDictionaryGenericTypeDefinition(i.GetGenericTypeDefinition()));
+    }
+
+    private static bool IsDictionaryGenericTypeDefinition(Type genericTypeDefinition) =>
+        genericTypeDefinition == typeof(IDictionary<,>) || genericTypeDefinition == typeof(IReadOnlyDictionary<,>);
 
     /// <summary>
     /// Checks if a type is a collection of simple types. See <see cref="IsSimple(Type)"/> for what is considered a simple type.
+    /// Dictionaries are never considered a simple collection; see <see cref="IsDictionary(Type)"/>.
     /// </summary>
     public static bool IsCollectionOfSimple(Type type) =>
         type != typeof(string)
         && typeof(IEnumerable).IsAssignableFrom(type) is true
-        && typeof(IDictionary).IsAssignableFrom(type) is false // Exclude IDictionary as it is not a simple collection
+        && IsDictionary(type) is false
         && type switch
         {
             { IsArray: true } => IsSimple(type.GetElementType()!),
@@ -262,11 +299,12 @@ public static class GraphDataModel
 
     /// <summary>
     /// Checks if a type is a collection of complex types. See <see cref="IsComplex(Type)"/> for what is considered a complex type.
+    /// Dictionaries are never considered a supported collection; see <see cref="IsDictionary(Type)"/>.
     /// </summary>
     public static bool IsCollectionOfComplex(Type type) =>
         type != typeof(string)
         && typeof(IEnumerable).IsAssignableFrom(type) is true
-        && typeof(IDictionary).IsAssignableFrom(type) is false // Exclude IDictionary as it is not a supported collection
+        && IsDictionary(type) is false
         && type switch
         {
             { IsArray: true } => IsComplex(type.GetElementType()!),
@@ -386,32 +424,5 @@ public static class GraphDataModel
 
         /// <inheritdoc />
         public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
-    }
-
-    private static bool IsComplex(Type type, int depth)
-    {
-        if (depth <= 0)
-            return false;
-
-        if (IsSimple(type) || IsCollectionOfSimple(type))
-            return false;
-
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
-            return IsComplex(type.GetGenericArguments()[0], depth - 1);
-
-        foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            if (IsSimple(prop.PropertyType) || IsCollectionOfSimple(prop.PropertyType))
-            {
-                continue;
-            }
-
-            if (IsComplex(prop.PropertyType, depth - 1))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

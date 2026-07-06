@@ -189,6 +189,36 @@ public class EntityFactoryTests
     }
 
     [Fact]
+    public void DynamicNode_RoundTripsCollectionOfPocoComplexProperty()
+    {
+        // Exercises the #121 fix: GraphDataModel.IsCollectionOfComplex now correctly identifies a
+        // List<POCO> dynamic property value as a collection-of-complex, so EntityFactory serializes
+        // each element as its own EntityInfo instead of falling through to treating the List<T>
+        // instance itself as a single complex object.
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-1",
+            ["Person"],
+            new Dictionary<string, object?>
+            {
+                ["addresses"] = new List<FactoryAddress>
+                {
+                    new("1 Main", "London"),
+                    new("2 Side", "Paris"),
+                },
+            });
+
+        var roundTripped = factory.Deserialize<DynamicNode>(factory.Serialize(node));
+
+        var addresses = Assert.IsAssignableFrom<List<Dictionary<string, object?>>>(roundTripped.Properties["addresses"]);
+        Assert.Equal(2, addresses.Count);
+        Assert.Equal("1 Main", addresses[0]["Street"]);
+        Assert.Equal("London", addresses[0]["City"]);
+        Assert.Equal("2 Side", addresses[1]["Street"]);
+        Assert.Equal("Paris", addresses[1]["City"]);
+    }
+
+    [Fact]
     public void DynamicRelationship_RoundTripPreservesShapeAndCharacterizesCurrentIdLoss()
     {
         var factory = new EntityFactory();
