@@ -257,4 +257,19 @@ internal class Resources
     ///   Looks up a localized string similar to Type cannot have both NodeAttribute and RelationshipAttribute.
     /// </summary>
     internal static string GM013_Title => ResourceManager.GetString("GM013_Title", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Types implementing INode or IRelationship must be reference types. Struct value semantics (copy on assignment/parameter-pass) turn load-mutate-update patterns into silent lost-update bugs, and the covariant graph query surface relies on reference-type variance conversions that do not apply to value types..
+    /// </summary>
+    internal static string GM014_Description => ResourceManager.GetString("GM014_Description", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to {0} '{1}' implements {2}; graph entity types must be reference types (class or record class).
+    /// </summary>
+    internal static string GM014_MessageFormat => ResourceManager.GetString("GM014_MessageFormat", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Graph entity types must be reference types.
+    /// </summary>
+    internal static string GM014_Title => ResourceManager.GetString("GM014_Title", resourceCulture)!;
 }

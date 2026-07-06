@@ -44,7 +44,8 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
         DiagnosticDescriptors.CircularReferenceWithoutNullable,
         DiagnosticDescriptors.ShouldInheritFromBaseClass,
         DiagnosticDescriptors.MisappliedNodeOrRelationshipAttribute,
-        DiagnosticDescriptors.ConflictingNodeAndRelationshipAttributes);
+        DiagnosticDescriptors.ConflictingNodeAndRelationshipAttributes,
+        DiagnosticDescriptors.EntityTypeMustBeReferenceType);
 
     /// <summary>
     /// Initializes the analyzer and registers the symbol action for named types.
@@ -78,6 +79,13 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
         // GM013: Check for both [Node] and [Relationship] applied to the same type. Same reasoning
         // as GM012 - must run regardless of which interfaces (if any) the type implements.
         AnalyzeConflictingNodeAndRelationshipAttributes(context, namedTypeSymbol);
+
+        // GM014: Check that entity types (implementing INode/IRelationship, directly or through a
+        // derived interface) are reference types, not structs. Must run before the early-return
+        // below - a struct never "implements INode" in the sense that matters for the rest of this
+        // method (it can't be a valid entity type regardless), but it is exactly the case GM014
+        // exists to flag.
+        AnalyzeEntityTypeIsReferenceType(context, namedTypeSymbol, helper);
 
         // Skip if it doesn't implement INode or IRelationship
         if (!implementsINode && !implementsIRelationship)
@@ -223,6 +231,37 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
 
             context.ReportDiagnostic(diagnostic);
         }
+    }
+
+    private static void AnalyzeEntityTypeIsReferenceType(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
+    {
+        // Only structs (including record structs and readonly structs) are at risk here - classes
+        // and record classes are already reference types.
+        if (namedType.TypeKind != TypeKind.Struct)
+            return;
+
+        // Pick the first interface found (INode before IRelationship) purely for a stable, single
+        // diagnostic - a struct implementing both is vanishingly unlikely, and GM013 separately
+        // flags a type carrying both [Node] and [Relationship] attributes.
+        string? interfaceName = helper.ImplementsINode(namedType)
+            ? "INode"
+            : helper.ImplementsIRelationship(namedType)
+                ? "IRelationship"
+                : null;
+
+        if (interfaceName is null)
+            return;
+
+        var kindDescription = namedType.IsRecord ? "Record struct" : "Struct";
+
+        var diagnostic = Diagnostic.Create(
+            DiagnosticDescriptors.EntityTypeMustBeReferenceType,
+            namedType.Locations.FirstOrDefault(),
+            kindDescription,
+            namedType.Name,
+            interfaceName);
+
+        context.ReportDiagnostic(diagnostic);
     }
 
     private static Location? GetAttributeLocation(AttributeData attribute, INamedTypeSymbol fallbackType)

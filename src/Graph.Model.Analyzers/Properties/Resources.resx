@@ -155,4 +155,15 @@
   <data name="GM013_Description" xml:space="preserve">
     <value>A type cannot be annotated with both NodeAttribute and RelationshipAttribute. Label resolution only honors one of the two, silently ignoring the other, so applying both is always a mistake.</value>
   </data>
+
+  <!-- GM014: Graph entity types must be reference types -->
+  <data name="GM014_Title" xml:space="preserve">
+    <value>Graph entity types must be reference types</value>
+  </data>
+  <data name="GM014_MessageFormat" xml:space="preserve">
+    <value>{0} '{1}' implements {2}; graph entity types must be reference types (class or record class)</value>
+  </data>
+  <data name="GM014_Description" xml:space="preserve">
+    <value>Types implementing INode or IRelationship must be reference types. Struct value semantics (copy on assignment/parameter-pass) turn load-mutate-update patterns into silent lost-update bugs, and the covariant graph query surface relies on reference-type variance conversions that do not apply to value types.</value>
+  </data>
 </root>
