@@ -19,6 +19,8 @@ namespace Cvoya.Graph.Model.Tests;
 /// </summary>
 public class ToDynamicExtensionsTests
 {
+    private static readonly DateTime FixedCreatedAt = new(2026, 1, 15, 12, 0, 0, DateTimeKind.Utc);
+
     /// <summary>
     /// Test node record for testing ToDynamic functionality.
     /// </summary>
@@ -69,7 +71,7 @@ public class ToDynamicExtensionsTests
         var testRelationship = new TestRelationship("node1", "node2")
         {
             Description = "Test relationship",
-            CreatedAt = DateTime.Now,
+            CreatedAt = FixedCreatedAt,
             IsActive = true
         };
 

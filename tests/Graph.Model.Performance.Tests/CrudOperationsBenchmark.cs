@@ -28,6 +28,7 @@ using global::Neo4j.Driver;
 [HtmlExporter]
 public class CrudOperationsBenchmark
 {
+    private static readonly DateTime BenchmarkReferenceDate = new(2026, 1, 15, 12, 0, 0, DateTimeKind.Utc);
     private static readonly Random _random = new();
     private IGraph _graph = null!;
     private List<Person> _testPersons = null!;
@@ -77,7 +78,7 @@ public class CrudOperationsBenchmark
             .RuleFor(p => p.FirstName, f => f.Name.FirstName())
             .RuleFor(p => p.LastName, f => f.Name.LastName())
             .RuleFor(p => p.Email, f => f.Internet.Email())
-            .RuleFor(p => p.DateOfBirth, f => f.Date.Past(50, DateTime.Now.AddYears(-18)));
+            .RuleFor(p => p.DateOfBirth, f => f.Date.Past(50, BenchmarkReferenceDate.AddYears(-18)));
 
         _testPersons = faker.Generate(1000);
         _personIds = _testPersons.Select(p => p.Id).ToList();
@@ -150,7 +151,7 @@ public class CrudOperationsBenchmark
     [Benchmark]
     public async Task QueryWithComplexFilter()
     {
-        var cutoffDate = DateTime.Now.AddYears(-30);
+        var cutoffDate = BenchmarkReferenceDate.AddYears(-30);
         var results = await (await _graph.NodesAsync<Person>())
             .Where(p => p.DateOfBirth > cutoffDate && p.Email.Contains("@gmail.com"))
             .OrderBy(p => p.LastName)
@@ -165,7 +166,7 @@ public class CrudOperationsBenchmark
         var person = await _graph.GetNodeAsync<Person>(id);
         if (person != null)
         {
-            person.Email = $"updated_{DateTime.Now.Ticks}@example.com";
+            person.Email = $"updated_{BenchmarkReferenceDate.Ticks}@example.com";
             await _graph.UpdateNodeAsync(person);
         }
     }

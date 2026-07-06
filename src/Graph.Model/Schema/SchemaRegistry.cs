@@ -24,6 +24,7 @@ public class SchemaRegistry : IDisposable
 {
     private readonly Dictionary<string, EntitySchemaInfo> _nodeSchemas = new();
     private readonly Dictionary<string, EntitySchemaInfo> _relationshipSchemas = new();
+    private readonly HashSet<Assembly> _scannedAssemblies = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private volatile bool _isInitialized = false;
 
@@ -50,17 +51,7 @@ public class SchemaRegistry : IDisposable
             if (_isInitialized)
                 return;
 
-            var (nodeTypes, relationshipTypes) = DiscoverGraphEntityTypes();
-
-            foreach (var nodeType in nodeTypes)
-            {
-                RegisterNodeType(nodeType);
-            }
-
-            foreach (var relationshipType in relationshipTypes)
-            {
-                RegisterRelationshipType(relationshipType);
-            }
+            RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
 
             _isInitialized = true;
         }
@@ -80,16 +71,14 @@ public class SchemaRegistry : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
 
-        // Quick read without lock since dictionary reads are thread-safe after initialization
-        if (_isInitialized)
-        {
-            return _nodeSchemas.TryGetValue(label, out var schema) ? schema : null;
-        }
-
-        // If not initialized, use semaphore for safety
         await _semaphore.WaitAsync(cancellationToken);
         try
         {
+            if (_isInitialized && !_nodeSchemas.ContainsKey(label))
+            {
+                RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
+            }
+
             return _nodeSchemas.TryGetValue(label, out var schema) ? schema : null;
         }
         finally
@@ -108,16 +97,14 @@ public class SchemaRegistry : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
 
-        // Quick read without lock since dictionary reads are thread-safe after initialization
-        if (_isInitialized)
-        {
-            return _relationshipSchemas.TryGetValue(type, out var schema) ? schema : null;
-        }
-
-        // If not initialized, use semaphore for safety
         await _semaphore.WaitAsync(cancellationToken);
         try
         {
+            if (_isInitialized && !_relationshipSchemas.ContainsKey(type))
+            {
+                RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
+            }
+
             return _relationshipSchemas.TryGetValue(type, out var schema) ? schema : null;
         }
         finally
@@ -139,7 +126,20 @@ public class SchemaRegistry : IDisposable
         if (!_isInitialized)
             throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
 
-        return _nodeSchemas.TryGetValue(label, out var schema) ? schema : null;
+        _semaphore.Wait();
+        try
+        {
+            if (!_nodeSchemas.ContainsKey(label))
+            {
+                RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
+            }
+
+            return _nodeSchemas.TryGetValue(label, out var schema) ? schema : null;
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     /// <summary>
@@ -155,7 +155,20 @@ public class SchemaRegistry : IDisposable
         if (!_isInitialized)
             throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
 
-        return _relationshipSchemas.TryGetValue(type, out var schema) ? schema : null;
+        _semaphore.Wait();
+        try
+        {
+            if (!_relationshipSchemas.ContainsKey(type))
+            {
+                RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
+            }
+
+            return _relationshipSchemas.TryGetValue(type, out var schema) ? schema : null;
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     /// <summary>
@@ -165,16 +178,14 @@ public class SchemaRegistry : IDisposable
     /// <returns>An enumerable of registered node labels.</returns>
     public async Task<IEnumerable<string>> GetRegisteredNodeLabelsAsync(CancellationToken cancellationToken = default)
     {
-        // Quick read without lock since dictionary reads are thread-safe after initialization
-        if (_isInitialized)
-        {
-            return _nodeSchemas.Keys.ToList();
-        }
-
-        // If not initialized, use semaphore for safety
         await _semaphore.WaitAsync(cancellationToken);
         try
         {
+            if (_isInitialized)
+            {
+                RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
+            }
+
             return _nodeSchemas.Keys.ToList();
         }
         finally
@@ -190,16 +201,14 @@ public class SchemaRegistry : IDisposable
     /// <returns>An enumerable of registered relationship types.</returns>
     public async Task<IEnumerable<string>> GetRegisteredRelationshipTypesAsync(CancellationToken cancellationToken = default)
     {
-        // Quick read without lock since dictionary reads are thread-safe after initialization
-        if (_isInitialized)
-        {
-            return _relationshipSchemas.Keys.ToList();
-        }
-
-        // If not initialized, use semaphore for safety
         await _semaphore.WaitAsync(cancellationToken);
         try
         {
+            if (_isInitialized)
+            {
+                RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
+            }
+
             return _relationshipSchemas.Keys.ToList();
         }
         finally
@@ -218,6 +227,7 @@ public class SchemaRegistry : IDisposable
         {
             _nodeSchemas.Clear();
             _relationshipSchemas.Clear();
+            _scannedAssemblies.Clear();
             _isInitialized = false;
         }
         finally
@@ -321,40 +331,57 @@ public class SchemaRegistry : IDisposable
         return Labels.GetLabelFromProperty(property);
     }
 
-    private (List<Type> nodeTypes, List<Type> relationshipTypes) DiscoverGraphEntityTypes()
+    private void RegisterGraphEntityTypes(IEnumerable<Assembly> assemblies)
     {
-        var nodeTypes = new List<Type>();
-        var relationshipTypes = new List<Type>();
-        var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-
+        // Late-loaded assemblies are discovered lazily on schema misses instead of via
+        // AppDomain.AssemblyLoad so the registry has no event-subscription lifetime to manage.
         foreach (var assembly in assemblies)
         {
-            Type[] types;
-            try
-            {
-                types = assembly.GetTypes();
-            }
-            catch (ReflectionTypeLoadException)
+            if (!_scannedAssemblies.Add(assembly))
             {
                 continue;
             }
 
-            foreach (var type in types)
-            {
-                if (type.IsAbstract || type.IsInterface) continue;
+            var (nodeTypes, relationshipTypes) = DiscoverGraphEntityTypes(assembly);
 
-                if (typeof(INode).IsAssignableFrom(type))
-                {
-                    // Exclude DynamicNode from schema discovery
-                    if (type != typeof(DynamicNode))
-                        nodeTypes.Add(type);
-                }
-                else if (typeof(IRelationship).IsAssignableFrom(type))
-                {
-                    // Exclude DynamicRelationship from schema discovery
-                    if (type != typeof(DynamicRelationship))
-                        relationshipTypes.Add(type);
-                }
+            foreach (var nodeType in nodeTypes)
+            {
+                RegisterNodeType(nodeType);
+            }
+
+            foreach (var relationshipType in relationshipTypes)
+            {
+                RegisterRelationshipType(relationshipType);
+            }
+        }
+    }
+
+    private (List<Type> nodeTypes, List<Type> relationshipTypes) DiscoverGraphEntityTypes(Assembly assembly)
+    {
+        var nodeTypes = new List<Type>();
+        var relationshipTypes = new List<Type>();
+
+        Type[] types;
+        try
+        {
+            types = assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException)
+        {
+            return (nodeTypes, relationshipTypes);
+        }
+
+        foreach (var type in types.Where(static type => !type.IsAbstract && !type.IsInterface))
+        {
+            if (typeof(INode).IsAssignableFrom(type) &&
+                type != typeof(DynamicNode))
+            {
+                nodeTypes.Add(type);
+            }
+            else if (typeof(IRelationship).IsAssignableFrom(type) &&
+                type != typeof(DynamicRelationship))
+            {
+                relationshipTypes.Add(type);
             }
         }
 

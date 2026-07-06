@@ -169,28 +169,11 @@ internal sealed class ComplexPropertyManager(GraphContext context)
 
     private static async Task<IRecord> GetSingleRecordAsync(IResultCursor result, CancellationToken cancellationToken)
     {
-#if NET10_0
         return await result.SingleAsync(cancellationToken);
-#else
-        var records = await result.ToListAsync(cancellationToken);
-        return records.Count switch
-        {
-            0 => throw new InvalidOperationException("Sequence contains no elements"),
-            1 => records[0],
-            _ => throw new InvalidOperationException("Sequence contains more than one element")
-        };
-#endif
     }
 
     private static async Task<IRecord> GetFirstRecordAsync(IResultCursor result, CancellationToken cancellationToken)
     {
-#if NET10_0
         return await result.FirstAsync(cancellationToken);
-#else
-        var records = await result.ToListAsync(cancellationToken);
-        return records.Count == 0
-            ? throw new InvalidOperationException("Sequence contains no elements")
-            : records[0];
-#endif
     }
 }
