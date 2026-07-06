@@ -2,7 +2,7 @@
     <PropertyGroup>
         <!-- Default to Debug configuration for local development -->
         <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
-        <IsSourcePackageProject Condition="$(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)src'))">true</IsSourcePackageProject>
+        <IsSourcePackageProject Condition="$(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)src/'))">true</IsSourcePackageProject>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -143,6 +143,7 @@
 
     <Target Name="PublishToLocalFeed" AfterTargets="Pack" Condition="'$(Configuration)' == 'LocalFeed' AND '$(IsPackable)' != 'false'">
         <ItemGroup>
+            <!-- Publish only this project's package; artifacts may contain dependency packages too. -->
             <PackageFiles Include="$(PackageOutputPath)\$(PackageId).$(PackageVersion).nupkg"
                           Condition="Exists('$(PackageOutputPath)\$(PackageId).$(PackageVersion).nupkg')" />
         </ItemGroup>

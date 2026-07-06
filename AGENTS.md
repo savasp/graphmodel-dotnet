@@ -1,6 +1,6 @@
 # GraphModel — Project instructions
 
-Type-safe .NET library for graph data and graph databases, with LINQ querying, transactions, and optional Roslyn analyzers and serialization codegen. Neo4j is the in-tree provider; a PostgreSQL + Apache AGE provider is planned (#53, #90). Apache 2.0 licensed. Targets **.NET 10** (`LangVersion` is set in [Directory.Build.props](Directory.Build.props)).
+Type-safe .NET library for graph data and graph databases, with LINQ querying, transactions, and optional Roslyn analyzers and serialization codegen. Neo4j is the in-tree provider; a PostgreSQL + Apache AGE provider is planned (#53, #90). Apache 2.0 licensed. Targets **.NET 10** with **C# 14** (`LangVersion` is set in [Directory.Build.props](Directory.Build.props)).
 
 This file is the canonical instruction set for AI coding agents (Claude Code, Codex, Copilot, and others) and a good orientation for humans. Tool-specific configuration lives in `.claude/`, `.codex/`, and `.github/copilot-instructions.md`; see [docs/ai-agents.md](docs/ai-agents.md) for the map.
 

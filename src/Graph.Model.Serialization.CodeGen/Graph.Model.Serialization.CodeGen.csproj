@@ -26,7 +26,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Neo4j.Driver" />
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
     </ItemGroup>
