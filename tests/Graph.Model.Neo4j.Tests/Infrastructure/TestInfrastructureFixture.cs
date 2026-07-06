@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
+using DotNet.Testcontainers.Builders;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -56,38 +57,16 @@ public class TestInfrastructureFixture : IAsyncLifetime
 
     static TestInfrastructureFixture()
     {
-        /*
-        * Disable this logic. Always assume that there is a local Neo4j instance running.
-
-        var useContainers = Environment.GetEnvironmentVariable("USE_NEO4J_CONTAINERS");
-        if (string.IsNullOrEmpty(useContainers))
-        {
-            useContainers = Environment.GetEnvironmentVariable("CI") ?? "false";
-        }
-
-        if (bool.Parse(useContainers))
-        {
-            testInfrastructure = new Neo4jTestInfrastructureWithContainer();
-        }
-        else
-        {
-            testInfrastructure = new Neo4jTestInfrastructureWithDbInstance();
-        }
-        */
-
-        testInfrastructure = new Neo4jTestInfrastructureWithDbInstance();
+        testInfrastructure = HasConfiguredNeo4j()
+            ? new Neo4jTestInfrastructureWithDbInstance()
+            : new Neo4jTestInfrastructureWithContainer();
     }
 
     public ILoggerFactory LoggerFactory => loggerFactory;
 
     public async ValueTask InitializeAsync()
     {
-        databasePool = await DatabasePoolManager.GetInstanceAsync(
-            testInfrastructure.ConnectionString,
-            testInfrastructure.Username,
-            testInfrastructure.Password,
-            loggerFactory,
-            maxPoolSize: 20);
+        await ValueTask.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()
@@ -110,6 +89,8 @@ public class TestInfrastructureFixture : IAsyncLifetime
 
     public async Task<IGraph> GetGraph(bool getNewDatabase)
     {
+        await EnsureDatabasePoolAsync();
+
         if (databasePool == null)
         {
             throw new InvalidOperationException("Database pool not initialized");
@@ -142,4 +123,59 @@ public class TestInfrastructureFixture : IAsyncLifetime
 
         return cachedStore!.Graph;
     }
+
+    private async Task EnsureDatabasePoolAsync()
+    {
+        if (databasePool is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            await testInfrastructure.InitializeAsync();
+
+            databasePool = await DatabasePoolManager.GetInstanceAsync(
+                testInfrastructure.ConnectionString,
+                testInfrastructure.Username,
+                testInfrastructure.Password,
+                loggerFactory,
+                maxPoolSize: 20);
+        }
+        catch (Exception ex) when (testInfrastructure is Neo4jTestInfrastructureWithContainer && IsDockerUnavailable(ex))
+        {
+            throw new Neo4jTestInfrastructureUnavailableException(
+                $"Docker is not available for Neo4j Testcontainers: {ex.Message}",
+                ex);
+        }
+    }
+
+    private static bool HasConfiguredNeo4j()
+    {
+        return !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("NEO4J_URI"))
+            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("NEO4J_CONNECTION_STRING"));
+    }
+
+    private static bool IsDockerUnavailable(Exception exception)
+    {
+        if (exception is DockerUnavailableException)
+        {
+            return true;
+        }
+
+        if (exception.InnerException is not null && IsDockerUnavailable(exception.InnerException))
+        {
+            return true;
+        }
+
+        var message = exception.Message;
+        return message.Contains("Docker", StringComparison.OrdinalIgnoreCase)
+            && (message.Contains("daemon", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("socket", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("connect", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("unavailable", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public sealed class Neo4jTestInfrastructureUnavailableException(string message, Exception innerException)
+        : Exception(message, innerException);
 }

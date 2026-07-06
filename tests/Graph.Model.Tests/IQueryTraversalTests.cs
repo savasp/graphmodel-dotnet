@@ -666,7 +666,7 @@ public interface IQueryTraversalTests : IGraphModelTest
         Assert.Contains(olderFriends, ps => ps.EndNode.FirstName == "Elen");
     }
 
-    [Fact(Skip = "When traversing multipple hops, neo4j returns a list of relationships. We need to figure out what is our desired behavior for the API.")]
+    [Fact(Skip = "Not supported yet - see #126")]
     public async Task CanFilterTargetNodesByPropertyWithoutTraverseTwoHops()
     {
         // Setup:

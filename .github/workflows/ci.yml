@@ -268,6 +268,10 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test Neo4j Provider
+        env:
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: password
         run: dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj --no-build --configuration Release --verbosity normal
 
   required-checks:

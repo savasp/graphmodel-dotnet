@@ -52,6 +52,8 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     private readonly int maxPoolSize;
     private readonly IDriver driver;
     private readonly ILogger<DatabasePoolManager> logger;
+    private readonly string defaultDatabaseName;
+    private bool usesSharedDefaultDatabase;
 
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromMinutes(2);
     private const int MaxSetupConcurrency = 4;
@@ -75,12 +77,20 @@ public sealed class DatabasePoolManager : IAsyncDisposable
                 configBuilder);
 
         this.maxPoolSize = maxPoolSize;
+        this.defaultDatabaseName = Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
         this.databasesAreAvailableSemaphore = new SemaphoreSlim(0, maxPoolSize);
     }
 
     public async ValueTask DisposeAsync()
     {
         logger.LogDebug("Disposing DatabasePool");
+
+        if (usesSharedDefaultDatabase)
+        {
+            await CleanDatabaseAsync(defaultDatabaseName);
+            driver.Dispose();
+            return;
+        }
 
         // Drop all databases
         for (int i = 0; i < maxPoolSize; i++)
@@ -144,6 +154,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         using var concurrencyLimiter = new SemaphoreSlim(MaxSetupConcurrency);
         int successCount = 0;
         int failCount = 0;
+        var failures = new ConcurrentQueue<Exception>();
 
         var tasks = Enumerable.Range(0, maxPoolSize).Select(async i =>
         {
@@ -161,6 +172,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             }
             catch (Exception ex)
             {
+                failures.Enqueue(ex);
                 Interlocked.Increment(ref failCount);
                 logger.LogError(ex, "Failed to create database {DatabaseName}, skipping", databaseName);
             }
@@ -174,6 +186,12 @@ public sealed class DatabasePoolManager : IAsyncDisposable
 
         if (successCount == 0)
         {
+            if (failures.Any(IsMultiDatabaseUnsupported))
+            {
+                await SetupSharedDefaultDatabaseAsync(failCount, sw);
+                return;
+            }
+
             throw new InvalidOperationException(
                 $"Failed to create any databases in the pool ({failCount} failures). " +
                 "Ensure Neo4j is running and accessible.");
@@ -191,6 +209,21 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         await result.ConsumeAsync();
         await WaitForDatabaseOnlineAsync(databaseName);
         logger.LogDebug("Database {DatabaseName} is now ready", databaseName);
+    }
+
+    private async Task SetupSharedDefaultDatabaseAsync(int failCount, System.Diagnostics.Stopwatch sw)
+    {
+        usesSharedDefaultDatabase = true;
+        logger.LogWarning(
+            "Neo4j database administration is unavailable; using shared default database {DatabaseName} for tests ({FailCount} database-create failures)",
+            defaultDatabaseName,
+            failCount);
+
+        await CleanDatabaseAsync(defaultDatabaseName);
+        availableDatabases.Enqueue(defaultDatabaseName);
+        databasesAreAvailableSemaphore.Release();
+
+        logger.LogInformation("Shared default database {DatabaseName} is ready in {Elapsed:F1}s", defaultDatabaseName, sw.Elapsed.TotalSeconds);
     }
 
     private async Task DropDatabaseAsync(string databaseName)
@@ -245,5 +278,20 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     private string GenerateDatabaseName(int i)
     {
         return "GraphModelTests" + i.ToString("D3");
+    }
+
+    private static bool IsMultiDatabaseUnsupported(Exception exception)
+    {
+        if (exception.InnerException is not null && IsMultiDatabaseUnsupported(exception.InnerException))
+        {
+            return true;
+        }
+
+        var message = exception.Message;
+        return message.Contains("CREATE DATABASE", StringComparison.OrdinalIgnoreCase)
+            && (message.Contains("Unsupported", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("not supported", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("not allowed", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("Community", StringComparison.OrdinalIgnoreCase));
     }
 }

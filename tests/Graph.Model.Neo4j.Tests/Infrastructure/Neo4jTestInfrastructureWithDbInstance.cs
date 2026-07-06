@@ -24,9 +24,13 @@ internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
 
     public Neo4jTestInfrastructureWithDbInstance()
     {
-        ConnectionString = Environment.GetEnvironmentVariable("NEO4J_CONNECTION_STRING") ?? Endpoint;
+        ConnectionString = Environment.GetEnvironmentVariable("NEO4J_URI")
+            ?? Environment.GetEnvironmentVariable("NEO4J_CONNECTION_STRING")
+            ?? Endpoint;
         Password = Environment.GetEnvironmentVariable("NEO4J_PASSWORD") ?? "password";
-        Username = Environment.GetEnvironmentVariable("NEO4J_USERNAME") ?? "neo4j";
+        Username = Environment.GetEnvironmentVariable("NEO4J_USER")
+            ?? Environment.GetEnvironmentVariable("NEO4J_USERNAME")
+            ?? "neo4j";
     }
 
     public ValueTask InitializeAsync()

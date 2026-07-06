@@ -543,7 +543,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Equal("Alice Johnson", alice.FullName);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested collections not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #120")]
     public async Task CanQueryWithBasicPatternComprehension()
     {
         // Arrange: Create a simple social network
@@ -587,7 +587,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Contains(friendsPattern.FriendDetails, f => f.FriendName == "Charlie" && f.FriendAge == 35);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested collections not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #120")]
     public async Task CanQueryWithFilteredPatternComprehension()
     {
         // Arrange
@@ -624,7 +624,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Equal(1, youngFriendsPattern.YoungFriendCount);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested collections not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #120")]
     public async Task CanQueryWithAggregatedPatternComprehension()
     {
         // Arrange
@@ -663,7 +663,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Equal(25, friendAggregation.YoungestFriend);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested collections not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #120")]
     public async Task CanQueryWithTimeBasedPatternComprehension()
     {
         // Arrange
@@ -701,7 +701,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Contains("Bob", recentFriendships.RecentFriends);
     }
 
-    [Fact(Skip = "Too complex for now")]
+    [Fact(Skip = "Not supported yet - see #122")]
     public async Task CanQueryWithOrderedPatternComprehension()
     {
         // Arrange
@@ -747,7 +747,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Equal(35, orderedFriendsPattern.FriendsByAge[1].Age);
     }
 
-    [Fact(Skip = "Too complex for now")]
+    [Fact(Skip = "Not supported yet - see #122")]
     public async Task CanQueryWithGroupedPatternComprehension()
     {
         // Arrange
@@ -1069,7 +1069,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Equal("Charlie", charlie.FirstName);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested Select().ToList() not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #123")]
     public async Task CanQueryWithTraversePathAndGroupBy()
     {
         // This test uses the Person class that has IList<Knows> Knows property
@@ -1172,7 +1172,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Contains("Charlie", projectedAlice.FriendNames);
     }
 
-    [Fact(Skip = "Pattern comprehensions with nested Select().ToList() not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #123")]
     public async Task CanCombineNodeAndRelationshipQueries()
     {
         // Setup
@@ -1206,7 +1206,7 @@ public interface IAdvancedQueryTests : IGraphModelTest
         Assert.Contains(connectionMap, m => m.PersonName == "Bob" && m.Connections.Contains("Charlie"));
     }
 
-    [Fact(Skip = "Cross-collection correlation in projections not yet implemented")]
+    [Fact(Skip = "Not supported yet - see #124")]
     public async Task CanProjectRelationshipCounts()
     {
         // Setup
