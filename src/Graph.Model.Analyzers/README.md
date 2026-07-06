@@ -50,6 +50,7 @@ public class User : INode
 | **GM011** | Type should inherit from Node/Relationship instead of implementing directly | Warning  |
 | **GM012** | [Node]/[Relationship] on a type that doesn't implement the matching interface | Warning  |
 | **GM013** | Both [Node] and [Relationship] applied to the same type                 | Error    |
+| **GM014** | Graph entity types (INode/IRelationship) must be reference types        | Error    |
 
 ## 🔧 Configuration
 

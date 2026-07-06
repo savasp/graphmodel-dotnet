@@ -152,4 +152,14 @@ internal static class DiagnosticDescriptors
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.GM013_Description);
+
+    // GM014: Graph entity types must be reference types
+    public static readonly DiagnosticDescriptor EntityTypeMustBeReferenceType = new(
+        id: "GM014",
+        title: Resources.GM014_Title,
+        messageFormat: Resources.GM014_MessageFormat,
+        category: "Graph.Model",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: Resources.GM014_Description);
 }
