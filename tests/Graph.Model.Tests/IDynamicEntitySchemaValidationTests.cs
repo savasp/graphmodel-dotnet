@@ -425,6 +425,35 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task CanCreateAndGetDynamicRelationship_PreservesId()
+    {
+        // Arrange
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
+
+        var startNode = new DynamicNode { Labels = [nameof(Person)] };
+        var endNode = new DynamicNode { Labels = [nameof(Person)] };
+
+        await Graph.CreateNodeAsync(startNode, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(endNode, null, TestContext.Current.CancellationToken);
+
+        // Empty property bag on purpose: this test is about Id preservation, and
+        // KNOWS is schema-registered by the typed Knows record — arbitrary
+        // properties would (correctly) fail schema validation.
+        var relationship = new DynamicRelationship(
+            startNode.Id,
+            endNode.Id,
+            "KNOWS",
+            new Dictionary<string, object?>());
+
+        // Act
+        await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.GetRelationshipAsync<DynamicRelationship>(relationship.Id, null, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(relationship.Id, retrieved.Id);
+    }
+
+    [Fact]
     public async Task DynamicNode_AllOptionalProperties_AreValidated()
     {
         // Arrange

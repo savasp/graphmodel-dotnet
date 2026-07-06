@@ -344,7 +344,10 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         // Process complex properties
         ProcessComplexProperties(entity.ComplexProperties, properties);
 
-        return new DynamicRelationship(startNodeId, endNodeId, type, properties);
+        return new DynamicRelationship(startNodeId, endNodeId, type, properties)
+        {
+            Id = id,
+        };
     }
 
     private void ProcessComplexProperties(

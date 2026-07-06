@@ -219,7 +219,7 @@ public class EntityFactoryTests
     }
 
     [Fact]
-    public void DynamicRelationship_RoundTripPreservesShapeAndCharacterizesCurrentIdLoss()
+    public void DynamicRelationship_RoundTripPreservesId()
     {
         var factory = new EntityFactory();
         var relationship = new DynamicRelationship(
@@ -239,7 +239,22 @@ public class EntityFactoryTests
         Assert.Equal("target", roundTripped.EndNodeId);
         Assert.Equal("KNOWS", roundTripped.Type);
         Assert.Equal(2024, roundTripped.Properties["since"]);
-        Assert.NotEqual("rel-1", roundTripped.Id); // Characterizes https://github.com/cvoya-com/graphmodel-dotnet/issues/125.
+        Assert.Equal("rel-1", roundTripped.Id);
+    }
+
+    [Fact]
+    public void DynamicNode_RoundTripPreservesId()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "node-1",
+            ["Person"],
+            new Dictionary<string, object?> { ["name"] = "Ada" });
+
+        var entityInfo = factory.Serialize(node);
+        var roundTripped = factory.Deserialize<DynamicNode>(entityInfo);
+
+        Assert.Equal("node-1", roundTripped.Id);
     }
 
     private sealed record FactoryNode : Node
