@@ -436,11 +436,14 @@ public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
         await Graph.CreateNodeAsync(startNode, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(endNode, null, TestContext.Current.CancellationToken);
 
+        // Empty property bag on purpose: this test is about Id preservation, and
+        // KNOWS is schema-registered by the typed Knows record — arbitrary
+        // properties would (correctly) fail schema validation.
         var relationship = new DynamicRelationship(
             startNode.Id,
             endNode.Id,
             "KNOWS",
-            new Dictionary<string, object?> { ["since"] = 2024 });
+            new Dictionary<string, object?>());
 
         // Act
         await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
