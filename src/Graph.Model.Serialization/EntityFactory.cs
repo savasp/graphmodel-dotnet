@@ -318,7 +318,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             id = idValue.Object?.ToString() ?? "";
         }
 
-        // Set type from entity.Label (authoritative from Neo4j)
+        // Set type from entity.Label (authoritative from the serialized entity)
         if (!string.IsNullOrEmpty(entity.Label))
         {
             type = entity.Label;
@@ -780,7 +780,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
             return new EntityInfo(
                 objectType,
-                SanitizeTypeNameForNeo4j(objectType),
+                SanitizeTypeNameForStorage(objectType),
                 [],
                 simpleProperties,
                 complexProperties);
@@ -811,7 +811,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         return typeof(object);
     }
 
-    private static string SanitizeTypeNameForNeo4j(Type type)
+    private static string SanitizeTypeNameForStorage(Type type)
     {
         // Handle generic types like Nullable<T> -> NullableT
         if (type.IsGenericType)
@@ -827,7 +827,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             var genericArgs = type.GetGenericArguments();
             if (genericArgs.Length > 0)
             {
-                name += string.Join("", genericArgs.Select(SanitizeTypeNameForNeo4j));
+                name += string.Join("", genericArgs.Select(SanitizeTypeNameForStorage));
             }
 
             return name;

@@ -192,7 +192,7 @@ internal sealed class AddressSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.Address).GetProperty("Street")!;
             simpleProperties["Street"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Street",
+                PropertyName: "Street",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -203,7 +203,7 @@ internal sealed class AddressSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.Address).GetProperty("City")!;
             simpleProperties["City"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "City",
+                PropertyName: "City",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -528,7 +528,7 @@ internal sealed class PersonSerializer : IEntitySerializer
                 ?? typeof(Cvoya.Graph.Model.INode).GetProperty("Labels")!;
             simpleProperties["Labels"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Labels",
+                PropertyName: "Labels",
                 PropertyType: PropertyType.SimpleCollection,
                 ElementType: typeof(string),
                 IsNullable: false
@@ -541,7 +541,7 @@ internal sealed class PersonSerializer : IEntitySerializer
                 ?? typeof(Cvoya.Graph.Model.IEntity).GetProperty("Id")!;
             simpleProperties["Id"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Id",
+                PropertyName: "Id",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -552,7 +552,7 @@ internal sealed class PersonSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.Person).GetProperty("FirstName")!;
             simpleProperties["FirstName"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "FirstName",
+                PropertyName: "FirstName",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -563,7 +563,7 @@ internal sealed class PersonSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.Person).GetProperty("HomeAddress")!;
             complexProperties["HomeAddress"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "HomeAddress",
+                PropertyName: "HomeAddress",
                 PropertyType: PropertyType.Complex,
                 IsNullable: true,
                 NestedSchema: TestNamespace.Generated.AddressSerializer.GetSchemaStatic()

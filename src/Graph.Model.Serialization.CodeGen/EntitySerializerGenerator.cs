@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Serialization.CodeGen;
 
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Text;
 using Microsoft.CodeAnalysis;
@@ -23,78 +24,127 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 [Generator]
 internal class EntitySerializerGenerator : IIncrementalGenerator
 {
+    private const string NodeAttributeName = "Cvoya.Graph.Model.NodeAttribute";
+    private const string RelationshipAttributeName = "Cvoya.Graph.Model.RelationshipAttribute";
+    private static readonly ConcurrentDictionary<string, ImmutableArray<string>> ReferencedEntityTypeCache = new(StringComparer.Ordinal);
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // Get types from current compilation
-        var currentCompilationTypes = context.SyntaxProvider
+        var nodeAttributeTypes = context.SyntaxProvider
+            .ForAttributeWithMetadataName(
+                NodeAttributeName,
+                predicate: static (node, _) => node is TypeDeclarationSyntax,
+                transform: GetAttributedEntityTarget)
+            .Where(static symbol => symbol is not null)
+            .Select(static (symbol, _) => symbol!)
+            .Collect()
+            .WithTrackingName("GraphModel.NodeAttributeEntityTypes");
+
+        var relationshipAttributeTypes = context.SyntaxProvider
+            .ForAttributeWithMetadataName(
+                RelationshipAttributeName,
+                predicate: static (node, _) => node is TypeDeclarationSyntax,
+                transform: GetAttributedEntityTarget)
+            .Where(static symbol => symbol is not null)
+            .Select(static (symbol, _) => symbol!)
+            .Collect()
+            .WithTrackingName("GraphModel.RelationshipAttributeEntityTypes");
+
+        var attributedTypes = nodeAttributeTypes
+            .Combine(relationshipAttributeTypes)
+            .Select(static (combined, _) => DedupeTypes(combined.Left, combined.Right))
+            .WithTrackingName("GraphModel.AttributedEntityTypes");
+
+        // Keep support for unannotated INode/IRelationship implementations in the current compilation.
+        var baseListTypes = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: IsTargetType,
-                transform: GetSemanticTarget)
-            .Where(m => m is not null)
-            .Select((symbol, _) => symbol!) // Convert from INamedTypeSymbol? to INamedTypeSymbol
-            .Collect();
+                transform: GetBaseListEntityTarget)
+            .Where(static symbol => symbol is not null)
+            .Select(static (symbol, _) => symbol!)
+            .Collect()
+            .WithTrackingName("GraphModel.BaseListEntityTypes");
 
-        // Get types from referenced assemblies (like Graph.Model.Tests)
         var referencedTypes = context.CompilationProvider
-            .Select((compilation, _) => GetEntityTypesFromReferences(compilation));
+            .Select(static (compilation, _) => GetEntityTypesFromReferences(compilation))
+            .WithTrackingName("GraphModel.ReferencedEntityTypes");
 
-        // Combine both sources - now both sides are non-nullable
-        var allTypes = currentCompilationTypes
+        var allTypes = attributedTypes
+            .Combine(baseListTypes)
             .Combine(referencedTypes)
-            .Select((combined, _) =>
+            .Select(static (combined, _) =>
             {
-                var current = combined.Left; // Already IEnumerable<INamedTypeSymbol>
-                var referenced = combined.Right; // Already ImmutableArray<INamedTypeSymbol>
-                return current.Concat(referenced).ToImmutableArray();
-            });
+                var currentTypes = DedupeTypes(combined.Left.Left, combined.Left.Right);
+                return DedupeTypes(currentTypes, combined.Right);
+            })
+            .WithTrackingName("GraphModel.EntityTypes");
 
         context.RegisterSourceOutput(allTypes, GenerateSerializers);
     }
 
     private static ImmutableArray<INamedTypeSymbol> GetEntityTypesFromReferences(Compilation compilation)
     {
-        var entityTypes = new List<INamedTypeSymbol>();
+        var builder = ImmutableArray.CreateBuilder<INamedTypeSymbol>();
 
         foreach (var reference in compilation.References)
         {
-            if (compilation.GetAssemblyOrModuleSymbol(reference) is IAssemblySymbol assembly)
+            if (compilation.GetAssemblyOrModuleSymbol(reference) is not IAssemblySymbol assembly ||
+                !IsCandidateEntityAssembly(assembly))
             {
-                // Look for any assembly that might contain INode/IRelationship implementations
-                // Skip system assemblies and NuGet packages to improve performance
-                if (!IsSystemOrThirdPartyAssembly(assembly))
-                {
-                    var types = GetAllTypesFromAssembly(assembly)
-                        .Where(ShouldGenerateSerializerFor)
-                        .ToList();
+                continue;
+            }
 
-                    entityTypes.AddRange(types);
-                }
+            var cacheKey = GetReferenceCacheKey(reference, assembly);
+            var metadataNames = ReferencedEntityTypeCache.GetOrAdd(
+                cacheKey,
+                _ => GetEntityTypeMetadataNames(assembly));
+
+            foreach (var type in metadataNames
+                .Select(compilation.GetTypeByMetadataName)
+                .Where(static type => type is not null)
+                .Select(static type => type!)
+                .Where(ShouldGenerateSerializerFor))
+            {
+                builder.Add(type);
             }
         }
 
-        return entityTypes.ToImmutableArray();
+        return builder.ToImmutable();
     }
 
-    private static bool IsSystemOrThirdPartyAssembly(IAssemblySymbol assembly)
+    private static ImmutableArray<string> GetEntityTypeMetadataNames(IAssemblySymbol assembly)
+    {
+        return GetAllTypesFromAssembly(assembly)
+            .Where(ShouldGenerateSerializerFor)
+            .Select(GetFullyQualifiedMetadataName)
+            .ToImmutableArray();
+    }
+
+    private static string GetReferenceCacheKey(MetadataReference reference, IAssemblySymbol assembly)
+    {
+        var display = reference.Display ?? assembly.Identity.GetDisplayName();
+        return $"{display}|{assembly.Identity.GetDisplayName()}";
+    }
+
+    private static bool IsCandidateEntityAssembly(IAssemblySymbol assembly)
     {
         var name = assembly.Name;
 
-        // Skip system assemblies
         if (name.StartsWith("System.") || name.StartsWith("Microsoft.") ||
             name.StartsWith("netstandard") || name.Equals("mscorlib"))
         {
-            return true;
+            return false;
         }
 
-        // Skip common third-party packages
-        if (name.StartsWith("Newtonsoft.") || name.StartsWith("Neo4j.") ||
-            name.StartsWith("Serilog") || name.StartsWith("NUnit") ||
-            name.StartsWith("xunit") || name.StartsWith("coverlet"))
+        if (name.StartsWith("Newtonsoft.") || name.StartsWith("Serilog") ||
+            name.StartsWith("NUnit") || name.StartsWith("xunit") || name.StartsWith("coverlet"))
         {
-            return true;
+            return false;
         }
 
-        return false;
+        return assembly.Modules
+            .SelectMany(static module => module.ReferencedAssemblySymbols)
+            .Any(static reference => reference.Identity.Name == "Cvoya.Graph.Model");
     }
 
     private static IEnumerable<INamedTypeSymbol> GetAllTypesFromAssembly(IAssemblySymbol assembly)
@@ -108,7 +158,6 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         {
             yield return type;
 
-            // Handle nested types recursively
             foreach (var nestedType in GetNestedTypes(type))
             {
                 yield return nestedType;
@@ -129,9 +178,45 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         foreach (var nestedType in type.GetTypeMembers())
         {
             yield return nestedType;
+
             foreach (var deeplyNested in GetNestedTypes(nestedType))
             {
                 yield return deeplyNested;
+            }
+        }
+    }
+
+    private static string GetFullyQualifiedMetadataName(INamedTypeSymbol type)
+    {
+        var metadataName = type.MetadataName;
+
+        for (var containingType = type.ContainingType; containingType is not null; containingType = containingType.ContainingType)
+        {
+            metadataName = $"{containingType.MetadataName}+{metadataName}";
+        }
+
+        return type.ContainingNamespace is { IsGlobalNamespace: false } containingNamespace
+            ? $"{containingNamespace.ToDisplayString()}.{metadataName}"
+            : metadataName;
+    }
+
+    private static ImmutableArray<INamedTypeSymbol> DedupeTypes(
+        ImmutableArray<INamedTypeSymbol> first,
+        ImmutableArray<INamedTypeSymbol> second)
+    {
+        var seen = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        var builder = ImmutableArray.CreateBuilder<INamedTypeSymbol>(first.Length + second.Length);
+
+        AddTypes(first);
+        AddTypes(second);
+
+        return builder.ToImmutable();
+
+        void AddTypes(ImmutableArray<INamedTypeSymbol> types)
+        {
+            foreach (var type in types.Where(seen.Add))
+            {
+                builder.Add(type);
             }
         }
     }
@@ -177,22 +262,21 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
                typeDecl.BaseList?.Types.Count > 0;
     }
 
-    private static INamedTypeSymbol? GetSemanticTarget(GeneratorSyntaxContext context, CancellationToken ct)
+    private static INamedTypeSymbol? GetAttributedEntityTarget(GeneratorAttributeSyntaxContext context, CancellationToken ct)
+    {
+        return context.TargetSymbol is INamedTypeSymbol type && ShouldGenerateSerializerFor(type)
+            ? type
+            : null;
+    }
+
+    private static INamedTypeSymbol? GetBaseListEntityTarget(GeneratorSyntaxContext context, CancellationToken ct)
     {
         var typeDecl = (TypeDeclarationSyntax)context.Node;
         var symbol = context.SemanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol;
 
         if (symbol is null) return null;
 
-        var interfaces = symbol.AllInterfaces;
-        var implementsINode = interfaces.Any(i =>
-            i.Name == "INode" &&
-            i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
-        var implementsIRelationship = interfaces.Any(i =>
-            i.Name == "IRelationship" &&
-            i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
-
-        return (implementsINode || implementsIRelationship) ? symbol : null;
+        return ShouldGenerateSerializerFor(symbol) ? symbol : null;
     }
 
     private static void GenerateSerializers(SourceProductionContext context, ImmutableArray<INamedTypeSymbol> types)

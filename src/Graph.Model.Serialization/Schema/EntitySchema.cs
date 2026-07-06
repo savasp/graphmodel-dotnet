@@ -15,7 +15,7 @@
 namespace Cvoya.Graph.Model.Serialization;
 
 /// <summary>
-/// Schema information for an entity type, mapping .NET types to Neo4j node structure.
+/// Schema information for an entity type, mapping .NET types to graph storage structure.
 /// </summary>
 /// <param name="ExpectedType">The .NET <see cref="Type"/> expected for the entity. Entities might have an actual type
 /// that is different from the expected type, as long as it is a derived type of the expected one.</param>

@@ -14,6 +14,8 @@
 
 namespace Cvoya.Graph.Model.Serialization.CodeGen.Tests;
 
+using Microsoft.CodeAnalysis;
+
 /// <summary>
 /// Snapshot tests for <c>EntitySerializerGenerator</c> covering a simple node, a relationship,
 /// a node with a nested complex property, and a node with a collection of complex properties.
@@ -107,5 +109,29 @@ public class EntitySerializerGeneratorTests
             """;
 
         return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
+    }
+
+    [Fact]
+    public void EntityTypeDiscovery_CachesOnUnchangedSecondRun()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            namespace TestNamespace;
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public string FirstName { get; set; } = string.Empty;
+            }
+            """;
+
+        var reasons = GeneratorTestHelpers.GetSecondRunReasons(source, "GraphModel.EntityTypes");
+
+        Assert.NotEmpty(reasons);
+        Assert.DoesNotContain(reasons, reason =>
+            reason is IncrementalStepRunReason.New or IncrementalStepRunReason.Modified);
+        Assert.Contains(reasons, reason =>
+            reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
     }
 }

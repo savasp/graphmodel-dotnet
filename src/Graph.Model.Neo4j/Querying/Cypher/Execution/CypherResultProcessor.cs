@@ -285,7 +285,7 @@ internal sealed class CypherResultProcessor
 
                 entityInfo.ComplexProperties[propertyName] = new Property(
                     propertySchema.PropertyInfo,
-                    propertySchema.Neo4jPropertyName,
+                    propertySchema.PropertyName,
                     propertySchema.IsNullable,
                     new EntityCollection(propertySchema.ElementType!, children));
             }
@@ -295,7 +295,7 @@ internal sealed class CypherResultProcessor
 
                 entityInfo.ComplexProperties[propertyName] = new Property(
                     propertySchema.PropertyInfo,
-                    propertySchema.Neo4jPropertyName,
+                    propertySchema.PropertyName,
                     propertySchema.IsNullable,
                     child);
             }
@@ -1112,7 +1112,7 @@ internal sealed class CypherResultProcessor
 
                 Property property = new(
                     propertySchema.PropertyInfo,
-                    propertySchema.Neo4jPropertyName,
+                    propertySchema.PropertyName,
                     propertySchema.IsNullable,
                     propertySchema.PropertyType == PropertyType.SimpleCollection
                         ? CreateSimpleCollection(convertedValue, propertySchema.ElementType!)

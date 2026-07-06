@@ -21,14 +21,14 @@ using System.Reflection;
 /// Schema information for a property within an entity or relationship.
 /// </summary>
 /// <param name="PropertyInfo">The .NET property information.</param>
-/// <param name="Neo4jPropertyName">The property name as stored in Neo4j.</param>
+/// <param name="PropertyName">The property name as stored in the backing graph store.</param>
 /// <param name="PropertyType">The type of property (simple, complex, collection).</param>
 /// <param name="ElementType">For collections, the type of elements.</param>
 /// <param name="IsNullable">Whether the property can be null.</param>
 /// <param name="NestedSchema">For complex properties, the schema of the nested type.</param>
 public record PropertySchema(
     PropertyInfo PropertyInfo,
-    string Neo4jPropertyName,
+    string PropertyName,
     PropertyType PropertyType,
     Type? ElementType = null,
     bool IsNullable = false,
@@ -40,7 +40,7 @@ public record PropertySchema(
 /// </summary>
 public enum PropertyType
 {
-    /// <summary>Simple value type or string that maps directly to Neo4j properties.</summary>
+    /// <summary>Simple value type or string that maps directly to graph storage properties.</summary>
     Simple,
 
     /// <summary>Complex object that gets serialized as nested JSON.</summary>

@@ -206,7 +206,7 @@ internal static class Schema
         {
             sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
             sb.AppendLine("                PropertyInfo: propInfo,");
-            sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+            sb.AppendLine($"                PropertyName: \"{propertyName}\",");
             sb.AppendLine("                PropertyType: PropertyType.Simple,");
             sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
             sb.AppendLine("            );");
@@ -218,7 +218,7 @@ internal static class Schema
             {
                 sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
-                sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+                sb.AppendLine($"                PropertyName: \"{propertyName}\",");
                 sb.AppendLine("                PropertyType: PropertyType.SimpleCollection,");
                 sb.AppendLine($"                ElementType: typeof({Utils.GetTypeOfName(elementType)}),");
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
@@ -230,7 +230,7 @@ internal static class Schema
                 sb.AppendLine($"            // Warning: Could not determine element type for collection property {property.Name}");
                 sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
-                sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+                sb.AppendLine($"                PropertyName: \"{propertyName}\",");
                 sb.AppendLine("                PropertyType: PropertyType.Simple,");
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
                 sb.AppendLine("            );");
@@ -245,7 +245,7 @@ internal static class Schema
                 var nestedSchemaCall = Utils.GetNestedSchemaCall(elementType);
                 sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
-                sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+                sb.AppendLine($"                PropertyName: \"{propertyName}\",");
                 sb.AppendLine("                PropertyType: PropertyType.ComplexCollection,");
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
                 sb.AppendLine($"                NestedSchema: {nestedSchemaCall}");
@@ -261,7 +261,7 @@ internal static class Schema
                 var nestedSchemaCall = Utils.GetNestedSchemaCall(propertyType);
                 sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
-                sb.AppendLine($"                Neo4jPropertyName: \"{propertyName}\",");
+                sb.AppendLine($"                PropertyName: \"{propertyName}\",");
                 sb.AppendLine("                PropertyType: PropertyType.Complex,");
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
                 sb.AppendLine($"                NestedSchema: {nestedSchemaCall}");
