@@ -58,7 +58,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         TNode node,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
-        where TNode : Model.INode
+        where TNode : class, Model.INode
     {
         ArgumentNullException.ThrowIfNull(node);
 
@@ -103,7 +103,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         TNode node,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
-        where TNode : Model.INode
+        where TNode : class, Model.INode
     {
         ArgumentNullException.ThrowIfNull(node);
 
@@ -374,7 +374,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         return await GetCountAsync(result, cancellationToken) > 0;
     }
 
-    private void ValidateNodeProperties<TNode>(TNode node) where TNode : Model.INode
+    private void ValidateNodeProperties<TNode>(TNode node) where TNode : class, Model.INode
     {
         // For DynamicNode, validate against existing schemas if any
         if (node is DynamicNode dynamicNode)

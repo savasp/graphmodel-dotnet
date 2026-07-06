@@ -44,7 +44,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         TRelationship relationship,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
-        where TRelationship : Model.IRelationship
+        where TRelationship : class, Model.IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
@@ -100,7 +100,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         TRelationship relationship,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
-        where TRelationship : Model.IRelationship
+        where TRelationship : class, Model.IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
@@ -245,7 +245,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         return record["updated"].As<bool>();
     }
 
-    private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : Model.IRelationship
+    private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Model.IRelationship
     {
         // For DynamicRelationship, validate against existing schemas if any
         if (relationship is DynamicRelationship dynamicRelationship)

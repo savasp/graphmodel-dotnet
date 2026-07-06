@@ -69,7 +69,7 @@ internal sealed class CypherEngine
                 cancellationToken);
 
             // Let the materializer handle everything - no need to duplicate logic here
-            var result = await _materializer.MaterializeAsync<T>(records, cancellationToken);
+            var result = await _materializer.MaterializeAsync<T>(records, cypherQuery.GraphPathTypes, cancellationToken);
             return result;
         }
         catch (Exception ex)
@@ -87,17 +87,17 @@ internal sealed class CypherEngine
         var visitor = new CypherQueryVisitor(elementType, loggerFactory);
         visitor.Visit(expression);
 
-        var (cypher, parameters) = visitor.Query;
+        var query = visitor.Query;
 
         var paramBuilder = new CypherParameterBuilder(_entityFactory);
         var convertedParams = new Dictionary<string, object?>();
 
-        foreach (var (key, value) in parameters)
+        foreach (var (key, value) in query.Parameters)
         {
             convertedParams[key] = paramBuilder.BuildParameterValue(value);
         }
 
-        return new CypherQuery(cypher, convertedParams);
+        return new CypherQuery(query.Text, convertedParams, query.GraphPathTypes);
     }
 
     // Helper visitor to detect if we have a projection

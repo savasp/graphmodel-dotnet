@@ -79,7 +79,7 @@ try
     Console.WriteLine("2. LINQ Query Examples...");
 
     // Basic filtering
-    var newYorkers = (await graph.NodesAsync<Person>())
+    var newYorkers = graph.Nodes<Person>()
         .Where(p => p.City == "New York")
         .OrderBy(p => p.Name)
         .ToList();
@@ -91,7 +91,7 @@ try
     }
 
     // Age range query
-    var youngPeople = (await graph.NodesAsync<Person>())
+    var youngPeople = graph.Nodes<Person>()
         .Where(p => p.Age >= 28 && p.Age <= 32)
         .ToList();
 
@@ -110,9 +110,9 @@ try
     Console.WriteLine($"  - Name: {alice.Name}");
 
     // Depth 1: Node with immediate relationships
-    var aliceKnowsDepth1 = await (await graph.NodesAsync<Person>())
+    var aliceKnowsDepth1 = await graph.Nodes<Person>()
         .Where(p => p.Id == alice.Id)
-        .Traverse<Person, Knows, Person>()
+        .Traverse<Knows, Person>()
         .ToListAsync();
 
     Console.WriteLine($"\nAlice with depth 1:");
@@ -120,10 +120,9 @@ try
     Console.WriteLine($"  - Knows: {string.Join(", ", aliceKnowsDepth1.Select(k => k.Name))}");
 
     // Depth 2: Two levels of relationships
-    var aliceKnowsDepth2 = await (await graph.NodesAsync<Person>())
+    var aliceKnowsDepth2 = await graph.Nodes<Person>()
         .Where(p => p.Id == alice.Id)
-        .Traverse<Person, Knows, Person>()
-        .WithDepth(2)
+        .Traverse<Knows, Person>(2)
         .ToListAsync();
 
     Console.WriteLine($"\nAlice with depth 2:");
@@ -137,7 +136,7 @@ try
     Console.WriteLine("\n4. Complex LINQ Queries...");
 
     // Find people who know someone in San Francisco
-    var peopleWhoKnowSomeoneInSF = await (await graph.NodesAsync<Person>())
+    var peopleWhoKnowSomeoneInSF = await graph.Nodes<Person>()
         .PathSegments<Person, Knows, Person>()
         .Where(p => p.EndNode.City == "San Francisco")
         .Select(p => p.StartNode)
@@ -154,7 +153,7 @@ try
     Console.WriteLine("\n5. Finding mutual connections...");
 
     // Method 1: Using PathSegments to find mutual connections more efficiently
-    var allPeople = await (await graph.NodesAsync<Person>()).ToListAsync();
+    var allPeople = await graph.Nodes<Person>().ToListAsync();
 
     // For each pair of people, find their mutual connections
     var mutualConnections = new List<(Person person1, Person person2, List<Person> mutual)>();
@@ -164,15 +163,15 @@ try
         foreach (var person2 in allPeople.Where(p => p.Id != person1.Id && string.Compare(p.Id, person1.Id) > 0))
         {
             // Get people that person1 knows
-            var person1Knows = await (await graph.NodesAsync<Person>())
+            var person1Knows = await graph.Nodes<Person>()
                 .Where(p => p.Id == person1.Id)
-                .Traverse<Person, Knows, Person>()
+                .Traverse<Knows, Person>()
                 .ToListAsync();
 
             // Get people that person2 knows
-            var person2Knows = await (await graph.NodesAsync<Person>())
+            var person2Knows = await graph.Nodes<Person>()
                 .Where(p => p.Id == person2.Id)
-                .Traverse<Person, Knows, Person>()
+                .Traverse<Knows, Person>()
                 .ToListAsync();
 
             // Find mutual connections
@@ -201,16 +200,16 @@ try
     // Let's find mutual connections between Alice and Bob specifically
 
     // Get Alice's connections
-    var aliceConnections = await (await graph.NodesAsync<Person>())
+    var aliceConnections = await graph.Nodes<Person>()
         .Where(p => p.Id == alice.Id)
-        .Traverse<Person, Knows, Person>()
+        .Traverse<Knows, Person>()
         .Select(p => p.Id)
         .ToListAsync();
 
     // Find Bob's connections that are also in Alice's connections
-    var mutualBetweenAliceAndBob = await (await graph.NodesAsync<Person>())
+    var mutualBetweenAliceAndBob = await graph.Nodes<Person>()
         .Where(p => p.Id == bob.Id)
-        .Traverse<Person, Knows, Person>()
+        .Traverse<Knows, Person>()
         .Where(p => aliceConnections.Contains(p.Id))
         .ToListAsync();
 
@@ -227,7 +226,7 @@ try
     Console.WriteLine("\n\nFinding people with the most mutual connections:");
 
     // Get all connections as path segments
-    var allConnections = await (await graph.NodesAsync<Person>())
+    var allConnections = await graph.Nodes<Person>()
         .PathSegments<Person, Knows, Person>()
         .ToListAsync();
 

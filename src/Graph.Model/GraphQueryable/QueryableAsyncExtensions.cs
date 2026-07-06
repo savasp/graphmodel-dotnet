@@ -15,7 +15,7 @@
 namespace Cvoya.Graph.Model;
 
 using System.Linq.Expressions;
-
+using System.Numerics;
 
 /// <summary>
 /// Extension methods for async execution of IQueryable queries in the graph context.
@@ -26,7 +26,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously executes the query and returns the results as a list.
     /// </summary>
     public static async Task<List<T>> ToListAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -37,7 +37,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<List<T>>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, List<T>>)QueryableAsyncExtensionsMarkers.ToListAsyncMarker).Method, source.Expression),
+                    ((Func<IQueryable<T>, List<T>>)QueryTerminals.ToListAsyncMarker).Method, source.Expression),
                 cancellationToken);
         }
 
@@ -46,10 +46,46 @@ public static class QueryableAsyncExtensions
     }
 
     /// <summary>
+    /// Asynchronously executes the query and returns the results as a list.
+    /// </summary>
+    /// <remarks>
+    /// This <see cref="IQueryable{T}"/>-typed overload exists alongside the
+    /// <see cref="IGraphQueryable{T}"/>-typed one above for LINQ operators that degrade the
+    /// static type away from <see cref="IGraphQueryable{T}"/> (e.g. the standard
+    /// <see cref="Queryable.Join{TOuter, TInner, TKey, TResult}"/>, which has no
+    /// graph-typed-chain-preserving override): the compile-time result type of such a call is
+    /// <see cref="IQueryable{TResult}"/> even though the runtime instance is still a graph
+    /// queryable. Overload resolution prefers the more specific <see cref="IGraphQueryable{T}"/>
+    /// overload whenever both apply, so this is purely a fallback and does not conflict with it.
+    /// </remarks>
+    public static async Task<List<T>> ToListAsync<T>(
+        this IQueryable<T> source,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        if (source is IGraphQueryable<T> graphQueryable)
+        {
+            return await graphQueryable.ToListAsync(cancellationToken);
+        }
+
+        if (source.Provider is IGraphQueryProvider graphProvider)
+        {
+            return await graphProvider.ExecuteAsync<List<T>>(
+                Expression.Call(
+                    null,
+                    ((Func<IQueryable<T>, List<T>>)QueryTerminals.ToListAsyncMarker).Method, source.Expression),
+                cancellationToken);
+        }
+
+        return await Task.Run(() => source.ToList(), cancellationToken);
+    }
+
+    /// <summary>
     /// Asynchronously executes the query and returns the first element, or default if empty.
     /// </summary>
     public static async Task<T?> FirstOrDefaultAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -59,7 +95,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T?>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, T?>)QueryableAsyncExtensionsMarkers.FirstOrDefaultAsyncMarker).Method,
+                    ((Func<IQueryable<T>, T?>)QueryTerminals.FirstOrDefaultAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
@@ -71,7 +107,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously counts the elements in the sequence.
     /// </summary>
     public static async Task<int> CountAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -81,7 +117,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<int>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, int>)QueryableAsyncExtensionsMarkers.CountAsyncMarker).Method,
+                    ((Func<IQueryable<T>, int>)QueryTerminals.CountAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
@@ -93,7 +129,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously checks if any elements exist in the sequence.
     /// </summary>
     public static async Task<bool> AnyAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -103,7 +139,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<bool>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, bool>)QueryableAsyncExtensionsMarkers.AnyAsyncMarker).Method,
+                    ((Func<IQueryable<T>, bool>)QueryTerminals.AnyAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
@@ -118,19 +154,33 @@ public static class QueryableAsyncExtensions
     /// <param name="predicate">The predicate to apply to the elements.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains true if any elements match the predicate; otherwise, false.</returns>
-    public static Task<bool> AnyAsync<T>(
-        this IQueryable<T> source,
+    public static async Task<bool> AnyAsync<T>(
+        this IGraphQueryable<T> source,
         Expression<Func<T, bool>> predicate,
         CancellationToken cancellationToken = default)
     {
-        return source.Where(predicate).AnyAsync(cancellationToken);
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(predicate);
+
+        if (source.Provider is IGraphQueryProvider graphProvider)
+        {
+            return await graphProvider.ExecuteAsync<bool>(
+                Expression.Call(
+                    null,
+                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, bool>)QueryTerminals.AnyAsyncMarker).Method,
+                    source.Expression,
+                    predicate),
+                cancellationToken);
+        }
+
+        return await Task.Run(() => source.Any(predicate), cancellationToken);
     }
 
     /// <summary>
     /// Asynchronously checks if all elements in the sequence match the specified predicate.
     /// </summary>
     public static async Task<bool> AllAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         Expression<Func<T, bool>> predicate,
         CancellationToken cancellationToken = default)
     {
@@ -141,7 +191,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<bool>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, bool>)QueryableAsyncExtensionsMarkers.AllAsyncMarker).Method,
+                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, bool>)QueryTerminals.AllAsyncMarker).Method,
                     source.Expression,
                     predicate),
                 cancellationToken);
@@ -157,7 +207,7 @@ public static class QueryableAsyncExtensions
     /// </summary>
     /// <returns></returns>
     public static async Task<T> SingleAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -167,7 +217,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, T>)QueryableAsyncExtensionsMarkers.SingleAsyncMarker).Method,
+                    ((Func<IQueryable<T>, T>)QueryTerminals.SingleAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
@@ -182,7 +232,7 @@ public static class QueryableAsyncExtensions
     /// </summary>
     /// <returns></returns>
     public static async Task<T> SingleAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         Expression<Func<T, bool>> predicate,
         CancellationToken cancellationToken = default)
     {
@@ -193,7 +243,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T>)QueryableAsyncExtensionsMarkers.SingleAsyncMarker).Method,
+                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T>)QueryTerminals.SingleAsyncMarker).Method,
                     source.Expression,
                     predicate),
                 cancellationToken);
@@ -208,7 +258,7 @@ public static class QueryableAsyncExtensions
     /// If more than one element exists, an exception is thrown.
     /// </summary>
     public static async Task<T> LastAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -218,7 +268,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, T>)QueryableAsyncExtensionsMarkers.LastAsyncMarker).Method,
+                    ((Func<IQueryable<T>, T>)QueryTerminals.LastAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
@@ -230,7 +280,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously returns the first element of the sequence.
     /// </summary>
     public static async Task<T> FirstAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -240,7 +290,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, T>)QueryableAsyncExtensionsMarkers.FirstAsyncMarker).Method,
+                    ((Func<IQueryable<T>, T>)QueryTerminals.FirstAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
@@ -252,7 +302,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously executes the query and returns the results as an array.
     /// </summary>
     public static async Task<T[]> ToArrayAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -262,7 +312,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T[]>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, T[]>)QueryableAsyncExtensionsMarkers.ToArrayAsyncMarker).Method,
+                    ((Func<IQueryable<T>, T[]>)QueryTerminals.ToArrayAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
@@ -274,7 +324,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously executes the query and returns the results as a dictionary.
     /// </summary>
     public static async Task<Dictionary<TKey, TElement>> ToDictionaryAsync<TSource, TKey, TElement>(
-        this IQueryable<TSource> source,
+        this IGraphQueryable<TSource> source,
         Expression<Func<TSource, TKey>> keySelector,
         Expression<Func<TSource, TElement>> elementSelector,
         CancellationToken cancellationToken = default) where TKey : notnull
@@ -289,7 +339,7 @@ public static class QueryableAsyncExtensions
                 Expression.Call(
                     null,
                     ((Func<IQueryable<TSource>, Expression<Func<TSource, TKey>>, Expression<Func<TSource, TElement>>, Dictionary<TKey, TElement>>)
-                        QueryableAsyncExtensionsMarkers.ToDictionaryAsyncMarker).Method,
+                        QueryTerminals.ToDictionaryAsyncMarker).Method,
                     source.Expression,
                     keySelector,
                     elementSelector),
@@ -303,7 +353,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously executes the query and returns the results as a dictionary.
     /// </summary>
     public static async Task<Dictionary<TKey, TSource>> ToDictionaryAsync<TSource, TKey>(
-        this IQueryable<TSource> source,
+        this IGraphQueryable<TSource> source,
         Expression<Func<TSource, TKey>> keySelector,
         CancellationToken cancellationToken = default) where TKey : notnull
     {
@@ -316,7 +366,7 @@ public static class QueryableAsyncExtensions
                 Expression.Call(
                     null,
                     ((Func<IQueryable<TSource>, Expression<Func<TSource, TKey>>, Dictionary<TKey, TSource>>)
-                        QueryableAsyncExtensionsMarkers.ToDictionaryAsyncMarker).Method,
+                        QueryTerminals.ToDictionaryAsyncMarker).Method,
                     source.Expression,
                     keySelector),
                 cancellationToken);
@@ -329,7 +379,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously executes the query and returns the results as a lookup.
     /// </summary>
     public static async Task<ILookup<TKey, TElement>> ToLookupAsync<TSource, TKey, TElement>(
-        this IQueryable<TSource> source,
+        this IGraphQueryable<TSource> source,
         Expression<Func<TSource, TKey>> keySelector,
         Expression<Func<TSource, TElement>> elementSelector,
         CancellationToken cancellationToken = default)
@@ -344,7 +394,7 @@ public static class QueryableAsyncExtensions
                 Expression.Call(
                     null,
                     ((Func<IQueryable<TSource>, Expression<Func<TSource, TKey>>, Expression<Func<TSource, TElement>>, ILookup<TKey, TElement>>)
-                        QueryableAsyncExtensionsMarkers.ToLookupAsyncMarker).Method,
+                        QueryTerminals.ToLookupAsyncMarker).Method,
                     source.Expression,
                     keySelector,
                     elementSelector),
@@ -358,7 +408,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously executes the query and returns the results as a lookup.
     /// </summary>
     public static async Task<ILookup<TKey, TSource>> ToLookupAsync<TSource, TKey>(
-        this IQueryable<TSource> source,
+        this IGraphQueryable<TSource> source,
         Expression<Func<TSource, TKey>> keySelector,
         CancellationToken cancellationToken = default)
     {
@@ -371,7 +421,7 @@ public static class QueryableAsyncExtensions
                 Expression.Call(
                     null,
                     ((Func<IQueryable<TSource>, Expression<Func<TSource, TKey>>, ILookup<TKey, TSource>>)
-                        QueryableAsyncExtensionsMarkers.ToLookupAsyncMarker).Method,
+                        QueryTerminals.ToLookupAsyncMarker).Method,
                     source.Expression,
                     keySelector),
                 cancellationToken);
@@ -384,7 +434,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously returns the first element of the sequence that matches the predicate.
     /// </summary>
     public static async Task<T> FirstAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         Expression<Func<T, bool>> predicate,
         CancellationToken cancellationToken = default)
     {
@@ -396,7 +446,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T>)QueryableAsyncExtensionsMarkers.FirstAsyncMarker).Method,
+                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T>)QueryTerminals.FirstAsyncMarker).Method,
                     source.Expression,
                     predicate),
                 cancellationToken);
@@ -409,7 +459,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously returns the first element or default that matches the predicate.
     /// </summary>
     public static async Task<T?> FirstOrDefaultAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         Expression<Func<T, bool>> predicate,
         CancellationToken cancellationToken = default)
     {
@@ -421,7 +471,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T?>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T?>)QueryableAsyncExtensionsMarkers.FirstOrDefaultAsyncMarker).Method,
+                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T?>)QueryTerminals.FirstOrDefaultAsyncMarker).Method,
                     source.Expression,
                     predicate),
                 cancellationToken);
@@ -434,7 +484,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously returns the last element of the sequence that matches the predicate.
     /// </summary>
     public static async Task<T> LastAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         Expression<Func<T, bool>> predicate,
         CancellationToken cancellationToken = default)
     {
@@ -446,7 +496,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T>)QueryableAsyncExtensionsMarkers.LastAsyncMarker).Method,
+                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T>)QueryTerminals.LastAsyncMarker).Method,
                     source.Expression,
                     predicate),
                 cancellationToken);
@@ -459,7 +509,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously returns the last element or default of the sequence.
     /// </summary>
     public static async Task<T?> LastOrDefaultAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -469,7 +519,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T?>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, T?>)QueryableAsyncExtensionsMarkers.LastOrDefaultAsyncMarker).Method,
+                    ((Func<IQueryable<T>, T?>)QueryTerminals.LastOrDefaultAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
@@ -481,7 +531,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously returns the last element or default that matches the predicate.
     /// </summary>
     public static async Task<T?> LastOrDefaultAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         Expression<Func<T, bool>> predicate,
         CancellationToken cancellationToken = default)
     {
@@ -493,7 +543,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T?>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T?>)QueryableAsyncExtensionsMarkers.LastOrDefaultAsyncMarker).Method,
+                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T?>)QueryTerminals.LastOrDefaultAsyncMarker).Method,
                     source.Expression,
                     predicate),
                 cancellationToken);
@@ -506,7 +556,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously returns the single element or default of the sequence.
     /// </summary>
     public static async Task<T?> SingleOrDefaultAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -516,7 +566,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T?>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, T?>)QueryableAsyncExtensionsMarkers.SingleOrDefaultAsyncMarker).Method,
+                    ((Func<IQueryable<T>, T?>)QueryTerminals.SingleOrDefaultAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
@@ -528,7 +578,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously returns the single element or default that matches the predicate.
     /// </summary>
     public static async Task<T?> SingleOrDefaultAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         Expression<Func<T, bool>> predicate,
         CancellationToken cancellationToken = default)
     {
@@ -540,7 +590,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T?>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T?>)QueryableAsyncExtensionsMarkers.SingleOrDefaultAsyncMarker).Method,
+                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T?>)QueryTerminals.SingleOrDefaultAsyncMarker).Method,
                     source.Expression,
                     predicate),
                 cancellationToken);
@@ -553,7 +603,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously counts the elements that match the predicate.
     /// </summary>
     public static async Task<int> CountAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         Expression<Func<T, bool>> predicate,
         CancellationToken cancellationToken = default)
     {
@@ -565,7 +615,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<int>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, int>)QueryableAsyncExtensionsMarkers.CountAsyncMarker).Method,
+                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, int>)QueryTerminals.CountAsyncMarker).Method,
                     source.Expression,
                     predicate),
                 cancellationToken);
@@ -578,7 +628,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously counts the elements in the sequence as a long.
     /// </summary>
     public static async Task<long> LongCountAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -588,7 +638,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<long>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, long>)QueryableAsyncExtensionsMarkers.LongCountAsyncMarker).Method,
+                    ((Func<IQueryable<T>, long>)QueryTerminals.LongCountAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
@@ -600,7 +650,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously counts the elements that match the predicate as a long.
     /// </summary>
     public static async Task<long> LongCountAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         Expression<Func<T, bool>> predicate,
         CancellationToken cancellationToken = default)
     {
@@ -612,7 +662,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<long>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, long>)QueryableAsyncExtensionsMarkers.LongCountAsyncMarker).Method,
+                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, long>)QueryTerminals.LongCountAsyncMarker).Method,
                     source.Expression,
                     predicate),
                 cancellationToken);
@@ -622,198 +672,10 @@ public static class QueryableAsyncExtensions
     }
 
     /// <summary>
-    /// Asynchronously computes the sum of the sequence.
-    /// </summary>
-    public static async Task<int> SumAsync(
-        this IQueryable<int> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<int>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<int>, int>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of the projected values.
-    /// </summary>
-    public static async Task<int> SumAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, int>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<int>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, int>>, int>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of the sequence.
-    /// </summary>
-    public static async Task<double> AverageAsync(
-        this IQueryable<int> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<int>, double>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of the projected values.
-    /// </summary>
-    public static async Task<double> AverageAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, int>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, int>>, double>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously finds the minimum value in the sequence.
-    /// </summary>
-    public static async Task<T?> MinAsync<T>(
-        this IQueryable<T> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<T?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, T?>)QueryableAsyncExtensionsMarkers.MinAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Min(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously finds the minimum projected value.
-    /// </summary>
-    public static async Task<TResult?> MinAsync<T, TResult>(
-        this IQueryable<T> source,
-        Expression<Func<T, TResult>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<TResult?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, TResult>>, TResult?>)QueryableAsyncExtensionsMarkers.MinAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Min(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously finds the maximum value in the sequence.
-    /// </summary>
-    public static async Task<T?> MaxAsync<T>(
-        this IQueryable<T> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<T?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, T?>)QueryableAsyncExtensionsMarkers.MaxAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Max(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously finds the maximum projected value.
-    /// </summary>
-    public static async Task<TResult?> MaxAsync<T, TResult>(
-        this IQueryable<T> source,
-        Expression<Func<T, TResult>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<TResult?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, TResult>>, TResult?>)QueryableAsyncExtensionsMarkers.MaxAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Max(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
     /// Asynchronously checks if the sequence contains the specified value.
     /// </summary>
     public static async Task<bool> ContainsAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         T item,
         CancellationToken cancellationToken = default)
     {
@@ -824,7 +686,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<bool>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, T, bool>)QueryableAsyncExtensionsMarkers.ContainsAsyncMarker).Method,
+                    ((Func<IQueryable<T>, T, bool>)QueryTerminals.ContainsAsyncMarker).Method,
                     source.Expression,
                     Expression.Constant(item, typeof(T))),
                 cancellationToken);
@@ -837,7 +699,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously returns the element at the specified index.
     /// </summary>
     public static async Task<T> ElementAtAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         int index,
         CancellationToken cancellationToken = default)
     {
@@ -848,7 +710,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, int, T>)QueryableAsyncExtensionsMarkers.ElementAtAsyncMarker).Method,
+                    ((Func<IQueryable<T>, int, T>)QueryTerminals.ElementAtAsyncMarker).Method,
                     source.Expression,
                     Expression.Constant(index)),
                 cancellationToken);
@@ -861,7 +723,7 @@ public static class QueryableAsyncExtensions
     /// Asynchronously returns the element at the specified index, or default if out of range.
     /// </summary>
     public static async Task<T?> ElementAtOrDefaultAsync<T>(
-        this IQueryable<T> source,
+        this IGraphQueryable<T> source,
         int index,
         CancellationToken cancellationToken = default)
     {
@@ -872,7 +734,7 @@ public static class QueryableAsyncExtensions
             return await graphProvider.ExecuteAsync<T?>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, int, T?>)QueryableAsyncExtensionsMarkers.ElementAtOrDefaultAsyncMarker).Method,
+                    ((Func<IQueryable<T>, int, T?>)QueryTerminals.ElementAtOrDefaultAsyncMarker).Method,
                     source.Expression,
                     Expression.Constant(index)),
                 cancellationToken);
@@ -881,214 +743,150 @@ public static class QueryableAsyncExtensions
         return await Task.Run(() => source.ElementAtOrDefault(index), cancellationToken);
     }
 
-    // Sum overloads for all numeric types
+    #region Aggregation Methods (Sum/Average - collapsed to a single generic definition per shape)
 
     /// <summary>
-    /// Asynchronously computes the sum of a sequence of nullable int values.
+    /// Asynchronously computes the sum of the sequence.
     /// </summary>
-    public static async Task<int?> SumAsync(
-        this IQueryable<int?> source,
+    public static async Task<TResult> SumAsync<TResult>(
+        this IGraphQueryable<TResult> source,
+        CancellationToken cancellationToken = default)
+        where TResult : INumberBase<TResult>
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        if (source.Provider is IGraphQueryProvider graphProvider)
+        {
+            var method = ((Func<IQueryable<TResult>, TResult>)QueryTerminals.SumAsyncMarker).Method;
+            return await graphProvider.ExecuteAsync<TResult>(
+                Expression.Call(null, method, source.Expression),
+                cancellationToken);
+        }
+
+        return await Task.Run(() => Enumerable.Aggregate(source, TResult.Zero, (acc, x) => acc + x), cancellationToken);
+    }
+
+    /// <summary>
+    /// Asynchronously computes the sum of the projected values.
+    /// </summary>
+    public static async Task<TResult> SumAsync<TSource, TResult>(
+        this IGraphQueryable<TSource> source,
+        Expression<Func<TSource, TResult>> selector,
+        CancellationToken cancellationToken = default)
+        where TResult : INumberBase<TResult>
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(selector);
+
+        if (source.Provider is IGraphQueryProvider graphProvider)
+        {
+            var method = ((Func<IQueryable<TSource>, Expression<Func<TSource, TResult>>, TResult>)QueryTerminals.SumAsyncMarker).Method;
+            return await graphProvider.ExecuteAsync<TResult>(
+                Expression.Call(null, method, source.Expression, selector),
+                cancellationToken);
+        }
+
+        var compiled = selector.Compile();
+        return await Task.Run(() => Enumerable.Aggregate(source, TResult.Zero, (acc, x) => acc + compiled(x)), cancellationToken);
+    }
+
+    /// <summary>
+    /// Asynchronously computes the average of the sequence.
+    /// </summary>
+    public static async Task<TResult> AverageAsync<TResult>(
+        this IGraphQueryable<TResult> source,
+        CancellationToken cancellationToken = default)
+        where TResult : INumberBase<TResult>
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        if (source.Provider is IGraphQueryProvider graphProvider)
+        {
+            var method = ((Func<IQueryable<TResult>, TResult>)QueryTerminals.AverageAsyncMarker<TResult, TResult>).Method;
+            return await graphProvider.ExecuteAsync<TResult>(
+                Expression.Call(null, method, source.Expression),
+                cancellationToken);
+        }
+
+        return await Task.Run(() =>
+        {
+            var count = TResult.Zero;
+            var sum = TResult.Zero;
+            foreach (var item in source)
+            {
+                sum += item;
+                count += TResult.One;
+            }
+
+            return count == TResult.Zero ? TResult.Zero : sum / count;
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Asynchronously computes the average of the projected values.
+    /// </summary>
+    public static async Task<TResult> AverageAsync<TSource, TResult>(
+        this IGraphQueryable<TSource> source,
+        Expression<Func<TSource, TResult>> selector,
+        CancellationToken cancellationToken = default)
+        where TResult : INumberBase<TResult>
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(selector);
+
+        if (source.Provider is IGraphQueryProvider graphProvider)
+        {
+            var method = ((Func<IQueryable<TSource>, Expression<Func<TSource, TResult>>, TResult>)QueryTerminals.AverageAsyncMarker).Method;
+            return await graphProvider.ExecuteAsync<TResult>(
+                Expression.Call(null, method, source.Expression, selector),
+                cancellationToken);
+        }
+
+        var compiled = selector.Compile();
+        return await Task.Run(() =>
+        {
+            var count = TResult.Zero;
+            var sum = TResult.Zero;
+            foreach (var item in source)
+            {
+                sum += compiled(item);
+                count += TResult.One;
+            }
+
+            return count == TResult.Zero ? TResult.Zero : sum / count;
+        }, cancellationToken);
+    }
+
+    #endregion
+
+    /// <summary>
+    /// Asynchronously finds the minimum value in the sequence.
+    /// </summary>
+    public static async Task<T?> MinAsync<T>(
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
-            return await graphProvider.ExecuteAsync<int?>(
+            return await graphProvider.ExecuteAsync<T?>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<int?>, int?>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
+                    ((Func<IQueryable<T>, T?>)QueryTerminals.MinAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
 
-        return await Task.Run(() => source.Sum(), cancellationToken);
+        return await Task.Run(() => source.Min(), cancellationToken);
     }
 
     /// <summary>
-    /// Asynchronously computes the sum of a sequence of long values.
+    /// Asynchronously finds the minimum projected value.
     /// </summary>
-    public static async Task<long> SumAsync(
-        this IQueryable<long> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<long>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<long>, long>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of nullable long values.
-    /// </summary>
-    public static async Task<long?> SumAsync(
-        this IQueryable<long?> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<long?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<long?>, long?>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of float values.
-    /// </summary>
-    public static async Task<float> SumAsync(
-        this IQueryable<float> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<float>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<float>, float>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of nullable float values.
-    /// </summary>
-    public static async Task<float?> SumAsync(
-        this IQueryable<float?> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<float?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<float?>, float?>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of double values.
-    /// </summary>
-    public static async Task<double> SumAsync(
-        this IQueryable<double> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<double>, double>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of nullable double values.
-    /// </summary>
-    public static async Task<double?> SumAsync(
-        this IQueryable<double?> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<double?>, double?>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of decimal values.
-    /// </summary>
-    public static async Task<decimal> SumAsync(
-        this IQueryable<decimal> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<decimal>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<decimal>, decimal>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of a sequence of nullable decimal values.
-    /// </summary>
-    public static async Task<decimal?> SumAsync(
-        this IQueryable<decimal?> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<decimal?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<decimal?>, decimal?>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(), cancellationToken);
-    }
-
-    // Sum overloads with selectors for all numeric types
-
-    /// <summary>
-    /// Asynchronously computes the sum of the projected nullable int values.
-    /// </summary>
-    public static async Task<int?> SumAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, int?>> selector,
+    public static async Task<TResult?> MinAsync<T, TResult>(
+        this IGraphQueryable<T> source,
+        Expression<Func<T, TResult>> selector,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -1096,426 +894,46 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
-            return await graphProvider.ExecuteAsync<int?>(
+            return await graphProvider.ExecuteAsync<TResult?>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, Expression<Func<T, int?>>, int?>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
+                    ((Func<IQueryable<T>, Expression<Func<T, TResult>>, TResult?>)QueryTerminals.MinAsyncMarker).Method,
                     source.Expression,
                     selector),
                 cancellationToken);
         }
 
-        return await Task.Run(() => source.Sum(selector.Compile()), cancellationToken);
+        return await Task.Run(() => source.Min(selector.Compile()), cancellationToken);
     }
 
     /// <summary>
-    /// Asynchronously computes the sum of the projected long values.
+    /// Asynchronously finds the maximum value in the sequence.
     /// </summary>
-    public static async Task<long> SumAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, long>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<long>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, long>>, long>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of the projected nullable long values.
-    /// </summary>
-    public static async Task<long?> SumAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, long?>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<long?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, long?>>, long?>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of the projected float values.
-    /// </summary>
-    public static async Task<float> SumAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, float>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<float>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, float>>, float>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of the projected nullable float values.
-    /// </summary>
-    public static async Task<float?> SumAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, float?>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<float?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, float?>>, float?>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of the projected double values.
-    /// </summary>
-    public static async Task<double> SumAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, double>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, double>>, double>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of the projected nullable double values.
-    /// </summary>
-    public static async Task<double?> SumAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, double?>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, double?>>, double?>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of the projected decimal values.
-    /// </summary>
-    public static async Task<decimal> SumAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, decimal>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<decimal>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, decimal>>, decimal>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the sum of the projected nullable decimal values.
-    /// </summary>
-    public static async Task<decimal?> SumAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, decimal?>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<decimal?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, decimal?>>, decimal?>)QueryableAsyncExtensionsMarkers.SumAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Sum(selector.Compile()), cancellationToken);
-    }
-
-    // Average overloads for all numeric types
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of nullable int values.
-    /// </summary>
-    public static async Task<double?> AverageAsync(
-        this IQueryable<int?> source,
+    public static async Task<T?> MaxAsync<T>(
+        this IGraphQueryable<T> source,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
-            return await graphProvider.ExecuteAsync<double?>(
+            return await graphProvider.ExecuteAsync<T?>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<int?>, double?>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
+                    ((Func<IQueryable<T>, T?>)QueryTerminals.MaxAsyncMarker).Method,
                     source.Expression),
                 cancellationToken);
         }
 
-        return await Task.Run(() => source.Average(), cancellationToken);
+        return await Task.Run(() => source.Max(), cancellationToken);
     }
 
     /// <summary>
-    /// Asynchronously computes the average of a sequence of long values.
+    /// Asynchronously finds the maximum projected value.
     /// </summary>
-    public static async Task<double> AverageAsync(
-        this IQueryable<long> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<long>, double>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of nullable long values.
-    /// </summary>
-    public static async Task<double?> AverageAsync(
-        this IQueryable<long?> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<long?>, double?>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of float values.
-    /// </summary>
-    public static async Task<float> AverageAsync(
-        this IQueryable<float> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<float>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<float>, float>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of nullable float values.
-    /// </summary>
-    public static async Task<float?> AverageAsync(
-        this IQueryable<float?> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<float?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<float?>, float?>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of double values.
-    /// </summary>
-    public static async Task<double> AverageAsync(
-        this IQueryable<double> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<double>, double>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of nullable double values.
-    /// </summary>
-    public static async Task<double?> AverageAsync(
-        this IQueryable<double?> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<double?>, double?>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of decimal values.
-    /// </summary>
-    public static async Task<decimal> AverageAsync(
-        this IQueryable<decimal> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<decimal>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<decimal>, decimal>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of a sequence of nullable decimal values.
-    /// </summary>
-    public static async Task<decimal?> AverageAsync(
-        this IQueryable<decimal?> source,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<decimal?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<decimal?>, decimal?>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(), cancellationToken);
-    }
-
-    // Average overloads with selectors for all numeric types
-
-    /// <summary>
-    /// Asynchronously computes the average of the projected nullable int values.
-    /// </summary>
-    public static async Task<double?> AverageAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, int?>> selector,
+    public static async Task<TResult?> MaxAsync<T, TResult>(
+        this IGraphQueryable<T> source,
+        Expression<Func<T, TResult>> selector,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -1523,215 +941,15 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
-            return await graphProvider.ExecuteAsync<double?>(
+            return await graphProvider.ExecuteAsync<TResult?>(
                 Expression.Call(
                     null,
-                    ((Func<IQueryable<T>, Expression<Func<T, int?>>, double?>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
+                    ((Func<IQueryable<T>, Expression<Func<T, TResult>>, TResult?>)QueryTerminals.MaxAsyncMarker).Method,
                     source.Expression,
                     selector),
                 cancellationToken);
         }
 
-        return await Task.Run(() => source.Average(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of the projected long values.
-    /// </summary>
-    public static async Task<double> AverageAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, long>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, long>>, double>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of the projected nullable long values.
-    /// </summary>
-    public static async Task<double?> AverageAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, long?>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, long?>>, double?>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of the projected float values.
-    /// </summary>
-    public static async Task<float> AverageAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, float>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<float>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, float>>, float>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of the projected nullable float values.
-    /// </summary>
-    public static async Task<float?> AverageAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, float?>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<float?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, float?>>, float?>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of the projected double values.
-    /// </summary>
-    public static async Task<double> AverageAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, double>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, double>>, double>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of the projected nullable double values.
-    /// </summary>
-    public static async Task<double?> AverageAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, double?>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<double?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, double?>>, double?>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of the projected decimal values.
-    /// </summary>
-    public static async Task<decimal> AverageAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, decimal>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<decimal>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, decimal>>, decimal>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(selector.Compile()), cancellationToken);
-    }
-
-    /// <summary>
-    /// Asynchronously computes the average of the projected nullable decimal values.
-    /// </summary>
-    public static async Task<decimal?> AverageAsync<T>(
-        this IQueryable<T> source,
-        Expression<Func<T, decimal?>> selector,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<decimal?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, decimal?>>, decimal?>)QueryableAsyncExtensionsMarkers.AverageAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken);
-        }
-
-        return await Task.Run(() => source.Average(selector.Compile()), cancellationToken);
+        return await Task.Run(() => source.Max(selector.Compile()), cancellationToken);
     }
 }

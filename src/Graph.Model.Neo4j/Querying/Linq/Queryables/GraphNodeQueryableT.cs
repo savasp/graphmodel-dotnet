@@ -22,9 +22,9 @@ using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 
 internal sealed class GraphNodeQueryable<TNode> :
     GraphQueryableBase<TNode>,
-    IGraphNodeQueryable<TNode>,
-    IOrderedGraphNodeQueryable<TNode>
-    where TNode : INode
+    IGraphQueryable<TNode>,
+    IOrderedGraphQueryable<TNode>
+    where TNode : class, INode
 {
     public GraphNodeQueryable(GraphQueryProvider provider, GraphTransaction? transaction, GraphContext graphContext)
         : base(typeof(TNode), provider, graphContext, transaction, CreateRootExpression())
@@ -40,10 +40,14 @@ internal sealed class GraphNodeQueryable<TNode> :
     {
     }
 
+    // For the root queryable, we'll create a placeholder that gets replaced during LINQ processing.
+    // The placeholder is typed as the (obsolete, internal-use-only) IGraphNodeQueryable<T> marker
+    // interface purely so CypherQueryVisitor.VisitConstant can distinguish a node root from a
+    // relationship root via a pattern match (`is IGraphNodeQueryable`) - this is an internal
+    // implementation detail, unrelated to the public surface deprecation of that interface.
+#pragma warning disable CS0618 // internal use of the obsolete node/relationship marker interface - see comment above.
     private static Expression CreateRootExpression()
     {
-        // For the root queryable, we'll create a placeholder that gets replaced during LINQ processing
-        // The CypherQueryVisitor will use the elementType from the expression type to generate the MATCH clause
         return Expression.Constant(CreatePlaceholderQueryable(), typeof(IGraphNodeQueryable<TNode>));
     }
 
@@ -53,7 +57,7 @@ internal sealed class GraphNodeQueryable<TNode> :
         return new PlaceholderNodeQueryable<TNode>();
     }
 
-    private sealed class PlaceholderNodeQueryable<T> : IGraphNodeQueryable<T> where T : INode
+    private sealed class PlaceholderNodeQueryable<T> : IGraphNodeQueryable<T> where T : class, INode
     {
         public Type ElementType => typeof(T);
         public Expression Expression => throw new NotSupportedException("Placeholder queryable");
@@ -63,6 +67,6 @@ internal sealed class GraphNodeQueryable<TNode> :
         public IEnumerator<T> GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
         IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
         public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) => throw new NotSupportedException("Placeholder queryable");
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
+#pragma warning restore CS0618
 }

@@ -178,7 +178,7 @@ public interface ITransactionTests : IGraphModelTest
         await Graph.CreateNodeAsync(person1, transaction, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person2, transaction, TestContext.Current.CancellationToken);
 
-        var queryResults = await (await Graph.NodesAsync<Person>(transaction))
+        var queryResults = await Graph.Nodes<Person>(transaction)
             .Where(p => p.FirstName == "Query")
             .ToListAsync(TestContext.Current.CancellationToken);
 

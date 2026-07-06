@@ -29,6 +29,15 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// Main visitor that orchestrates the translation of LINQ expressions to Cypher queries.
 /// This refactored version eliminates method handlers and uses a unified expression visitor.
 /// </summary>
+/// <remarks>
+/// This visitor still pattern-matches root queryable constants against the (public-surface
+/// obsolete, but internally load-bearing) <c>IGraphNodeQueryable</c>/<c>IGraphRelationshipQueryable</c>
+/// marker interfaces to distinguish a node root from a relationship root - the placeholder root
+/// expressions built by <c>GraphNodeQueryable&lt;T&gt;</c>/<c>GraphRelationshipQueryable&lt;T&gt;</c>
+/// are typed against those interfaces for exactly this purpose. The CS0618 obsolete warning is
+/// suppressed file-wide for that reason; it is unrelated to the public API deprecation.
+/// </remarks>
+#pragma warning disable CS0618
 internal class CypherQueryVisitor : ExpressionVisitor
 {
     private readonly CypherQueryContext _context;
@@ -51,7 +60,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
     /// <summary>
     /// Gets the generated Cypher query.
     /// </summary>
-    public CypherQuery Query => new(_context.GetQuery(), _context.GetParameters());
+    public CypherQuery Query => new(_context.GetQuery(), _context.GetParameters(), _context.Builder.GraphPathTypes);
 
     protected override Expression VisitMethodCall(MethodCallExpression node)
     {
@@ -61,8 +70,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
         try
         {
-            // Handle LINQ methods with direct orchestration
-            if (IsLinqMethod(node))
+            // Handle LINQ methods with direct orchestration. Recognized by MethodInfo identity
+            // (LinqOperatorDispatch), not by matching the declaring type/method name as a string.
+            if (LinqOperatorDispatch.Resolve(node.Method) is not null)
             {
                 return HandleLinqMethod(node);
             }
@@ -91,6 +101,52 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
     }
 
+    /// <summary>
+    /// Operators that may legitimately follow a <c>TraversePaths</c> call server-side today,
+    /// despite <see cref="CypherQueryBuilder.IsGraphPathResult"/> being set: the terminal that
+    /// materializes the (already-correct) per-hop RETURN shape into <see cref="IGraphPath"/>
+    /// instances client-side (<see cref="LinqOperator.ToListOrArray"/>, via <see cref="HandleToList"/>),
+    /// and the two sanctioned wrappers the <c>TraversePaths(configure)</c> options-lambda overload
+    /// itself builds (<see cref="LinqOperator.Direction"/>, <see cref="LinqOperator.WithDepth"/> -
+    /// these mutate builder state describing the traversal that produces the paths, not the shape
+    /// of a result row, so they compose regardless of what the source represents). Everything else
+    /// is a whitelist miss and throws (see <see cref="ThrowIfUnsupportedAfterTraversePaths"/>).
+    /// </summary>
+    private static readonly HashSet<LinqOperator> SupportedAfterTraversePaths =
+    [
+        LinqOperator.ToListOrArray,
+        LinqOperator.Direction,
+        LinqOperator.WithDepth,
+    ];
+
+    /// <summary>
+    /// Single choke point (issue #94 testing requirement 5, the #100 throw-over-silent-wrong
+    /// precedent) guarding every LINQ/graph operator chained after a <c>TraversePaths</c> call:
+    /// <c>TraversePaths</c> builds its own per-hop RETURN shape (one row per hop, decomposed from a
+    /// captured variable-length path - see <see cref="HandleTraversePaths"/>) rather than a single
+    /// row per <see cref="IGraphPath"/>, so no operator this visitor doesn't already know how to
+    /// keep supporting (<see cref="SupportedAfterTraversePaths"/>) has a well-defined row/alias to
+    /// translate against. Rather than adding a per-handler check to every one of ~25 operator
+    /// handlers (easy to forget on the next new operator), this is a single whitelist check made
+    /// once <see cref="CypherQueryBuilder.IsGraphPathResult"/> is known (i.e. after the source has
+    /// been visited) and before dispatching to any handler.
+    /// </summary>
+    private void ThrowIfUnsupportedAfterTraversePaths(LinqOperator? op, string methodName)
+    {
+        if (!_context.Builder.IsGraphPathResult)
+            return;
+
+        if (op is { } resolved && SupportedAfterTraversePaths.Contains(resolved))
+            return;
+
+        throw new NotSupportedException(
+            $"'.{methodName}(...)' chained after 'TraversePaths(...)' is not yet supported by " +
+            "LINQ-to-Cypher translation: TraversePaths returns IGraphPath, whose per-hop RETURN " +
+            $"shape has no single row/alias a '{methodName}' operator can translate against. " +
+            "Materialize the paths first (e.g. '.ToListAsync()') and continue with " +
+            "IReadOnlyList<IGraphPath> client-side (LINQ-to-Objects) instead.");
+    }
+
     private Expression HandleLinqMethod(MethodCallExpression node)
     {
         var methodName = node.Method.Name;
@@ -106,120 +162,65 @@ internal class CypherQueryVisitor : ExpressionVisitor
         if (sourceExpression is not null)
             result = Visit(sourceExpression);
 
-        // Handle specific LINQ methods
-        switch (methodName)
+        // Dispatch by MethodInfo identity (comparing the call's generic method definition, or the
+        // method itself for non-generic methods, against a table built once via reflection) rather
+        // than by matching the method name as a string - see LinqOperatorDispatch.
+        var op = LinqOperatorDispatch.Resolve(node.Method);
+
+        // Single choke point: any operator (other than the sanctioned few) chained after a
+        // TraversePaths call throws here, before reaching a handler that would otherwise silently
+        // mistranslate against the wrong row shape.
+        ThrowIfUnsupportedAfterTraversePaths(op, methodName);
+
+        return op switch
         {
-            case "Where":
-                return HandleWhere(node, result);
-
-            case "Select":
-                return HandleSelect(node, result);
-
-            case "OrderBy":
-            case "OrderByDescending":
-                return HandleOrderBy(node, result, methodName.EndsWith("Descending"));
-
-            case "ThenBy":
-            case "ThenByDescending":
-                return HandleThenBy(node, result, methodName.EndsWith("Descending"));
-
-            case "Take":
-                return HandleTake(node, result);
-
-            case "Skip":
-                return HandleSkip(node, result);
-
-            case "Distinct":
-                return HandleDistinct(node, result);
-
-            case "ToListAsyncMarker":
-            case "ToArrayAsyncMarker":
-                return HandleToList(node, result);
-
-            case "FirstAsyncMarker":
-            case "FirstOrDefaultAsyncMarker":
-            case "First":
-            case "FirstOrDefault":
-                return HandleFirst(node, result, methodName);
-
-            case "SingleAsyncMarker":
-            case "SingleOrDefaultAsyncMarker":
-                return HandleSingle(node, result, methodName);
-
-            case "LastAsyncMarker":
-            case "LastOrDefaultAsyncMarker":
-                return HandleLast(node, result, methodName);
-
-            case "AnyAsyncMarker":
-                return HandleAny(node, result);
-
-            case "AllAsyncMarker":
-                return HandleAll(node, result);
-
-            case "CountAsyncMarker":
-            case "LongCountAsyncMarker":
-                return HandleCount(node, result);
-
-            case "SumAsyncMarker":
-            case "SumAsync":
-                return HandleSum(node, result);
-
-            case "AverageAsyncMarker":
-            case "AverageAsync":
-                return HandleAverage(node, result);
-
-            case "MinAsyncMarker":
-                return HandleMin(node, result);
-
-            case "MaxAsyncMarker":
-                return HandleMax(node, result);
-
-            case "ContainsAsyncMarker":
-            case "Contains":
-                return HandleContains(node, result);
-
-            case "ElementAtAsyncMarker":
-            case "ElementAtOrDefaultAsyncMarker":
-                return HandleElementAt(node, result, methodName.Contains("OrDefault"));
-
-            case "SelectMany":
-                return HandleSelectMany(node, result);
-
-            case "GroupBy":
-                return HandleGroupBy(node, result);
-
-            case "Join":
-                return HandleJoin(node, result);
-
-            case "Union":
-                return HandleUnion(node, result);
-
-            case "PathSegments":
-                return HandlePathSegments(node, result);
-
-            case "ReverseTraverse":
-                return HandleReverseTraverse(node, result);
-
-            case "Direction":
-                return HandleDirection(node, result);
-
-            case "WithDepth":
-                return HandleWithDepth(node, result);
-
-            case "Search":
-                return HandleSearch(node, result);
-
-            default:
-                throw new GraphException(
-                    $"LINQ method '{methodName}' is not yet supported for Cypher translation. " +
-                    "Consider using a supported method or restructuring your query.");
-        }
+            LinqOperator.Where => HandleWhere(node, result),
+            LinqOperator.Select => HandleSelect(node, result),
+            LinqOperator.OrderBy => HandleOrderBy(node, result, descending: false),
+            LinqOperator.OrderByDescending => HandleOrderBy(node, result, descending: true),
+            LinqOperator.ThenBy => HandleThenBy(node, result, descending: false),
+            LinqOperator.ThenByDescending => HandleThenBy(node, result, descending: true),
+            LinqOperator.Take => HandleTake(node, result),
+            LinqOperator.Skip => HandleSkip(node, result),
+            LinqOperator.Distinct => HandleDistinct(node, result),
+            LinqOperator.ToListOrArray => HandleToList(node, result),
+            LinqOperator.First => HandleFirst(node, result, methodName),
+            LinqOperator.Single => HandleSingle(node, result, methodName),
+            LinqOperator.Last => HandleLast(node, result, methodName),
+            LinqOperator.Any => HandleAny(node, result),
+            LinqOperator.All => HandleAll(node, result),
+            LinqOperator.Count => HandleCount(node, result),
+            LinqOperator.Sum => HandleSum(node, result),
+            LinqOperator.Average => HandleAverage(node, result),
+            LinqOperator.Min => HandleMin(node, result),
+            LinqOperator.Max => HandleMax(node, result),
+            LinqOperator.Contains => HandleContains(node, result),
+            LinqOperator.ElementAt => HandleElementAt(node, result, orDefault: false),
+            LinqOperator.ElementAtOrDefault => HandleElementAt(node, result, orDefault: true),
+            LinqOperator.SelectMany => HandleSelectMany(node, result),
+            LinqOperator.GroupBy => HandleGroupBy(node, result),
+            LinqOperator.Join => HandleJoin(node, result),
+            LinqOperator.Union => HandleUnion(node, result),
+            LinqOperator.PathSegments => HandlePathSegments(node, result),
+            LinqOperator.TraversePaths => HandleTraversePaths(node, result),
+            LinqOperator.Direction => HandleDirection(node, result),
+            LinqOperator.WithDepth => HandleWithDepth(node, result),
+            LinqOperator.Search => HandleSearch(node, result),
+            _ => throw new GraphException(
+                $"LINQ method '{methodName}' is not yet supported for Cypher translation. " +
+                "Consider using a supported method or restructuring your query."),
+        };
     }
 
     private Expression HandleWhere(MethodCallExpression node, Expression? result)
     {
         if (node.Arguments.Count != 2)
             throw new GraphException("Where method must have exactly 2 arguments");
+
+        // Where chained after TraversePaths is rejected by the ThrowIfUnsupportedAfterTraversePaths
+        // choke point in HandleLinqMethod, before this handler is ever reached - see that method's
+        // doc comment for why a single choke point (rather than a per-handler check here) covers
+        // every operator, not just Where.
 
         var lambda = ExtractLambda(node.Arguments[1]);
         if (lambda == null)
@@ -479,6 +480,14 @@ internal class CypherQueryVisitor : ExpressionVisitor
     private Expression HandleToList(MethodCallExpression node, Expression? result)
     {
         _logger.LogDebug("Processing ToList method");
+
+        // TraversePaths builds its own RETURN shape (one row per hop) directly; it must not be
+        // reinterpreted as "the source element type needs complex properties" here.
+        if (_context.Builder.IsGraphPathResult)
+        {
+            _logger.LogDebug("Graph path result - preserving TraversePaths RETURN shape");
+            return result ?? node.Arguments[0];
+        }
 
         // Check if complex property loading has been explicitly enabled (e.g., by projection processing)
         if (_context.Builder.IsComplexPropertyLoadingEnabled())
@@ -1066,46 +1075,75 @@ internal class CypherQueryVisitor : ExpressionVisitor
         return result ?? node.Arguments[0];
     }
 
-    private Expression HandleReverseTraverse(MethodCallExpression node, Expression? result)
+    private Expression HandleTraversePaths(MethodCallExpression node, Expression? result)
     {
-        _logger.LogDebug("Processing ReverseTraverse method call");
+        _logger.LogDebug("Processing TraversePaths method call");
 
-        // ReverseTraverse method typically has generic arguments that specify the path structure
         var method = node.Method;
-        if (method.IsGenericMethod)
+        if (!method.IsGenericMethod)
+            throw new GraphException("TraversePaths method must be generic");
+
+        var genericArgs = method.GetGenericArguments();
+
+        // TraversePaths is two-arg on the current surface (issue #94, "Option C"): TRel/TEnd only.
+        // TStart is not a generic argument of TraversePaths itself - IGraphQueryable<T> is
+        // covariant, so the receiver widens to IGraphQueryable<INode> at the call site and the
+        // actual start type must be recovered from the source expression chain's static element
+        // type instead. The obsolete three-arg shim (kept for one release, disambiguated by
+        // generic arity) delegates to the two-arg method before this visitor ever sees a
+        // MethodCallExpression, so genericArgs.Length here is always 2 in practice - the 3-arg
+        // branch below is defensive, not a live call shape.
+        Type sourceType;
+        Type relationshipType;
+        Type targetType;
+        if (genericArgs.Length == 2)
         {
-            var genericArgs = method.GetGenericArguments();
-            if (genericArgs.Length == 3)
-            {
-                var sourceType = genericArgs[0];  // This is actually the target type in reverse traversal
-                var relationshipType = genericArgs[1];
-                var targetType = genericArgs[2];  // This is actually the source type in reverse traversal
-
-                _logger.LogDebug("ReverseTraverse: Source={Source}, Relationship={Relationship}, Target={Target}",
-                    sourceType.Name, relationshipType.Name, targetType.Name);
-
-                // Set traversal direction to incoming for reverse traversal
-                _context.Builder.SetTraversalDirection(GraphTraversalDirection.Incoming);
-
-                // Set up path segment context in the scope
-                _context.Scope.SetTraversalInfo(targetType, relationshipType, sourceType);
-                _context.Builder.EnablePathSegmentLoading();
-
-                // Set up the pending path segment pattern with appropriate aliases
-                var sourceAlias = _context.Scope.GetOrCreateAlias(targetType, "src");
-                var relAlias = _context.Scope.GetOrCreateAlias(relationshipType, "r");
-                var targetAlias = _context.Scope.GetOrCreateAlias(sourceType, "tgt");
-
-                _context.Builder.SetPendingPathSegmentPattern(
-                    targetType, relationshipType, sourceType,
-                    sourceAlias, relAlias, targetAlias);
-
-                _logger.LogDebug("Set up reverse traversal pattern: ({Source}:{SourceType})<-[{Rel}:{RelType}]-({Target}:{TargetType})",
-                    sourceAlias, targetType.Name, relAlias, relationshipType.Name, targetAlias, sourceType.Name);
-            }
+            sourceType = TypeHelpers.GetElementType(node.Arguments[0].Type);
+            relationshipType = genericArgs[0];
+            targetType = genericArgs[1];
+        }
+        else if (genericArgs.Length == 3)
+        {
+            sourceType = genericArgs[0];
+            relationshipType = genericArgs[1];
+            targetType = genericArgs[2];
+        }
+        else
+        {
+            throw new GraphException("TraversePaths method must have exactly 2 (or, for the obsolete shim, 3) generic type arguments");
         }
 
-        _logger.LogDebug("Configured reverse traversal");
+        var minDepth = EvaluateConstantExpression<int>(node.Arguments[1]);
+        var maxDepth = EvaluateConstantExpression<int>(node.Arguments[2]);
+
+        // Defer the actual MATCH/WITH/UNWIND/ORDER BY/RETURN clause construction to Build()
+        // (CypherQueryBuilder.BuildPendingGraphPathPattern) rather than building it here: the
+        // sanctioned composition is source.TraversePaths(...).Direction(...) (see
+        // GraphTraversalExtensions.TraversePaths's options-lambda overload), and HandleLinqMethod
+        // visits a call's source before dispatching to its own handler, so a following
+        // .Direction(...) call has not run yet at this point - reading
+        // _context.Builder.TraversalDirection here would only ever see the direction as of *before*
+        // this chain's own Direction call, not after. Deferring the pattern (mirroring the existing
+        // PendingPathSegmentPattern/BuildPendingPathSegmentPattern solution to the identical problem
+        // for single-hop PathSegments) means the MATCH pattern's arrow direction reflects whatever
+        // TraversalDirection is once the whole expression tree has been visited.
+        //
+        // Bug fix (issue #94 follow-up): visiting the root Nodes<TStart>() constant may already
+        // have called EnableComplexPropertyLoading() (whenever TStart itself needs complex/
+        // navigation properties - e.g. Person.HomeAddress), before this handler ever runs. Build()
+        // branches on that flag to pick BuildWithComplexProperties() over BuildSimpleQuery() - and
+        // BuildWithComplexProperties() renders an entirely different query shape (the single-node
+        // complex-property sub-query), silently discarding every WITH/UNWIND/ORDER BY/RETURN
+        // clause the pending pattern builds. TraversePaths never loads complex properties on its
+        // path nodes (see the scope note on BuildPendingGraphPathPattern), so it must force the
+        // flag off here to guarantee BuildSimpleQuery() - which renders
+        // _matchPart/_wherePart/_returnPart (WITH/UNWIND/RETURN, in the order added)/_orderByPart
+        // in sequence - is what actually runs.
+        _context.Builder.DisableComplexPropertyLoading();
+        _context.Builder.SetPendingGraphPathPattern(sourceType, relationshipType, targetType, minDepth, maxDepth);
+        _context.Builder.SetGraphPathResult(sourceType, relationshipType, targetType);
+
+        _logger.LogDebug("Configured TraversePaths: min={MinDepth}, max={MaxDepth}", minDepth, maxDepth);
         return result ?? node.Arguments[0];
     }
 
@@ -1426,17 +1464,6 @@ internal class CypherQueryVisitor : ExpressionVisitor
         return lambda.Compile().Invoke();
     }
 
-    private static bool IsLinqMethod(MethodCallExpression node)
-    {
-        return node.Method.DeclaringType == typeof(Queryable) ||
-               node.Method.DeclaringType == typeof(Enumerable) ||
-               (node.Method.DeclaringType?.Namespace?.StartsWith("System.Linq") ?? false) ||
-               (node.Method.DeclaringType?.Name?.Contains("GraphQueryable") ?? false) ||
-               (node.Method.DeclaringType?.Name?.Contains("QueryableAsyncExtensions") ?? false) ||
-               (node.Method.DeclaringType?.Name?.Contains("GraphNodeQueryableExtensions") ?? false) ||
-               (node.Method.DeclaringType?.Name?.Contains("GraphRelationshipQueryableExtensions") ?? false) ||
-               (node.Method.DeclaringType?.Name?.Contains("GraphTraversalExtensions") ?? false);
-    }
 
     private bool IsSpecialTypeProjection(Expression expression)
     {
@@ -1701,3 +1728,4 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
     }
 }
+#pragma warning restore CS0618

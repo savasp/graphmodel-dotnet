@@ -18,9 +18,9 @@ internal record GraphPathSegment<TSource, TRel, TTarget>(
     TSource StartNode,
     TRel Relationship,
     TTarget EndNode) : IGraphPathSegment<TSource, TRel, TTarget>
-    where TSource : INode
-    where TRel : IRelationship
-    where TTarget : INode
+    where TSource : class, INode
+    where TRel : class, IRelationship
+    where TTarget : class, INode
 {
     INode IGraphPathSegment.StartNode => StartNode;
     INode IGraphPathSegment.EndNode => EndNode;

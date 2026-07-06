@@ -58,7 +58,7 @@ public interface IHostileDynamicIdentifierTests : IGraphModelTest
             // Rejected: also an acceptable outcome per the issue's documented contract.
         }
 
-        var sentinelStillPresent = await (await Graph.NodesAsync<Person>())
+        var sentinelStillPresent = await Graph.Nodes<Person>()
             .Where(p => p.Id == sentinel.Id)
             .CountAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, sentinelStillPresent);
@@ -98,10 +98,10 @@ public interface IHostileDynamicIdentifierTests : IGraphModelTest
         }
 
         // Neither endpoint node was affected by the attempted break-out.
-        var startStillPresent = await (await Graph.NodesAsync<Person>())
+        var startStillPresent = await Graph.Nodes<Person>()
             .Where(p => p.Id == start.Id)
             .CountAsync(TestContext.Current.CancellationToken);
-        var endStillPresent = await (await Graph.NodesAsync<Person>())
+        var endStillPresent = await Graph.Nodes<Person>()
             .Where(p => p.Id == end.Id)
             .CountAsync(TestContext.Current.CancellationToken);
 
@@ -140,7 +140,7 @@ public interface IHostileDynamicIdentifierTests : IGraphModelTest
             // Rejected: the expected outcome for a control character in a label.
         }
 
-        var sentinelStillPresent = await (await Graph.NodesAsync<Person>())
+        var sentinelStillPresent = await Graph.Nodes<Person>()
             .Where(p => p.Id == sentinel.Id)
             .CountAsync(TestContext.Current.CancellationToken);
         Assert.Equal(1, sentinelStillPresent);

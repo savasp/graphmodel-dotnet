@@ -97,7 +97,7 @@ public class CrudOperationsBenchmark
     {
         // Clean up test data
         await using var transaction = await _graph.GetTransactionAsync();
-        var allPersons = await (await _graph.NodesAsync<Person>()).ToListAsync();
+        var allPersons = await _graph.Nodes<Person>().ToListAsync();
         foreach (var person in allPersons)
         {
             await _graph.DeleteNodeAsync(person.Id);
@@ -142,7 +142,9 @@ public class CrudOperationsBenchmark
     [Benchmark]
     public async Task QueryNodes()
     {
-        var results = await (await _graph.NodesAsync<Person>())
+        // Discarded on purpose: this benchmark measures query execution cost, not the result -
+        // the assignment would otherwise be a useless-local (CodeQL cs/useless-assignment-to-local).
+        _ = await _graph.Nodes<Person>()
             .Where(p => p.FirstName.StartsWith("A"))
             .Take(10)
             .ToListAsync();
@@ -152,7 +154,8 @@ public class CrudOperationsBenchmark
     public async Task QueryWithComplexFilter()
     {
         var cutoffDate = BenchmarkReferenceDate.AddYears(-30);
-        var results = await (await _graph.NodesAsync<Person>())
+        // Discarded on purpose - see QueryNodes above.
+        _ = await _graph.Nodes<Person>()
             .Where(p => p.DateOfBirth > cutoffDate && p.Email.Contains("@gmail.com"))
             .OrderBy(p => p.LastName)
             .Take(20)

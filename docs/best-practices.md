@@ -60,7 +60,7 @@ The `Labels` property on `INode` and `Type` property on `IRelationship` are **ru
 
 ```csharp
 // Querying with runtime metadata
-var query = (await graph.NodesAsync<User>())
+var query = graph.Nodes<User>()
     .Where(u => u.Id == userId)
     .PathSegments<User, UserMemory, Memory>()
     .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == relationshipType); // Using runtime Type property
@@ -153,7 +153,7 @@ public class WorkedAt : IRelationship<Person, Company>
 
 ```csharp
 // Good: Only fetch required fields
-var names = (await graph.NodesAsync<Person>())
+var names = graph.Nodes<Person>()
     .Where(p => p.Department == "Sales")
     .Select(p => new { p.FirstName, p.LastName })
     .ToList();
@@ -163,7 +163,7 @@ var names = (await graph.NodesAsync<Person>())
 
 ```csharp
 // Avoid: Fetching entire entities
-var people = await (await graph.NodesAsync<Person>())
+var people = await graph.Nodes<Person>()
     .Where(p => p.Department == "Sales")
     .ToListAsync();
 var names = people.Select(p => p.FirstName); // Inefficient
@@ -175,7 +175,7 @@ var names = people.Select(p => p.FirstName); // Inefficient
 
 ```csharp
 // Good: Filter at the database level
-var results = await (await graph.NodesAsync<Order>())
+var results = await graph.Nodes<Order>()
     .Where(o => o.Status == "Pending" && o.Amount > 1000)
     .Take(10)
     .ToListAsync();
@@ -185,7 +185,7 @@ var results = await (await graph.NodesAsync<Order>())
 
 ```csharp
 // Avoid: Filtering in memory
-var allOrders = await (await graph.NodesAsync<Order>()).ToListAsync();
+var allOrders = await graph.Nodes<Order>().ToListAsync();
 var results = allOrders
     .Where(o => o.Status == "Pending" && o.Amount > 1000)
     .Take(10);
@@ -197,9 +197,9 @@ var results = allOrders
 
 ```csharp
 // Good: Traverse only what you need
-var peopleWithFriends = await (await graph.NodesAsync<Person>())
+var peopleWithFriends = await graph.Nodes<Person>()
     .Where(p => p.City == "Seattle")
-    .Traverse<Person, Knows, Person>(1)
+    .Traverse<Knows, Person>(1)
     .ToListAsync();
 ```
 
@@ -207,8 +207,8 @@ var peopleWithFriends = await (await graph.NodesAsync<Person>())
 
 ```csharp
 // Avoid: Traversing too broadly
-var everyone = await (await graph.NodesAsync<Person>())
-    .Traverse<Person, Knows, Person>(1, 10)
+var everyone = await graph.Nodes<Person>()
+    .Traverse<Knows, Person>(1, 10)
     .ToListAsync(); // May be huge!
 ```
 
@@ -259,7 +259,7 @@ public async Task<bool> SafeCreatePerson(Person person)
         await using var tx = await graph.GetTransactionAsync();
 
         // Check for duplicates
-        var existing = await (await graph.NodesAsync<Person>(transaction: tx))
+        var existing = await graph.Nodes<Person>(transaction: tx)
             .FirstOrDefaultAsync(p => p.Email == person.Email);
 
         if (existing != null)
@@ -312,7 +312,7 @@ public async Task ImportPeople(List<PersonData> peopleData)
 
 ```csharp
 // Good: Direct relationship query
-var knows = (await graph.RelationshipsAsync<Knows>())
+var knows = graph.Relationships<Knows>()
     .Where(k => k.StartNodeId == personId || k.EndNodeId == personId)
     .ToListAsync();
 ```
@@ -321,7 +321,7 @@ var knows = (await graph.RelationshipsAsync<Knows>())
 
 ```csharp
 // Avoid: Inefficient relationship discovery
-var allPeople = await (await graph.NodesAsync<Person>())
+var allPeople = await graph.Nodes<Person>()
     .ToListAsync();
 var personRelationships = allPeople
     .First(p => p.Id == personId)
@@ -413,7 +413,7 @@ public async Task Transaction_RollsBackOnError()
     await tx.Rollback();
 
     // Verify person wasn't created
-    var exists = await (await graph.NodesAsync<Person>())
+    var exists = await graph.Nodes<Person>()
         .AnyAsync(p => p.FirstName == "Test");
     Assert.False(exists);
 }
@@ -452,7 +452,7 @@ public async Task<Person> CreatePerson(PersonInput input)
 public async Task<IEnumerable<Document>> GetUserDocuments(string userId)
 {
     // Only return documents the user has access to
-    return (await graph.NodesAsync<Document>())
+    return graph.Nodes<Document>()
         .Where(d => d.OwnerId == userId || d.IsPublic)
         .ToList();
 }

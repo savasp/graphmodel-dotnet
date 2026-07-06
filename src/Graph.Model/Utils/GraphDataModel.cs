@@ -116,7 +116,7 @@ public static class GraphDataModel
     /// <typeparam name="T">The type of the node</typeparam>
     /// <exception cref="GraphException">Thrown if the given node violates any of the constraints</exception>
     public static void EnforceGraphConstraintsForNode<T>(T node)
-        where T : INode
+        where T : class, INode
     {
         EnforceGraphConstraintsForEntity(node);
 
@@ -137,7 +137,7 @@ public static class GraphDataModel
     /// <typeparam name="T">The type of the node</typeparam>
     /// <exception cref="GraphException">Thrown if the given node violates any of the constraints</exception>
     public static void EnforceGraphConstraintsForNodeType<T>()
-        where T : INode
+        where T : class, INode
     {
         // Enforce additional graph constraints as needed
         // TODO: Check the property types
@@ -169,7 +169,7 @@ public static class GraphDataModel
     /// <param name="relationship">The relationship to enforce constraints for</param>
     /// <exception cref="GraphException">Thrown if the given relationship violates any of the constraints</exception>
     public static void EnforceGraphConstraintsForRelationship<T>(T relationship)
-        where T : IRelationship
+        where T : class, IRelationship
     {
         EnforceGraphConstraintsForEntity(relationship);
 
@@ -188,7 +188,7 @@ public static class GraphDataModel
     /// <typeparam name="T">The type of the relationship</typeparam>
     /// <exception cref="GraphException">Thrown if the given relationship violates any of the constraints</exception>
     public static void EnforceGraphConstraintsForRelationshipType<T>()
-        where T : IRelationship
+        where T : class, IRelationship
     {
         // Enforce additional graph constraints as needed
         // TODO: Check the property types

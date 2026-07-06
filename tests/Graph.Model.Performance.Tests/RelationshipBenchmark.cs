@@ -113,14 +113,14 @@ public class RelationshipBenchmark
         // Clean up test data
         await using var transaction = await _graph.GetTransactionAsync();
 
-        var relationships = await (await _graph.RelationshipsAsync<WorksAt>()).ToListAsync();
+        var relationships = await _graph.Relationships<WorksAt>().ToListAsync();
         foreach (var rel in relationships)
         {
             await _graph.DeleteRelationshipAsync(rel.Id);
         }
 
-        var allPersons = await (await _graph.NodesAsync<Person>()).ToListAsync();
-        var allCompanies = await (await _graph.NodesAsync<Company>()).ToListAsync();
+        var allPersons = await _graph.Nodes<Person>().ToListAsync();
+        var allCompanies = await _graph.Nodes<Company>().ToListAsync();
 
         foreach (var person in allPersons)
         {
@@ -184,9 +184,11 @@ public class RelationshipBenchmark
     {
         var person = _persons[_random.Next(_persons.Count)];
 
-        var companies = await (await _graph.NodesAsync<Person>())
+        // Discarded on purpose: this benchmark measures traversal execution cost, not the result -
+        // the assignment would otherwise be a useless-local (CodeQL cs/useless-assignment-to-local).
+        _ = await _graph.Nodes<Person>()
             .Where(p => p.Id == person.Id)
-            .Traverse<Person, WorksAt, Company>()
+            .Traverse<WorksAt, Company>()
             .ToListAsync();
     }
 
@@ -195,19 +197,21 @@ public class RelationshipBenchmark
     {
         var company = _companies[_random.Next(_companies.Count)];
 
-        var employees = await (await _graph.NodesAsync<Company>())
+        // Discarded on purpose - see TraverseFromPersonToCompany above.
+        _ = await _graph.Nodes<Company>()
             .Where(c => c.Id == company.Id)
-            .Traverse<Company, WorksAt, Person>()
+            .Traverse<WorksAt, Person>()
             .ToListAsync();
     }
 
     [Benchmark]
     public async Task ComplexTraversal()
     {
-        // Find all people who work at companies in "Technology" industry
-        var techEmployees = await (await _graph.NodesAsync<Person>())
+        // Find all people who work at companies in "Technology" industry.
+        // Discarded on purpose - see TraverseFromPersonToCompany above.
+        _ = await _graph.Nodes<Person>()
             .Where(p => p.FirstName.StartsWith("A"))
-            .Traverse<Person, WorksAt, Company>()
+            .Traverse<WorksAt, Company>()
             .Where(c => c.Industry.Contains("Technology"))
             .ToListAsync();
     }

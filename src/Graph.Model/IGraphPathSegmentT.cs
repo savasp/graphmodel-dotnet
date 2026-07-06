@@ -21,9 +21,9 @@ namespace Cvoya.Graph.Model;
 /// <typeparam name="TRel">The type of the relationship.</typeparam>
 /// <typeparam name="TTarget">The type of the target node.</typeparam>
 public interface IGraphPathSegment<TSource, TRel, TTarget> : IGraphPathSegment
-    where TSource : INode
-    where TRel : IRelationship
-    where TTarget : INode
+    where TSource : class, INode
+    where TRel : class, IRelationship
+    where TTarget : class, INode
 {
     /// <summary>
     /// Gets the strongly-typed starting node of the path segment.

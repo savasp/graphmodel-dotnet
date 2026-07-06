@@ -224,7 +224,7 @@ public interface IClassHierarchyTests : IGraphModelTest
 
         await this.Graph.CreateNodeAsync(manager, null, TestContext.Current.CancellationToken);
 
-        var retrieved = (await this.Graph.NodesAsync<Person>())
+        var retrieved = this.Graph.Nodes<Person>()
             .FirstOrDefault();
 
         Assert.NotNull(retrieved);
@@ -263,7 +263,7 @@ public interface IClassHierarchyTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(person2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateRelationshipAsync(knowsWell, null, TestContext.Current.CancellationToken);
 
-        var retrieved = (await this.Graph.RelationshipsAsync<Knows>())
+        var retrieved = this.Graph.Relationships<Knows>()
             .FirstOrDefault();
 
         Assert.NotNull(retrieved);
@@ -366,7 +366,7 @@ public interface IClassHierarchyTests : IGraphModelTest
         await this.Graph.CreateRelationshipAsync(new Friend(charlie, dave), null, TestContext.Current.CancellationToken);
 
         // Get Alice's relationships
-        var connectionStats = await (await this.Graph.NodesAsync<Person>())
+        var connectionStats = await this.Graph.Nodes<Person>()
             .PathSegments<Person, IRelationship, Person>()
             .ToListAsync(TestContext.Current.CancellationToken);
 

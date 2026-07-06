@@ -26,7 +26,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var smiths = await (await this.Graph.NodesAsync<Person>())
+        var smiths = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Contains(smiths, p => p.FirstName == "Alice");
@@ -44,7 +44,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var smiths = await (await this.Graph.NodesAsync<Person>())
+        var smiths = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith" && p.FirstName.StartsWith("A"))
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(smiths);
@@ -61,7 +61,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var youngSmiths = await (await this.Graph.NodesAsync<PersonWithComplexProperties>())
+        var youngSmiths = await this.Graph.Nodes<PersonWithComplexProperties>()
             .Where(p => p.LastName == "Smith" && p.Age < 30 && p.Address.City == "Los Angeles")
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -79,7 +79,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var peopleAndCities = await (await this.Graph.NodesAsync<PersonWithComplexProperties>())
+        var peopleAndCities = await this.Graph.Nodes<PersonWithComplexProperties>()
             .Select(p => new { p.FirstName, p.Address.City })
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -122,7 +122,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(c1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(c2, null, TestContext.Current.CancellationToken);
 
-        var results = await (await this.Graph.NodesAsync<Class1>())
+        var results = await this.Graph.Nodes<Class1>()
             .Where(c => c.A!.B!.Property1 == "B1" || c.B!.Property1 == "B2")
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -139,7 +139,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var all = await (await this.Graph.NodesAsync<Person>()).ToListAsync(TestContext.Current.CancellationToken);
+        var all = await this.Graph.Nodes<Person>().ToListAsync(TestContext.Current.CancellationToken);
         Assert.True(all.Count >= 2);
         Assert.Contains(all, p => p.FirstName == "A");
         Assert.Contains(all, p => p.FirstName == "B");
@@ -155,7 +155,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var smithsOrdered = await (await this.Graph.NodesAsync<Person>())
+        var smithsOrdered = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .OrderBy(p => p.FirstName)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -174,12 +174,12 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var taken = await (await this.Graph.NodesAsync<Person>()).OrderBy(p => p.FirstName).Take(2).ToListAsync(TestContext.Current.CancellationToken);
+        var taken = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Take(2).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, taken.Count);
         Assert.Equal("A", taken[0].FirstName);
         Assert.Equal("B", taken[1].FirstName);
 
-        var skipped = await (await this.Graph.NodesAsync<Person>()).OrderBy(p => p.FirstName).Skip(1).ToListAsync(TestContext.Current.CancellationToken);
+        var skipped = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).Skip(1).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Contains(skipped, p => p.FirstName == "B");
         Assert.Contains(skipped, p => p.FirstName == "C");
     }
@@ -197,7 +197,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var taken = await (await this.Graph.NodesAsync<Person>())
+        var taken = await this.Graph.Nodes<Person>()
             .OrderBy(p => p.FirstName)
             .Take(take)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -216,7 +216,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var taken = await (await this.Graph.NodesAsync<Person>())
+        var taken = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith")
             .OrderBy(p => p.FirstName)
             .Take(1)
@@ -234,7 +234,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var taken = await (await this.Graph.NodesAsync<Person>())
+        var taken = await this.Graph.Nodes<Person>()
             .OrderBy(p => p.FirstName)
             .Select(p => p.FirstName)
             .Take(1)
@@ -254,7 +254,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var taken = await (await this.Graph.NodesAsync<Person>())
+        var taken = await this.Graph.Nodes<Person>()
             .Select(p => p.FirstName)
             .Distinct()
             .OrderBy(name => name)
@@ -274,10 +274,10 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var first = await (await this.Graph.NodesAsync<Person>()).OrderBy(p => p.FirstName).FirstAsync(TestContext.Current.CancellationToken);
+        var first = await this.Graph.Nodes<Person>().OrderBy(p => p.FirstName).FirstAsync(TestContext.Current.CancellationToken);
         Assert.Equal("A", first.FirstName);
 
-        var single = await (await this.Graph.NodesAsync<Person>()).SingleAsync(p => p.FirstName == "A", TestContext.Current.CancellationToken);
+        var single = await this.Graph.Nodes<Person>().SingleAsync(p => p.FirstName == "A", TestContext.Current.CancellationToken);
         Assert.Equal("A", single.FirstName);
     }
 
@@ -289,10 +289,10 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var anyA = await (await this.Graph.NodesAsync<Person>()).AnyAsync(p => p.FirstName == "A", TestContext.Current.CancellationToken);
+        var anyA = await this.Graph.Nodes<Person>().AnyAsync(p => p.FirstName == "A", TestContext.Current.CancellationToken);
         Assert.True(anyA);
 
-        var count = await (await this.Graph.NodesAsync<Person>()).CountAsync(TestContext.Current.CancellationToken);
+        var count = await this.Graph.Nodes<Person>().CountAsync(TestContext.Current.CancellationToken);
         Assert.True(count >= 2);
     }
 
@@ -304,14 +304,14 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var names = (await this.Graph.NodesAsync<Person>())
+        var names = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName.StartsWith("Contains-"))
             .Select(p => p.FirstName);
 
         Assert.True(await names.ContainsAsync("Contains-A", TestContext.Current.CancellationToken));
         Assert.False(await names.ContainsAsync("Contains-Z", TestContext.Current.CancellationToken));
 
-        var bios = (await this.Graph.NodesAsync<Person>())
+        var bios = this.Graph.Nodes<Person>()
             .Where(p => p.FirstName.StartsWith("Contains-"))
             .Select(p => p.Bio);
 
@@ -326,7 +326,7 @@ public interface IQueryTests : IGraphModelTest
 
         var localName = "A";
 
-        var a = await (await this.Graph.NodesAsync<Person>()).Where(p => p.FirstName == localName).FirstOrDefaultAsync(TestContext.Current.CancellationToken);
+        var a = await this.Graph.Nodes<Person>().Where(p => p.FirstName == localName).FirstOrDefaultAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(a);
         Assert.Equal(localName, a.FirstName);
     }
@@ -339,7 +339,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
 
-        var a = await (await this.Graph.NodesAsync<Person>()).Where(p => p.FirstName == p1.FirstName).FirstOrDefaultAsync(TestContext.Current.CancellationToken);
+        var a = await this.Graph.Nodes<Person>().Where(p => p.FirstName == p1.FirstName).FirstOrDefaultAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(a);
         Assert.Equal(p1.FirstName, a.FirstName);
     }
@@ -381,7 +381,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(memory3, null, TestContext.Current.CancellationToken);
 
         // Test DateTime parameter comparison - this should generate datetime($param) in Cypher
-        var recentMemories = await (await this.Graph.NodesAsync<Memory>())
+        var recentMemories = await this.Graph.Nodes<Memory>()
             .Where(m => m.CreatedAt >= now.AddDays(-2))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -428,7 +428,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(memory3, null, TestContext.Current.CancellationToken);
 
         // Test DateTime parameter comparison with less than
-        var oldMemories = await (await this.Graph.NodesAsync<Memory>())
+        var oldMemories = await this.Graph.Nodes<Memory>()
             .Where(m => m.CreatedAt < now.AddDays(-2))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -463,7 +463,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(memory2, null, TestContext.Current.CancellationToken);
 
         // Test DateTime parameter comparison with equals
-        var exactTimeMemories = await (await this.Graph.NodesAsync<Memory>())
+        var exactTimeMemories = await this.Graph.Nodes<Memory>()
             .Where(m => m.CreatedAt == specificTime)
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -481,7 +481,7 @@ public interface IQueryTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
-        var bornInMay1990 = await (await this.Graph.NodesAsync<Person>())
+        var bornInMay1990 = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName.StartsWith("Temporal-"))
             .Where(p => p.DateOfBirth.Year == 1990 && p.DateOfBirth.Month == 5)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -489,7 +489,7 @@ public interface IQueryTests : IGraphModelTest
         Assert.Single(bornInMay1990);
         Assert.Equal("Temporal-A", bornInMay1990[0].FirstName);
 
-        var bornOnFifteenth = await (await this.Graph.NodesAsync<Person>())
+        var bornOnFifteenth = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName.StartsWith("Temporal-"))
             .Where(p => p.DateOfBirth.Day == 15)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -548,9 +548,9 @@ public interface IQueryTests : IGraphModelTest
         var to = DateTime.UtcNow;
         var limit = 1;
 
-        var memories = await (await this.Graph.NodesAsync<User>())
+        var memories = await this.Graph.Nodes<User>()
             .Where(u => u.Id == user.Id)
-            .Traverse<User, UserMemory, MemoryWithoutSourceProperty>()
+            .Traverse<UserMemory, MemoryWithoutSourceProperty>()
             .Where(m => m.CreatedAt >= from)
             .Where(m => m.CreatedAt <= to)
             .OrderByDescending(m => m.CreatedAt)
@@ -617,9 +617,9 @@ public interface IQueryTests : IGraphModelTest
         var to = DateTime.UtcNow;
         var limit = 1;
 
-        var memories = await (await this.Graph.NodesAsync<User>())
+        var memories = await this.Graph.Nodes<User>()
             .Where(u => u.Id == user.Id)
-            .Traverse<User, UserMemory, Memory>()
+            .Traverse<UserMemory, Memory>()
             .Where(m => m.CreatedAt >= from)
             .Where(m => m.CreatedAt <= to)
             .OrderByDescending(m => m.CreatedAt)

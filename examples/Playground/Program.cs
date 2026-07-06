@@ -80,17 +80,17 @@ Console.WriteLine($"Added {department!.Name} to the graph (ID: {department!.Id})
 await graph.CreateRelationship(partOf, new GraphOperationOptions().WithCreateMissingNodes());
 Console.WriteLine($"Added {company!.Name} to the graph (ID: {company!.Id}).");
 
-var johnDoe = (await graph.NodesAsync<Person>())
+var johnDoe = graph.Nodes<Person>()
     .Where(p => p.Name == "John Doe")
     .FirstOrDefault();
 
 // Without .WithDepth(1), the Department node won't be loaded as the target in r.Target.
-var johnWorksAtDepartment = (await graph.RelationshipsAsync<WorksΑt>(new GraphOperationOptions().WithDepth(1)))
+var johnWorksAtDepartment = graph.Relationships<WorksΑt>(new GraphOperationOptions().WithDepth(1))
     .Where(r => r.StartNodeId == johnDoe!.Id)
     .Select(r => r.Target)
     .FirstOrDefault();
 
-var departmentPartOfCompany = (await graph.RelationshipsAsync<PartOf>(new GraphOperationOptions().WithDepth(1)))
+var departmentPartOfCompany = graph.Relationships<PartOf>(new GraphOperationOptions().WithDepth(1))
     .Where(r => r.StartNodeId == johnWorksAtDepartment!.Id)
     .Select(r => r.Target)
     .FirstOrDefault();

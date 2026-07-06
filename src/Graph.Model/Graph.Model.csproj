@@ -15,4 +15,20 @@
         <PackageTags>graph;database;neo4j;linq</PackageTags>
     </PropertyGroup>
 
+    <!--
+      Providers dispatch LINQ terminal operators (ToListAsync, FirstAsync, etc.) by MethodInfo
+      identity against the internal QueryTerminals table rather than by string name - see
+      QueryTerminals.cs. This grants the in-tree Neo4j provider (and its translation test project,
+      which builds expression trees directly against the internal surface) access to that table
+      without making it public.
+    -->
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Model.Neo4j</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Model.Neo4j.Translation.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
 </Project>

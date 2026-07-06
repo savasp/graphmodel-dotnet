@@ -32,6 +32,13 @@ internal class FullTextSearchExpression : Expression
     }
 
     public override ExpressionType NodeType => ExpressionType.Extension;
+
+    // Intentionally typed against the (obsolete, internal-use-only) IGraphNodeQueryable<>/
+    // IGraphRelationshipQueryable<> marker interfaces so that any downstream code pattern-matching
+    // on `is IGraphNodeQueryable`/`is IGraphRelationshipQueryable` can still distinguish a node
+    // search from a relationship search from this expression's static Type alone - unrelated to
+    // the public surface deprecation of those interfaces.
+#pragma warning disable CS0618
     public override Type Type
     {
         get
@@ -52,6 +59,7 @@ internal class FullTextSearchExpression : Expression
             }
         }
     }
+#pragma warning restore CS0618
 }
 
 /// <summary>

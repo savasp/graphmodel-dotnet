@@ -18,6 +18,6 @@ namespace Cvoya.Graph.Model;
 /// Non-generic base interface for graph queryables.
 /// Allows type checking and common operations without knowing the element type.
 /// </summary>
-public interface IGraphQueryable : IQueryable, IAsyncDisposable
+public interface IGraphQueryable : IQueryable
 {
 }

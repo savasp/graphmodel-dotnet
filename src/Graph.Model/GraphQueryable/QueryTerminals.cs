@@ -16,8 +16,29 @@ namespace Cvoya.Graph.Model;
 
 using System.Linq.Expressions;
 
-
-internal static class QueryableAsyncExtensionsMarkers
+/// <summary>
+/// Marker methods that stand in for LINQ terminal (query-executing) operators inside expression
+/// trees. <see cref="QueryableAsyncExtensions"/> builds a <see cref="MethodCallExpression"/>
+/// against one of these methods and hands it to <see cref="IGraphQueryProvider.ExecuteAsync{TResult}"/>
+/// - the marker method itself is never invoked (every body throws).
+/// </summary>
+/// <remarks>
+/// This type is internal, not public API: providers recognize terminal operators by
+/// <see cref="System.Reflection.MethodInfo"/> identity (comparing
+/// <c>MethodCallExpression.Method</c>, or its generic method definition, against these members),
+/// never by matching the method name as a string. <c>Cvoya.Graph.Model.Neo4j</c> (and any future
+/// in-tree provider) is granted access via <c>InternalsVisibleTo</c> so it can reference these
+/// members directly to build its dispatch table, instead of re-deriving them via reflection or
+/// string matching.
+///
+/// The generic numeric overloads for <c>Sum</c>/<c>Average</c> are collapsed to a single
+/// unconstrained generic definition per shape (see <see cref="SumAsyncMarker{TResult}(IQueryable{TResult})"/>
+/// and friends): since these bodies are never executed, there is no need for one overload per
+/// numeric type (<c>int</c>, <c>long</c>, <c>float</c>, <c>double</c>, <c>decimal</c>, and their
+/// nullable forms) - <see cref="QueryableAsyncExtensions"/> closes the generic definition over
+/// whatever result type the call site needs.
+/// </remarks>
+internal static class QueryTerminals
 {
     // Internal marker methods - these are only used in expression trees, never called directly
     internal static List<T> ToListAsyncMarker<T>(IQueryable<T> source) =>
@@ -108,128 +129,21 @@ internal static class QueryableAsyncExtensionsMarkers
     internal static T? ElementAtOrDefaultAsyncMarker<T>(IQueryable<T> source, int index) =>
         throw new NotImplementedException("This method should only be used in expression trees");
 
-    // Sum markers for all numeric types
-    internal static int SumAsyncMarker(IQueryable<int> source) =>
+    // Sum/Average markers - a single unconstrained generic definition per shape. These bodies are
+    // never executed (the whole point of a marker method), so there's no need for one overload
+    // per numeric type: QueryableAsyncExtensions.SumAsync<T>/AverageAsync<T> closes this
+    // definition over whichever numeric TResult (int, int?, long, ..., decimal?) the call site
+    // needs, and the provider dispatch table matches on the open generic method definition.
+    internal static TResult SumAsyncMarker<TResult>(IQueryable<TResult> source) =>
         throw new NotImplementedException("This method should only be used in expression trees");
 
-    internal static int? SumAsyncMarker(IQueryable<int?> source) =>
+    internal static TResult SumAsyncMarker<TSource, TResult>(IQueryable<TSource> source, Expression<Func<TSource, TResult>> selector) =>
         throw new NotImplementedException("This method should only be used in expression trees");
 
-    internal static long SumAsyncMarker(IQueryable<long> source) =>
+    internal static TResult AverageAsyncMarker<TSource, TResult>(IQueryable<TSource> source) =>
         throw new NotImplementedException("This method should only be used in expression trees");
 
-    internal static long? SumAsyncMarker(IQueryable<long?> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static float SumAsyncMarker(IQueryable<float> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static float? SumAsyncMarker(IQueryable<float?> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double SumAsyncMarker(IQueryable<double> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double? SumAsyncMarker(IQueryable<double?> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static decimal SumAsyncMarker(IQueryable<decimal> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static decimal? SumAsyncMarker(IQueryable<decimal?> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    // Sum with selector markers
-    internal static int SumAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, int>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static int? SumAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, int?>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static long SumAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, long>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static long? SumAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, long?>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static float SumAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, float>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static float? SumAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, float?>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double SumAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, double>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double? SumAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, double?>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static decimal SumAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, decimal>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static decimal? SumAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, decimal?>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    // Average markers
-    internal static double AverageAsyncMarker(IQueryable<int> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double? AverageAsyncMarker(IQueryable<int?> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double AverageAsyncMarker(IQueryable<long> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double? AverageAsyncMarker(IQueryable<long?> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static float AverageAsyncMarker(IQueryable<float> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static float? AverageAsyncMarker(IQueryable<float?> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double AverageAsyncMarker(IQueryable<double> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double? AverageAsyncMarker(IQueryable<double?> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static decimal AverageAsyncMarker(IQueryable<decimal> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static decimal? AverageAsyncMarker(IQueryable<decimal?> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    // Average with selector markers
-    internal static double AverageAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, int>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double? AverageAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, int?>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double AverageAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, long>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double? AverageAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, long?>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static float AverageAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, float>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static float? AverageAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, float?>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double AverageAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, double>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static double? AverageAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, double?>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static decimal AverageAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, decimal>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
-
-    internal static decimal? AverageAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, decimal?>> selector) =>
+    internal static TResult AverageAsyncMarker<TSource, TResult>(IQueryable<TSource> source, Expression<Func<TSource, TResult>> selector) =>
         throw new NotImplementedException("This method should only be used in expression trees");
 
     // Min/Max markers

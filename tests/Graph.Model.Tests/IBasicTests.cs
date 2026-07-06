@@ -106,7 +106,7 @@ public interface IBasicTests : IGraphModelTest
         await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         var ids = new[] { p1.Id, p2.Id };
-        var fetched = await (await this.Graph.NodesAsync<Person>()).Where(x => ids.Contains(x.Id)).ToListAsync(TestContext.Current.CancellationToken);
+        var fetched = await this.Graph.Nodes<Person>().Where(x => ids.Contains(x.Id)).ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, ((ICollection<Person>)fetched).Count);
         Assert.Contains(fetched, x => x.Id == p1.Id);
         Assert.Contains(fetched, x => x.Id == p2.Id);
@@ -125,7 +125,7 @@ public interface IBasicTests : IGraphModelTest
         var knows2 = new Knows { StartNodeId = p2.Id, EndNodeId = p3.Id, Since = DateTime.UtcNow };
         await this.Graph.CreateRelationshipAsync(knows1, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateRelationshipAsync(knows2, null, TestContext.Current.CancellationToken);
-        var rels = await (await this.Graph.RelationshipsAsync<Knows>())
+        var rels = await this.Graph.Relationships<Knows>()
             .Where(r => r.StartNodeId == p1.Id || r.StartNodeId == p2.Id)
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, rels.Count);
@@ -209,14 +209,14 @@ public interface IBasicTests : IGraphModelTest
     [Fact]
     public async Task CanQueryNodesLinq()
     {
-        var queryable = await this.Graph.NodesAsync<Person>();
+        var queryable = this.Graph.Nodes<Person>();
         Assert.NotNull(queryable);
     }
 
     [Fact]
     public async Task CanCreateRelationshipsQuery()
     {
-        var queryable = await this.Graph.RelationshipsAsync<Knows>();
+        var queryable = this.Graph.Relationships<Knows>();
         Assert.NotNull(queryable);
     }
 
@@ -242,10 +242,10 @@ public interface IBasicTests : IGraphModelTest
 
         await this.Graph.CreateNodeAsync(memory, null, TestContext.Current.CancellationToken);
 
-        var memories = await (await this.Graph.NodesAsync<Memory>()).ToListAsync(TestContext.Current.CancellationToken);
+        var memories = await this.Graph.Nodes<Memory>().ToListAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(memories);
 
-        var retrievedMemory = await (await this.Graph.NodesAsync<Memory>())
+        var retrievedMemory = await this.Graph.Nodes<Memory>()
             .Where(m => m.Id == memory.Id)
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
 
@@ -268,12 +268,51 @@ public interface IBasicTests : IGraphModelTest
 
         await this.Graph.CreateNodeAsync(user, null, TestContext.Current.CancellationToken);
 
-        var fetchedUser = await (await this.Graph.NodesAsync<User>())
+        var fetchedUser = await this.Graph.Nodes<User>()
             .Where(u => u.Id == user.Id)
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
 
         Assert.NotNull(fetchedUser);
         Assert.Equal("Alice", fetchedUser.Name);
         Assert.Equal("alice@example.com", fetchedUser.Email);
+    }
+
+    // ---- Query-surface v2 (issue #94) contract tests: sync roots, await foreach ----
+
+    [Fact]
+    public void SyncQueryRoots_ConstructWithoutIO()
+    {
+        // IGraph.Nodes<N>/Relationships<R>/DynamicNodes/DynamicRelationships (issue #94 scope item
+        // 4) are synchronous and must not require an await to build the queryable - constructing
+        // them (without executing) should not throw and should not need a running transaction.
+        var nodes = this.Graph.Nodes<Person>();
+        var relationships = this.Graph.Relationships<Knows>();
+        var dynamicNodes = this.Graph.DynamicNodes();
+        var dynamicRelationships = this.Graph.DynamicRelationships();
+
+        Assert.NotNull(nodes);
+        Assert.NotNull(relationships);
+        Assert.NotNull(dynamicNodes);
+        Assert.NotNull(dynamicRelationships);
+    }
+
+    [Fact]
+    public async Task AwaitForeach_EnumeratesQueryResults()
+    {
+        // IGraphQueryable<T> : IAsyncEnumerable<T> (issue #94 scope item 5) - await foreach must
+        // work directly on a query, without ToListAsync as an intermediate step.
+        var alice = new Person { FirstName = "AwaitForeachAlice", LastName = "Smith" };
+        var bob = new Person { FirstName = "AwaitForeachBob", LastName = "Jones" };
+        await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+
+        var seen = new List<string>();
+        await foreach (var person in this.Graph.Nodes<Person>().Where(p => p.FirstName == "AwaitForeachAlice" || p.FirstName == "AwaitForeachBob"))
+        {
+            seen.Add(person.FirstName);
+        }
+
+        Assert.Contains("AwaitForeachAlice", seen);
+        Assert.Contains("AwaitForeachBob", seen);
     }
 }

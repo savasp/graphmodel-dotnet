@@ -435,9 +435,10 @@ The `IGraph` interface is the main entry point for all graph operations:
 /// </summary>
 public interface IGraph : IAsyncDisposable
 {
-    // Queryable interfaces for LINQ support
-    Task<IGraphNodeQueryable<N>> NodesAsync<N>(IGraphTransaction? transaction = null) where N : INode;
-    Task<IGraphRelationshipQueryable<R>> RelationshipsAsync<R>(IGraphTransaction? transaction = null) where R : IRelationship;
+    // Synchronous query roots for LINQ support - building a queryable performs no I/O; any
+    // transaction/session acquisition happens when the query is executed.
+    IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null) where N : INode;
+    IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null) where R : IRelationship;
 
     // CRUD operations
     Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : INode;
@@ -461,7 +462,9 @@ public interface IGraph : IAsyncDisposable
 
 ### IGraphQueryable&lt;T&gt;
 
-The foundation of LINQ support in Graph Model:
+The single foundation of LINQ support in Graph Model — node queries, relationship queries, and
+projections are all `IGraphQueryable<T>`; graph-specific operators (e.g. traversal) are gated by
+generic constraints on the operator (`where T : INode`), not by a separate receiver interface:
 
 ```csharp
 /// <summary>
@@ -469,35 +472,25 @@ The foundation of LINQ support in Graph Model:
 /// This interface extends IQueryable&lt;T&gt; with additional functionality specific to graph operations.
 /// </summary>
 /// <typeparam name="T">The type of data being queried.</typeparam>
-public interface IGraphQueryable<T> : IQueryable<T>, IAsyncEnumerable<T>
+public interface IGraphQueryable<out T> : IQueryable<T>, IAsyncEnumerable<T>
 {
+    IGraph Graph { get; }
     new IGraphQueryProvider Provider { get; }
-
-    // Graph-specific extensions
-    IGraphQueryable<T> WithDepth(int maxDepth);
-    IGraphQueryable<T> WithDepth(int minDepth, int maxDepth);
-    IGraphQueryable<T> Direction(GraphTraversalDirection direction);
 }
 ```
 
-### Specialized Queryable Interfaces
+`IGraphQueryable<T>` is covariant (`out T`) — this is what lets the traversal operators below take
+only the relationship and end-node types as explicit type arguments: any `IGraphQueryable<TStart>`
+where `TStart : INode` converts to `IGraphQueryable<INode>` at the call site, so the start type
+rides in on the receiver rather than a generic slot the caller could mismatch (`PathSegments` is the
+one exception, since its result type `IGraphPathSegment<TStart,TRel,TEnd>` names the start type).
+
+Depth and direction are configured on the traversal operators themselves (overloads or an options
+lambda), not via free-floating postfix modifiers:
 
 ```csharp
-/// <summary>
-/// Queryable interface specifically for graph nodes with traversal capabilities.
-/// </summary>
-public interface IGraphNodeQueryable<TNode> : IGraphQueryable<TNode>, IGraphNodeQueryable
-    where TNode : INode
-{
-}
-
-/// <summary>
-/// Queryable interface specifically for graph relationships.
-/// </summary>
-public interface IGraphRelationshipQueryable<TRelationship> : IGraphQueryable<TRelationship>, IGraphRelationshipQueryable
-    where TRelationship : IRelationship
-{
-}
+graph.Nodes<Person>().Traverse<Knows, Person>(minDepth: 1, maxDepth: 3);
+graph.Nodes<Person>().Traverse<Knows, Person>(o => o.Depth(1, 3).Direction(GraphTraversalDirection.Incoming));
 ```
 
 ## ⚡ Transaction Interface
@@ -567,7 +560,7 @@ Usage example:
 
 ```csharp
 // Analyze connection paths
-var connectionAnalysis = await (await graph.NodesAsync<Person>())
+var connectionAnalysis = await graph.Nodes<Person>()
     .Where(p => p.FirstName == "Alice")
     .PathSegments<Person, Knows, Person>()
     .Where(path => path.EndNode.Age > 25)
@@ -588,11 +581,11 @@ Graph Model provides comprehensive full-text search capabilities that integrate 
 
 ```csharp
 // Search across all entities
-var allResults = await (await graph.SearchAsync("machine learning")).ToListAsync();
+var allResults = await graph.Search("machine learning").ToListAsync();
 
 // Type-specific searches
-var nodes = await (await graph.SearchNodesAsync<Article>("artificial intelligence")).ToListAsync();
-var relationships = await (await graph.SearchRelationshipsAsync<Knows>("college")).ToListAsync();
+var nodes = await graph.SearchNodes<Article>("artificial intelligence").ToListAsync();
+var relationships = await graph.SearchRelationships<Knows>("college").ToListAsync();
 ```
 
 ### LINQ Integration
@@ -601,13 +594,13 @@ The `Search()` method can be used anywhere in a LINQ chain:
 
 ```csharp
 // Search in basic LINQ chain
-var results = await (await graph.NodesAsync<Person>())
+var results = await graph.Nodes<Person>()
     .Where(p => p.Age > 25)
     .Search("software engineer")
     .ToListAsync();
 
 // Search in path segments traversal
-var memories = await (await graph.NodesAsync<User>())
+var memories = await graph.Nodes<User>()
     .Where(u => u.Id == "...")
     .PathSegments<User, UserMemory, Memory>()
     .Select(p => p.EndNode)
@@ -615,7 +608,7 @@ var memories = await (await graph.NodesAsync<User>())
     .ToListAsync();
 
 // Search with multiple conditions
-var filtered = await (await graph.NodesAsync<Article>())
+var filtered = await graph.Nodes<Article>()
     .Where(a => a.PublishedDate > DateTime.UtcNow.AddDays(-30))
     .Search("machine learning")
     .Where(a => a.Author.StartsWith("Dr."))

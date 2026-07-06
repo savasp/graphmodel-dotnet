@@ -171,7 +171,7 @@ try
     Console.WriteLine("5. Social network analytics...");
 
     // Find users and their followers
-    var usersWithFollowers = await (await graph.NodesAsync<User>())
+    var usersWithFollowers = await graph.Nodes<User>()
         .PathSegments<User, Follows, User>()
         .ToListAsync();
 
@@ -188,7 +188,7 @@ try
     }
 
     // Find posts with likes
-    var postsWithLikes = await (await graph.NodesAsync<User>())
+    var postsWithLikes = await graph.Nodes<User>()
         .PathSegments<User, Likes, Post>()
         .ToListAsync();
 
@@ -208,14 +208,14 @@ try
     Console.WriteLine("\n6. Generating personalized feed for Alice...");
 
     // Get posts from people Alice follows
-    var aliceFollowing = await (await graph.NodesAsync<User>())
+    var aliceFollowing = await graph.Nodes<User>()
         .Where(u => u.Username == "alice_wonder")
         .PathSegments<User, Follows, User>()
         .ToListAsync();
 
     var followedUserIds = aliceFollowing.Select(p => p.EndNode.Id).ToHashSet();
 
-    var feedPosts = await (await graph.NodesAsync<User>())
+    var feedPosts = await graph.Nodes<User>()
         .Where(u => followedUserIds.Contains(u.Id))
         .PathSegments<User, Posted, Post>()
         .ToListAsync();
@@ -232,7 +232,7 @@ try
     Console.WriteLine("\n7. Friend recommendations for Charlie...");
 
     // Find friends of friends who Charlie doesn't follow
-    var charlieFollowing = await (await graph.NodesAsync<User>())
+    var charlieFollowing = await graph.Nodes<User>()
         .Where(u => u.Username == "charlie_explorer")
         .PathSegments<User, Follows, User>()
         .ToListAsync();
@@ -240,12 +240,12 @@ try
     var charlieFollowingIds = charlieFollowing.Select(p => p.EndNode.Id).ToHashSet();
 
     // Find who Charlie's friends are following
-    var friendsOfFriends = await (await graph.NodesAsync<User>())
+    var friendsOfFriends = await graph.Nodes<User>()
         .Where(u => charlieFollowingIds.Contains(u.Id))
         .PathSegments<User, Follows, User>()
         .ToListAsync();
 
-    charlie = await (await graph.NodesAsync<User>())
+    charlie = await graph.Nodes<User>()
         .Where(u => u.Username == "charlie_explorer")
         .FirstOrDefaultAsync();
 

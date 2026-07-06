@@ -17,9 +17,15 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher;
 /// <summary>
 /// Represents a Cypher query with its parameters and optional transaction context.
 /// </summary>
+/// <param name="GraphPathTypes">
+/// When this query is a decomposed <c>TraversePaths</c> result (one row per hop, tagged with
+/// <c>pathIndex</c>/<c>hopIndex</c> columns), the source/relationship/target types needed to
+/// deserialize each hop; <see langword="null"/> for all other queries.
+/// </param>
 internal sealed record CypherQuery(
     string Text,
-    IReadOnlyDictionary<string, object?> Parameters)
+    IReadOnlyDictionary<string, object?> Parameters,
+    (Type Source, Type Relationship, Type Target)? GraphPathTypes = null)
 {
     /// <summary>
     /// Creates an empty query.

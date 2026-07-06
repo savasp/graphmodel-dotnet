@@ -18,9 +18,14 @@ using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j.Serialization;
 
 /// <summary>
-/// Extension methods for dynamic entities.
+/// Neo4j-specific property/label/type accessor extension methods for dynamic entities
+/// (<see cref="DynamicNode"/>/<see cref="DynamicRelationship"/>). Distinct from
+/// <see cref="Cvoya.Graph.Model.DynamicEntityExtensions"/> in core, which provides the
+/// provider-neutral <c>ToDynamicNode</c>/<c>ToDynamic</c> conversion extensions; this type's
+/// value conversions depend on the Neo4j driver's wire types (<c>SerializationBridge</c>), so it
+/// stays provider-specific rather than moving to core.
 /// </summary>
-public static class DynamicEntityExtensions
+public static class Neo4jDynamicEntityExtensions
 {
     /// <summary>
     /// Gets a property value from a dynamic node with type safety.

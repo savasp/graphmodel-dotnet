@@ -283,7 +283,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         }
 
         // Query by label
-        var people = await (await Graph.DynamicNodesAsync())
+        var people = await Graph.DynamicNodes()
             .Where(n => n.HasLabel("Neo4jPerson"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -291,7 +291,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         Assert.All(people, p => Assert.True(p.HasLabel("Neo4jPerson")));
 
         // Query by property
-        var adults = await (await Graph.DynamicNodesAsync())
+        var adults = await Graph.DynamicNodes()
             .Where(n => n.HasLabel("Neo4jPerson") && n.GetProperty<int>("age") > 25)
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -299,7 +299,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         Assert.All(adults, p => Assert.True(p.GetProperty<int>("age") > 25));
 
         // Query by multiple labels
-        var employees = await (await Graph.DynamicNodesAsync())
+        var employees = await Graph.DynamicNodes()
             .Where(n => n.HasLabel("Neo4jEmployee"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -356,7 +356,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         }
 
         // Query by type
-        var knowsRelationships = await (await Graph.DynamicRelationshipsAsync())
+        var knowsRelationships = await Graph.DynamicRelationships()
             .Where(r => r.HasType("Neo4jKNOWS"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -364,7 +364,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         Assert.All(knowsRelationships, r => Assert.True(r.HasType("Neo4jKNOWS")));
 
         // Query by property
-        var activeRelationships = await (await Graph.DynamicRelationshipsAsync())
+        var activeRelationships = await Graph.DynamicRelationships()
             .Where(r => r.HasType("Neo4jKNOWS") && r.GetProperty<bool>("active") == true)
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -415,7 +415,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         }
 
         // Query by complex property - we'll filter in memory since expression trees don't support 'is' pattern matching
-        var allPeople = await (await Graph.DynamicNodesAsync())
+        var allPeople = await Graph.DynamicNodes()
             .Where(n => n.HasLabel("Neo4jPerson"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -461,7 +461,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         }
 
         // Query by array property - this should be translated to Cypher
-        var developers = await (await Graph.DynamicNodesAsync())
+        var developers = await Graph.DynamicNodes()
             .Where(n => n.HasLabel("Neo4jPerson") && n.GetProperty<IList<string>>("tags")!.Contains("developer"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -493,7 +493,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
 
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
 
-        var projections = await (await Graph.DynamicNodesAsync())
+        var projections = await Graph.DynamicNodes()
             .Where(n => n.HasLabel("Neo4jPerson"))
             .Select(n => new
             {
