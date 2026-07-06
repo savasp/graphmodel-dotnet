@@ -45,6 +45,10 @@ check "github guard allows read-only git"     0 "{\"tool_input\":{\"command\":\"
 check "github guard allows read-only gh"      0 "{\"tool_input\":{\"command\":\"gh pr view 1\"}}" "$G"
 check "github guard allows quoted mentions"   0 "{\"tool_input\":{\"command\":\"echo \\\"git commit && gh pr create\\\"\"}}" "$G"
 
+check "github guard blocks env-prefixed push"  2 "{\"tool_input\":{\"command\":\"FOO=bar git push origin HEAD\"}}" "$G"
+check "github guard blocks sudo-prefixed push" 2 "{\"tool_input\":{\"command\":\"sudo git push origin HEAD\"}}" "$G"
+check "github guard allows env-prefixed gh-app" 0 "{\"tool_input\":{\"command\":\"FOO=bar gh-app git push origin HEAD\"}}" "$G"
+
 echo "----"
 echo "$pass passed, $fail failed"
 [ $fail -eq 0 ]
