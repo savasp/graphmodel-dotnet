@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Neo4j.Entities;
 
 using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Core;
+using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
@@ -136,11 +137,33 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
         try
         {
+            var registeredNodeLabels = await GetRegisteredNodeLabelsAsync(cancellationToken);
+            var databaseLabels = await GetDatabaseLabelsAsync(transaction.Transaction, cancellationToken);
+            var rootMatchPrelude = BuildRootMatchPrelude(databaseLabels);
+            var rootCount = await GetRootCountAsync(
+                nodeId,
+                registeredNodeLabels,
+                rootMatchPrelude,
+                transaction.Transaction,
+                cancellationToken);
+            if (rootCount == 0)
+            {
+                _logger.LogWarning("Node with ID {NodeId} not found for deletion", nodeId);
+                throw new KeyNotFoundException($"Node with ID {nodeId} not found for deletion");
+            }
+
+            if (rootCount > 1)
+            {
+                throw new GraphException(
+                    $"Cannot delete node {nodeId} because the ID matches {rootCount} graph nodes. " +
+                    "DeleteNodeAsync requires the ID to identify exactly one node.");
+            }
+
             if (!cascadeDelete)
             {
                 // First check if the node has any business relationships (non-complex properties)
-                var checkCypher = @"
-                    MATCH (n {Id: $nodeId})
+                var checkCypher = $@"
+                    {rootMatchPrelude}
                     OPTIONAL MATCH (n)-[r]-()
                     WHERE NOT type(r) STARTS WITH $propertyPrefix
                     RETURN COUNT(r) AS businessRelationshipCount";
@@ -148,7 +171,9 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 var checkResult = await transaction.Transaction.RunAsync(checkCypher, new
                 {
                     nodeId,
-                    propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix
+                    propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
+                    nodeEntityKind = SerializationBridge.NodeEntityKind,
+                    registeredNodeLabels
                 });
 
                 var checkRecord = await GetSingleRecordAsync(checkResult, cancellationToken);
@@ -163,25 +188,21 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             }
 
             // Now perform the deletion
-            var cypher = cascadeDelete
-                ? @"MATCH (n {Id: $nodeId})
-                    OPTIONAL MATCH (n)--(connected)
-                    WITH n, collect(connected) AS connectedNodes
-                    FOREACH (conn IN connectedNodes | DETACH DELETE conn)
-                    DETACH DELETE n
-                    RETURN true AS wasDeleted"
-                : @"MATCH (n {Id: $nodeId})
-                    OPTIONAL MATCH (n)-[r]->(complex)
-                    WHERE type(r) STARTS WITH $propertyPrefix
-                    WITH n, collect(complex) AS complexNodes
-                    FOREACH (comp IN complexNodes | DETACH DELETE comp)
-                    DETACH DELETE n
-                    RETURN true AS wasDeleted";
+            var cypher = $@"
+                {rootMatchPrelude}
+                OPTIONAL MATCH propertyPath = (n)-[propertyRels*1..]->(propertyNode)
+                WHERE ALL(rel IN propertyRels WHERE type(rel) STARTS WITH $propertyPrefix)
+                WITH n, [propertyNode IN collect(DISTINCT propertyNode) WHERE propertyNode IS NOT NULL] AS propertyNodes
+                FOREACH (propertyNode IN propertyNodes | DETACH DELETE propertyNode)
+                DETACH DELETE n
+                RETURN true AS wasDeleted";
 
             var result = await transaction.Transaction.RunAsync(cypher, new
             {
                 nodeId,
-                propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix
+                propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
+                nodeEntityKind = SerializationBridge.NodeEntityKind,
+                registeredNodeLabels
             });
 
             var record = await GetSingleRecordAsync(result, cancellationToken);
@@ -201,6 +222,86 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             _logger.LogError(ex, "Error deleting node with ID: {NodeId}", nodeId);
             throw new GraphException($"Failed to delete node: {ex.Message}", ex);
         }
+    }
+
+    private async Task<int> GetRootCountAsync(
+        string nodeId,
+        string[] registeredNodeLabels,
+        string rootMatchPrelude,
+        IAsyncTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var cypher = $@"
+            {rootMatchPrelude}
+            RETURN COUNT(DISTINCT n) AS rootCount";
+
+        var result = await transaction.RunAsync(cypher, new
+        {
+            nodeId,
+            propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
+            nodeEntityKind = SerializationBridge.NodeEntityKind,
+            registeredNodeLabels
+        });
+
+        var record = await GetSingleRecordAsync(result, cancellationToken);
+        return record["rootCount"].As<int>();
+    }
+
+    private async Task<string[]> GetRegisteredNodeLabelsAsync(CancellationToken cancellationToken)
+    {
+        var labels = await context.SchemaManager
+            .GetSchemaRegistry()
+            .GetRegisteredNodeLabelsAsync(cancellationToken);
+
+        return labels.ToArray();
+    }
+
+    private static string BuildRootMatchPrelude(IReadOnlyCollection<string> databaseLabels)
+    {
+        if (databaseLabels.Count == 0)
+        {
+            return "UNWIND [] AS n";
+        }
+
+        var labelMatches = string.Join(
+            "\n            UNION\n",
+            databaseLabels
+                .Order(StringComparer.Ordinal)
+                .Select(label => $"MATCH (n:{EscapeCypherLabel(label)} {{Id: $nodeId}})\n            RETURN n"));
+
+        return $@"
+            CALL {{
+                {labelMatches}
+            }}
+            WITH DISTINCT n
+            WHERE (
+                n.{SerializationBridge.EntityKindPropertyName} = $nodeEntityKind
+                OR (
+                    n.{SerializationBridge.EntityKindPropertyName} IS NULL
+                    AND any(label IN labels(n) WHERE label IN $registeredNodeLabels)
+                    AND NOT EXISTS {{
+                        MATCH ()-[incomingProperty]->(n)
+                        WHERE type(incomingProperty) STARTS WITH $propertyPrefix
+                    }}
+                )
+            )";
+    }
+
+    private static string EscapeCypherLabel(string label)
+    {
+        return $"`{label.Replace("`", "``", StringComparison.Ordinal)}`";
+    }
+
+    private static async Task<string[]> GetDatabaseLabelsAsync(
+        IAsyncTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        const string cypher = "CALL db.labels() YIELD label RETURN collect(label) AS labels";
+
+        var result = await transaction.RunAsync(cypher);
+        var record = await GetSingleRecordAsync(result, cancellationToken);
+
+        return record["labels"].As<List<string>>()?.ToArray() ?? [];
     }
 
     private async Task<string> CreateMainNodeAsync(
@@ -230,6 +331,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         }
 
         var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
+        simpleProperties[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
 
         // Add Labels property to be stored in Neo4j
         simpleProperties[nameof(Model.INode.Labels)] =
@@ -250,6 +352,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         string cypher;
         var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
+        simpleProperties[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
 
         // Add Labels property to be stored in Neo4j
         simpleProperties[nameof(Model.INode.Labels)] =

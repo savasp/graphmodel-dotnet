@@ -133,6 +133,9 @@ public interface ITransactionTests : IGraphModelTest
             () => Graph.GetNodeAsync<Person>(person1.Id, null, TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<GraphException>(
             () => Graph.GetRelationshipAsync<Friend>(relationship.Id, null, TestContext.Current.CancellationToken));
+
+        var remainingPerson = await Graph.GetNodeAsync<Person>(person2.Id, null, TestContext.Current.CancellationToken);
+        Assert.Equal(person2.Id, remainingPerson.Id);
     }
 
     [Fact]
