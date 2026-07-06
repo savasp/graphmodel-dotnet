@@ -35,18 +35,21 @@ public class User : INode
 
 ## 📦 Analyzer Rules
 
-| Rule ID   | Description                                 | Severity |
-| --------- | ------------------------------------------- | -------- |
-| **GM001** | Missing parameterless constructor           | Error    |
-| **GM002** | Property must have public accessors         | Error    |
-| **GM003** | Property cannot be graph interface type     | Error    |
-| **GM004** | Invalid property type for node              | Error    |
-| **GM005** | Invalid property type for relationship      | Error    |
-| **GM006** | Complex type contains graph interface types | Error    |
-| **GM007** | Duplicate property attribute label          | Warning  |
-| **GM008** | Duplicate relationship attribute label      | Warning  |
-| **GM009** | Duplicate node attribute label              | Warning  |
-| **GM010** | Circular reference without nullable         | Warning  |
+| Rule ID   | Description                                                          | Severity |
+| --------- | --------------------------------------------------------------------- | -------- |
+| **GM001** | Missing parameterless constructor                                      | Error    |
+| **GM002** | Property must have public accessors                                    | Error    |
+| **GM003** | Property cannot be graph interface type                                 | Error    |
+| **GM004** | Invalid property type for node                                          | Error    |
+| **GM005** | Invalid property type for relationship                                  | Error    |
+| **GM006** | Complex type contains graph interface types                             | Error    |
+| **GM007** | Duplicate property attribute label                                      | Error    |
+| **GM008** | Duplicate relationship attribute label                                  | Error    |
+| **GM009** | Duplicate node attribute label                                          | Error    |
+| **GM010** | Circular reference without nullable                                     | Error    |
+| **GM011** | Type should inherit from Node/Relationship instead of implementing directly | Warning  |
+| **GM012** | [Node]/[Relationship] on a type that doesn't implement the matching interface | Warning  |
+| **GM013** | Both [Node] and [Relationship] applied to the same type                 | Error    |
 
 ## 🔧 Configuration
 

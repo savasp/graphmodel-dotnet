@@ -328,26 +328,44 @@ public class GM009_DuplicateNodeAttributeLabelTests
     }
 
     [Fact]
-    public async Task ClassNotImplementingGraphInterface_NoDiagnostic()
+    public async Task ClassNotImplementingGraphInterface_NoDuplicateLabelDiagnostic()
     {
+        // GM009 only compares labels across types that implement INode - neither of these classes
+        // does, so GM009 stays silent (each still gets a GM012 for the misapplied attribute, which
+        // is out of scope for this test class and covered by
+        // GM012_MisappliedNodeOrRelationshipAttributeTests instead).
         var test = """
             using Cvoya.Graph.Model;
-            
-            [Node("Person")]
+
+            [{|#0:Node("Person")|}]
             public class RegularClass1
             {
                 public string Name { get; set; } = string.Empty;
             }
-            
-            [Node("Person")]
+
+            [{|#1:Node("Person")|}]
             public class RegularClass2
             {
                 public string Name { get; set; } = string.Empty;
             }
             """;
 
-        await VerifyAnalyzerAsync(test);
+        var expected = new[]
+        {
+            VerifyGM012.Diagnostic("GM012").WithLocation(0).WithArguments("RegularClass1", "Node", "INode"),
+            VerifyGM012.Diagnostic("GM012").WithLocation(1).WithArguments("RegularClass2", "Node", "INode"),
+        };
+
+        await VerifyAnalyzerAsync(test, expected);
     }
+}
+
+// Helper typedef for the GM012 diagnostics incidentally produced by the misapplied-attribute
+// fixtures above (this class's own diagnostics use the file-scoped VerifyCS below).
+file static class VerifyGM012
+{
+    public static DiagnosticResult Diagnostic(string diagnosticId)
+        => new DiagnosticResult(diagnosticId, DiagnosticSeverity.Warning);
 }
 
 // Helper typedef for cleaner syntax

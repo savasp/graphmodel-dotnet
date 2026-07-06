@@ -36,6 +36,13 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- Lets Graph.Model.Analyzers.Tests exercise AnalyzerHelper's ITypeSymbol-based
+             classification directly, so its truth-table tests can mirror
+             GraphDataModelTypeClassificationTests without widening AnalyzerHelper's public surface. -->
+        <InternalsVisibleTo Include="Cvoya.Graph.Model.Analyzers.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
     </ItemGroup>

@@ -42,7 +42,9 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
         DiagnosticDescriptors.DuplicateRelationshipAttributeLabel,
         DiagnosticDescriptors.DuplicateNodeAttributeLabel,
         DiagnosticDescriptors.CircularReferenceWithoutNullable,
-        DiagnosticDescriptors.ShouldInheritFromBaseClass);
+        DiagnosticDescriptors.ShouldInheritFromBaseClass,
+        DiagnosticDescriptors.MisappliedNodeOrRelationshipAttribute,
+        DiagnosticDescriptors.ConflictingNodeAndRelationshipAttributes);
 
     /// <summary>
     /// Initializes the analyzer and registers the symbol action for named types.
@@ -67,6 +69,15 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
 
         bool implementsINode = helper.ImplementsINode(namedTypeSymbol);
         bool implementsIRelationship = helper.ImplementsIRelationship(namedTypeSymbol);
+
+        // GM012: Check for [Node]/[Relationship] applied to a type that doesn't implement the
+        // matching interface. Must run before the early-return below, since its whole point is to
+        // flag types that implement neither (or the wrong) interface.
+        AnalyzeMisappliedNodeOrRelationshipAttribute(context, namedTypeSymbol, implementsINode, implementsIRelationship);
+
+        // GM013: Check for both [Node] and [Relationship] applied to the same type. Same reasoning
+        // as GM012 - must run regardless of which interfaces (if any) the type implements.
+        AnalyzeConflictingNodeAndRelationshipAttributes(context, namedTypeSymbol);
 
         // Skip if it doesn't implement INode or IRelationship
         if (!implementsINode && !implementsIRelationship)
@@ -167,6 +178,62 @@ public class GraphModelAnalyzer : DiagnosticAnalyzer
 
             context.ReportDiagnostic(diagnostic);
         }
+    }
+
+    private static void AnalyzeMisappliedNodeOrRelationshipAttribute(SymbolAnalysisContext context, INamedTypeSymbol namedType, bool implementsINode, bool implementsIRelationship)
+    {
+        var nodeAttr = namedType.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "NodeAttribute");
+        if (nodeAttr != null && !implementsINode)
+        {
+            var diagnostic = Diagnostic.Create(
+                DiagnosticDescriptors.MisappliedNodeOrRelationshipAttribute,
+                GetAttributeLocation(nodeAttr, namedType),
+                namedType.Name,
+                "Node",
+                "INode");
+
+            context.ReportDiagnostic(diagnostic);
+        }
+
+        var relationshipAttr = namedType.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "RelationshipAttribute");
+        if (relationshipAttr != null && !implementsIRelationship)
+        {
+            var diagnostic = Diagnostic.Create(
+                DiagnosticDescriptors.MisappliedNodeOrRelationshipAttribute,
+                GetAttributeLocation(relationshipAttr, namedType),
+                namedType.Name,
+                "Relationship",
+                "IRelationship");
+
+            context.ReportDiagnostic(diagnostic);
+        }
+    }
+
+    private static void AnalyzeConflictingNodeAndRelationshipAttributes(SymbolAnalysisContext context, INamedTypeSymbol namedType)
+    {
+        var nodeAttr = namedType.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "NodeAttribute");
+        var relationshipAttr = namedType.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "RelationshipAttribute");
+
+        if (nodeAttr != null && relationshipAttr != null)
+        {
+            var diagnostic = Diagnostic.Create(
+                DiagnosticDescriptors.ConflictingNodeAndRelationshipAttributes,
+                namedType.Locations.FirstOrDefault(),
+                namedType.Name);
+
+            context.ReportDiagnostic(diagnostic);
+        }
+    }
+
+    private static Location? GetAttributeLocation(AttributeData attribute, INamedTypeSymbol fallbackType)
+    {
+        var syntaxReference = attribute.ApplicationSyntaxReference;
+        if (syntaxReference != null)
+        {
+            return Location.Create(syntaxReference.SyntaxTree, syntaxReference.Span);
+        }
+
+        return fallbackType.Locations.FirstOrDefault();
     }
 
     private static void AnalyzeParameterlessConstructor(SymbolAnalysisContext context, INamedTypeSymbol namedType, bool implementsINode, bool implementsIRelationship)
