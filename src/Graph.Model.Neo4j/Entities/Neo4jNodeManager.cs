@@ -30,6 +30,29 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     private readonly EntityFactory _serializer = new EntityFactory(context.LoggerFactory);
     private readonly ComplexPropertyManager _complexPropertyManager = new(context);
 
+    // Root MATCH used by DeleteNodeAsync's count/business-relationship/delete queries. The
+    // node's label(s) aren't known at the call site (delete-by-id on INode, e.g. a DynamicNode
+    // with an arbitrary/unregistered label), so this can't be scoped to a specific label up
+    // front - a plain, label-agnostic MATCH on Id resolves the candidate node(s) directly.
+    // labels(n) here is the cheap per-node function (labels already bound by the MATCH), not the
+    // database-wide db.labels() catalog procedure that used to be queried separately - as a
+    // pre-existing round trip - before this MATCH could even be built (see #135). This is a
+    // compile-time constant (not built from a database query result) specifically so its shape
+    // is directly testable without a live Neo4j instance.
+    internal const string RootMatchPrelude = $@"
+        MATCH (n {{Id: $nodeId}})
+        WHERE (
+            n.{SerializationBridge.EntityKindPropertyName} = $nodeEntityKind
+            OR (
+                n.{SerializationBridge.EntityKindPropertyName} IS NULL
+                AND any(label IN labels(n) WHERE label IN $registeredNodeLabels)
+                AND NOT EXISTS {{
+                    MATCH ()-[incomingProperty]->(n)
+                    WHERE type(incomingProperty) STARTS WITH $propertyPrefix
+                }}
+            )
+        )";
+
     public async Task<TNode> CreateNodeAsync<TNode>(
         TNode node,
         GraphTransaction transaction,
@@ -138,12 +161,9 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         try
         {
             var registeredNodeLabels = await GetRegisteredNodeLabelsAsync(cancellationToken);
-            var databaseLabels = await GetDatabaseLabelsAsync(transaction.Transaction, cancellationToken);
-            var rootMatchPrelude = BuildRootMatchPrelude(databaseLabels);
             var rootCount = await GetRootCountAsync(
                 nodeId,
                 registeredNodeLabels,
-                rootMatchPrelude,
                 transaction.Transaction,
                 cancellationToken);
             if (rootCount == 0)
@@ -163,7 +183,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             {
                 // First check if the node has any business relationships (non-complex properties)
                 var checkCypher = $@"
-                    {rootMatchPrelude}
+                    {RootMatchPrelude}
                     OPTIONAL MATCH (n)-[r]-()
                     WHERE NOT type(r) STARTS WITH $propertyPrefix
                     RETURN COUNT(r) AS businessRelationshipCount";
@@ -189,7 +209,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
             // Now perform the deletion
             var cypher = $@"
-                {rootMatchPrelude}
+                {RootMatchPrelude}
                 OPTIONAL MATCH propertyPath = (n)-[propertyRels*1..]->(propertyNode)
                 WHERE ALL(rel IN propertyRels WHERE type(rel) STARTS WITH $propertyPrefix)
                 WITH n, [propertyNode IN collect(DISTINCT propertyNode) WHERE propertyNode IS NOT NULL] AS propertyNodes
@@ -227,12 +247,11 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     private async Task<int> GetRootCountAsync(
         string nodeId,
         string[] registeredNodeLabels,
-        string rootMatchPrelude,
         IAsyncTransaction transaction,
         CancellationToken cancellationToken)
     {
         var cypher = $@"
-            {rootMatchPrelude}
+            {RootMatchPrelude}
             RETURN COUNT(DISTINCT n) AS rootCount";
 
         var result = await transaction.RunAsync(cypher, new
@@ -254,54 +273,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             .GetRegisteredNodeLabelsAsync(cancellationToken);
 
         return labels.ToArray();
-    }
-
-    private static string BuildRootMatchPrelude(IReadOnlyCollection<string> databaseLabels)
-    {
-        if (databaseLabels.Count == 0)
-        {
-            return "UNWIND [] AS n";
-        }
-
-        var labelMatches = string.Join(
-            "\n            UNION\n",
-            databaseLabels
-                .Order(StringComparer.Ordinal)
-                .Select(label => $"MATCH (n:{EscapeCypherLabel(label)} {{Id: $nodeId}})\n            RETURN n"));
-
-        return $@"
-            CALL {{
-                {labelMatches}
-            }}
-            WITH DISTINCT n
-            WHERE (
-                n.{SerializationBridge.EntityKindPropertyName} = $nodeEntityKind
-                OR (
-                    n.{SerializationBridge.EntityKindPropertyName} IS NULL
-                    AND any(label IN labels(n) WHERE label IN $registeredNodeLabels)
-                    AND NOT EXISTS {{
-                        MATCH ()-[incomingProperty]->(n)
-                        WHERE type(incomingProperty) STARTS WITH $propertyPrefix
-                    }}
-                )
-            )";
-    }
-
-    private static string EscapeCypherLabel(string label)
-    {
-        return $"`{label.Replace("`", "``", StringComparison.Ordinal)}`";
-    }
-
-    private static async Task<string[]> GetDatabaseLabelsAsync(
-        IAsyncTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        const string cypher = "CALL db.labels() YIELD label RETURN collect(label) AS labels";
-
-        var result = await transaction.RunAsync(cypher);
-        var record = await GetSingleRecordAsync(result, cancellationToken);
-
-        return record["labels"].As<List<string>>()?.ToArray() ?? [];
     }
 
     private async Task<string> CreateMainNodeAsync(
