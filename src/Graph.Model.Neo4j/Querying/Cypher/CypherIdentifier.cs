@@ -84,13 +84,10 @@ internal static class CypherIdentifier
             throw new GraphException($"A Cypher {kind} cannot be null, empty, or whitespace.");
         }
 
-        foreach (var c in identifier)
+        foreach (var c in identifier.Where(char.IsControl))
         {
-            if (char.IsControl(c))
-            {
-                throw new GraphException(
-                    $"The Cypher {kind} '{identifier}' contains a control character (U+{(int)c:X4}), which is not allowed.");
-            }
+            throw new GraphException(
+                $"The Cypher {kind} '{identifier}' contains a control character (U+{(int)c:X4}), which is not allowed.");
         }
     }
 
