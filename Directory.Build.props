@@ -68,7 +68,7 @@
     <!-- Include README in the package -->
     <ItemGroup>
         <None Include="$(MSBuildProjectDirectory)\README.md" Pack="true" PackagePath="\" />
-        <None Include="$(MSBuildThisFileDirectory)assets\nuget-icon.png" Pack="true" PackagePath="\icon.png" />
+        <None Include="$(MSBuildThisFileDirectory)assets\icon.png" Pack="true" PackagePath="\icon.png" />
     </ItemGroup>
 
     <!-- Test project settings -->

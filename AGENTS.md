@@ -34,7 +34,7 @@ The four test projects have different requirements — get this right:
 | `tests/Graph.Model.Analyzers.Tests` | Analyzer tests. | nothing — runs anywhere; the fast no-Docker lane |
 | `tests/Graph.Model.Performance.Tests` | Benchmarks. | not part of the normal gate |
 
-Package testing before publishing: `dotnet build --configuration LocalFeed`, then `--configuration Release`. Release builds require the `VERSION` file; the release process is described in [docs/graph-model-developers.md](docs/graph-model-developers.md) (being rebuilt under #71).
+Package testing before publishing: `dotnet build --configuration LocalFeed`, then `--configuration Release`. Release builds require the `VERSION` file; the release process (tag-triggered, `VERSION` as the source of truth) is described in [docs/release-process.md](docs/release-process.md).
 
 ## Conventions
 

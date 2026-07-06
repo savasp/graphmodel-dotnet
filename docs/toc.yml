@@ -43,3 +43,5 @@
   href: troubleshooting.md
 - name: Building Graph Model
   href: graph-model-developers.md
+- name: Release Process
+  href: release-process.md
