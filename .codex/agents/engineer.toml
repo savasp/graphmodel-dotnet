@@ -23,6 +23,6 @@ Software engineer for the GraphModel .NET library (features, bug fixes, refactor
 
 - One public type per file; XML docs on new public APIs; Apache 2.0 header on new source files.
 - Public async APIs take a `CancellationToken` and use the `Async` suffix.
-- Protected files (`VERSION`, `.github/`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`) need explicit user approval.
+- Protected files (`VERSION`, `.github/`, `.claude/`, `.codex/`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`) need explicit user approval.
 - Never build Cypher by interpolating values — use parameters.
 """

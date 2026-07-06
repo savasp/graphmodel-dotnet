@@ -1,9 +1,10 @@
 name: ❓ Question / Support
 description: Ask a question or get help with GraphModel
 title: "[Question]: "
+type: task
 labels: 
-  - "question"
   - "support"
+  - "triage"
 assignees: []
 
 body:
@@ -117,4 +118,4 @@ body:
       description: "Any other information that might be helpful"
       placeholder: "Add any additional context here..."
     validations:
-      required: false 
+      required: false

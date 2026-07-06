@@ -24,8 +24,8 @@
         <IncludeBuildOutput>true</IncludeBuildOutput>
         <Company>Cvoya</Company>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/savasp/graphmodel-dotnet</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/savasp/graphmodel-dotnet</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/cvoya-com/graphmodel-dotnet</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/cvoya-com/graphmodel-dotnet</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageOutputPath>$(MSBuildThisFileDirectory)artifacts</PackageOutputPath>
         <PackageReadmeFile>README.md</PackageReadmeFile>

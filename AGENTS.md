@@ -51,11 +51,12 @@ Package testing before publishing: `dotnet build --configuration LocalFeed`, the
 - One focused branch + PR per task (`feat/…`, `fix/…`, `chore/…`); coordinate through branch state and PR comments, not shared files.
 - Build and test before pushing. Docs-only changes may skip the test gate.
 - **Shared-file discipline:** `graphmodel.sln`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `VERSION`, and `.github/` workflows are high-conflict and/or protected — change them additively, and ask the user before modifying the protected ones (a PreToolUse hook enforces this for Claude; it is advisory, not a security boundary).
+- **All changes land via pull request** (branch protection enforces this); use standard `git`/`gh`. You may see commits and PRs authored by `savasp-agent[bot]` — that is the maintainer's own automation identity, not a tool contributors need or can use.
 
 ## Issue tracking
 
 - **Native relationships over prose:** dependencies use GitHub's sub-issue / blocked-by links, not "blocked by #N" in text. Umbrella issues (e.g. #90) group work via sub-issues.
-- **Labels** carry area/kind: `bug`, `enhancement`, `documentation`, `ci`, `security`, `release`, `code-quality`, `testing`, `architecture`, `agents`. This repo has no issue types (user-owned repo); milestones are used only for release-bounded groups.
+- **Issue types** carry category: `Bug`, `Feature`, or `Task`. Use labels only for triage and area attributes such as `documentation`, `ci`, `security`, `release`, `code-quality`, `testing`, `architecture`, and `agents`; milestones are used only for release-bounded groups.
 - PRs reference their issue; repeat the closing keyword per issue: `Closes #64, closes #65` (comma-separated bare numbers silently don't close).
 - Follow-ups become issues, not TODO comments or scope creep.
 

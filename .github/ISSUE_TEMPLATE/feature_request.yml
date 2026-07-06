@@ -1,8 +1,8 @@
 name: ✨ Feature Request
 description: Suggest a new feature or enhancement
 title: "[Feature]: "
+type: feature
 labels: 
-  - "enhancement"
   - "triage"
 assignees: []
 
@@ -120,4 +120,4 @@ body:
       label: "🤝 Contribution"
       options:
         - label: "I'd be willing to contribute to implementing this feature"
-          required: false 
+          required: false
