@@ -133,4 +133,26 @@
   <data name="GM011_Description" xml:space="preserve">
     <value>Types should inherit from Node or Relationship base classes instead of implementing INode or IRelationship directly. The base classes provide default implementations for runtime metadata properties like Labels and Type, which are managed by the graph provider.</value>
   </data>
+
+  <!-- GM012: [Node]/[Relationship] applied to a type that doesn't implement the matching interface -->
+  <data name="GM012_Title" xml:space="preserve">
+    <value>Attribute has no effect on a type that doesn't implement the matching interface</value>
+  </data>
+  <data name="GM012_MessageFormat" xml:space="preserve">
+    <value>Type '{0}' is annotated with [{1}] but does not implement {2}; the attribute has no effect</value>
+  </data>
+  <data name="GM012_Description" xml:space="preserve">
+    <value>NodeAttribute only affects types implementing INode, and RelationshipAttribute only affects types implementing IRelationship. Applying either attribute to a type that does not implement the matching interface is a silent no-op.</value>
+  </data>
+
+  <!-- GM013: Both [Node] and [Relationship] applied to the same type -->
+  <data name="GM013_Title" xml:space="preserve">
+    <value>Type cannot have both NodeAttribute and RelationshipAttribute</value>
+  </data>
+  <data name="GM013_MessageFormat" xml:space="preserve">
+    <value>Type '{0}' has both [Node] and [Relationship] attributes; a type can only be one or the other</value>
+  </data>
+  <data name="GM013_Description" xml:space="preserve">
+    <value>A type cannot be annotated with both NodeAttribute and RelationshipAttribute. Label resolution only honors one of the two, silently ignoring the other, so applying both is always a mistake.</value>
+  </data>
 </root>

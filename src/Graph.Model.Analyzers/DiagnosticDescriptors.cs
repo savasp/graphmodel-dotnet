@@ -132,4 +132,24 @@ internal static class DiagnosticDescriptors
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         description: Resources.GM011_Description);
+
+    // GM012: [Node]/[Relationship] applied to a type that doesn't implement the matching interface
+    public static readonly DiagnosticDescriptor MisappliedNodeOrRelationshipAttribute = new(
+        id: "GM012",
+        title: Resources.GM012_Title,
+        messageFormat: Resources.GM012_MessageFormat,
+        category: "Graph.Model",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: Resources.GM012_Description);
+
+    // GM013: Both [Node] and [Relationship] applied to the same type
+    public static readonly DiagnosticDescriptor ConflictingNodeAndRelationshipAttributes = new(
+        id: "GM013",
+        title: Resources.GM013_Title,
+        messageFormat: Resources.GM013_MessageFormat,
+        category: "Graph.Model",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: Resources.GM013_Description);
 }

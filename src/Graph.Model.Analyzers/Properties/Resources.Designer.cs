@@ -227,4 +227,34 @@ internal class Resources
     ///   Looks up a localized string similar to Type should inherit from base class instead of implementing interface directly.
     /// </summary>
     internal static string GM011_Title => ResourceManager.GetString("GM011_Title", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to NodeAttribute only affects types implementing INode, and RelationshipAttribute only affects types implementing IRelationship. Applying either attribute to a type that does not implement the matching interface is a silent no-op..
+    /// </summary>
+    internal static string GM012_Description => ResourceManager.GetString("GM012_Description", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Type '{0}' is annotated with [{1}] but does not implement {2}; the attribute has no effect.
+    /// </summary>
+    internal static string GM012_MessageFormat => ResourceManager.GetString("GM012_MessageFormat", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Attribute has no effect on a type that doesn't implement the matching interface.
+    /// </summary>
+    internal static string GM012_Title => ResourceManager.GetString("GM012_Title", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to A type cannot be annotated with both NodeAttribute and RelationshipAttribute. Label resolution only honors one of the two, silently ignoring the other, so applying both is always a mistake..
+    /// </summary>
+    internal static string GM013_Description => ResourceManager.GetString("GM013_Description", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Type '{0}' has both [Node] and [Relationship] attributes; a type can only be one or the other.
+    /// </summary>
+    internal static string GM013_MessageFormat => ResourceManager.GetString("GM013_MessageFormat", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to Type cannot have both NodeAttribute and RelationshipAttribute.
+    /// </summary>
+    internal static string GM013_Title => ResourceManager.GetString("GM013_Title", resourceCulture)!;
 }

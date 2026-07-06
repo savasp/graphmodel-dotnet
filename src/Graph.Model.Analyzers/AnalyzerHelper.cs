@@ -241,6 +241,11 @@ internal class AnalyzerHelper
 
     public bool IsComplexType(ITypeSymbol type)
     {
+        // object itself (and collections/dictionaries of it) is never complex - it carries no
+        // discoverable property shape to serialize.
+        if (type.SpecialType == SpecialType.System_Object)
+            return false;
+
         // A complex type is one that is not simple and not a collection
         if (IsSimpleType(type))
             return false;
@@ -249,6 +254,10 @@ internal class AnalyzerHelper
             return false;
 
         if (IsCollectionOfComplexTypes(type))
+            return false;
+
+        // Dictionaries are never considered complex; see IsDictionaryType.
+        if (IsDictionaryType(type))
             return false;
 
         // Must be a reference type (class or struct) to be complex
@@ -263,10 +272,47 @@ internal class AnalyzerHelper
         return IsCollectionOfSimpleTypes(type) || IsCollectionOfComplexTypes(type);
     }
 
+    /// <summary>
+    /// Checks if a type is a dictionary shape: a concrete type implementing the non-generic
+    /// <see cref="System.Collections.IDictionary"/>, or any type that is or implements
+    /// <see cref="System.Collections.Generic.IDictionary{TKey,TValue}"/> or
+    /// <see cref="System.Collections.Generic.IReadOnlyDictionary{TKey,TValue}"/>.
+    /// Dictionaries are not supported as graph properties.
+    /// </summary>
+    public bool IsDictionaryType(ITypeSymbol type)
+    {
+        if (type is not INamedTypeSymbol namedType)
+            return false;
+
+        if (namedType.AllInterfaces.Any(i => i.Name == "IDictionary" && i.ContainingNamespace?.ToDisplayString() == "System.Collections"))
+            return true;
+
+        if (IsDictionaryGenericDefinition(namedType))
+            return true;
+
+        return namedType.AllInterfaces.Any(IsDictionaryGenericDefinition);
+    }
+
+    private static bool IsDictionaryGenericDefinition(INamedTypeSymbol type)
+    {
+        if (!type.IsGenericType)
+            return false;
+
+        var definition = type.ConstructedFrom;
+        var name = definition.Name;
+        var ns = definition.ContainingNamespace?.ToDisplayString();
+
+        return ns == "System.Collections.Generic" && (name == "IDictionary" || name == "IReadOnlyDictionary");
+    }
+
     public bool IsCollectionOfSimpleTypes(ITypeSymbol type)
     {
         // Exclude string (even though it implements IEnumerable)
         if (type.SpecialType == SpecialType.System_String)
+            return false;
+
+        // Dictionaries are never a simple collection shape, even though they implement IEnumerable.
+        if (IsDictionaryType(type))
             return false;
 
         // Check if it implements IEnumerable
@@ -293,6 +339,10 @@ internal class AnalyzerHelper
     {
         // Exclude string (even though it implements IEnumerable)
         if (type.SpecialType == SpecialType.System_String)
+            return false;
+
+        // Dictionaries are never a supported collection shape, even though they implement IEnumerable.
+        if (IsDictionaryType(type))
             return false;
 
         // Check if it implements IEnumerable
