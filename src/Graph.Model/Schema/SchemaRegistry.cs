@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model;
 
+using System.Collections.Concurrent;
 using System.Reflection;
 
 /// <summary>
@@ -22,8 +23,12 @@ using System.Reflection;
 /// </summary>
 public class SchemaRegistry : IDisposable
 {
-    private readonly Dictionary<string, EntitySchemaInfo> _nodeSchemas = new();
-    private readonly Dictionary<string, EntitySchemaInfo> _relationshipSchemas = new();
+    // ConcurrentDictionary rather than Dictionary: writes only ever happen under _semaphore (so
+    // there's no write/write race), but reads must be safe to run lock-free, concurrently with a
+    // writer holding the semaphore (e.g. a lazy rescan triggered by another thread). That's
+    // exactly what ConcurrentDictionary.TryGetValue guarantees without taking any lock itself.
+    private readonly ConcurrentDictionary<string, EntitySchemaInfo> _nodeSchemas = new();
+    private readonly ConcurrentDictionary<string, EntitySchemaInfo> _relationshipSchemas = new();
     private readonly HashSet<Assembly> _scannedAssemblies = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private volatile bool _isInitialized = false;
@@ -71,6 +76,15 @@ public class SchemaRegistry : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
 
+        // Lock-free fast path: once a label is registered it never becomes unregistered other
+        // than via ClearAsync, so a hit here is always correct without taking the semaphore.
+        // ConcurrentDictionary.TryGetValue is safe to call concurrently with a writer holding
+        // the semaphore below.
+        if (_nodeSchemas.TryGetValue(label, out var cached))
+        {
+            return cached;
+        }
+
         await _semaphore.WaitAsync(cancellationToken);
         try
         {
@@ -97,6 +111,12 @@ public class SchemaRegistry : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
 
+        // See the fast-path comment in GetNodeSchemaAsync.
+        if (_relationshipSchemas.TryGetValue(type, out var cached))
+        {
+            return cached;
+        }
+
         await _semaphore.WaitAsync(cancellationToken);
         try
         {
@@ -122,6 +142,15 @@ public class SchemaRegistry : IDisposable
     public EntitySchemaInfo? GetNodeSchema(string label)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
+
+        // See the fast-path comment in GetNodeSchemaAsync. The initialization check below still
+        // applies to misses, so a hit here doesn't skip the "must be initialized" contract - it's
+        // only reachable once something has actually been registered, which only ever happens
+        // after (or during) InitializeAsync.
+        if (_nodeSchemas.TryGetValue(label, out var cached))
+        {
+            return cached;
+        }
 
         if (!_isInitialized)
             throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
@@ -152,6 +181,12 @@ public class SchemaRegistry : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
 
+        // See the fast-path comment in GetNodeSchema.
+        if (_relationshipSchemas.TryGetValue(type, out var cached))
+        {
+            return cached;
+        }
+
         if (!_isInitialized)
             throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
 
@@ -174,10 +209,24 @@ public class SchemaRegistry : IDisposable
     /// <summary>
     /// Gets all registered node labels.
     /// </summary>
+    /// <remarks>
+    /// This is a point-in-time snapshot of the labels registered so far. If the registry is
+    /// already initialized, it is returned lock-free without forcing a rescan of
+    /// <see cref="AppDomain.CurrentDomain"/> for late-loaded assemblies - unlike
+    /// <see cref="GetNodeSchemaAsync"/>/<see cref="GetNodeSchema"/>, a miss on a specific label
+    /// has no bearing here, so there is no natural rescan trigger. Call
+    /// <see cref="InitializeAsync"/> again (or look up a specific label/type, which does rescan
+    /// on miss) if a late-loaded assembly's types must be reflected here.
+    /// </remarks>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>An enumerable of registered node labels.</returns>
     public async Task<IEnumerable<string>> GetRegisteredNodeLabelsAsync(CancellationToken cancellationToken = default)
     {
+        if (_isInitialized)
+        {
+            return [.. _nodeSchemas.Keys];
+        }
+
         await _semaphore.WaitAsync(cancellationToken);
         try
         {
@@ -197,10 +246,19 @@ public class SchemaRegistry : IDisposable
     /// <summary>
     /// Gets all registered relationship types.
     /// </summary>
+    /// <remarks>
+    /// This is a point-in-time snapshot of the types registered so far - see the rescan-boundary
+    /// remarks on <see cref="GetRegisteredNodeLabelsAsync"/>, which apply here identically.
+    /// </remarks>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>An enumerable of registered relationship types.</returns>
     public async Task<IEnumerable<string>> GetRegisteredRelationshipTypesAsync(CancellationToken cancellationToken = default)
     {
+        if (_isInitialized)
+        {
+            return [.. _relationshipSchemas.Keys];
+        }
+
         await _semaphore.WaitAsync(cancellationToken);
         try
         {
