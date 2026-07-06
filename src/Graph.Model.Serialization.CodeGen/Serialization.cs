@@ -1,7 +1,7 @@
 // Copyright 2025 Savas Parastatidis
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance w            sb.AppendLine($"                            entities.Add(entityItem)");th the License.
+// you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //      https://www.apache.org/licenses/LICENSE-2.0
@@ -207,13 +207,11 @@ internal static class Serialization
         }
         else
         {
-            // For complex collections, get the serializer once before the loop since all items have the same type
-            sb.AppendLine($"                var itemSerializer = _serializerRegistry.GetSerializer(typeof({GetTypeOfName(elementType)}));");
-            sb.AppendLine($"                if (itemSerializer == null)");
-            sb.AppendLine($"                {{");
-            sb.AppendLine($"                    throw new InvalidOperationException($\"No serializer found for type {GetTypeOfName(elementType)}\");");
-            sb.AppendLine($"                }}");
-            sb.AppendLine();
+            // For complex collections, each item may be a derived type (a base-typed collection with
+            // mixed derived instances). Resolve the serializer per item by its own runtime type so the
+            // item's own serializer - not the declared element type's - records EntityInfo.ActualType
+            // and captures derived-only properties, falling back to the declared element type's
+            // serializer only when no serializer is registered for the runtime type.
             sb.AppendLine($"                var entities = new List<EntityInfo>();");
             sb.AppendLine($"                foreach (var item in value)");
             sb.AppendLine($"                {{");
@@ -223,6 +221,12 @@ internal static class Serialization
             {
                 sb.AppendLine($"                    if (item != null)");
                 sb.AppendLine($"                    {{");
+                sb.AppendLine($"                        var itemSerializer = _serializerRegistry.GetSerializer(item.GetType())");
+                sb.AppendLine($"                            ?? _serializerRegistry.GetSerializer(typeof({GetTypeOfName(elementType)}));");
+                sb.AppendLine($"                        if (itemSerializer == null)");
+                sb.AppendLine($"                        {{");
+                sb.AppendLine($"                            throw new InvalidOperationException($\"No serializer found for type {{item.GetType()}}\");");
+                sb.AppendLine($"                        }}");
                 sb.AppendLine($"                        var serializedItem = itemSerializer.Serialize(item);");
                 sb.AppendLine($"                        if (serializedItem is EntityInfo entityItem)");
                 sb.AppendLine($"                        {{");
@@ -233,6 +237,12 @@ internal static class Serialization
             else
             {
                 // Value types can't be null, so no null check needed
+                sb.AppendLine($"                    var itemSerializer = _serializerRegistry.GetSerializer(item!.GetType())");
+                sb.AppendLine($"                        ?? _serializerRegistry.GetSerializer(typeof({GetTypeOfName(elementType)}));");
+                sb.AppendLine($"                    if (itemSerializer == null)");
+                sb.AppendLine($"                    {{");
+                sb.AppendLine($"                        throw new InvalidOperationException($\"No serializer found for type {{item.GetType()}}\");");
+                sb.AppendLine($"                    }}");
                 sb.AppendLine($"                    var serializedItem = itemSerializer.Serialize(item);");
                 sb.AppendLine($"                    if (serializedItem is EntityInfo entityItem)");
                 sb.AppendLine($"                    {{");

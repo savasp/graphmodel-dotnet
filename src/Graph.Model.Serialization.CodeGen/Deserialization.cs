@@ -417,18 +417,22 @@ internal static class Deserialization
         }
         else
         {
-            // Complex type handling - delegate to other serializers
+            // Complex type handling - delegate to other serializers, resolved by the serialized
+            // entity's ActualType (same dispatch mechanism used for top-level Node/Relationship
+            // polymorphism and for complex collections), falling back to the statically-declared
+            // type only when no serializer is registered for ActualType (e.g. legacy data).
             sb.AppendLine($"{indentStr}// Extract complex value using registered serializer");
             sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is EntityInfo complexEntity)");
             sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    var complexSerializer = _serializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(targetType)}));");
+            sb.AppendLine($"{indentStr}    var complexSerializer = _serializerRegistry.GetSerializer(complexEntity.ActualType)");
+            sb.AppendLine($"{indentStr}        ?? _serializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(targetType)}));");
             sb.AppendLine($"{indentStr}    if (complexSerializer != null)");
             sb.AppendLine($"{indentStr}    {{");
             sb.AppendLine($"{indentStr}        {variableName} = ({targetType.ToDisplayString()})complexSerializer.Deserialize(complexEntity);");
             sb.AppendLine($"{indentStr}    }}");
             sb.AppendLine($"{indentStr}    else");
             sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        throw new InvalidOperationException($\"No serializer found for type {targetType.ToDisplayString()}\");");
+            sb.AppendLine($"{indentStr}        throw new InvalidOperationException($\"No serializer found for type {{complexEntity.ActualType}}\");");
             sb.AppendLine($"{indentStr}    }}");
             sb.AppendLine($"{indentStr}}}");
             sb.AppendLine($"{indentStr}else");
@@ -490,25 +494,26 @@ internal static class Deserialization
         }
         else
         {
-            // Complex collection handling
+            // Complex collection handling. Each element is resolved by its own EntityInfo.ActualType
+            // (the same dispatch mechanism used for top-level Node/Relationship polymorphism), falling
+            // back to the statically-declared element type only when no serializer is registered for
+            // ActualType (e.g. legacy data serialized before ActualType was recorded per element).
             sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is EntityCollection entityCollection)");
             sb.AppendLine($"{indentStr}{{");
             sb.AppendLine($"{indentStr}    var collection = new List<{elementType.ToDisplayString()}>();");
-            sb.AppendLine($"{indentStr}    var itemSerializer = _serializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(elementType)}));");
-            sb.AppendLine($"{indentStr}    if (itemSerializer != null)");
+            sb.AppendLine($"{indentStr}    foreach (var entityItem in entityCollection.Entities)");
             sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        foreach (var entityItem in entityCollection.Entities)");
+            sb.AppendLine($"{indentStr}        var itemSerializer = _serializerRegistry.GetSerializer(entityItem.ActualType)");
+            sb.AppendLine($"{indentStr}            ?? _serializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(elementType)}));");
+            sb.AppendLine($"{indentStr}        if (itemSerializer == null)");
             sb.AppendLine($"{indentStr}        {{");
-            sb.AppendLine($"{indentStr}            var deserializedItem = itemSerializer.Deserialize(entityItem);");
-            sb.AppendLine($"{indentStr}            if (deserializedItem is {elementType.ToDisplayString()} typedItem)");
-            sb.AppendLine($"{indentStr}            {{");
-            sb.AppendLine($"{indentStr}                collection.Add(typedItem);");
-            sb.AppendLine($"{indentStr}            }}");
+            sb.AppendLine($"{indentStr}            throw new InvalidOperationException($\"No serializer found for element type {{entityItem.ActualType}}\");");
             sb.AppendLine($"{indentStr}        }}");
-            sb.AppendLine($"{indentStr}    }}");
-            sb.AppendLine($"{indentStr}    else");
-            sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        throw new InvalidOperationException($\"No serializer found for element type {elementType.ToDisplayString()}\");");
+            sb.AppendLine($"{indentStr}        var deserializedItem = itemSerializer.Deserialize(entityItem);");
+            sb.AppendLine($"{indentStr}        if (deserializedItem is {elementType.ToDisplayString()} typedItem)");
+            sb.AppendLine($"{indentStr}        {{");
+            sb.AppendLine($"{indentStr}            collection.Add(typedItem);");
+            sb.AppendLine($"{indentStr}        }}");
             sb.AppendLine($"{indentStr}    }}");
         }
 
