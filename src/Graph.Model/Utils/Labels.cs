@@ -76,9 +76,55 @@ public static class Labels
         // Fall back to the type name with backticks removed
         label ??= type.Name.Replace("`", "") ?? throw new GraphException($"Type '{type}' does not have a valid name.");
 
+        // GM008/GM009 mirror: two distinct node types (or two distinct relationship types) must not resolve
+        // to the same label. Re-resolving the same type - including a different closed form of the same
+        // generic definition, see NormalizeForGenericIdentity - is always a silent cache hit. A node label
+        // colliding with a relationship type of the same name is explicitly NOT a collision (they are
+        // different namespaces in the graph model), so the check only fires within the same kind.
+        if (LabelToTypeCache.TryGetValue(label, out var existingType) &&
+            !AreSameTypeIdentity(existingType, type) &&
+            AreSameLabelKind(existingType, type))
+        {
+            throw new GraphException(
+                $"Label '{label}' is used by both '{existingType.FullName}' and '{type.FullName}'.");
+        }
+
         TypeToLabelCache[type] = label;
         LabelToTypeCache[label] = type;
         return label;
+    }
+
+    /// <summary>
+    /// Determines whether <paramref name="left"/> and <paramref name="right"/> should be treated as the same
+    /// type identity for label-collision purposes: either they are literally the same <see cref="Type"/>, or
+    /// they are different closed constructions of the same generic type definition (e.g. <c>MyNode&lt;int&gt;</c>
+    /// and <c>MyNode&lt;string&gt;</c> both normalize to <c>MyNode&lt;&gt;</c>).
+    /// </summary>
+    private static bool AreSameTypeIdentity(Type left, Type right)
+        => NormalizeForGenericIdentity(left) == NormalizeForGenericIdentity(right);
+
+    private static Type NormalizeForGenericIdentity(Type type)
+        => type.IsConstructedGenericType ? type.GetGenericTypeDefinition() : type;
+
+    /// <summary>
+    /// Determines whether <paramref name="left"/> and <paramref name="right"/> occupy the same "kind"
+    /// namespace for label collisions: both implement <see cref="INode"/>, or both implement
+    /// <see cref="IRelationship"/>. A node and a relationship sharing a label/type string is explicitly not a
+    /// collision (they are different namespaces in the graph model - e.g. Neo4j <c>:Person</c> vs
+    /// <c>-[:FOLLOWS]-&gt;</c>), so this returns false for any node/relationship pairing, regardless of label.
+    /// </summary>
+    private static bool AreSameLabelKind(Type left, Type right)
+    {
+        var leftIsNode = typeof(INode).IsAssignableFrom(left);
+        var rightIsNode = typeof(INode).IsAssignableFrom(right);
+        if (leftIsNode && rightIsNode)
+        {
+            return true;
+        }
+
+        var leftIsRelationship = typeof(IRelationship).IsAssignableFrom(left);
+        var rightIsRelationship = typeof(IRelationship).IsAssignableFrom(right);
+        return leftIsRelationship && rightIsRelationship;
     }
 
     /// <summary>
@@ -107,10 +153,30 @@ public static class Labels
         // Fall back to the property name with backticks removed
         label ??= propertyInfo.Name.Replace("`", "") ?? throw new GraphException($"Property '{propertyInfo}' does not have a valid name.");
 
+        var cacheKey = (propertyInfo.DeclaringType, label);
+
+        // GM007 mirror (partial - see remarks): re-resolving the same property is always a silent cache
+        // hit; a different property on the same declaring type resolving to the same label is a collision.
+        // This only sees collisions between properties that share a declaring type, since PropertyInfo
+        // .DeclaringType for an inherited property is the base type that declares it, not whatever derived
+        // type it is queried through - SchemaRegistry.CreateEntitySchemaInfo is the authoritative,
+        // full-inheritance-chain mirror of GM007; this is a narrower, complementary check.
+        if (LabelToPropertyCache.TryGetValue(cacheKey, out var existingProperty) &&
+            !AreSameProperty(existingProperty, propertyInfo))
+        {
+            throw new GraphException(
+                $"Property label '{label}' on '{propertyInfo.DeclaringType.FullName}' is used by both " +
+                $"'{propertyInfo.DeclaringType.FullName}.{existingProperty.Name}' and " +
+                $"'{propertyInfo.DeclaringType.FullName}.{propertyInfo.Name}'.");
+        }
+
         PropertyToLabelCache[propertyInfo] = label;
-        LabelToPropertyCache[(propertyInfo.DeclaringType, label)] = propertyInfo;
+        LabelToPropertyCache[cacheKey] = propertyInfo;
         return label;
     }
+
+    private static bool AreSameProperty(PropertyInfo left, PropertyInfo right)
+        => left == right || (left.DeclaringType == right.DeclaringType && left.Name == right.Name);
 
     /// <summary>
     /// Finds the .NET type for a given label.

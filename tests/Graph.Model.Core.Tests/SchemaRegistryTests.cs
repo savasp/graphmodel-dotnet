@@ -17,6 +17,7 @@ namespace Cvoya.Graph.Model.Core.Tests;
 using System.Reflection;
 
 [Trait("Area", "SchemaRegistry")]
+[Collection("SchemaRegistry")]
 public class SchemaRegistryTests
 {
     public static TheoryData<string, string, bool, bool, bool, bool, bool, bool, int?, int?, string?> PropertySchemaCases => new()
