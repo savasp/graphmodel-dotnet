@@ -254,10 +254,17 @@ internal sealed class CypherResultProcessor
         if (directComplexProps.Count == 0)
             return entityInfo;
 
-        var schema = _entityFactory.GetSchema(nodeType);
+        // Resolve the schema from the DISCOVERED concrete type, not the declared/target type.
+        // For a base-typed complex property holding a derived instance (e.g. a PoliceDogDescription
+        // in a List<AnimalDescription>), nodeType is the base (AnimalDescription) whose schema has
+        // none of the derived-only complex properties (Handler); actualType is the concrete type
+        // whose schema does. Simple properties already use actualType (see ExtractSimpleProperties
+        // above) - this keeps complex-property reconstruction consistent, so derived-only nested
+        // complex properties survive the round trip (see #146).
+        var schema = _entityFactory.GetSchema(actualType);
         if (schema == null)
         {
-            _logger.LogWarning("No schema found for node type {NodeType}. Cannot deserialize complex properties.", nodeType.Name);
+            _logger.LogWarning("No schema found for node type {NodeType}. Cannot deserialize complex properties.", actualType.Name);
             return entityInfo;
         }
 
