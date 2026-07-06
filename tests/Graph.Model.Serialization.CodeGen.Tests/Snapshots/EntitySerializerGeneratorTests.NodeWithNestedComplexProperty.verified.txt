@@ -307,14 +307,15 @@ internal sealed class PersonSerializer : IEntitySerializer
             // Extract complex value using registered serializer
             if (homeaddressPropRep.Value is EntityInfo complexEntity)
             {
-                var complexSerializer = _serializerRegistry.GetSerializer(typeof(TestNamespace.Address));
+                var complexSerializer = _serializerRegistry.GetSerializer(complexEntity.ActualType)
+                    ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.Address));
                 if (complexSerializer != null)
                 {
                     result.HomeAddress = (TestNamespace.Address?)complexSerializer.Deserialize(complexEntity);
                 }
                 else
                 {
-                    throw new InvalidOperationException($"No serializer found for type TestNamespace.Address?");
+                    throw new InvalidOperationException($"No serializer found for type {complexEntity.ActualType}");
                 }
             }
             else

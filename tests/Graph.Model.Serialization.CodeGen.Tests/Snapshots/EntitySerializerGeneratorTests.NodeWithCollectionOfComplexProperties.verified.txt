@@ -93,21 +93,19 @@ internal sealed class PersonSerializer : IEntitySerializer
             if (phonenumbersPropRep.Value is EntityCollection entityCollection)
             {
                 var collection = new List<TestNamespace.PhoneNumber>();
-                var itemSerializer = _serializerRegistry.GetSerializer(typeof(TestNamespace.PhoneNumber));
-                if (itemSerializer != null)
+                foreach (var entityItem in entityCollection.Entities)
                 {
-                    foreach (var entityItem in entityCollection.Entities)
+                    var itemSerializer = _serializerRegistry.GetSerializer(entityItem.ActualType)
+                        ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.PhoneNumber));
+                    if (itemSerializer == null)
                     {
-                        var deserializedItem = itemSerializer.Deserialize(entityItem);
-                        if (deserializedItem is TestNamespace.PhoneNumber typedItem)
-                        {
-                            collection.Add(typedItem);
-                        }
+                        throw new InvalidOperationException($"No serializer found for element type {entityItem.ActualType}");
                     }
-                }
-                else
-                {
-                    throw new InvalidOperationException($"No serializer found for element type TestNamespace.PhoneNumber");
+                    var deserializedItem = itemSerializer.Deserialize(entityItem);
+                    if (deserializedItem is TestNamespace.PhoneNumber typedItem)
+                    {
+                        collection.Add(typedItem);
+                    }
                 }
                 result.PhoneNumbers = collection;
             }
@@ -187,17 +185,17 @@ internal sealed class PersonSerializer : IEntitySerializer
 
             if (value != null)
             {
-                var itemSerializer = _serializerRegistry.GetSerializer(typeof(TestNamespace.PhoneNumber));
-                if (itemSerializer == null)
-                {
-                    throw new InvalidOperationException($"No serializer found for type TestNamespace.PhoneNumber");
-                }
-
                 var entities = new List<EntityInfo>();
                 foreach (var item in value)
                 {
                     if (item != null)
                     {
+                        var itemSerializer = _serializerRegistry.GetSerializer(item.GetType())
+                            ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.PhoneNumber));
+                        if (itemSerializer == null)
+                        {
+                            throw new InvalidOperationException($"No serializer found for type {item.GetType()}");
+                        }
                         var serializedItem = itemSerializer.Serialize(item);
                         if (serializedItem is EntityInfo entityItem)
                         {
