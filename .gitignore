@@ -31,6 +31,11 @@ artifacts/
 # Generated XML documentation
 docs/api/
 
+# Generated DocFX metadata and site output
+docs/apiref/api/
+docs/apiref/_site/
+docs/apiref/obj/
+
 # Local NuGet feed for testing
 local-nuget-feed/
 

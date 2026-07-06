@@ -1,0 +1,66 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "../../src",
+          "files": [
+            "Graph.Model/Graph.Model.csproj",
+            "Graph.Model.Neo4j/Graph.Model.Neo4j.csproj",
+            "Graph.Model.Serialization/Graph.Model.Serialization.csproj",
+            "Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj",
+            "Graph.Model.Analyzers/Graph.Model.Analyzers.csproj"
+          ]
+        }
+      ],
+      "dest": "api",
+      "properties": {
+        "Configuration": "Debug",
+        "BuildingForDocfx": "true"
+      },
+      "disableGitFeatures": false,
+      "disableDefaultFilter": false
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": [
+          "api/**.yml",
+          "api/index.md"
+        ]
+      },
+      {
+        "files": [
+          "*.md",
+          "toc.yml"
+        ]
+      }
+    ],
+    "resource": [
+      {
+        "files": [
+          "images/**"
+        ]
+      }
+    ],
+    "dest": "_site",
+    "globalMetadata": {
+      "_appTitle": "GraphModel API Reference",
+      "_appName": "GraphModel",
+      "_appFooter": "GraphModel is licensed under the Apache License 2.0.",
+      "_enableSearch": true,
+      "_disableContribution": true
+    },
+    "template": [
+      "default",
+      "modern"
+    ],
+    "markdownEngineName": "markdig",
+    "postProcessors": [],
+    "noLangKeyword": false,
+    "keepFileLink": false,
+    "cleanupCacheHistory": false,
+    "disableGitFeatures": false
+  }
+}
