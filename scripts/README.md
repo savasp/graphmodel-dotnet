@@ -17,12 +17,19 @@ This directory contains utility scripts for the GraphModel project.
 ### Version Management
 
 ```bash
-# Create a new release version
-dotnet msbuild -target:CreateRelease -p:ReleaseVersion=1.2.3
+# Create a new release version (updates VERSION and VERSION.ASSEMBLY)
+./scripts/create-release.sh -v 1.2.3
+
+# Preview without writing any files
+./scripts/create-release.sh -v 1.2.3 --dry-run
 
 # Show current version
 dotnet msbuild -target:ShowVersion
 ```
+
+Pushing a `v1.2.3` tag (matching the `VERSION` file) triggers `.github/workflows/release.yml`,
+which builds, tests, packs, publishes to NuGet, and creates the GitHub Release. See
+[docs/release-process.md](../docs/release-process.md) for the full process.
 
 ### Build Commands
 

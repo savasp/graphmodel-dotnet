@@ -28,7 +28,7 @@ dotnet build --configuration Debug
 dotnet build --configuration LocalFeed
 
 # Create a release version
-dotnet msbuild -target:CreateRelease -p:ReleaseVersion=1.2.3
+./scripts/create-release.sh -v 1.2.3
 
 # Build production packages
 dotnet build --configuration Release
@@ -102,38 +102,48 @@ The `VERSION` file contains a single line with the version:
 
 ### Creating Releases
 
-#### Method 1: MSBuild Target (Recommended)
-
-These update the VERSION file.
-
-```bash
-# Create stable release
-dotnet msbuild -target:CreateRelease -p:ReleaseVersion=1.2.3
-
-# Create pre-release
-dotnet msbuild -target:CreateRelease -p:ReleaseVersion=1.2.3-alpha
-
-# Create timestamped pre-release
-dotnet msbuild -target:CreateRelease -p:ReleaseVersion=1.2.3-alpha-20250125120000
-```
-
-#### Method 2: Helper Scripts
+`scripts/create-release.sh` updates `VERSION` (and the separate `VERSION.ASSEMBLY`
+stamp used for the numeric `AssemblyVersion`/`FileVersion`). It is the only thing
+that writes those files — `Directory.Build.props` reads them at build time, so
+nothing else needs to change and nothing gets stamped twice.
 
 ```bash
-# Interactive version creation
-./scripts/create-release.sh
+# Create a release version
+./scripts/create-release.sh -v 1.2.3
 
-# Non-interactive with options
-./scripts/create-release.sh -v 1.2.3 --build-local --commit
+# Create a pre-release version
+./scripts/create-release.sh -v 1.2.3-alpha
 
-# PowerShell version
-./scripts/create-release.ps1 -Version 1.2.3 -BuildLocal -Commit
+# Preview without writing any files
+./scripts/create-release.sh -v 1.2.3 --dry-run
+
+# Update and commit in one step
+./scripts/create-release.sh -v 1.2.3 --commit
 ```
+
+See `./scripts/create-release.sh --help` for the full option list.
 
 ### Version Requirements
 
 - **Debug/Benchmark**: No VERSION file needed (uses default version with timestamp)
 - **Release**: VERSION file required for consistent package versions
+
+### Publishing a Release
+
+Publishing is entirely tag-triggered — there is no manual publish step:
+
+1. Update `VERSION` with `./scripts/create-release.sh -v X.Y.Z --commit` (or edit
+   `VERSION` directly and commit it).
+2. Push a `vX.Y.Z` tag that matches the `VERSION` file content exactly:
+   `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. `.github/workflows/release.yml` verifies the tag matches `VERSION` (failing
+   loudly on any mismatch), runs the full test suite including the Neo4j
+   provider tests, packs all five packages, publishes to NuGet using **Trusted
+   Publishing** (OIDC — no stored API key), attests build provenance, and
+   creates the GitHub Release with generated notes.
+
+See [docs/release-process.md](release-process.md) for the full process,
+including the one-time NuGet Trusted Publishing portal setup.
 
 ## 🔄 Development Workflows
 
@@ -163,10 +173,11 @@ dotnet build --configuration Release
 # 3. Run full test suite
 dotnet test --configuration Release
 
-# 4. Commit and tag
-git add VERSION
-git commit -m "Release 1.2.3"
+# 4. Commit and tag — pushing the tag triggers release.yml
+git add VERSION VERSION.ASSEMBLY
+git commit -m "chore: release 1.2.3"
 git tag v1.2.3
+git push origin v1.2.3
 ```
 
 ### Package Testing Workflow
@@ -206,7 +217,7 @@ dotnet msbuild -target:CleanLocalFeed
 
 ```bash
 # 1. Create test version
-dotnet msbuild -target:CreateRelease -p:ReleaseVersion=1.2.3-test
+./scripts/create-release.sh -v 1.2.3-test
 
 # 2. Build and test packages
 dotnet build --configuration Release
@@ -221,7 +232,7 @@ dotnet test --configuration Release
 
 ```bash
 # Create new release version
-dotnet msbuild -target:CreateRelease -p:ReleaseVersion=X.Y.Z
+./scripts/create-release.sh -v X.Y.Z
 
 # Show current version
 dotnet msbuild -target:ShowVersion
@@ -263,12 +274,12 @@ dotnet nuget locals all --clear
 
 ```text
 graphmodel/
-├── VERSION                    # Current release version
+├── VERSION                    # Current release version (single source of truth)
+├── VERSION.ASSEMBLY           # Numeric AssemblyVersion/FileVersion stamp
 ├── Directory.Build.props      # MSBuild configuration
 ├── artifacts/                # Built packages
 └── scripts/
     ├── create-release.sh     # Release creation helper
-    ├── create-release.ps1    # PowerShell version
     ├── run-benchmarks.sh     # Benchmark runner
     └── cleanup-local-feed.sh # Legacy cleanup script
 ```
@@ -281,7 +292,7 @@ graphmodel/
 
 ```bash
 # Solution: Create a release version first
-dotnet msbuild -target:CreateRelease -p:ReleaseVersion=1.2.3
+./scripts/create-release.sh -v 1.2.3
 ```
 
 #### "Package reference could not be resolved"
@@ -316,17 +327,9 @@ dotnet build --configuration Release -p:PackageOutputPath=/custom/path
 
 ### CI/CD Integration
 
-```yaml
-# GitHub Actions example
-- name: Create Release
-  run: dotnet msbuild -target:CreateRelease -p:ReleaseVersion=${{ github.ref }}
-
-- name: Build Packages
-  run: dotnet build --configuration Release
-
-- name: Publish Packages
-  run: dotnet nuget push artifacts/*.nupkg
-```
+Releases are handled entirely by `.github/workflows/release.yml`, triggered by
+pushing a `vX.Y.Z` tag that matches the committed `VERSION` file — there is no
+CI step that stamps a version. See [docs/release-process.md](release-process.md).
 
 ## 📋 Best Practices
 
@@ -367,5 +370,5 @@ dotnet build --configuration Release -p:PackageOutputPath=/custom/path
 ### Version Issues
 
 1. Check current version: `dotnet msbuild -target:ShowVersion`
-2. Recreate version: `dotnet msbuild -target:CreateRelease -p:ReleaseVersion=X.Y.Z`
+2. Recreate version: `./scripts/create-release.sh -v X.Y.Z`
 3. Verify VERSION file format (single line, no extra whitespace)

@@ -1,0 +1,441 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  # Manual runs are always a dry run: build, test, pack, and attest — but
+  # never publish to NuGet or create a GitHub Release. Real publishing only
+  # ever happens on an actual `v*` tag push (see the `publish` job's `if`).
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  ContinuousIntegrationBuild: true
+  SourceRevisionId: ${{ github.sha }}
+
+jobs:
+  verify-version:
+    name: Verify tag matches VERSION
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      is_prerelease: ${{ steps.check.outputs.is_prerelease }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compare tag to VERSION file
+        id: check
+        shell: bash
+        run: |
+          VERSION_FILE=$(cat VERSION | tr -d '[:space:]')
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG_VERSION="$VERSION_FILE"
+            echo "::notice::Manual dispatch — using VERSION file content ($VERSION_FILE) as the version, no tag to verify."
+          else
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            if [[ "$TAG_VERSION" != "$VERSION_FILE" ]]; then
+              echo "::error::Tag 'v$TAG_VERSION' does not match VERSION file content '$VERSION_FILE'. Update VERSION and re-tag."
+              exit 1
+            fi
+          fi
+
+          echo "version=$VERSION_FILE" >> "$GITHUB_OUTPUT"
+
+          if [[ "$VERSION_FILE" == *-* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: verify-version
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            global.json
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+  test-core:
+    name: Test Core
+    runs-on: ubuntu-latest
+    needs: verify-version
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            global.json
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test Core
+        run: dotnet test --project tests/Graph.Model.Tests/Graph.Model.Tests.csproj --no-build --configuration Release --verbosity normal
+
+      - name: Test Core Libraries
+        run: dotnet test --project tests/Graph.Model.Core.Tests/Graph.Model.Core.Tests.csproj --no-build --configuration Release --verbosity normal
+
+  test-analyzers:
+    name: Test Analyzers
+    runs-on: ubuntu-latest
+    needs: verify-version
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            global.json
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test Analyzers
+        run: dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj --no-build --configuration Release --verbosity normal
+
+  test-translation:
+    name: Test LINQ-to-Cypher translation
+    runs-on: ubuntu-latest
+    needs: verify-version
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            global.json
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test LINQ-to-Cypher translation (no Neo4j required)
+        run: dotnet test --project tests/Graph.Model.Neo4j.Translation.Tests/Graph.Model.Neo4j.Translation.Tests.csproj --no-build --configuration Release --verbosity normal
+
+  test-codegen:
+    name: Test serialization code generator
+    runs-on: ubuntu-latest
+    needs: verify-version
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            global.json
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test serialization code generator (no Neo4j required)
+        run: dotnet test --project tests/Graph.Model.Serialization.CodeGen.Tests/Graph.Model.Serialization.CodeGen.Tests.csproj --no-build --configuration Release --verbosity normal
+
+  test-neo4j:
+    name: Test Neo4j Provider
+    runs-on: ubuntu-latest
+    needs: verify-version
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    services:
+      neo4j:
+        image: neo4j:5
+        ports:
+          - 7687:7687
+          - 7474:7474
+        env:
+          NEO4J_AUTH: neo4j/password
+          NEO4J_PLUGINS: '["apoc"]'
+          NEO4J_dbms_security_procedures_unrestricted: apoc.*
+          NEO4J_dbms_security_procedures_allowlist: apoc.*
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            global.json
+
+      - name: Wait for Neo4j
+        shell: bash
+        run: |
+          timeout 300 bash -c 'until curl --fail --silent http://localhost:7474 >/dev/null; do sleep 5; done'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test Neo4j Provider
+        run: dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj --no-build --configuration Release --verbosity normal
+        env:
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: password
+          USE_NEO4J_CONTAINERS: false
+
+  pack:
+    name: Pack
+    runs-on: ubuntu-latest
+    needs:
+      - verify-version
+      - build
+      - test-core
+      - test-analyzers
+      - test-translation
+      - test-codegen
+      - test-neo4j
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            global.json
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build packages (Release)
+        run: |
+          dotnet build --configuration Release --no-restore src/Graph.Model/Graph.Model.csproj
+          dotnet build --configuration Release --no-restore src/Graph.Model.Serialization/Graph.Model.Serialization.csproj
+          dotnet build --configuration Release --no-restore src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj
+          dotnet build --configuration Release --no-restore src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj
+          dotnet build --configuration Release --no-restore src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj
+
+      - name: Pack
+        run: |
+          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model/Graph.Model.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model.Serialization/Graph.Model.Serialization.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj
+
+      - name: Verify package versions
+        shell: bash
+        run: |
+          EXPECTED="${{ needs.verify-version.outputs.version }}"
+          for pkg in ./artifacts/*.nupkg; do
+            name=$(basename "$pkg")
+            if [[ "$name" != *"$EXPECTED"* ]]; then
+              echo "::error::Package $name does not carry the expected version $EXPECTED"
+              exit 1
+            fi
+          done
+          ls -la ./artifacts
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "artifacts/*.nupkg"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-${{ needs.verify-version.outputs.version }}
+          path: ./artifacts/
+          retention-days: 30
+
+  publish:
+    name: Publish to NuGet
+    runs-on: ubuntu-latest
+    needs:
+      - verify-version
+      - pack
+    # Real publishing only ever happens on an actual `v*` tag push.
+    # workflow_dispatch is a validation/dry-run path only — it always stops
+    # here, so there is no route to a real publish without also creating the
+    # matching GitHub Release below.
+    if: ${{ github.event_name == 'push' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: packages-${{ needs.verify-version.outputs.version }}
+          path: ./artifacts
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      # Trusted Publishing: exchanges a short-lived GitHub OIDC token for a
+      # temporary NuGet API key (valid ~1 hour). No long-lived secret involved.
+      # Requires a Trusted Publishing policy configured on nuget.org for this
+      # repository and workflow — see docs/release-process.md. The nuget.org
+      # account/org name is stored as the NUGET_TRUSTED_PUBLISHING_USER
+      # repository variable (not a secret — it's just a username).
+      - name: NuGet login (OIDC to temporary API key)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ vars.NUGET_TRUSTED_PUBLISHING_USER }}
+
+      - name: Push packages to NuGet
+        shell: bash
+        run: |
+          for pkg in ./artifacts/*.nupkg; do
+            echo "Publishing $(basename "$pkg")..."
+            dotnet nuget push "$pkg" \
+              --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done
+
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - verify-version
+      - pack
+      - publish
+    if: ${{ github.event_name == 'push' }}
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: packages-${{ needs.verify-version.outputs.version }}
+          path: ./artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ needs.verify-version.outputs.is_prerelease == 'true' }}
+          files: |
+            ./artifacts/*.nupkg
+            ./artifacts/*.snupkg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
