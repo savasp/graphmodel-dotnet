@@ -62,6 +62,14 @@ public class DogDescription : AnimalDescription
 public class PoliceDogDescription : DogDescription
 {
     public string Badge { get; set; } = string.Empty;
+    public HandlerDescription? Handler { get; set; } = null;
+}
+
+// Nested complex property used to verify that complex properties on a *derived* collection
+// element also round-trip correctly (see #146).
+public class HandlerDescription
+{
+    public string Name { get; set; } = string.Empty;
 }
 
 public record Kennel : Node

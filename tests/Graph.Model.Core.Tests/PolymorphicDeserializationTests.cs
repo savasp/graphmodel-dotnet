@@ -102,7 +102,13 @@ public class PolymorphicDeserializationTests
             Animals =
             [
                 new Dog { Name = "Rex", Breed = "Labrador" },
-                new PoliceDog { Name = "K9", Breed = "Shepherd", Badge = "K9-42" },
+                new PoliceDog
+                {
+                    Name = "K9",
+                    Breed = "Shepherd",
+                    Badge = "K9-42",
+                    Handler = new Handler { Name = "Officer Diaz" },
+                },
                 new Dog { Name = "Fido", Breed = "Poodle" },
             ],
         };
@@ -123,6 +129,11 @@ public class PolymorphicDeserializationTests
         Assert.IsType<Dog>(roundTripped.Animals[0]);
         var policeDog = Assert.IsType<PoliceDog>(roundTripped.Animals[1]);
         Assert.Equal("K9-42", policeDog.Badge);
+
+        // Nested complex property on the derived element is intact.
+        Assert.NotNull(policeDog.Handler);
+        Assert.Equal("Officer Diaz", policeDog.Handler!.Name);
+
         Assert.IsType<Dog>(roundTripped.Animals[2]);
     }
 
@@ -139,6 +150,12 @@ public class PolymorphicDeserializationTests
     public sealed record PoliceDog : Dog
     {
         public string Badge { get; init; } = string.Empty;
+        public Handler? Handler { get; init; }
+    }
+
+    public sealed record Handler
+    {
+        public string Name { get; init; } = string.Empty;
     }
 
     private sealed record Kennel : Node
@@ -296,8 +313,46 @@ public class PolymorphicDeserializationTests
             return properties;
         }
 
+        public override EntityInfo Serialize(object obj)
+        {
+            var baseEntity = base.Serialize(obj);
+            var policeDog = (PoliceDog)obj;
+
+            var complexProperties = new Dictionary<string, Property>(baseEntity.ComplexProperties);
+            if (policeDog.Handler is { } handler)
+            {
+                var handlerEntity = new EntityInfo(
+                    typeof(Handler),
+                    "Handler",
+                    [],
+                    new Dictionary<string, Property>
+                    {
+                        [nameof(Handler.Name)] = SimpleProperty(typeof(Handler), nameof(Handler.Name), handler.Name, typeof(string)),
+                    },
+                    new Dictionary<string, Property>());
+
+                complexProperties[nameof(PoliceDog.Handler)] = new Property(
+                    GetProperty(typeof(PoliceDog), nameof(PoliceDog.Handler)),
+                    nameof(PoliceDog.Handler),
+                    false,
+                    handlerEntity);
+            }
+
+            return baseEntity with { ComplexProperties = complexProperties };
+        }
+
         public override object Deserialize(EntityInfo entity)
         {
+            Handler? handler = null;
+            if (entity.ComplexProperties.TryGetValue(nameof(PoliceDog.Handler), out var handlerProperty) &&
+                handlerProperty.Value is EntityInfo handlerEntity)
+            {
+                handler = new Handler
+                {
+                    Name = ReadSimple<string>(handlerEntity, nameof(Handler.Name)) ?? string.Empty,
+                };
+            }
+
             return new PoliceDog
             {
                 Id = ReadSimple<string>(entity, nameof(Animal.Id)) ?? string.Empty,
@@ -305,6 +360,7 @@ public class PolymorphicDeserializationTests
                 Name = ReadSimple<string>(entity, nameof(Animal.Name)) ?? string.Empty,
                 Breed = ReadSimple<string>(entity, nameof(Dog.Breed)) ?? string.Empty,
                 Badge = ReadSimple<string>(entity, nameof(PoliceDog.Badge)) ?? string.Empty,
+                Handler = handler,
             };
         }
 

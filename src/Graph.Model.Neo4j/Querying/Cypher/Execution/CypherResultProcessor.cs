@@ -254,10 +254,17 @@ internal sealed class CypherResultProcessor
         if (directComplexProps.Count == 0)
             return entityInfo;
 
-        var schema = _entityFactory.GetSchema(nodeType);
+        // Resolve the schema from the DISCOVERED concrete type, not the declared/target type.
+        // For a base-typed complex property holding a derived instance (e.g. a PoliceDogDescription
+        // in a List<AnimalDescription>), nodeType is the base (AnimalDescription) whose schema has
+        // none of the derived-only complex properties (Handler); actualType is the concrete type
+        // whose schema does. Simple properties already use actualType (see ExtractSimpleProperties
+        // above) - this keeps complex-property reconstruction consistent, so derived-only nested
+        // complex properties survive the round trip (see #146).
+        var schema = _entityFactory.GetSchema(actualType);
         if (schema == null)
         {
-            _logger.LogWarning("No schema found for node type {NodeType}. Cannot deserialize complex properties.", nodeType.Name);
+            _logger.LogWarning("No schema found for node type {NodeType}. Cannot deserialize complex properties.", actualType.Name);
             return entityInfo;
         }
 
@@ -974,8 +981,11 @@ internal sealed class CypherResultProcessor
         if (!labels.Any())
             return null;
 
-        // Get all types that are assignable to the target type
-        var candidateTypes = GetKnownNodeTypes()
+        // Get all types that are assignable to the target type. This must NOT be scoped to
+        // INode types: targetType here can be a plain complex-property POCO (e.g. the element
+        // type of a List<T> complex property) that never implements INode, yet its concrete
+        // subtype is exactly what the stored label encodes and what we need to recover.
+        var candidateTypes = GetKnownConcreteTypes()
             .Where(t => targetType.IsAssignableFrom(t))
             .ToList();
 
@@ -1032,11 +1042,14 @@ internal sealed class CypherResultProcessor
     }
 
     /// <summary>
-    /// Gets all known node types from loaded assemblies.
+    /// Gets all known concrete classes from loaded assemblies that could be the actual type
+    /// behind a node label: both real graph node types (INode) and the plain POCO types used
+    /// as complex-property values (which are never INode themselves - see
+    /// <see cref="DiscoverTypeFromNodeLabels"/>). The caller narrows this down via an
+    /// assignability check against the specific target type it is resolving.
     /// </summary>
-    private IEnumerable<Type> GetKnownNodeTypes()
+    private IEnumerable<Type> GetKnownConcreteTypes()
     {
-        // Get types from the current app domain that implement INode
         return AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(assembly =>
             {
@@ -1054,8 +1067,8 @@ internal sealed class CypherResultProcessor
                     return Enumerable.Empty<Type>();
                 }
             })
-            .Where(t => t.IsClass && !t.IsAbstract && typeof(Model.INode).IsAssignableFrom(t))
-            .Where(t => t != typeof(Model.DynamicNode)); // Exclude DynamicNode from schema discovery
+            .Where(t => t.IsClass && !t.IsAbstract)
+            .Where(t => t != typeof(Model.DynamicNode) && t != typeof(Model.DynamicRelationship)); // Exclude dynamic entities from schema discovery
     }
 
     /// <summary>

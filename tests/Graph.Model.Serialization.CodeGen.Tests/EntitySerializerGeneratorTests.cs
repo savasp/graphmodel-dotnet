@@ -111,6 +111,60 @@ public class EntitySerializerGeneratorTests
         return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
     }
 
+    /// <summary>
+    /// A collection declared with a base complex-property type (<c>List&lt;AnimalDescription&gt;</c>)
+    /// can hold mixed derived instances at runtime. <c>DogDescription</c>/<c>PoliceDogDescription</c>
+    /// are never themselves a declared property type anywhere - the generator must still discover
+    /// them (by scanning the compilation for subtypes of the complex types it already generates
+    /// serializers for, recursively) and give each its own generated serializer and registry
+    /// entry, or a derived instance silently serializes/deserializes as its base type instead
+    /// (see #146). The snapshot also proves two things the round-trip read path depends on:
+    /// (1) a nested complex property that exists only on the most-derived type
+    /// (<c>PoliceDogDescription.Handler</c>) produces its own <c>HandlerDescriptionSerializer</c>,
+    /// and (2) <c>PoliceDogDescriptionSerializer</c>'s <c>Serialize</c> and <c>GetSchema</c> both
+    /// include <c>Handler</c> in their complex properties - which is what lets the reader resolve
+    /// the derived-only complex property by the discovered concrete type's schema.
+    /// </summary>
+    [Fact]
+    public Task NodeWithCollectionOfComplexProperties_MixedDerivedInstances()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using Cvoya.Graph.Model;
+
+            namespace TestNamespace;
+
+            public class HandlerDescription
+            {
+                public string Name { get; set; } = string.Empty;
+            }
+
+            public class AnimalDescription
+            {
+                public string Name { get; set; } = string.Empty;
+            }
+
+            public class DogDescription : AnimalDescription
+            {
+                public string Breed { get; set; } = string.Empty;
+            }
+
+            public class PoliceDogDescription : DogDescription
+            {
+                public string Badge { get; set; } = string.Empty;
+                public HandlerDescription? Handler { get; set; }
+            }
+
+            [Node("Kennel")]
+            public record Kennel : Node
+            {
+                public List<AnimalDescription> Animals { get; set; } = new();
+            }
+            """;
+
+        return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
+    }
+
     [Fact]
     public void EntityTypeDiscovery_CachesOnUnchangedSecondRun()
     {
