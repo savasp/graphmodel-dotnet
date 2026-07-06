@@ -144,6 +144,9 @@ jobs:
       - name: Test Core
         run: dotnet test --project tests/Graph.Model.Tests/Graph.Model.Tests.csproj --no-build --configuration Release --verbosity normal
 
+      - name: Test Core Libraries
+        run: dotnet test --project tests/Graph.Model.Core.Tests/Graph.Model.Core.Tests.csproj --no-build --configuration Release --verbosity normal
+
   test-analyzers:
     name: Test Analyzers
     runs-on: ubuntu-latest
