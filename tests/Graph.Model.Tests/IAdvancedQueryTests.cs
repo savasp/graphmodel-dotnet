@@ -414,18 +414,36 @@ public interface IAdvancedQueryTests : IGraphModelTest
     }
 
     [Fact]
-    public async Task CanQueryWithGroupByAndAggregate()
+    [Trait("GraphModel", "ExpectedUnsupported")]
+    public async Task GroupByThrowsNotSupportedUntilIssue100()
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Brown" }, null, TestContext.Current.CancellationToken);
-        var grouped = await (await this.Graph.NodesAsync<Person>())
-            .GroupBy(p => p.FirstName)
-            .Select(g => new { Name = g.Key, Count = g.Count() })
-            .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Contains(grouped, g => g.Name == "Ann" && g.Count == 2);
-        Assert.Contains(grouped, g => g.Name == "Bob" && g.Count == 1);
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(async () =>
+            await (await this.Graph.NodesAsync<Person>())
+                .GroupBy(p => p.FirstName)
+                .Select(g => new { Name = g.Key, Count = g.Count() })
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("GroupBy", ex.Message);
+        Assert.Contains("#100", ex.Message);
+    }
+
+    [Fact]
+    [Trait("GraphModel", "ExpectedUnsupported")]
+    public async Task SelectManyThrowsNotSupportedUntilIssue100()
+    {
+        await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Smith", Bio = "abc" }, null, TestContext.Current.CancellationToken);
+
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(async () =>
+            await (await this.Graph.NodesAsync<Person>())
+                .SelectMany(p => p.Bio)
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("SelectMany", ex.Message);
+        Assert.Contains("#100", ex.Message);
     }
 
     [Fact]
@@ -1004,6 +1022,16 @@ public interface IAdvancedQueryTests : IGraphModelTest
 
         Assert.Single(bobsFriends);
         Assert.Equal("Charlie", bobsFriends[0].FirstName);
+
+        var relationshipStartPeople = await allKnows
+            .Join(allPeople, k => k.StartNodeId, p => p.Id, (k, p) => p)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, relationshipStartPeople.Count);
+        Assert.Contains(relationshipStartPeople, p => p.Id == alice.Id);
+        Assert.Contains(relationshipStartPeople, p => p.Id == bob.Id);
+        Assert.Contains(relationshipStartPeople, p => p.Id == charlie.Id);
+        Assert.DoesNotContain(relationshipStartPeople, p => p.Id == david.Id);
 
         // Test 3: Find friends of friends
         // TODO: SelectMany with nested queries is not yet implemented - would require advanced Cypher generation

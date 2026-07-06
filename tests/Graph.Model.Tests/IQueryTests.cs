@@ -316,6 +316,28 @@ public interface IQueryTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task CanQueryWithContainsOnScalarProjection()
+    {
+        var p1 = new Person { FirstName = "Contains-A", Bio = "alpha" };
+        var p2 = new Person { FirstName = "Contains-B", Bio = null! };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var names = (await this.Graph.NodesAsync<Person>())
+            .Where(p => p.FirstName.StartsWith("Contains-"))
+            .Select(p => p.FirstName);
+
+        Assert.True(await names.ContainsAsync("Contains-A", TestContext.Current.CancellationToken));
+        Assert.False(await names.ContainsAsync("Contains-Z", TestContext.Current.CancellationToken));
+
+        var bios = (await this.Graph.NodesAsync<Person>())
+            .Where(p => p.FirstName.StartsWith("Contains-"))
+            .Select(p => p.Bio);
+
+        Assert.True(await bios.ContainsAsync(null, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task CanQueryWithLocalScopeVariableCapture()
     {
         var p1 = new Person { FirstName = "A" };
@@ -466,6 +488,32 @@ public interface IQueryTests : IGraphModelTest
 
         Assert.Single(exactTimeMemories);
         Assert.Equal("Exact time memory", exactTimeMemories[0].Text);
+    }
+
+    [Fact]
+    public async Task CanQueryWithDateTimeMemberAccess()
+    {
+        var p1 = new Person { FirstName = "Temporal-A", DateOfBirth = new DateTime(1990, 5, 15, 0, 0, 0, DateTimeKind.Utc) };
+        var p2 = new Person { FirstName = "Temporal-B", DateOfBirth = new DateTime(1990, 6, 15, 0, 0, 0, DateTimeKind.Utc) };
+        var p3 = new Person { FirstName = "Temporal-C", DateOfBirth = new DateTime(1991, 5, 15, 0, 0, 0, DateTimeKind.Utc) };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
+
+        var bornInMay1990 = await (await this.Graph.NodesAsync<Person>())
+            .Where(p => p.FirstName.StartsWith("Temporal-"))
+            .Where(p => p.DateOfBirth.Year == 1990 && p.DateOfBirth.Month == 5)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(bornInMay1990);
+        Assert.Equal("Temporal-A", bornInMay1990[0].FirstName);
+
+        var bornOnFifteenth = await (await this.Graph.NodesAsync<Person>())
+            .Where(p => p.FirstName.StartsWith("Temporal-"))
+            .Where(p => p.DateOfBirth.Day == 15)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, bornOnFifteenth.Count);
     }
 
     [Fact]
