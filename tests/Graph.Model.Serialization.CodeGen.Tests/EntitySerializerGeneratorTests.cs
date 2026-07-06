@@ -134,4 +134,79 @@ public class EntitySerializerGeneratorTests
         Assert.Contains(reasons, reason =>
             reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
     }
+
+    /// <summary>
+    /// The scenario #83/#134 flagged: a whitespace-only keystroke in a file unrelated to any
+    /// entity type must not re-run the referenced-assembly type walk - the expensive step that
+    /// used to be backed by a process-wide static cache instead of proper incremental modeling.
+    /// <c>GraphModel.MetadataReferences</c> and <c>GraphModel.ReferencedEntityTypes</c> are keyed
+    /// off <see cref="Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext.MetadataReferencesProvider"/>,
+    /// which is untouched by source-only edits, so both must report Cached/Unchanged, never
+    /// New/Modified.
+    /// </summary>
+    /// <remarks>
+    /// This intentionally does not assert Cached/Unchanged for the attribute-based
+    /// (<c>GraphModel.NodeAttributeEntityTypes</c> etc.) or base-list-based steps, nor for the
+    /// final <c>SourceOutput</c> step: those collect <see cref="INamedTypeSymbol"/> values, and
+    /// Roslyn's incremental engine always reports <see cref="IncrementalStepRunReason.Modified"/>
+    /// for a symbol-collecting step the first time it re-runs after ANY compilation change -
+    /// including edits to unrelated files - because symbols from different
+    /// <see cref="Microsoft.CodeAnalysis.Compilation"/> instances are never reference-equal,
+    /// regardless of what changed. That's a pre-existing Roslyn-level characteristic of
+    /// <c>ForAttributeWithMetadataName</c>/<c>CreateSyntaxProvider</c> pipelines collecting
+    /// symbols, not something #134 introduced or is scoped to fix. What #134 guarantees is that
+    /// the actual generated output is unaffected: see
+    /// <see cref="EntityTypeDiscovery_GeneratedSourceIdenticalAfterUnrelatedEdit"/>.
+    /// </remarks>
+    [Theory]
+    [InlineData("GraphModel.MetadataReferences")]
+    [InlineData("GraphModel.ReferencedEntityTypes")]
+    public void EntityTypeDiscovery_CachesAfterUnrelatedEdit(string trackingName)
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            namespace TestNamespace;
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public string FirstName { get; set; } = string.Empty;
+            }
+            """;
+
+        var reasons = GeneratorTestHelpers.GetUnrelatedEditReasons(source, trackingName);
+
+        Assert.NotEmpty(reasons);
+        Assert.DoesNotContain(reasons, reason =>
+            reason is IncrementalStepRunReason.New or IncrementalStepRunReason.Modified);
+        Assert.Contains(reasons, reason =>
+            reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
+    }
+
+    /// <summary>
+    /// End-to-end proof that an unrelated whitespace edit produces byte-identical generated
+    /// source: even though the driver re-executes <c>RegisterSourceOutput</c> for the reasons
+    /// documented on <see cref="EntityTypeDiscovery_CachesAfterUnrelatedEdit"/>, the resulting
+    /// generated files must not differ from the pre-edit run.
+    /// </summary>
+    [Fact]
+    public void EntityTypeDiscovery_GeneratedSourceIdenticalAfterUnrelatedEdit()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            namespace TestNamespace;
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public string FirstName { get; set; } = string.Empty;
+            }
+            """;
+
+        var (before, after) = GeneratorTestHelpers.GetGeneratedSourceBeforeAndAfterUnrelatedEdit(source);
+
+        Assert.Equal(before, after);
+    }
 }

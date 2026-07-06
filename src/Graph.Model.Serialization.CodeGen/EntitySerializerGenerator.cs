@@ -14,10 +14,10 @@
 
 namespace Cvoya.Graph.Model.Serialization.CodeGen;
 
-using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 
@@ -26,7 +26,6 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
 {
     private const string NodeAttributeName = "Cvoya.Graph.Model.NodeAttribute";
     private const string RelationshipAttributeName = "Cvoya.Graph.Model.RelationshipAttribute";
-    private static readonly ConcurrentDictionary<string, ImmutableArray<string>> ReferencedEntityTypeCache = new(StringComparer.Ordinal);
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -65,8 +64,18 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
             .Collect()
             .WithTrackingName("GraphModel.BaseListEntityTypes");
 
-        var referencedTypes = context.CompilationProvider
-            .Select(static (compilation, _) => GetEntityTypesFromReferences(compilation))
+        // Referenced-assembly entity discovery is keyed off the metadata-reference set, not the
+        // full Compilation. MetadataReferencesProvider only changes when the set of references
+        // changes (e.g. a package/project reference added or removed) - it is untouched by
+        // source-only edits, including edits to unrelated files in the same compilation. This
+        // keeps the (relatively expensive) per-assembly type walk out of the hot "keystroke in a
+        // non-entity file" path. Resolution happens against a small, reference-only compilation
+        // built solely from those references, so no static/process-wide cache is needed: the
+        // incremental engine's own step caching (keyed on the reference set) does the job.
+        var referencedTypes = context.MetadataReferencesProvider
+            .Collect()
+            .WithTrackingName("GraphModel.MetadataReferences")
+            .Select(static (references, _) => GetEntityTypesFromReferences(references))
             .WithTrackingName("GraphModel.ReferencedEntityTypes");
 
         var allTypes = attributedTypes
@@ -82,48 +91,38 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(allTypes, GenerateSerializers);
     }
 
-    private static ImmutableArray<INamedTypeSymbol> GetEntityTypesFromReferences(Compilation compilation)
+    private static ImmutableArray<INamedTypeSymbol> GetEntityTypesFromReferences(
+        ImmutableArray<MetadataReference> references)
     {
+        if (references.IsDefaultOrEmpty)
+        {
+            return ImmutableArray<INamedTypeSymbol>.Empty;
+        }
+
+        // A throwaway, reference-only compilation (no syntax trees) purely to load metadata
+        // symbols for the referenced assemblies. It depends only on the reference set, so it is
+        // exactly as cacheable as `referencedTypes` above and is never touched by source edits.
+        var probeCompilation = CSharpCompilation.Create(
+            assemblyName: "GraphModel.EntityTypeDiscoveryProbe",
+            references: references);
+
         var builder = ImmutableArray.CreateBuilder<INamedTypeSymbol>();
 
-        foreach (var reference in compilation.References)
+        foreach (var reference in references)
         {
-            if (compilation.GetAssemblyOrModuleSymbol(reference) is not IAssemblySymbol assembly ||
+            if (probeCompilation.GetAssemblyOrModuleSymbol(reference) is not IAssemblySymbol assembly ||
                 !IsCandidateEntityAssembly(assembly))
             {
                 continue;
             }
 
-            var cacheKey = GetReferenceCacheKey(reference, assembly);
-            var metadataNames = ReferencedEntityTypeCache.GetOrAdd(
-                cacheKey,
-                _ => GetEntityTypeMetadataNames(assembly));
-
-            foreach (var type in metadataNames
-                .Select(compilation.GetTypeByMetadataName)
-                .Where(static type => type is not null)
-                .Select(static type => type!)
-                .Where(ShouldGenerateSerializerFor))
+            foreach (var type in GetAllTypesFromAssembly(assembly).Where(ShouldGenerateSerializerFor))
             {
                 builder.Add(type);
             }
         }
 
         return builder.ToImmutable();
-    }
-
-    private static ImmutableArray<string> GetEntityTypeMetadataNames(IAssemblySymbol assembly)
-    {
-        return GetAllTypesFromAssembly(assembly)
-            .Where(ShouldGenerateSerializerFor)
-            .Select(GetFullyQualifiedMetadataName)
-            .ToImmutableArray();
-    }
-
-    private static string GetReferenceCacheKey(MetadataReference reference, IAssemblySymbol assembly)
-    {
-        var display = reference.Display ?? assembly.Identity.GetDisplayName();
-        return $"{display}|{assembly.Identity.GetDisplayName()}";
     }
 
     private static bool IsCandidateEntityAssembly(IAssemblySymbol assembly)
@@ -184,20 +183,6 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
                 yield return deeplyNested;
             }
         }
-    }
-
-    private static string GetFullyQualifiedMetadataName(INamedTypeSymbol type)
-    {
-        var metadataName = type.MetadataName;
-
-        for (var containingType = type.ContainingType; containingType is not null; containingType = containingType.ContainingType)
-        {
-            metadataName = $"{containingType.MetadataName}+{metadataName}";
-        }
-
-        return type.ContainingNamespace is { IsGlobalNamespace: false } containingNamespace
-            ? $"{containingNamespace.ToDisplayString()}.{metadataName}"
-            : metadataName;
     }
 
     private static ImmutableArray<INamedTypeSymbol> DedupeTypes(
