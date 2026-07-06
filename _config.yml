@@ -2,8 +2,8 @@
 
 title: GraphModel Documentation
 description: A powerful, type-safe .NET library ecosystem for working with graph data structures and graph databases.
-baseurl: "/graphmodel"
-url: "https://savasp.github.io"
+baseurl: "/graphmodel-dotnet"
+url: "https://cvoya-com.github.io"
 
 # Build settings
 markdown: kramdown
@@ -11,7 +11,7 @@ highlighter: rouge
 theme: minima
 
 # GitHub Pages settings
-repository: savasp/graphmodel
+repository: cvoya-com/graphmodel-dotnet
 
 # Plugins
 plugins:
@@ -48,4 +48,4 @@ include:
 kramdown:
   input: GFM
   hard_wrap: false
-  syntax_highlighter: rouge 
+  syntax_highlighter: rouge

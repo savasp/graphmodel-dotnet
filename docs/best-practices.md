@@ -163,9 +163,9 @@ var names = (await graph.NodesAsync<Person>())
 
 ```csharp
 // Avoid: Fetching entire entities
-var people = (await graph.NodesAsync<Person>())
+var people = await (await graph.NodesAsync<Person>())
     .Where(p => p.Department == "Sales")
-    .ToList();
+    .ToListAsync();
 var names = people.Select(p => p.FirstName); // Inefficient
 ```
 
@@ -175,17 +175,17 @@ var names = people.Select(p => p.FirstName); // Inefficient
 
 ```csharp
 // Good: Filter at the database level
-var results = (await graph.NodesAsync<Order>())
+var results = await (await graph.NodesAsync<Order>())
     .Where(o => o.Status == "Pending" && o.Amount > 1000)
     .Take(10)
-    .ToList();
+    .ToListAsync();
 ```
 
 **Don't**: Filter in memory after fetching data
 
 ```csharp
 // Avoid: Filtering in memory
-var allOrders = (await graph.NodesAsync<Order>()).ToList();
+var allOrders = await (await graph.NodesAsync<Order>()).ToListAsync();
 var results = allOrders
     .Where(o => o.Status == "Pending" && o.Amount > 1000)
     .Take(10);
@@ -196,19 +196,20 @@ var results = allOrders
 **Do**: Explicitly set traversal depth based on your needs
 
 ```csharp
-// Good: Load only what you need
-var options = new GraphOperationOptions { TraversalDepth = 1 };
-var peopleWithFriends = (await graph.NodesAsync<Person>(options))
+// Good: Traverse only what you need
+var peopleWithFriends = await (await graph.NodesAsync<Person>())
     .Where(p => p.City == "Seattle")
-    .ToList();
+    .Traverse<Person, Knows, Person>(1)
+    .ToListAsync();
 ```
 
 **Don't**: Load deep graphs when not needed
 
 ```csharp
-// Avoid: Loading too much data
-var options = new GraphOperationOptions { TraversalDepth = -1 }; // Unlimited
-var everyone = (await graph.NodesAsync<Person>(options)).ToList(); // May be huge!
+// Avoid: Traversing too broadly
+var everyone = await (await graph.NodesAsync<Person>())
+    .Traverse<Person, Knows, Person>(1, 10)
+    .ToListAsync(); // May be huge!
 ```
 
 ## Transaction Management
@@ -221,17 +222,17 @@ var everyone = (await graph.NodesAsync<Person>(options)).ToList(); // May be hug
 // Good: Focused transaction
 public async Task TransferEmployee(string employeeId, string newDeptId)
 {
-    await using var tx = await graph.BeginTransaction();
+    await using var tx = await graph.GetTransactionAsync();
 
-    var employee = await graph.GetNode<Employee>(employeeId, transaction: tx);
-    var newDept = await graph.GetNode<Department>(newDeptId, transaction: tx);
+    var employee = await graph.GetNodeAsync<Employee>(employeeId, transaction: tx);
+    var newDept = await graph.GetNodeAsync<Department>(newDeptId, transaction: tx);
 
     // Update the relationship
-    await graph.DeleteRelationship(employee.CurrentDeptRelationshipId, tx);
+    await graph.DeleteRelationshipAsync(employee.CurrentDeptRelationshipId, transaction: tx);
     var newRel = new WorksIn { Source = employee, Target = newDept };
-    await graph.CreateRelationship(newRel, transaction: tx);
+    await graph.CreateRelationshipAsync(newRel, transaction: tx);
 
-    await tx.Commit();
+    await tx.CommitAsync();
 }
 ```
 
@@ -239,11 +240,11 @@ public async Task TransferEmployee(string employeeId, string newDeptId)
 
 ```csharp
 // Avoid: Long-running transaction
-await using var tx = await graph.BeginTransaction();
+await using var tx = await graph.GetTransactionAsync();
 var data = await FetchFromExternalApi(); // Don't do this in a transaction!
 await ProcessData(data);
-await graph.CreateNode(result, transaction: tx);
-await tx.Commit();
+await graph.CreateNodeAsync(result, transaction: tx);
+await tx.CommitAsync();
 ```
 
 ### 2. Handle Failures Gracefully
@@ -255,19 +256,19 @@ public async Task<bool> SafeCreatePerson(Person person)
 {
     try
     {
-        await using var tx = await graph.BeginTransaction();
+        await using var tx = await graph.GetTransactionAsync();
 
         // Check for duplicates
-        var existing = (await graph.NodesAsync<Person>(transaction: tx))
-            .FirstOrDefault(p => p.Email == person.Email);
+        var existing = await (await graph.NodesAsync<Person>(transaction: tx))
+            .FirstOrDefaultAsync(p => p.Email == person.Email);
 
         if (existing != null)
         {
             return false; // Already exists
         }
 
-        await graph.CreateNode(person, transaction: tx);
-        await tx.Commit();
+        await graph.CreateNodeAsync(person, transaction: tx);
+        await tx.CommitAsync();
         return true;
     }
     catch (GraphException ex)
@@ -294,13 +295,13 @@ public async Task ImportPeople(List<PersonData> peopleData)
     {
         var batch = peopleData.Skip(i).Take(batchSize);
 
-        await using var tx = await graph.BeginTransaction();
+        await using var tx = await graph.GetTransactionAsync();
         foreach (var data in batch)
         {
             var person = new Person { /* map from data */ };
-            await graph.CreateNode(person, transaction: tx);
+            await graph.CreateNodeAsync(person, transaction: tx);
         }
-        await tx.Commit();
+        await tx.CommitAsync();
     }
 }
 ```
@@ -313,15 +314,15 @@ public async Task ImportPeople(List<PersonData> peopleData)
 // Good: Direct relationship query
 var knows = (await graph.RelationshipsAsync<Knows>())
     .Where(k => k.StartNodeId == personId || k.EndNodeId == personId)
-    .ToList();
+    .ToListAsync();
 ```
 
 **Don't**: Load all nodes to find relationships
 
 ```csharp
 // Avoid: Inefficient relationship discovery
-var allPeople = (await graph.NodesAsync<Person>(new GraphOperationOptions { TraversalDepth = 1 }))
-    .ToList();
+var allPeople = await (await graph.NodesAsync<Person>())
+    .ToListAsync();
 var personRelationships = allPeople
     .First(p => p.Id == personId)
     .Knows;
@@ -334,7 +335,7 @@ var personRelationships = allPeople
 ```csharp
 try
 {
-    await graph.CreateNode(node);
+    await graph.CreateNodeAsync(node);
 }
 catch (GraphException ex)
 {
@@ -362,7 +363,7 @@ public async Task<T> ExecuteWithRetry<T>(
         {
             return await operation();
         }
-        catch (GraphTransactionException) when (i < maxRetries - 1)
+        catch (GraphException) when (i < maxRetries - 1)
         {
             // Retry on transaction conflicts
             await Task.Delay(TimeSpan.FromMilliseconds(100 * (i + 1)));
@@ -388,8 +389,7 @@ public class PersonService
 
     public async Task<Person> GetPersonWithFriends(string id)
     {
-        var options = new GraphOperationOptions { TraversalDepth = 1 };
-        return await graph.GetNode<Person>(id, options);
+        return await graph.GetNodeAsync<Person>(id);
     }
 }
 
@@ -404,17 +404,17 @@ var service = new PersonService(mockGraph.Object);
 [Fact]
 public async Task Transaction_RollsBackOnError()
 {
-    await using var tx = await graph.BeginTransaction();
+    await using var tx = await graph.GetTransactionAsync();
 
     var person = new Person { FirstName = "Test" };
-    await graph.CreateNode(person, transaction: tx);
+    await graph.CreateNodeAsync(person, transaction: tx);
 
     // Don't commit - simulate error
     await tx.Rollback();
 
     // Verify person wasn't created
-    var exists = (await graph.NodesAsync<Person>())
-        .Any(p => p.FirstName == "Test");
+    var exists = await (await graph.NodesAsync<Person>())
+        .AnyAsync(p => p.FirstName == "Test");
     Assert.False(exists);
 }
 ```
@@ -441,7 +441,7 @@ public async Task<Person> CreatePerson(PersonInput input)
         Email = input.Email.ToLowerInvariant().Trim()
     };
 
-    await graph.CreateNode(person);
+    await graph.CreateNodeAsync(person);
     return person;
 }
 ```
@@ -470,7 +470,7 @@ public async Task<Person> CreatePersonWithLogging(Person person)
         logger.LogInformation("Creating person");
 
         var stopwatch = Stopwatch.StartNew();
-        await graph.CreateNode(person);
+        await graph.CreateNodeAsync(person);
 
         logger.LogInformation("Person created in {ElapsedMs}ms",
             stopwatch.ElapsedMilliseconds);

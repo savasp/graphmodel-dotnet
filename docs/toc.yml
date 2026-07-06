@@ -4,19 +4,21 @@
 - name: Core Concepts
   items:
   - name: LINQ Querying - Usage Examples
-    href: docs/querying.md
+    href: querying.md
   - name: Transaction Management
-    href: docs/transactions.md
+    href: transactions.md
   - name: Attributes & Configuration
-    href: docs/attributes.md
+    href: attributes.md
   - name: Best Practices
-    href: docs/best-practices.md
+    href: best-practices.md
+- name: Provider Implementers Guide
+  href: provider-implementers-guide.md
 - name: Neo4j Provider
-  href: src/Graph.Model.Neo4j/README.md
+  href: ../src/Graph.Model.Neo4j/README.md
 - name: Code Analyzers
-  href: src/Graph.Model.Analyzers/README.md
+  href: ../src/Graph.Model.Analyzers/README.md
 - name: Code Generation
-  href: src/Graph.Model.Serialization.CodeGen/README.md
+  href: ../src/Graph.Model.Serialization.CodeGen/README.md
 - name: Examples
   items:
   - name: Basic Serialization
@@ -31,11 +33,11 @@
     href: ../examples/Example4.AdvancedScenarios/README.md
   - name: Social Network
     href: ../examples/Example5.SocialNetwork/README.md
-- name: API Reference
-  items:
-  - name: XML Documentation Files
-    href: ../api-xml/ 
+  - name: Full Text Search
+    href: ../examples/Example6.FullTextSearch/README.md
+  - name: Simple Movie Example
+    href: ../examples/SimpleMovieExample/Program.cs
 - name: Troubleshooting
-  href: docs/troubleshooting.md
+  href: troubleshooting.md
 - name: Building Graph Model
-  href: docs/graph-model-developers.md
+  href: graph-model-developers.md

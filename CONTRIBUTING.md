@@ -10,15 +10,15 @@ Thank you for your interest in contributing to GraphModel! This document provide
 - Docker (for running Neo4j tests)
 - Git
 
-For AI coding agents and automation, see [CLAUDE.md](CLAUDE.md) at the repo root for project context, build, and test commands.
+For AI coding agents and automation, see [AGENTS.md](AGENTS.md) at the repo root for project context, build, and test commands.
 
 ### Development Setup
 
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/[your-org]/graphmodel-dotnet.git
-   cd GraphModel
+   git clone https://github.com/cvoya-com/graphmodel-dotnet.git
+   cd graphmodel-dotnet
    ```
 
 2. **Restore dependencies**
@@ -36,8 +36,8 @@ For AI coding agents and automation, see [CLAUDE.md](CLAUDE.md) at the repo root
 4. **Run tests**
 
    ```bash
-   # Integration tests (requires Docker)
-   CI=true dotnet test tests/Graph.Model.Neo4j.Tests
+   # Full suite; Neo4j integration tests need a running Neo4j instance.
+   dotnet test --configuration Debug
    ```
 
 ## 🐛 Reporting Issues
@@ -73,6 +73,7 @@ When reporting issues, please include:
 - Add code examples for new features
 - Update API documentation
 - Include migration notes for breaking changes
+- Provider authors should also read [Provider Implementers Guide](docs/provider-implementers-guide.md) before adding or changing provider behavior.
 
 ## 📝 Pull Request Process
 
@@ -96,10 +97,11 @@ When reporting issues, please include:
    dotnet test
    ```
 
-   Test using docker containers. The neo4j container will be automatically downloaded:
+   Start a local Neo4j before running the full integration suite:
 
    ```bash
-   CI=true dotnet test
+   ./scripts/containers/start-neo4j.sh
+   dotnet test --configuration Debug
    ```
 
 4. **Commit with Clear Messages**

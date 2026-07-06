@@ -43,7 +43,8 @@ Neo4jException: Could not perform discovery for server neo4j://localhost:7687
    ```csharp
    // Default Neo4j credentials are neo4j/neo4j
    // You must change the password on first login
-   var graph = new Neo4jGraph("neo4j://localhost:7687", "neo4j", "your-new-password");
+   var store = new Neo4jGraphStore("neo4j://localhost:7687", "neo4j", "your-new-password");
+   var graph = store.Graph;
    ```
 
 #### Problem: "Connection timeout"
@@ -57,12 +58,14 @@ TimeoutException: The request timed out after 30 seconds
 1. **Increase timeout settings**
 
    ```csharp
-   var config = new ConfigurationOptions
-   {
-       ConnectionTimeout = TimeSpan.FromSeconds(60),
-       ConnectionAcquisitionTimeout = TimeSpan.FromSeconds(60)
-   };
-   var graph = new Neo4jGraph(connectionString, username, password, config);
+   var driver = GraphDatabase.Driver(
+       connectionString,
+       AuthTokens.Basic(username, password),
+       config => config
+           .WithConnectionTimeout(TimeSpan.FromSeconds(60))
+           .WithConnectionAcquisitionTimeout(TimeSpan.FromSeconds(60)));
+   var store = new Neo4jGraphStore(driver);
+   var graph = store.Graph;
    ```
 
 2. **Check network connectivity**
@@ -154,13 +157,13 @@ InvalidOperationException: Cannot execute query on committed/rolled back transac
 
 ```csharp
 // ❌ Reusing disposed transaction
-using var transaction = await graph.BeginTransactionAsync();
+using var transaction = await graph.GetTransactionAsync();
 await graph.CreateNodeAsync(user, transaction);
 await transaction.CommitAsync();
-await graph.CreateNode(anotherUser, transaction);  // Error - transaction already committed
+await graph.CreateNodeAsync(anotherUser, transaction);  // Error - transaction already committed
 
 // ✅ Create new transaction or don't commit until all operations complete
-using var transaction = await graph.BeginTransactionAsync();
+using var transaction = await graph.GetTransactionAsync();
 await graph.CreateNodeAsync(user, transaction);
 await graph.CreateNodeAsync(anotherUser, transaction);
 await transaction.CommitAsync();  // Commit both operations
@@ -178,12 +181,12 @@ TransientException: Deadlock detected
 
    ```csharp
    // ✅ Short transaction
-   using var transaction = await graph.BeginTransactionAsync();
+   using var transaction = await graph.GetTransactionAsync();
    await graph.CreateNodeAsync(user, transaction);
    await transaction.CommitAsync();
 
    // ❌ Long-running transaction
-   using var transaction = await graph.BeginTransactionAsync();
+   using var transaction = await graph.GetTransactionAsync();
    await SomeLongRunningOperation();  // Holds locks too long
    await graph.CreateNodeAsync(user, transaction);
    await transaction.CommitAsync();
@@ -340,8 +343,8 @@ public async Task<bool> TestConnection(string connectionString, string username,
 {
     try
     {
-        using var graph = new Neo4jGraph(connectionString, username, password);
-        await (await graph.NodesAsync<object>()).Take(1).ToListAsync();
+        await using var store = new Neo4jGraphStore(connectionString, username, password);
+        await (await store.Graph.NodesAsync<DynamicNode>()).Take(1).ToListAsync();
         return true;
     }
     catch (Exception ex)
@@ -373,7 +376,7 @@ When reporting issues, include:
 
 ### 3. Search Existing Issues
 
-- Check [GitHub Issues](https://github.com/savasp/graphmodel-dotnet/issues)
+- Check [GitHub Issues](https://github.com/cvoya-com/graphmodel-dotnet/issues)
 - Look for similar problems and solutions
 
 ### 4. Create Minimal Reproduction
@@ -387,9 +390,10 @@ public class TestNode : INode
 }
 
 // The issue occurs when:
-var graph = new Neo4jGraph("neo4j://localhost:7687", "neo4j", "password");
+var store = new Neo4jGraphStore("neo4j://localhost:7687", "neo4j", "password");
+var graph = store.Graph;
 var node = new TestNode { Id = "1", Name = "Test" };
-await graph.CreateNode(node);  // Fails here with [specific error]
+await graph.CreateNodeAsync(node);  // Fails here with [specific error]
 ```
 
 Remember: The more specific and complete your issue report, the faster we can help! 🚀

@@ -64,12 +64,12 @@ Personalized feed based on who the user follows:
 
 ```csharp
 // Get posts from people Alice follows
-var aliceFollowing = await graph.Nodes<User>()
+var aliceFollowing = await (await graph.NodesAsync<User>())
     .Where(u => u.Username == "alice_wonder")
     .PathSegments<User, Follows, User>()
     .ToListAsync();
 
-var feedPosts = await graph.Nodes<User>()
+var feedPosts = await (await graph.NodesAsync<User>())
     .Where(u => followedUserIds.Contains(u.Id))
     .PathSegments<User, Posted, Post>()
     .ToListAsync();

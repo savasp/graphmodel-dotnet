@@ -15,12 +15,12 @@ Graph Model provides comprehensive transaction support with full async/await pat
 ### Simple Transaction Pattern
 
 ```csharp
-await using var transaction = await graph.BeginTransaction();
+await using var transaction = await graph.GetTransactionAsync();
 try
 {
     // Perform your operations within the transaction
-    await graph.CreateNode(person, transaction: transaction);
-    await graph.CreateNode(company, transaction: transaction);
+    await graph.CreateNodeAsync(person, transaction: transaction);
+    await graph.CreateNodeAsync(company, transaction: transaction);
 
     var worksAt = new WorksAt
     {
@@ -28,10 +28,10 @@ try
         EndNodeId = company.Id,
         StartDate = DateTime.UtcNow
     };
-    await graph.CreateRelationship(worksAt, transaction: transaction);
+    await graph.CreateRelationshipAsync(worksAt, transaction: transaction);
 
     // Explicitly commit if all operations succeed
-    await transaction.Commit();
+    await transaction.CommitAsync();
 }
 catch (Exception ex)
 {
@@ -46,14 +46,14 @@ catch (Exception ex)
 Transactions implement `IAsyncDisposable`, providing automatic rollback if not explicitly committed:
 
 ```csharp
-await using (var transaction = await graph.BeginTransaction())
+await using (var transaction = await graph.GetTransactionAsync())
 {
-    await graph.CreateNode(node, transaction: transaction);
-    await graph.UpdateNode(existingNode, transaction: transaction);
+    await graph.CreateNodeAsync(node, transaction: transaction);
+    await graph.UpdateNodeAsync(existingNode, transaction: transaction);
 
     if (someBusinessCondition)
     {
-        await transaction.Commit();
+        await transaction.CommitAsync();
     }
     // If not committed, transaction automatically rolls back on disposal
 }
@@ -101,11 +101,11 @@ await graph.DeleteRelationshipAsync(id, transaction: transaction);
 // Queries also support transactions
 var results = (await graph.NodesAsync<Person>(transaction: transaction))
     .Where(p => p.Department == "Engineering")
-    .ToList();
+    .ToListAsync();
 
 var relationships = (await graph.RelationshipsAsync<Knows>(transaction: transaction))
     .Where(k => k.Since > DateTime.UtcNow.AddDays(-7))
-    .ToList();
+    .ToListAsync();
 ```
 
 ## Transaction Isolation
@@ -114,14 +114,14 @@ Transactions provide isolation from other concurrent operations:
 
 ```csharp
 // Transaction 1
-await using var tx1 = await graph.BeginTransactionAsync();
+await using var tx1 = await graph.GetTransactionAsync();
 var alice = new Person { FirstName = "Alice" };
 await graph.CreateNodeAsync(alice, transaction: tx1);
 
 // Transaction 2 (concurrent)
-await using var tx2 = await graph.BeginTransactionAsync();
+await using var tx2 = await graph.GetTransactionAsync();
 // This won't see Alice until tx1 commits
-var count = (await graph.NodesAsync<Person>(transaction: tx2)).CountAsync();
+var count = await (await graph.NodesAsync<Person>(transaction: tx2)).CountAsync();
 
 await tx1.CommitAsync();
 // Now tx2 can see Alice
@@ -132,7 +132,7 @@ await tx1.CommitAsync();
 ### Conditional Logic
 
 ```csharp
-await using var transaction = await graph.BeginTransaction();
+await using var transaction = await graph.GetTransactionAsync();
 try
 {
     var person = await graph.GetNodeAsync<Person>(personId, transaction: transaction);
@@ -155,7 +155,7 @@ try
         var performed = new Performed { Source = person, Target = activity };
         await graph.CreateRelationshipAsync(performed, transaction: transaction);
 
-        await transaction.Commit();
+        await transaction.CommitAsync();
     }
     else
     {
@@ -164,7 +164,7 @@ try
 }
 catch
 {
-    await transaction.RollbackAsync();
+    await transaction.Rollback();
     throw;
 }
 ```
@@ -172,7 +172,7 @@ catch
 ### Bulk Operations
 
 ```csharp
-await using var transaction = await graph.BeginTransactionAsync();
+await using var transaction = await graph.GetTransactionAsync();
 try
 {
     // Import a batch of data
@@ -190,7 +190,7 @@ try
         // Create relationships if needed
         if (personData.ManagerEmail != null)
         {
-            var manager = (await graph.NodesAsync<Person>(transaction: transaction))
+            var manager = await (await graph.NodesAsync<Person>(transaction: transaction))
                 .FirstOrDefaultAsync(p => p.Email == personData.ManagerEmail);
 
             if (manager != null)
@@ -205,11 +205,11 @@ try
         }
     }
 
-    await transaction.Commit();
+    await transaction.CommitAsync();
 }
 catch (Exception ex)
 {
-    await transaction.RollbackAsync();
+    await transaction.Rollback();
     throw new ImportException("Failed to import data", ex);
 }
 ```
@@ -217,7 +217,7 @@ catch (Exception ex)
 ### Validation and Rollback
 
 ```csharp
-await using var transaction = await graph.BeginTransactionAsync();
+await using var transaction = await graph.GetTransactionAsync();
 try
 {
     // Create entities
@@ -225,13 +225,13 @@ try
     await graph.CreateNodeAsync(employee, transaction: transaction);
 
     // Validate business rules
-    var employeeCount = (await graph.NodesAsync<Employee>(transaction: transaction))
+    var employeeCount = await (await graph.NodesAsync<Employee>(transaction: transaction))
         .CountAsync(e => e.DepartmentId == department.Id);
 
     if (employeeCount > department.MaxEmployees)
     {
         // Explicitly rollback due to business rule violation
-        await transaction.RollbackAsync();
+        await transaction.Rollback();
         throw new BusinessRuleException("Department employee limit exceeded");
     }
 
@@ -244,7 +244,7 @@ try
 catch
 {
     // Ensure rollback even if already rolled back
-    try { await transaction.RollbackAsync(); } catch { }
+    try { await transaction.Rollback(); } catch { }
     throw;
 }
 ```
@@ -258,7 +258,7 @@ Thrown when there are transaction-specific errors:
 ```csharp
 try
 {
-    await using var transaction = await graph.BeginTransactionAsync();
+    await using var transaction = await graph.GetTransactionAsync();
     // ... operations ...
     await transaction.CommitAsync();
 }
@@ -274,10 +274,10 @@ catch (GraphException ex)
 Graph Model doesn't support nested transactions. Attempting to start a transaction within another will throw an exception:
 
 ```csharp
-await using var transaction1 = await graph.BeginTransactionAsync();
+await using var transaction1 = await graph.GetTransactionAsync();
 
 // This will NOT create a nested transaction
-await using var transaction2 = await graph.BeginTransactionAsync();
+await using var transaction2 = await graph.GetTransactionAsync();
 ```
 
 ## Best Practices
@@ -286,13 +286,13 @@ await using var transaction2 = await graph.BeginTransactionAsync();
 
 ```csharp
 // Good: Short transaction
-await using var tx = await graph.BeginTransactionAsync();
+await using var tx = await graph.GetTransactionAsync();
 await graph.CreateNodeAsync(node, transaction: tx);
 await graph.CreateRelationshipAsync(rel, transaction: tx);
 await tx.CommitAsync();
 
 // Avoid: Long-running transactions
-await using var tx = await graph.BeginTransactionAsync();
+await using var tx = await graph.GetTransactionAsync();
 var data = await FetchDataFromExternalService(); // Don't do this in transaction
 await graph.CreateNodeAsync(data, transaction: tx);
 await tx.CommitAsync();
@@ -301,7 +301,7 @@ await tx.CommitAsync();
 ### 2. Use Try-Finally for Critical Cleanup
 
 ```csharp
-await using var transaction = await graph.BeginTransactionAsync();
+await using var transaction = await graph.GetTransactionAsync();
 try
 {
     // Acquire resources
@@ -310,7 +310,7 @@ try
     {
         // Perform operations
         await graph.UpdateNodeAsync(node, transaction: transaction);
-        await transaction.CommiAsync();
+        await transaction.CommitAsync();
     }
     finally
     {
@@ -320,7 +320,7 @@ try
 }
 catch
 {
-    await transaction.RollbackAsync();
+    await transaction.Rollback();
     throw;
 }
 ```
@@ -330,11 +330,11 @@ catch
 When reading data that will be modified, use the same transaction:
 
 ```csharp
-await using var transaction = await graph.BeginTransactionAsync();
+await using var transaction = await graph.GetTransactionAsync();
 
 // Read with the transaction to ensure consistency
 var person = await graph.GetNodeAsync<Person>(id, transaction: transaction);
-var currentFriends = (await graph.RelationshipsAsync<Knows>(transaction: transaction))
+var currentFriends = await (await graph.RelationshipsAsync<Knows>(transaction: transaction))
     .CountAsync(k => k.StartNodeId == person.Id);
 
 if (currentFriends < 100)
@@ -352,7 +352,7 @@ var results = new List<ImportResult>();
 
 foreach (var batch in dataBatches)
 {
-    await using var transaction = await graph.BeginTransactionAsync();
+    await using var transaction = await graph.GetTransactionAsync();
     try
     {
         foreach (var item in batch)
@@ -364,7 +364,7 @@ foreach (var batch in dataBatches)
     }
     catch (Exception ex)
     {
-        await transaction.RollbackAsync();
+        await transaction.Rollback();
         results.Add(new ImportResult
         {
             Batch = batch,
@@ -390,7 +390,7 @@ For read-only operations or when atomicity isn't required, you can omit the tran
 ```csharp
 // Simple reads don't require transactions
 var person = await graph.GetNodeAsync<Person>(id);
-var friends = (await graph.NodesAsync<Person>())
+var friends = await (await graph.NodesAsync<Person>())
     .Where(p => p.Department == "Sales")
     .ToListAsync();
 

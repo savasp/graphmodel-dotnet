@@ -87,14 +87,14 @@ var profiledQuery = await (await graph.NodesAsync<Person>())
 ### Transaction Context
 
 ```csharp
-await using var transaction = await graph.BeginTransaction();
+await using var transaction = await graph.GetTransactionAsync();
 
 var results = await (await graph.NodesAsync<Person>())
     .InTransaction(transaction)
     .Where(p => p.Age > 30)
     .ToListAsync();
 
-await transaction.Commit();
+await transaction.CommitAsync();
 ```
 
 ## Working with "complex" types
@@ -128,9 +128,9 @@ The addresses could have been modelled as separate nodes, which is a great way t
 // query so that these private relationships are considered as one would have expected.
 
 // Create many people nodes...
-var tx = graph.GetTransactionAsync();
+await using var tx = await graph.GetTransactionAsync();
 foreach (var p in people)
-  await graph.CreateNodeAsync(p);
+  await graph.CreateNodeAsync(p, transaction: tx);
 await tx.CommitAsync();
 
 // Query for those who live in WA state

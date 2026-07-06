@@ -52,7 +52,7 @@ This package provides the core abstractions:
 
 For comprehensive documentation, examples, and best practices:
 
-**🌐 [Complete Documentation](https://github.com/savasp/graphmodel-dotnet/)**
+**🌐 [Complete Documentation](https://github.com/cvoya-com/graphmodel-dotnet/)**
 
 ## 🔗 Related Packages
 
@@ -63,12 +63,12 @@ For comprehensive documentation, examples, and best practices:
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see our [Contributing Guide](https://github.com/savasp/graphmodel-dotnet/blob/main/CONTRIBUTING.md).
+Contributions are welcome! Please see our [Contributing Guide](https://github.com/cvoya-com/graphmodel-dotnet/blob/main/CONTRIBUTING.md).
 
 ## 📄 License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/savasp/graphmodel-dotnet/blob/main/LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/cvoya-com/graphmodel-dotnet/blob/main/LICENSE) file for details.
 
 ---
 
-**Need help?** Check the [troubleshooting guide](https://github.com/savasp/graphmodel-dotnet/docs/troubleshooting.md) or [open an issue](https://github.com/savasp/graphmodel-dotnet/issues).
+**Need help?** Check the [troubleshooting guide](https://github.com/cvoya-com/graphmodel-dotnet/blob/main/docs/troubleshooting.md) or [open an issue](https://github.com/cvoya-com/graphmodel-dotnet/issues).
