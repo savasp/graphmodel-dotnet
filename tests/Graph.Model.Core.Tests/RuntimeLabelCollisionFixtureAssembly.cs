@@ -56,8 +56,7 @@ internal static class RuntimeLabelCollisionFixtureAssembly
         // returns, not just eventually.
         for (var i = 0; contextReference.IsAlive && i < 10; i++)
         {
-            // codeql[cs/call-to-gc]
-            GC.Collect();
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
             GC.WaitForPendingFinalizers();
         }
 
