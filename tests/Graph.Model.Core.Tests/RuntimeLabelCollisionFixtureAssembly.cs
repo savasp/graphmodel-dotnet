@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Core.Tests;
 
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -48,6 +49,27 @@ internal static class RuntimeLabelCollisionFixtureAssembly
     /// </summary>
     public static void Run(string source, string[] typeNames, Action<Type[]> action)
     {
+        var contextReference = LoadAndRun(source, typeNames, action);
+
+        // Force the collectible context to actually be reclaimed before returning, so the fixture
+        // types are gone from AppDomain.CurrentDomain.GetAssemblies() by the time this method
+        // returns, not just eventually.
+        for (var i = 0; contextReference.IsAlive && i < 10; i++)
+        {
+            // codeql[cs/call-to-gc]
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+
+        if (contextReference.IsAlive)
+        {
+            throw new InvalidOperationException("Fixture assembly load context was not reclaimed.");
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference LoadAndRun(string source, string[] typeNames, Action<Type[]> action)
+    {
         var compilation = CSharpCompilation.Create(
             assemblyName: $"RuntimeLabelCollisionFixture_{Guid.NewGuid():N}",
             syntaxTrees: [CSharpSyntaxTree.ParseText(source)],
@@ -76,16 +98,32 @@ internal static class RuntimeLabelCollisionFixtureAssembly
         }
         finally
         {
+            ClearLabelsCaches();
             context.Unload();
+        }
 
-            // Force the collectible context to actually be reclaimed before returning, so the fixture
-            // types are gone from AppDomain.CurrentDomain.GetAssemblies() by the time this method
-            // returns, not just eventually.
-            for (var i = 0; i < 3; i++)
-            {
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-            }
+        return new WeakReference(context);
+    }
+
+    private static void ClearLabelsCaches()
+    {
+        foreach (var fieldName in new[]
+        {
+            "LabelToTypeCache",
+            "TypeToLabelCache",
+            "PropertyToLabelCache",
+            "LabelToPropertyCache",
+            "MostDerivedTypeCache",
+        })
+        {
+            var field = typeof(Labels).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Static)
+                ?? throw new InvalidOperationException($"Labels.{fieldName} was not found.");
+            var cache = field.GetValue(null)
+                ?? throw new InvalidOperationException($"Labels.{fieldName} was null.");
+            var clear = cache.GetType().GetMethod("Clear", BindingFlags.Public | BindingFlags.Instance)
+                ?? throw new InvalidOperationException($"Labels.{fieldName}.Clear was not found.");
+
+            clear.Invoke(cache, []);
         }
     }
 
