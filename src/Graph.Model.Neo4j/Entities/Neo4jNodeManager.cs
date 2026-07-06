@@ -76,11 +76,11 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var entity = _serializer.Serialize(node);
 
             // Create the main node
-            var nodeId = await CreateMainNodeAsync(entity, transaction.Transaction, cancellationToken);
+            var nodeId = await CreateMainNodeAsync(entity, transaction.Transaction, cancellationToken).ConfigureAwait(false);
 
             // Create complex properties
             var success = await _complexPropertyManager.CreateComplexPropertiesAsync(
-                transaction.Transaction, nodeId, entity, cancellationToken);
+                transaction.Transaction, nodeId, entity, cancellationToken).ConfigureAwait(false);
 
             if (!success)
             {
@@ -121,7 +121,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var entity = _serializer.Serialize(node);
 
             // Update the node properties
-            var updated = await UpdateMainNodeAsync(node.Id, entity, transaction.Transaction, cancellationToken);
+            var updated = await UpdateMainNodeAsync(node.Id, entity, transaction.Transaction, cancellationToken).ConfigureAwait(false);
 
             if (!updated)
             {
@@ -131,7 +131,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
             // Update complex properties
             var complexPropertiesUpdated = await _complexPropertyManager.UpdateComplexPropertiesAsync(
-                transaction.Transaction, node.Id, entity, cancellationToken);
+                transaction.Transaction, node.Id, entity, cancellationToken).ConfigureAwait(false);
 
             if (!complexPropertiesUpdated && entity.ComplexProperties.Count > 0)
             {
@@ -161,12 +161,12 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
         try
         {
-            var registeredNodeLabels = await GetRegisteredNodeLabelsAsync(cancellationToken);
+            var registeredNodeLabels = await GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
             var rootCount = await GetRootCountAsync(
                 nodeId,
                 registeredNodeLabels,
                 transaction.Transaction,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
             if (rootCount == 0)
             {
                 _logger.LogWarning("Node with ID {NodeId} not found for deletion", nodeId);
@@ -195,9 +195,9 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                     propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
                     nodeEntityKind = SerializationBridge.NodeEntityKind,
                     registeredNodeLabels
-                });
+                }).ConfigureAwait(false);
 
-                var checkRecord = await GetSingleRecordAsync(checkResult, cancellationToken);
+                var checkRecord = await GetSingleRecordAsync(checkResult, cancellationToken).ConfigureAwait(false);
                 var businessRelationshipCount = checkRecord["businessRelationshipCount"].As<int>();
 
                 if (businessRelationshipCount > 0)
@@ -224,9 +224,9 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
                 nodeEntityKind = SerializationBridge.NodeEntityKind,
                 registeredNodeLabels
-            });
+            }).ConfigureAwait(false);
 
-            var record = await GetSingleRecordAsync(result, cancellationToken);
+            var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
             var wasDeleted = record["wasDeleted"].As<bool>();
 
             if (!wasDeleted)
@@ -261,9 +261,9 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
             nodeEntityKind = SerializationBridge.NodeEntityKind,
             registeredNodeLabels
-        });
+        }).ConfigureAwait(false);
 
-        var record = await GetSingleRecordAsync(result, cancellationToken);
+        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
         return record["rootCount"].As<int>();
     }
 
@@ -271,7 +271,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         var labels = await context.SchemaManager
             .GetSchemaRegistry()
-            .GetRegisteredNodeLabelsAsync(cancellationToken);
+            .GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
 
         return labels.ToArray();
     }
@@ -316,8 +316,8 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         simpleProperties[nameof(Model.INode.Labels)] =
             entity.ActualLabels == null || entity.ActualLabels.Count == 0 ? [entity.Label] : entity.ActualLabels;
 
-        var result = await transaction.RunAsync(cypher, new { props = simpleProperties });
-        var record = await GetSingleRecordAsync(result, cancellationToken);
+        var result = await transaction.RunAsync(cypher, new { props = simpleProperties }).ConfigureAwait(false);
+        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
 
         return record["nodeId"].As<string>()
             ?? throw new GraphException("Failed to create node - no ID returned");
@@ -342,8 +342,8 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         {
             // First, get the current labels to remove them
             var getLabelsCypher = "MATCH (n {Id: $nodeId}) RETURN labels(n) AS currentLabels";
-            var getLabelsResult = await transaction.RunAsync(getLabelsCypher, new { nodeId });
-            var getLabelsRecord = await GetSingleRecordAsync(getLabelsResult, cancellationToken);
+            var getLabelsResult = await transaction.RunAsync(getLabelsCypher, new { nodeId }).ConfigureAwait(false);
+            var getLabelsRecord = await GetSingleRecordAsync(getLabelsResult, cancellationToken).ConfigureAwait(false);
             var currentLabels = getLabelsRecord["currentLabels"].As<List<string>>() ?? new List<string>();
 
             // Labels read back from the database or supplied on the entity are still Cypher
@@ -370,8 +370,8 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             cypher = "MATCH (n {Id: $nodeId}) SET n = $props RETURN n";
         }
 
-        var result = await transaction.RunAsync(cypher, new { nodeId, props = simpleProperties });
-        return await GetCountAsync(result, cancellationToken) > 0;
+        var result = await transaction.RunAsync(cypher, new { nodeId, props = simpleProperties }).ConfigureAwait(false);
+        return await GetCountAsync(result, cancellationToken).ConfigureAwait(false) > 0;
     }
 
     private void ValidateNodeProperties<TNode>(TNode node) where TNode : class, Model.INode
@@ -570,11 +570,11 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
     private static async Task<IRecord> GetSingleRecordAsync(IResultCursor result, CancellationToken cancellationToken)
     {
-        return await result.SingleAsync(cancellationToken);
+        return await result.SingleAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<int> GetCountAsync(IResultCursor result, CancellationToken cancellationToken)
     {
-        return await result.CountAsync(cancellationToken);
+        return await result.CountAsync(cancellationToken).ConfigureAwait(false);
     }
 }

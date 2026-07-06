@@ -69,7 +69,7 @@ internal sealed class ResultMaterializer
         }
 
         // Process records to EntityInfo objects
-        var entityInfos = await _resultProcessor.ProcessAsync(records, elementType, cancellationToken);
+        var entityInfos = await _resultProcessor.ProcessAsync(records, elementType, cancellationToken).ConfigureAwait(false);
         _logger.LogDebug("MaterializeAsync: ProcessAsync returned {EntityInfoCount} entity infos", entityInfos.Count);
 
         var result = isCollectionType

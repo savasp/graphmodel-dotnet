@@ -49,7 +49,7 @@ public class SchemaRegistry : IDisposable
             return;
 
         // Use async-safe semaphore
-        await _semaphore.WaitAsync(cancellationToken);
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             // Double-check pattern
@@ -85,7 +85,7 @@ public class SchemaRegistry : IDisposable
             return cached;
         }
 
-        await _semaphore.WaitAsync(cancellationToken);
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_isInitialized && !_nodeSchemas.ContainsKey(label))
@@ -117,7 +117,7 @@ public class SchemaRegistry : IDisposable
             return cached;
         }
 
-        await _semaphore.WaitAsync(cancellationToken);
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_isInitialized && !_relationshipSchemas.ContainsKey(type))
@@ -227,7 +227,7 @@ public class SchemaRegistry : IDisposable
             return [.. _nodeSchemas.Keys];
         }
 
-        await _semaphore.WaitAsync(cancellationToken);
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_isInitialized)
@@ -259,7 +259,7 @@ public class SchemaRegistry : IDisposable
             return [.. _relationshipSchemas.Keys];
         }
 
-        await _semaphore.WaitAsync(cancellationToken);
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_isInitialized)
@@ -280,7 +280,7 @@ public class SchemaRegistry : IDisposable
     /// </summary>
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
-        await _semaphore.WaitAsync(cancellationToken);
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             _nodeSchemas.Clear();

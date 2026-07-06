@@ -67,7 +67,7 @@ internal class Neo4jGraph : IGraph
             _logger.LogDebug("Beginning new transaction");
 
             var graphTransaction = new GraphTransaction(_graphContext);
-            await graphTransaction.BeginTransactionAsync();
+            await graphTransaction.BeginTransactionAsync().ConfigureAwait(false);
 
             _logger.LogDebug("Successfully began transaction");
             return graphTransaction;
@@ -113,7 +113,7 @@ internal class Neo4jGraph : IGraph
         var query = Nodes<N>(transaction)
             .Where(n => n.Id == id);
 
-        return await query.FirstOrDefaultAsync(cancellationToken)
+        return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new GraphException($"Node with ID {id} not found");
     }
 
@@ -124,7 +124,7 @@ internal class Neo4jGraph : IGraph
         var query = Relationships<R>(transaction)
             .Where(r => r.Id == id);
 
-        return await query.FirstOrDefaultAsync(cancellationToken)
+        return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new GraphException($"Relationship with ID {id} not found");
     }
 
@@ -156,13 +156,13 @@ internal class Neo4jGraph : IGraph
             _logger.LogDebug("Creating node of type {NodeType}", typeof(N).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken);
+            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 graphContext: _graphContext,
                 transaction: transaction,
                 tx => _graphContext.NodeManager.CreateNodeAsync(node, tx, cancellationToken),
-                $"Failed to create node of type {typeof(N).Name}");
+                $"Failed to create node of type {typeof(N).Name}").ConfigureAwait(false);
 
             _logger.LogDebug("Successfully created node {NodeId}", node.Id);
         }
@@ -196,17 +196,17 @@ internal class Neo4jGraph : IGraph
             _logger.LogDebug("Creating relationship of type {RelationshipType}", typeof(R).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
-            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken);
+            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
                 transaction,
                 async tx =>
                 {
-                    await _graphContext.RelationshipManager.CreateRelationshipAsync(relationship, tx);
+                    await _graphContext.RelationshipManager.CreateRelationshipAsync(relationship, tx).ConfigureAwait(false);
                     return true;
                 },
-                $"Failed to create relationship of type {typeof(R).Name}");
+                $"Failed to create relationship of type {typeof(R).Name}").ConfigureAwait(false);
 
             _logger.LogDebug("Successfully created relationship {RelationshipId}", relationship.Id);
         }
@@ -246,10 +246,10 @@ internal class Neo4jGraph : IGraph
                 transaction,
                 async tx =>
                 {
-                    await _graphContext.NodeManager.UpdateNodeAsync(node, tx);
+                    await _graphContext.NodeManager.UpdateNodeAsync(node, tx).ConfigureAwait(false);
                     return true;
                 },
-            $"Failed to update node {node.Id} of type {typeof(N).Name}");
+            $"Failed to update node {node.Id} of type {typeof(N).Name}").ConfigureAwait(false);
 
             _logger.LogDebug("Successfully updated node {NodeId}", node.Id);
         }
@@ -289,10 +289,10 @@ internal class Neo4jGraph : IGraph
                 transaction,
                 async tx =>
                 {
-                    await _graphContext.RelationshipManager.UpdateRelationshipAsync(relationship, tx);
+                    await _graphContext.RelationshipManager.UpdateRelationshipAsync(relationship, tx).ConfigureAwait(false);
                     return true;
                 },
-            $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}");
+            $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}").ConfigureAwait(false);
 
             _logger.LogDebug("Successfully updated relationship {RelationshipId}", relationship.Id);
         }
@@ -326,10 +326,10 @@ internal class Neo4jGraph : IGraph
             transaction,
                 async tx =>
                 {
-                    await _graphContext.NodeManager.DeleteNodeAsync(id, tx, cascadeDelete, cancellationToken);
+                    await _graphContext.NodeManager.DeleteNodeAsync(id, tx, cascadeDelete, cancellationToken).ConfigureAwait(false);
                     return true;
                 },
-            $"Failed to delete node {id}");
+            $"Failed to delete node {id}").ConfigureAwait(false);
 
             _logger.LogDebug("Successfully deleted node {NodeId}", id);
 
@@ -363,11 +363,11 @@ internal class Neo4jGraph : IGraph
             transaction,
                 async tx =>
                 {
-                    await _graphContext.RelationshipManager.DeleteRelationshipAsync(id, tx, cancellationToken);
+                    await _graphContext.RelationshipManager.DeleteRelationshipAsync(id, tx, cancellationToken).ConfigureAwait(false);
                     return true;
                 },
                 $"Failed to delete relationship {id}",
-                _logger);
+                _logger).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully deleted relationship {RelationshipId}", id);
         }
@@ -413,7 +413,7 @@ internal class Neo4jGraph : IGraph
         var query = DynamicNodes(transaction)
             .Where(n => n.Id == id);
 
-        return await query.FirstOrDefaultAsync(cancellationToken)
+        return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new GraphException($"Dynamic node with ID {id} not found");
     }
 
@@ -423,7 +423,7 @@ internal class Neo4jGraph : IGraph
         var query = DynamicRelationships(transaction)
             .Where(r => r.Id == id);
 
-        return await query.FirstOrDefaultAsync(cancellationToken)
+        return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
             ?? throw new GraphException($"Dynamic relationship with ID {id} not found");
     }
 
@@ -493,7 +493,7 @@ internal class Neo4jGraph : IGraph
         try
         {
             _logger.LogInformation("Recreating indexes for Neo4j graph");
-            await _graphContext.SchemaManager.RecreateIndexesAsync(cancellationToken);
+            await _graphContext.SchemaManager.RecreateIndexesAsync(cancellationToken).ConfigureAwait(false);
             _logger.LogInformation("Index recreation completed successfully");
         }
         catch (Exception ex)

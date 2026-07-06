@@ -27,15 +27,15 @@ internal static class TransactionHelpers
         ILogger? logger = null,
         bool isReadOnly = false)
     {
-        var tx = await GetOrCreateTransactionAsync(graphContext, transaction, isReadOnly);
+        var tx = await GetOrCreateTransactionAsync(graphContext, transaction, isReadOnly).ConfigureAwait(false);
 
         try
         {
-            var result = await function(tx);
+            var result = await function(tx).ConfigureAwait(false);
 
             if (transaction == null)
             {
-                await tx.CommitAsync();
+                await tx.CommitAsync().ConfigureAwait(false);
             }
 
             return result;
@@ -45,7 +45,7 @@ internal static class TransactionHelpers
             logger?.LogError(ex, errorMessage);
             if (transaction == null)
             {
-                await tx.Rollback();
+                await tx.Rollback().ConfigureAwait(false);
             }
 
             throw;
@@ -54,7 +54,7 @@ internal static class TransactionHelpers
         {
             if (transaction == null)
             {
-                await tx.DisposeAsync();
+                await tx.DisposeAsync().ConfigureAwait(false);
             }
         }
     }
@@ -67,7 +67,7 @@ internal static class TransactionHelpers
         if (transaction is null)
         {
             var tx = new GraphTransaction(graphContext, isReadOnly);
-            await tx.BeginTransactionAsync();
+            await tx.BeginTransactionAsync().ConfigureAwait(false);
             return tx;
         }
 
