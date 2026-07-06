@@ -29,7 +29,15 @@
     <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
         <ProjectReference Include="../Graph.Model/Graph.Model.csproj" />
         <ProjectReference Include="../Graph.Model.Serialization/Graph.Model.Serialization.csproj" />
-        <ProjectReference Include="../Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+        <!--
+          The CodeGen source generator is only wired in as a Roslyn analyzer for real compilations. DocFX's
+          metadata step (docs/apiref/docfx.json passes -p:BuildingForDocfx=true) loads this project without
+          compiling it, using a bundled compiler older than the one the generator DLL targets; loading the
+          generator as an analyzer there would only surface a harmless but noisy FailedToLoadAnalyzer warning
+          during API reference generation, with no effect on the generated docs.
+        -->
+        <ProjectReference Include="../Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" Condition="'$(BuildingForDocfx)' != 'true'" />
+        <ProjectReference Include="../Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" ReferenceOutputAssembly="false" Condition="'$(BuildingForDocfx)' == 'true'" />
     </ItemGroup>
 
     <!-- Use package references for releases -->

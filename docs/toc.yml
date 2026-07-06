@@ -1,6 +1,8 @@
 - name: Getting Started
   href: ../README.md
   homepage: ../README.md
+- name: API Reference
+  href: ../api/
 - name: Core Concepts
   items:
   - name: LINQ Querying - Usage Examples

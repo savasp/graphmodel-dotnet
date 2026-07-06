@@ -1,0 +1,4 @@
+- name: API Reference
+  href: index.md
+- name: Namespaces
+  href: api/

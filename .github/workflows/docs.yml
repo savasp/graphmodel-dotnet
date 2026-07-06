@@ -3,25 +3,30 @@ name: 📚 Documentation
 on:
   push:
     branches: [ "main" ]
-    paths: 
+    paths:
       - 'src/**'
       - 'docs/**'
       - 'scripts/build-docs.*'
+      - '.config/dotnet-tools.json'
       - '.github/workflows/docs.yml'
   pull_request:
     branches: [ "main" ]
-    paths: 
+    paths:
       - 'src/**'
       - 'docs/**'
       - 'scripts/build-docs.*'
+      - '.config/dotnet-tools.json'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 jobs:
-  build-docs:
-    name: 📖 Build Documentation
+  # Validates the DocFX API reference build on every push/PR. This does not deploy anything; it only
+  # proves the site still generates cleanly with zero warnings (DocFX surfaces malformed/missing XML
+  # doc comments on the public API surface as warnings, which we treat as build failures here).
+  validate-api-reference:
+    name: 🔍 Validate API Reference
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: 📦 Checkout
       uses: actions/checkout@v7
@@ -42,90 +47,53 @@ jobs:
     - name: 📋 Restore Dependencies
       run: dotnet restore
 
-    - name: 🔨 Build XML Documentation
-      run: |
-        echo "🏗️ Building projects and generating XML documentation..."
-        ./scripts/build-docs.sh Debug
+    - name: 🛠️ Restore DocFX Tool
+      run: dotnet tool restore
 
-    - name: 📊 Upload Documentation Artifacts
-      uses: actions/upload-artifact@v7
-      with:
-        name: xml-documentation
-        path: docs/api/
-        retention-days: 30
-        if-no-files-found: error
+    - name: 📖 Build API Reference Site (validation only)
+      run: dotnet docfx docs/apiref/docfx.json --warningsAsErrors
 
-    - name: 📝 Validate XML Documentation
-      run: |
-        echo "🔍 Validating XML documentation files..."
-        for file in docs/api/*.xml; do
-          if [ -f "$file" ]; then
-            echo "✅ $(basename "$file"): $(wc -l < "$file") lines"
-            # Basic XML validation
-            xmllint --noout "$file" 2>/dev/null && echo "  📋 Valid XML" || echo "  ❌ Invalid XML"
-          fi
-        done
-
-    - name: 📈 Documentation Coverage Report
-      run: |
-        echo "📊 Documentation Coverage Summary:"
-        echo "=================================="
-        total_size=0
-        file_count=0
-        
-        for file in docs/api/*.xml; do
-          if [ -f "$file" ]; then
-            size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file")
-            total_size=$((total_size + size))
-            file_count=$((file_count + 1))
-            echo "📄 $(basename "$file"): ${size} bytes"
-          fi
-        done
-        
-        echo "=================================="
-        echo "📦 Total files: $file_count"
-        echo "📏 Total size: ${total_size} bytes ($(echo "scale=1; $total_size/1024" | bc) KB)"
-        
-        # Check if we have documentation for all main projects
-        expected_files=("Cvoya.Graph.Model.xml" "Cvoya.Graph.Model.Neo4j.xml" "Cvoya.Graph.Model.Serialization.xml")
-        missing_files=()
-        
-        for expected in "${expected_files[@]}"; do
-          if [ ! -f "docs/api/$expected" ]; then
-            missing_files+=("$expected")
-          fi
-        done
-        
-        if [ ${#missing_files[@]} -eq 0 ]; then
-          echo "✅ All expected documentation files are present"
-        else
-          echo "⚠️  Missing documentation files:"
-          printf '  - %s\n' "${missing_files[@]}"
-        fi
-
+  # Builds the Jekyll conceptual-docs site (owning the root of Pages) and the DocFX API reference
+  # (published under /api/), assembles both into a single Pages artifact, and deploys it.
   deploy-docs:
     name: 🚀 Deploy Documentation
     runs-on: ubuntu-latest
-    needs: build-docs
+    needs: validate-api-reference
     if: github.ref == 'refs/heads/main'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    
+
     permissions:
       contents: read
       pages: write
       id-token: write
-    
+
     steps:
     - name: 📦 Checkout
       uses: actions/checkout@v7
 
-    - name: 📥 Download API Documentation
-      uses: actions/download-artifact@v8
+    - name: ⚙️ Setup .NET
+      uses: actions/setup-dotnet@v5
       with:
-        name: xml-documentation
-        path: docs/api/
+        dotnet-version: '10.0.x'
+
+    - name: 🗂️ Cache Dependencies
+      uses: actions/cache@v6
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: 📋 Restore Dependencies
+      run: dotnet restore
+
+    - name: 🛠️ Restore DocFX Tool
+      run: dotnet tool restore
+
+    - name: 📖 Build API Reference Site
+      run: dotnet docfx docs/apiref/docfx.json --warningsAsErrors
 
     - name: 🏗️ Setup Ruby (for Jekyll)
       uses: ruby/setup-ruby@v1
@@ -143,18 +111,23 @@ jobs:
         cat Gemfile
         bundle install
 
-    - name: 🏗️ Prepare Jekyll Source
-      run: |
-        echo "📋 Jekyll will build from root directory..."
-        echo "All files are already in the correct location."
-        
     - name: 🏗️ Build Jekyll Site
       run: |
         echo "🏗️ Building Jekyll site..."
         bundle exec jekyll build --destination _site
-        
+
         echo "📋 Jekyll build completed. Contents:"
         ls -la _site/
+
+    # DocFX owns /api/ under the Pages site; Jekyll owns everything else. Jekyll builds first (into
+    # _site/), then the already-built DocFX output (docs/apiref/_site/) is copied into _site/api/ so a
+    # single upload-pages-artifact step publishes both.
+    - name: 🔗 Merge API Reference into Pages Site
+      run: |
+        echo "🔗 Copying DocFX output into _site/api/..."
+        mkdir -p _site/api
+        cp -r docs/apiref/_site/. _site/api/
+        ls -la _site/api/
 
     - name: 📤 Upload Documentation Site
       uses: actions/upload-pages-artifact@v5
@@ -163,4 +136,4 @@ jobs:
 
     - name: 🚀 Deploy to GitHub Pages
       id: deployment
-      uses: actions/deploy-pages@v5 
+      uses: actions/deploy-pages@v5
