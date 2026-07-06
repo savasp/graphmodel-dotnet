@@ -294,29 +294,113 @@ public class SchemaRegistry : IDisposable
         }
     }
 
-    private void RegisterNodeType(Type nodeType)
+    private void RegisterNodeType(Type nodeType, List<string> collisions)
     {
         var label = GetLabelFromType(nodeType);
-        var schema = CreateEntitySchemaInfo(nodeType, label);
+        var owner = GetLabelOwner<NodeAttribute>(NormalizeForIdentity(nodeType));
+
+        if (_nodeSchemas.TryGetValue(label, out var existing))
+        {
+            var existingOwner = GetLabelOwner<NodeAttribute>(NormalizeForIdentity(existing.Type));
+            if (existingOwner != owner)
+            {
+                collisions.Add(
+                    $"Node label '{label}' is used by both '{existing.Type.FullName}' and '{nodeType.FullName}'.");
+            }
+
+            return;
+        }
+
+        var schema = CreateEntitySchemaInfo(nodeType, label, collisions);
         _nodeSchemas[label] = schema;
     }
 
-    private void RegisterRelationshipType(Type relationshipType)
+    private void RegisterRelationshipType(Type relationshipType, List<string> collisions)
     {
         var type = GetLabelFromType(relationshipType);
-        var schema = CreateEntitySchemaInfo(relationshipType, type);
+        var owner = GetLabelOwner<RelationshipAttribute>(NormalizeForIdentity(relationshipType));
+
+        if (_relationshipSchemas.TryGetValue(type, out var existing))
+        {
+            var existingOwner = GetLabelOwner<RelationshipAttribute>(NormalizeForIdentity(existing.Type));
+            if (existingOwner != owner)
+            {
+                collisions.Add(
+                    $"Relationship type '{type}' is used by both '{existing.Type.FullName}' and '{relationshipType.FullName}'.");
+            }
+
+            return;
+        }
+
+        var schema = CreateEntitySchemaInfo(relationshipType, type, collisions);
         _relationshipSchemas[type] = schema;
     }
 
-    private EntitySchemaInfo CreateEntitySchemaInfo(Type entityType, string label)
+    /// <summary>
+    /// Normalizes a closed generic type to its generic type definition for identity comparisons, so that
+    /// e.g. <c>MyNode&lt;int&gt;</c> and <c>MyNode&lt;string&gt;</c> - distinct <see cref="Type"/> objects
+    /// that share a label because the fallback label strips generic arity backticks - are treated as the
+    /// same type. A genuinely different type that merely shares the label still collides.
+    /// </summary>
+    private static Type NormalizeForIdentity(Type type)
+        => type.IsConstructedGenericType ? type.GetGenericTypeDefinition() : type;
+
+    /// <summary>
+    /// Finds the type in <paramref name="type"/>'s inheritance chain (including itself) that directly
+    /// declares <typeparamref name="TAttribute"/>. If no type in the chain declares it, <paramref name="type"/>
+    /// itself is returned (the type-name fallback case).
+    /// </summary>
+    /// <remarks>
+    /// This is the "owner" of a resolved label: mirroring GM008/GM009, a type without its own
+    /// <see cref="NodeAttribute"/>/<see cref="RelationshipAttribute"/> is never a collision candidate in the
+    /// analyzer - it only silently inherits its label from an ancestor. Two types that resolve to the same
+    /// label collide only when they have different owners; sharing an owner means one is legitimately
+    /// inheriting the other's (or a common ancestor's) label.
+    /// </remarks>
+    private static Type GetLabelOwner<TAttribute>(Type type) where TAttribute : Attribute
+    {
+        // Callers pass an already-normalized (generic-definition) type - see NormalizeForIdentity - so the
+        // base-type chain from here on is well-defined without needing further generic handling.
+        var current = type;
+        while (current is not null)
+        {
+            if (current.GetCustomAttribute<TAttribute>(inherit: false) is not null)
+            {
+                return current;
+            }
+
+            current = current.BaseType;
+        }
+
+        return type;
+    }
+
+    private EntitySchemaInfo CreateEntitySchemaInfo(Type entityType, string label, List<string> collisions)
     {
         var properties = new Dictionary<string, PropertySchemaInfo>();
         var allProperties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+        // GM007 mirror: within one entity type's full inheritance chain, two properties must not resolve
+        // to the same storage label (case-sensitive, matching the analyzer's StringComparer.Ordinal use).
+        var resolvedLabels = new Dictionary<string, PropertyInfo>(StringComparer.Ordinal);
 
         foreach (var property in allProperties)
         {
             var propertySchema = CreatePropertySchemaInfo(property);
             properties[property.Name] = propertySchema;
+
+            var resolvedLabel = propertySchema.Name;
+            if (resolvedLabels.TryGetValue(resolvedLabel, out var existingProperty))
+            {
+                collisions.Add(
+                    $"Property label '{resolvedLabel}' on '{entityType.FullName}' is used by both " +
+                    $"'{existingProperty.DeclaringType?.FullName}.{existingProperty.Name}' and " +
+                    $"'{property.DeclaringType?.FullName}.{property.Name}'.");
+            }
+            else
+            {
+                resolvedLabels[resolvedLabel] = property;
+            }
         }
 
         return new EntitySchemaInfo
@@ -391,6 +475,10 @@ public class SchemaRegistry : IDisposable
 
     private void RegisterGraphEntityTypes(IEnumerable<Assembly> assemblies)
     {
+        // Collisions are collected across the whole scan (rather than thrown on the first one found) so a
+        // single aggregated GraphException lists every conflict, letting the caller fix them all in one pass.
+        var collisions = new List<string>();
+
         // Late-loaded assemblies are discovered lazily on schema misses instead of via
         // AppDomain.AssemblyLoad so the registry has no event-subscription lifetime to manage.
         foreach (var assembly in assemblies)
@@ -404,13 +492,20 @@ public class SchemaRegistry : IDisposable
 
             foreach (var nodeType in nodeTypes)
             {
-                RegisterNodeType(nodeType);
+                RegisterNodeType(nodeType, collisions);
             }
 
             foreach (var relationshipType in relationshipTypes)
             {
-                RegisterRelationshipType(relationshipType);
+                RegisterRelationshipType(relationshipType, collisions);
             }
+        }
+
+        if (collisions.Count > 0)
+        {
+            throw new GraphException(
+                $"Duplicate label(s) detected while registering graph entity types:{Environment.NewLine}" +
+                string.Join(Environment.NewLine, collisions.Select(c => $"  - {c}")));
         }
     }
 

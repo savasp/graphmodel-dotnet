@@ -24,7 +24,7 @@ public class ToDynamicExtensionsTests
     /// <summary>
     /// Test node record for testing ToDynamic functionality.
     /// </summary>
-    public record TestNode : Node
+    public record DynamicTestNode : Node
     {
         public string Name { get; init; } = string.Empty;
         public int Age { get; init; }
@@ -34,7 +34,7 @@ public class ToDynamicExtensionsTests
     /// <summary>
     /// Test relationship record for testing ToDynamic functionality.
     /// </summary>
-    public record TestRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
+    public record DynamicTestRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
     {
         public string Description { get; init; } = string.Empty;
         public DateTime CreatedAt { get; init; }
@@ -45,7 +45,7 @@ public class ToDynamicExtensionsTests
     public void ToDynamicNode_ConvertsStronglyTypedNodeToDynamicNode()
     {
         // Arrange
-        var testNode = new TestNode
+        var testNode = new DynamicTestNode
         {
             Name = "John Doe",
             Age = 30,
@@ -68,7 +68,7 @@ public class ToDynamicExtensionsTests
     public void ToDynamicRelationship_ConvertsStronglyTypedRelationshipToDynamicRelationship()
     {
         // Arrange
-        var testRelationship = new TestRelationship("node1", "node2")
+        var testRelationship = new DynamicTestRelationship("node1", "node2")
         {
             Description = "Test relationship",
             CreatedAt = FixedCreatedAt,
@@ -93,8 +93,8 @@ public class ToDynamicExtensionsTests
     public void ToDynamic_WithInterfaceTypes_ConvertsCorrectly()
     {
         // Arrange
-        var testNode = new TestNode { Name = "Alice", Age = 25, Email = "alice@example.com" };
-        var testRelationship = new TestRelationship("node1", "node2") { Description = "Test", IsActive = true };
+        var testNode = new DynamicTestNode { Name = "Alice", Age = 25, Email = "alice@example.com" };
+        var testRelationship = new DynamicTestRelationship("node1", "node2") { Description = "Test", IsActive = true };
 
         // Act
         INode nodeInterface = testNode;
@@ -114,7 +114,7 @@ public class ToDynamicExtensionsTests
     public void ToDynamicNode_WithSpecificType_ConvertsCorrectly()
     {
         // Arrange
-        var testNode = new TestNode { Name = "Bob", Age = 35, Email = "bob@example.com" };
+        var testNode = new DynamicTestNode { Name = "Bob", Age = 35, Email = "bob@example.com" };
 
         // Act
         var dynamicNode = testNode.ToDynamicNode();
@@ -129,7 +129,7 @@ public class ToDynamicExtensionsTests
     public void ToDynamicRelationship_WithSpecificType_ConvertsCorrectly()
     {
         // Arrange
-        var testRelationship = new TestRelationship("node1", "node2")
+        var testRelationship = new DynamicTestRelationship("node1", "node2")
         {
             Description = "Specific test",
             IsActive = false
@@ -148,7 +148,7 @@ public class ToDynamicExtensionsTests
     public void ToDynamic_ExcludesBaseProperties()
     {
         // Arrange
-        var testNode = new TestNode { Name = "Test", Age = 42, Email = "test@example.com" };
+        var testNode = new DynamicTestNode { Name = "Test", Age = 42, Email = "test@example.com" };
 
         // Act
         var dynamicNode = testNode.ToDynamic();

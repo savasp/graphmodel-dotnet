@@ -18,6 +18,13 @@
     <ItemGroup>
         <PackageReference Include="xunit.v3.mtp-v2" />
         <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+        <!--
+            Used only by RuntimeLabelCollisionTests to compile-and-load small, isolated in-memory
+            assemblies per test scenario: SchemaRegistry.InitializeAsync scans every assembly in
+            AppDomain.CurrentDomain, so intentionally-colliding fixture types cannot be declared as
+            ordinary members of this test assembly without breaking every other test that calls it.
+        -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     </ItemGroup>
 
     <ItemGroup>
