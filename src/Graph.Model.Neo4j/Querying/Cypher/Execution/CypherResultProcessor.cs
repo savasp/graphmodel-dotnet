@@ -285,7 +285,7 @@ internal sealed class CypherResultProcessor
 
                 entityInfo.ComplexProperties[propertyName] = new Property(
                     propertySchema.PropertyInfo,
-                    propertySchema.Neo4jPropertyName,
+                    propertySchema.PropertyName,
                     propertySchema.IsNullable,
                     new EntityCollection(propertySchema.ElementType!, children));
             }
@@ -295,7 +295,7 @@ internal sealed class CypherResultProcessor
 
                 entityInfo.ComplexProperties[propertyName] = new Property(
                     propertySchema.PropertyInfo,
-                    propertySchema.Neo4jPropertyName,
+                    propertySchema.PropertyName,
                     propertySchema.IsNullable,
                     child);
             }
@@ -718,7 +718,7 @@ internal sealed class CypherResultProcessor
         var result = new Dictionary<string, Property>();
         foreach (var (key, value) in properties)
         {
-            if (key == SerializationBridge.MetadataPropertyName)
+            if (key is SerializationBridge.MetadataPropertyName or SerializationBridge.EntityKindPropertyName)
                 continue;
             // Use SerializationBridge to convert Neo4j values to .NET types
             object? convertedValue = value;
@@ -1112,7 +1112,7 @@ internal sealed class CypherResultProcessor
 
                 Property property = new(
                     propertySchema.PropertyInfo,
-                    propertySchema.Neo4jPropertyName,
+                    propertySchema.PropertyName,
                     propertySchema.IsNullable,
                     propertySchema.PropertyType == PropertyType.SimpleCollection
                         ? CreateSimpleCollection(convertedValue, propertySchema.ElementType!)
@@ -1170,4 +1170,3 @@ internal sealed class CypherResultProcessor
         return results;
     }
 }
-

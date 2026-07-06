@@ -30,6 +30,12 @@ public record Person : Node
 
     public DateTime CreatedAt { get; set; }
 
+    public DateOnly HiredOn { get; set; }
+
+    public TimeOnly ShiftStartsAt { get; set; }
+
+    public TimeSpan Tenure { get; set; }
+
     public double Height { get; set; }
 
     public Address? HomeAddress { get; set; }

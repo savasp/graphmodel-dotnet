@@ -16,43 +16,50 @@ This example demonstrates LINQ querying capabilities and graph traversal with de
 
 ```csharp
 // Filter by property
-var results = graph.Nodes<Person>()
+var results = await (await graph.NodesAsync<Person>())
     .Where(p => p.City == "New York")
     .OrderBy(p => p.Name)
-    .ToList();
+    .ToListAsync();
 
 // Range queries
-var ageRange = graph.Nodes<Person>()
+var ageRange = await (await graph.NodesAsync<Person>())
     .Where(p => p.Age >= 28 && p.Age <= 32)
-    .ToList();
+    .ToListAsync();
 ```
 
 ### 2. Traversal Depth Control
 
 ```csharp
-// No relationships loaded
-var node = await graph.GetNode<Person>(id, new GraphOperationOptions().WithDepth(0));
+// Immediate relationships
+var directConnections = await (await graph.NodesAsync<Person>())
+    .Where(p => p.Name == "Alice")
+    .Traverse<Person, Knows, Person>(1)
+    .ToListAsync();
 
-// Load immediate relationships
-var node = await graph.GetNode<Person>(id, new GraphOperationOptions().WithDepth(1));
-
-// Load two levels of relationships
-var node = await graph.GetNode<Person>(id, new GraphOperationOptions().WithDepth(2));
+// Up to two hops
+var extendedConnections = await (await graph.NodesAsync<Person>())
+    .Where(p => p.Name == "Alice")
+    .Traverse<Person, Knows, Person>(1, 2)
+    .ToListAsync();
 ```
 
 ### 3. Navigation Properties
 
 ```csharp
-public IEnumerable<Knows> Knows => GetRelationships<Knows>();
+var pathSegments = await (await graph.NodesAsync<Person>())
+    .Where(p => p.Name == "Alice")
+    .PathSegments<Person, Knows, Person>()
+    .ToListAsync();
 ```
 
 ### 4. Complex Relationship Queries
 
 ```csharp
 // Find people who know someone in a specific city
-var results = graph.Nodes<Person>(new GraphOperationOptions().WithDepth(1))
-    .Where(p => p.Knows.Any(k => k.Target != null && k.Target.City == "San Francisco"))
-    .ToList();
+var results = await (await graph.NodesAsync<Person>())
+    .Traverse<Person, Knows, Person>(1)
+    .Where(p => p.City == "San Francisco")
+    .ToListAsync();
 ```
 
 ## Running the Example

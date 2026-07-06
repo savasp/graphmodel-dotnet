@@ -13,7 +13,7 @@
         <LangVersion>preview</LangVersion>
         <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
         <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
-        <WarningsAsErrors>Nullable</WarningsAsErrors>
+        <WarningsAsErrors>$(WarningsAsErrors);Nullable;NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
 
         <!-- Build settings -->
         <GenerateDocumentationFile>true</GenerateDocumentationFile>

@@ -10,7 +10,7 @@
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Model.Serialization</PackageId>
         <Description>A serialization abstraction for the Graph Data Model.</Description>
-        <PackageTags>graph;database;neo4j;linq</PackageTags>
+        <PackageTags>graph;database;serialization;linq</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>

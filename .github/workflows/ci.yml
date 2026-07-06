@@ -14,7 +14,6 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: read
 
 env:
   DOTNET_NOLOGO: true
@@ -25,13 +24,16 @@ jobs:
     name: Detect changed paths
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       dotnet: ${{ steps.filter.outputs.dotnet }}
       ci_workflow: ${{ steps.filter.outputs.ci_workflow }}
       workflow_files: ${{ steps.filter.outputs.workflow_files }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dorny/paths-filter@v4
         id: filter
@@ -65,9 +67,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.workflow_files == 'true' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 2
+    permissions:
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Parse workflow YAML files
         shell: bash
@@ -91,18 +95,20 @@ jobs:
     needs: changes
     if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 15
+    permissions:
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
           cache: true
           cache-dependency-path: |
             **/*.csproj
-            Directory.Packages.props
+            global.json
 
       - name: Restore dependencies
         run: dotnet restore
@@ -119,18 +125,21 @@ jobs:
     needs: changes
     if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 15
+    permissions:
+      checks: write
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
           cache: true
           cache-dependency-path: |
             **/*.csproj
-            Directory.Packages.props
+            global.json
 
       - name: Restore dependencies
         run: dotnet restore
@@ -142,7 +151,47 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test Core
-        run: dotnet test --project tests/Graph.Model.Tests/Graph.Model.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: >
+          dotnet test
+          --project tests/Graph.Model.Tests/Graph.Model.Tests.csproj
+          --no-build
+          --configuration Release
+          --verbosity normal
+          --results-directory TestResults/test-core
+          --coverage
+          --coverage-output test-core.cobertura.xml
+          --coverage-output-format cobertura
+          --report-xunit-trx
+          --report-xunit-trx-filename test-core.trx
+
+      - name: Upload Test Core results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-core-results
+          path: TestResults/test-core/
+          retention-days: 14
+
+      - name: Publish Test Core results
+        uses: dorny/test-reporter@v3
+        if: ${{ always() && hashFiles('TestResults/test-core/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          name: Test Core
+          path: TestResults/test-core/*.trx
+          reporter: dotnet-trx
+
+      - name: Upload Test Core coverage
+        uses: codecov/codecov-action@v7
+        if: success()
+        with:
+          files: TestResults/test-core/test-core.cobertura.xml
+          flags: test-core
+          name: test-core
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+      - name: Test Core Libraries
+        run: dotnet test --project tests/Graph.Model.Core.Tests/Graph.Model.Core.Tests.csproj --no-build --configuration Release --verbosity normal
 
   test-analyzers:
     name: Test Analyzers
@@ -150,18 +199,21 @@ jobs:
     needs: changes
     if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 15
+    permissions:
+      checks: write
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
           cache: true
           cache-dependency-path: |
             **/*.csproj
-            Directory.Packages.props
+            global.json
 
       - name: Restore dependencies
         run: dotnet restore
@@ -173,24 +225,66 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test Analyzers
-        run: dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: >
+          dotnet test
+          --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj
+          --no-build
+          --configuration Release
+          --verbosity normal
+          --results-directory TestResults/test-analyzers
+          --coverage
+          --coverage-output test-analyzers.cobertura.xml
+          --coverage-output-format cobertura
+          --report-xunit-trx
+          --report-xunit-trx-filename test-analyzers.trx
+
+      - name: Upload Test Analyzers results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-analyzers-results
+          path: TestResults/test-analyzers/
+          retention-days: 14
+
+      - name: Publish Test Analyzers results
+        uses: dorny/test-reporter@v3
+        if: ${{ always() && hashFiles('TestResults/test-analyzers/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          name: Test Analyzers
+          path: TestResults/test-analyzers/*.trx
+          reporter: dotnet-trx
+
+      - name: Upload Test Analyzers coverage
+        uses: codecov/codecov-action@v7
+        if: success()
+        with:
+          files: TestResults/test-analyzers/test-analyzers.cobertura.xml
+          flags: test-analyzers
+          name: test-analyzers
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   test-translation:
     name: Test LINQ-to-Cypher translation
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 15
+    permissions:
+      checks: write
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
           cache: true
           cache-dependency-path: |
             **/*.csproj
-            Directory.Packages.props
+            global.json
 
       - name: Restore dependencies
         run: dotnet restore
@@ -202,24 +296,66 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test LINQ-to-Cypher translation (no Neo4j required)
-        run: dotnet test --project tests/Graph.Model.Neo4j.Translation.Tests/Graph.Model.Neo4j.Translation.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: >
+          dotnet test
+          --project tests/Graph.Model.Neo4j.Translation.Tests/Graph.Model.Neo4j.Translation.Tests.csproj
+          --no-build
+          --configuration Release
+          --verbosity normal
+          --results-directory TestResults/test-translation
+          --coverage
+          --coverage-output test-translation.cobertura.xml
+          --coverage-output-format cobertura
+          --report-xunit-trx
+          --report-xunit-trx-filename test-translation.trx
+
+      - name: Upload LINQ-to-Cypher translation results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-translation-results
+          path: TestResults/test-translation/
+          retention-days: 14
+
+      - name: Publish LINQ-to-Cypher translation results
+        uses: dorny/test-reporter@v3
+        if: ${{ always() && hashFiles('TestResults/test-translation/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          name: Test LINQ-to-Cypher translation
+          path: TestResults/test-translation/*.trx
+          reporter: dotnet-trx
+
+      - name: Upload LINQ-to-Cypher translation coverage
+        uses: codecov/codecov-action@v7
+        if: success()
+        with:
+          files: TestResults/test-translation/test-translation.cobertura.xml
+          flags: test-translation
+          name: test-translation
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   test-codegen:
     name: Test serialization code generator
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 15
+    permissions:
+      checks: write
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
           cache: true
           cache-dependency-path: |
             **/*.csproj
-            Directory.Packages.props
+            global.json
 
       - name: Restore dependencies
         run: dotnet restore
@@ -231,7 +367,44 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test serialization code generator (no Neo4j required)
-        run: dotnet test --project tests/Graph.Model.Serialization.CodeGen.Tests/Graph.Model.Serialization.CodeGen.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: >
+          dotnet test
+          --project tests/Graph.Model.Serialization.CodeGen.Tests/Graph.Model.Serialization.CodeGen.Tests.csproj
+          --no-build
+          --configuration Release
+          --verbosity normal
+          --results-directory TestResults/test-codegen
+          --coverage
+          --coverage-output test-codegen.cobertura.xml
+          --coverage-output-format cobertura
+          --report-xunit-trx
+          --report-xunit-trx-filename test-codegen.trx
+
+      - name: Upload serialization code generator results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-codegen-results
+          path: TestResults/test-codegen/
+          retention-days: 14
+
+      - name: Publish serialization code generator results
+        uses: dorny/test-reporter@v3
+        if: ${{ always() && hashFiles('TestResults/test-codegen/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          name: Test serialization code generator
+          path: TestResults/test-codegen/*.trx
+          reporter: dotnet-trx
+
+      - name: Upload serialization code generator coverage
+        uses: codecov/codecov-action@v7
+        if: success()
+        with:
+          files: TestResults/test-codegen/test-codegen.cobertura.xml
+          flags: test-codegen
+          name: test-codegen
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   test-neo4j:
     name: Test Neo4j Provider
@@ -239,21 +412,43 @@ jobs:
     needs: changes
     if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 20
+    permissions:
+      checks: write
+      contents: read
+
+    services:
+      neo4j:
+        image: neo4j:5
+        ports:
+          - 7687:7687
+          - 7474:7474
+        env:
+          NEO4J_AUTH: neo4j/password
+          NEO4J_PLUGINS: '["apoc"]'
+          NEO4J_dbms_security_procedures_unrestricted: apoc.*
+          NEO4J_dbms_security_procedures_allowlist: apoc.*
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
           cache: true
           cache-dependency-path: |
             **/*.csproj
-            Directory.Packages.props
+            global.json
 
-      - name: Start Neo4j
-        run: scripts/containers/start-neo4j.sh
+      - name: Wait for Neo4j
+        shell: bash
+        run: |
+          timeout 300 bash -c 'until curl --fail --silent http://localhost:7474 >/dev/null; do sleep 5; done'
 
       - name: Restore dependencies
         run: dotnet restore
@@ -265,7 +460,49 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test Neo4j Provider
-        run: dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: >
+          dotnet test
+          --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj
+          --no-build
+          --configuration Release
+          --verbosity normal
+          --results-directory TestResults/test-neo4j
+          --coverage
+          --coverage-output test-neo4j.cobertura.xml
+          --coverage-output-format cobertura
+          --report-xunit-trx
+          --report-xunit-trx-filename test-neo4j.trx
+        env:
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: password
+          USE_NEO4J_CONTAINERS: false
+
+      - name: Upload Neo4j Provider results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-neo4j-results
+          path: TestResults/test-neo4j/
+          retention-days: 14
+
+      - name: Publish Neo4j Provider results
+        uses: dorny/test-reporter@v3
+        if: ${{ always() && hashFiles('TestResults/test-neo4j/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          name: Test Neo4j Provider
+          path: TestResults/test-neo4j/*.trx
+          reporter: dotnet-trx
+
+      - name: Upload Neo4j Provider coverage
+        uses: codecov/codecov-action@v7
+        if: success()
+        with:
+          files: TestResults/test-neo4j/test-neo4j.cobertura.xml
+          flags: test-neo4j
+          name: test-neo4j
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   required-checks:
     name: Required checks
@@ -284,6 +521,8 @@ jobs:
     # individual jobs above passed, failed, were skipped, or were cancelled.
     if: ${{ always() }}
     timeout-minutes: 5
+    permissions:
+      contents: read
 
     steps:
       - name: Verify all required jobs passed or were skipped

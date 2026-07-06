@@ -7,10 +7,10 @@ Thank you for your interest in contributing to GraphModel! This document provide
 ### Prerequisites
 
 - .NET 10.0 SDK or later
-- Docker (for running Neo4j tests)
+- Docker or Podman (for running Neo4j tests)
 - Git
 
-For AI coding agents and automation, see [CLAUDE.md](CLAUDE.md) at the repo root for project context, build, and test commands.
+For AI coding agents and automation, see [AGENTS.md](AGENTS.md) at the repo root for project context, build, and test commands.
 
 ### Development Setup
 
@@ -39,7 +39,7 @@ For AI coding agents and automation, see [CLAUDE.md](CLAUDE.md) at the repo root
    # Fast provider-free tests
    dotnet test tests/Graph.Model.Analyzers.Tests --configuration Debug
 
-   # Full suite; requires a running Neo4j instance
+   # Full suite; Neo4j integration tests need a running Neo4j instance.
    dotnet test --configuration Debug
    ```
 
@@ -76,6 +76,7 @@ When reporting issues, please include:
 - Add code examples for new features
 - Update API documentation
 - Include migration notes for breaking changes
+- Provider authors should also read [Provider Implementers Guide](docs/provider-implementers-guide.md) before adding or changing provider behavior.
 
 ## 📝 Pull Request Process
 
@@ -93,9 +94,16 @@ When reporting issues, please include:
 
 3. **Test Thoroughly**
 
-   Test with a local Neo4j instance (e.g. Neo4j Desktop or Docker via `scripts/containers/start-neo4j.sh`):
+   Test with a local Neo4j instance (for example Neo4j Desktop):
 
    ```bash
+   dotnet test
+   ```
+
+   Start a local Neo4j before running the full integration suite:
+
+   ```bash
+   ./scripts/containers/start-neo4j.sh
    dotnet test --configuration Debug
    ```
 

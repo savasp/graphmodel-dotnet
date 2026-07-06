@@ -2,15 +2,14 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![.NET](https://img.shields.io/badge/.NET-10.0+-purple.svg)](https://dotnet.microsoft.com/download)
-[![GitHub release](https://img.shields.io/github/release/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel-dotnet/releases)
-[![Build Status](https://github.com/savasp/graphmodel-dotnet/workflows/🧪%20Tests/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/tests.yml)
-[![Coverage](https://github.com/savasp/graphmodel-dotnet/workflows/📊%20Code%20Coverage/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/coverage.yml)
-[![Codecov](https://codecov.io/gh/savasp/graphmodel/branch/main/graph/badge.svg)](https://codecov.io/gh/savasp/graphmodel)
-[![CodeQL](https://github.com/savasp/graphmodel-dotnet/workflows/🔒%20CodeQL%20Analysis/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/codeql.yml)
-[![Neo4j Compatibility](https://github.com/savasp/graphmodel-dotnet/workflows/🗃️%20Neo4j%20Compatibility%20Tests/badge.svg)](https://github.com/savasp/graphmodel-dotnet/actions/workflows/neo4j-compatibility.yml)
-[![Contributors](https://img.shields.io/github/contributors/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel-dotnet/graphs/contributors)
-[![Issues](https://img.shields.io/github/issues/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel-dotnet/issues)
-[![Stars](https://img.shields.io/github/stars/savasp/graphmodel.svg)](https://github.com/savasp/graphmodel-dotnet/stargazers)
+[![GitHub release](https://img.shields.io/github/v/release/cvoya-com/graphmodel-dotnet)](https://github.com/cvoya-com/graphmodel-dotnet/releases)
+[![CI](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/ci.yml/badge.svg)](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/ci.yml)
+[![Documentation](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/docs.yml/badge.svg)](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/docs.yml)
+[![Codecov](https://codecov.io/gh/cvoya-com/graphmodel-dotnet/branch/main/graph/badge.svg)](https://codecov.io/gh/cvoya-com/graphmodel-dotnet)
+[![CodeQL](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/codeql.yml/badge.svg)](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/codeql.yml)
+[![Contributors](https://img.shields.io/github/contributors/cvoya-com/graphmodel-dotnet.svg)](https://github.com/cvoya-com/graphmodel-dotnet/graphs/contributors)
+[![Issues](https://img.shields.io/github/issues/cvoya-com/graphmodel-dotnet.svg)](https://github.com/cvoya-com/graphmodel-dotnet/issues)
+[![Stars](https://img.shields.io/github/stars/cvoya-com/graphmodel-dotnet.svg)](https://github.com/cvoya-com/graphmodel-dotnet/stargazers)
 
 A powerful, type-safe .NET library ecosystem for working with graph data structures and graph databases. GraphModel provides a clean abstraction layer over graph databases with advanced LINQ querying, transaction management, and relationship traversal capabilities.
 
@@ -190,7 +189,7 @@ try
 {
     await graph.CreateNodeAsync(person, transaction: transaction);
     await graph.CreateRelationshipAsync(relationship, transaction: transaction);
-    await transaction.Commit();
+    await transaction.CommitAsync();
 }
 catch
 {
@@ -206,10 +205,10 @@ catch
 - **[Transaction Management](docs/transactions.md)** - Working with ACID transactions
 - **[Attributes & Configuration](docs/attributes.md)** - Customizing nodes and relationships
 - **[Best Practices](docs/best-practices.md)** - Performance tips and patterns
+- **[Provider Implementers Guide](docs/provider-implementers-guide.md)** - Current provider SPI, storage conventions, and contract-test reuse
 - **[Neo4j Provider](src/Graph.Model.Neo4j/README.md)** - Neo4j-specific features and configuration
 - **[Code Analyzers](src/Graph.Model.Analyzers/README.md)** - Compile-time validation rules
 - **[Code Generation](src/Graph.Model.Serialization.CodeGen/README.md)** - Build-time code generation for serialization
-- **[API Reference](docs/api)** - API documentation generated from the source code
 - **[Troubleshooting](docs/troubleshooting.md)** - In case you encounter issues
 - **[Building Graph Model](docs/graph-model-developers.md)** - Building the projects in this repository
 - **[AI agent documentation](docs/ai-agents.md)** - Where to find context for Claude Code, Codex, Copilot, and other AI coding tools
@@ -224,6 +223,8 @@ Explore comprehensive examples in the [`examples/`](examples/) directory:
 - **[Transaction Management](examples/Example3.TransactionManagement/)** - ACID transactions and rollback scenarios
 - **[Advanced Scenarios](examples/Example4.AdvancedScenarios/)** - Complex patterns and optimizations
 - **[Social Network](examples/Example5.SocialNetwork/)** - Real-world social graph implementation
+- **[Full Text Search](examples/Example6.FullTextSearch/)** - Search across nodes and relationships
+- **[Simple Movie Example](examples/SimpleMovieExample/)** - Compact movie graph walkthrough
 
 ## 🏗️ Building & Testing
 

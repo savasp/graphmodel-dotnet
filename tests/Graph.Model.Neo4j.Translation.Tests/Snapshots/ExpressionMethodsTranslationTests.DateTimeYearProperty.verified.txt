@@ -1,6 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-WHERE src.CreatedAt.Year = $p0
+WHERE datetime(src.CreatedAt).year = $p0
 
             // All complex property paths from src
             OPTIONAL MATCH src_path = (src)-[rels*1..]->(prop)

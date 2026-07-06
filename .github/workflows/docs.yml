@@ -14,6 +14,7 @@ on:
       - 'src/**'
       - 'docs/**'
       - 'scripts/build-docs.*'
+      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 jobs:
@@ -107,6 +108,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-docs
     if: github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     
     permissions:
       contents: read
@@ -128,6 +132,9 @@ jobs:
       with:
         ruby-version: '3.2'
         bundler-cache: true
+
+    - name: 🧭 Configure Pages
+      uses: actions/configure-pages@v5
 
     - name: 📦 Install Jekyll Dependencies
       run: |
@@ -155,4 +162,5 @@ jobs:
         path: _site
 
     - name: 🚀 Deploy to GitHub Pages
+      id: deployment
       uses: actions/deploy-pages@v4 

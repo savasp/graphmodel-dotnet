@@ -91,26 +91,24 @@ var users = await (await graph.NodesAsync<User>())
 
 ```csharp
 // ✅ Optimized connection settings
-var graph = new Neo4jGraph(
-    connectionString: "neo4j+s://your-server:7687",
-    username: "username",
-    password: "password",
-    config: new ConfigurationOptions
-    {
-        MaxConnectionLifetime = TimeSpan.FromMinutes(30),
-        MaxConnectionPoolSize = 100,
-        ConnectionAcquisitionTimeout = TimeSpan.FromSeconds(30),
-        ConnectionTimeout = TimeSpan.FromSeconds(30),
-        SocketKeepaliveEnabled = true
-    }
-);
+var driver = GraphDatabase.Driver(
+    "neo4j+s://your-server:7687",
+    AuthTokens.Basic("username", "password"),
+    config => config
+        .WithMaxConnectionLifetime(TimeSpan.FromMinutes(30))
+        .WithMaxConnectionPoolSize(100)
+        .WithConnectionAcquisitionTimeout(TimeSpan.FromSeconds(30))
+        .WithConnectionTimeout(TimeSpan.FromSeconds(30)));
+
+var store = new Neo4jGraphStore(driver);
+var graph = store.Graph;
 ```
 
 ### Efficient Batch Operations
 
 ```csharp
 // ✅ Good - batch create in single transaction
-using var transaction = await graph.BeginTransactionAsync();
+await using var transaction = await graph.GetTransactionAsync();
 
 var users = new List<User>();
 for (int i = 0; i < 1000; i++)
@@ -118,14 +116,16 @@ for (int i = 0; i < 1000; i++)
     users.Add(new User { Id = Guid.NewGuid().ToString(), Email = $"user{i}@example.com" });
 }
 
-// Batch create
-await graph.CreateNodes(users, transaction);
+foreach (var user in users)
+{
+    await graph.CreateNodeAsync(user, transaction: transaction);
+}
 await transaction.CommitAsync();
 
 // ❌ Avoid - individual transactions
 foreach (var user in users)
 {
-    await graph.CreateNode(user);  // Separate transaction per node!
+    await graph.CreateNodeAsync(user);  // Separate transaction per node!
 }
 ```
 
@@ -162,7 +162,8 @@ public class UserProfile : INode
 ```csharp
 // Enable query logging for development
 var loggerFactory = new LoggerFactory() { ... }
-var graph = new Neo4jGraph(connectionString, username, password, loggerFactory);
+var store = new Neo4jGraphStore(connectionString, username, password, loggerFactory: loggerFactory);
+var graph = store.Graph;
 
 // Time critical operations
 var stopwatch = Stopwatch.StartNew();
@@ -179,7 +180,8 @@ if (stopwatch.ElapsedMilliseconds > 1000)
 
 ```csharp
 // ✅ Good - dispose resources properly
-using var graph = new Neo4jGraph(connectionString, username, password);
+await using var store = new Neo4jGraphStore(connectionString, username, password);
+var graph = store.Graph;
 
 // ✅ Good - use streaming for large datasets
 await foreach (var user in (await graph.NodesAsync<User>()).AsAsyncEnumerable())
@@ -271,7 +273,8 @@ public async Task<User> GetUserAsync(string userId)
 
 ```csharp
 var loggerFactory = new LoggerFactory { ... }
-var graph = new Neo4jGraph(connectionString, username, password, loggerFactory);
+var store = new Neo4jGraphStore(connectionString, username, password, loggerFactory: loggerFactory);
+var graph = store.Graph;
 ```
 
 ### 2. Analyze Generated Cypher
@@ -321,7 +324,8 @@ public class GraphModelBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        _graph = new Neo4jGraph(connectionString, username, password);
+        var store = new Neo4jGraphStore(connectionString, username, password);
+        _graph = store.Graph;
     }
 
     [Benchmark]

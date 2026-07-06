@@ -1,0 +1,11 @@
+== Cypher ==
+MATCH (joined:Person)
+MATCH (src)-[r:KNOWS]->(tgt)
+WHERE src.Id = joined.Id
+RETURN {
+                Node: joined,
+                ComplexProperties: []
+            } AS Node
+
+== Parameters ==
+(none)

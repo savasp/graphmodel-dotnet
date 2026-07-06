@@ -204,20 +204,6 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         var target = VisitAndReturnCypher(node.Object!);
         var arguments = node.Arguments.Select(arg => VisitAndReturnCypher(arg)).ToList();
 
-        // Helper to wrap target in appropriate temporal function if needed
-        // Don't double-wrap if it's already a temporal function call
-        string WrapInTemporal(string target, string defaultWrapper)
-        {
-            if (target.StartsWith("datetime(") || target.StartsWith("localdatetime(") ||
-                target.StartsWith("date(") || target.StartsWith("time(") ||
-                target == "datetime()" || target == "localdatetime()" ||
-                target == "date()" || target == "time()")
-            {
-                return target;
-            }
-            return $"{defaultWrapper}({target})";
-        }
-
         var expression = node.Method.Name switch
         {
             "AddYears" when arguments.Count == 1 => $"{WrapInTemporal(target, "datetime")} + duration({{years: {arguments[0]}}})",
@@ -474,6 +460,11 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
                 return Expression.Constant(cypherExpression);
             }
 
+            if (TryTranslateTemporalMember(node, nestedMember) is { } temporalExpression)
+            {
+                return Expression.Constant(temporalExpression);
+            }
+
             // Regular nested member access
             var parent = VisitAndReturnCypher(nestedMember);
             return Expression.Constant($"{parent}.{node.Member.Name}");
@@ -580,6 +571,11 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
                 }
             }
 
+            if (TryTranslateTemporalMember(node, node.Expression!) is { } temporalExpression)
+            {
+                return Expression.Constant(temporalExpression);
+            }
+
             _logger.LogDebug("Found parameter member access: {Alias}.{Member}", alias, node.Member.Name);
             return Expression.Constant($"{alias}.{node.Member.Name}");
         }
@@ -601,6 +597,120 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         }
 
         throw new NotSupportedException($"Member expression {node.Member.Name} is not supported. Expression: {node}, Expression type: {node.Expression?.GetType().Name}, Current alias: {_scope.CurrentAlias}, Context alias: {_contextAlias}");
+    }
+
+    private string? TryTranslateTemporalMember(MemberExpression node, Expression targetExpression)
+    {
+        var declaringType = node.Member.DeclaringType;
+        if (declaringType is null)
+        {
+            return null;
+        }
+
+        var target = VisitAndReturnCypher(targetExpression);
+        var expression = TranslateTemporalMember(declaringType, node.Member.Name, target);
+        if (expression is not null)
+        {
+            _logger.LogDebug("Translated temporal member {Type}.{Member} to {Expression}", declaringType.Name, node.Member.Name, expression);
+        }
+
+        return expression;
+    }
+
+    private static string? TranslateTemporalMember(Type declaringType, string memberName, string target)
+    {
+        if (declaringType == typeof(DateTime) || declaringType == typeof(DateTimeOffset))
+        {
+            var temporalTarget = WrapInTemporal(target, "datetime");
+            return memberName switch
+            {
+                "Year" => $"{temporalTarget}.year",
+                "Month" => $"{temporalTarget}.month",
+                "Day" => $"{temporalTarget}.day",
+                "Hour" => $"{temporalTarget}.hour",
+                "Minute" => $"{temporalTarget}.minute",
+                "Second" => $"{temporalTarget}.second",
+                "Millisecond" => $"{temporalTarget}.millisecond",
+                "DayOfWeek" => $"{temporalTarget}.dayOfWeek",
+                "DayOfYear" => $"{temporalTarget}.ordinalDay",
+                "Date" => $"date({temporalTarget})",
+                "TimeOfDay" => $"time({temporalTarget})",
+                _ => null
+            };
+        }
+
+        if (declaringType == typeof(DateOnly))
+        {
+            var temporalTarget = WrapInTemporal(target, "date");
+            return memberName switch
+            {
+                "Year" => $"{temporalTarget}.year",
+                "Month" => $"{temporalTarget}.month",
+                "Day" => $"{temporalTarget}.day",
+                "DayOfWeek" => $"{temporalTarget}.dayOfWeek",
+                "DayOfYear" => $"{temporalTarget}.ordinalDay",
+                _ => null
+            };
+        }
+
+        if (declaringType == typeof(TimeOnly))
+        {
+            const long ticksPerMillisecond = TimeSpan.TicksPerMillisecond;
+            const long ticksPerSecond = TimeSpan.TicksPerSecond;
+            const long ticksPerMinute = TimeSpan.TicksPerMinute;
+            const long ticksPerHour = TimeSpan.TicksPerHour;
+
+            return memberName switch
+            {
+                "Hour" => $"toInteger(floor({target} / {ticksPerHour}))",
+                "Minute" => $"toInteger(floor(({target} % {ticksPerHour}) / {ticksPerMinute}))",
+                "Second" => $"toInteger(floor(({target} % {ticksPerMinute}) / {ticksPerSecond}))",
+                "Millisecond" => $"toInteger(floor(({target} % {ticksPerSecond}) / {ticksPerMillisecond}))",
+                _ => null
+            };
+        }
+
+        if (declaringType == typeof(TimeSpan))
+        {
+            const long millisecondsPerDay = 24 * 60 * 60 * 1000;
+            const long millisecondsPerHour = 60 * 60 * 1000;
+            const long millisecondsPerMinute = 60 * 1000;
+            const long millisecondsPerSecond = 1000;
+
+            return memberName switch
+            {
+                "Days" => $"toInteger(floor({target} / {millisecondsPerDay}))",
+                "Hours" => $"toInteger(floor(({target} % {millisecondsPerDay}) / {millisecondsPerHour}))",
+                "Minutes" => $"toInteger(floor(({target} % {millisecondsPerHour}) / {millisecondsPerMinute}))",
+                "Seconds" => $"toInteger(floor(({target} % {millisecondsPerMinute}) / {millisecondsPerSecond}))",
+                "Milliseconds" => $"toInteger({target} % {millisecondsPerSecond})",
+                "TotalDays" => $"({target} / {millisecondsPerDay}.0)",
+                "TotalHours" => $"({target} / {millisecondsPerHour}.0)",
+                "TotalMinutes" => $"({target} / {millisecondsPerMinute}.0)",
+                "TotalSeconds" => $"({target} / {millisecondsPerSecond}.0)",
+                "TotalMilliseconds" => target,
+                _ => null
+            };
+        }
+
+        return null;
+    }
+
+    private static string WrapInTemporal(string target, string defaultWrapper)
+    {
+        if (target.StartsWith("datetime(", StringComparison.Ordinal) ||
+            target.StartsWith("localdatetime(", StringComparison.Ordinal) ||
+            target.StartsWith("date(", StringComparison.Ordinal) ||
+            target.StartsWith("time(", StringComparison.Ordinal) ||
+            target == "datetime()" ||
+            target == "localdatetime()" ||
+            target == "date()" ||
+            target == "time()")
+        {
+            return target;
+        }
+
+        return $"{defaultWrapper}({target})";
     }
 
     private static bool IsCollectionMethod(MethodCallExpression node)

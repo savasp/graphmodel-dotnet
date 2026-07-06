@@ -1,0 +1,6 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+RETURN CASE WHEN $p0 IS NULL THEN count(CASE WHEN src.FirstName IS NULL THEN 1 END) > 0 ELSE coalesce($p0 IN collect(src.FirstName), false) END AS contains
+
+== Parameters ==
+p0 = "Alice"

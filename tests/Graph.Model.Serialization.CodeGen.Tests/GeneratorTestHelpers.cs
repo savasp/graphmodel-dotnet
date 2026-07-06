@@ -34,11 +34,7 @@ internal static class GeneratorTestHelpers
 
     public static string RunGenerator(string source, [CallerMemberName] string testName = "")
     {
-        var compilation = CSharpCompilation.Create(
-            assemblyName: $"CodeGenTests.{testName}",
-            syntaxTrees: [CSharpSyntaxTree.ParseText(source, path: "Input.cs")],
-            references: References.Value,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+        var compilation = CreateCompilation(source, testName);
 
         var generator = new EntitySerializerGenerator();
         var driver = CSharpGeneratorDriver.Create(generator.AsSourceGenerator());
@@ -51,6 +47,34 @@ internal static class GeneratorTestHelpers
         var runResult = driver.GetRunResult();
 
         return Render(runResult, generatorDiagnostics, outputCompilation);
+    }
+
+    public static IReadOnlyCollection<IncrementalStepRunReason> GetSecondRunReasons(
+        string source,
+        string trackingName,
+        [CallerMemberName] string testName = "")
+    {
+        var compilation = CreateCompilation(source, testName);
+
+        var generator = new EntitySerializerGenerator();
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            generators: [generator.AsSourceGenerator()],
+            additionalTexts: null,
+            parseOptions: null,
+            optionsProvider: null,
+            driverOptions: new GeneratorDriverOptions(
+                disabledOutputs: IncrementalGeneratorOutputKind.None,
+                trackIncrementalGeneratorSteps: true,
+                baseDirectory: null));
+
+        driver = driver.RunGenerators(compilation);
+        driver = driver.RunGenerators(compilation);
+
+        var generatorResult = driver.GetRunResult().Results.Single();
+
+        return generatorResult.TrackedSteps.TryGetValue(trackingName, out var steps)
+            ? steps.SelectMany(step => step.Outputs).Select(output => output.Reason).ToArray()
+            : [];
     }
 
     private static string Render(
@@ -126,5 +150,14 @@ internal static class GeneratorTestHelpers
         references.Add(MetadataReference.CreateFromFile(typeof(EntitySerializerRegistry).Assembly.Location));
 
         return [.. references];
+    }
+
+    private static CSharpCompilation CreateCompilation(string source, string testName)
+    {
+        return CSharpCompilation.Create(
+            assemblyName: $"CodeGenTests.{testName}",
+            syntaxTrees: [CSharpSyntaxTree.ParseText(source, path: "Input.cs")],
+            references: References.Value,
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
     }
 }

@@ -335,7 +335,7 @@ internal sealed class PersonSerializer : IEntitySerializer
                 ?? typeof(Cvoya.Graph.Model.INode).GetProperty("Labels")!;
             simpleProperties["Labels"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Labels",
+                PropertyName: "Labels",
                 PropertyType: PropertyType.SimpleCollection,
                 ElementType: typeof(string),
                 IsNullable: false
@@ -348,7 +348,7 @@ internal sealed class PersonSerializer : IEntitySerializer
                 ?? typeof(Cvoya.Graph.Model.IEntity).GetProperty("Id")!;
             simpleProperties["Id"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Id",
+                PropertyName: "Id",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -359,7 +359,7 @@ internal sealed class PersonSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.Person).GetProperty("FirstName")!;
             simpleProperties["FirstName"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "FirstName",
+                PropertyName: "FirstName",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -370,7 +370,7 @@ internal sealed class PersonSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.Person).GetProperty("PhoneNumbers")!;
             complexProperties["PhoneNumbers"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "PhoneNumbers",
+                PropertyName: "PhoneNumbers",
                 PropertyType: PropertyType.ComplexCollection,
                 IsNullable: false,
                 NestedSchema: TestNamespace.Generated.PhoneNumberSerializer.GetSchemaStatic()
@@ -575,7 +575,7 @@ internal sealed class PhoneNumberSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.PhoneNumber).GetProperty("CountryCode")!;
             simpleProperties["CountryCode"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "CountryCode",
+                PropertyName: "CountryCode",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );
@@ -586,7 +586,7 @@ internal sealed class PhoneNumberSerializer : IEntitySerializer
             var propInfo = typeof(TestNamespace.PhoneNumber).GetProperty("Number")!;
             simpleProperties["Number"] = new PropertySchema(
                 PropertyInfo: propInfo,
-                Neo4jPropertyName: "Number",
+                PropertyName: "Number",
                 PropertyType: PropertyType.Simple,
                 IsNullable: false
             );

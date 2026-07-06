@@ -25,6 +25,8 @@ using global::Neo4j.Driver;
 internal static class SerializationBridge
 {
     internal const string MetadataPropertyName = "__metadata__";
+    internal const string EntityKindPropertyName = "__graphModelEntityKind__";
+    internal const string NodeEntityKind = "Node";
     private const string TypeNameKey = "type";
 
     /// <summary>

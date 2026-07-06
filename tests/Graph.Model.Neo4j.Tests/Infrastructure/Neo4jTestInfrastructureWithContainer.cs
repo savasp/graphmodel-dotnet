@@ -19,31 +19,40 @@ using Testcontainers.Neo4j;
 
 internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
 {
+    private const string ContainerUsername = "neo4j";
+    private const string ContainerPassword = "password";
     private static Neo4jContainer? container;
 
-    static Neo4jTestInfrastructureWithContainer()
+    private static Neo4jContainer Container => container ??= new Neo4jBuilder()
+        .WithAutoRemove(true)
+        .WithCleanUp(true)
+        .WithImage("neo4j:5")
+        .WithEnvironment("NEO4J_AUTH", $"{ContainerUsername}/{ContainerPassword}")
+        .WithEnvironment("NEO4J_PLUGINS", "[\"apoc\"]")
+        .WithEnvironment("NEO4J_dbms_security_procedures_unrestricted", "apoc.*")
+        .WithEnvironment("NEO4J_dbms_security_procedures_allowlist", "apoc.*")
+        .WithEnvironment("apoc.trigger.enabled", "true")
+        .Build();
+
+    public string ConnectionString
     {
-        // Initialize the Neo4j test container. There is one per process.
-        container = new Neo4jBuilder()
-            .WithEnterpriseEdition(true)
-            .WithAutoRemove(true)
-            .WithName("cvoya.neo4j.testing.shared")
-            .WithCleanUp(true)
-            .WithImage("neo4j:2025-enterprise")
-            .WithEnvironment("NEO4J_AUTH", "none")
-            .WithEnvironment("NEO4JLABS_PLUGINS", "[\"apoc\"]")
-            .WithEnvironment("NEO4J_dbms_security_procedures_unrestricted", "apoc.*")
-            .WithEnvironment("NEO4J_dbms_security_procedures_allowlist", "apoc.*")
-            .WithEnvironment("apoc.trigger.enabled", "true")
-            .Build();
+        get
+        {
+            if (!Active)
+            {
+                throw new InvalidOperationException("Container is not running");
+            }
+
+            var connectionString = Container.GetConnectionString();
+            return connectionString.StartsWith("neo4j://", StringComparison.Ordinal)
+                ? $"bolt://{connectionString["neo4j://".Length..]}"
+                : connectionString;
+        }
     }
 
-    public string ConnectionString => Active
-        ? container?.GetConnectionString().Replace("neo4j", "bolt") ?? throw new InvalidOperationException("Container hasn't been initialized. You must call InitializeAsync() first.")
-        : throw new InvalidOperationException("Container is not running");
+    public string Username => ContainerUsername;
 
-    public string Username => "neo4j"; // Default username for Neo4j without authentication
-    public string Password => "password"; // Default password for Neo4j without authentication
+    public string Password => ContainerPassword;
 
     public async ValueTask InitializeAsync()
     {
@@ -65,14 +74,9 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
 
     private async Task EnsureReady()
     {
-        if (container is null)
+        if (Container.State != TestcontainersStates.Running)
         {
-            throw new InvalidOperationException("Container hasn't been initialized. You must call InitializeAsync() first.");
-        }
-
-        if (container.State != TestcontainersStates.Running)
-        {
-            await container.StartAsync();
+            await Container.StartAsync();
         }
     }
 }

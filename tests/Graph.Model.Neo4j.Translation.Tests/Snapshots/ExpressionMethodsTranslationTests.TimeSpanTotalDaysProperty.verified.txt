@@ -1,5 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
+WHERE (src.Tenure / 86400000.0) > $p0
 
             // All complex property paths from src
             OPTIONAL MATCH src_path = (src)-[rels*1..]->(prop)
@@ -30,4 +31,4 @@ MATCH (src:Person|Manager)
             } AS Node
 
 == Parameters ==
-(none)
+p0 = 30

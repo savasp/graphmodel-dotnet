@@ -117,6 +117,34 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task DateTimeMonthAndDayProperties()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.CreatedAt.Month == 7 && p.CreatedAt.Day == 4);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task DateOnlyYearProperty()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.HiredOn.Year == 2024);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task TimeOnlyHourProperty()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.ShiftStartsAt.Hour == 9);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task TimeSpanTotalDaysProperty()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.Tenure.TotalDays > 30);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task MathAbs()
     {
         var query = Root.Nodes<Person>().Where(p => Math.Abs(p.Age - 30) < 5);

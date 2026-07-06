@@ -10,6 +10,9 @@
         <!-- Use the new testing platform -->
         <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
 
+        <!-- xunit.v3 generates the entry point used by Microsoft.Testing.Platform. -->
+        <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+
         <!-- Enable live output -->
         <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
         <TestingPlatformShowProgress>true</TestingPlatformShowProgress>
