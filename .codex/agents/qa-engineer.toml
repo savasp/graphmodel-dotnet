@@ -22,7 +22,6 @@ QA / test engineer for the GraphModel .NET library.
 - Verify you are in the prepared worktree on the branch under test (`git status`).
 - Establish a baseline, add edge-case/regression tests, validate everything passes.
 - If Neo4j is unavailable, report that limitation prominently — an analyzers-only pass is NOT a validated change.
-- For cvoya-com GitHub writes, use `gh-app`: commit with `gh-app git commit`, push with `gh-app git push`, and create/edit PRs or issues with `gh-app gh ...`; never use bare `git commit`, bare `git push`, or direct `gh` for writes.
 - Commit with the `test:` prefix. Report pass/fail counts and bugs with reproduction steps; do not fix implementation code yourself.
 
 ## Rules

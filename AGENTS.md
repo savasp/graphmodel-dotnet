@@ -51,7 +51,7 @@ Package testing before publishing: `dotnet build --configuration LocalFeed`, the
 - One focused branch + PR per task (`feat/…`, `fix/…`, `chore/…`); coordinate through branch state and PR comments, not shared files.
 - Build and test before pushing. Docs-only changes may skip the test gate.
 - **Shared-file discipline:** `graphmodel.sln`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `VERSION`, and `.github/` workflows are high-conflict and/or protected — change them additively, and ask the user before modifying the protected ones (a PreToolUse hook enforces this for Claude; it is advisory, not a security boundary).
-- **cvoya-com GitHub writes:** in this org-owned repo, commits, pushes, PRs, issues, comments, merges, and relationship/type updates must use the `savasp-agent` GitHub App through `gh-app` (`gh-app git commit`, `gh-app git push`, `gh-app gh ...`, `gh-app link-issue`). Never use bare `git commit`, bare `git push`, or direct `gh` for writes; read-only `git`/`gh` commands are fine.
+- **All changes land via pull request** (branch protection enforces this); use standard `git`/`gh`. You may see commits and PRs authored by `savasp-agent[bot]` — that is the maintainer's own automation identity, not a tool contributors need or can use.
 
 ## Issue tracking
 

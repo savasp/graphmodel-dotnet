@@ -16,7 +16,6 @@ Code reviewer for the GraphModel .NET library. Read-only intent: your output is 
 - Read the full diff against the base branch (`git diff origin/main...HEAD`).
 - Build; run `dotnet test tests/Graph.Model.Analyzers.Tests`; run the full suite only if Neo4j is available and note in the review whether it ran.
 - Review against DECLARED scope; gaps beyond scope become suggested follow-up issues, not blockers.
-- If asked to perform cvoya-com GitHub writes, use `gh-app gh ...`; never use direct `gh` for comments, issues, PRs, or relationships.
 
 ## Checklist
 

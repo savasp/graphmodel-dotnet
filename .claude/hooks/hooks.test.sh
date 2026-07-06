@@ -32,23 +32,6 @@ V=.claude/hooks/verify-build.sh
 check "verify-build ignores non-.cs files"    0 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/README.md\"}}" "$V"
 check "verify-build ignores empty input"      0 "{}" "$V"
 
-G=.claude/hooks/guard-github-writes.sh
-check "github guard blocks bare git commit"   2 "{\"tool_input\":{\"command\":\"git commit -m \\\"wip\\\"\"}}" "$G"
-check "github guard blocks bare git push"     2 "{\"tool_input\":{\"command\":\"git push origin HEAD\"}}" "$G"
-check "github guard blocks gh pr create"      2 "{\"tool_input\":{\"command\":\"gh pr create --fill\"}}" "$G"
-check "github guard blocks gh issue edit"     2 "{\"tool_input\":{\"command\":\"gh issue edit 70 --type Task\"}}" "$G"
-check "github guard blocks gh api write"      2 "{\"tool_input\":{\"command\":\"gh api repos/o/r/issues -f title=x\"}}" "$G"
-check "github guard allows gh-app commit"     0 "{\"tool_input\":{\"command\":\"gh-app git commit -m \\\"wip\\\"\"}}" "$G"
-check "github guard allows gh-app push"       0 "{\"tool_input\":{\"command\":\"gh-app git push origin HEAD\"}}" "$G"
-check "github guard allows gh-app pr create"  0 "{\"tool_input\":{\"command\":\"gh-app gh pr create --fill\"}}" "$G"
-check "github guard allows read-only git"     0 "{\"tool_input\":{\"command\":\"git status -sb\"}}" "$G"
-check "github guard allows read-only gh"      0 "{\"tool_input\":{\"command\":\"gh pr view 1\"}}" "$G"
-check "github guard allows quoted mentions"   0 "{\"tool_input\":{\"command\":\"echo \\\"git commit && gh pr create\\\"\"}}" "$G"
-
-check "github guard blocks env-prefixed push"  2 "{\"tool_input\":{\"command\":\"FOO=bar git push origin HEAD\"}}" "$G"
-check "github guard blocks sudo-prefixed push" 2 "{\"tool_input\":{\"command\":\"sudo git push origin HEAD\"}}" "$G"
-check "github guard allows env-prefixed gh-app" 0 "{\"tool_input\":{\"command\":\"FOO=bar gh-app git push origin HEAD\"}}" "$G"
-
 echo "----"
 echo "$pass passed, $fail failed"
 [ $fail -eq 0 ]

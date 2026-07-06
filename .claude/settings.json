@@ -8,7 +8,6 @@
       "Bash(dotnet msbuild*)",
       "Bash(dotnet format*)",
       "Bash(git *)",
-      "Bash(gh-app *)",
       "Bash(gh *)",
       "Bash(ls *)",
       "Bash(mkdir *)",
@@ -24,15 +23,6 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-files.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-github-writes.sh"
           }
         ]
       }
