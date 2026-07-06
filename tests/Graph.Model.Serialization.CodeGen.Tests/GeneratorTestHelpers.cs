@@ -56,8 +56,104 @@ internal static class GeneratorTestHelpers
     {
         var compilation = CreateCompilation(source, testName);
 
+        var driver = CreateTrackingDriver();
+
+        driver = driver.RunGenerators(compilation);
+        driver = driver.RunGenerators(compilation);
+
+        return GetStepReasons(driver, trackingName);
+    }
+
+    /// <summary>
+    /// Runs the generator once against <paramref name="source"/> plus an unrelated,
+    /// non-entity source file, then re-runs it after applying a whitespace-only edit to that
+    /// unrelated file (leaving <paramref name="source"/> untouched). Returns the step outputs
+    /// for <paramref name="trackingName"/> from the second run, so callers can assert that an
+    /// edit to unrelated source doesn't invalidate the tracked step (i.e. it reports
+    /// <see cref="IncrementalStepRunReason.Cached"/> or <see cref="IncrementalStepRunReason.Unchanged"/>,
+    /// never <see cref="IncrementalStepRunReason.New"/> or <see cref="IncrementalStepRunReason.Modified"/>).
+    /// </summary>
+    public static IReadOnlyCollection<IncrementalStepRunReason> GetUnrelatedEditReasons(
+        string source,
+        string trackingName,
+        [CallerMemberName] string testName = "")
+    {
+        var (_, driver) = RunBeforeAndAfterUnrelatedEdit(source, testName);
+
+        return GetStepReasons(driver, trackingName);
+    }
+
+    /// <summary>
+    /// Runs the generator against <paramref name="source"/> plus an unrelated, non-entity source
+    /// file, then re-runs it after applying a whitespace-only edit to that unrelated file, and
+    /// returns the rendered generated-source text (see <see cref="Render"/>) from both runs so
+    /// callers can assert they are byte-identical.
+    /// </summary>
+    public static (string Before, string After) GetGeneratedSourceBeforeAndAfterUnrelatedEdit(
+        string source,
+        [CallerMemberName] string testName = "")
+    {
+        var (beforeResult, driver) = RunBeforeAndAfterUnrelatedEdit(source, testName);
+        var afterResult = driver.GetRunResult();
+
+        var before = RenderGeneratedSourcesOnly(beforeResult);
+        var after = RenderGeneratedSourcesOnly(afterResult);
+
+        return (before, after);
+    }
+
+    private static (GeneratorDriverRunResult FirstRunResult, GeneratorDriver Driver) RunBeforeAndAfterUnrelatedEdit(
+        string source,
+        string testName)
+    {
+        const string unrelatedSource = """
+            namespace TestNamespace;
+
+            public static class Unrelated
+            {
+                public static int Value => 42;
+            }
+            """;
+
+        var unrelatedTree = CSharpSyntaxTree.ParseText(unrelatedSource, path: "Unrelated.cs");
+        var compilation = CreateCompilation(source, testName).AddSyntaxTrees(unrelatedTree);
+
+        var driver = CreateTrackingDriver();
+        driver = driver.RunGenerators(compilation);
+        var firstRunResult = driver.GetRunResult();
+
+        // Apply a whitespace-only edit to the unrelated file - the entity source is untouched.
+        var editedUnrelatedTree = CSharpSyntaxTree.ParseText(unrelatedSource + "\n", path: "Unrelated.cs");
+        var editedCompilation = compilation.ReplaceSyntaxTree(unrelatedTree, editedUnrelatedTree);
+
+        driver = driver.RunGenerators(editedCompilation);
+
+        return (firstRunResult, driver);
+    }
+
+    private static string RenderGeneratedSourcesOnly(GeneratorDriverRunResult runResult)
+    {
+        var sb = new System.Text.StringBuilder();
+
+        var generatedTrees = runResult.Results
+            .SelectMany(r => r.GeneratedSources)
+            .OrderBy(s => s.HintName, StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var generated in generatedTrees)
+        {
+            sb.AppendLine($"== {generated.HintName} ==");
+            sb.AppendLine(generated.SourceText.ToString().TrimEnd());
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    private static GeneratorDriver CreateTrackingDriver()
+    {
         var generator = new EntitySerializerGenerator();
-        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+        return CSharpGeneratorDriver.Create(
             generators: [generator.AsSourceGenerator()],
             additionalTexts: null,
             parseOptions: null,
@@ -66,10 +162,12 @@ internal static class GeneratorTestHelpers
                 disabledOutputs: IncrementalGeneratorOutputKind.None,
                 trackIncrementalGeneratorSteps: true,
                 baseDirectory: null));
+    }
 
-        driver = driver.RunGenerators(compilation);
-        driver = driver.RunGenerators(compilation);
-
+    private static IReadOnlyCollection<IncrementalStepRunReason> GetStepReasons(
+        GeneratorDriver driver,
+        string trackingName)
+    {
         var generatorResult = driver.GetRunResult().Results.Single();
 
         return generatorResult.TrackedSteps.TryGetValue(trackingName, out var steps)
