@@ -100,8 +100,7 @@ internal static class LinqOperatorDispatch
 
             foreach (var candidate in candidates)
             {
-                var key = candidate;
-                table[key] = op;
+                table[candidate] = op;
             }
         }
 
