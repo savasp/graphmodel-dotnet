@@ -34,9 +34,10 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
                 NodeAttributeName,
                 predicate: static (node, _) => node is TypeDeclarationSyntax,
                 transform: GetAttributedEntityTarget)
-            .Where(static symbol => symbol is not null)
-            .Select(static (symbol, _) => symbol!)
+            .Where(static model => model is not null)
+            .Select(static (model, _) => model!)
             .Collect()
+            .Select(static (sets, _) => TypeDiscoverySet.FromSets(sets))
             .WithTrackingName("GraphModel.NodeAttributeEntityTypes");
 
         var relationshipAttributeTypes = context.SyntaxProvider
@@ -44,14 +45,15 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
                 RelationshipAttributeName,
                 predicate: static (node, _) => node is TypeDeclarationSyntax,
                 transform: GetAttributedEntityTarget)
-            .Where(static symbol => symbol is not null)
-            .Select(static (symbol, _) => symbol!)
+            .Where(static model => model is not null)
+            .Select(static (model, _) => model!)
             .Collect()
+            .Select(static (sets, _) => TypeDiscoverySet.FromSets(sets))
             .WithTrackingName("GraphModel.RelationshipAttributeEntityTypes");
 
         var attributedTypes = nodeAttributeTypes
             .Combine(relationshipAttributeTypes)
-            .Select(static (combined, _) => DedupeTypes(combined.Left, combined.Right))
+            .Select(static (combined, _) => TypeDiscoverySet.Merge(combined.Left, combined.Right))
             .WithTrackingName("GraphModel.AttributedEntityTypes");
 
         // Keep support for unannotated INode/IRelationship implementations in the current compilation.
@@ -59,9 +61,10 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
             .CreateSyntaxProvider(
                 predicate: IsTargetType,
                 transform: GetBaseListEntityTarget)
-            .Where(static symbol => symbol is not null)
-            .Select(static (symbol, _) => symbol!)
+            .Where(static model => model is not null)
+            .Select(static (model, _) => model!)
             .Collect()
+            .Select(static (sets, _) => TypeDiscoverySet.FromSets(sets))
             .WithTrackingName("GraphModel.BaseListEntityTypes");
 
         // Referenced-assembly entity discovery is keyed off the metadata-reference set, not the
@@ -83,40 +86,41 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
             .Combine(referencedTypes)
             .Select(static (combined, _) =>
             {
-                var currentTypes = DedupeTypes(combined.Left.Left, combined.Left.Right);
-                return DedupeTypes(currentTypes, combined.Right);
+                var currentTypes = TypeDiscoverySet.Merge(combined.Left.Left, combined.Left.Right);
+                return TypeDiscoverySet.Merge(currentTypes, combined.Right);
             })
             .WithTrackingName("GraphModel.EntityTypes");
 
-        // Every concrete type declared in the current compilation, regardless of what it
-        // implements. DiscoverComplexPropertyTypes (in GenerateSerializers) only finds a complex
-        // property's DECLARED type (e.g. AnimalDescription from `List<AnimalDescription>`) - a
-        // derived type used only as a mixed instance in that collection (e.g. DogDescription) is
-        // never itself a property type anywhere, so it can only be found by scanning every type
-        // declaration for one whose base-type chain reaches a type we already generate a
-        // serializer for. Mirrors baseListTypes' shape/cost (a symbol-carrying, not yet
-        // equatable-value-modeled provider over CreateSyntaxProvider) rather than introducing a
-        // new pattern; see #148 for folding this into that broader incrementality pass.
+        // Every concrete type declared in the current compilation that has a base list,
+        // regardless of what it implements. These value models let the final generation step
+        // discover concrete subtypes for base-typed complex collections without carrying symbols
+        // across incremental pipeline boundaries.
         var allDeclaredTypes = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: IsTargetType,
                 transform: GetConcreteDeclaredType)
-            .Where(static symbol => symbol is not null)
-            .Select(static (symbol, _) => symbol!)
+            .Where(static model => model is not null)
+            .Select(static (model, _) => model!)
             .Collect()
+            .Select(static (sets, _) => TypeDiscoverySet.FromSets(sets))
             .WithTrackingName("GraphModel.AllConcreteDeclaredTypes");
 
+        var generationModel = allTypes
+            .Combine(allDeclaredTypes)
+            .Select(static (combined, _) => new GenerationModel(combined.Left, combined.Right))
+            .WithTrackingName("GraphModel.SerializerGenerationInput");
+
         context.RegisterSourceOutput(
-            allTypes.Combine(allDeclaredTypes),
-            static (context, combined) => GenerateSerializers(context, combined.Left, combined.Right));
+            generationModel,
+            static (context, model) => GenerateSerializers(context, model));
     }
 
-    private static ImmutableArray<INamedTypeSymbol> GetEntityTypesFromReferences(
+    private static TypeDiscoverySet GetEntityTypesFromReferences(
         ImmutableArray<MetadataReference> references)
     {
         if (references.IsDefaultOrEmpty)
         {
-            return ImmutableArray<INamedTypeSymbol>.Empty;
+            return TypeDiscoverySet.Empty;
         }
 
         // A throwaway, reference-only compilation (no syntax trees) purely to load metadata
@@ -142,7 +146,7 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
             }
         }
 
-        return builder.ToImmutable();
+        return CodeGenModelBuilder.Build(builder);
     }
 
     private static bool IsCandidateEntityAssembly(IAssemblySymbol assembly)
@@ -205,27 +209,6 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         }
     }
 
-    private static ImmutableArray<INamedTypeSymbol> DedupeTypes(
-        ImmutableArray<INamedTypeSymbol> first,
-        ImmutableArray<INamedTypeSymbol> second)
-    {
-        var seen = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
-        var builder = ImmutableArray.CreateBuilder<INamedTypeSymbol>(first.Length + second.Length);
-
-        AddTypes(first);
-        AddTypes(second);
-
-        return builder.ToImmutable();
-
-        void AddTypes(ImmutableArray<INamedTypeSymbol> types)
-        {
-            foreach (var type in types.Where(seen.Add))
-            {
-                builder.Add(type);
-            }
-        }
-    }
-
     private static bool ShouldGenerateSerializerFor(INamedTypeSymbol type)
     {
         // Skip interfaces, abstract classes, and generic type definitions
@@ -267,29 +250,30 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
                typeDecl.BaseList?.Types.Count > 0;
     }
 
-    private static INamedTypeSymbol? GetAttributedEntityTarget(GeneratorAttributeSyntaxContext context, CancellationToken ct)
+    private static TypeDiscoverySet? GetAttributedEntityTarget(GeneratorAttributeSyntaxContext context, CancellationToken ct)
     {
         return context.TargetSymbol is INamedTypeSymbol type && ShouldGenerateSerializerFor(type)
-            ? type
+            ? CodeGenModelBuilder.Build(type)
             : null;
     }
 
-    private static INamedTypeSymbol? GetBaseListEntityTarget(GeneratorSyntaxContext context, CancellationToken ct)
+    private static TypeDiscoverySet? GetBaseListEntityTarget(GeneratorSyntaxContext context, CancellationToken ct)
     {
         var typeDecl = (TypeDeclarationSyntax)context.Node;
         var symbol = context.SemanticModel.GetDeclaredSymbol(typeDecl, ct);
 
         if (symbol is null) return null;
 
-        return ShouldGenerateSerializerFor(symbol) ? symbol : null;
+        return ShouldGenerateSerializerFor(symbol) ? CodeGenModelBuilder.Build(symbol) : null;
     }
 
     /// <summary>
-    /// Returns the declared symbol for any concrete (non-interface, non-abstract) type
-    /// declaration, with no further filtering - used to build the subtype-discovery candidate
-    /// set for complex property types (see the `allDeclaredTypes` provider in Initialize).
+    /// Returns a value model for any concrete (non-interface, non-abstract) type declaration
+    /// with a base list, with no graph-entity filtering - used to build the subtype-discovery
+    /// candidate set for complex property types (see the `allDeclaredTypes` provider in
+    /// Initialize).
     /// </summary>
-    private static INamedTypeSymbol? GetConcreteDeclaredType(GeneratorSyntaxContext context, CancellationToken ct)
+    private static TypeDiscoverySet? GetConcreteDeclaredType(GeneratorSyntaxContext context, CancellationToken ct)
     {
         var typeDecl = (TypeDeclarationSyntax)context.Node;
         var symbol = context.SemanticModel.GetDeclaredSymbol(typeDecl, ct);
@@ -297,57 +281,36 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         if (symbol is null || symbol.TypeKind == TypeKind.Interface || symbol.IsAbstract)
             return null;
 
-        return symbol;
-    }
-
-    /// <summary>
-    /// Types among <paramref name="candidates"/> whose base-type chain reaches <paramref name="baseType"/>.
-    /// </summary>
-    private static IEnumerable<INamedTypeSymbol> FindSubtypes(
-        INamedTypeSymbol baseType,
-        ImmutableArray<INamedTypeSymbol> candidates)
-    {
-        foreach (var candidate in candidates)
-        {
-            var current = candidate.BaseType;
-            while (current is not null)
-            {
-                if (SymbolEqualityComparer.Default.Equals(current, baseType))
-                {
-                    yield return candidate;
-                    break;
-                }
-
-                current = current.BaseType;
-            }
-        }
+        return CodeGenModelBuilder.Build(symbol);
     }
 
     private static void GenerateSerializers(
         SourceProductionContext context,
-        ImmutableArray<INamedTypeSymbol> types,
-        ImmutableArray<INamedTypeSymbol> allDeclaredTypes)
+        GenerationModel model)
     {
-        if (types.IsDefaultOrEmpty) return;
+        if (model.Roots.Items.IsDefaultOrEmpty) return;
 
-        // Discover all complex property types that need serializers
-        var allTypesToGenerate = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
-
-        // Add the primary entity types - no need to check for null anymore
-        foreach (var type in types)
+        var catalog = new Dictionary<string, SerializableTypeModel>(StringComparer.Ordinal);
+        foreach (var type in model.Catalog.Items)
         {
-            allTypesToGenerate.Add(type);
+            if (!catalog.ContainsKey(type.Type.Identity))
+            {
+                catalog.Add(type.Type.Identity, type);
+            }
         }
 
-        // Discover complex property types recursively
-        var typesToAnalyze = new Queue<INamedTypeSymbol>(allTypesToGenerate);
-        var analyzed = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        var allTypesToGenerate = new List<SerializableTypeModel>();
+        var seenTypes = new HashSet<string>(StringComparer.Ordinal);
+        var typesToAnalyze = new Queue<SerializableTypeModel>();
+
+        foreach (var type in model.Roots.Items)
+        {
+            AddType(type);
+        }
 
         while (typesToAnalyze.Count > 0)
         {
             var currentType = typesToAnalyze.Dequeue();
-            if (analyzed.Contains(currentType)) continue;
-            analyzed.Add(currentType);
 
             // A collection property declared as the base type (e.g. `List<AnimalDescription>`)
             // may hold mixed derived instances (DogDescription, PoliceDogDescription, ...) that
@@ -355,87 +318,42 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
             // instance silently serializes/deserializes via the base type's serializer instead
             // of its own (see #146/#136) - each subtype needs its own generated serializer and
             // registry entry to preserve its ActualType and derived-only properties.
-            foreach (var subtype in FindSubtypes(currentType, allDeclaredTypes)
-                .Where(subtype => !allTypesToGenerate.Contains(subtype)))
+            foreach (var subtype in model.AllDeclaredRoots.Items
+                .Where(subtype => subtype.BaseTypeIdentities.Items.Contains(currentType.Type.Identity))
+                .Where(subtype => !seenTypes.Contains(subtype.Type.Identity)))
             {
-                allTypesToGenerate.Add(subtype);
-                typesToAnalyze.Enqueue(subtype);
+                AddType(subtype);
             }
 
-            // Find complex property types
-            var complexPropertyTypes = DiscoverComplexPropertyTypes(currentType);
-            foreach (var complexType in complexPropertyTypes)
+            foreach (var complexPropertyTypeIdentity in currentType.ComplexPropertyTypeIdentities.Items)
             {
-                if (!allTypesToGenerate.Contains(complexType))
+                if (catalog.TryGetValue(complexPropertyTypeIdentity, out var complexType))
                 {
-                    allTypesToGenerate.Add(complexType);
-                    typesToAnalyze.Enqueue(complexType);
+                    AddType(complexType);
                 }
             }
         }
 
-        // Generate individual serializer files for all discovered types
         foreach (var type in allTypesToGenerate)
         {
             GenerateSerializerFile(context, type);
         }
 
-        // Generate registration module
-        GenerateRegistrationModule(context, allTypesToGenerate.ToImmutableArray());
-    }
+        GenerateRegistrationModule(context, allTypesToGenerate);
 
-    private static IEnumerable<INamedTypeSymbol> DiscoverComplexPropertyTypes(INamedTypeSymbol type)
-    {
-        var complexTypes = new List<INamedTypeSymbol>();
-
-        // Get all properties of the type
-        var properties = type.GetMembers().OfType<IPropertySymbol>()
-            .Where(p => p.DeclaredAccessibility == Accessibility.Public &&
-                       p.GetMethod != null && p.SetMethod != null);
-
-        foreach (var property in properties)
+        void AddType(SerializableTypeModel type)
         {
-            var propertyType = property.Type;
-
-            // Check if it's a complex type (not simple and not collection of simple)
-            if (!GraphDataModel.IsSimple(propertyType) && !GraphDataModel.IsCollectionOfSimple(propertyType))
+            if (seenTypes.Add(type.Type.Identity))
             {
-                // Check if it's a collection of complex types
-                if (GraphDataModel.IsCollectionOfComplex(propertyType))
-                {
-                    var elementType = GraphDataModel.GetCollectionElementType(propertyType);
-                    if (elementType is INamedTypeSymbol namedElementType && IsSerializableComplexType(namedElementType))
-                    {
-                        complexTypes.Add(namedElementType);
-                    }
-                }
-                // Check if it's a single complex type
-                else if (propertyType is INamedTypeSymbol namedPropertyType && IsSerializableComplexType(namedPropertyType))
-                {
-                    complexTypes.Add(namedPropertyType);
-                }
+                allTypesToGenerate.Add(type);
+                typesToAnalyze.Enqueue(type);
             }
         }
-
-        return complexTypes;
     }
 
-    private static bool IsSerializableComplexType(INamedTypeSymbol type)
-    {
-        // A type is serializable if it's a class (not interface, not abstract) 
-        // and has a parameterless constructor
-        return type.TypeKind == TypeKind.Class &&
-               !type.IsAbstract &&
-               type.InstanceConstructors.Any(c => c.DeclaredAccessibility == Accessibility.Public && c.Parameters.Length == 0);
-    }
-
-    private static void GenerateSerializerFile(SourceProductionContext context, INamedTypeSymbol type)
+    private static void GenerateSerializerFile(SourceProductionContext context, SerializableTypeModel type)
     {
         var sb = new StringBuilder();
-
-        // Make the serializer class name unique by including containing types
-        var uniqueSerializerName = Utils.GetUniqueSerializerClassName(type);
-        var namespaceName = Utils.GetNamespaceName(type);
 
         sb.AppendLine("// <auto-generated/>");
         sb.AppendLine("#nullable enable");
@@ -450,16 +368,16 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         sb.AppendLine("using Cvoya.Graph.Model.Serialization;");
         sb.AppendLine();
 
-        if (!string.IsNullOrEmpty(namespaceName))
+        if (!string.IsNullOrEmpty(type.NamespaceName))
         {
-            sb.AppendLine($"namespace {namespaceName};");
+            sb.AppendLine($"namespace {type.NamespaceName};");
             sb.AppendLine();
         }
 
-        sb.AppendLine($"internal sealed class {uniqueSerializerName} : IEntitySerializer");
+        sb.AppendLine($"internal sealed class {type.SerializerClassName} : IEntitySerializer");
         sb.AppendLine("{");
         sb.AppendLine("    private readonly EntitySerializerRegistry _serializerRegistry = EntitySerializerRegistry.Instance;");
-        sb.AppendLine($"    public Type EntityType => typeof({Utils.GetTypeOfName(type)});");
+        sb.AppendLine($"    public Type EntityType => typeof({type.Type.TypeOfName});");
         sb.AppendLine();
 
         Deserialization.GenerateDeserializeMethod(sb, type);
@@ -472,27 +390,10 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
 
         sb.AppendLine("}");
 
-        var hintName = GetUniqueHintName(type);
-        context.AddSource(hintName, sb.ToString());
+        context.AddSource(type.HintName, sb.ToString());
     }
 
-    private static string GetUniqueHintName(INamedTypeSymbol type)
-    {
-        // Create a safe filename that includes the full hierarchy
-        var fullName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-            .Replace("global::", "")
-            .Replace(".", "_")
-            .Replace("<", "_")
-            .Replace(">", "_")
-            .Replace(",", "_")
-            .Replace(" ", "")
-            .Replace("?", "_Nullable")
-            .Replace("+", "_"); // Handle nested types
-
-        return $"{fullName}Serializer.g.cs";
-    }
-
-    private static void GenerateRegistrationModule(SourceProductionContext context, ImmutableArray<INamedTypeSymbol> types)
+    private static void GenerateRegistrationModule(SourceProductionContext context, IReadOnlyList<SerializableTypeModel> types)
     {
         var sb = new StringBuilder();
         sb.AppendLine("// <auto-generated/>");
@@ -511,27 +412,17 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         foreach (var type in types)
         {
             // Use the clean, non-nullable type name for registration
-            var cleanTypeName = Utils.GetTypeOfName(type);
-            var namespaceName = Utils.GetNamespaceName(type);
-            var uniqueSerializerName = Utils.GetUniqueSerializerClassName(type);
+            var cleanTypeName = type.Type.TypeOfName;
 
-            // Check if the type implements INode or IRelationship
-            var implementsINode = type.AllInterfaces.Any(i =>
-                i.Name == "INode" &&
-                i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
-            var implementsIRelationship = type.AllInterfaces.Any(i =>
-                i.Name == "IRelationship" &&
-                i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
-
-            if (implementsINode || implementsIRelationship)
+            if (type.Kind is SerializableTypeKind.Node or SerializableTypeKind.Relationship)
             {
                 // Register entity types with generic method
-                sb.AppendLine($"        EntitySerializerRegistry.Instance.Register<{cleanTypeName}>(new {namespaceName}.{uniqueSerializerName}());");
+                sb.AppendLine($"        EntitySerializerRegistry.Instance.Register<{cleanTypeName}>(new {type.NamespaceName}.{type.SerializerClassName}());");
             }
             else
             {
                 // Register complex property types with typeof
-                sb.AppendLine($"        EntitySerializerRegistry.Instance.Register(typeof({cleanTypeName}), new {namespaceName}.{uniqueSerializerName}());");
+                sb.AppendLine($"        EntitySerializerRegistry.Instance.Register(typeof({cleanTypeName}), new {type.NamespaceName}.{type.SerializerClassName}());");
             }
         }
 

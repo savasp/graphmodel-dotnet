@@ -15,64 +15,46 @@
 namespace Cvoya.Graph.Model.Serialization.CodeGen;
 
 using System.Text;
-using Microsoft.CodeAnalysis;
 
 
 internal static class Serialization
 {
-    internal static void GenerateSerializeMethod(StringBuilder sb, INamedTypeSymbol type)
+    internal static void GenerateSerializeMethod(StringBuilder sb, SerializableTypeModel type)
     {
         sb.AppendLine($"    public EntityInfo Serialize(object obj)");
         sb.AppendLine("    {");
-        sb.AppendLine($"        var entity = ({GetTypeOfName(type)})obj;");
+        sb.AppendLine($"        var entity = ({type.Type.TypeOfName})obj;");
         sb.AppendLine("        var simpleProperties = new Dictionary<string, Property>();");
         sb.AppendLine("        var complexProperties = new Dictionary<string, Property>();");
         sb.AppendLine();
 
-        var properties = Utils.GetAllProperties(type);
-
-        foreach (var property in properties)
+        foreach (var property in type.SerializationProperties.Items)
         {
-            // Skip properties that shouldn't be serialized
-            if (Utils.SerializationShouldSkipProperty(property, type))
-                continue;
-
-            var propertyName = Utils.GetPropertyName(property);
-            var propertyType = property.Type;
-
             sb.AppendLine($"        // Serialize property: {property.Name}");
 
             // Generate property representation creation
-            GenerateIntermediateRepresentationCreation(sb, property, propertyType, propertyName);
+            GenerateIntermediateRepresentationCreation(sb, property, property.Type, property.Label);
         }
 
-        // Determine if this is a node or relationship to populate labels/type correctly
-        var implementsINode = type.AllInterfaces.Any(i =>
-            i.Name == "INode" &&
-            i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
-        var implementsIRelationship = type.AllInterfaces.Any(i =>
-            i.Name == "IRelationship" &&
-            i.ContainingNamespace?.ToString() == "Cvoya.Graph.Model");
-
-        if (implementsINode)
+        if (type.Kind == SerializableTypeKind.Node)
         {
             // For nodes, populate ActualLabels from the Labels property
             sb.AppendLine($"        var actualLabels = entity.Labels?.ToList() ?? new List<string>();");
-            sb.AppendLine($"        var primaryLabel = actualLabels.Count > 0 ? actualLabels[0] : \"{Utils.GetLabelFromType(type)}\";");
+            sb.AppendLine($"        var primaryLabel = actualLabels.Count > 0 ? actualLabels[0] : \"{type.Label}\";");
             sb.AppendLine($"        return new EntityInfo(");
-            sb.AppendLine($"            ActualType: typeof({GetTypeOfName(type)}),");
+            sb.AppendLine($"            ActualType: typeof({type.Type.TypeOfName}),");
             sb.AppendLine($"            Label: primaryLabel,");
             sb.AppendLine($"            ActualLabels: actualLabels,");
             sb.AppendLine($"            SimpleProperties: simpleProperties,");
             sb.AppendLine($"            ComplexProperties: complexProperties");
             sb.AppendLine($"        );");
         }
-        else if (implementsIRelationship)
+        else if (type.Kind == SerializableTypeKind.Relationship)
         {
             // For relationships, use the Type property as the label
-            sb.AppendLine($"        var relationshipType = !string.IsNullOrEmpty(entity.Type) ? entity.Type : \"{Utils.GetLabelFromType(type)}\";");
+            sb.AppendLine($"        var relationshipType = !string.IsNullOrEmpty(entity.Type) ? entity.Type : \"{type.Label}\";");
             sb.AppendLine($"        return new EntityInfo(");
-            sb.AppendLine($"            ActualType: typeof({GetTypeOfName(type)}),");
+            sb.AppendLine($"            ActualType: typeof({type.Type.TypeOfName}),");
             sb.AppendLine($"            Label: relationshipType,");
             sb.AppendLine($"            ActualLabels: new List<string>(),");
             sb.AppendLine($"            SimpleProperties: simpleProperties,");
@@ -83,8 +65,8 @@ internal static class Serialization
         {
             // For other types (complex properties), use the type name as label
             sb.AppendLine($"        return new EntityInfo(");
-            sb.AppendLine($"            ActualType: typeof({GetTypeOfName(type)}),");
-            sb.AppendLine($"            Label: \"{Utils.GetLabelFromType(type)}\",");
+            sb.AppendLine($"            ActualType: typeof({type.Type.TypeOfName}),");
+            sb.AppendLine($"            Label: \"{type.Label}\",");
             sb.AppendLine($"            ActualLabels: new List<string>(),");
             sb.AppendLine($"            SimpleProperties: simpleProperties,");
             sb.AppendLine($"            ComplexProperties: complexProperties");
@@ -93,14 +75,18 @@ internal static class Serialization
         sb.AppendLine("    }");
     }
 
-    private static void GenerateIntermediateRepresentationCreation(StringBuilder sb, IPropertySymbol property, ITypeSymbol propertyType, string propertyName)
+    private static void GenerateIntermediateRepresentationCreation(
+        StringBuilder sb,
+        SerializablePropertyModel property,
+        TypeReferenceModel propertyType,
+        string propertyName)
     {
-        var isSimple = GraphDataModel.IsSimple(propertyType);
-        var isCollection = GraphDataModel.IsCollectionOfSimple(propertyType) || GraphDataModel.IsCollectionOfComplex(propertyType);
-        var isNullable = IsNullableType(propertyType);
+        var isSimple = propertyType.IsSimple;
+        var isCollection = propertyType.IsCollectionOfSimple || propertyType.IsCollectionOfComplex;
+        var isNullable = propertyType.IsNullable;
 
         sb.AppendLine($"        {{");
-        sb.AppendLine($"            var propInfo = typeof({property.ContainingType.ToDisplayString()}).GetProperty(\"{property.Name}\")!;");
+        sb.AppendLine($"            var propInfo = typeof({property.ContainingTypeDisplayName}).GetProperty(\"{property.Name}\")!;");
         sb.AppendLine($"            var value = entity.{property.Name};");
         sb.AppendLine($"            Serialized? serializedValue = null;");
         sb.AppendLine();
@@ -112,12 +98,12 @@ internal static class Serialization
         else if (isSimple)
         {
             // For value types that can't be null, always serialize. For reference/nullable types, check for null
-            if (propertyType.IsValueType && !IsNullableType(propertyType))
+            if (propertyType.IsValueType && !propertyType.IsNullable)
             {
                 // Non-nullable value type - always serialize
                 sb.AppendLine($"            serializedValue = new SimpleValue(");
                 sb.AppendLine($"                Object: value!,");
-                sb.AppendLine($"                Type: typeof({GetTypeOfName(propertyType)})");
+                sb.AppendLine($"                Type: typeof({propertyType.TypeOfName})");
                 sb.AppendLine($"            );");
             }
             else
@@ -127,7 +113,7 @@ internal static class Serialization
                 sb.AppendLine($"            {{");
                 sb.AppendLine($"                serializedValue = new SimpleValue(");
                 sb.AppendLine($"                    Object: value!,");
-                sb.AppendLine($"                    Type: typeof({GetTypeOfName(propertyType)})");
+                sb.AppendLine($"                    Type: typeof({propertyType.TypeOfName})");
                 sb.AppendLine($"                );");
                 sb.AppendLine($"            }}");
             }
@@ -150,7 +136,7 @@ internal static class Serialization
         }
 
         // Add to appropriate dictionary
-        var dictionaryName = isSimple || (isCollection && GraphDataModel.IsCollectionOfSimple(propertyType)) ? "simpleProperties" : "complexProperties";
+        var dictionaryName = isSimple || (isCollection && propertyType.IsCollectionOfSimple) ? "simpleProperties" : "complexProperties";
         sb.AppendLine();
         sb.AppendLine($"            var propertyRep = new Property(");
         sb.AppendLine($"                PropertyInfo: propInfo,");
@@ -163,12 +149,12 @@ internal static class Serialization
         sb.AppendLine();
     }
 
-    private static void GenerateCollectionSerialization(StringBuilder sb, ITypeSymbol collectionType)
+    private static void GenerateCollectionSerialization(StringBuilder sb, TypeReferenceModel collectionType)
     {
-        var elementType = GraphDataModel.GetCollectionElementType(collectionType);
+        var elementType = collectionType.ElementType;
         if (elementType == null) return; // Should not happen for valid collections
 
-        var isElementSimple = GraphDataModel.IsSimple(elementType);
+        var isElementSimple = elementType.IsSimple;
 
         sb.AppendLine($"            if (value != null)");
         sb.AppendLine($"            {{");
@@ -180,13 +166,13 @@ internal static class Serialization
             sb.AppendLine($"                {{");
 
             // Only add null check for nullable types
-            if (IsNullableType(elementType))
+            if (elementType.IsNullable)
             {
                 sb.AppendLine($"                    if (item != null)");
                 sb.AppendLine($"                    {{");
                 sb.AppendLine($"                        values.Add(new SimpleValue(");
                 sb.AppendLine($"                            Object: item!,");
-                sb.AppendLine($"                            Type: typeof({GetTypeOfName(elementType)})");
+                sb.AppendLine($"                            Type: typeof({elementType.TypeOfName})");
                 sb.AppendLine($"                        ));");
                 sb.AppendLine($"                    }}");
             }
@@ -195,14 +181,14 @@ internal static class Serialization
                 // Value types can't be null, so no null check needed
                 sb.AppendLine($"                    values.Add(new SimpleValue(");
                 sb.AppendLine($"                        Object: item!,");
-                sb.AppendLine($"                        Type: typeof({GetTypeOfName(elementType)})");
+                sb.AppendLine($"                        Type: typeof({elementType.TypeOfName})");
                 sb.AppendLine($"                    ));");
             }
 
             sb.AppendLine($"                }}");
             sb.AppendLine($"                serializedValue = new SimpleCollection(");
             sb.AppendLine($"                    Values: values,");
-            sb.AppendLine($"                    ElementType: typeof({GetTypeOfName(elementType)})");
+            sb.AppendLine($"                    ElementType: typeof({elementType.TypeOfName})");
             sb.AppendLine($"                );");
         }
         else
@@ -217,12 +203,12 @@ internal static class Serialization
             sb.AppendLine($"                {{");
 
             // Only add null check for reference types
-            if (elementType.IsReferenceType || elementType.NullableAnnotation == NullableAnnotation.Annotated)
+            if (elementType.IsReferenceType || elementType.IsNullable)
             {
                 sb.AppendLine($"                    if (item != null)");
                 sb.AppendLine($"                    {{");
                 sb.AppendLine($"                        var itemSerializer = _serializerRegistry.GetSerializer(item.GetType())");
-                sb.AppendLine($"                            ?? _serializerRegistry.GetSerializer(typeof({GetTypeOfName(elementType)}));");
+                sb.AppendLine($"                            ?? _serializerRegistry.GetSerializer(typeof({elementType.TypeOfName}));");
                 sb.AppendLine($"                        if (itemSerializer == null)");
                 sb.AppendLine($"                        {{");
                 sb.AppendLine($"                            throw new InvalidOperationException($\"No serializer found for type {{item.GetType()}}\");");
@@ -238,7 +224,7 @@ internal static class Serialization
             {
                 // Value types can't be null, so no null check needed
                 sb.AppendLine($"                    var itemSerializer = _serializerRegistry.GetSerializer(item!.GetType())");
-                sb.AppendLine($"                        ?? _serializerRegistry.GetSerializer(typeof({GetTypeOfName(elementType)}));");
+                sb.AppendLine($"                        ?? _serializerRegistry.GetSerializer(typeof({elementType.TypeOfName}));");
                 sb.AppendLine($"                    if (itemSerializer == null)");
                 sb.AppendLine($"                    {{");
                 sb.AppendLine($"                        throw new InvalidOperationException($\"No serializer found for type {{item.GetType()}}\");");
@@ -252,39 +238,11 @@ internal static class Serialization
 
             sb.AppendLine($"                }}");
             sb.AppendLine($"                serializedValue = new EntityCollection(");
-            sb.AppendLine($"                    Type: typeof({GetTypeOfName(elementType)}),");
+            sb.AppendLine($"                    Type: typeof({elementType.TypeOfName}),");
             sb.AppendLine($"                    Entities: entities");
             sb.AppendLine($"                );");
         }
 
         sb.AppendLine($"            }}");
-    }
-
-    /// <summary>
-    /// Gets the type name suitable for typeof() expressions, removing nullable reference type annotations
-    /// </summary>
-    private static string GetTypeOfName(ITypeSymbol type)
-    {
-        // For nullable reference types, get the underlying non-nullable type
-        if (type.NullableAnnotation == NullableAnnotation.Annotated && !type.IsValueType)
-        {
-            return type.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString();
-        }
-
-        return type.ToDisplayString();
-    }
-
-    private static bool IsNullableType(ITypeSymbol type)
-    {
-        // Check for nullable reference types
-        if (type.NullableAnnotation == NullableAnnotation.Annotated)
-            return true;
-
-        // Check for nullable value types (e.g., DateTime?, int?, etc.)
-        if (type is INamedTypeSymbol { IsGenericType: true } namedType &&
-            namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
-            return true;
-
-        return false;
     }
 }

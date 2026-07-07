@@ -15,16 +15,15 @@
 namespace Cvoya.Graph.Model.Serialization.CodeGen;
 
 using System.Text;
-using Microsoft.CodeAnalysis;
 
 
 internal static class Schema
 {
-    internal static void GenerateSchemaMethod(StringBuilder sb, INamedTypeSymbol type)
+    internal static void GenerateSchemaMethod(StringBuilder sb, SerializableTypeModel type)
     {
-        var typeName = Utils.GetTypeOfName(type);
-        var label = Utils.GetLabelFromType(type);
-        var uniqueSerializerName = Utils.GetUniqueSerializerClassName(type);
+        var typeName = type.Type.TypeOfName;
+        var label = type.Label;
+        var uniqueSerializerName = type.SerializerClassName;
 
         // Use a set to track what's currently being processed
         sb.AppendLine("    private static readonly HashSet<Type> _currentlyProcessing = new();");
@@ -58,8 +57,8 @@ internal static class Schema
         sb.AppendLine($"            return new EntitySchema(");
         sb.AppendLine($"                ExpectedType: typeof({typeName}),");
         sb.AppendLine($"                Label: \"{label}\",");
-        sb.AppendLine($"                IsNullable: {(type.NullableAnnotation == NullableAnnotation.Annotated || (type.CanBeReferencedByName && !type.IsValueType)).ToString().ToLowerInvariant()},");
-        sb.AppendLine($"                IsSimple: {(GraphDataModel.IsSimple(type) || GraphDataModel.IsCollectionOfSimple(type)).ToString().ToLowerInvariant()},");
+        sb.AppendLine($"                IsNullable: {type.Type.IsSchemaNullable.ToString().ToLowerInvariant()},");
+        sb.AppendLine($"                IsSimple: {(type.Type.IsSimple || type.Type.IsCollectionOfSimple).ToString().ToLowerInvariant()},");
         sb.AppendLine($"                SimpleProperties: new Dictionary<string, PropertySchema>(),");
         sb.AppendLine($"                ComplexProperties: new Dictionary<string, PropertySchema>()");
         sb.AppendLine($"            );");
@@ -74,12 +73,7 @@ internal static class Schema
         sb.AppendLine("            var simpleProperties = new Dictionary<string, PropertySchema>();");
         sb.AppendLine("            var complexProperties = new Dictionary<string, PropertySchema>();");
 
-        // Get all serializable properties including interface properties
-        var properties = GetAllPropertiesIncludingInterfaces(type)
-            .Where(p => !Utils.SerializationShouldSkipProperty(p, type))
-            .ToList();
-
-        foreach (var property in properties)
+        foreach (var property in type.SchemaProperties.Items)
         {
             GeneratePropertySchema(sb, property, type);
         }
@@ -88,8 +82,8 @@ internal static class Schema
         sb.AppendLine($"            var schema = new EntitySchema(");
         sb.AppendLine($"                ExpectedType: typeof({typeName}),");
         sb.AppendLine($"                Label: \"{label}\",");
-        sb.AppendLine($"                IsNullable: {(type.NullableAnnotation == NullableAnnotation.Annotated || (type.CanBeReferencedByName && !type.IsValueType)).ToString().ToLowerInvariant()},");
-        sb.AppendLine($"                IsSimple: {(GraphDataModel.IsSimple(type) || GraphDataModel.IsCollectionOfSimple(type)).ToString().ToLowerInvariant()},");
+        sb.AppendLine($"                IsNullable: {type.Type.IsSchemaNullable.ToString().ToLowerInvariant()},");
+        sb.AppendLine($"                IsSimple: {(type.Type.IsSimple || type.Type.IsCollectionOfSimple).ToString().ToLowerInvariant()},");
         sb.AppendLine($"                SimpleProperties: simpleProperties,");
         sb.AppendLine($"                ComplexProperties: complexProperties");
         sb.AppendLine($"            );");
@@ -106,103 +100,30 @@ internal static class Schema
         sb.AppendLine("    }");
     }
 
-    private static List<IPropertySymbol> GetAllPropertiesIncludingInterfaces(INamedTypeSymbol type)
-    {
-        var properties = new List<IPropertySymbol>();
-        var seenProperties = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        // First, get properties from all implemented interfaces (including IEntity, IRelationship)
-        // This ensures we capture the core properties like Id, StartNodeId, EndNodeId, Direction
-        foreach (var interfaceType in type.AllInterfaces)
-        {
-            foreach (var property in interfaceType.GetMembers().OfType<IPropertySymbol>())
-            {
-                if (ShouldIncludeProperty(property) && seenProperties.Add(property.Name))
-                {
-                    properties.Add(property);
-                }
-            }
-        }
-
-        // Then get properties from the type hierarchy (base classes and the type itself)
-        for (var currentType = type; currentType != null; currentType = currentType.BaseType)
-        {
-            foreach (var property in currentType.GetMembers().OfType<IPropertySymbol>())
-            {
-                if (ShouldIncludeProperty(property) && seenProperties.Add(property.Name))
-                {
-                    properties.Add(property);
-                }
-            }
-        }
-
-        return properties;
-    }
-
-    private static bool ShouldIncludeProperty(IPropertySymbol property)
-    {
-        // Skip if it's not public
-        if (property.DeclaredAccessibility != Accessibility.Public)
-            return false;
-
-        // Skip if it's an indexer
-        if (property.IsIndexer)
-            return false;
-
-        // Skip static properties
-        if (property.IsStatic)
-            return false;
-
-        // Must have a getter
-        if (property.GetMethod == null)
-            return false;
-
-        // For interface properties, always include them if they're serializable
-        // Interface properties define the contract and don't have setters
-        if (property.ContainingType.TypeKind == TypeKind.Interface)
-        {
-            return GraphDataModel.IsSimple(property.Type) ||
-                   GraphDataModel.IsCollectionOfSimple(property.Type);
-        }
-
-        // For concrete types, they need to be settable (either regular setter or init-only)
-        if (property.SetMethod == null && !IsRecordProperty(property))
-            return false;
-
-        // Include all serializable properties (simple, complex, and collections)
-        return GraphDataModel.IsSimple(property.Type) ||
-               GraphDataModel.IsCollectionOfSimple(property.Type) ||
-               !GraphDataModel.IsSimple(property.Type) ||
-               GraphDataModel.IsCollectionOfComplex(property.Type);
-    }
-
-    private static bool IsRecordProperty(IPropertySymbol property)
-    {
-        // Check if this property is part of a record's primary constructor (init-only)
-        return property.SetMethod?.IsInitOnly == true;
-    }
-
-    private static void GeneratePropertySchema(StringBuilder sb, IPropertySymbol property, INamedTypeSymbol containingType)
+    private static void GeneratePropertySchema(
+        StringBuilder sb,
+        SerializablePropertyModel property,
+        SerializableTypeModel containingType)
     {
         var propertyType = property.Type;
-        var propertyName = Utils.GetPropertyName(property);
-        var isNullable = IsNullableType(propertyType);
+        var propertyName = property.Label;
+        var isNullable = propertyType.IsNullable;
 
         sb.AppendLine($"        // Schema for property: {property.Name}");
         sb.AppendLine("        {");
 
         // For interface properties, we need to handle the PropertyInfo lookup differently
-        if (property.ContainingType.TypeKind == TypeKind.Interface)
+        if (property.ContainingTypeIsInterface)
         {
-            sb.AppendLine($"            var propInfo = typeof({Utils.GetTypeOfName(containingType)}).GetProperty(\"{property.Name}\")");
-            sb.AppendLine($"                ?? typeof({property.ContainingType.ToDisplayString()}).GetProperty(\"{property.Name}\")!;");
+            sb.AppendLine($"            var propInfo = typeof({containingType.Type.TypeOfName}).GetProperty(\"{property.Name}\")");
+            sb.AppendLine($"                ?? typeof({property.ContainingTypeDisplayName}).GetProperty(\"{property.Name}\")!;");
         }
         else
         {
-            sb.AppendLine($"            var propInfo = typeof({Utils.GetTypeOfName(containingType)}).GetProperty(\"{property.Name}\")!;");
+            sb.AppendLine($"            var propInfo = typeof({containingType.Type.TypeOfName}).GetProperty(\"{property.Name}\")!;");
         }
 
-        if (GraphDataModel.IsSimple(propertyType))
+        if (propertyType.IsSimple)
         {
             sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
             sb.AppendLine("                PropertyInfo: propInfo,");
@@ -211,16 +132,16 @@ internal static class Schema
             sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
             sb.AppendLine("            );");
         }
-        else if (GraphDataModel.IsCollectionOfSimple(propertyType))
+        else if (propertyType.IsCollectionOfSimple)
         {
-            var elementType = GraphDataModel.GetCollectionElementType(propertyType);
+            var elementType = propertyType.ElementType;
             if (elementType is not null)
             {
                 sb.AppendLine($"            simpleProperties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
                 sb.AppendLine($"                PropertyName: \"{propertyName}\",");
                 sb.AppendLine("                PropertyType: PropertyType.SimpleCollection,");
-                sb.AppendLine($"                ElementType: typeof({Utils.GetTypeOfName(elementType)}),");
+                sb.AppendLine($"                ElementType: typeof({elementType.TypeOfName}),");
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()}");
                 sb.AppendLine("            );");
             }
@@ -236,13 +157,13 @@ internal static class Schema
                 sb.AppendLine("            );");
             }
         }
-        else if (GraphDataModel.IsCollectionOfComplex(propertyType))
+        else if (propertyType.IsCollectionOfComplex)
         {
             // Collection of complex types
-            var elementType = GraphDataModel.GetCollectionElementType(propertyType);
-            if (elementType is INamedTypeSymbol namedElementType)
+            var elementType = propertyType.ElementType;
+            if (elementType is not null)
             {
-                var nestedSchemaCall = Utils.GetNestedSchemaCall(elementType);
+                var nestedSchemaCall = GetNestedSchemaCall(elementType);
                 sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
                 sb.AppendLine("                PropertyInfo: propInfo,");
                 sb.AppendLine($"                PropertyName: \"{propertyName}\",");
@@ -255,35 +176,28 @@ internal static class Schema
         else
         {
             // Single complex property
-            var nestedType = propertyType is INamedTypeSymbol namedType ? namedType : null;
-            if (nestedType != null)
-            {
-                var nestedSchemaCall = Utils.GetNestedSchemaCall(propertyType);
-                sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
-                sb.AppendLine("                PropertyInfo: propInfo,");
-                sb.AppendLine($"                PropertyName: \"{propertyName}\",");
-                sb.AppendLine("                PropertyType: PropertyType.Complex,");
-                sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
-                sb.AppendLine($"                NestedSchema: {nestedSchemaCall}");
-                sb.AppendLine("            );");
-            }
+            var nestedSchemaCall = GetNestedSchemaCall(propertyType);
+            sb.AppendLine($"            complexProperties[\"{propertyName}\"] = new PropertySchema(");
+            sb.AppendLine("                PropertyInfo: propInfo,");
+            sb.AppendLine($"                PropertyName: \"{propertyName}\",");
+            sb.AppendLine("                PropertyType: PropertyType.Complex,");
+            sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
+            sb.AppendLine($"                NestedSchema: {nestedSchemaCall}");
+            sb.AppendLine("            );");
         }
 
         sb.AppendLine("        }");
         sb.AppendLine();
     }
 
-    private static bool IsNullableType(ITypeSymbol type)
+    private static string GetNestedSchemaCall(TypeReferenceModel nestedType)
     {
-        // Check for nullable reference types
-        if (type.NullableAnnotation == NullableAnnotation.Annotated)
-            return true;
+        if (string.IsNullOrEmpty(nestedType.GeneratedNamespaceName) ||
+            string.IsNullOrEmpty(nestedType.SerializerClassName))
+        {
+            return "null";
+        }
 
-        // Check for nullable value types (e.g., DateTime?, int?, etc.)
-        if (type is INamedTypeSymbol { IsGenericType: true } namedType &&
-            namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
-            return true;
-
-        return false;
+        return $"{nestedType.GeneratedNamespaceName}.{nestedType.SerializerClassName}.GetSchemaStatic()";
     }
 }
