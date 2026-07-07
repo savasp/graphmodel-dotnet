@@ -166,7 +166,10 @@ public class TestInfrastructureFixture : IAsyncLifetime
             var connectTask = client.ConnectAsync("localhost", 7687);
             return connectTask.Wait(TimeSpan.FromMilliseconds(250)) && client.Connected;
         }
-        catch
+        catch (Exception ex) when (ex is SocketException
+                                   or TimeoutException
+                                   or ObjectDisposedException
+                                   or InvalidOperationException)
         {
             return false;
         }
