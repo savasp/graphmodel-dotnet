@@ -295,11 +295,16 @@ Validates the entire build system and ensures all configurations work correctly.
 
 Runs local C# CodeQL analysis using the same `security-and-quality` query suite as
 `.github/workflows/codeql.yml`. By default it uses CodeQL's C# `none` build mode,
-which is the most portable local option. In that mode, the script analyzes a
+which is the required portable local gate. In that mode, the script analyzes a
 disposable source copy and temporary database outside the checkout so CodeQL
 dependency probing cannot rewrite repository files.
+
 Use `--build-mode manual` to trace the same LocalFeed and Release builds used by
 the GitHub workflow when the local platform supports CodeQL compiler tracing.
+Manual mode is optional and may fail locally even when the default scan succeeds;
+if it reports that no C# source was processed after a successful build, use the
+default command for the local gate and include the CodeQL version plus
+`db/csharp/log` path in PR notes only when relevant.
 
 **Usage:**
 
@@ -310,7 +315,7 @@ the GitHub workflow when the local platform supports CodeQL compiler tracing.
 **Options:**
 
 - `-o, --output-dir <dir>`: SARIF output directory (default: `artifacts/codeql`)
-- `--build-mode <mode>`: CodeQL build mode, `none` or `manual` (default: `none`)
+- `--build-mode <mode>`: CodeQL build mode, `none` or optional tracer-dependent `manual` (default: `none`)
 - `--no-download`: Do not download/update the CodeQL C# query pack
 - `--fail-on-alerts`: Exit non-zero if the SARIF file contains results
 - `--threads <count>`: Number of CodeQL evaluator threads

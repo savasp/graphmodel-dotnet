@@ -28,6 +28,17 @@ print_header() {
     echo -e "${BLUE}[HEADER]${NC} $1"
 }
 
+print_database_create_failure_guidance() {
+    if [ "$BUILD_MODE" = "manual" ]; then
+        print_warning "Manual build mode relies on CodeQL compiler tracing for the local platform and toolchain."
+        print_warning "If the build completed but CodeQL reported that no C# source was processed, rerun './scripts/run-codeql.sh' without '--build-mode manual' for the portable local gate."
+
+        if [ -f "$DATABASE_DIR/log/build-tracer.log" ]; then
+            print_warning "Compiler tracing diagnostics: $DATABASE_DIR/log/build-tracer.log"
+        fi
+    fi
+}
+
 usage() {
     cat <<'EOF'
 GraphModel CodeQL Runner
@@ -36,7 +47,7 @@ Usage: ./scripts/run-codeql.sh [options]
 
 Options:
   -o, --output-dir <dir>       SARIF output directory (default: artifacts/codeql)
-  --build-mode <mode>          CodeQL build mode: none or manual (default: none)
+  --build-mode <mode>          CodeQL build mode: none or manual (default: none; manual is optional and tracer-dependent)
   --no-download                Do not download/update the CodeQL C# query pack
   --fail-on-alerts             Exit non-zero if the SARIF file contains results
   --threads <count>            Number of CodeQL evaluator threads
@@ -275,7 +286,13 @@ fi
 print_header "Creating CodeQL database..."
 print_status "Database: $DATABASE_DIR"
 print_status "Build mode: $BUILD_MODE"
-codeql "${CREATE_ARGS[@]}"
+CREATE_EXIT=0
+codeql "${CREATE_ARGS[@]}" || CREATE_EXIT=$?
+
+if [ "$CREATE_EXIT" -ne 0 ]; then
+    print_database_create_failure_guidance
+    exit "$CREATE_EXIT"
+fi
 echo ""
 
 print_header "Analyzing CodeQL database..."
