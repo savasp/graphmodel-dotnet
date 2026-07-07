@@ -109,6 +109,24 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
         try
         {
+            var storedDirection = await GetStoredRelationshipDirectionAsync(
+                relationship.Id,
+                transaction.Transaction,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!storedDirection.Exists)
+            {
+                _logger.LogWarning("Relationship with ID {RelationshipId} not found for update", relationship.Id);
+                throw new EntityNotFoundException($"Relationship with ID {relationship.Id} not found for update");
+            }
+
+            if (storedDirection.Direction != relationship.Direction)
+            {
+                throw new GraphException(
+                    "Direction cannot be changed on update; delete and recreate the relationship. " +
+                    $"Stored direction is {storedDirection.Direction}; incoming direction is {relationship.Direction}.");
+            }
+
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
 
@@ -129,6 +147,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             var updated = await UpdateRelationshipPropertiesAsync(
                 relationship.Id,
                 entity,
+                storedDirection.Value,
                 transaction.Transaction,
                 cancellationToken).ConfigureAwait(false);
 
@@ -234,14 +253,14 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     private async Task<bool> UpdateRelationshipPropertiesAsync(
         string relationshipId,
         EntityInfo entity,
+        object? storedDirectionValue,
         IAsyncTransaction transaction,
         CancellationToken cancellationToken)
     {
         var cypher = @"
             MATCH ()-[r {Id: $relId}]->()
-            WITH r, r.Direction AS storedDirection
             SET r = $props
-            SET r.Direction = storedDirection
+            SET r.Direction = $storedDirection
             RETURN r IS NOT NULL AS updated";
 
         var properties = SerializationHelpers.SerializeSimpleProperties(entity)
@@ -251,10 +270,43 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         var result = await transaction.RunAsync(cypher, new
         {
             relId = relationshipId,
-            props = properties
+            props = properties,
+            storedDirection = storedDirectionValue
         }).ConfigureAwait(false);
 
         return await result.CountAsync(cancellationToken).ConfigureAwait(false) > 0;
+    }
+
+    private static async Task<(bool Exists, object? Value, RelationshipDirection Direction)> GetStoredRelationshipDirectionAsync(
+        string relationshipId,
+        IAsyncTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var result = await transaction.RunAsync(
+            "MATCH ()-[r {Id: $relId}]->() RETURN r.Direction AS storedDirection",
+            new { relId = relationshipId }).ConfigureAwait(false);
+
+        var record = await result.SingleOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        if (record == null)
+        {
+            return (false, null, RelationshipDirection.Outgoing);
+        }
+
+        var storedDirectionValue = record["storedDirection"];
+        return (true, storedDirectionValue, ToRelationshipDirection(storedDirectionValue));
+    }
+
+    private static RelationshipDirection ToRelationshipDirection(object? value)
+    {
+        return value switch
+        {
+            RelationshipDirection direction when Enum.IsDefined(direction) => direction,
+            string directionString when Enum.TryParse<RelationshipDirection>(directionString, out var parsedDirection) &&
+                Enum.IsDefined(parsedDirection) => parsedDirection,
+            not null when Enum.TryParse<RelationshipDirection>(value.ToString(), out var parsedDirection) &&
+                Enum.IsDefined(parsedDirection) => parsedDirection,
+            _ => RelationshipDirection.Outgoing
+        };
     }
 
     private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Model.IRelationship

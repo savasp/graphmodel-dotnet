@@ -359,9 +359,7 @@ internal sealed class CypherResultProcessor
         INode startNode,
         INode endNode)
     {
-        var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
-        EnhanceRelationshipEntityInfo(entityInfo, relationship, targetType, startNode, endNode);
-        return entityInfo;
+        return CreateEnhancedRelationshipEntityInfo(relationship, targetType, startNode, endNode);
     }
 
     /// <summary>
@@ -452,8 +450,16 @@ internal sealed class CypherResultProcessor
             // Handle Neo4j relationships specially - convert them to EntityInfo
             if (value is IRelationship rel)
             {
-                // Create EntityInfo for the relationship and store as complex property
-                var relEntityInfo = CreateEntityInfoFromRelationship(rel, typeof(Model.IRelationship));
+                throw new GraphException(
+                    $"Relationship projection '{key}' did not include endpoint node data. " +
+                    "StartNodeId and EndNodeId cannot be reconstructed from a bare relationship value.");
+            }
+
+            // Handle relationship-shaped projection structures with endpoint nodes.
+            if (TryDeserializeRelationshipProjection(value, targetType, key, out var relationshipProjection))
+            {
+                var (relationship, startNode, endNode, projectionType) = relationshipProjection;
+                var relEntityInfo = CreateEnhancedRelationshipEntityInfo(relationship, projectionType, startNode, endNode);
                 complexProperties[key] = new Property(
                     PropertyInfo: null!, // We'll handle this differently for projections
                     Label: key,
@@ -572,7 +578,7 @@ internal sealed class CypherResultProcessor
                 if (startNode != null && relationship != null && endNode != null)
                 {
                     var startNodeEntityInfo = CreateEntityInfoFromNode(startNode, typeof(Model.INode));
-                    var relEntityInfo = CreateEntityInfoFromRelationship(relationship, typeof(Model.IRelationship));
+                    var relEntityInfo = CreateEnhancedRelationshipEntityInfo(relationship, typeof(Model.IRelationship), startNode, endNode);
                     var endNodeEntityInfo = CreateEntityInfoFromNode(endNode, typeof(Model.INode));
 
                     var pathSegmentEntityInfo = CreatePathSegmentEntityInfo(
@@ -619,6 +625,80 @@ internal sealed class CypherResultProcessor
             SimpleProperties: simpleProperties,
             ComplexProperties: complexProperties
         );
+    }
+
+    private bool TryDeserializeRelationshipProjection(
+        object value,
+        Type targetType,
+        string projectionName,
+        out (IRelationship Relationship, INode StartNode, INode EndNode, Type ProjectionType) result)
+    {
+        result = default;
+
+        if (value is not IReadOnlyDictionary<string, object> structuredObject ||
+            !structuredObject.ContainsKey("StartNode") ||
+            !structuredObject.ContainsKey("Relationship") ||
+            !structuredObject.ContainsKey("EndNode"))
+        {
+            return false;
+        }
+
+        var projectionType = GetProjectionMemberType(targetType, projectionName);
+        if (projectionType == null || !typeof(Model.IRelationship).IsAssignableFrom(projectionType))
+        {
+            return false;
+        }
+
+        var startNode = ExtractProjectedNode(structuredObject["StartNode"]);
+        var relationship = structuredObject["Relationship"] as IRelationship;
+        var endNode = ExtractProjectedNode(structuredObject["EndNode"]);
+
+        if (startNode == null || relationship == null || endNode == null)
+        {
+            throw new GraphException(
+                $"Relationship projection '{projectionName}' did not include endpoint node data. " +
+                "StartNodeId and EndNodeId cannot be reconstructed from a bare relationship value.");
+        }
+
+        result = (relationship, startNode, endNode, projectionType);
+        return true;
+    }
+
+    private static Type? GetProjectionMemberType(Type targetType, string projectionName)
+    {
+        return targetType.GetProperty(projectionName)?.PropertyType
+            ?? targetType.GetConstructors()
+                .SelectMany(c => c.GetParameters())
+                .FirstOrDefault(p => string.Equals(p.Name, projectionName, StringComparison.OrdinalIgnoreCase))
+                ?.ParameterType;
+    }
+
+    private static INode? ExtractProjectedNode(object value)
+    {
+        if (value is INode node)
+        {
+            return node;
+        }
+
+        if (value is IReadOnlyDictionary<string, object> nodeStructure &&
+            nodeStructure.TryGetValue("Node", out var nodeObject) &&
+            nodeObject is INode structuredNode)
+        {
+            return structuredNode;
+        }
+
+        return null;
+    }
+
+    private EntityInfo CreateEnhancedRelationshipEntityInfo(
+        IRelationship relationship,
+        Type targetType,
+        INode startNode,
+        INode endNode)
+    {
+        var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
+        EnhanceRelationshipEntityInfo(entityInfo, relationship, targetType, startNode, endNode);
+        return entityInfo;
     }
 
     private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, IRelationship relationship, Type targetType, INode pathStartNode, INode pathEndNode)
@@ -693,14 +773,24 @@ internal sealed class CypherResultProcessor
         var pathStartNodeId = GetNodeId(pathStartNode);
         var pathEndNodeId = GetNodeId(pathEndNode);
 
-        var (physicalStartNodeId, physicalEndNodeId) =
+        var endpointsMatchPath =
             relationship.StartNodeElementId == pathStartNode.ElementId &&
-            relationship.EndNodeElementId == pathEndNode.ElementId
+            relationship.EndNodeElementId == pathEndNode.ElementId;
+        var endpointsMatchReversePath =
+            relationship.StartNodeElementId == pathEndNode.ElementId &&
+            relationship.EndNodeElementId == pathStartNode.ElementId;
+
+        if (!endpointsMatchPath && !endpointsMatchReversePath)
+        {
+            throw new GraphException(
+                "Relationship endpoint element IDs do not match the projected endpoint nodes. " +
+                "StartNodeId and EndNodeId cannot be reconstructed.");
+        }
+
+        var (physicalStartNodeId, physicalEndNodeId) =
+            endpointsMatchPath
                 ? (pathStartNodeId, pathEndNodeId)
-                : relationship.StartNodeElementId == pathEndNode.ElementId &&
-                  relationship.EndNodeElementId == pathStartNode.ElementId
-                    ? (pathEndNodeId, pathStartNodeId)
-                    : (pathStartNodeId, pathEndNodeId);
+                : (pathEndNodeId, pathStartNodeId);
 
         return direction switch
         {
@@ -1253,7 +1343,11 @@ internal sealed class CypherResultProcessor
                     var pathSegment = DeserializePathSegment(pathSegmentMap);
                     if (pathSegment != null)
                     {
-                        var relationshipEntityInfo = CreateEntityInfoFromRelationship(pathSegment.Relationship, typeof(Model.IRelationship));
+                        var relationshipEntityInfo = CreateEnhancedRelationshipEntityInfo(
+                            pathSegment.Relationship,
+                            typeof(Model.IRelationship),
+                            pathSegment.StartNode.Node,
+                            pathSegment.EndNode.Node);
                         results.Add(relationshipEntityInfo);
                     }
                 }

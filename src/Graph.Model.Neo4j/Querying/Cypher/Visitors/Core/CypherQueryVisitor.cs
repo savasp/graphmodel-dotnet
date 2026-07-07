@@ -1578,7 +1578,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
             {
                 nameof(IGraphPathSegment.StartNode) => $"{{ Node: {startNodeAlias}, ComplexProperties: src_flat_properties }}",
                 nameof(IGraphPathSegment.EndNode) => $"{{ Node: {endNodeAlias}, ComplexProperties: tgt_flat_properties }}",
-                nameof(IGraphPathSegment.Relationship) => relationshipAlias, // Relationships don't need complex property structure in this context
+                nameof(IGraphPathSegment.Relationship) => $@"{{
+                    StartNode: {{ Node: {startNodeAlias}, ComplexProperties: src_flat_properties }},
+                    Relationship: {relationshipAlias},
+                    EndNode: {{ Node: {endNodeAlias}, ComplexProperties: tgt_flat_properties }}
+                }}",
                 _ => _expressionVisitor.VisitAndReturnCypher(expression)
             };
         }
@@ -1597,7 +1601,14 @@ internal class CypherQueryVisitor : ExpressionVisitor
             if (typeof(Model.IRelationship).IsAssignableFrom(paramExpr.Type))
             {
                 // This is a direct relationship parameter
-                return _context.Builder.GetActualAlias("r");
+                var srcAlias = _context.Builder.GetActualAlias("src");
+                var relAlias = _context.Builder.GetActualAlias("r");
+                var tgtAlias = _context.Builder.GetActualAlias("tgt");
+                return $@"{{
+                    StartNode: {{ Node: {srcAlias}, ComplexProperties: src_flat_properties }},
+                    Relationship: {relAlias},
+                    EndNode: {{ Node: {tgtAlias}, ComplexProperties: tgt_flat_properties }}
+                }}";
             }
 
             if (typeof(IGraphPathSegment).IsAssignableFrom(paramExpr.Type))
@@ -1625,7 +1636,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
             if (typeof(Model.IRelationship).IsAssignableFrom(memberType))
             {
                 // Relationships typically map to "r"
-                return "r";
+                return @"{
+                    StartNode: { Node: src, ComplexProperties: src_flat_properties },
+                    Relationship: r,
+                    EndNode: { Node: tgt, ComplexProperties: tgt_flat_properties }
+                }";
             }
         }
 

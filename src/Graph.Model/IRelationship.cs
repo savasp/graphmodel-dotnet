@@ -56,6 +56,10 @@ public interface IRelationship : IEntity
     /// This is storage metadata, not traversal configuration. Use <see cref="GraphTraversalDirection"/>
     /// when choosing how a query traverses relationships.
     /// </para>
+    /// <para>
+    /// The direction of a persisted relationship cannot be changed by an update. To reverse the
+    /// stored edge direction, delete and recreate the relationship.
+    /// </para>
     /// </remarks>
     RelationshipDirection Direction { get; init; }
 
