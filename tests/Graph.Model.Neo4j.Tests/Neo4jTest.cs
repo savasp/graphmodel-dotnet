@@ -64,11 +64,7 @@ public class Neo4jTest : IAsyncLifetime, IClassFixture<TestInfrastructureFixture
 
     public async ValueTask DisposeAsync()
     {
-        if (graph is not null)
-        {
-            await graph.DisposeAsync();
-        }
-
         correlationScope?.Dispose();
+        await ValueTask.CompletedTask;
     }
 }

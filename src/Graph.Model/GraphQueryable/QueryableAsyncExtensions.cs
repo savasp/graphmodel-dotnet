@@ -52,7 +52,7 @@ public static class QueryableAsyncExtensions
     /// This <see cref="IQueryable{T}"/>-typed overload exists alongside the
     /// <see cref="IGraphQueryable{T}"/>-typed one above for LINQ operators that degrade the
     /// static type away from <see cref="IGraphQueryable{T}"/> (e.g. the standard
-    /// <see cref="Queryable.Join{TOuter, TInner, TKey, TResult}"/>, which has no
+    /// <c>Queryable.Join</c>, which has no
     /// graph-typed-chain-preserving override): the compile-time result type of such a call is
     /// <see cref="IQueryable{TResult}"/> even though the runtime instance is still a graph
     /// queryable. Overload resolution prefers the more specific <see cref="IGraphQueryable{T}"/>
@@ -162,18 +162,7 @@ public static class QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<bool>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, bool>)QueryTerminals.AnyAsyncMarker).Method,
-                    source.Expression,
-                    predicate),
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        return await Task.Run(() => source.Any(predicate), cancellationToken).ConfigureAwait(false);
+        return await source.Where(predicate).AnyAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -255,7 +244,6 @@ public static class QueryableAsyncExtensions
     /// <summary>
     /// Asynchronously returns the last element of the sequence.
     /// If the sequence is empty, an exception is thrown.
-    /// If more than one element exists, an exception is thrown.
     /// </summary>
     public static async Task<T> LastAsync<T>(
         this IGraphQueryable<T> source,
@@ -265,6 +253,8 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
+            await ThrowIfEmptyAsync(source, cancellationToken).ConfigureAwait(false);
+
             return await graphProvider.ExecuteAsync<T>(
                 Expression.Call(
                     null,
@@ -491,18 +481,7 @@ public static class QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<T>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T>)QueryTerminals.LastAsyncMarker).Method,
-                    source.Expression,
-                    predicate),
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        return await Task.Run(() => source.Last(predicate), cancellationToken).ConfigureAwait(false);
+        return await source.Where(predicate).LastAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -538,18 +517,7 @@ public static class QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<T?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, T?>)QueryTerminals.LastOrDefaultAsyncMarker).Method,
-                    source.Expression,
-                    predicate),
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        return await Task.Run(() => source.LastOrDefault(predicate), cancellationToken).ConfigureAwait(false);
+        return await source.Where(predicate).LastOrDefaultAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -610,18 +578,7 @@ public static class QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(predicate);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<int>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, bool>>, int>)QueryTerminals.CountAsyncMarker).Method,
-                    source.Expression,
-                    predicate),
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        return await Task.Run(() => source.Count(predicate), cancellationToken).ConfigureAwait(false);
+        return await source.Where(predicate).CountAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -870,6 +827,11 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
+            if (RequiresNonEmptySequence(typeof(T)))
+            {
+                await ThrowIfEmptyAsync(source, cancellationToken).ConfigureAwait(false);
+            }
+
             return await graphProvider.ExecuteAsync<T?>(
                 Expression.Call(
                     null,
@@ -894,6 +856,11 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
+            if (RequiresNonEmptySequence(typeof(TResult)))
+            {
+                await ThrowIfEmptyAsync(source, cancellationToken).ConfigureAwait(false);
+            }
+
             return await graphProvider.ExecuteAsync<TResult?>(
                 Expression.Call(
                     null,
@@ -917,6 +884,11 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
+            if (RequiresNonEmptySequence(typeof(T)))
+            {
+                await ThrowIfEmptyAsync(source, cancellationToken).ConfigureAwait(false);
+            }
+
             return await graphProvider.ExecuteAsync<T?>(
                 Expression.Call(
                     null,
@@ -941,6 +913,11 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
+            if (RequiresNonEmptySequence(typeof(TResult)))
+            {
+                await ThrowIfEmptyAsync(source, cancellationToken).ConfigureAwait(false);
+            }
+
             return await graphProvider.ExecuteAsync<TResult?>(
                 Expression.Call(
                     null,
@@ -951,5 +928,20 @@ public static class QueryableAsyncExtensions
         }
 
         return await Task.Run(() => source.Max(selector.Compile()), cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool RequiresNonEmptySequence(Type type)
+    {
+        return type.IsValueType && Nullable.GetUnderlyingType(type) is null;
+    }
+
+    private static async Task ThrowIfEmptyAsync<T>(
+        IGraphQueryable<T> source,
+        CancellationToken cancellationToken)
+    {
+        if (!await source.AnyAsync(cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("Sequence contains no elements");
+        }
     }
 }

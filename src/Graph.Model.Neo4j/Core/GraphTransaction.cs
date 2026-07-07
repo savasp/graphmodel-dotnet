@@ -82,7 +82,7 @@ internal class GraphTransaction : IGraphTransaction
     /// Rolls back the transaction.
     /// </summary>
     /// <exception cref="GraphException">Thrown if the transaction is not active</exception>
-    public async Task Rollback()
+    public async Task RollbackAsync()
     {
         if (_transaction == null || _committed || _rolledBack)
             throw new GraphException("Transaction is not active.");

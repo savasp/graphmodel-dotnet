@@ -57,7 +57,7 @@ internal static class TransactionHelpers
             {
                 try
                 {
-                    await tx.Rollback().ConfigureAwait(false);
+                    await tx.RollbackAsync().ConfigureAwait(false);
                 }
                 catch (GraphException ex)
                 {
@@ -80,7 +80,7 @@ internal static class TransactionHelpers
             logger?.LogError(ex, errorMessage);
             if (transaction == null)
             {
-                await tx.Rollback().ConfigureAwait(false);
+                await tx.RollbackAsync().ConfigureAwait(false);
             }
 
             throw;

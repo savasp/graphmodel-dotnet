@@ -135,7 +135,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             if (!updated)
             {
                 _logger.LogWarning("Relationship with ID {RelationshipId} not found for update", relationship.Id);
-                throw new KeyNotFoundException($"Relationship with ID {relationship.Id} not found for update");
+                throw new EntityNotFoundException($"Relationship with ID {relationship.Id} not found for update");
             }
 
             _logger.LogInformation("Updated relationship of type {RelationshipType} with ID {RelationshipId}",
@@ -143,7 +143,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             return true;
         }
-        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException and not OperationCanceledException)
+        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Error updating relationship {RelationshipId} of type {RelationshipType}",
                 relationship.Id, typeof(TRelationship).Name);
@@ -174,13 +174,13 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             if (deletedCount == 0)
             {
                 _logger.LogWarning("Relationship with ID {RelationshipId} not found for deletion", relationshipId);
-                throw new KeyNotFoundException($"Relationship with ID {relationshipId} not found for deletion");
+                throw new EntityNotFoundException($"Relationship with ID {relationshipId} not found for deletion");
             }
 
             _logger.LogInformation("Deleted relationship with ID {RelationshipId}", relationshipId);
             return true;
         }
-        catch (Exception ex) when (ex is not KeyNotFoundException and not OperationCanceledException)
+        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Error deleting relationship with ID {RelationshipId}", relationshipId);
             throw new GraphException($"Failed to delete relationship: {ex.Message}", ex);
@@ -241,8 +241,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             props = properties
         }).ConfigureAwait(false);
 
-        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
-        return record["updated"].As<bool>();
+        return await result.CountAsync(cancellationToken).ConfigureAwait(false) > 0;
     }
 
     private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Model.IRelationship

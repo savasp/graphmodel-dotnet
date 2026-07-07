@@ -42,92 +42,92 @@ internal static class QueryTerminals
 {
     // Internal marker methods - these are only used in expression trees, never called directly
     internal static List<T> ToListAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T[] ToArrayAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static Dictionary<TKey, TElement> ToDictionaryAsyncMarker<TSource, TKey, TElement>(
         IQueryable<TSource> source, Expression<Func<TSource, TKey>> keySelector, Expression<Func<TSource, TElement>> elementSelector) where TKey : notnull =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static Dictionary<TKey, TSource> ToDictionaryAsyncMarker<TSource, TKey>(
         IQueryable<TSource> source, Expression<Func<TSource, TKey>> keySelector) where TKey : notnull =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static ILookup<TKey, TElement> ToLookupAsyncMarker<TSource, TKey, TElement>(
         IQueryable<TSource> source, Expression<Func<TSource, TKey>> keySelector, Expression<Func<TSource, TElement>> elementSelector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static ILookup<TKey, TSource> ToLookupAsyncMarker<TSource, TKey>(
         IQueryable<TSource> source, Expression<Func<TSource, TKey>> keySelector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T FirstAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T FirstAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, bool>> predicate) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T? FirstOrDefaultAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T? FirstOrDefaultAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, bool>> predicate) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T LastAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T LastAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, bool>> predicate) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T? LastOrDefaultAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T? LastOrDefaultAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, bool>> predicate) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T SingleAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T SingleAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, bool>> predicate) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T? SingleOrDefaultAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T? SingleOrDefaultAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, bool>> predicate) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static int CountAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static int CountAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, bool>> predicate) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static long LongCountAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static long LongCountAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, bool>> predicate) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static bool AnyAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static bool AnyAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, bool>> predicate) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static bool AllAsyncMarker<T>(IQueryable<T> source, Expression<Func<T, bool>> predicate) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static bool ContainsAsyncMarker<T>(IQueryable<T> source, T item) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T ElementAtAsyncMarker<T>(IQueryable<T> source, int index) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T? ElementAtOrDefaultAsyncMarker<T>(IQueryable<T> source, int index) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     // Sum/Average markers - a single unconstrained generic definition per shape. These bodies are
     // never executed (the whole point of a marker method), so there's no need for one overload
@@ -135,27 +135,27 @@ internal static class QueryTerminals
     // definition over whichever numeric TResult (int, int?, long, ..., decimal?) the call site
     // needs, and the provider dispatch table matches on the open generic method definition.
     internal static TResult SumAsyncMarker<TResult>(IQueryable<TResult> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static TResult SumAsyncMarker<TSource, TResult>(IQueryable<TSource> source, Expression<Func<TSource, TResult>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static TResult AverageAsyncMarker<TSource, TResult>(IQueryable<TSource> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static TResult AverageAsyncMarker<TSource, TResult>(IQueryable<TSource> source, Expression<Func<TSource, TResult>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     // Min/Max markers
     internal static T? MinAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static TResult? MinAsyncMarker<T, TResult>(IQueryable<T> source, Expression<Func<T, TResult>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static T? MaxAsyncMarker<T>(IQueryable<T> source) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 
     internal static TResult? MaxAsyncMarker<T, TResult>(IQueryable<T> source, Expression<Func<T, TResult>> selector) =>
-        throw new NotImplementedException("This method should only be used in expression trees");
+        throw new InvalidOperationException("This method should only be used in expression trees");
 }

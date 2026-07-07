@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Translation.Tests;
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j.Translation.Tests.Harness;
 using Cvoya.Graph.Model.Neo4j.Translation.Tests.Model;
 
@@ -90,6 +91,19 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
         var source = Root.Nodes<Person>().OrderBy(p => p.LastName);
         var expr = MarkerExpressions.Call<Person>("LastOrDefaultAsyncMarker", source.Expression);
         return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Theory]
+    [InlineData("LastAsyncMarker")]
+    [InlineData("LastOrDefaultAsyncMarker")]
+    public void LastTerminals_WithoutOrderBy_ThrowGraphException(string markerName)
+    {
+        var source = Root.Nodes<Person>();
+        var expr = MarkerExpressions.Call<Person>(markerName, source.Expression);
+
+        var exception = Assert.Throws<GraphException>(() => CypherTranslator.Translate(typeof(Person), expr));
+
+        Assert.Contains("OrderBy", exception.Message);
     }
 
     [Fact]

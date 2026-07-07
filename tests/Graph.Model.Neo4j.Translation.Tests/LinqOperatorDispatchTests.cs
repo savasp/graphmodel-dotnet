@@ -114,11 +114,8 @@ public class LinqOperatorDispatchTests
     }
 
     /// <summary>
-    /// The six #74 terminal members (brief addendum): their bodies on <see cref="GraphQueryableBase{T}"/>
-    /// still throw <see cref="NotImplementedException"/> today (that's #74's job to fix), but the
-    /// dispatch table itself must already resolve their underlying marker <see cref="MethodInfo"/>s
-    /// to a handled <see cref="LinqOperator"/> - so #74 only has to implement the instance-method
-    /// bodies, not wire up translation dispatch.
+    /// The six #74 terminal members delegate through these markers, and the dispatch table must
+    /// resolve each marker <see cref="MethodInfo"/> to a handled <see cref="LinqOperator"/>.
     /// </summary>
     // marker name -> expected LinqOperator name (Enum.Parse'd inside the test, so the [Theory]
     // parameter list itself never needs to mention the internal LinqOperator type).
@@ -155,13 +152,11 @@ public class LinqOperatorDispatchTests
     }
 
     /// <summary>
-    /// Confirms the #74 members' bodies are still the documented NotImplementedException seams on
-    /// GraphQueryableBase&lt;T&gt; (i.e. this PR did not silently absorb #74's scope) - pinned here
-    /// so the two PRs stay in sync: if #74 lands first and implements these, this test should be
-    /// updated (or removed) rather than silently left asserting stale behavior.
+    /// Confirms the #74 members are present on GraphQueryableBase&lt;T&gt;; behavior is covered by
+    /// the provider contract tests.
     /// </summary>
     [Fact]
-    public void Issue74MemberBodiesAreStillNotImplementedSeams()
+    public void Issue74MemberBodiesAreImplementedOnGraphQueryableBase()
     {
         var methodNames = new[]
         {

@@ -30,6 +30,7 @@ public class CrudOperationsBenchmark
 {
     private static readonly DateTime BenchmarkReferenceDate = new(2026, 1, 15, 12, 0, 0, DateTimeKind.Utc);
     private static readonly Random _random = new();
+    private Neo4jGraphStore _graphStore = null!;
     private IGraph _graph = null!;
     private List<Person> _testPersons = null!;
     private List<string> _personIds = null!;
@@ -69,8 +70,8 @@ public class CrudOperationsBenchmark
             }
         }
 
-        var graphStore = new Neo4jGraphStore(connectionString, username, password, "PerformanceBenchmark");
-        _graph = graphStore.Graph;
+        _graphStore = new Neo4jGraphStore(connectionString, username, password, "PerformanceBenchmark");
+        _graph = _graphStore.Graph;
 
         // Generate test data
         var faker = new Faker<Person>()
@@ -104,7 +105,7 @@ public class CrudOperationsBenchmark
         }
         await transaction.CommitAsync();
 
-        await _graph.DisposeAsync();
+        await _graphStore.DisposeAsync();
     }
 
     [Benchmark]

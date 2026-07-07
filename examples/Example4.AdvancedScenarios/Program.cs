@@ -205,7 +205,7 @@ catch (Exception ex)
 }
 finally
 {
-    await graph.DisposeAsync();
+    await store.DisposeAsync();
     await using (var session = driver.AsyncSession(sc => sc.WithDatabase("system")))
     {
         await session.RunAsync($"DROP DATABASE {databaseName}");

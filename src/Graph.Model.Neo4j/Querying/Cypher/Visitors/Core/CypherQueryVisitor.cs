@@ -560,6 +560,11 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleLast(MethodCallExpression node, Expression? result, string methodName)
     {
+        if (!_context.Builder.HasOrderBy)
+        {
+            throw new GraphException($"{methodName} requires an explicit OrderBy before LastAsync or LastOrDefaultAsync so the Neo4j provider can translate deterministic ordering.");
+        }
+
         // Set limit to 1 for Last operations
         _context.Builder.SetLimit(1);
 

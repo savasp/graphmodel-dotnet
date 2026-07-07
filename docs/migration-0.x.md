@@ -321,6 +321,29 @@ Buffered terminal operators such as `ToListAsync` still buffer by design. If an 
 owned by the streaming query is abandoned before enumeration completes, the provider rolls it back
 and disposes it; caller-owned ambient transactions remain caller-owned.
 
+## 12. API contract cleanup: graph lifetime, transaction rollback, and missing entities
+
+`IGraph` no longer implements `IAsyncDisposable`; graph instances are facades over provider-owned
+resources. Dispose the provider store that created the graph instead:
+
+```diff
+-await graph.DisposeAsync();
++await store.DisposeAsync();
+```
+
+`Neo4jGraphStore` owns and disposes the driver only when constructed from URI/username/password.
+When constructed with an external `IDriver`, the caller keeps driver ownership and must dispose it.
+
+`IGraphTransaction.Rollback()` is renamed to `RollbackAsync()`:
+
+```diff
+-await transaction.Rollback();
++await transaction.RollbackAsync();
+```
+
+Missing entities from get/update/delete operations now throw `EntityNotFoundException`, which
+derives from `GraphException`, instead of relying on the broader graph exception contract.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.
@@ -330,5 +353,3 @@ and disposes it; caller-owned ambient transactions remain caller-owned.
 - The depth/direction overload *shapes* on `Traverse`/`TraversePaths` (no-args, `maxDepth`,
   `minDepth, maxDepth`, `direction`, options-lambda) — unchanged; only the type-argument count
   changed (§7), not which overloads exist.
-- Non-cancellation exception-type cleanup for terminal operators — tracked separately (issue #76);
-  cancellation now consistently surfaces `OperationCanceledException`.

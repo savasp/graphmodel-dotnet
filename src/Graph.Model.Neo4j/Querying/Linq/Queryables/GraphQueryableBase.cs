@@ -276,32 +276,38 @@ internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGrap
 
     public Task<T> LastAsync(CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return QueryableAsyncExtensions.LastAsync(this, cancellationToken);
     }
 
     public Task<T?> LastOrDefaultAsync(CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return QueryableAsyncExtensions.LastOrDefaultAsync(this, cancellationToken);
     }
 
     public Task<int> CountAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        ArgumentNullException.ThrowIfNull(predicate);
+
+        var filtered = GraphQueryableExtensions.Where(this, predicate);
+        return QueryableAsyncExtensions.CountAsync(filtered, cancellationToken);
     }
 
     public Task<bool> AnyAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        ArgumentNullException.ThrowIfNull(predicate);
+
+        var filtered = GraphQueryableExtensions.Where(this, predicate);
+        return QueryableAsyncExtensions.AnyAsync(filtered, cancellationToken);
     }
 
     public Task<TResult?> MaxAsync<TResult>(Expression<Func<T, TResult>> selector, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return QueryableAsyncExtensions.MaxAsync(this, selector, cancellationToken);
     }
 
     public Task<TResult?> MinAsync<TResult>(Expression<Func<T, TResult>> selector, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return QueryableAsyncExtensions.MinAsync(this, selector, cancellationToken);
     }
 
     #endregion

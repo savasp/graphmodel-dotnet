@@ -96,7 +96,7 @@ try
         }
         catch
         {
-            await transaction.Rollback();
+            await transaction.RollbackAsync();
             throw;
         }
     }
@@ -137,7 +137,7 @@ try
         catch (Exception ex)
         {
             Console.WriteLine($"✗ Transaction failed: {ex.Message}");
-            await transaction.Rollback();
+            await transaction.RollbackAsync();
             Console.WriteLine("✓ Transaction rolled back");
         }
     }
@@ -201,7 +201,7 @@ try
         }
         catch
         {
-            await transaction.Rollback();
+            await transaction.RollbackAsync();
             throw;
         }
     }
@@ -241,7 +241,7 @@ catch (Exception ex)
 }
 finally
 {
-    await graph.DisposeAsync();
+    await store.DisposeAsync();
     await using (var session = driver.AsyncSession())
     {
         //        await session.RunAsync($"DROP DATABASE {databaseName}");

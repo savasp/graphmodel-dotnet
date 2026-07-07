@@ -30,6 +30,7 @@ public class RelationshipBenchmark
 {
     private static readonly DateTime BenchmarkReferenceDate = new(2026, 1, 15, 12, 0, 0, DateTimeKind.Utc);
     private static readonly Random _random = new();
+    private Neo4jGraphStore _graphStore = null!;
     private IGraph _graph = null!;
     private List<Person> _persons = null!;
     private List<Company> _companies = null!;
@@ -69,14 +70,14 @@ public class RelationshipBenchmark
             }
         }
 
-        var graphStore = new Neo4jGraphStore(
+        _graphStore = new Neo4jGraphStore(
             connectionString,
             username,
             password,
             "PerformanceBenchmark"
         );
 
-        _graph = graphStore.Graph;
+        _graph = _graphStore.Graph;
 
         // Generate test data
         var personFaker = new Faker<Person>()
@@ -133,7 +134,7 @@ public class RelationshipBenchmark
         }
 
         await transaction.CommitAsync();
-        await _graph.DisposeAsync();
+        await _graphStore.DisposeAsync();
     }
 
     [Benchmark]

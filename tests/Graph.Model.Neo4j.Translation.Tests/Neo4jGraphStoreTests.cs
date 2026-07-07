@@ -14,7 +14,9 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Translation.Tests;
 
+using System.Reflection;
 using Cvoya.Graph.Model.Neo4j;
+using global::Neo4j.Driver;
 
 public class Neo4jGraphStoreTests
 {
@@ -38,6 +40,78 @@ public class Neo4jGraphStoreTests
         finally
         {
             Environment.SetEnvironmentVariable("NEO4J_PASSWORD", originalPassword);
+        }
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DisposesOwnedDriverOnce()
+    {
+        var (driver, tracker) = TrackingDriverProxy.Create();
+        var store = new Neo4jGraphStore(driver, ownsDriver: true);
+
+        await store.DisposeAsync();
+        await store.DisposeAsync();
+
+        Assert.Equal(1, tracker.DisposeAsyncCallCount);
+        Assert.Equal(0, tracker.DisposeCallCount);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DoesNotDisposeExternalDriver()
+    {
+        var (driver, tracker) = TrackingDriverProxy.Create();
+        var store = new Neo4jGraphStore(driver);
+
+        await store.DisposeAsync();
+        await store.DisposeAsync();
+
+        Assert.Equal(0, tracker.DisposeAsyncCallCount);
+        Assert.Equal(0, tracker.DisposeCallCount);
+    }
+
+    [Fact]
+    public async Task GraphUseAfterStoreDispose_ThrowsObjectDisposedException()
+    {
+        var (driver, _) = TrackingDriverProxy.Create();
+        var store = new Neo4jGraphStore(driver);
+
+        await store.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => store.Graph.GetTransactionAsync(TestContext.Current.CancellationToken));
+    }
+
+    private class TrackingDriverProxy : DispatchProxy
+    {
+        public int DisposeAsyncCallCount { get; private set; }
+        public int DisposeCallCount { get; private set; }
+
+        public static (IDriver Driver, TrackingDriverProxy Tracker) Create()
+        {
+            var driver = DispatchProxy.Create<IDriver, TrackingDriverProxy>();
+            return (driver, (TrackingDriverProxy)driver);
+        }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            return targetMethod?.Name switch
+            {
+                nameof(IAsyncDisposable.DisposeAsync) => RecordDisposeAsync(),
+                nameof(IDisposable.Dispose) => RecordDispose(),
+                _ => throw new NotSupportedException($"{targetMethod?.Name} should not be called by this test.")
+            };
+        }
+
+        private ValueTask RecordDisposeAsync()
+        {
+            DisposeAsyncCallCount++;
+            return ValueTask.CompletedTask;
+        }
+
+        private object? RecordDispose()
+        {
+            DisposeCallCount++;
+            return null;
         }
     }
 }

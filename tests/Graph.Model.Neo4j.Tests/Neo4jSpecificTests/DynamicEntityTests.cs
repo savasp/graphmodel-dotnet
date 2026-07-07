@@ -223,7 +223,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
         await Graph.DeleteNodeAsync(node.Id, false, null, TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<GraphException>(() =>
+        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
             Graph.GetDynamicNodeAsync(node.Id, null, TestContext.Current.CancellationToken));
     }
 
@@ -253,7 +253,7 @@ public class DynamicEntityTests(TestInfrastructureFixture fixture) :
         await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
         await Graph.DeleteRelationshipAsync(relationship.Id, null, TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<GraphException>(() =>
+        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
             Graph.GetDynamicRelationshipAsync(relationship.Id, null, TestContext.Current.CancellationToken));
     }
 

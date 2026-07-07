@@ -130,7 +130,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             if (!updated)
             {
                 _logger.LogWarning("Node with ID {NodeId} not found for update", node.Id);
-                throw new KeyNotFoundException($"Node with ID {node.Id} not found for update");
+                throw new EntityNotFoundException($"Node with ID {node.Id} not found for update");
             }
 
             // Update complex properties
@@ -146,7 +146,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             _logger.LogInformation("Updated node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
             return true;
         }
-        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException and not OperationCanceledException)
+        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Error updating node {NodeId} of type {NodeType}", node.Id, typeof(TNode).Name);
             throw new GraphException($"Failed to update node: {ex.Message}", ex);
@@ -174,7 +174,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             if (rootCount == 0)
             {
                 _logger.LogWarning("Node with ID {NodeId} not found for deletion", nodeId);
-                throw new KeyNotFoundException($"Node with ID {nodeId} not found for deletion");
+                throw new EntityNotFoundException($"Node with ID {nodeId} not found for deletion");
             }
 
             if (rootCount > 1)
@@ -236,13 +236,13 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             if (!wasDeleted)
             {
                 _logger.LogWarning("Node with ID {NodeId} not found for deletion", nodeId);
-                throw new KeyNotFoundException($"Node with ID {nodeId} not found for deletion");
+                throw new EntityNotFoundException($"Node with ID {nodeId} not found for deletion");
             }
 
             _logger.LogInformation("Deleted node with ID {NodeId}", nodeId);
             return true;
         }
-        catch (Exception ex) when (ex is not KeyNotFoundException && ex is not GraphException && ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Error deleting node with ID: {NodeId}", nodeId);
             throw new GraphException($"Failed to delete node: {ex.Message}", ex);
