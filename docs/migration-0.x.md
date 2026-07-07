@@ -344,6 +344,15 @@ When constructed with an external `IDriver`, the caller keeps driver ownership a
 Missing entities from get/update/delete operations now throw `EntityNotFoundException`, which
 derives from `GraphException`, instead of relying on the broader graph exception contract.
 
+## 13. `FirstAsync` and `SingleAsync` now throw on empty query results
+
+Graph query terminals now match LINQ-to-Objects element semantics for empty and multiple-result
+sources. `FirstAsync` and `SingleAsync` throw `InvalidOperationException` when the query returns no
+rows; earlier provider materialization could return `default` for those empty scalar terminals.
+`SingleAsync` and `SingleOrDefaultAsync` also throw `InvalidOperationException` when more than one
+row matches. `FirstOrDefaultAsync` and `SingleOrDefaultAsync` still return `default` for empty
+sources.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

@@ -1,6 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-LIMIT 1
+LIMIT 2
 
             // All complex property paths from src
             OPTIONAL MATCH src_path = (src)-[rels*1..]->(prop)
