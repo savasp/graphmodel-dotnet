@@ -24,7 +24,6 @@ public class SmallValueTypesTests
     {
         { RelationshipDirection.Outgoing, 0, nameof(RelationshipDirection.Outgoing) },
         { RelationshipDirection.Incoming, 1, nameof(RelationshipDirection.Incoming) },
-        { RelationshipDirection.Bidirectional, 2, nameof(RelationshipDirection.Bidirectional) },
     };
 
     public static TheoryData<Point, Point, bool> PointEqualityCases => new()
