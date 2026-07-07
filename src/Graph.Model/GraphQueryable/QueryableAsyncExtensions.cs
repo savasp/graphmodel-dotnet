@@ -253,8 +253,6 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
-            await ThrowIfEmptyAsync(source, cancellationToken).ConfigureAwait(false);
-
             return await graphProvider.ExecuteAsync<T>(
                 Expression.Call(
                     null,

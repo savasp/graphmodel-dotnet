@@ -32,6 +32,7 @@ internal sealed class CypherEngine
         None,
         First,
         FirstOrDefault,
+        Last,
         Single,
         SingleOrDefault,
     }
@@ -176,6 +177,7 @@ internal sealed class CypherEngine
 
         AddAll(nameof(QueryTerminals.FirstAsyncMarker), ElementTerminal.First);
         AddAll(nameof(QueryTerminals.FirstOrDefaultAsyncMarker), ElementTerminal.FirstOrDefault);
+        AddAll(nameof(QueryTerminals.LastAsyncMarker), ElementTerminal.Last);
         AddAll(nameof(QueryTerminals.SingleAsyncMarker), ElementTerminal.Single);
         AddAll(nameof(QueryTerminals.SingleOrDefaultAsyncMarker), ElementTerminal.SingleOrDefault);
 
@@ -210,6 +212,7 @@ internal sealed class CypherEngine
         switch (terminal)
         {
             case ElementTerminal.First when recordCount == 0:
+            case ElementTerminal.Last when recordCount == 0:
             case ElementTerminal.Single when recordCount == 0:
                 throw new InvalidOperationException("Sequence contains no elements");
 
@@ -220,6 +223,7 @@ internal sealed class CypherEngine
             case ElementTerminal.None:
             case ElementTerminal.First:
             case ElementTerminal.FirstOrDefault:
+            case ElementTerminal.Last:
             case ElementTerminal.Single:
             case ElementTerminal.SingleOrDefault:
                 return;
