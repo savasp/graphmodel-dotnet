@@ -107,7 +107,7 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
 
         var generationModel = allTypes
             .Combine(allDeclaredTypes)
-            .Select(static (combined, _) => new GenerationModel(combined.Left, combined.Right))
+            .Select(static (combined, _) => GenerationModel.FromDiscoverySets(combined.Left, combined.Right))
             .WithTrackingName("GraphModel.SerializerGenerationInput");
 
         context.RegisterSourceOutput(

@@ -106,6 +106,15 @@ internal static class GeneratorTestHelpers
         return GetAllStepReasons(driver);
     }
 
+    public static IReadOnlyDictionary<string, IReadOnlyCollection<IncrementalStepRunReason>> GetUnrelatedNonEntityTypeAdditionReasonsByTrackingName(
+        string source,
+        [CallerMemberName] string testName = "")
+    {
+        var (_, driver) = RunBeforeAndAfterAddingUnrelatedNonEntityType(source, testName);
+
+        return GetAllStepReasons(driver);
+    }
+
     /// <summary>
     /// Runs the generator against <paramref name="source"/> plus an unrelated, non-entity source
     /// file, then re-runs it after applying a whitespace-only edit to that unrelated file, and
@@ -172,6 +181,33 @@ internal static class GeneratorTestHelpers
         // Apply a whitespace-only edit to the unrelated file - the entity source is untouched.
         var editedUnrelatedTree = CSharpSyntaxTree.ParseText(unrelatedSource + "\n", path: "Unrelated.cs");
         var editedCompilation = compilation.ReplaceSyntaxTree(unrelatedTree, editedUnrelatedTree);
+
+        driver = driver.RunGenerators(editedCompilation);
+
+        return (firstRunResult, driver);
+    }
+
+    private static (GeneratorDriverRunResult FirstRunResult, GeneratorDriver Driver) RunBeforeAndAfterAddingUnrelatedNonEntityType(
+        string source,
+        string testName)
+    {
+        const string unrelatedSource = """
+            namespace TestNamespace;
+
+            public class NonEntityDescription
+            {
+                public string Name { get; set; } = string.Empty;
+            }
+            """;
+
+        var compilation = CreateCompilation(source, testName);
+
+        var driver = CreateTrackingDriver();
+        driver = driver.RunGenerators(compilation);
+        var firstRunResult = driver.GetRunResult();
+
+        var unrelatedTree = CSharpSyntaxTree.ParseText(unrelatedSource, path: "NonEntityDescription.cs");
+        var editedCompilation = compilation.AddSyntaxTrees(unrelatedTree);
 
         driver = driver.RunGenerators(editedCompilation);
 

@@ -212,6 +212,31 @@ public class EntitySerializerGeneratorTests
     }
 
     /// <summary>
+    /// Adding a new plain non-entity type exercises the false side of the syntax discovery
+    /// predicates: the new type declaration is visible to the driver, but it has no graph
+    /// attribute and no base list, so no GraphModel step should produce a new value.
+    /// </summary>
+    [Fact]
+    public void EntityTypeDiscovery_CachesAllTrackedGraphModelStepsAfterAddingUnrelatedNonEntityType()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            namespace TestNamespace;
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public string FirstName { get; set; } = string.Empty;
+            }
+            """;
+
+        var reasonsByStep = GeneratorTestHelpers.GetUnrelatedNonEntityTypeAdditionReasonsByTrackingName(source);
+
+        AssertAllTrackedStepsCachedOrUnchanged(reasonsByStep);
+    }
+
+    /// <summary>
     /// End-to-end proof that an unrelated whitespace edit produces byte-identical generated
     /// source: even though the driver re-executes <c>RegisterSourceOutput</c> for the reasons
     /// documented on <see cref="EntityTypeDiscovery_CachesAfterUnrelatedEdit"/>, the resulting

@@ -559,11 +559,24 @@ internal sealed class TypeDiscoverySet : IEquatable<TypeDiscoverySet>
 
 internal sealed class GenerationModel : IEquatable<GenerationModel>
 {
-    public GenerationModel(TypeDiscoverySet rootsAndCatalog, TypeDiscoverySet allDeclaredTypes)
+    private GenerationModel(
+        EquatableArray<SerializableTypeModel> roots,
+        EquatableArray<SerializableTypeModel> catalog,
+        EquatableArray<SerializableTypeModel> allDeclaredRoots)
     {
-        Roots = rootsAndCatalog.Roots;
-        Catalog = TypeDiscoverySet.Merge(rootsAndCatalog, allDeclaredTypes).Types;
-        AllDeclaredRoots = allDeclaredTypes.Roots;
+        Roots = roots;
+        Catalog = catalog;
+        AllDeclaredRoots = allDeclaredRoots;
+    }
+
+    public static GenerationModel FromDiscoverySets(
+        TypeDiscoverySet rootsAndCatalog,
+        TypeDiscoverySet allDeclaredTypes)
+    {
+        return new GenerationModel(
+            rootsAndCatalog.Roots,
+            TypeDiscoverySet.Merge(rootsAndCatalog, allDeclaredTypes).Types,
+            allDeclaredTypes.Roots);
     }
 
     public EquatableArray<SerializableTypeModel> Roots { get; }

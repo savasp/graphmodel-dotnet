@@ -141,9 +141,9 @@ public class CodeGenModelEqualityTests
             EquatableArray<SerializableTypeModel>.From([SerializableType(name: "Derived")]),
             EquatableArray<SerializableTypeModel>.From([SerializableType(name: "Derived")]));
 
-        var first = new GenerationModel(rootsAndCatalog, declared);
-        var second = new GenerationModel(rootsAndCatalog, declared);
-        var changed = new GenerationModel(rootsAndCatalog, TypeDiscoverySet.Empty);
+        var first = GenerationModel.FromDiscoverySets(rootsAndCatalog, declared);
+        var second = GenerationModel.FromDiscoverySets(rootsAndCatalog, declared);
+        var changed = GenerationModel.FromDiscoverySets(rootsAndCatalog, TypeDiscoverySet.Empty);
 
         Assert.Equal(first, second);
         Assert.Equal(first.GetHashCode(), second.GetHashCode());
