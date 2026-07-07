@@ -368,24 +368,24 @@ var summaries = await graph.Nodes<Article>()
 
 ```csharp
 // Contains search
-var results = graph.Nodes<Article>()
+var results = await graph.Nodes<Article>()
     .Where(a => a.Content.Contains("machine learning"))
-    .ToList();
+    .ToListAsync();
 
 // Case-insensitive search
-var caseInsensitive = graph.Nodes<Article>()
+var caseInsensitive = await graph.Nodes<Article>()
     .Where(a => a.Title.ToLower().Contains("graph"))
-    .ToList();
+    .ToListAsync();
 
 // Multiple term search
-var multiTerm = graph.Nodes<Article>()
+var multiTerm = await graph.Nodes<Article>()
     .Where(a => a.Content.Contains("graph") && a.Content.Contains("database"))
-    .ToList();
+    .ToListAsync();
 
 // Starts with / Ends with
-var prefixSearch = graph.Nodes<Person>()
+var prefixSearch = await graph.Nodes<Person>()
     .Where(p => p.Email.StartsWith("admin@"))
-    .ToList();
+    .ToListAsync();
 ```
 
 ### Search Features
@@ -402,8 +402,8 @@ For complex scenarios, you can execute multiple queries and join in memory:
 
 ```csharp
 // Get all data
-var people = graph.Nodes<Person>().ToList();
-var knows = graph.Relationships<Knows>().ToList();
+var people = await graph.Nodes<Person>().ToListAsync();
+var knows = await graph.Relationships<Knows>().ToListAsync();
 
 // Join to find connections
 var connections = from person in people
@@ -446,7 +446,7 @@ var popular = knows
 ### Conditional Logic in Projections
 
 ```csharp
-var categorized = graph.Nodes<Person>()
+var categorized = await graph.Nodes<Person>()
     .Select(p => new
     {
         p.FirstName,
@@ -455,5 +455,5 @@ var categorized = graph.Nodes<Person>()
                    "Senior",
         Discount = p.Age < 18 || p.Age >= 65 ? 0.2 : 0.0
     })
-    .ToList();
+    .ToListAsync();
 ```

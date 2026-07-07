@@ -47,16 +47,16 @@ public interface INode : IEntity
 
 ```csharp
 // Query nodes and filter by runtime labels
-var adminUsers = graph.Nodes<User>()
+var adminUsers = await graph.Nodes<User>()
     .Where(u => u.Labels.Contains("Admin"))
-    .ToList();
+    .ToListAsync();
 
 // Filter in path traversal
-var query = graph.Nodes<User>()
+var query = await graph.Nodes<User>()
     .Where(u => u.Id == userId)
     .PathSegments<User, IRelationship, INode>()
     .Where(ps => ps.EndNode.Labels.Contains("Memory"))
-    .ToList();
+    .ToListAsync();
 ```
 
 ## The IRelationship.Type Property
@@ -97,16 +97,16 @@ public interface IRelationship : IEntity
 
 ```csharp
 // Filter relationships by type in path traversal
-var query = graph.Nodes<User>()
+var query = await graph.Nodes<User>()
     .Where(u => u.Id == userId)
     .PathSegments<User, UserMemory, Memory>()
     .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == "REMEMBERS")
-    .ToList();
+    .ToListAsync();
 
 // Filter polymorphic relationships
-var adminRelationships = graph.Relationships<IRelationship>()
+var adminRelationships = await graph.Relationships<IRelationship>()
     .Where(r => r.Type.StartsWith("ADMIN_"))
-    .ToList();
+    .ToListAsync();
 ```
 
 ## Using the Node and Relationship Base Classes
@@ -268,6 +268,7 @@ If you have existing code that directly implements `INode` or `IRelationship`:
 ```csharp
 public class Person : INode
 {
+    // Note: implementing INode directly triggers analyzer warning GM011; prefer the Node base class unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
     public string Name { get; set; } = string.Empty;
