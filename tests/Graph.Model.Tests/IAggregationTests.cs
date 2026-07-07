@@ -412,6 +412,72 @@ public interface IAggregationTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task MinAsync_EmptySource_NonNullableSelector_Throws()
+    {
+        var missingGroup = $"MinAsync-empty-{Guid.NewGuid():N}";
+
+        var query = Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == missingGroup);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => query.MinAsync(p => p.Age, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task MaxAsync_EmptySource_NonNullableSelector_Throws()
+    {
+        var missingGroup = $"MaxAsync-empty-{Guid.NewGuid():N}";
+
+        var query = Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == missingGroup);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => query.MaxAsync(p => p.Age, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task MinAsync_EmptySource_NullableSelector_ReturnsNull()
+    {
+        var missingGroup = $"MinAsync-nullable-empty-{Guid.NewGuid():N}";
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == missingGroup)
+            .MinAsync(p => (int?)p.Age, TestContext.Current.CancellationToken);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task MaxAsync_EmptySource_NullableSelector_ReturnsNull()
+    {
+        var missingGroup = $"MaxAsync-nullable-empty-{Guid.NewGuid():N}";
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == missingGroup)
+            .MaxAsync(p => (int?)p.Age, TestContext.Current.CancellationToken);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task OrderByTakeMinAsync_EmptyWindow_Throws()
+    {
+        var group = $"issue-185-186-empty-window-{Guid.NewGuid():N}";
+        await Graph.CreateNodeAsync(
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var query = Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .OrderBy(p => p.Age)
+            .Take(0);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => query.MinAsync(p => p.Age, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task CountEmptySet_ReturnsZero()
     {
         var count = await Graph.Nodes<PersonWithNumbers>()

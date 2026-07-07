@@ -226,6 +226,20 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public async Task MinMaxAsync_NonNullableSelectors_ExecuteSingleAggregateQuery()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await AssertSingleAggregateExecutionAsync(
+            "MinAsyncMarker",
+            source => source.MinAsync(p => p.Age, cancellationToken));
+
+        await AssertSingleAggregateExecutionAsync(
+            "MaxAsyncMarker",
+            source => source.MaxAsync(p => p.Age, cancellationToken));
+    }
+
+    [Fact]
     public Task Contains_OnScalarProjection()
     {
         var source = Root.Nodes<Person>().Select(p => p.FirstName);
@@ -263,5 +277,27 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
         var source = Root.Nodes<Person>().OrderBy(p => p.LastName);
         var expr = MarkerExpressions.Call<Person>("ElementAtOrDefaultAsyncMarker", source.Expression, Expression.Constant(3));
         return VerifyTranslation(typeof(Person), expr);
+    }
+
+    private static async Task AssertSingleAggregateExecutionAsync(
+        string expectedMarkerName,
+        Func<IGraphQueryable<Person>, Task> execute)
+    {
+        var provider = new FakeGraphQueryProvider(allowExecution: true);
+        var source = CreateExecutableRoot(provider);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => execute(source));
+
+        var expression = Assert.Single(provider.ExecutedExpressions);
+        var methodCall = Assert.IsAssignableFrom<MethodCallExpression>(expression);
+        Assert.Equal(expectedMarkerName, methodCall.Method.Name);
+        Assert.DoesNotContain(provider.ExecutedExpressions.OfType<MethodCallExpression>(), call => call.Method.Name == "AnyAsyncMarker");
+    }
+
+    private static IGraphQueryable<Person> CreateExecutableRoot(FakeGraphQueryProvider provider)
+    {
+        var placeholder = new FakeGraphNodeQueryable<Person>(provider, Expression.Constant(null, typeof(Expression)));
+        var expression = Expression.Constant(placeholder, typeof(IGraphQueryable<Person>));
+        return new FakeGraphNodeQueryable<Person>(provider, expression);
     }
 }

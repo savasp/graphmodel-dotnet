@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model;
 
+using System.Globalization;
 using System.Linq.Expressions;
 using System.Numerics;
 
@@ -825,17 +826,12 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
-            if (RequiresNonEmptySequence(typeof(T)))
-            {
-                await ThrowIfEmptyAsync(source, cancellationToken).ConfigureAwait(false);
-            }
+            var expression = Expression.Call(
+                null,
+                ((Func<IQueryable<T>, T?>)QueryTerminals.MinAsyncMarker).Method,
+                source.Expression);
 
-            return await graphProvider.ExecuteAsync<T?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, T?>)QueryTerminals.MinAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken).ConfigureAwait(false);
+            return await ExecuteMinMaxAggregateAsync<T>(graphProvider, expression, cancellationToken).ConfigureAwait(false);
         }
 
         return await Task.Run(() => source.Min(), cancellationToken).ConfigureAwait(false);
@@ -854,18 +850,13 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
-            if (RequiresNonEmptySequence(typeof(TResult)))
-            {
-                await ThrowIfEmptyAsync(source, cancellationToken).ConfigureAwait(false);
-            }
+            var expression = Expression.Call(
+                null,
+                ((Func<IQueryable<T>, Expression<Func<T, TResult>>, TResult?>)QueryTerminals.MinAsyncMarker).Method,
+                source.Expression,
+                selector);
 
-            return await graphProvider.ExecuteAsync<TResult?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, TResult>>, TResult?>)QueryTerminals.MinAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken).ConfigureAwait(false);
+            return await ExecuteMinMaxAggregateAsync<TResult>(graphProvider, expression, cancellationToken).ConfigureAwait(false);
         }
 
         return await Task.Run(() => source.Min(selector.Compile()), cancellationToken).ConfigureAwait(false);
@@ -882,17 +873,12 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
-            if (RequiresNonEmptySequence(typeof(T)))
-            {
-                await ThrowIfEmptyAsync(source, cancellationToken).ConfigureAwait(false);
-            }
+            var expression = Expression.Call(
+                null,
+                ((Func<IQueryable<T>, T?>)QueryTerminals.MaxAsyncMarker).Method,
+                source.Expression);
 
-            return await graphProvider.ExecuteAsync<T?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, T?>)QueryTerminals.MaxAsyncMarker).Method,
-                    source.Expression),
-                cancellationToken).ConfigureAwait(false);
+            return await ExecuteMinMaxAggregateAsync<T>(graphProvider, expression, cancellationToken).ConfigureAwait(false);
         }
 
         return await Task.Run(() => source.Max(), cancellationToken).ConfigureAwait(false);
@@ -911,35 +897,58 @@ public static class QueryableAsyncExtensions
 
         if (source.Provider is IGraphQueryProvider graphProvider)
         {
-            if (RequiresNonEmptySequence(typeof(TResult)))
-            {
-                await ThrowIfEmptyAsync(source, cancellationToken).ConfigureAwait(false);
-            }
+            var expression = Expression.Call(
+                null,
+                ((Func<IQueryable<T>, Expression<Func<T, TResult>>, TResult?>)QueryTerminals.MaxAsyncMarker).Method,
+                source.Expression,
+                selector);
 
-            return await graphProvider.ExecuteAsync<TResult?>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<T>, Expression<Func<T, TResult>>, TResult?>)QueryTerminals.MaxAsyncMarker).Method,
-                    source.Expression,
-                    selector),
-                cancellationToken).ConfigureAwait(false);
+            return await ExecuteMinMaxAggregateAsync<TResult>(graphProvider, expression, cancellationToken).ConfigureAwait(false);
         }
 
         return await Task.Run(() => source.Max(selector.Compile()), cancellationToken).ConfigureAwait(false);
     }
 
-    private static bool RequiresNonEmptySequence(Type type)
-    {
-        return type.IsValueType && Nullable.GetUnderlyingType(type) is null;
-    }
-
-    private static async Task ThrowIfEmptyAsync<T>(
-        IGraphQueryable<T> source,
+    private static async Task<TResult?> ExecuteMinMaxAggregateAsync<TResult>(
+        IGraphQueryProvider graphProvider,
+        Expression expression,
         CancellationToken cancellationToken)
     {
-        if (!await source.AnyAsync(cancellationToken).ConfigureAwait(false))
+        if (!RequiresNonEmptySequence(typeof(TResult)))
+        {
+            return await graphProvider.ExecuteAsync<TResult?>(expression, cancellationToken).ConfigureAwait(false);
+        }
+
+        var result = await graphProvider.ExecuteAsync(expression, cancellationToken).ConfigureAwait(false);
+        if (result is null)
         {
             throw new InvalidOperationException("Sequence contains no elements");
         }
+
+        return ConvertAggregateResult<TResult>(result);
+    }
+
+    private static TResult ConvertAggregateResult<TResult>(object value)
+    {
+        if (value is TResult typedValue)
+        {
+            return typedValue;
+        }
+
+        var targetType = Nullable.GetUnderlyingType(typeof(TResult)) ?? typeof(TResult);
+        if (targetType.IsEnum)
+        {
+            var enumValue = value is string stringValue
+                ? Enum.Parse(targetType, stringValue)
+                : Enum.ToObject(targetType, value);
+            return (TResult)enumValue;
+        }
+
+        return (TResult)Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture);
+    }
+
+    private static bool RequiresNonEmptySequence(Type type)
+    {
+        return type.IsValueType && Nullable.GetUnderlyingType(type) is null;
     }
 }
