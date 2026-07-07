@@ -21,7 +21,7 @@ public interface ITransactionTests : IGraphModelTest
     {
         var person = new Person { FirstName = "TransactionTest", LastName = "Commit" };
 
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
@@ -35,7 +35,7 @@ public interface ITransactionTests : IGraphModelTest
     {
         var person = new Person { FirstName = "TransactionTest", LastName = "Rollback" };
 
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
         await transaction.Rollback();
 
@@ -48,7 +48,7 @@ public interface ITransactionTests : IGraphModelTest
     {
         var person = new Person { FirstName = "TransactionTest", LastName = "AutoRollback" };
 
-        await using (var transaction = await Graph.GetTransactionAsync())
+        await using (var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken))
         {
             await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
             // Dispose without commit should rollback
@@ -65,7 +65,7 @@ public interface ITransactionTests : IGraphModelTest
         var person2 = new Person { FirstName = "Transaction", LastName = "Person2" };
         var relationship = new Friend(person1.Id, person2.Id) { Since = DateTime.UtcNow };
 
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
 
         await Graph.CreateNodeAsync(person1, transaction, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person2, transaction, TestContext.Current.CancellationToken);
@@ -89,7 +89,7 @@ public interface ITransactionTests : IGraphModelTest
         var person = new Person { FirstName = "Original", LastName = "Name" };
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         person.FirstName = "Updated";
         person.LastName = "InTransaction";
         await Graph.UpdateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
@@ -106,7 +106,7 @@ public interface ITransactionTests : IGraphModelTest
         var person = new Person { FirstName = "ToDelete", LastName = "InTransaction" };
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         await Graph.DeleteNodeAsync(person.Id, false, transaction, TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
@@ -125,7 +125,7 @@ public interface ITransactionTests : IGraphModelTest
         var relationship = new Friend(person1.Id, person2.Id);
         await Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
 
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         await Graph.DeleteNodeAsync(person1.Id, true, transaction, TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
@@ -144,7 +144,7 @@ public interface ITransactionTests : IGraphModelTest
         var person1 = new Person { FirstName = "Valid", LastName = "Person" };
         var person2 = new Person { FirstName = "Another", LastName = "Person" };
 
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
 
         await Graph.CreateNodeAsync(person1, transaction, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person2, transaction, TestContext.Current.CancellationToken);
@@ -173,7 +173,7 @@ public interface ITransactionTests : IGraphModelTest
         var person1 = new Person { FirstName = "Query", LastName = "Person1" };
         var person2 = new Person { FirstName = "Query", LastName = "Person2" };
 
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
 
         await Graph.CreateNodeAsync(person1, transaction, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person2, transaction, TestContext.Current.CancellationToken);
@@ -194,7 +194,7 @@ public interface ITransactionTests : IGraphModelTest
     {
         var person = new Person { FirstName = "Isolation", LastName = "Test" };
 
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
 
         // Outside the transaction, the node should not be visible
@@ -215,7 +215,7 @@ public interface ITransactionTests : IGraphModelTest
     [Fact]
     public async Task DoubleCommit_ThrowsException()
     {
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var person = new Person { FirstName = "DoubleCommit", LastName = "Test" };
 
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
@@ -228,7 +228,7 @@ public interface ITransactionTests : IGraphModelTest
     [Fact]
     public async Task CommitAfterRollback_ThrowsException()
     {
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var person = new Person { FirstName = "CommitAfterRollback", LastName = "Test" };
 
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
@@ -241,7 +241,7 @@ public interface ITransactionTests : IGraphModelTest
     [Fact]
     public async Task RollbackAfterCommit_ThrowsException()
     {
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var person = new Person { FirstName = "RollbackAfterCommit", LastName = "Test" };
 
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);

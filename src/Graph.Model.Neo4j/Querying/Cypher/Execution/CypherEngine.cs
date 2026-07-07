@@ -104,7 +104,7 @@ internal sealed class CypherEngine
                 .WithCancellation(cancellationToken)
                 .ConfigureAwait(false))
             {
-                yield return (T)(object)path;
+                yield return (T)path;
             }
 
             yield break;
@@ -137,6 +137,7 @@ internal sealed class CypherEngine
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            // TraversePaths orders rows by pathIndex, then hopIndex, so a path can be emitted once its index changes.
             var hop = _materializer.ProcessGraphPathHop(record, graphPathTypes, cancellationToken);
             if (currentPathIndex is int pathIndex && hop.PathIndex != pathIndex)
             {

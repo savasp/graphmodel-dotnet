@@ -155,7 +155,7 @@ public interface IBasicTests : IGraphModelTest
     [Fact]
     public async Task CanBeginTransactionAndRollback()
     {
-        var tx = await this.Graph.GetTransactionAsync();
+        var tx = await this.Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var person = new Person { FirstName = "TxTest" };
         await this.Graph.CreateNodeAsync(person, tx, TestContext.Current.CancellationToken);
         await tx.DisposeAsync(); // Rollback

@@ -27,9 +27,14 @@ public class QueryPipelineRegressionTests
     {
         var root = FindRepositoryRoot();
 
-        var queryableSource = File.ReadAllText(Path.Combine(
+        var queryableSource = File.ReadAllText(Path.Join(
             root,
-            "src/Graph.Model.Neo4j/Querying/Linq/Queryables/GraphQueryableBase.cs"));
+            "src",
+            "Graph.Model.Neo4j",
+            "Querying",
+            "Linq",
+            "Queryables",
+            "GraphQueryableBase.cs"));
         var getAsyncEnumerator = ExtractMember(
             queryableSource,
             "public IAsyncEnumerator<T> GetAsyncEnumerator",
@@ -38,9 +43,14 @@ public class QueryPipelineRegressionTests
         Assert.Contains("Provider.StreamAsync<T>", getAsyncEnumerator);
         Assert.DoesNotContain("Provider.ExecuteAsync<IEnumerable<T>>", getAsyncEnumerator);
 
-        var executorSource = File.ReadAllText(Path.Combine(
+        var executorSource = File.ReadAllText(Path.Join(
             root,
-            "src/Graph.Model.Neo4j/Querying/Cypher/Execution/CypherExecutor.cs"));
+            "src",
+            "Graph.Model.Neo4j",
+            "Querying",
+            "Cypher",
+            "Execution",
+            "CypherExecutor.cs"));
         var streamAsync = ExtractBlockMember(
             executorSource,
             "public async IAsyncEnumerable<IRecord> StreamAsync");
@@ -69,7 +79,7 @@ public class QueryPipelineRegressionTests
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "AGENTS.md")))
+        while (directory is not null && !File.Exists(Path.Join(directory.FullName, "AGENTS.md")))
         {
             directory = directory.Parent;
         }

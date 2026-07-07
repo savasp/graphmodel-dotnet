@@ -20,6 +20,7 @@ using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Linq.Helpers;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -216,7 +217,15 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
                     {
                         await tx.Rollback().ConfigureAwait(false);
                     }
-                    catch (Exception ex)
+                    catch (GraphException ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to roll back abandoned streaming query transaction");
+                    }
+                    catch (Neo4jException ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to roll back abandoned streaming query transaction");
+                    }
+                    catch (InvalidOperationException ex)
                     {
                         _logger.LogWarning(ex, "Failed to roll back abandoned streaming query transaction");
                     }

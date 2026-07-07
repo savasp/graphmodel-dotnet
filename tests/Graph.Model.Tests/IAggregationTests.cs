@@ -375,7 +375,7 @@ public interface IAggregationTests : IGraphModelTest
     [Fact]
     public async Task AggregationInTransaction_WorksCorrectly()
     {
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
 
         var people = new[]
         {

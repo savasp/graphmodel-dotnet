@@ -29,8 +29,10 @@ public interface IStreamingTests : IGraphModelTest
                 TestContext.Current.CancellationToken);
         }
 
-        var query = Graph.Nodes<Person>()
-            .Where(p => p.FirstName == marker)
+        var filteredQuery = Graph.Nodes<Person>()
+            .Where(p => p.FirstName == marker);
+
+        var query = filteredQuery
             .OrderBy(p => p.LastName);
 
         var enumerator = query.GetAsyncEnumerator(TestContext.Current.CancellationToken);
@@ -43,7 +45,46 @@ public interface IStreamingTests : IGraphModelTest
             await enumerator.DisposeAsync();
         }
 
-        var count = await query.CountAsync(TestContext.Current.CancellationToken);
+        var count = await filteredQuery.CountAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(5, count);
+    }
+
+    [Fact]
+    public async Task StreamingQuery_CancellationAfterFirstItem_ThrowsAndCleansUpAutoTransaction()
+    {
+        var marker = $"CancelledStream-{Guid.NewGuid():N}";
+
+        for (var i = 0; i < 5; i++)
+        {
+            await Graph.CreateNodeAsync(
+                new Person { FirstName = marker, LastName = i.ToString() },
+                null,
+                TestContext.Current.CancellationToken);
+        }
+
+        var filteredQuery = Graph.Nodes<Person>()
+            .Where(p => p.FirstName == marker);
+
+        var query = filteredQuery
+            .OrderBy(p => p.LastName);
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var enumerator = query.GetAsyncEnumerator(cts.Token);
+        try
+        {
+            Assert.True(await enumerator.MoveNextAsync());
+
+            await cts.CancelAsync();
+
+            await Assert.ThrowsAsync<OperationCanceledException>(
+                async () => await enumerator.MoveNextAsync());
+        }
+        finally
+        {
+            await enumerator.DisposeAsync();
+        }
+
+        var count = await filteredQuery.CountAsync(TestContext.Current.CancellationToken);
         Assert.Equal(5, count);
     }
 }

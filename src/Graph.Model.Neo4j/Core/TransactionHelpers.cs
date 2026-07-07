@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Core;
 
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 
 
@@ -58,7 +59,15 @@ internal static class TransactionHelpers
                 {
                     await tx.Rollback().ConfigureAwait(false);
                 }
-                catch (Exception ex)
+                catch (GraphException ex)
+                {
+                    logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
+                }
+                catch (Neo4jException ex)
+                {
+                    logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
+                }
+                catch (InvalidOperationException ex)
                 {
                     logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
                 }
