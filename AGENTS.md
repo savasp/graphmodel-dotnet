@@ -49,7 +49,7 @@ Package testing before publishing: `dotnet build --configuration LocalFeed`, the
 
 - **The lead session owns isolation.** Task agents are dispatched into an already-prepared worktree/branch — verify with `git status` / `git branch --show-current` before changing anything, and never work in the user's main checkout. (Worktrees live under `~/dev/worktrees/graphmodel-dotnet/<task>`, based on latest `origin/main`.)
 - One focused branch + PR per task (`feat/…`, `fix/…`, `chore/…`); coordinate through branch state and PR comments, not shared files.
-- Build and test before pushing. Docs-only changes may skip the test gate.
+- Build and test before pushing. For branches with code changes, also run `./scripts/run-codeql.sh` before pushing commits to a remote branch; `./scripts/validate-build.sh --codeql` satisfies this when running the full validation pass. Docs-only changes may skip the test and CodeQL gates.
 - **Shared-file discipline:** `graphmodel.sln`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `VERSION`, and `.github/` workflows are high-conflict and/or protected — change them additively, and ask the user before modifying the protected ones (a PreToolUse hook enforces this for Claude; it is advisory, not a security boundary).
 - **All changes land via pull request** (branch protection enforces this); use standard `git`/`gh`. You may see commits and PRs authored by `savasp-agent[bot]` — that is the maintainer's own automation identity, not a tool contributors need or can use.
 

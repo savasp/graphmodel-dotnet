@@ -12,6 +12,9 @@ This directory contains utility scripts for the GraphModel project.
 
 # Validate all build configurations
 ./scripts/validate-build.sh
+
+# Validate builds and run local CodeQL analysis
+./scripts/validate-build.sh --codeql
 ```
 
 ### Version Management
@@ -61,6 +64,19 @@ dotnet build --configuration Release
 
 # Run performance tests
 ./scripts/run-tests.sh --performance
+```
+
+### CodeQL Analysis
+
+```bash
+# Run the same C# CodeQL query suite used by the GitHub workflow
+./scripts/run-codeql.sh
+
+# Trace the LocalFeed and Release builds when the local platform supports it
+./scripts/run-codeql.sh --build-mode manual
+
+# Treat any local CodeQL result as a failing validation
+./scripts/run-codeql.sh --fail-on-alerts
 ```
 
 ### Package Management
@@ -260,8 +276,13 @@ Validates the entire build system and ensures all configurations work correctly.
 **Usage:**
 
 ```bash
-./scripts/validate-build.sh
+./scripts/validate-build.sh [options]
 ```
+
+**Options:**
+
+- `--codeql`: Run local CodeQL C# analysis after build validation
+- `-h, --help`: Show help message
 
 **What it does:**
 
@@ -269,6 +290,41 @@ Validates the entire build system and ensures all configurations work correctly.
 - Validates MSBuild targets and local feed workflow
 - Checks prerequisites and project structure
 - Ensures the build system is ready for development and CI/CD
+
+### `run-codeql.sh`
+
+Runs local C# CodeQL analysis using the same `security-and-quality` query suite as
+`.github/workflows/codeql.yml`. By default it uses CodeQL's C# `none` build mode,
+which is the most portable local option. In that mode, the script analyzes a
+disposable source copy and temporary database outside the checkout so CodeQL
+dependency probing cannot rewrite repository files.
+Use `--build-mode manual` to trace the same LocalFeed and Release builds used by
+the GitHub workflow when the local platform supports CodeQL compiler tracing.
+
+**Usage:**
+
+```bash
+./scripts/run-codeql.sh [options]
+```
+
+**Options:**
+
+- `-o, --output-dir <dir>`: SARIF output directory (default: `artifacts/codeql`)
+- `--build-mode <mode>`: CodeQL build mode, `none` or `manual` (default: `none`)
+- `--no-download`: Do not download/update the CodeQL C# query pack
+- `--fail-on-alerts`: Exit non-zero if the SARIF file contains results
+- `--threads <count>`: Number of CodeQL evaluator threads
+- `--ram <mb>`: Maximum RAM for CodeQL, in MB
+- `-h, --help`: Show help message
+
+**Examples:**
+
+```bash
+./scripts/run-codeql.sh
+./scripts/run-codeql.sh --build-mode manual
+./scripts/run-codeql.sh --fail-on-alerts
+./scripts/run-codeql.sh --threads 4 --ram 8192
+```
 
 ### `run-tests.sh` ⭐ **New**
 

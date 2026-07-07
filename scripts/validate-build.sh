@@ -30,6 +30,37 @@ print_header() {
 
 # Configuration to test
 CONFIGURATIONS=("Debug" "Benchmark" "LocalFeed" "Release")
+RUN_CODEQL=false
+
+usage() {
+    cat <<'EOF'
+GraphModel Build System Validation
+
+Usage: ./scripts/validate-build.sh [options]
+
+Options:
+  --codeql      Run local CodeQL C# analysis after build validation
+  -h, --help    Show this help message
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --codeql)
+            RUN_CODEQL=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            print_error "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
 
 print_header "🔍 GraphModel Build System Validation"
 echo ""
@@ -147,6 +178,19 @@ fi
 print_status "✅ Solution file found"
 
 echo ""
+
+if [ "$RUN_CODEQL" = true ]; then
+    print_header "Running CodeQL analysis..."
+    if ./scripts/run-codeql.sh; then
+        print_status "✅ CodeQL analysis completed"
+    else
+        print_error "❌ CodeQL analysis failed"
+        exit 1
+    fi
+
+    echo ""
+fi
+
 print_header "🎉 Build system validation completed successfully!"
 echo ""
 print_status "All configurations are working correctly."
