@@ -32,6 +32,7 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     private readonly bool _ownsDriver;
     private readonly string _databaseName;
     private readonly SchemaRegistry _schemaRegistry;
+    private bool _disposed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Neo4jGraphStore"/> class.
@@ -106,11 +107,21 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
         string databaseName = "neo4j",
         SchemaRegistry? schemaRegistry = null,
         Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
+        : this(driver, ownsDriver: false, databaseName, schemaRegistry, loggerFactory)
+    {
+    }
+
+    internal Neo4jGraphStore(
+        IDriver driver,
+        bool ownsDriver,
+        string databaseName = "neo4j",
+        SchemaRegistry? schemaRegistry = null,
+        Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
     {
         ArgumentNullException.ThrowIfNull(driver, nameof(driver));
         _databaseName = databaseName ?? Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
         _driver = driver;
-        _ownsDriver = false; // This constructor receives an external driver, don't dispose it
+        _ownsDriver = ownsDriver;
         _schemaRegistry = schemaRegistry ?? new SchemaRegistry();
         Graph = new Neo4jGraph(this, _databaseName, _schemaRegistry, loggerFactory);
     }
@@ -145,7 +156,7 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     /// </summary>
     public Task CreateDatabaseIfNotExistsAsync()
     {
-        return CreateDatabaseIfNotExistsAsync(_driver, _databaseName);
+        return CreateDatabaseIfNotExistsAsync(Driver, _databaseName);
     }
 
     /// <summary>
@@ -157,11 +168,25 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
         if (_ownsDriver)
         {
             await _driver.DisposeAsync().ConfigureAwait(false);
         }
     }
 
-    internal IDriver Driver => _driver;
+    internal IDriver Driver
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _driver;
+        }
+    }
 }

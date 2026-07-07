@@ -51,7 +51,7 @@ internal class Neo4jGraph : IGraph
 
         _graphContext = new GraphContext(
             this,
-            _graphStore.Driver,
+            () => _graphStore.Driver,
             databaseName,
             loggerFactory,
             _schemaRegistry);
@@ -79,6 +79,10 @@ internal class Neo4jGraph : IGraph
             return graphTransaction;
         }
         catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (ObjectDisposedException)
         {
             throw;
         }

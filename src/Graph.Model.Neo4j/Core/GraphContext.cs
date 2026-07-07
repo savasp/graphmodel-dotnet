@@ -27,9 +27,10 @@ internal class GraphContext
     private EntityFactory? _entityFactory;
     private Neo4jSchemaManager? _schemaManager;
     private readonly SchemaRegistry _schemaRegistry;
+    private readonly Func<IDriver> _driverAccessor;
 
     public Neo4jGraph Graph { get; }
-    public IDriver Driver { get; }
+    public IDriver Driver => _driverAccessor();
     public string DatabaseName { get; }
     public ILoggerFactory? LoggerFactory { get; }
     public SchemaRegistry SchemaRegistry => _schemaRegistry;
@@ -44,13 +45,13 @@ internal class GraphContext
     /// </summary>
     public GraphContext(
         Neo4jGraph graph,
-        IDriver driver,
+        Func<IDriver> driverAccessor,
         string databaseName,
         ILoggerFactory? loggerFactory,
         SchemaRegistry schemaRegistry)
     {
         Graph = graph ?? throw new ArgumentNullException(nameof(graph));
-        Driver = driver ?? throw new ArgumentNullException(nameof(driver));
+        _driverAccessor = driverAccessor ?? throw new ArgumentNullException(nameof(driverAccessor));
         DatabaseName = databaseName ?? throw new ArgumentNullException(nameof(databaseName));
         LoggerFactory = loggerFactory;
         _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
