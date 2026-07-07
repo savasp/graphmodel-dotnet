@@ -52,7 +52,7 @@ public static class QueryableAsyncExtensions
     /// This <see cref="IQueryable{T}"/>-typed overload exists alongside the
     /// <see cref="IGraphQueryable{T}"/>-typed one above for LINQ operators that degrade the
     /// static type away from <see cref="IGraphQueryable{T}"/> (e.g. the standard
-    /// <see cref="Queryable.Join{TOuter, TInner, TKey, TResult}"/>, which has no
+    /// <c>Queryable.Join</c>, which has no
     /// graph-typed-chain-preserving override): the compile-time result type of such a call is
     /// <see cref="IQueryable{TResult}"/> even though the runtime instance is still a graph
     /// queryable. Overload resolution prefers the more specific <see cref="IGraphQueryable{T}"/>
