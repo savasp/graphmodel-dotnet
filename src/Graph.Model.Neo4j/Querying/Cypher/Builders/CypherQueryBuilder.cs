@@ -54,7 +54,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     /// Everything <c>HandleTraversePaths</c> knows at <c>TraversePaths(...)</c> call time, except
     /// the traversal direction - which a later <c>.Direction(...)</c> call in the same chain (the
     /// sanctioned composition <c>source.TraversePaths(...).Direction(...)</c> builds - see
-    /// <see cref="GraphQueryable.GraphTraversalExtensions.TraversePaths"/>'s options-lambda
+    /// <see cref="GraphTraversalExtensions.TraversePaths{TRel, TEnd}(IGraphQueryable{INode}, Func{GraphTraversalOptions, GraphTraversalOptions})"/>'s options-lambda
     /// overload) may still set. Deferring pattern construction to <see cref="Build"/> (mirroring
     /// <see cref="PendingPathSegmentPattern"/>/<see cref="BuildPendingPathSegmentPattern"/>'s
     /// existing solution to the identical problem for single-hop <c>PathSegments</c>) means the

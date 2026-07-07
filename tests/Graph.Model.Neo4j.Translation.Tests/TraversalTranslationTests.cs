@@ -100,6 +100,7 @@ public class TraversalTranslationTests : TranslationTestBase
         return VerifyTranslation(query);
     }
 
+#pragma warning disable CS0618 // These tests deliberately snapshot the obsolete free-floating traversal modifiers.
     [Fact]
     public Task Direction_Outgoing_OnPathSegments()
     {
@@ -135,6 +136,7 @@ public class TraversalTranslationTests : TranslationTestBase
             .WithDepth(2, 4);
         return VerifyTranslation(query);
     }
+#pragma warning restore CS0618
 
     [Fact]
     public Task PathSegments_WithWhereOnEndNode()
