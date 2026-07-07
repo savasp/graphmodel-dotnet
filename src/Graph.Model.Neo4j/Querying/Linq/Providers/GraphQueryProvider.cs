@@ -215,7 +215,7 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
                 {
                     try
                     {
-                        await tx.Rollback().ConfigureAwait(false);
+                        await tx.RollbackAsync().ConfigureAwait(false);
                     }
                     catch (GraphException ex)
                     {

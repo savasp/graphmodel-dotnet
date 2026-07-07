@@ -57,7 +57,7 @@ internal static class TransactionHelpers
             {
                 try
                 {
-                    await tx.Rollback().ConfigureAwait(false);
+                    await tx.RollbackAsync().ConfigureAwait(false);
                 }
                 catch (GraphException ex)
                 {

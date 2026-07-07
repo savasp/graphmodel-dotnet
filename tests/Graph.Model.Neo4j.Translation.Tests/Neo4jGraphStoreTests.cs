@@ -77,7 +77,8 @@ public class Neo4jGraphStoreTests
 
         await store.DisposeAsync();
 
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => store.Graph.GetTransactionAsync());
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => store.Graph.GetTransactionAsync(TestContext.Current.CancellationToken));
     }
 
     private class TrackingDriverProxy : DispatchProxy
