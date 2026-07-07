@@ -127,10 +127,12 @@ internal class GraphTransaction : IGraphTransaction
         }
     }
 
-    internal async Task BeginTransactionAsync()
+    internal async Task BeginTransactionAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         _logger.LogDebug("Beginning new transaction");
-        _transaction = await _session.BeginTransactionAsync().ConfigureAwait(false);
+        _transaction = await _session.BeginTransactionAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
         _logger.LogDebug("Successfully began transaction");
     }
 }

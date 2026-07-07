@@ -93,6 +93,10 @@ internal class CypherQueryVisitor : ExpressionVisitor
         {
             throw;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             throw new GraphException(
@@ -1208,7 +1212,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
         var searchQueryArg = node.Arguments[1];
         var searchQuery = EvaluateConstantExpression<string>(searchQueryArg);
 
-        _logger.LogDebug("Processing Search with query: {Query}", searchQuery);
+        _logger.LogDebug("Processing Search with query length: {QueryLength}", searchQuery.Length);
 
         // Determine the entity type from the source queryable
         var sourceType = result?.Type ?? node.Arguments[0].Type;
@@ -1643,7 +1647,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
         if (node is FullTextSearchExpression searchExpr)
         {
-            _logger.LogDebug("Handling full text search expression for query: {Query}", searchExpr.SearchQuery);
+            _logger.LogDebug(
+                "Handling full text search expression with query length: {QueryLength}",
+                searchExpr.SearchQuery.Length);
 
             // Handle full text search by adding appropriate Cypher
             HandleFullTextSearch(searchExpr);

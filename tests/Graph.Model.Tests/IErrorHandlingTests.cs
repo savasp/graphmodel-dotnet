@@ -297,14 +297,14 @@ public interface IErrorHandlingTests : IGraphModelTest
     }
 
     [Fact]
-    public async Task CancelledOperation_ThrowsGraphException()
+    public async Task CancelledOperation_ThrowsOperationCanceledException()
     {
         var node = new TestNode { Name = "CancelTest" };
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel(); // Cancel immediately
+        await cts.CancelAsync();
 
-        await Assert.ThrowsAnyAsync<GraphException>(async () =>
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
         {
             await Graph.CreateNodeAsync(node, null, cts.Token);
         });

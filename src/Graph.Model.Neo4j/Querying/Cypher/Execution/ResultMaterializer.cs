@@ -86,6 +86,52 @@ internal sealed class ResultMaterializer
         return result;
     }
 
+    public async Task<T?> MaterializeRecordAsync<T>(
+        IRecord record,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var targetType = typeof(T);
+        var entityInfos = await _resultProcessor.ProcessAsync([record], targetType, cancellationToken).ConfigureAwait(false);
+        _logger.LogDebug("MaterializeRecordAsync: ProcessAsync returned {EntityInfoCount} entity infos", entityInfos.Count);
+
+        return MaterializeSingleElement<T>(entityInfos.FirstOrDefault(), targetType);
+    }
+
+    public CypherResultProcessor.GraphPathHop ProcessGraphPathHop(
+        IRecord record,
+        (Type Source, Type Relationship, Type Target) graphPathTypes,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return _resultProcessor.ProcessGraphPathHop(
+            record,
+            graphPathTypes.Source,
+            graphPathTypes.Relationship,
+            graphPathTypes.Target);
+    }
+
+    public IGraphPath MaterializeGraphPath(
+        IReadOnlyList<CypherResultProcessor.GraphPathHop> orderedHops,
+        (Type Source, Type Relationship, Type Target) graphPathTypes)
+    {
+        var segments = new List<IGraphPathSegment>(orderedHops.Count);
+        foreach (var hop in orderedHops.OrderBy(h => h.HopIndex))
+        {
+            var startNode = (Model.INode)MaterializeSingleElement<object>(hop.StartNode, graphPathTypes.Source)!;
+            var relationship = (Model.IRelationship)MaterializeSingleElement<object>(hop.Relationship, graphPathTypes.Relationship)!;
+            var endNode = (Model.INode)MaterializeSingleElement<object>(hop.EndNode, graphPathTypes.Target)!;
+            segments.Add(new GraphPathHopSegment(startNode, relationship, endNode));
+        }
+
+        if (segments.Count == 0)
+            throw new GraphException("Cannot materialize an empty graph path.");
+
+        return new GraphPath(segments[0].StartNode, segments[^1].EndNode, segments);
+    }
+
     private List<IGraphPath> MaterializeGraphPaths(List<IRecord> records, (Type Source, Type Relationship, Type Target) types)
     {
         var hops = _resultProcessor.ProcessGraphPathHops(records, types.Source, types.Relationship, types.Target);
@@ -97,19 +143,7 @@ internal sealed class ResultMaterializer
             .Select(g => g.OrderBy(h => h.HopIndex).ToList());
         foreach (var orderedHops in orderedHopsByPath)
         {
-            var segments = new List<IGraphPathSegment>(orderedHops.Count);
-            foreach (var hop in orderedHops)
-            {
-                var startNode = (Model.INode)MaterializeSingleElement<object>(hop.StartNode, types.Source)!;
-                var relationship = (Model.IRelationship)MaterializeSingleElement<object>(hop.Relationship, types.Relationship)!;
-                var endNode = (Model.INode)MaterializeSingleElement<object>(hop.EndNode, types.Target)!;
-                segments.Add(new GraphPathHopSegment(startNode, relationship, endNode));
-            }
-
-            if (segments.Count == 0)
-                continue;
-
-            paths.Add(new GraphPath(segments[0].StartNode, segments[^1].EndNode, segments));
+            paths.Add(MaterializeGraphPath(orderedHops, types));
         }
 
         return paths;
@@ -230,10 +264,13 @@ internal sealed class ResultMaterializer
         _logger.LogDebug("CreateComplexObject: Creating {TypeName} from EntityInfo with {SimpleCount} simple properties, {ComplexCount} complex properties",
             typeToInstantiate.Name, entityInfo.SimpleProperties.Count, entityInfo.ComplexProperties.Count);
 
-        _logger.LogDebug("CreateComplexObject: Simple properties: [{SimpleProps}]",
-            string.Join(", ", entityInfo.SimpleProperties.Select(kvp => $"{kvp.Key}={kvp.Value.Value}")));
-        _logger.LogDebug("CreateComplexObject: Complex properties: [{ComplexProps}]",
-            string.Join(", ", entityInfo.ComplexProperties.Select(kvp => $"{kvp.Key}={kvp.Value.Value?.GetType().Name}")));
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("CreateComplexObject: Simple property names: [{SimpleProps}]",
+                string.Join(", ", entityInfo.SimpleProperties.Keys));
+            _logger.LogDebug("CreateComplexObject: Complex property types: [{ComplexProps}]",
+                string.Join(", ", entityInfo.ComplexProperties.Select(kvp => $"{kvp.Key}:{kvp.Value.Value?.GetType().Name ?? "null"}")));
+        }
 
         var constructors = typeToInstantiate.GetConstructors()
             .OrderByDescending(c => c.GetParameters().Length)
@@ -250,8 +287,11 @@ internal sealed class ResultMaterializer
                 var parameters = constructor.GetParameters();
                 var values = new object?[parameters.Length];
 
-                _logger.LogDebug("CreateComplexObject: Trying constructor with {ParamCount} parameters: [{Params}]",
-                    parameters.Length, string.Join(", ", parameters.Select(p => $"{p.Name}:{p.ParameterType.Name}")));
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.LogDebug("CreateComplexObject: Trying constructor with {ParamCount} parameters: [{Params}]",
+                        parameters.Length, string.Join(", ", parameters.Select(p => $"{p.Name}:{p.ParameterType.Name}")));
+                }
 
                 for (int i = 0; i < parameters.Length; i++)
                 {
@@ -270,8 +310,10 @@ internal sealed class ResultMaterializer
                         _ => param.HasDefaultValue ? param.DefaultValue : GetDefaultValue(param.ParameterType)
                     };
 
-                    _logger.LogDebug("CreateComplexObject: Parameter {ParamName} set to: {Value}",
-                        paramName, values[i]?.ToString() ?? "null");
+                    _logger.LogDebug(
+                        "CreateComplexObject: Parameter {ParamName} set to type {ValueType}",
+                        paramName,
+                        values[i]?.GetType().Name ?? "null");
                 }
 
                 // Use constructor.Invoke instead of Activator.CreateInstance to avoid ambiguity

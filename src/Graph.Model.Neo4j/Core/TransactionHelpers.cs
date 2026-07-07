@@ -25,20 +25,46 @@ internal static class TransactionHelpers
         Func<GraphTransaction, Task<T>> function,
         string errorMessage,
         ILogger? logger = null,
-        bool isReadOnly = false)
+        bool isReadOnly = false,
+        CancellationToken cancellationToken = default)
     {
-        var tx = await GetOrCreateTransactionAsync(graphContext, transaction, isReadOnly).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var tx = await GetOrCreateTransactionAsync(
+            graphContext,
+            transaction,
+            isReadOnly,
+            cancellationToken).ConfigureAwait(false);
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var result = await function(tx).ConfigureAwait(false);
 
             if (transaction == null)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 await tx.CommitAsync().ConfigureAwait(false);
             }
 
             return result;
+        }
+        catch (OperationCanceledException)
+        {
+            if (transaction == null)
+            {
+                try
+                {
+                    await tx.Rollback().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
+                }
+            }
+
+            throw;
         }
         catch (Exception ex)
         {
@@ -62,12 +88,15 @@ internal static class TransactionHelpers
     public static async Task<GraphTransaction> GetOrCreateTransactionAsync(
         GraphContext graphContext,
         IGraphTransaction? transaction = null,
-        bool isReadOnly = false)
+        bool isReadOnly = false,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (transaction is null)
         {
             var tx = new GraphTransaction(graphContext, isReadOnly);
-            await tx.BeginTransactionAsync().ConfigureAwait(false);
+            await tx.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             return tx;
         }
 

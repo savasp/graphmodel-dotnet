@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
+using System.Runtime.CompilerServices;
 using Cvoya.Graph.Model.Neo4j.Core;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
@@ -36,13 +37,38 @@ internal sealed class CypherExecutor
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         _logger.LogDebug("Executing Cypher query: {Query}", cypher);
 
-        var cursor = await transaction.Transaction.RunAsync(cypher, parameters).ConfigureAwait(false);
+        var cursor = await transaction.Transaction.RunAsync(cypher, parameters).WaitAsync(cancellationToken).ConfigureAwait(false);
         var records = await cursor.ToListAsync(cancellationToken).ConfigureAwait(false);
 
         _logger.LogDebug("Query returned {Count} records", records.Count);
 
         return records;
+    }
+
+    public async IAsyncEnumerable<IRecord> StreamAsync(
+        string cypher,
+        IReadOnlyDictionary<string, object?> parameters,
+        GraphTransaction transaction,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        _logger.LogDebug("Streaming Cypher query: {Query}", cypher);
+
+        var cursor = await transaction.Transaction.RunAsync(cypher, parameters).WaitAsync(cancellationToken).ConfigureAwait(false);
+        var count = 0;
+
+        while (await cursor.FetchAsync().WaitAsync(cancellationToken).ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            count++;
+            yield return cursor.Current;
+        }
+
+        _logger.LogDebug("Query streamed {Count} records", count);
     }
 }
