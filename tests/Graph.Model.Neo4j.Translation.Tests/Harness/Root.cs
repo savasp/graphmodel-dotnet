@@ -25,19 +25,19 @@ using System.Linq.Expressions;
 /// </summary>
 internal static class Root
 {
-    public static IGraphNodeQueryable<T> Nodes<T>() where T : class, INode
+    public static IGraphQueryable<T> Nodes<T>() where T : class, INode
     {
         var provider = new FakeGraphQueryProvider();
         var placeholder = new FakeGraphNodeQueryable<T>(provider, Expression.Constant(null, typeof(Expression)));
-        var expression = Expression.Constant(placeholder, typeof(IGraphNodeQueryable<T>));
+        var expression = Expression.Constant(placeholder, typeof(IGraphQueryable<T>));
         return new FakeGraphNodeQueryable<T>(provider, expression);
     }
 
-    public static IGraphRelationshipQueryable<T> Relationships<T>() where T : class, IRelationship
+    public static IGraphQueryable<T> Relationships<T>() where T : class, IRelationship
     {
         var provider = new FakeGraphQueryProvider();
         var placeholder = new FakeGraphRelationshipQueryable<T>(provider, Expression.Constant(null, typeof(Expression)));
-        var expression = Expression.Constant(placeholder, typeof(IGraphRelationshipQueryable<T>));
+        var expression = Expression.Constant(placeholder, typeof(IGraphQueryable<T>));
         return new FakeGraphRelationshipQueryable<T>(provider, expression);
     }
 }

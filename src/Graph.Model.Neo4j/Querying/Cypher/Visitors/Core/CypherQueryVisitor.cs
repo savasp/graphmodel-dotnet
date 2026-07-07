@@ -29,15 +29,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// Main visitor that orchestrates the translation of LINQ expressions to Cypher queries.
 /// This refactored version eliminates method handlers and uses a unified expression visitor.
 /// </summary>
-/// <remarks>
-/// This visitor still pattern-matches root queryable constants against the (public-surface
-/// obsolete, but internally load-bearing) <c>IGraphNodeQueryable</c>/<c>IGraphRelationshipQueryable</c>
-/// marker interfaces to distinguish a node root from a relationship root - the placeholder root
-/// expressions built by <c>GraphNodeQueryable&lt;T&gt;</c>/<c>GraphRelationshipQueryable&lt;T&gt;</c>
-/// are typed against those interfaces for exactly this purpose. The CS0618 obsolete warning is
-/// suppressed file-wide for that reason; it is unrelated to the public API deprecation.
-/// </remarks>
-#pragma warning disable CS0618
 internal class CypherQueryVisitor : ExpressionVisitor
 {
     private readonly CypherQueryContext _context;
@@ -873,7 +864,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
         string? innerAlias = null;
 
         // Add MATCH clause for the outer source (relationships)
-        if (outerQueryable is IGraphRelationshipQueryable)
+        if (outerQueryable is not null && GetQueryableKind(outerQueryable) == GraphQueryableKind.Relationship)
         {
             var relType = outerQueryable.ElementType;
             var relLabel = Labels.GetLabelFromType(relType);
@@ -887,7 +878,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
 
         // Add MATCH clause for the inner source (nodes)
-        if (innerQueryable is IGraphNodeQueryable)
+        if (innerQueryable is not null && GetQueryableKind(innerQueryable) == GraphQueryableKind.Node)
         {
             var nodeType = innerQueryable.ElementType;
             var nodeLabel = Labels.GetLabelFromType(nodeType);
@@ -1341,8 +1332,9 @@ internal class CypherQueryVisitor : ExpressionVisitor
         {
             _logger.LogDebug("Found queryable of element type {Type}", queryable.ElementType.Name);
 
-            // Check if this is a relationship queryable
-            if (node.Value is IGraphRelationshipQueryable)
+            var queryableKind = GetQueryableKind(queryable);
+
+            if (queryableKind == GraphQueryableKind.Relationship)
             {
                 // Special handling for DynamicRelationship - it should match any relationship type
                 if (queryable.ElementType == typeof(Model.DynamicRelationship))
@@ -1372,7 +1364,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
                     _context.Builder.EnableComplexPropertyLoading();
                 }
             }
-            else if (node.Value is IGraphNodeQueryable)
+            else if (queryableKind == GraphQueryableKind.Node)
             {
                 // For nodes, generate the MATCH clause using the queryable's element type
                 var alias = _context.Scope.GetOrCreateAlias(queryable.ElementType, "src");
@@ -1419,6 +1411,13 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
 
         return base.VisitConstant(node);
+    }
+
+    private static GraphQueryableKind GetQueryableKind(IQueryable queryable)
+    {
+        return queryable is IGraphQueryableKindProvider kindProvider
+            ? kindProvider.QueryableKind
+            : GraphQueryableKind.General;
     }
 
     // Helper methods
@@ -1658,7 +1657,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
         var indexName = GetFullTextIndexName(searchExpr.EntityType);
         var paramName = _context.Builder.AddParameter(searchExpr.SearchQuery);
 
-        if (typeof(INode).IsAssignableFrom(searchExpr.EntityType))
+        if (searchExpr.QueryableKind == GraphQueryableKind.Node)
         {
             // Node full text search
             var alias = _context.Scope.GetOrCreateAlias(searchExpr.EntityType, "n");
@@ -1681,7 +1680,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
             _context.Builder.SetMainNodeAlias(alias);
             _context.Builder.EnableComplexPropertyLoading();
         }
-        else if (typeof(IRelationship).IsAssignableFrom(searchExpr.EntityType))
+        else if (searchExpr.QueryableKind == GraphQueryableKind.Relationship)
         {
             // Relationship full text search  
             var alias = _context.Scope.GetOrCreateAlias(searchExpr.EntityType, "r");
@@ -1728,4 +1727,3 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
     }
 }
-#pragma warning restore CS0618

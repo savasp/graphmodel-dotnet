@@ -28,7 +28,7 @@ internal static class FullTextSearchQueryableFactory
         GraphContext context,
         string searchQuery)
     {
-        var searchExpression = new FullTextSearchExpression(searchQuery, typeof(T));
+        var searchExpression = new FullTextSearchExpression(searchQuery, typeof(T), GraphQueryableKind.General);
         return new GraphQueryable<T>(provider, context, transaction, searchExpression);
     }
 
@@ -39,7 +39,7 @@ internal static class FullTextSearchQueryableFactory
         string searchQuery)
         where T : class, INode
     {
-        var searchExpression = new FullTextSearchExpression(searchQuery, typeof(T));
+        var searchExpression = new FullTextSearchExpression(searchQuery, typeof(T), GraphQueryableKind.Node);
         return new GraphNodeQueryable<T>(provider, context, transaction, searchExpression);
     }
 
@@ -50,7 +50,7 @@ internal static class FullTextSearchQueryableFactory
         string searchQuery)
         where T : class, IRelationship
     {
-        var searchExpression = new FullTextSearchExpression(searchQuery, typeof(T));
+        var searchExpression = new FullTextSearchExpression(searchQuery, typeof(T), GraphQueryableKind.Relationship);
         return new GraphRelationshipQueryable<T>(provider, context, transaction, searchExpression);
     }
 }

@@ -100,7 +100,7 @@ internal static class LinqOperatorDispatch
 
             foreach (var candidate in candidates)
             {
-                var key = candidate.IsGenericMethodDefinition ? candidate : candidate;
+                var key = candidate;
                 table[key] = op;
             }
         }
@@ -142,31 +142,31 @@ internal static class LinqOperatorDispatch
         AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.GroupBy), LinqOperator.GroupBy);
 
         // Cvoya.Graph.Model.QueryTerminals marker methods (internal; reachable via InternalsVisibleTo).
-        AddAll(typeof(QueryTerminals), "ToListAsyncMarker", LinqOperator.ToListOrArray);
-        AddAll(typeof(QueryTerminals), "ToArrayAsyncMarker", LinqOperator.ToListOrArray);
-        AddAll(typeof(QueryTerminals), "FirstAsyncMarker", LinqOperator.First);
-        AddAll(typeof(QueryTerminals), "FirstOrDefaultAsyncMarker", LinqOperator.First);
-        AddAll(typeof(QueryTerminals), "SingleAsyncMarker", LinqOperator.Single);
-        AddAll(typeof(QueryTerminals), "SingleOrDefaultAsyncMarker", LinqOperator.Single);
-        AddAll(typeof(QueryTerminals), "LastAsyncMarker", LinqOperator.Last);
-        AddAll(typeof(QueryTerminals), "LastOrDefaultAsyncMarker", LinqOperator.Last);
-        AddAll(typeof(QueryTerminals), "AnyAsyncMarker", LinqOperator.Any);
-        AddAll(typeof(QueryTerminals), "AllAsyncMarker", LinqOperator.All);
-        AddAll(typeof(QueryTerminals), "CountAsyncMarker", LinqOperator.Count);
-        AddAll(typeof(QueryTerminals), "LongCountAsyncMarker", LinqOperator.Count);
-        AddAll(typeof(QueryTerminals), "SumAsyncMarker", LinqOperator.Sum);
-        AddAll(typeof(QueryTerminals), "AverageAsyncMarker", LinqOperator.Average);
-        AddAll(typeof(QueryTerminals), "MinAsyncMarker", LinqOperator.Min);
-        AddAll(typeof(QueryTerminals), "MaxAsyncMarker", LinqOperator.Max);
-        AddAll(typeof(QueryTerminals), "ContainsAsyncMarker", LinqOperator.Contains);
-        AddAll(typeof(QueryTerminals), "ElementAtAsyncMarker", LinqOperator.ElementAt);
-        AddAll(typeof(QueryTerminals), "ElementAtOrDefaultAsyncMarker", LinqOperator.ElementAtOrDefault);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.ToListAsyncMarker), LinqOperator.ToListOrArray);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.ToArrayAsyncMarker), LinqOperator.ToListOrArray);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.FirstAsyncMarker), LinqOperator.First);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.FirstOrDefaultAsyncMarker), LinqOperator.First);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.SingleAsyncMarker), LinqOperator.Single);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.SingleOrDefaultAsyncMarker), LinqOperator.Single);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.LastAsyncMarker), LinqOperator.Last);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.LastOrDefaultAsyncMarker), LinqOperator.Last);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.AnyAsyncMarker), LinqOperator.Any);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.AllAsyncMarker), LinqOperator.All);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.CountAsyncMarker), LinqOperator.Count);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.LongCountAsyncMarker), LinqOperator.Count);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.SumAsyncMarker), LinqOperator.Sum);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.AverageAsyncMarker), LinqOperator.Average);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.MinAsyncMarker), LinqOperator.Min);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.MaxAsyncMarker), LinqOperator.Max);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.ContainsAsyncMarker), LinqOperator.Contains);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.ElementAtAsyncMarker), LinqOperator.ElementAt);
+        AddAll(typeof(QueryTerminals), nameof(QueryTerminals.ElementAtOrDefaultAsyncMarker), LinqOperator.ElementAtOrDefault);
 
         // QueryableAsyncExtensions.SumAsync/AverageAsync build a marker-based Expression.Call, but
         // are also visited directly in some code paths (e.g. from within Select projections) - map
         // both by name for safety alongside the marker-based mapping above.
-        AddAll(typeof(QueryableAsyncExtensions), "SumAsync", LinqOperator.Sum);
-        AddAll(typeof(QueryableAsyncExtensions), "AverageAsync", LinqOperator.Average);
+        AddAll(typeof(QueryableAsyncExtensions), nameof(QueryableAsyncExtensions.SumAsync), LinqOperator.Sum);
+        AddAll(typeof(QueryableAsyncExtensions), nameof(QueryableAsyncExtensions.AverageAsync), LinqOperator.Average);
 
         // Cvoya.Graph.Model.GraphQueryableExtensions / GraphTraversalExtensions graph-specific operators.
         AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.Search), LinqOperator.Search);

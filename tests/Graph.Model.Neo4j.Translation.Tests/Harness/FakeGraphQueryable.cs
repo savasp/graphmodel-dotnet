@@ -16,6 +16,7 @@ namespace Cvoya.Graph.Model.Neo4j.Translation.Tests.Harness;
 
 using System.Collections;
 using System.Linq.Expressions;
+using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 
 /// <summary>
 /// A minimal <see cref="IGraphQueryable{T}"/> that carries only an expression tree and a
@@ -26,12 +27,16 @@ using System.Linq.Expressions;
 /// (a marker interface with no extra members) since <c>GraphQueryableExtensions.OrderBy</c>/
 /// <c>ThenBy</c> cast the provider's <c>CreateQuery&lt;T&gt;</c> result to it.
 /// </summary>
-internal class FakeGraphQueryable<T> : IGraphQueryable<T>, IOrderedGraphQueryable<T>
+internal class FakeGraphQueryable<T> : IGraphQueryable<T>, IOrderedGraphQueryable<T>, IGraphQueryableKindProvider
 {
-    public FakeGraphQueryable(FakeGraphQueryProvider provider, Expression expression)
+    public FakeGraphQueryable(
+        FakeGraphQueryProvider provider,
+        Expression expression,
+        GraphQueryableKind queryableKind = GraphQueryableKind.General)
     {
         Provider = provider;
         Expression = expression;
+        QueryableKind = queryableKind;
     }
 
     public Type ElementType => typeof(T);
@@ -39,6 +44,8 @@ internal class FakeGraphQueryable<T> : IGraphQueryable<T>, IOrderedGraphQueryabl
     public Expression Expression { get; }
 
     public FakeGraphQueryProvider Provider { get; }
+
+    public GraphQueryableKind QueryableKind { get; }
 
     IGraphQueryProvider IGraphQueryable<T>.Provider => Provider;
 
@@ -57,29 +64,25 @@ internal class FakeGraphQueryable<T> : IGraphQueryable<T>, IOrderedGraphQueryabl
 }
 
 /// <summary>
-/// Node-flavored counterpart of <see cref="FakeGraphQueryable{T}"/>, implementing
-/// <see cref="IGraphNodeQueryable{TNode}"/> so that <c>CypherQueryVisitor.VisitConstant</c>
-/// recognizes the root as a node source.
+/// Node-flavored counterpart of <see cref="FakeGraphQueryable{T}"/>.
 /// </summary>
-internal sealed class FakeGraphNodeQueryable<T> : FakeGraphQueryable<T>, IGraphNodeQueryable<T>
+internal sealed class FakeGraphNodeQueryable<T> : FakeGraphQueryable<T>
     where T : class, INode
 {
     public FakeGraphNodeQueryable(FakeGraphQueryProvider provider, Expression expression)
-        : base(provider, expression)
+        : base(provider, expression, GraphQueryableKind.Node)
     {
     }
 }
 
 /// <summary>
-/// Relationship-flavored counterpart of <see cref="FakeGraphQueryable{T}"/>, implementing
-/// <see cref="IGraphRelationshipQueryable{TRel}"/> so that
-/// <c>CypherQueryVisitor.VisitConstant</c> recognizes the root as a relationship source.
+/// Relationship-flavored counterpart of <see cref="FakeGraphQueryable{T}"/>.
 /// </summary>
-internal sealed class FakeGraphRelationshipQueryable<T> : FakeGraphQueryable<T>, IGraphRelationshipQueryable<T>
+internal sealed class FakeGraphRelationshipQueryable<T> : FakeGraphQueryable<T>
     where T : class, IRelationship
 {
     public FakeGraphRelationshipQueryable(FakeGraphQueryProvider provider, Expression expression)
-        : base(provider, expression)
+        : base(provider, expression, GraphQueryableKind.Relationship)
     {
     }
 }

@@ -26,42 +26,37 @@ internal sealed class GraphRelationshipQueryable<TRel> : GraphQueryableBase<TRel
     where TRel : class, IRelationship
 {
     public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext, GraphTransaction? transaction)
-        : base(typeof(TRel), provider, graphContext, transaction, CreateRootExpression())
+        : base(typeof(TRel), provider, graphContext, transaction, CreateRootExpression(), GraphQueryableKind.Relationship)
     {
     }
 
     public GraphRelationshipQueryable(GraphQueryProvider provider, GraphContext graphContext, GraphTransaction? transaction, Expression expression)
-        : base(typeof(TRel), provider, graphContext, transaction, expression)
+        : base(typeof(TRel), provider, graphContext, transaction, expression, GraphQueryableKind.Relationship)
     {
     }
 
     // For the root queryable, we'll create a placeholder that gets replaced during LINQ processing.
-    // The placeholder is typed as the (obsolete, internal-use-only) IGraphRelationshipQueryable<T>
-    // marker interface purely so CypherQueryVisitor.VisitConstant can distinguish a relationship
-    // root from a node root via a pattern match (`is IGraphRelationshipQueryable`) - this is an
-    // internal implementation detail, unrelated to the public surface deprecation of that interface.
-#pragma warning disable CS0618 // internal use of the obsolete node/relationship marker interface - see comment above.
     private static Expression CreateRootExpression()
     {
-        return Expression.Constant(CreatePlaceholderQueryable(), typeof(IGraphRelationshipQueryable<TRel>));
+        return Expression.Constant(CreatePlaceholderQueryable(), typeof(IGraphQueryable<TRel>));
     }
 
-    private static IGraphRelationshipQueryable<TRel> CreatePlaceholderQueryable()
+    private static IGraphQueryable<TRel> CreatePlaceholderQueryable()
     {
         // This is a minimal placeholder that provides the element type information
         return new PlaceholderRelationshipQueryable<TRel>();
     }
 
-    private sealed class PlaceholderRelationshipQueryable<T> : IGraphRelationshipQueryable<T> where T : class, IRelationship
+    private sealed class PlaceholderRelationshipQueryable<T> : IGraphQueryable<T>, IGraphQueryableKindProvider where T : class, IRelationship
     {
         public Type ElementType => typeof(T);
         public Expression Expression => throw new NotSupportedException("Placeholder queryable");
         public IGraphQueryProvider Provider => throw new NotSupportedException("Placeholder queryable");
+        public GraphQueryableKind QueryableKind => GraphQueryableKind.Relationship;
         public IGraph Graph => throw new NotSupportedException("Placeholder queryable");
         IQueryProvider IQueryable.Provider => throw new NotSupportedException("Placeholder queryable");
         public IEnumerator<T> GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
         IEnumerator IEnumerable.GetEnumerator() => throw new NotSupportedException("Placeholder queryable");
         public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) => throw new NotSupportedException("Placeholder queryable");
     }
-#pragma warning restore CS0618
 }

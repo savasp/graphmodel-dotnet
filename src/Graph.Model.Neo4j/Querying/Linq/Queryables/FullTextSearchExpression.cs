@@ -24,42 +24,18 @@ internal class FullTextSearchExpression : Expression
 {
     public string SearchQuery { get; }
     public Type EntityType { get; }
+    public GraphQueryableKind QueryableKind { get; }
 
-    public FullTextSearchExpression(string searchQuery, Type entityType)
+    public FullTextSearchExpression(string searchQuery, Type entityType, GraphQueryableKind queryableKind)
     {
         SearchQuery = searchQuery;
         EntityType = entityType;
+        QueryableKind = queryableKind;
     }
 
     public override ExpressionType NodeType => ExpressionType.Extension;
 
-    // Intentionally typed against the (obsolete, internal-use-only) IGraphNodeQueryable<>/
-    // IGraphRelationshipQueryable<> marker interfaces so that any downstream code pattern-matching
-    // on `is IGraphNodeQueryable`/`is IGraphRelationshipQueryable` can still distinguish a node
-    // search from a relationship search from this expression's static Type alone - unrelated to
-    // the public surface deprecation of those interfaces.
-#pragma warning disable CS0618
-    public override Type Type
-    {
-        get
-        {
-            // Return the appropriate graph queryable type based on the entity type
-            if (typeof(INode).IsAssignableFrom(EntityType))
-            {
-                return typeof(IGraphNodeQueryable<>).MakeGenericType(EntityType);
-            }
-            else if (typeof(IRelationship).IsAssignableFrom(EntityType))
-            {
-                return typeof(IGraphRelationshipQueryable<>).MakeGenericType(EntityType);
-            }
-            else
-            {
-                // For general entities, return the base graph queryable type
-                return typeof(IGraphQueryable<>).MakeGenericType(EntityType);
-            }
-        }
-    }
-#pragma warning restore CS0618
+    public override Type Type => typeof(IGraphQueryable<>).MakeGenericType(EntityType);
 }
 
 /// <summary>
