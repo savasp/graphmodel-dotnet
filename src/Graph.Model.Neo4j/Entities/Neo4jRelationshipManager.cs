@@ -36,8 +36,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     private static readonly string[] _ignoredProperties =
     [
         nameof(Model.IRelationship.StartNodeId),
-        nameof(Model.IRelationship.EndNodeId),
-        nameof(Model.IRelationship.Direction)
+        nameof(Model.IRelationship.EndNodeId)
     ];
 
     public async Task<TRelationship> CreateRelationshipAsync<TRelationship>(
@@ -74,6 +73,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                 entity,
                 relationship.StartNodeId,
                 relationship.EndNodeId,
+                relationship.Direction,
                 transaction.Transaction,
                 cancellationToken).ConfigureAwait(false);
 
@@ -191,6 +191,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         EntityInfo entity,
         string startNodeId,
         string endNodeId,
+        RelationshipDirection direction,
         IAsyncTransaction transaction,
         CancellationToken cancellationToken)
     {
@@ -199,9 +200,16 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         // (DynamicRelationship.Type is set at runtime and cannot be parameterized by the driver).
         var relationshipType = CypherIdentifier.Escape(entity.Label, "relationship type");
 
+        var (sourceNodeId, targetNodeId) = direction switch
+        {
+            RelationshipDirection.Outgoing => (startNodeId, endNodeId),
+            RelationshipDirection.Incoming => (endNodeId, startNodeId),
+            _ => throw new GraphException($"Unsupported relationship direction '{direction}'.")
+        };
+
         var cypher = $@"
-            MATCH (source {{Id: $startNodeId}})
-            MATCH (target {{Id: $endNodeId}})
+            MATCH (source {{Id: $sourceNodeId}})
+            MATCH (target {{Id: $targetNodeId}})
             CREATE (source)-[r:{relationshipType} $props]->(target)
             RETURN r IS NOT NULL AS created";
 
@@ -213,8 +221,8 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
         var result = await transaction.RunAsync(cypher, new
         {
-            startNodeId,
-            endNodeId,
+            sourceNodeId,
+            targetNodeId,
             props = properties
         }).ConfigureAwait(false);
 
@@ -229,7 +237,12 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         IAsyncTransaction transaction,
         CancellationToken cancellationToken)
     {
-        var cypher = "MATCH ()-[r {Id: $relId}]->() SET r = $props RETURN r IS NOT NULL AS updated";
+        var cypher = @"
+            MATCH ()-[r {Id: $relId}]->()
+            WITH r, r.Direction AS storedDirection
+            SET r = $props
+            SET r.Direction = storedDirection
+            RETURN r IS NOT NULL AS updated";
 
         var properties = SerializationHelpers.SerializeSimpleProperties(entity)
             .Where(kv => !_ignoredProperties.Contains(kv.Key))

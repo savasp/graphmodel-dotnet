@@ -61,6 +61,54 @@ public interface IBasicTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task RelationshipDirection_Outgoing_RoundTrips()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var knows = new Knows
+        {
+            StartNodeId = p1.Id,
+            EndNodeId = p2.Id,
+            Direction = RelationshipDirection.Outgoing,
+            Since = DateTime.UtcNow
+        };
+
+        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+
+        var fetched = await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken);
+        Assert.Equal(p1.Id, fetched.StartNodeId);
+        Assert.Equal(p2.Id, fetched.EndNodeId);
+        Assert.Equal(RelationshipDirection.Outgoing, fetched.Direction);
+    }
+
+    [Fact]
+    public async Task RelationshipDirection_Incoming_RoundTrips()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var knows = new Knows
+        {
+            StartNodeId = p1.Id,
+            EndNodeId = p2.Id,
+            Direction = RelationshipDirection.Incoming,
+            Since = DateTime.UtcNow
+        };
+
+        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+
+        var fetched = await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken);
+        Assert.Equal(p1.Id, fetched.StartNodeId);
+        Assert.Equal(p2.Id, fetched.EndNodeId);
+        Assert.Equal(RelationshipDirection.Incoming, fetched.Direction);
+    }
+
+    [Fact]
     public async Task CanUpdateNode()
     {
         var person = new Person { FirstName = "John", LastName = "Doe" };

@@ -15,22 +15,17 @@
 namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Defines the direction of a relationship in the graph.
+/// Defines the physical storage direction of a relationship relative to its start and end node IDs.
 /// </summary>
 public enum RelationshipDirection
 {
     /// <summary>
-    /// Relationship direction from source to target (-&gt;)
+    /// The stored relationship points from <c>StartNodeId</c> to <c>EndNodeId</c>.
     /// </summary>
     Outgoing,
 
     /// <summary>
-    /// Relationship direction from target to source (&lt;-)
+    /// The stored relationship points from <c>EndNodeId</c> to <c>StartNodeId</c>.
     /// </summary>
-    Incoming,
-
-    /// <summary>
-    /// Relationship is bidirectional (&lt;-&gt;)
-    /// </summary>
-    Bidirectional
+    Incoming
 }

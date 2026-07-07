@@ -182,6 +182,13 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                     false,
                     new SimpleValue(relationship.EndNodeId, typeof(string)));
 
+                // Add the Direction property
+                simpleProperties[nameof(DynamicRelationship.Direction)] = new Property(
+                    GetPropertyInfo(typeof(DynamicRelationship), nameof(DynamicRelationship.Direction)),
+                    nameof(DynamicRelationship.Direction),
+                    false,
+                    new SimpleValue(relationship.Direction, typeof(RelationshipDirection)));
+
                 // Process dynamic properties
                 ProcessDynamicProperties(relationship.Properties, simpleProperties, complexProperties);
 
@@ -300,6 +307,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                 && kvp.Key != nameof(DynamicRelationship.Type)
                 && kvp.Key != nameof(DynamicRelationship.StartNodeId)
                 && kvp.Key != nameof(DynamicRelationship.EndNodeId)
+                && kvp.Key != nameof(DynamicRelationship.Direction)
                 && kvp.Value.Value is SimpleValue simpleValue)
             {
                 properties[kvp.Key] = simpleValue.Object;
@@ -311,6 +319,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         string type = "";
         string startNodeId = "";
         string endNodeId = "";
+        var direction = RelationshipDirection.Outgoing;
 
         if (entity.SimpleProperties.TryGetValue(nameof(IEntity.Id), out var idProperty) &&
             idProperty.Value is SimpleValue idValue)
@@ -341,10 +350,22 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             endNodeId = endNodeIdValue.Object?.ToString() ?? "";
         }
 
+        if (entity.SimpleProperties.TryGetValue(nameof(DynamicRelationship.Direction), out var directionProperty) &&
+            directionProperty.Value is SimpleValue directionValue)
+        {
+            direction = directionValue.Object switch
+            {
+                RelationshipDirection relationshipDirection when Enum.IsDefined(relationshipDirection) => relationshipDirection,
+                string directionString when Enum.TryParse<RelationshipDirection>(directionString, out var parsedDirection) &&
+                    Enum.IsDefined(parsedDirection) => parsedDirection,
+                _ => RelationshipDirection.Outgoing
+            };
+        }
+
         // Process complex properties
         ProcessComplexProperties(entity.ComplexProperties, properties);
 
-        return new DynamicRelationship(startNodeId, endNodeId, type, properties)
+        return new DynamicRelationship(startNodeId, endNodeId, type, properties, direction)
         {
             Id = id,
         };
