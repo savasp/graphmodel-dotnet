@@ -14,7 +14,6 @@
 
 namespace Cvoya.Graph.Model.Core.Tests;
 
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
@@ -31,10 +30,11 @@ using Microsoft.CodeAnalysis.CSharp;
 /// other test in this project that calls <c>InitializeAsync</c> (see <c>SchemaRegistryTests</c>) would
 /// throw the moment any such collision exists anywhere in the assembly, since a collision aborts the
 /// entire aggregated scan. Loading fixtures into their own collectible <see cref="AssemblyLoadContext"/>,
-/// used only within a single test and unloaded (with a forced GC pass to actually reclaim it) before the
-/// test returns, keeps them invisible to <c>AppDomain.CurrentDomain.GetAssemblies()</c> everywhere else.
-/// <see cref="RuntimeLabelCollisionTests"/> and <c>SchemaRegistryTests</c> additionally share an explicit
-/// xunit collection so they never run concurrently, closing the residual window between load and unload.
+/// used only within a single test, disconnected from <see cref="Labels"/>' static caches, and unloaded
+/// (with a forced GC pass to actually reclaim it) before the test returns, keeps them invisible to
+/// <c>AppDomain.CurrentDomain.GetAssemblies()</c> everywhere else. <see cref="RuntimeLabelCollisionTests"/>
+/// and <c>SchemaRegistryTests</c> additionally share an explicit xunit collection so they never run
+/// concurrently, closing the residual window between load and unload.
 /// </remarks>
 internal static class RuntimeLabelCollisionFixtureAssembly
 {
@@ -45,7 +45,9 @@ internal static class RuntimeLabelCollisionFixtureAssembly
     /// <see cref="Node"/>, <see cref="Relationship"/>, <see cref="NodeAttribute"/>, etc.) into an isolated,
     /// collectible <see cref="AssemblyLoadContext"/>, resolves <paramref name="typeNames"/> against the
     /// loaded assembly, runs <paramref name="action"/> against the resolved types, then unloads the context
-    /// and forces a full GC pass so the fixture types never leak into later, unrelated tests.
+    /// and forces a full GC pass so the fixture types never leak into later, unrelated tests. This requires
+    /// fixture actions to leave no static cache references behind; the helper clears <see cref="Labels"/>
+    /// caches before unloading the context.
     /// </summary>
     public static void Run(string source, string[] typeNames, Action<Type[]> action)
     {
@@ -97,33 +99,11 @@ internal static class RuntimeLabelCollisionFixtureAssembly
         }
         finally
         {
-            ClearLabelsCaches();
+            Labels.ClearCachesForTesting();
             context.Unload();
         }
 
         return new WeakReference(context);
-    }
-
-    private static void ClearLabelsCaches()
-    {
-        foreach (var fieldName in new[]
-        {
-            "LabelToTypeCache",
-            "TypeToLabelCache",
-            "PropertyToLabelCache",
-            "LabelToPropertyCache",
-            "MostDerivedTypeCache",
-        })
-        {
-            var field = typeof(Labels).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Static)
-                ?? throw new InvalidOperationException($"Labels.{fieldName} was not found.");
-            var cache = field.GetValue(null)
-                ?? throw new InvalidOperationException($"Labels.{fieldName} was null.");
-            var clear = cache.GetType().GetMethod("Clear", BindingFlags.Public | BindingFlags.Instance)
-                ?? throw new InvalidOperationException($"Labels.{fieldName}.Clear was not found.");
-
-            clear.Invoke(cache, []);
-        }
     }
 
     private static MetadataReference[] BuildReferences()
