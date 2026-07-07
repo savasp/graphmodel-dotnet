@@ -241,6 +241,62 @@ public interface IAggregationTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task CanCountOrderedQuery()
+    {
+        var group = $"issue-177-count-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 30 },
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var query = Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group);
+
+        var unorderedCount = await query.CountAsync(TestContext.Current.CancellationToken);
+        var orderedCount = await query
+            .OrderBy(p => p.Age)
+            .CountAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, unorderedCount);
+        Assert.Equal(unorderedCount, orderedCount);
+    }
+
+    [Fact]
+    public async Task CanCountOrderedLimitedQuery()
+    {
+        var group = $"issue-177-limited-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 30 },
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var query = Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .OrderBy(p => p.Age)
+            .Take(2);
+
+        var limitedCount = await query.CountAsync(TestContext.Current.CancellationToken);
+        var limitedPeople = await query.ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, limitedCount);
+        Assert.Equal(new[] { 10, 20 }, limitedPeople.Select(p => p.Age).ToArray());
+    }
+
+    [Fact]
     public async Task SumWithFilter_CalculatesCorrectTotal()
     {
         var people = new[]

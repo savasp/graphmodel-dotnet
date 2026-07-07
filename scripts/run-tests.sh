@@ -130,9 +130,9 @@ if [ "$START_NEO4J" = true ]; then
     print_header "Starting Neo4j container..."
     if ./scripts/containers/start-neo4j.sh; then
         print_status "✅ Neo4j container started"
-        # Wait for Neo4j to be ready
-        print_status "Waiting for Neo4j to be ready..."
-        sleep 10
+        export NEO4J_URI="${NEO4J_URI:-bolt://localhost:7687}"
+        export NEO4J_USER="${NEO4J_USER:-neo4j}"
+        export NEO4J_PASSWORD="${NEO4J_PASSWORD:-password}"
     else
         print_error "❌ Failed to start Neo4j container"
         exit 1
@@ -178,8 +178,7 @@ if [ "$RUN_ANALYZERS" = true ]; then
     if dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj \
         --configuration "$CONFIGURATION" \
         --no-build \
-        --verbosity "$VERBOSITY" \
-        --logger "console;verbosity=normal"; then
+        --verbosity "$VERBOSITY"; then
         print_status "✅ Analyzer tests passed"
     else
         print_error "❌ Analyzer tests failed"
@@ -191,15 +190,11 @@ fi
 # Run Neo4j tests
 if [ "$RUN_NEO4J" = true ]; then
     print_header "Running Neo4j Tests..."
-    
-    # Set environment variable for container tests
-    export USE_NEO4J_CONTAINERS=true
-    
+
     if dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj \
         --configuration "$CONFIGURATION" \
         --no-build \
-        --verbosity "$VERBOSITY" \
-        --logger "console;verbosity=normal"; then
+        --verbosity "$VERBOSITY"; then
         print_status "✅ Neo4j tests passed"
     else
         print_error "❌ Neo4j tests failed"
@@ -261,4 +256,4 @@ fi
 
 if [ "$RUN_PERFORMANCE" = true ]; then
     print_status "Performance results: benchmarks/"
-fi 
+fi

@@ -14,6 +14,7 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
+using System.Net.Sockets;
 using DotNet.Testcontainers.Builders;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -142,10 +143,10 @@ public class TestInfrastructureFixture : IAsyncLifetime
                 loggerFactory,
                 maxPoolSize: 20);
         }
-        catch (Exception ex) when (testInfrastructure is Neo4jTestInfrastructureWithContainer && IsDockerUnavailable(ex))
+        catch (Exception ex) when (testInfrastructure is Neo4jTestInfrastructureWithContainer && IsContainerRuntimeUnavailable(ex))
         {
             throw new Neo4jTestInfrastructureUnavailableException(
-                $"Docker is not available for Neo4j Testcontainers: {ex.Message}",
+                $"No Docker-compatible container runtime is available for Neo4j Testcontainers: {ex.Message}",
                 ex);
         }
     }
@@ -153,23 +154,42 @@ public class TestInfrastructureFixture : IAsyncLifetime
     private static bool HasConfiguredNeo4j()
     {
         return !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("NEO4J_URI"))
-            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("NEO4J_CONNECTION_STRING"));
+            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("NEO4J_CONNECTION_STRING"))
+            || IsDefaultNeo4jReachable();
     }
 
-    private static bool IsDockerUnavailable(Exception exception)
+    private static bool IsDefaultNeo4jReachable()
+    {
+        try
+        {
+            using var client = new TcpClient();
+            var connectTask = client.ConnectAsync("localhost", 7687);
+            return connectTask.Wait(TimeSpan.FromMilliseconds(250)) && client.Connected;
+        }
+        catch (Exception ex) when (ex is SocketException
+                                   or TimeoutException
+                                   or ObjectDisposedException
+                                   or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsContainerRuntimeUnavailable(Exception exception)
     {
         if (exception is DockerUnavailableException)
         {
             return true;
         }
 
-        if (exception.InnerException is not null && IsDockerUnavailable(exception.InnerException))
+        if (exception.InnerException is not null && IsContainerRuntimeUnavailable(exception.InnerException))
         {
             return true;
         }
 
         var message = exception.Message;
-        return message.Contains("Docker", StringComparison.OrdinalIgnoreCase)
+        return (message.Contains("Docker", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("Podman", StringComparison.OrdinalIgnoreCase))
             && (message.Contains("daemon", StringComparison.OrdinalIgnoreCase)
                 || message.Contains("socket", StringComparison.OrdinalIgnoreCase)
                 || message.Contains("connect", StringComparison.OrdinalIgnoreCase)

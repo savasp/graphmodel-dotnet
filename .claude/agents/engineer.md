@@ -19,9 +19,9 @@ Read [AGENTS.md](../../AGENTS.md) before starting — it is the canonical instru
    ```bash
    dotnet build --configuration Debug
    dotnet test tests/Graph.Model.Analyzers.Tests --configuration Debug --no-build   # always possible
-   dotnet test --configuration Debug   # full suite — only if a Neo4j instance is available (see AGENTS.md)
+   dotnet test --configuration Debug   # full suite — needs Neo4j; start with scripts/containers/start-neo4j.sh if needed
    ```
-   If no Neo4j is reachable, say so explicitly in your report instead of skipping silently.
+   If no Neo4j is reachable, run `scripts/containers/start-neo4j.sh` before giving up. The script tries Podman first and Docker second unless `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` is set. If Neo4j is still unavailable after trying the script and any configured `NEO4J_*` endpoint, say so explicitly in your report instead of skipping silently.
 4. **Commit** with conventional commit messages (`feat:`, `fix:`, `refactor:`, `chore:`).
 5. **Report completion** — summarize the change, test results, and anything the lead needs for the PR. The lead session pushes and opens the PR unless it explicitly asked you to.
 

@@ -304,7 +304,7 @@ var aliceKnows = await graph.Relationships<Knows>()
     .Where(k => k.StartNodeId == aliceId)
     .ToListAsync();
 
-// Bidirectional search
+// Search either endpoint
 var connectedToAlice = await graph.Relationships<Knows>()
     .Where(k => k.StartNodeId == aliceId || k.EndNodeId == aliceId)
     .ToListAsync();

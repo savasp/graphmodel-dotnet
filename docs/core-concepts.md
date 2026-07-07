@@ -231,8 +231,9 @@ public interface IRelationship : IEntity
     string Type { get; }
 
     /// <summary>
-    /// Gets the direction of this relationship.
-    /// The direction determines how the relationship can be traversed.
+    /// Gets the physical storage direction of this relationship.
+    /// Outgoing means the stored edge points from StartNodeId to EndNodeId.
+    /// Incoming means the stored edge points from EndNodeId to StartNodeId.
     /// </summary>
     RelationshipDirection Direction { get; init; }
 
@@ -284,16 +285,22 @@ public interface IRelationship<TSource, TTarget> : IRelationship
 
 ### Relationship Direction
 
-The `RelationshipDirection` enum controls traversal behavior:
+The `RelationshipDirection` enum describes storage direction, not query traversal. Graph databases
+store a physical arrow for each relationship. `StartNodeId` and `EndNodeId` name the logical node
+tuple on your relationship object, and `Direction` says which way the stored arrow points relative
+to that tuple:
 
 ```csharp
 public enum RelationshipDirection
 {
-    Outgoing,    // Can be traversed from start to end
-    Incoming,    // Can be traversed from end to start
-    Bidirectional // Can be traversed in both directions
+    Outgoing, // Stored as StartNodeId -> EndNodeId
+    Incoming  // Stored as EndNodeId -> StartNodeId
 }
 ```
+
+Traversal direction is a query-time choice. Use `GraphTraversalDirection.Outgoing`,
+`GraphTraversalDirection.Incoming`, or `GraphTraversalDirection.Both` on traversal operators when
+you want to choose which stored arrows a query follows.
 
 ### Relationship Implementation Patterns
 

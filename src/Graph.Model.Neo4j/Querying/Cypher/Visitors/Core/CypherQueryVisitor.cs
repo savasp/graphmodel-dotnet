@@ -600,6 +600,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
 
         // For Any, we're checking existence
+        _context.Builder.SetAggregateTerminalQuery();
         _context.Builder.SetExistsQuery();
 
         _logger.LogDebug("Set EXISTS query");
@@ -619,6 +620,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
         }
 
         // For All, we're checking existence
+        _context.Builder.SetAggregateTerminalQuery();
         _context.Builder.SetExistsQuery();
 
         _logger.LogDebug("Set EXISTS query");
@@ -629,6 +631,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         // Disable complex property loading for aggregation queries
         _context.Builder.DisableComplexPropertyLoading();
+        _context.Builder.SetAggregateTerminalQuery();
 
         // Handle optional where clause
         if (node.Arguments.Count == 2)
@@ -652,7 +655,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         // Disable complex property loading for aggregation queries
         _context.Builder.DisableComplexPropertyLoading();
-        _context.Builder.SetAggregationQuery();
+        _context.Builder.SetAggregateTerminalQuery();
 
         _logger.LogDebug("Processing SUM aggregation with {ArgCount} arguments", node.Arguments.Count);
 
@@ -687,7 +690,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         // Disable complex property loading for aggregation queries
         _context.Builder.DisableComplexPropertyLoading();
-        _context.Builder.SetAggregationQuery();
+        _context.Builder.SetAggregateTerminalQuery();
 
         _logger.LogDebug("Processing AVERAGE aggregation with {ArgCount} arguments", node.Arguments.Count);
 
@@ -722,7 +725,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         // Disable complex property loading for aggregation queries
         _context.Builder.DisableComplexPropertyLoading();
-        _context.Builder.SetAggregationQuery();
+        _context.Builder.SetAggregateTerminalQuery();
 
         if (node.Arguments.Count != 2)
             throw new GraphException("Min method must have exactly 2 arguments");
@@ -744,7 +747,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
     {
         // Disable complex property loading for aggregation queries
         _context.Builder.DisableComplexPropertyLoading();
-        _context.Builder.SetAggregationQuery();
+        _context.Builder.SetAggregateTerminalQuery();
 
         if (node.Arguments.Count != 2)
             throw new GraphException("Max method must have exactly 2 arguments");

@@ -105,15 +105,13 @@ public record Person : Node
 
 ### RelationshipAttribute
 
-The `[Relationship]` attribute configures how relationship classes map to graph edges, with support for custom labeling:
+The `[Relationship]` attribute configures how relationship classes map to graph edges by assigning
+their stored relationship type:
 
 ```csharp
 [Relationship("KNOWS")]
-public record Knows(string StartNodeId, string EndNodeId)
-    : Relationship(StartNodeId, EndNodeId, RelationshipDirection.Bidirectional)
+public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
 {
-    public bool IsBidirectional => Direction == RelationshipDirection.Bidirectional;
-
     [Property(Label = "since_date", IsIndexed = true)]
     public DateTime Since { get; set; }
 }
@@ -121,38 +119,33 @@ public record Knows(string StartNodeId, string EndNodeId)
 
 ### Relationship Direction Options
 
-The `RelationshipDirection` enum controls how relationships are interpreted:
+`RelationshipDirection` controls storage direction relative to a relationship object's
+`StartNodeId`/`EndNodeId` tuple. It does not make a stored edge bidirectional:
 
 ```csharp
 public enum RelationshipDirection
 {
-    Outgoing,      // Source -> Target (default)
-    Incoming,      // Target -> Source
-    Bidirectional  // Source <-> Target
+    Outgoing, // Stored as StartNodeId -> EndNodeId (default)
+    Incoming  // Stored as EndNodeId -> StartNodeId
 }
 ```
 
 ### Direction Examples
 
 ```csharp
-// Unidirectional: Person follows another Person
+// Default storage direction: follower -> followed
 [Relationship("FOLLOWS")]
 public record Follows(string StartNodeId, string EndNodeId)
-    : Relationship(StartNodeId, EndNodeId, RelationshipDirection.Outgoing);
+    : Relationship(StartNodeId, EndNodeId);
 
-// Bidirectional: Person is friends with another Person
-[Relationship("FRIENDS_WITH")]
-public record FriendsWith(string StartNodeId, string EndNodeId)
-    : Relationship(StartNodeId, EndNodeId, RelationshipDirection.Bidirectional)
-{
-    public bool IsBidirectional => Direction == RelationshipDirection.Bidirectional;
-}
-
-// Incoming relationship (less common)
+// Reversed storage direction relative to the logical tuple
 [Relationship("REPORTS_TO")]
 public record ReportsTo(string StartNodeId, string EndNodeId)
     : Relationship(StartNodeId, EndNodeId, RelationshipDirection.Incoming);
 ```
+
+Use `GraphTraversalDirection.Both` on traversal queries when you want to traverse matching stored
+edges in either physical direction.
 
 ## Inheritance and Polymorphism
 

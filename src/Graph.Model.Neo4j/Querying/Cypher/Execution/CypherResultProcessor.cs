@@ -144,8 +144,8 @@ internal sealed class CypherResultProcessor
             var startNodeEntityInfo = ProcessSingleNodeResult(pathSegment.StartNode, sourceType);
             var relEntityInfo = ProcessSingleRelationshipFromPathSegment(
                 pathSegment.Relationship, relType,
-                GetNodeId(pathSegment.StartNode.Node),
-                GetNodeId(pathSegment.EndNode.Node));
+                pathSegment.StartNode.Node,
+                pathSegment.EndNode.Node);
             var endNodeEntityInfo = ProcessSingleNodeResult(pathSegment.EndNode, targetType);
 
             // Create the composite path segment EntityInfo
@@ -174,8 +174,8 @@ internal sealed class CypherResultProcessor
                 var relationshipEntityInfo = ProcessSingleRelationshipFromPathSegment(
                     pathSegment.Relationship,
                     targetType,
-                    pathSegment.StartNode.Node.Properties[nameof(Model.IEntity.Id)].As<string>(),
-                    pathSegment.EndNode.Node.Properties[nameof(Model.IEntity.Id)].As<string>());
+                    pathSegment.StartNode.Node,
+                    pathSegment.EndNode.Node);
 
                 results.Add(relationshipEntityInfo);
             }
@@ -356,11 +356,11 @@ internal sealed class CypherResultProcessor
     private EntityInfo ProcessSingleRelationshipFromPathSegment(
         IRelationship relationship,
         Type targetType,
-        string startNodeId,
-        string endNodeId)
+        INode startNode,
+        INode endNode)
     {
         var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
-        EnhanceRelationshipEntityInfo(entityInfo, relationship, targetType, startNodeId, endNodeId);
+        EnhanceRelationshipEntityInfo(entityInfo, relationship, targetType, startNode, endNode);
         return entityInfo;
     }
 
@@ -405,8 +405,8 @@ internal sealed class CypherResultProcessor
         var startNodeEntityInfo = ProcessSingleNodeResult(pathSegment.StartNode, sourceType);
         var relEntityInfo = ProcessSingleRelationshipFromPathSegment(
             pathSegment.Relationship, relationshipType,
-            GetNodeId(pathSegment.StartNode.Node),
-            GetNodeId(pathSegment.EndNode.Node));
+            pathSegment.StartNode.Node,
+            pathSegment.EndNode.Node);
         var endNodeEntityInfo = ProcessSingleNodeResult(pathSegment.EndNode, targetType);
 
         return new GraphPathHop(pathIndex, hopIndex, startNodeEntityInfo, relEntityInfo, endNodeEntityInfo);
@@ -621,8 +621,11 @@ internal sealed class CypherResultProcessor
         );
     }
 
-    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, IRelationship relationship, Type targetType, string startNodeId, string endNodeId)
+    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, IRelationship relationship, Type targetType, INode pathStartNode, INode pathEndNode)
     {
+        var direction = GetRelationshipDirection(relationship);
+        var (startNodeId, endNodeId) = GetLogicalRelationshipNodeIds(relationship, pathStartNode, pathEndNode, direction);
+
         // Add StartNodeId as a simple property
         var startNodeIdProperty = targetType.IsInterface
             ? targetType.GetInterface(typeof(Model.IRelationship).Name)?.GetProperty(nameof(Model.IRelationship.StartNodeId))
@@ -657,7 +660,6 @@ internal sealed class CypherResultProcessor
             : targetType.GetProperty(nameof(Model.IRelationship.Direction));
         if (directionProperty != null)
         {
-            var direction = GetRelationshipDirection(relationship, targetType);
             entityInfo.SimpleProperties[nameof(Model.IRelationship.Direction)] = new Property(
                 PropertyInfo: directionProperty,
                 Label: nameof(Model.IRelationship.Direction),
@@ -682,18 +684,45 @@ internal sealed class CypherResultProcessor
         return node.ElementId;
     }
 
-    private static RelationshipDirection GetRelationshipDirection(IRelationship relationship, Type targetType)
+    private static (string StartNodeId, string EndNodeId) GetLogicalRelationshipNodeIds(
+        IRelationship relationship,
+        INode pathStartNode,
+        INode pathEndNode,
+        RelationshipDirection direction)
+    {
+        var pathStartNodeId = GetNodeId(pathStartNode);
+        var pathEndNodeId = GetNodeId(pathEndNode);
+
+        var (physicalStartNodeId, physicalEndNodeId) =
+            relationship.StartNodeElementId == pathStartNode.ElementId &&
+            relationship.EndNodeElementId == pathEndNode.ElementId
+                ? (pathStartNodeId, pathEndNodeId)
+                : relationship.StartNodeElementId == pathEndNode.ElementId &&
+                  relationship.EndNodeElementId == pathStartNode.ElementId
+                    ? (pathEndNodeId, pathStartNodeId)
+                    : (pathStartNodeId, pathEndNodeId);
+
+        return direction switch
+        {
+            RelationshipDirection.Outgoing => (physicalStartNodeId, physicalEndNodeId),
+            RelationshipDirection.Incoming => (physicalEndNodeId, physicalStartNodeId),
+            _ => (physicalStartNodeId, physicalEndNodeId)
+        };
+    }
+
+    private static RelationshipDirection GetRelationshipDirection(IRelationship relationship)
     {
         // Try to get the direction from the relationship properties
         if (relationship.Properties.TryGetValue(nameof(Model.IRelationship.Direction), out var directionValue))
         {
-            if (directionValue is RelationshipDirection direction)
+            if (directionValue is RelationshipDirection direction && Enum.IsDefined(direction))
             {
                 return direction;
             }
 
             // Try to parse if it's stored as a string or number
-            if (Enum.TryParse<RelationshipDirection>(directionValue.ToString(), out var parsedDirection))
+            if (Enum.TryParse<RelationshipDirection>(directionValue.ToString(), out var parsedDirection) &&
+                Enum.IsDefined(parsedDirection))
             {
                 return parsedDirection;
             }

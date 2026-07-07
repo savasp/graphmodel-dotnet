@@ -34,7 +34,7 @@ public record Content : Node
 }
 
 [Relationship(Label = "CONTAINED_IN")]
-public record ContainedIn(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
+public record ContainedIn(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public ContainedIn() : this(string.Empty, string.Empty) { }
 }
@@ -54,13 +54,13 @@ public record Video : Content
 }
 
 [Relationship(Label = "CONTAINS")]
-public record Contains(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
+public record Contains(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public Contains() : this(string.Empty, string.Empty) { }
 }
 
 [Relationship(Label = "REFERENCES")]
-public record References(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
+public record References(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public References() : this(string.Empty, string.Empty) { }
     public string Context { get; set; } = string.Empty;
@@ -73,14 +73,14 @@ public record Tag : Node
 }
 
 [Relationship(Label = "REFERENCE")]
-public record Reference(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
+public record Reference(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public Reference() : this(string.Empty, string.Empty) { }
     public string Context { get; set; } = string.Empty;
 }
 
 [Relationship(Label = "TAGGED_WITH")]
-public record TaggedWith(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId, Direction: RelationshipDirection.Bidirectional)
+public record TaggedWith(string startNodeId, string endNodeId) : Relationship(startNodeId, endNodeId)
 {
     public TaggedWith() : this(string.Empty, string.Empty) { }
     public string TagName { get; set; } = string.Empty;

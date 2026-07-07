@@ -245,6 +245,43 @@ public interface IQueryTraversalTests : IGraphModelTest
         Assert.Contains(bothDirectionsResults, p => p.FirstName == "Charlie");
     }
 
+    [Fact]
+    public async Task Traversal_DirectionBoth_MatchesEitherStoredDirection()
+    {
+        var alice = new Person { FirstName = "Alice", LastName = "Smith" };
+        var bob = new Person { FirstName = "Bob", LastName = "Jones" };
+        var charlie = new Person { FirstName = "Charlie", LastName = "Brown" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows
+        {
+            StartNodeId = alice.Id,
+            EndNodeId = bob.Id,
+            Direction = RelationshipDirection.Outgoing,
+            Since = DateTime.UtcNow
+        }, null, TestContext.Current.CancellationToken);
+
+        await Graph.CreateRelationshipAsync(new Knows
+        {
+            StartNodeId = alice.Id,
+            EndNodeId = charlie.Id,
+            Direction = RelationshipDirection.Incoming,
+            Since = DateTime.UtcNow
+        }, null, TestContext.Current.CancellationToken);
+
+        var results = await Graph.Nodes<Person>()
+            .Where(p => p.Id == alice.Id)
+            .Traverse<Knows, Person>(GraphTraversalDirection.Both)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.Contains(results, p => p.Id == bob.Id);
+        Assert.Contains(results, p => p.Id == charlie.Id);
+    }
+
     #endregion
 
     #region Reverse Traversal Tests
