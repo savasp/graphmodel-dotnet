@@ -291,12 +291,9 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
         if (model.Roots.Items.IsDefaultOrEmpty) return;
 
         var catalog = new Dictionary<string, SerializableTypeModel>(StringComparer.Ordinal);
-        foreach (var type in model.Catalog.Items)
+        foreach (var type in model.Catalog.Items.Where(type => !catalog.ContainsKey(type.Type.Identity)))
         {
-            if (!catalog.ContainsKey(type.Type.Identity))
-            {
-                catalog.Add(type.Type.Identity, type);
-            }
+            catalog.Add(type.Type.Identity, type);
         }
 
         var allTypesToGenerate = new List<SerializableTypeModel>();
@@ -325,12 +322,11 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
                 AddType(subtype);
             }
 
-            foreach (var complexPropertyTypeIdentity in currentType.ComplexPropertyTypeIdentities.Items)
+            foreach (var complexType in currentType.ComplexPropertyTypeIdentities.Items
+                .Select(GetCatalogType)
+                .OfType<SerializableTypeModel>())
             {
-                if (catalog.TryGetValue(complexPropertyTypeIdentity, out var complexType))
-                {
-                    AddType(complexType);
-                }
+                AddType(complexType);
             }
         }
 
@@ -348,6 +344,11 @@ internal class EntitySerializerGenerator : IIncrementalGenerator
                 allTypesToGenerate.Add(type);
                 typesToAnalyze.Enqueue(type);
             }
+        }
+
+        SerializableTypeModel? GetCatalogType(string identity)
+        {
+            return catalog.TryGetValue(identity, out var type) ? type : null;
         }
     }
 
