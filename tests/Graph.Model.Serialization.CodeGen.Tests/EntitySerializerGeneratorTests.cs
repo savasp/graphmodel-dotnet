@@ -166,7 +166,7 @@ public class EntitySerializerGeneratorTests
     }
 
     [Fact]
-    public void EntityTypeDiscovery_CachesOnUnchangedSecondRun()
+    public void EntityTypeDiscovery_CachesAllTrackedGraphModelStepsOnUnchangedSecondRun()
     {
         const string source = """
             using Cvoya.Graph.Model;
@@ -180,42 +180,19 @@ public class EntitySerializerGeneratorTests
             }
             """;
 
-        var reasons = GeneratorTestHelpers.GetSecondRunReasons(source, "GraphModel.EntityTypes");
+        var reasonsByStep = GeneratorTestHelpers.GetSecondRunReasonsByTrackingName(source);
 
-        Assert.NotEmpty(reasons);
-        Assert.DoesNotContain(reasons, reason =>
-            reason is IncrementalStepRunReason.New or IncrementalStepRunReason.Modified);
-        Assert.Contains(reasons, reason =>
-            reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
+        AssertAllTrackedStepsCachedOrUnchanged(reasonsByStep);
     }
 
     /// <summary>
-    /// The scenario #83/#134 flagged: a whitespace-only keystroke in a file unrelated to any
-    /// entity type must not re-run the referenced-assembly type walk - the expensive step that
-    /// used to be backed by a process-wide static cache instead of proper incremental modeling.
-    /// <c>GraphModel.MetadataReferences</c> and <c>GraphModel.ReferencedEntityTypes</c> are keyed
-    /// off <see cref="Microsoft.CodeAnalysis.IncrementalGeneratorInitializationContext.MetadataReferencesProvider"/>,
-    /// which is untouched by source-only edits, so both must report Cached/Unchanged, never
-    /// New/Modified.
+    /// A whitespace-only keystroke in a file unrelated to any entity type must leave the tracked
+    /// GraphModel pipeline cached/unchanged. The important bit for #148 is that the source and
+    /// attribute/base-list discovery steps now return equatable value models instead of symbols,
+    /// so the final generation input is unchanged too.
     /// </summary>
-    /// <remarks>
-    /// This intentionally does not assert Cached/Unchanged for the attribute-based
-    /// (<c>GraphModel.NodeAttributeEntityTypes</c> etc.) or base-list-based steps, nor for the
-    /// final <c>SourceOutput</c> step: those collect <see cref="INamedTypeSymbol"/> values, and
-    /// Roslyn's incremental engine always reports <see cref="IncrementalStepRunReason.Modified"/>
-    /// for a symbol-collecting step the first time it re-runs after ANY compilation change -
-    /// including edits to unrelated files - because symbols from different
-    /// <see cref="Microsoft.CodeAnalysis.Compilation"/> instances are never reference-equal,
-    /// regardless of what changed. That's a pre-existing Roslyn-level characteristic of
-    /// <c>ForAttributeWithMetadataName</c>/<c>CreateSyntaxProvider</c> pipelines collecting
-    /// symbols, not something #134 introduced or is scoped to fix. What #134 guarantees is that
-    /// the actual generated output is unaffected: see
-    /// <see cref="EntityTypeDiscovery_GeneratedSourceIdenticalAfterUnrelatedEdit"/>.
-    /// </remarks>
-    [Theory]
-    [InlineData("GraphModel.MetadataReferences")]
-    [InlineData("GraphModel.ReferencedEntityTypes")]
-    public void EntityTypeDiscovery_CachesAfterUnrelatedEdit(string trackingName)
+    [Fact]
+    public void EntityTypeDiscovery_CachesAllTrackedGraphModelStepsAfterUnrelatedEdit()
     {
         const string source = """
             using Cvoya.Graph.Model;
@@ -229,13 +206,34 @@ public class EntitySerializerGeneratorTests
             }
             """;
 
-        var reasons = GeneratorTestHelpers.GetUnrelatedEditReasons(source, trackingName);
+        var reasonsByStep = GeneratorTestHelpers.GetUnrelatedEditReasonsByTrackingName(source);
 
-        Assert.NotEmpty(reasons);
-        Assert.DoesNotContain(reasons, reason =>
-            reason is IncrementalStepRunReason.New or IncrementalStepRunReason.Modified);
-        Assert.Contains(reasons, reason =>
-            reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
+        AssertAllTrackedStepsCachedOrUnchanged(reasonsByStep);
+    }
+
+    /// <summary>
+    /// Adding a new plain non-entity type exercises the false side of the syntax discovery
+    /// predicates: the new type declaration is visible to the driver, but it has no graph
+    /// attribute and no base list, so no GraphModel step should produce a new value.
+    /// </summary>
+    [Fact]
+    public void EntityTypeDiscovery_CachesAllTrackedGraphModelStepsAfterAddingUnrelatedNonEntityType()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            namespace TestNamespace;
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public string FirstName { get; set; } = string.Empty;
+            }
+            """;
+
+        var reasonsByStep = GeneratorTestHelpers.GetUnrelatedNonEntityTypeAdditionReasonsByTrackingName(source);
+
+        AssertAllTrackedStepsCachedOrUnchanged(reasonsByStep);
     }
 
     /// <summary>
@@ -262,5 +260,87 @@ public class EntitySerializerGeneratorTests
         var (before, after) = GeneratorTestHelpers.GetGeneratedSourceBeforeAndAfterUnrelatedEdit(source);
 
         Assert.Equal(before, after);
+    }
+
+    [Fact]
+    public void EntityTypeDiscovery_RegeneratesAfterRelevantEntityEdit()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            namespace TestNamespace;
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public string FirstName { get; set; } = string.Empty;
+            }
+            """;
+
+        const string editedSource = """
+            using Cvoya.Graph.Model;
+
+            namespace TestNamespace;
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public string FirstName { get; set; } = string.Empty;
+                public string LastName { get; set; } = string.Empty;
+            }
+            """;
+
+        var reasonsByStep = GeneratorTestHelpers.GetRelevantEditReasonsByTrackingName(source, editedSource);
+
+        Assert.Contains("GraphModel.SerializerGenerationInput", reasonsByStep.Keys);
+        Assert.Contains(reasonsByStep["GraphModel.SerializerGenerationInput"], IsInvalidatedReason);
+
+        var (before, after) = GeneratorTestHelpers.GetGeneratedSourceBeforeAndAfterRelevantEdit(source, editedSource);
+
+        Assert.NotEqual(before, after);
+        Assert.Contains("LastName", after, StringComparison.Ordinal);
+    }
+
+    private static void AssertAllTrackedStepsCachedOrUnchanged(
+        IReadOnlyDictionary<string, IReadOnlyCollection<IncrementalStepRunReason>> reasonsByStep)
+    {
+        string[] expectedTrackingNames =
+        [
+            "GraphModel.AllConcreteDeclaredTypes",
+            "GraphModel.AttributedEntityTypes",
+            "GraphModel.BaseListEntityTypes",
+            "GraphModel.EntityTypes",
+            "GraphModel.MetadataReferences",
+            "GraphModel.NodeAttributeEntityTypes",
+            "GraphModel.ReferencedEntityTypes",
+            "GraphModel.RelationshipAttributeEntityTypes",
+            "GraphModel.SerializerGenerationInput",
+        ];
+
+        foreach (var trackingName in expectedTrackingNames)
+        {
+            Assert.Contains(trackingName, reasonsByStep.Keys);
+        }
+
+        foreach (var (trackingName, reasons) in reasonsByStep
+            .Where(step => step.Key.StartsWith("GraphModel.", StringComparison.Ordinal)))
+        {
+            Assert.NotEmpty(reasons);
+            var invalidatedReasons = reasons.Where(IsInvalidatedReason).ToArray();
+            Assert.True(
+                invalidatedReasons.Length == 0,
+                $"{trackingName} invalidated with: {string.Join(", ", invalidatedReasons)}");
+            Assert.Contains(reasons, IsCachedReason);
+        }
+    }
+
+    private static bool IsInvalidatedReason(IncrementalStepRunReason reason)
+    {
+        return reason is IncrementalStepRunReason.New or IncrementalStepRunReason.Modified;
+    }
+
+    private static bool IsCachedReason(IncrementalStepRunReason reason)
+    {
+        return reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged;
     }
 }

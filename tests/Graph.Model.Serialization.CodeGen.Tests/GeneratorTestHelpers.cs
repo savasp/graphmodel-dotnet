@@ -64,6 +64,20 @@ internal static class GeneratorTestHelpers
         return GetStepReasons(driver, trackingName);
     }
 
+    public static IReadOnlyDictionary<string, IReadOnlyCollection<IncrementalStepRunReason>> GetSecondRunReasonsByTrackingName(
+        string source,
+        [CallerMemberName] string testName = "")
+    {
+        var compilation = CreateCompilation(source, testName);
+
+        var driver = CreateTrackingDriver();
+
+        driver = driver.RunGenerators(compilation);
+        driver = driver.RunGenerators(compilation);
+
+        return GetAllStepReasons(driver);
+    }
+
     /// <summary>
     /// Runs the generator once against <paramref name="source"/> plus an unrelated,
     /// non-entity source file, then re-runs it after applying a whitespace-only edit to that
@@ -83,6 +97,24 @@ internal static class GeneratorTestHelpers
         return GetStepReasons(driver, trackingName);
     }
 
+    public static IReadOnlyDictionary<string, IReadOnlyCollection<IncrementalStepRunReason>> GetUnrelatedEditReasonsByTrackingName(
+        string source,
+        [CallerMemberName] string testName = "")
+    {
+        var (_, driver) = RunBeforeAndAfterUnrelatedEdit(source, testName);
+
+        return GetAllStepReasons(driver);
+    }
+
+    public static IReadOnlyDictionary<string, IReadOnlyCollection<IncrementalStepRunReason>> GetUnrelatedNonEntityTypeAdditionReasonsByTrackingName(
+        string source,
+        [CallerMemberName] string testName = "")
+    {
+        var (_, driver) = RunBeforeAndAfterAddingUnrelatedNonEntityType(source, testName);
+
+        return GetAllStepReasons(driver);
+    }
+
     /// <summary>
     /// Runs the generator against <paramref name="source"/> plus an unrelated, non-entity source
     /// file, then re-runs it after applying a whitespace-only edit to that unrelated file, and
@@ -94,6 +126,30 @@ internal static class GeneratorTestHelpers
         [CallerMemberName] string testName = "")
     {
         var (beforeResult, driver) = RunBeforeAndAfterUnrelatedEdit(source, testName);
+        var afterResult = driver.GetRunResult();
+
+        var before = RenderGeneratedSourcesOnly(beforeResult);
+        var after = RenderGeneratedSourcesOnly(afterResult);
+
+        return (before, after);
+    }
+
+    public static IReadOnlyDictionary<string, IReadOnlyCollection<IncrementalStepRunReason>> GetRelevantEditReasonsByTrackingName(
+        string source,
+        string editedSource,
+        [CallerMemberName] string testName = "")
+    {
+        var (_, driver) = RunBeforeAndAfterRelevantEdit(source, editedSource, testName);
+
+        return GetAllStepReasons(driver);
+    }
+
+    public static (string Before, string After) GetGeneratedSourceBeforeAndAfterRelevantEdit(
+        string source,
+        string editedSource,
+        [CallerMemberName] string testName = "")
+    {
+        var (beforeResult, driver) = RunBeforeAndAfterRelevantEdit(source, editedSource, testName);
         var afterResult = driver.GetRunResult();
 
         var before = RenderGeneratedSourcesOnly(beforeResult);
@@ -125,6 +181,53 @@ internal static class GeneratorTestHelpers
         // Apply a whitespace-only edit to the unrelated file - the entity source is untouched.
         var editedUnrelatedTree = CSharpSyntaxTree.ParseText(unrelatedSource + "\n", path: "Unrelated.cs");
         var editedCompilation = compilation.ReplaceSyntaxTree(unrelatedTree, editedUnrelatedTree);
+
+        driver = driver.RunGenerators(editedCompilation);
+
+        return (firstRunResult, driver);
+    }
+
+    private static (GeneratorDriverRunResult FirstRunResult, GeneratorDriver Driver) RunBeforeAndAfterAddingUnrelatedNonEntityType(
+        string source,
+        string testName)
+    {
+        const string unrelatedSource = """
+            namespace TestNamespace;
+
+            public class NonEntityDescription
+            {
+                public string Name { get; set; } = string.Empty;
+            }
+            """;
+
+        var compilation = CreateCompilation(source, testName);
+
+        var driver = CreateTrackingDriver();
+        driver = driver.RunGenerators(compilation);
+        var firstRunResult = driver.GetRunResult();
+
+        var unrelatedTree = CSharpSyntaxTree.ParseText(unrelatedSource, path: "NonEntityDescription.cs");
+        var editedCompilation = compilation.AddSyntaxTrees(unrelatedTree);
+
+        driver = driver.RunGenerators(editedCompilation);
+
+        return (firstRunResult, driver);
+    }
+
+    private static (GeneratorDriverRunResult FirstRunResult, GeneratorDriver Driver) RunBeforeAndAfterRelevantEdit(
+        string source,
+        string editedSource,
+        string testName)
+    {
+        var compilation = CreateCompilation(source, testName);
+        var inputTree = compilation.SyntaxTrees.Single(tree => tree.FilePath == "Input.cs");
+
+        var driver = CreateTrackingDriver();
+        driver = driver.RunGenerators(compilation);
+        var firstRunResult = driver.GetRunResult();
+
+        var editedInputTree = CSharpSyntaxTree.ParseText(editedSource, path: "Input.cs");
+        var editedCompilation = compilation.ReplaceSyntaxTree(inputTree, editedInputTree);
 
         driver = driver.RunGenerators(editedCompilation);
 
@@ -173,6 +276,22 @@ internal static class GeneratorTestHelpers
         return generatorResult.TrackedSteps.TryGetValue(trackingName, out var steps)
             ? steps.SelectMany(step => step.Outputs).Select(output => output.Reason).ToArray()
             : [];
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyCollection<IncrementalStepRunReason>> GetAllStepReasons(
+        GeneratorDriver driver)
+    {
+        var generatorResult = driver.GetRunResult().Results.Single();
+
+        return generatorResult.TrackedSteps
+            .OrderBy(step => step.Key, StringComparer.Ordinal)
+            .ToDictionary(
+                step => step.Key,
+                step => (IReadOnlyCollection<IncrementalStepRunReason>)step.Value
+                    .SelectMany(value => value.Outputs)
+                    .Select(output => output.Reason)
+                    .ToArray(),
+                StringComparer.Ordinal);
     }
 
     private static string Render(

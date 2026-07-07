@@ -20,55 +20,28 @@ using Microsoft.CodeAnalysis;
 
 internal static class Deserialization
 {
-    internal static void GenerateDeserializeMethod(StringBuilder sb, INamedTypeSymbol type)
+    internal static void GenerateDeserializeMethod(StringBuilder sb, SerializableTypeModel type)
     {
         sb.AppendLine("    public object Deserialize(EntityInfo entity)");
         sb.AppendLine("    {");
 
-        // Get all properties from type and its interfaces
-        var allProperties = GetAllPropertiesIncludingInterfaces(type)
-            .Where(p => !Utils.SerializationShouldSkipProperty(p, type))
-            .ToList();
+        var allProperties = type.DeserializationProperties.Items.ToList();
 
-        // Properties that can only be set via constructor or init
-        var constructorOnlyProperties = allProperties
-            .Where(p => p.SetMethod == null || p.SetMethod.IsInitOnly)
-            .ToList();
-
-        // Properties that can be set after construction
         var settableProperties = allProperties
-            .Where(p => p.SetMethod != null &&
-                       !p.SetMethod.IsInitOnly &&
-                       p.SetMethod.DeclaredAccessibility == Accessibility.Public)
+            .Where(p => p.HasSetter &&
+                       !p.SetterIsInitOnly &&
+                       p.SetterDeclaredPublic)
             .ToList();
 
-        // Find all public constructors
-        var constructors = type.Constructors
-            .Where(c => !c.IsStatic && c.DeclaredAccessibility == Accessibility.Public)
-            .OrderBy(c => c.Parameters.Length)
-            .ToList();
-
-        // We need constructor if we have any readonly/init-only properties or it's a record
-        var needsConstructor = constructorOnlyProperties.Any() || type.IsRecord;
-
-        if (!needsConstructor && constructors.Any(c => c.Parameters.Length == 0))
+        if (!type.NeedsConstructor && type.HasParameterlessPublicConstructor)
         {
             // Simple case - parameterless constructor and all properties are settable
-            sb.AppendLine($"        var result = new {Utils.GetTypeOfName(type)}();");
+            sb.AppendLine($"        var result = new {type.Type.TypeOfName}();");
             GeneratePropertySetters(sb, settableProperties, "result", "entity");
         }
-        else if (constructors.Any())
+        else if (type.Constructor is not null)
         {
-            // Find the best constructor for our needs
-            var bestConstructor = FindBestConstructor(constructors, allProperties);
-            if (bestConstructor != null)
-            {
-                GenerateConstructorBasedDeserialization(sb, type, bestConstructor, allProperties);
-            }
-            else
-            {
-                GenerateConstructorBasedDeserialization(sb, type, constructors[0], allProperties);
-            }
+            GenerateConstructorBasedDeserialization(sb, type, type.Constructor, allProperties);
         }
         else
         {
@@ -79,66 +52,33 @@ internal static class Deserialization
         sb.AppendLine("    }");
     }
 
-    private static List<IPropertySymbol> GetAllPropertiesIncludingInterfaces(INamedTypeSymbol type)
-    {
-        var properties = new List<IPropertySymbol>();
-        var seenProperties = new HashSet<string>();
-
-        // First get properties from the type hierarchy (concrete implementations)
-        for (var currentType = type; currentType != null; currentType = currentType.BaseType)
-        {
-            foreach (var property in currentType.GetMembers().OfType<IPropertySymbol>())
-            {
-                if (property.DeclaredAccessibility == Accessibility.Public &&
-                    property.GetMethod != null &&
-                    !property.IsStatic &&
-                    seenProperties.Add(property.Name))
-                {
-                    properties.Add(property);
-                }
-            }
-        }
-
-        // Then get properties from all implemented interfaces (only if not already seen)
-        foreach (var interfaceType in type.AllInterfaces)
-        {
-            foreach (var property in interfaceType.GetMembers().OfType<IPropertySymbol>())
-            {
-                if (property.DeclaredAccessibility == Accessibility.Public &&
-                    property.GetMethod != null &&
-                    seenProperties.Add(property.Name))
-                {
-                    properties.Add(property);
-                }
-            }
-        }
-
-        return properties;
-    }
-
-    private static void GenerateConstructorBasedDeserialization(StringBuilder sb, INamedTypeSymbol type, IMethodSymbol constructor, List<IPropertySymbol> allProperties)
+    private static void GenerateConstructorBasedDeserialization(
+        StringBuilder sb,
+        SerializableTypeModel type,
+        ConstructorModel constructor,
+        List<SerializablePropertyModel> allProperties)
     {
         // Extract values for each constructor parameter (including Direction if it's part of the constructor)
-        foreach (var parameter in constructor.Parameters)
+        foreach (var parameter in constructor.Parameters.Items)
         {
             GenerateConstructorParameterExtraction(sb, parameter, "entity");
         }
 
         // Find properties that need to be set via object initializer (only init-only properties like Id)
-        var handledByConstructor = new HashSet<string>(constructor.Parameters
-            .Select(p => p.Name ?? "")
+        var handledByConstructor = new HashSet<string>(constructor.Parameters.Items
+            .Select(p => p.Name)
             .Where(name => !string.IsNullOrEmpty(name)), StringComparer.OrdinalIgnoreCase);
 
         var initOnlyProperties = allProperties
             .Where(p => !handledByConstructor.Contains(p.Name))
-            .Where(p => p.SetMethod?.IsInitOnly == true)
+            .Where(p => p.SetterIsInitOnly)
             .ToList();
 
         var settableProperties = allProperties
             .Where(p => !handledByConstructor.Contains(p.Name))
-            .Where(p => p.SetMethod != null &&
-                !p.SetMethod.IsInitOnly &&
-                p.SetMethod.DeclaredAccessibility == Accessibility.Public)
+            .Where(p => p.HasSetter &&
+                !p.SetterIsInitOnly &&
+                p.SetterDeclaredPublic)
             .ToList();
 
         // Generate init-only property extractions (like Id)
@@ -152,9 +92,9 @@ internal static class Deserialization
 
         if (initOnlyProperties.Any())
         {
-            sb.AppendLine($"        var result = new {Utils.GetTypeOfName(type)}(");
+            sb.AppendLine($"        var result = new {type.Type.TypeOfName}(");
 
-            var paramNames = constructor.Parameters.Select(p => p.Name).ToList();
+            var paramNames = constructor.Parameters.Items.Select(p => p.Name).ToList();
             for (int i = 0; i < paramNames.Count; i++)
             {
                 var comma = i < paramNames.Count - 1 ? "," : "";
@@ -176,9 +116,9 @@ internal static class Deserialization
         }
         else
         {
-            sb.AppendLine($"        var result = new {Utils.GetTypeOfName(type)}(");
+            sb.AppendLine($"        var result = new {type.Type.TypeOfName}(");
 
-            var paramNames = constructor.Parameters.Select(p => p.Name).ToList();
+            var paramNames = constructor.Parameters.Items.Select(p => p.Name).ToList();
             for (int i = 0; i < paramNames.Count; i++)
             {
                 var comma = i < paramNames.Count - 1 ? "," : "";
@@ -198,11 +138,11 @@ internal static class Deserialization
         }
     }
 
-    private static void GeneratePropertyExtraction(StringBuilder sb, IPropertySymbol property, string entityVar)
+    private static void GeneratePropertyExtraction(StringBuilder sb, SerializablePropertyModel property, string entityVar)
     {
-        var propertyName = Utils.GetPropertyName(property);
+        var propertyName = property.Label;
         var propName = property.Name;
-        var propertyType = property.Type.ToDisplayString();
+        var propertyType = property.Type.DisplayName;
         var variableName = $"{propName.ToLowerInvariant()}Value";
 
         // Use property-specific variable names to avoid conflicts
@@ -228,14 +168,14 @@ internal static class Deserialization
         var defaultValue = GetDefaultValueForProperty(propName, property.Type, out var shouldThrow);
 
         // Check if the property type is nullable
-        if (IsNullableType(property.Type))
+        if (property.Type.IsNullable)
         {
             // For nullable types, set to null if no value is provided
             sb.AppendLine($"            {variableName} = null;");
         }
         else if (shouldThrow)
         {
-            sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for property '{propertyName}' of type '{property.Type.ToDisplayString()}'.\");");
+            sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for property '{propertyName}' of type '{property.Type.DisplayName}'.\");");
         }
         else
         {
@@ -245,7 +185,7 @@ internal static class Deserialization
         sb.AppendLine("        }");
     }
 
-    private static string GetDefaultValueForProperty(string propertyName, ITypeSymbol propertyType, out bool shouldThrow)
+    private static string GetDefaultValueForProperty(string propertyName, TypeReferenceModel propertyType, out bool shouldThrow)
     {
         // Handle known interface properties with sensible defaults
         shouldThrow = false;
@@ -257,21 +197,20 @@ internal static class Deserialization
         };
     }
 
-    private static void GenerateConstructorParameterExtraction(StringBuilder sb, IParameterSymbol parameter, string entityVar)
+    private static void GenerateConstructorParameterExtraction(StringBuilder sb, ParameterModel parameter, string entityVar)
     {
         var paramName = parameter.Name;
-        var paramType = parameter.Type.ToDisplayString();
+        var paramType = parameter.Type.DisplayName;
 
         // Use parameter-specific variable names to avoid conflicts
-        var propRepVar = $"{paramName?.ToLowerInvariant()}PropRep";
-        var simplePropVar = $"{paramName?.ToLowerInvariant()}SimpleProp";
-        var complexPropVar = $"{paramName?.ToLowerInvariant()}ComplexProp";
+        var propRepVar = $"{paramName.ToLowerInvariant()}PropRep";
+        var simplePropVar = $"{paramName.ToLowerInvariant()}SimpleProp";
+        var complexPropVar = $"{paramName.ToLowerInvariant()}ComplexProp";
 
         sb.AppendLine($"        // Extracting value for parameter '{paramName}'");
         sb.AppendLine($"        {paramType} {paramName};");
 
-        // Find matching property by parameter name
-        var propertyName = FindPropertyNameForParameter(parameter, entityVar);
+        var propertyName = parameter.PropertyName;
 
         sb.AppendLine($"        // Look for property '{propertyName}' in both simple and complex properties");
         sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
@@ -279,7 +218,7 @@ internal static class Deserialization
         sb.AppendLine($"        if ({propRepVar} != null)");
         sb.AppendLine("        {");
 
-        GenerateValueExtraction(sb, parameter.Type, paramName!, propertyName, propRepVar, 12);
+        GenerateValueExtraction(sb, parameter.Type, paramName, propertyName, propRepVar, 12);
 
         sb.AppendLine("        }");
         sb.AppendLine("        else");
@@ -288,23 +227,22 @@ internal static class Deserialization
         // Handle missing parameters with proper defaults
         if (parameter.HasExplicitDefaultValue)
         {
-            var defaultValue = FormatDefaultValue(parameter.ExplicitDefaultValue, parameter.Type);
-            sb.AppendLine($"            {paramName} = {defaultValue};");
+            sb.AppendLine($"            {paramName} = {parameter.ExplicitDefaultValueExpression};");
         }
         else
         {
             // For required properties, use sensible defaults based on the property name and type
-            var defaultValue = GetDefaultValueForParameter(paramName!, parameter.Type, out var shouldThrow);
+            var defaultValue = GetDefaultValueForParameter(paramName, parameter.Type, out var shouldThrow);
 
             // Check if the parameter type is nullable
-            if (IsNullableType(parameter.Type))
+            if (parameter.Type.IsNullable)
             {
                 // For nullable types, set to null if no value is provided
                 sb.AppendLine($"            {paramName} = null;");
             }
             else if (shouldThrow)
             {
-                sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for parameter '{paramName}' of type '{parameter.Type.ToDisplayString()}'.\");");
+                sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for parameter '{paramName}' of type '{parameter.Type.DisplayName}'.\");");
             }
             else
             {
@@ -315,27 +253,15 @@ internal static class Deserialization
         sb.AppendLine("        }");
     }
 
-    private static string FindPropertyNameForParameter(IParameterSymbol parameter, string entityVar)
-    {
-        var paramName = parameter.Name ?? "unknown";
-
-        // For constructor parameters, we need to find the corresponding property name
-        // This is especially important for interface properties that might not match parameter names exactly
-        return paramName.ToLowerInvariant() switch
-        {
-            "startnodeid" => "StartNodeId",
-            "endnodeid" => "EndNodeId",
-            "id" => "Id",
-            "direction" => "Direction",
-            _ => Utils.GetPropertyNameFromParameter(parameter)
-        };
-    }
-
-    private static void GeneratePropertySetters(StringBuilder sb, List<IPropertySymbol> properties, string variableName, string entityVar)
+    private static void GeneratePropertySetters(
+        StringBuilder sb,
+        List<SerializablePropertyModel> properties,
+        string variableName,
+        string entityVar)
     {
         foreach (var property in properties)
         {
-            var propertyName = Utils.GetPropertyName(property);
+            var propertyName = property.Label;
             var propName = property.Name;
 
             // Use property-specific variable names to avoid conflicts
@@ -356,7 +282,7 @@ internal static class Deserialization
             sb.AppendLine("        {");
 
             // Handle missing properties
-            if (IsNullableType(property.Type))
+            if (property.Type.IsNullable)
             {
                 sb.AppendLine($"            {variableName}.{propName} = null;");
             }
@@ -365,7 +291,7 @@ internal static class Deserialization
                 var defaultValue = GetDefaultValueForProperty(propertyName, property.Type, out var shouldThrow);
                 if (shouldThrow)
                 {
-                    sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for property '{propertyName}' of type '{property.Type.ToDisplayString()}'.\");");
+                    sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for property '{propertyName}' of type '{property.Type.DisplayName}'.\");");
                 }
                 else
                 {
@@ -377,25 +303,31 @@ internal static class Deserialization
         }
     }
 
-    private static void GenerateValueExtraction(StringBuilder sb, ITypeSymbol targetType, string variableName, string propertyLabel, string propRepVarName, int indent)
+    private static void GenerateValueExtraction(
+        StringBuilder sb,
+        TypeReferenceModel targetType,
+        string variableName,
+        string propertyLabel,
+        string propRepVarName,
+        int indent)
     {
         var indentStr = new string(' ', indent);
 
-        if (GraphDataModel.IsCollectionOfSimple(targetType) || GraphDataModel.IsCollectionOfComplex(targetType))
+        if (targetType.IsCollectionOfSimple || targetType.IsCollectionOfComplex)
         {
             GenerateCollectionDeserialization(sb, targetType, variableName, propertyLabel, propRepVarName, indent);
         }
-        else if (GraphDataModel.IsSimple(targetType))
+        else if (targetType.IsSimple)
         {
             sb.AppendLine($"{indentStr}// Extract simple value - no conversion, just cast");
             sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is SimpleValue simpleValue)");
             sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    {variableName} = ({targetType.ToDisplayString()})simpleValue.Object;");
+            sb.AppendLine($"{indentStr}    {variableName} = ({targetType.DisplayName})simpleValue.Object;");
             sb.AppendLine($"{indentStr}}}");
             sb.AppendLine($"{indentStr}else");
             sb.AppendLine($"{indentStr}{{");
 
-            if (IsNullableType(targetType))
+            if (targetType.IsNullable)
             {
                 sb.AppendLine($"{indentStr}    {variableName} = null;");
             }
@@ -405,7 +337,7 @@ internal static class Deserialization
                 var defaultValue = GetDefaultValueForProperty(propertyLabel, targetType, out var shouldThrow);
                 if (shouldThrow)
                 {
-                    sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"No sensible default value for property '{propertyLabel}' of type '{targetType.ToDisplayString()}'.\");");
+                    sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"No sensible default value for property '{propertyLabel}' of type '{targetType.DisplayName}'.\");");
                 }
                 else
                 {
@@ -425,10 +357,10 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is EntityInfo complexEntity)");
             sb.AppendLine($"{indentStr}{{");
             sb.AppendLine($"{indentStr}    var complexSerializer = _serializerRegistry.GetSerializer(complexEntity.ActualType)");
-            sb.AppendLine($"{indentStr}        ?? _serializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(targetType)}));");
+            sb.AppendLine($"{indentStr}        ?? _serializerRegistry.GetSerializer(typeof({targetType.TypeOfName}));");
             sb.AppendLine($"{indentStr}    if (complexSerializer != null)");
             sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        {variableName} = ({targetType.ToDisplayString()})complexSerializer.Deserialize(complexEntity);");
+            sb.AppendLine($"{indentStr}        {variableName} = ({targetType.DisplayName})complexSerializer.Deserialize(complexEntity);");
             sb.AppendLine($"{indentStr}    }}");
             sb.AppendLine($"{indentStr}    else");
             sb.AppendLine($"{indentStr}    {{");
@@ -438,7 +370,7 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}else");
             sb.AppendLine($"{indentStr}{{");
 
-            if (IsNullableType(targetType))
+            if (targetType.IsNullable)
             {
                 sb.AppendLine($"{indentStr}    {variableName} = null;");
             }
@@ -453,19 +385,25 @@ internal static class Deserialization
         }
     }
 
-    private static void GenerateCollectionDeserialization(StringBuilder sb, ITypeSymbol collectionType, string variableName, string propertyLabel, string propRepVarName, int indent)
+    private static void GenerateCollectionDeserialization(
+        StringBuilder sb,
+        TypeReferenceModel collectionType,
+        string variableName,
+        string propertyLabel,
+        string propRepVarName,
+        int indent)
     {
         var indentStr = new string(' ', indent);
-        var elementType = GraphDataModel.GetCollectionElementType(collectionType);
+        var elementType = collectionType.ElementType;
 
         if (elementType == null)
         {
             sb.AppendLine($"{indentStr}// Warning: Could not determine element type for collection");
-            sb.AppendLine($"{indentStr}{variableName} = default({collectionType.ToDisplayString()});");
+            sb.AppendLine($"{indentStr}{variableName} = default({collectionType.DisplayName});");
             return;
         }
 
-        var isElementSimple = GraphDataModel.IsSimple(elementType);
+        var isElementSimple = elementType.IsSimple;
 
         sb.AppendLine($"{indentStr}// Extract collection value");
 
@@ -473,21 +411,21 @@ internal static class Deserialization
         {
             sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is SimpleCollection simpleCollection)");
             sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.ToDisplayString()}>();");
+            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.DisplayName}>();");
             sb.AppendLine($"{indentStr}    foreach (var simpleValue in simpleCollection.Values)");
             sb.AppendLine($"{indentStr}    {{");
 
             // Pure casting - no conversion logic
-            if (elementType.IsReferenceType || elementType.NullableAnnotation == NullableAnnotation.Annotated)
+            if (elementType.IsReferenceType || elementType.IsNullable)
             {
                 sb.AppendLine($"{indentStr}        if (simpleValue.Object != null)");
                 sb.AppendLine($"{indentStr}        {{");
-                sb.AppendLine($"{indentStr}            collection.Add(({elementType.ToDisplayString()})simpleValue.Object);");
+                sb.AppendLine($"{indentStr}            collection.Add(({elementType.DisplayName})simpleValue.Object);");
                 sb.AppendLine($"{indentStr}        }}");
             }
             else
             {
-                sb.AppendLine($"{indentStr}        collection.Add(({elementType.ToDisplayString()})simpleValue.Object);");
+                sb.AppendLine($"{indentStr}        collection.Add(({elementType.DisplayName})simpleValue.Object);");
             }
 
             sb.AppendLine($"{indentStr}    }}");
@@ -500,17 +438,17 @@ internal static class Deserialization
             // ActualType (e.g. legacy data serialized before ActualType was recorded per element).
             sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is EntityCollection entityCollection)");
             sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.ToDisplayString()}>();");
+            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.DisplayName}>();");
             sb.AppendLine($"{indentStr}    foreach (var entityItem in entityCollection.Entities)");
             sb.AppendLine($"{indentStr}    {{");
             sb.AppendLine($"{indentStr}        var itemSerializer = _serializerRegistry.GetSerializer(entityItem.ActualType)");
-            sb.AppendLine($"{indentStr}            ?? _serializerRegistry.GetSerializer(typeof({Utils.GetTypeOfName(elementType)}));");
+            sb.AppendLine($"{indentStr}            ?? _serializerRegistry.GetSerializer(typeof({elementType.TypeOfName}));");
             sb.AppendLine($"{indentStr}        if (itemSerializer == null)");
             sb.AppendLine($"{indentStr}        {{");
             sb.AppendLine($"{indentStr}            throw new InvalidOperationException($\"No serializer found for element type {{entityItem.ActualType}}\");");
             sb.AppendLine($"{indentStr}        }}");
             sb.AppendLine($"{indentStr}        var deserializedItem = itemSerializer.Deserialize(entityItem);");
-            sb.AppendLine($"{indentStr}        if (deserializedItem is {elementType.ToDisplayString()} typedItem)");
+            sb.AppendLine($"{indentStr}        if (deserializedItem is {elementType.DisplayName} typedItem)");
             sb.AppendLine($"{indentStr}        {{");
             sb.AppendLine($"{indentStr}            collection.Add(typedItem);");
             sb.AppendLine($"{indentStr}        }}");
@@ -518,7 +456,7 @@ internal static class Deserialization
         }
 
         // Convert to appropriate collection type
-        if (collectionType.TypeKind == TypeKind.Array)
+        if (collectionType.IsArray)
         {
             sb.AppendLine($"{indentStr}    {variableName} = collection.ToArray();");
         }
@@ -531,46 +469,19 @@ internal static class Deserialization
         sb.AppendLine($"{indentStr}else");
         sb.AppendLine($"{indentStr}{{");
 
-        if (collectionType.IsReferenceType && collectionType.NullableAnnotation != NullableAnnotation.Annotated)
+        if (collectionType.IsReferenceType && !collectionType.IsNullable)
         {
             sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required collection property '{propertyLabel}' is missing or null\");");
         }
         else
         {
-            sb.AppendLine($"{indentStr}    {variableName} = default({collectionType.ToDisplayString()});");
+            sb.AppendLine($"{indentStr}    {variableName} = default({collectionType.DisplayName});");
         }
 
         sb.AppendLine($"{indentStr}}}");
     }
 
-    private static IMethodSymbol? FindBestConstructor(List<IMethodSymbol> constructors, List<IPropertySymbol> allProperties)
-    {
-        // Score each constructor based on how many properties it can set
-        var constructorScores = constructors.Select(ctor =>
-        {
-            var matchingProps = ctor.Parameters
-                .Select(param => allProperties.FirstOrDefault(prop =>
-                    string.Equals(prop.Name, param.Name, StringComparison.OrdinalIgnoreCase)))
-                .Where(p => p != null)
-                .ToList();
-
-            return new
-            {
-                Constructor = ctor,
-                TotalMatches = matchingProps.Count,
-                ExtraParams = ctor.Parameters.Length - matchingProps.Count
-            };
-        }).ToList();
-
-        // Prefer constructors that can set the most properties with fewest extra parameters
-        return constructorScores
-            .OrderByDescending(x => x.TotalMatches)
-            .ThenBy(x => x.ExtraParams)
-            .Select(x => x.Constructor)
-            .FirstOrDefault();
-    }
-
-    private static string GetDefaultValueForParameter(string paramName, ITypeSymbol paramType, out bool shouldThrow)
+    private static string GetDefaultValueForParameter(string paramName, TypeReferenceModel paramType, out bool shouldThrow)
     {
         // Handle known graph model properties with sensible defaults
         shouldThrow = false;
@@ -584,14 +495,14 @@ internal static class Deserialization
         };
     }
 
-    private static string GetTypeDefault(ITypeSymbol type, out bool shouldThrow)
+    private static string GetTypeDefault(TypeReferenceModel type, out bool shouldThrow)
     {
         string? value = null;
         shouldThrow = false;
         if (type.IsReferenceType)
         {
             // Check if the reference type is nullable
-            value = type.NullableAnnotation == NullableAnnotation.Annotated ? "null" :
+            value = type.IsNullable ? "null" :
                    type.Name == "String" ? "string.Empty" :
                    type.Name == "Uri" ? "new System.Uri(\"about:blank\")" :
                    null;
@@ -600,14 +511,14 @@ internal static class Deserialization
             // that aren't present in the query result get an empty collection rather
             // than throwing - List<T> is assignable to IEnumerable<T>/ICollection<T>/
             // IList<T>/IReadOnlyCollection<T>/IReadOnlyList<T> alike.
-            if (value is null && GraphDataModel.GetCollectionElementType(type) is ITypeSymbol elementType)
+            if (value is null && type.ElementType is not null)
             {
-                value = type is IArrayTypeSymbol
-                    ? $"System.Array.Empty<{elementType.ToDisplayString()}>()"
-                    : $"new System.Collections.Generic.List<{elementType.ToDisplayString()}>()";
+                value = type.IsArray
+                    ? $"System.Array.Empty<{type.ElementType.DisplayName}>()"
+                    : $"new System.Collections.Generic.List<{type.ElementType.DisplayName}>()";
             }
         }
-        else if (GraphDataModel.IsSimple(type))
+        else if (type.IsSimple)
         {
             // Use the unified simple type check from GraphDataModel
             value = type.SpecialType switch
@@ -619,7 +530,7 @@ internal static class Deserialization
                 SpecialType.System_Boolean => "false",
                 SpecialType.System_DateTime => "System.DateTime.MinValue",
                 _ when type.Name == "Guid" => "System.Guid.NewGuid().ToString(\"N\")",
-                _ when type.TypeKind == TypeKind.Enum => $"default({type.ToDisplayString()})",
+                _ when type.IsEnum => $"default({type.DisplayName})",
                 _ => null
             };
         }
@@ -630,7 +541,7 @@ internal static class Deserialization
             // switch above doesn't match) still have a well-defined default: C#
             // guarantees every struct supports `new T()`, which runs its
             // parameterless constructor (including any field initializers).
-            value = $"new {type.ToDisplayString()}()";
+            value = $"new {type.DisplayName}()";
         }
 
         if (value is null)
@@ -640,31 +551,5 @@ internal static class Deserialization
         }
 
         return value ?? string.Empty;
-    }
-
-    private static string FormatDefaultValue(object? defaultValue, ITypeSymbol type)
-    {
-        return defaultValue switch
-        {
-            null when type.IsReferenceType => "null",
-            null => $"default({type.ToDisplayString()})",
-            string str => $"\"{str}\"",
-            bool b => b.ToString().ToLowerInvariant(),
-            _ => defaultValue.ToString() ?? "null"
-        };
-    }
-
-    private static bool IsNullableType(ITypeSymbol type)
-    {
-        // Check for nullable reference types
-        if (type.NullableAnnotation == NullableAnnotation.Annotated)
-            return true;
-
-        // Check for nullable value types (e.g., DateTime?, int?, etc.)
-        if (type is INamedTypeSymbol { IsGenericType: true } namedType &&
-            namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T)
-            return true;
-
-        return false;
     }
 }
