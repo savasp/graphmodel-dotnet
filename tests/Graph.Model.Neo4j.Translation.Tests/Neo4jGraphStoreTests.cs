@@ -88,7 +88,7 @@ public class Neo4jGraphStoreTests
         public static (IDriver Driver, TrackingDriverProxy Tracker) Create()
         {
             var driver = DispatchProxy.Create<IDriver, TrackingDriverProxy>();
-            return (driver, (TrackingDriverProxy)(object)driver);
+            return (driver, (TrackingDriverProxy)driver);
         }
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)

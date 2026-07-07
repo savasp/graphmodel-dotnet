@@ -241,8 +241,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             props = properties
         }).ConfigureAwait(false);
 
-        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
-        return record["updated"].As<bool>();
+        return await result.CountAsync(cancellationToken).ConfigureAwait(false) > 0;
     }
 
     private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Model.IRelationship
