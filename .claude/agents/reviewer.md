@@ -19,8 +19,9 @@ Read [AGENTS.md](../../AGENTS.md) before starting — it defines the conventions
    ```bash
    dotnet build --configuration Debug
    dotnet test tests/Graph.Model.Analyzers.Tests --configuration Debug --no-build
-   dotnet test --configuration Debug   # full suite — only if Neo4j is available; note it in the review either way
+   dotnet test --configuration Debug   # full suite — needs Neo4j; start with scripts/containers/start-neo4j.sh if needed
    ```
+   If no Neo4j is reachable, run `scripts/containers/start-neo4j.sh` before giving up. The script tries Podman first and Docker second unless `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` is set. Note in the review whether the full suite ran.
 4. **Produce the review** in the output format below.
 
 ## What to review

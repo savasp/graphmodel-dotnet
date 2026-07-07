@@ -6,7 +6,7 @@ The `Graph.Model.Neo4j.Tests` project runs implements the abstract classes and u
 
 ## Running Neo4j Tests
 
-There are two ways to run the Neo4j tests:
+There are two supported ways to run the Neo4j tests:
 
 ### 1. Against a Neo4j Instance
 
@@ -18,35 +18,36 @@ Environment variables:
 - `NEO4J_USER` - Username (default: neo4j)
 - `NEO4J_PASSWORD` - Password (default: password)
 - `NEO4J_DATABASE` - Database name (default: neo4j)
-- `USE_NEO4J_CONTAINERS` - Set to `false` to use the Neo4j instance
 
 Example:
 
 ```bash
-USE_NEO4J_CONTAINERS=false dotnet test Graph.Model.Neo4j.Tests
+NEO4J_URI=bolt://localhost:7687 dotnet test tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj
 ```
 
-or, if you don't have the `USE_NEO4J_CONTAINERS` or `CI` environment variables set to `true`, simply
+If a Neo4j instance is reachable at `bolt://localhost:7687` with `neo4j/password`, the test fixture uses it by default:
 
 ```bash
-dotnet test Graph.Model.Neo4j.Tests
+dotnet test tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj
 ```
 
-### 2. Against Docker Containers
+### 2. Against a Local Container
 
-The tests can be performed against docker-hosted containers running Neo4j. The containers are automatically downloaded and get started. The Docker daemon needs to be running on the machine that hosts the tests.
-
-Environment variables:
-
-- `USE_NEO4J_CONTAINERS` - Set to `true` to use Docker containers (default in CI)
-- Or, simply set `CI` to `true` to use the continuous integration configuration.
-
-Example:
+Start a local Neo4j container before running the full integration suite:
 
 ```bash
-USE_NEO4J_CONTAINERS=true dotnet test Graph.Model.Neo4j.Tests
+./scripts/containers/start-neo4j.sh
+dotnet test tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj
+```
+
+The script tries Podman first and Docker second. Set `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` to force a runtime.
+
+The repository test runner also wires the local container credentials for you:
+
+```bash
+./scripts/run-tests.sh --neo4j -c Debug
 ```
 
 ### CI/CD Configuration
 
-In CI environments (like GitHub Actions), the tests automatically use Docker containers as long as the CI environment variable is set to `true`.
+GitHub Actions provides Neo4j as a job service for the provider test job. Setting `CI=true` locally does not start Neo4j.

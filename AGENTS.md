@@ -30,7 +30,7 @@ The four test projects have different requirements — get this right:
 | Project | What it is | Needs |
 |---------|------------|-------|
 | `tests/Graph.Model.Tests` | **Abstract provider contract suite.** Test classes are inherited by provider test projects; it executes ~no tests standalone. Add provider-agnostic tests here so every provider inherits them. | nothing (but running it alone proves nothing) |
-| `tests/Graph.Model.Neo4j.Tests` | The contract suite bound to Neo4j + provider-specific tests. This is where the suite actually runs. | a running Neo4j at `NEO4J_URI` (default `bolt://localhost:7687`; user/password via `NEO4J_USER`/`NEO4J_PASSWORD`). Start one with `scripts/containers/start-neo4j.sh` (Docker). There is **no** automatic container startup — `CI=true` does nothing (that path is disabled; see #88). |
+| `tests/Graph.Model.Neo4j.Tests` | The contract suite bound to Neo4j + provider-specific tests. This is where the suite actually runs. | a running Neo4j at `NEO4J_URI`, or reachable at the default `bolt://localhost:7687` with `neo4j/password`. Start one with `scripts/containers/start-neo4j.sh` (Podman preferred locally; Docker fallback; set `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` to force one). There is **no** automatic container startup — `CI=true` does nothing (that path is disabled; see #88). |
 | `tests/Graph.Model.Analyzers.Tests` | Analyzer tests. | nothing — runs anywhere; the fast no-Docker lane |
 | `tests/Graph.Model.Performance.Tests` | Benchmarks. | not part of the normal gate |
 

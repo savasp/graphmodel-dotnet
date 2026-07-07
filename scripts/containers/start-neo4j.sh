@@ -23,13 +23,48 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Detect container runtime
-if command -v docker &> /dev/null; then
-    RUNTIME="docker"
-elif command -v podman &> /dev/null; then
-    RUNTIME="podman"
+# Detect a usable container runtime. Prefer Podman for local development, but
+# allow callers to force either runtime with CONTAINER_RUNTIME=podman|docker.
+RUNTIME=""
+RUNTIME_ERRORS=()
+
+try_runtime() {
+    local candidate="$1"
+
+    if ! command -v "$candidate" &> /dev/null; then
+        RUNTIME_ERRORS+=("$candidate: command not found")
+        return 1
+    fi
+
+    local error_output
+    if error_output=$("$candidate" info 2>&1 > /dev/null); then
+        RUNTIME="$candidate"
+        return 0
+    fi
+
+    RUNTIME_ERRORS+=("$candidate: ${error_output%%$'\n'*}")
+    return 1
+}
+
+if [ -n "${CONTAINER_RUNTIME:-}" ]; then
+    case "$CONTAINER_RUNTIME" in
+        docker|podman)
+            try_runtime "$CONTAINER_RUNTIME" || true
+            ;;
+        *)
+            print_error "CONTAINER_RUNTIME must be 'podman' or 'docker'."
+            exit 1
+            ;;
+    esac
 else
-    print_error "Neither docker nor podman found. Please install one of them."
+    try_runtime podman || try_runtime docker || true
+fi
+
+if [ -z "$RUNTIME" ]; then
+    print_error "No usable container runtime found. Install/start Podman or Docker, or set CONTAINER_RUNTIME."
+    for runtime_error in "${RUNTIME_ERRORS[@]}"; do
+        print_warning "$runtime_error"
+    done
     exit 1
 fi
 
@@ -79,14 +114,44 @@ if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
     exit 1
 fi
 
-# Also wait for bolt port to accept connections
-print_status "Waiting for bolt port..."
+port_is_open() {
+    local port="$1"
+
+    if command -v nc &> /dev/null; then
+        nc -z localhost "$port" &> /dev/null
+    else
+        (echo > "/dev/tcp/localhost/$port") &> /dev/null
+    fi
+}
+
+# Also wait for exposed ports to accept connections.
+print_status "Waiting for Neo4j HTTP endpoint..."
 ATTEMPT=0
 until curl -s -o /dev/null http://localhost:7474 || [ $ATTEMPT -ge 30 ]; do
     ATTEMPT=$((ATTEMPT + 1))
     sleep 2
 done
 
+if [ $ATTEMPT -ge 30 ]; then
+    print_error "Neo4j HTTP endpoint did not become ready in time"
+    $RUNTIME logs "$CONTAINER_NAME"
+    exit 1
+fi
+
+print_status "Waiting for bolt port..."
+ATTEMPT=0
+until port_is_open 7687 || [ $ATTEMPT -ge 30 ]; do
+    ATTEMPT=$((ATTEMPT + 1))
+    sleep 2
+done
+
+if [ $ATTEMPT -ge 30 ]; then
+    print_error "Neo4j bolt port did not become ready in time"
+    $RUNTIME logs "$CONTAINER_NAME"
+    exit 1
+fi
+
 print_status "Neo4j service deployed successfully!"
 print_status "Access Neo4j browser at: http://localhost:7474"
 print_status "Bolt connection: bolt://localhost:7687"
+print_status "Test credentials: NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD=password"
