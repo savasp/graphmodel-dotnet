@@ -297,6 +297,54 @@ public interface IAggregationTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task CanCountLimitedUnorderedQuery()
+    {
+        var group = $"issue-185-limited-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 },
+            new PersonWithNumbers { FirstName = group, Age = 30 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var limitedCount = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .Take(2)
+            .CountAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, limitedCount);
+    }
+
+    [Fact]
+    public async Task CanCountSkippedUnorderedQuery()
+    {
+        var group = $"issue-185-skipped-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 },
+            new PersonWithNumbers { FirstName = group, Age = 30 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var skippedCount = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .Skip(2)
+            .CountAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, skippedCount);
+    }
+
+    [Fact]
     public async Task SumWithFilter_CalculatesCorrectTotal()
     {
         var people = new[]

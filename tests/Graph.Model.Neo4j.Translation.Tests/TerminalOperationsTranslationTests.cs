@@ -148,6 +148,22 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task TakeThenCount_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Take(5);
+        var expr = MarkerExpressions.Call<Person>("CountAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task SkipThenCount_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Skip(5);
+        var expr = MarkerExpressions.Call<Person>("CountAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
     public Task Count_WithPredicate()
     {
         var source = Root.Nodes<Person>();
