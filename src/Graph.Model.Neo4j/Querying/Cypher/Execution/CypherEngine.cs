@@ -227,9 +227,6 @@ internal sealed class CypherEngine
             case ElementTerminal.Single:
             case ElementTerminal.SingleOrDefault:
                 return;
-
-            default:
-                throw new InvalidOperationException($"Unhandled element terminal '{terminal}'.");
         }
     }
 
