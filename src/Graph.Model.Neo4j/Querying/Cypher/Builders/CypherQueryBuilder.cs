@@ -1131,6 +1131,8 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         PathSegmentSourceAlias = p.SourceAlias;
         PathSegmentRelationshipAlias = p.RelAlias;
         PathSegmentTargetAlias = p.TargetAlias;
+        _wherePart.UpdateAliasesForPathSegments(p.SourceAlias, p.TargetAlias);
+        _orderByPart.UpdateAliasesForPathSegments(p.SourceAlias, p.TargetAlias);
 
         _pathSegmentPatterns.Clear();
         _pendingPathSegmentPattern = null;
