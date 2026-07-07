@@ -14,15 +14,9 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 
-using System.Linq.Expressions;
-using Cvoya.Graph.Model.Neo4j.Core;
-using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
-
-
-internal sealed class GraphQueryable<T> : GraphQueryableBase<T>, IGraphQueryable<T>, IOrderedGraphQueryable<T>
+internal enum GraphQueryableKind
 {
-    public GraphQueryable(GraphQueryProvider provider, GraphContext context, GraphTransaction? transaction, Expression expression)
-        : base(typeof(T), provider, context, transaction, expression, GraphQueryableKind.General)
-    {
-    }
+    General,
+    Node,
+    Relationship,
 }

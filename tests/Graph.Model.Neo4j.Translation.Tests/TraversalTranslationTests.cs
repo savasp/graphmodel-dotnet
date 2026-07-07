@@ -39,6 +39,16 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task Traverse_WidenedToINodeBeforeWhere_UsesINodeStartLabels()
+    {
+        var query = ((IGraphQueryable<INode>)Root.Nodes<Person>())
+            .Where(n => n.Id != "")
+            .Traverse<Knows, Person>();
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task Traverse_WithMaxDepth()
     {
         var query = Root.Nodes<Person>().Traverse<Knows, Person>(3);
@@ -90,6 +100,7 @@ public class TraversalTranslationTests : TranslationTestBase
         return VerifyTranslation(query);
     }
 
+#pragma warning disable CS0618 // These tests deliberately snapshot the obsolete free-floating traversal modifiers.
     [Fact]
     public Task Direction_Outgoing_OnPathSegments()
     {
@@ -125,6 +136,7 @@ public class TraversalTranslationTests : TranslationTestBase
             .WithDepth(2, 4);
         return VerifyTranslation(query);
     }
+#pragma warning restore CS0618
 
     [Fact]
     public Task PathSegments_WithWhereOnEndNode()

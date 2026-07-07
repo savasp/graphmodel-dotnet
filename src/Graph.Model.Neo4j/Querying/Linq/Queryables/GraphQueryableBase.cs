@@ -24,7 +24,7 @@ using Cvoya.Graph.Model.Neo4j.Querying.Linq.Helpers;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 
 
-internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGraphQueryable<T>
+internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGraphQueryable<T>, IGraphQueryableKindProvider
 {
     protected readonly GraphQueryProvider Provider;
     protected readonly GraphContext Context;
@@ -36,16 +36,20 @@ internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGrap
         GraphQueryProvider provider,
         GraphContext graphContext,
         GraphTransaction? transaction,
-        Expression expression)
+        Expression expression,
+        GraphQueryableKind queryableKind)
     {
         ElementType = elementType;
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
         Context = graphContext ?? throw new ArgumentNullException(nameof(graphContext));
         Expression = expression ?? throw new ArgumentNullException(nameof(expression));
         _transaction = transaction;
+        QueryableKind = queryableKind;
     }
 
     protected GraphTransaction? Transaction => _transaction;
+
+    public GraphQueryableKind QueryableKind { get; }
 
     #region IQueryable Implementation
 

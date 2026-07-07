@@ -445,6 +445,18 @@ public class ExpressionShapeTests
     }
 
     [Fact]
+    public void Traverse_WidenedAfterTypedChain_UsesChainElementType()
+    {
+        IGraphQueryable<INode> source = Root.Nodes<Person>().Where(p => p.Id != "");
+
+        var result = source.Traverse<Knows, Person>();
+
+        var selectCall = AsCall(result.Expression);
+        var pathSegmentsCall = AsCall(selectCall.Arguments[0]);
+        Assert.Equal(ExpectedPathSegmentsMethod(typeof(Person), typeof(Knows), typeof(Person)), pathSegmentsCall.Method);
+    }
+
+    [Fact]
     public void Traverse_MaxDepth_CapturesDepthAsConstant()
     {
         var source = Root.Nodes<Person>();
