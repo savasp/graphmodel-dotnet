@@ -249,6 +249,7 @@ public static class Labels
             return propertyInfo;
         }
 
+        // Graph entities persist public instance properties; keep reverse lookup on that same boundary.
         var candidates = enclosingType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(prop => ResolveLabelFromProperty(prop) == label)
             .ToList();
@@ -323,12 +324,29 @@ public static class Labels
         {
             return ex.Types.Where(static type => type is not null).Cast<Type>();
         }
-        catch
+        catch (NotSupportedException)
+        {
+            return [];
+        }
+        catch (FileNotFoundException)
+        {
+            return [];
+        }
+        catch (FileLoadException)
+        {
+            return [];
+        }
+        catch (BadImageFormatException)
+        {
+            return [];
+        }
+        catch (TypeLoadException)
         {
             return [];
         }
     }
 
+    // Include abstract graph types to match GetLabelFromType, which resolves labels for abstract bases too.
     private static bool IsGraphEntityType(Type type)
         => !type.IsInterface &&
            (typeof(INode).IsAssignableFrom(type) || typeof(IRelationship).IsAssignableFrom(type));
