@@ -337,7 +337,9 @@ Starts the Neo4j container.
 
 **What it does:**
 
-- Starts the Neo4j container using podman
+- Starts the Neo4j container using Podman or Docker
+- Prefers Podman when both runtimes are usable
+- Supports `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` to force a runtime
 - If the image doesn't exist locally, it is downloaded
 
 ### `start-seq.sh`

@@ -20,7 +20,7 @@ Read [AGENTS.md](../../AGENTS.md) before starting — especially "Build and test
    dotnet test tests/Graph.Model.Analyzers.Tests --configuration Debug   # always runs, no Docker
    dotnet test --configuration Debug                                     # full suite — requires Neo4j
    ```
-   The full suite needs a running Neo4j (`scripts/containers/start-neo4j.sh`, or an existing instance via `NEO4J_URI`). There is no automatic container startup. If Neo4j is unavailable, report that limitation prominently — an analyzers-only pass is NOT a validated change.
+   The full suite needs a running Neo4j (`scripts/containers/start-neo4j.sh`, which tries Podman first and Docker second unless `CONTAINER_RUNTIME` is set, or an existing instance via `NEO4J_URI`). There is no automatic container startup. If Neo4j is unavailable after trying the script and any configured `NEO4J_*` endpoint, report that limitation prominently — an analyzers-only pass is NOT a validated change.
 4. **Write new tests** for uncovered scenarios, edge cases, and regressions.
 5. **Validate** that all tests pass after your additions.
 6. **Commit** test changes with the `test:` conventional commit prefix.

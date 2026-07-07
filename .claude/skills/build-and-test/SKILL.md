@@ -26,7 +26,7 @@ Build and test the GraphModel solution. Configuration defaults to `Debug`; pass 
    ```bash
    dotnet test --configuration $1 --no-build
    ```
-   This requires a running Neo4j (`NEO4J_URI`, default `bolt://localhost:7687`). Start one with `scripts/containers/start-neo4j.sh` if Docker is available. **There is no automatic container startup.** If no Neo4j is reachable, skip this step and say so explicitly in your report — an analyzers-only pass is not full validation.
+   This requires a running Neo4j (`NEO4J_URI`, or the default `bolt://localhost:7687` with `neo4j/password`). Start one with `scripts/containers/start-neo4j.sh`; it tries Podman first and Docker second unless `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` is set. **There is no automatic container startup.** If no Neo4j is reachable after trying the script and any configured `NEO4J_*` endpoint, skip this step and say so explicitly in your report — an analyzers-only pass is not full validation.
 
 4. Report results — failing test names and error messages with file paths, plus which steps ran.
 
