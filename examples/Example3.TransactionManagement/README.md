@@ -29,7 +29,7 @@ await using (var transaction = await graph.GetTransactionAsync())
     catch
     {
         // Rollback on failure
-        await transaction.Rollback();
+        await transaction.RollbackAsync();
         throw;
     }
 }

@@ -433,7 +433,7 @@ The `IGraph` interface is the main entry point for all graph operations:
 /// querying, and transaction management.
 /// All methods throw GraphException for underlying graph errors.
 /// </summary>
-public interface IGraph : IAsyncDisposable
+public interface IGraph
 {
     // Synchronous query roots for LINQ support - building a queryable performs no I/O; any
     // transaction/session acquisition happens when the query is executed.
@@ -509,7 +509,7 @@ public interface IGraphTransaction : IAsyncDisposable
     /// <summary>
     /// Rolls back all changes made in this transaction.
     /// </summary>
-    Task Rollback(CancellationToken cancellationToken = default);
+    Task RollbackAsync();
 }
 ```
 
@@ -526,7 +526,7 @@ try
 }
 catch
 {
-    await transaction.Rollback();
+    await transaction.RollbackAsync();
     throw;
 }
 

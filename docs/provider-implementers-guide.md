@@ -10,14 +10,14 @@ A provider exposes a store type that owns database connectivity and returns an `
 
 The public interfaces to implement are:
 
-- `IGraph` in `src/Graph.Model/IGraph.cs`: CRUD, synchronous query roots, full-text search, schema/index provisioning, transactions, and disposal.
-- `IGraphTransaction` in `src/Graph.Model/IGraphTransaction.cs`: `CommitAsync()`, `Rollback()`, and `IAsyncDisposable`.
+- `IGraph` in `src/Graph.Model/IGraph.cs`: CRUD, synchronous query roots, full-text search, schema/index provisioning, and transactions.
+- `IGraphTransaction` in `src/Graph.Model/IGraphTransaction.cs`: `CommitAsync()`, `RollbackAsync()`, and `IAsyncDisposable`.
 - `IGraphQueryProvider` in `src/Graph.Model/GraphQueryable/IGraphQueryProvider.cs`: expression execution, query creation, and async terminal execution.
 - `IGraphQueryable<T>` in `src/Graph.Model/GraphQueryable/`: the single LINQ root returned by `IGraph.Nodes<N>`/`Relationships<R>`/`DynamicNodes`/`DynamicRelationships`/search methods. Node-only and relationship-only operators (e.g. traversal) are gated by generic constraints on the operator itself (`where T : INode`), not by a separate receiver interface — `IGraphNodeQueryable<T>`/`IGraphRelationshipQueryable<T>` are `[Obsolete]` aliases kept for one release.
 
 `IGraph` methods accept an optional `IGraphTransaction`. A null transaction means the provider creates a per-operation or per-query execution transaction and owns its lifecycle. A non-null transaction means the caller owns commit/rollback/disposal, and the provider must reject foreign transaction implementations with a clear graph exception.
 
-`IGraph.DisposeAsync()` releases provider resources owned by the graph. If a store accepts an externally-owned driver/client, the store should not dispose that external object; `Neo4jGraphStore(IDriver, ...)` follows that rule.
+The provider store owns database connectivity and releases provider resources. `IGraph` instances do not own provider resources and are not disposable. If a store accepts an externally-owned driver/client, the store must not dispose that external object; `Neo4jGraphStore(IDriver, ...)` follows that rule.
 
 ## Entities And Schema
 
@@ -113,11 +113,11 @@ Transaction behavior:
 
 - Null transaction: create a short-lived transaction/session for the operation or query execution.
 - Caller transaction: execute inside the supplied provider transaction and do not commit or roll it back automatically.
-- `CommitAsync()` completes the transaction; `Rollback()` aborts it; disposal should clean up uncommitted transactions.
+- `CommitAsync()` completes the transaction; `RollbackAsync()` aborts it; disposal should clean up uncommitted transactions.
 
 Full-text search is part of `IGraph`: `Search`, `SearchNodes`, `SearchRelationships`, and typed overloads — thin synchronous conveniences over the `.Search()` LINQ operator (building a queryable performs no I/O). Providers should respect `[Property(IncludeInFullTextSearch = false)]`, support dynamic entities, and initialize required full-text indexes.
 
-Exception behavior is not fully cleaned up yet; #76 owns the final API contract. Until then, wrap provider/backend failures in `GraphException`, use `KeyNotFoundException` or `GraphException` consistently for missing entities based on the existing tests, and preserve argument exceptions for invalid caller input where the public API already does so.
+Exception behavior follows the public API contract: provider/backend failures are wrapped in `GraphException`, missing entities from get/update/delete operations throw `EntityNotFoundException` (derived from `GraphException`), and invalid caller input preserves argument exceptions where the public API already does so.
 
 ## Contract-Test Reuse
 

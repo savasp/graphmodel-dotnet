@@ -410,7 +410,7 @@ public async Task Transaction_RollsBackOnError()
     await graph.CreateNodeAsync(person, transaction: tx);
 
     // Don't commit - simulate error
-    await tx.Rollback();
+    await tx.RollbackAsync();
 
     // Verify person wasn't created
     var exists = await graph.Nodes<Person>()

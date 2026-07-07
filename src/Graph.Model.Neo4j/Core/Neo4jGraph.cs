@@ -24,6 +24,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// <summary>
 /// Neo4j implementation of the IGraph interface using a modular design with IGraphQueryable support.
 /// </summary>
+/// <remarks>
+/// Instances are created and owned by <see cref="Neo4jGraphStore"/>. Dispose the store to release
+/// provider-owned resources; this graph object does not own the Neo4j driver lifetime.
+/// </remarks>
 internal class Neo4jGraph : IGraph
 {
     private readonly ILogger _logger;
@@ -120,7 +124,7 @@ internal class Neo4jGraph : IGraph
             .Where(n => n.Id == id);
 
         return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new GraphException($"Node with ID {id} not found");
+            ?? throw new EntityNotFoundException($"Node with ID {id} not found");
     }
 
     /// <inheritdoc />
@@ -131,7 +135,7 @@ internal class Neo4jGraph : IGraph
             .Where(r => r.Id == id);
 
         return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new GraphException($"Relationship with ID {id} not found");
+            ?? throw new EntityNotFoundException($"Relationship with ID {id} not found");
     }
 
     /// <summary>
@@ -152,7 +156,7 @@ internal class Neo4jGraph : IGraph
         where N : class, Model.INode
     {
         if (node is null)
-            throw new ArgumentException(nameof(node), "Node cannot be null.");
+            throw new ArgumentException("Node cannot be null.", nameof(node));
 
         if (string.IsNullOrEmpty(node.Id))
             throw new ArgumentException("Node ID cannot be null or empty.", nameof(node.Id));
@@ -199,7 +203,7 @@ internal class Neo4jGraph : IGraph
         where R : class, Model.IRelationship
     {
         if (relationship is null)
-            throw new ArgumentException(nameof(relationship), "Relationship cannot be null.");
+            throw new ArgumentException("Relationship cannot be null.", nameof(relationship));
 
         if (string.IsNullOrEmpty(relationship.Id))
             throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship.Id));
@@ -462,7 +466,7 @@ internal class Neo4jGraph : IGraph
             .Where(n => n.Id == id);
 
         return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new GraphException($"Dynamic node with ID {id} not found");
+            ?? throw new EntityNotFoundException($"Dynamic node with ID {id} not found");
     }
 
     /// <inheritdoc />
@@ -472,7 +476,7 @@ internal class Neo4jGraph : IGraph
             .Where(r => r.Id == id);
 
         return await query.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false)
-            ?? throw new GraphException($"Dynamic relationship with ID {id} not found");
+            ?? throw new EntityNotFoundException($"Dynamic relationship with ID {id} not found");
     }
 
     /// <inheritdoc />
@@ -559,12 +563,6 @@ internal class Neo4jGraph : IGraph
             _logger.LogError(ex, "Failed to recreate indexes");
             throw new GraphException("Failed to recreate indexes", ex);
         }
-    }
-
-    /// <inheritdoc />
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
     }
 
     internal global::Neo4j.Driver.IDriver Driver => _graphStore.Driver;

@@ -21,6 +21,11 @@ using global::Neo4j.Driver;
 /// <summary>
 /// Represents a Neo4j graph.
 /// </summary>
+/// <remarks>
+/// The store owns provider resources for the graph it creates. When constructed from URI,
+/// username, and password, the store creates and disposes the Neo4j driver. When constructed with
+/// an external <see cref="IDriver"/>, the caller keeps ownership of that driver and must dispose it.
+/// </remarks>
 public sealed class Neo4jGraphStore : IAsyncDisposable
 {
     private readonly IDriver _driver;
@@ -43,6 +48,8 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     /// - NEO4J_USER: The username for authentication. Default: "neo4j".
     /// - NEO4J_PASSWORD: The password for authentication. Required when <paramref name="password"/> is not provided.
     /// - NEO4J_DATABASE: The name of the database. Default: "neo4j".
+    ///
+    /// The store creates and owns the Neo4j driver for this graph. Dispose the store to close it.
     /// </remarks>
     public Neo4jGraphStore(
         string? uri,
@@ -90,6 +97,9 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     /// <remarks>
     /// The environment variable NEO4J_DATABASE can be used to specify the database name.
     /// If not provided, it defaults to "neo4j".
+    ///
+    /// The supplied <paramref name="driver"/> remains owned by the caller and is not disposed by
+    /// this store.
     /// </remarks>
     public Neo4jGraphStore(
         IDriver driver,
@@ -139,17 +149,14 @@ public sealed class Neo4jGraphStore : IAsyncDisposable
     }
 
     /// <summary>
-    /// Disposes the Neo4j graph store and its resources asynchronously.
+    /// Disposes the Neo4j graph store and any resources it owns asynchronously.
     /// </summary>
     /// <remarks>
-    /// Only disposes the driver if this instance created it (owns it).
-    /// If an external driver was provided, the caller is responsible for disposing it.
+    /// Only disposes the driver if this instance created it. If an external driver was provided,
+    /// the caller is responsible for disposing it.
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        await Graph.DisposeAsync().ConfigureAwait(false);
-
-        // Only dispose the driver if we own it
         if (_ownsDriver)
         {
             await _driver.DisposeAsync().ConfigureAwait(false);

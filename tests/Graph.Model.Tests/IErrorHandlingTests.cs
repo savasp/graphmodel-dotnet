@@ -30,22 +30,22 @@ public interface IErrorHandlingTests : IGraphModelTest
     }
 
     [Fact]
-    public async Task GetNodeAsync_NonExistentId_ThrowsGraphException()
+    public async Task GetNodeAsync_NonExistentId_ThrowsEntityNotFoundException()
     {
         var nonExistentId = Guid.NewGuid().ToString("N");
 
-        await Assert.ThrowsAsync<GraphException>(async () =>
+        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
         {
             await Graph.GetNodeAsync<TestNode>(nonExistentId, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task GetRelationshipAsync_NonExistentId_ThrowsGraphException()
+    public async Task GetRelationshipAsync_NonExistentId_ThrowsEntityNotFoundException()
     {
         var nonExistentId = Guid.NewGuid().ToString("N");
 
-        await Assert.ThrowsAsync<GraphException>(async () =>
+        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
         {
             await Graph.GetRelationshipAsync<TestRelationship>(nonExistentId, null, TestContext.Current.CancellationToken);
         });
@@ -70,7 +70,7 @@ public interface IErrorHandlingTests : IGraphModelTest
     }
 
     [Fact]
-    public async Task UpdateNodeAsync_NonExistentNode_ThrowsGraphException()
+    public async Task UpdateNodeAsync_NonExistentNode_ThrowsEntityNotFoundException()
     {
         var nonExistentNode = new TestNode
         {
@@ -78,14 +78,14 @@ public interface IErrorHandlingTests : IGraphModelTest
             Name = "NonExistent"
         };
 
-        await Assert.ThrowsAsync<GraphException>(async () =>
+        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
         {
             await Graph.UpdateNodeAsync(nonExistentNode, null, TestContext.Current.CancellationToken);
         });
     }
 
     [Fact]
-    public async Task UpdateRelationshipAsync_NonExistentRelationship_ThrowsGraphException()
+    public async Task UpdateRelationshipAsync_NonExistentRelationship_ThrowsEntityNotFoundException()
     {
         var nonExistentRel = new TestRelationship
         {
@@ -95,7 +95,7 @@ public interface IErrorHandlingTests : IGraphModelTest
             Type = "NonExistent"
         };
 
-        await Assert.ThrowsAsync<GraphException>(async () =>
+        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
         {
             await Graph.UpdateRelationshipAsync(nonExistentRel, null, TestContext.Current.CancellationToken);
         });
@@ -140,11 +140,11 @@ public interface IErrorHandlingTests : IGraphModelTest
     }
 
     [Fact]
-    public async Task DeleteNodeAsync_NonExistentId_ThrowsGraphException()
+    public async Task DeleteNodeAsync_NonExistentId_ThrowsEntityNotFoundException()
     {
         var nonExistentId = Guid.NewGuid().ToString("N");
 
-        await Assert.ThrowsAsync<GraphException>(async () =>
+        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
         {
             await Graph.DeleteNodeAsync(nonExistentId, false, null, TestContext.Current.CancellationToken);
         });
@@ -173,11 +173,11 @@ public interface IErrorHandlingTests : IGraphModelTest
     }
 
     [Fact]
-    public async Task DeleteRelationshipAsync_NonExistentId_ThrowsGraphException()
+    public async Task DeleteRelationshipAsync_NonExistentId_ThrowsEntityNotFoundException()
     {
         var nonExistentId = Guid.NewGuid().ToString("N");
 
-        await Assert.ThrowsAsync<GraphException>(async () =>
+        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
         {
             await Graph.DeleteRelationshipAsync(nonExistentId, null, TestContext.Current.CancellationToken);
         });
@@ -382,7 +382,7 @@ public interface IErrorHandlingTests : IGraphModelTest
         var node = new TestNode { Name = "TransactionTest" };
 
         await Graph.CreateNodeAsync(node, transaction, TestContext.Current.CancellationToken);
-        await transaction.Rollback();
+        await transaction.RollbackAsync();
 
         // Using transaction after rollback should throw
         await Assert.ThrowsAsync<GraphException>(async () =>

@@ -23,18 +23,18 @@ namespace Cvoya.Graph.Model;
 /// </remarks>
 /// <example>
 /// <code>
-/// await using var transaction = await graph.BeginTransaction();
+/// await using var transaction = await graph.GetTransactionAsync();
 /// try
 /// {
-///     await graph.CreateNode(person, transaction: transaction);
-///     await graph.CreateNode(address, transaction: transaction);
-///     var livesAt = new LivesAt { Source = person, Target = address };
-///     await graph.CreateRelationship(livesAt, transaction: transaction);
-///     await transaction.Commit();
+///     await graph.CreateNodeAsync(person, transaction: transaction);
+///     await graph.CreateNodeAsync(address, transaction: transaction);
+///     var livesAt = new LivesAt(person.Id, address.Id);
+///     await graph.CreateRelationshipAsync(livesAt, transaction: transaction);
+///     await transaction.CommitAsync();
 /// }
 /// catch
 /// {
-///     await transaction.Rollback();
+///     await transaction.RollbackAsync();
 ///     throw;
 /// }
 /// </code>
@@ -47,7 +47,7 @@ public interface IGraphTransaction : IAsyncDisposable
     /// <returns>A task representing the asynchronous commit operation.</returns>
     /// <exception cref="GraphException">Thrown if the commit fails.</exception>
     /// <remarks>
-    /// After calling Commit, the transaction is considered complete and cannot be used further.
+    /// After calling <see cref="CommitAsync"/>, the transaction is considered complete and cannot be used further.
     /// </remarks>
     Task CommitAsync();
 
@@ -57,7 +57,7 @@ public interface IGraphTransaction : IAsyncDisposable
     /// <returns>A task representing the asynchronous rollback operation.</returns>
     /// <exception cref="GraphException">Thrown if the rollback fails.</exception>
     /// <remarks>
-    /// After calling Rollback, the transaction is considered complete and cannot be used further.
+    /// After calling <see cref="RollbackAsync"/>, the transaction is considered complete and cannot be used further.
     /// </remarks>
-    Task Rollback();
+    Task RollbackAsync();
 }

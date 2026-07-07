@@ -297,6 +297,77 @@ public interface IQueryTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task Issue74AsyncTerminals_WorkAndPreserveEmptySourceSemantics()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"Issue74-{Guid.NewGuid():N}";
+        var missingGroup = $"{group}-missing";
+        var people = new[]
+        {
+            new Person { FirstName = $"{group}-Alice", LastName = group, Age = 21 },
+            new Person { FirstName = $"{group}-Bob", LastName = group, Age = 35 },
+            new Person { FirstName = $"{group}-Charlie", LastName = group, Age = 42 }
+        };
+
+        foreach (var person in people)
+        {
+            await this.Graph.CreateNodeAsync(person, null, cancellationToken);
+        }
+
+        var ordered = this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == group)
+            .OrderBy(p => p.Age);
+
+        var last = await ordered.LastAsync(cancellationToken);
+        Assert.Equal(42, last.Age);
+
+        var lastOrDefault = await ordered.LastOrDefaultAsync(cancellationToken);
+        Assert.NotNull(lastOrDefault);
+        Assert.Equal(42, lastOrDefault.Age);
+
+        var olderCount = await this.Graph.Nodes<Person>()
+            .CountAsync(p => p.LastName == group && p.Age >= 35, cancellationToken);
+        Assert.Equal(2, olderCount);
+
+        var anyYoung = await this.Graph.Nodes<Person>()
+            .AnyAsync(p => p.LastName == group && p.Age == 21, cancellationToken);
+        Assert.True(anyYoung);
+
+        var maxAge = await this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == group)
+            .MaxAsync(p => p.Age, cancellationToken);
+        Assert.Equal(42, maxAge);
+
+        var minAge = await this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == group)
+            .MinAsync(p => p.Age, cancellationToken);
+        Assert.Equal(21, minAge);
+
+        var emptyOrdered = this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == missingGroup)
+            .OrderBy(p => p.Age);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => emptyOrdered.LastAsync(cancellationToken));
+        Assert.Null(await emptyOrdered.LastOrDefaultAsync(cancellationToken));
+
+        var emptyCount = await this.Graph.Nodes<Person>()
+            .CountAsync(p => p.LastName == missingGroup, cancellationToken);
+        Assert.Equal(0, emptyCount);
+
+        var emptyAny = await this.Graph.Nodes<Person>()
+            .AnyAsync(p => p.LastName == missingGroup, cancellationToken);
+        Assert.False(emptyAny);
+
+        var empty = this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == missingGroup);
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => empty.MaxAsync(p => p.Age, cancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => empty.MinAsync(p => p.Age, cancellationToken));
+    }
+
+    [Fact]
     public async Task CanQueryWithContainsOnScalarProjection()
     {
         var p1 = new Person { FirstName = "Contains-A", Bio = "alpha" };

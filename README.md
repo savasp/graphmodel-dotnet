@@ -193,7 +193,7 @@ try
 }
 catch
 {
-    await transaction.Rollback();
+    await transaction.RollbackAsync();
     throw;
 }
 ```

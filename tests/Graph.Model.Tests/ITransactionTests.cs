@@ -37,9 +37,9 @@ public interface ITransactionTests : IGraphModelTest
 
         await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
-        await transaction.Rollback();
+        await transaction.RollbackAsync();
 
-        await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<EntityNotFoundException>(
             () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
     }
 
@@ -54,7 +54,7 @@ public interface ITransactionTests : IGraphModelTest
             // Dispose without commit should rollback
         }
 
-        await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<EntityNotFoundException>(
             () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
     }
 
@@ -110,7 +110,7 @@ public interface ITransactionTests : IGraphModelTest
         await Graph.DeleteNodeAsync(person.Id, false, transaction, TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
-        await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<EntityNotFoundException>(
             () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
     }
 
@@ -129,9 +129,9 @@ public interface ITransactionTests : IGraphModelTest
         await Graph.DeleteNodeAsync(person1.Id, true, transaction, TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
 
-        await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<EntityNotFoundException>(
             () => Graph.GetNodeAsync<Person>(person1.Id, null, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<EntityNotFoundException>(
             () => Graph.GetRelationshipAsync<Friend>(relationship.Id, null, TestContext.Current.CancellationToken));
 
         var remainingPerson = await Graph.GetNodeAsync<Person>(person2.Id, null, TestContext.Current.CancellationToken);
@@ -157,13 +157,13 @@ public interface ITransactionTests : IGraphModelTest
         }
         catch
         {
-            await transaction.Rollback();
+            await transaction.RollbackAsync();
         }
 
         // Neither person should exist
-        await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<EntityNotFoundException>(
             () => Graph.GetNodeAsync<Person>(person1.Id, null, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<EntityNotFoundException>(
             () => Graph.GetNodeAsync<Person>(person2.Id, null, TestContext.Current.CancellationToken));
     }
 
@@ -198,7 +198,7 @@ public interface ITransactionTests : IGraphModelTest
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
 
         // Outside the transaction, the node should not be visible
-        await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<EntityNotFoundException>(
             () => Graph.GetNodeAsync<Person>(person.Id, null, TestContext.Current.CancellationToken));
 
         // But inside the transaction, it should be visible
@@ -232,7 +232,7 @@ public interface ITransactionTests : IGraphModelTest
         var person = new Person { FirstName = "CommitAfterRollback", LastName = "Test" };
 
         await Graph.CreateNodeAsync(person, transaction, TestContext.Current.CancellationToken);
-        await transaction.Rollback();
+        await transaction.RollbackAsync();
 
         await Assert.ThrowsAsync<GraphException>(
             () => transaction.CommitAsync());
@@ -248,6 +248,6 @@ public interface ITransactionTests : IGraphModelTest
         await transaction.CommitAsync();
 
         await Assert.ThrowsAsync<GraphException>(
-            () => transaction.Rollback());
+            () => transaction.RollbackAsync());
     }
 }

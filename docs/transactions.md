@@ -36,7 +36,7 @@ try
 catch (Exception ex)
 {
     // Automatic rollback on any error
-    await transaction.Rollback();
+    await transaction.RollbackAsync();
     throw;
 }
 ```
@@ -164,7 +164,7 @@ try
 }
 catch
 {
-    await transaction.Rollback();
+    await transaction.RollbackAsync();
     throw;
 }
 ```
@@ -209,7 +209,7 @@ try
 }
 catch (Exception ex)
 {
-    await transaction.Rollback();
+    await transaction.RollbackAsync();
     throw new ImportException("Failed to import data", ex);
 }
 ```
@@ -231,7 +231,7 @@ try
     if (employeeCount > department.MaxEmployees)
     {
         // Explicitly rollback due to business rule violation
-        await transaction.Rollback();
+        await transaction.RollbackAsync();
         throw new BusinessRuleException("Department employee limit exceeded");
     }
 
@@ -244,7 +244,7 @@ try
 catch
 {
     // Ensure rollback even if already rolled back
-    try { await transaction.Rollback(); } catch { }
+    try { await transaction.RollbackAsync(); } catch { }
     throw;
 }
 ```
@@ -320,7 +320,7 @@ try
 }
 catch
 {
-    await transaction.Rollback();
+    await transaction.RollbackAsync();
     throw;
 }
 ```
@@ -364,7 +364,7 @@ foreach (var batch in dataBatches)
     }
     catch (Exception ex)
     {
-        await transaction.Rollback();
+        await transaction.RollbackAsync();
         results.Add(new ImportResult
         {
             Batch = batch,

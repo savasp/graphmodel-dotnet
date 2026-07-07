@@ -70,7 +70,7 @@ public class CascadeDeleteTests(TestInfrastructureFixture fixture) :
         var collisionCount = await CountRawCollisionNodesAsync(node.Id);
         Assert.Equal(1, collisionCount);
 
-        await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<EntityNotFoundException>(
             () => Graph.GetNodeAsync<Class1>(node.Id, null, TestContext.Current.CancellationToken));
     }
 
