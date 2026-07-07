@@ -69,14 +69,15 @@ var allConnections = await graph.Nodes<User>()
 var pageSize = 100;
 var page = 0;
 
-var users = await graph.Nodes<User>()
+var firstPage = await graph.Nodes<User>()
     .OrderBy(u => u.CreatedDate)
     .Skip(page * pageSize)
     .Take(pageSize)
     .ToListAsync();
 
 // For very large datasets, consider cursor-based pagination
-var users = await graph.Nodes<User>()
+var lastSeenDate = DateTime.UtcNow.AddDays(-1);
+var nextPage = await graph.Nodes<User>()
     .Where(u => u.CreatedDate > lastSeenDate)
     .OrderBy(u => u.CreatedDate)
     .Take(pageSize)
@@ -131,13 +132,12 @@ foreach (var user in users)
 
 ```csharp
 // For large complex objects, consider splitting into separate nodes
-public class User : INode
+public record User : Node
 {
-    public string Id { get; set; }
-    public string Email { get; set; }
+    public string Email { get; set; } = string.Empty;
 
     // ✅ Good - simple properties on main node
-    public string Name { get; set; }
+    public string Name { get; set; } = string.Empty;
     public DateTime CreatedDate { get; set; }
 
     // ❌ Avoid - very large complex properties
@@ -145,11 +145,10 @@ public class User : INode
 }
 
 // ✅ Better - separate related entities
-public class UserProfile : INode
+public record UserProfile : Node
 {
-    public string Id { get; set; }
-    public string UserId { get; set; }
-    public List<SomeComplexData> ProfileData { get; set; }
+    public string UserId { get; set; } = string.Empty;
+    public List<SomeComplexData> ProfileData { get; set; } = new();
 }
 ```
 
@@ -159,7 +158,7 @@ public class UserProfile : INode
 
 ```csharp
 // Enable query logging for development
-var loggerFactory = new LoggerFactory() { ... }
+using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
 var store = new Neo4jGraphStore(connectionString, username, password, loggerFactory: loggerFactory);
 var graph = store.Graph;
 
@@ -182,7 +181,7 @@ await using var store = new Neo4jGraphStore(connectionString, username, password
 var graph = store.Graph;
 
 // ✅ Good - use streaming for large datasets
-await foreach (var user in graph.Nodes<User>().AsAsyncEnumerable())
+await foreach (var user in graph.Nodes<User>())
 {
     // Process one at a time instead of loading all into memory
     ProcessUser(user);
@@ -196,33 +195,18 @@ var allUsers = await graph.Nodes<User>().ToListAsync();  // Could use lots of RA
 
 ### Neo4j Driver Settings
 
-```csharp
-var config = new ConfigurationOptions
-{
-    // Connection pool settings
-    MaxConnectionPoolSize = Environment.ProcessorCount * 2,
-    MaxConnectionLifetime = TimeSpan.FromMinutes(30),
-    ConnectionAcquisitionTimeout = TimeSpan.FromSeconds(60),
-
-    // Network settings
-    ConnectionTimeout = TimeSpan.FromSeconds(30),
-    SocketKeepaliveEnabled = true,
-
-    // Security
-    EncryptionLevel = EncryptionLevel.Encrypted,
-    TrustStrategy = TrustStrategy.TrustSystemCaSignedCertificates,
-
-    // Logging
-    Logger = new FileLogger("neo4j-queries.log"),
-    LogLevel = LogLevel.Information
-};
+```text
+Pseudo-code:
+Configure connection lifetime, pool size, acquisition timeout, connection timeout,
+TLS trust strategy, and logging in the Neo4j driver configuration callback used
+when creating the driver.
 ```
 
 ### Application-Level Caching
 
 ```csharp
 // Consider caching frequently accessed, rarely changing data
-private readonly IMemoryCache _cache;
+private readonly Dictionary<string, User> _cache = new();
 
 public async Task<User> GetUserAsync(string userId)
 {
@@ -237,7 +221,7 @@ public async Task<User> GetUserAsync(string userId)
 
     if (user != null)
     {
-        _cache.Set($"user:{userId}", user, TimeSpan.FromMinutes(15));
+        _cache[$"user:{userId}"] = user;
     }
 
     return user;
@@ -270,7 +254,7 @@ public async Task<User> GetUserAsync(string userId)
 ### 1. Enable Query Logging
 
 ```csharp
-var loggerFactory = new LoggerFactory { ... }
+using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
 var store = new Neo4jGraphStore(connectionString, username, password, loggerFactory: loggerFactory);
 var graph = store.Graph;
 ```
@@ -297,14 +281,14 @@ RETURN ...
 foreach (var user in users)
 {
     user.Friends = await graph.Relationships<FriendOf>()
-        .Where(f => f.SourceId == user.Id)
+        .Where(f => f.StartNodeId == user.Id)
         .ToListAsync();
 }
 
 // ✅ Better - Load related data in batch
 var userIds = users.Select(u => u.Id).ToList();
 var friendships = await graph.Relationships<FriendOf>()
-    .Where(f => userIds.Contains(f.SourceId))
+    .Where(f => userIds.Contains(f.StartNodeId))
     .ToListAsync();
 ```
 
@@ -314,16 +298,21 @@ Create benchmarks for critical operations:
 
 ```csharp
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net80)]
+[SimpleJob(RuntimeMoniker.Net10_0)]
 public class GraphModelBenchmarks
 {
-    private IGraph _graph;
+    private Neo4jGraphStore _store = null!;
+    private IGraph _graph = null!;
+
+    private const string ConnectionString = "neo4j://localhost:7687";
+    private const string Username = "neo4j";
+    private const string Password = "password";
 
     [GlobalSetup]
     public void Setup()
     {
-        var store = new Neo4jGraphStore(connectionString, username, password);
-        _graph = store.Graph;
+        _store = new Neo4jGraphStore(ConnectionString, Username, Password);
+        _graph = _store.Graph;
     }
 
     [Benchmark]
@@ -336,9 +325,9 @@ public class GraphModelBenchmarks
     }
 
     [GlobalCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        _graph?.Dispose();
+        await _store.DisposeAsync();
     }
 }
 ```
@@ -516,12 +505,14 @@ Key performance indicators to monitor:
 public class MyCustomBenchmark
 {
     private IGraph _graph = null!;
+    private Neo4jGraphStore _store = null!;
 
     [GlobalSetup]
     public void Setup()
     {
         // Initialize test data
-        _graph = CreateTestGraph();
+        _store = CreateTestGraphStore();
+        _graph = _store.Graph;
     }
 
     [Benchmark]
@@ -532,10 +523,13 @@ public class MyCustomBenchmark
     }
 
     [GlobalCleanup]
-    public void Cleanup()
+    public async Task Cleanup()
     {
-        _graph?.Dispose();
+        await _store.DisposeAsync();
     }
+
+    private static Neo4jGraphStore CreateTestGraphStore()
+        => new("neo4j://localhost:7687", "neo4j", "password");
 }
 ```
 

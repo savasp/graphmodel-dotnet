@@ -29,13 +29,13 @@ Neo4jException: Could not perform discovery for server neo4j://localhost:7687
 
    ```csharp
    // ✅ Correct formats:
-   "neo4j://localhost:7687"           // Local unencrypted
-   "neo4j+s://your-server:7687"       // Remote encrypted
-   "neo4j+ssc://your-server:7687"     // Encrypted with self-signed cert
+   var local = "neo4j://localhost:7687";          // Local unencrypted
+   var encrypted = "neo4j+s://your-server:7687";  // Remote encrypted
+   var selfSigned = "neo4j+ssc://your-server:7687"; // Encrypted with self-signed cert
 
    // ❌ Common mistakes:
-   "neo4j://localhost"                // Missing port
-   "http://localhost:7474"            // Wrong protocol (that's HTTP interface)
+   var missingPort = "neo4j://localhost";         // Missing port
+   var wrongProtocol = "http://localhost:7474";   // Wrong protocol (that's HTTP interface)
    ```
 
 3. **Check credentials**
@@ -96,23 +96,31 @@ var users = await graph.Nodes<User>().ToListAsync();
 2. **Verify entity class labels**
 
    ```csharp
-   [Node(Label = "User")]  // Must match label in database
-   public class User : INode
+   [Node("User")]  // Must match label in database
+   public record User : Node
+   {
+   }
    ```
 
 3. **Check case sensitivity**
 
    ```csharp
-   [Node(Label = "user")]     // Lowercase
-   vs
-   [Node(Label = "User")]     // Uppercase - these are different!
+   [Node("user")]
+   public record LowercaseUser : Node;
+
+   [Node("User")]
+   public record User : Node; // Different label from "user"
    ```
 
 4. **Enable query logging**
 
    ```csharp
-   var loggerFactory = new LoggerFactory { ... }
-   var neo4jGraphStore = new Neo4jGraphStore(..., loggerFactory)
+   using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+   var neo4jGraphStore = new Neo4jGraphStore(
+       "neo4j://localhost:7687",
+       "neo4j",
+       "password",
+       loggerFactory: loggerFactory);
    ```
 
 #### Problem: "Invalid cast" when querying
@@ -129,7 +137,8 @@ InvalidCastException: Unable to cast object of type 'System.String' to type 'Sys
    // If database has string IDs but your model expects int:
    public class User : INode
    {
-       public string Id { get; set; }  // Use string if Neo4j stores as string
+       public string Id { get; init; } = Guid.NewGuid().ToString();  // Use string if Neo4j stores as string
+       public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
        // Not: public int Id { get; set; }
    }
    ```
@@ -139,7 +148,8 @@ InvalidCastException: Unable to cast object of type 'System.String' to type 'Sys
    ```csharp
    public class User : INode
    {
-       public string Id { get; set; }
+       public string Id { get; init; } = Guid.NewGuid().ToString();
+       public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
        public int? Age { get; set; }           // Nullable if not always present
        public DateTime? CreatedDate { get; set; }  // Nullable for optional dates
    }
@@ -156,14 +166,17 @@ InvalidOperationException: Cannot execute query on committed/rolled back transac
 **Solution:**
 
 ```csharp
+var user = new User { Email = "one@example.com" };
+var anotherUser = new User { Email = "two@example.com" };
+
 // ❌ Reusing disposed transaction
-using var transaction = await graph.GetTransactionAsync();
-await graph.CreateNodeAsync(user, transaction);
-await transaction.CommitAsync();
-await graph.CreateNodeAsync(anotherUser, transaction);  // Error - transaction already committed
+await using var completedTransaction = await graph.GetTransactionAsync();
+await graph.CreateNodeAsync(user, completedTransaction);
+await completedTransaction.CommitAsync();
+await graph.CreateNodeAsync(anotherUser, completedTransaction);  // Error - transaction already committed
 
 // ✅ Create new transaction or don't commit until all operations complete
-using var transaction = await graph.GetTransactionAsync();
+await using var transaction = await graph.GetTransactionAsync();
 await graph.CreateNodeAsync(user, transaction);
 await graph.CreateNodeAsync(anotherUser, transaction);
 await transaction.CommitAsync();  // Commit both operations
@@ -181,15 +194,15 @@ TransientException: Deadlock detected
 
    ```csharp
    // ✅ Short transaction
-   using var transaction = await graph.GetTransactionAsync();
-   await graph.CreateNodeAsync(user, transaction);
-   await transaction.CommitAsync();
+   await using var shortTransaction = await graph.GetTransactionAsync();
+   await graph.CreateNodeAsync(user, shortTransaction);
+   await shortTransaction.CommitAsync();
 
    // ❌ Long-running transaction
-   using var transaction = await graph.GetTransactionAsync();
+   await using var longTransaction = await graph.GetTransactionAsync();
    await SomeLongRunningOperation();  // Holds locks too long
-   await graph.CreateNodeAsync(user, transaction);
-   await transaction.CommitAsync();
+   await graph.CreateNodeAsync(user, longTransaction);
+   await longTransaction.CommitAsync();
    ```
 
 2. **Retry logic for deadlocks**
@@ -222,8 +235,12 @@ TransientException: Deadlock detected
 1. **Enable query profiling**
 
    ```csharp
-   var loggerFactory = new LoggerFactory { ... }
-   var neo4jGraphStore = new Neo4jGraphStore(..., loggerFactory)
+   using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+   var neo4jGraphStore = new Neo4jGraphStore(
+       "neo4j://localhost:7687",
+       "neo4j",
+       "password",
+       loggerFactory: loggerFactory);
    ```
 
 2. **Look for full table scans**
@@ -237,12 +254,12 @@ TransientException: Deadlock detected
 
    ```csharp
    // ❌ Large depth - could traverse a large path of the graph
-   var connections = await graph.Nodes<User>()
+   var largeConnections = await graph.Nodes<User>()
        .Traverse<FriendOf, User>(minDepth: 1, maxDepth: 100)
        .ToListAsync();
 
    // ✅ Limited depth
-   var connections = await graph.Nodes<User>()
+   var limitedConnections = await graph.Nodes<User>()
        .Traverse<FriendOf, User>(minDepth: 1, maxDepth: 3)  // Max 3 hops
        .ToListAsync();
    ```
@@ -278,7 +295,7 @@ TransientException: Deadlock detected
 
 ```csharp
    // ✅ Process one at a time
-   await foreach (var user in graph.Nodes<User>().AsAsyncEnumerable())
+   await foreach (var user in graph.Nodes<User>())
    {
        ProcessUser(user);
    }
@@ -288,15 +305,24 @@ TransientException: Deadlock detected
 
 #### Problem: Analyzer warnings in IDE
 
-**Understanding warnings:**
+**Understanding diagnostics:**
 
-- **GM001**: Missing parameterless constructor
-- **GM002**: Property must have public accessors
-- **GM003**: Property cannot be graph interface type
-- **GM004/GM005**: Invalid property type for node/relationship
-- **GM006**: Complex type contains graph interface types
-- **GM007/GM008/GM009**: Duplicate attribute labels
-- **GM010**: Circular reference without nullable
+| Rule ID | Description | Severity |
+| --- | --- | --- |
+| **GM001** | Missing parameterless constructor | Error |
+| **GM002** | Property must have public accessors | Error |
+| **GM003** | Property cannot be graph interface type | Error |
+| **GM004** | Invalid property type for node | Error |
+| **GM005** | Invalid property type for relationship | Error |
+| **GM006** | Complex type contains graph interface types | Error |
+| **GM007** | Duplicate property attribute label | Error |
+| **GM008** | Duplicate relationship attribute label | Error |
+| **GM009** | Duplicate node attribute label | Error |
+| **GM010** | Circular reference without nullable | Error |
+| **GM011** | Type should inherit from Node/Relationship instead of implementing directly | Warning |
+| **GM012** | [Node]/[Relationship] on a type that doesn't implement the matching interface | Warning |
+| **GM013** | Both [Node] and [Relationship] applied to the same type | Error |
+| **GM014** | Graph entity types (INode/IRelationship) must be reference types | Error |
 
 **Solutions:**
 See the [Analyzers README](../src/Graph.Model.Analyzers/README.md) for detailed examples of each warning and how to fix them.
@@ -306,8 +332,12 @@ See the [Analyzers README](../src/Graph.Model.Analyzers/README.md) for detailed 
 ### 1. Enable Detailed Logging
 
 ```csharp
-var loggerFactory = new LoggerFactory { ... }
-var neo4jGraphStore = new Neo4jGraphStore(..., loggerFactory)
+using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+var neo4jGraphStore = new Neo4jGraphStore(
+    "neo4j://localhost:7687",
+    "neo4j",
+    "password",
+    loggerFactory: loggerFactory);
 ```
 
 ### 2. Inspect Generated Cypher
@@ -381,17 +411,22 @@ When reporting issues, include:
 
 ```csharp
 // Example minimal reproduction case:
-public class TestNode : INode
+public record TestNode : Node
 {
-    public string Id { get; set; }
-    public string Name { get; set; }
+    public string Name { get; set; } = string.Empty;
 }
 
 // The issue occurs when:
-var store = new Neo4jGraphStore("neo4j://localhost:7687", "neo4j", "password");
-var graph = store.Graph;
-var node = new TestNode { Id = "1", Name = "Test" };
-await graph.CreateNodeAsync(node);  // Fails here with [specific error]
+public static class Reproduction
+{
+    public static async Task ReproduceAsync()
+    {
+        await using var store = new Neo4jGraphStore("neo4j://localhost:7687", "neo4j", "password");
+        var graph = store.Graph;
+        var node = new TestNode { Id = "1", Name = "Test" };
+        await graph.CreateNodeAsync(node);  // Fails here with [specific error]
+    }
+}
 ```
 
 Remember: The more specific and complete your issue report, the faster we can help! 🚀

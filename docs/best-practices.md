@@ -72,23 +72,21 @@ var query = graph.Nodes<User>()
 
 ```csharp
 // Good: Separate entities for different concerns
-[Node(Label = "Person")]
-public class Person : INode
+[Node("Person")]
+public record Person : Node
 {
-    public string Id { get; set; }
-    public string Name { get; set; }
+    public string Name { get; set; } = string.Empty;
 }
 
-[Node(Label = "Address")]
-public class Address : INode
+[Node("Address")]
+public record Address : Node
 {
-    public string Id { get; set; }
-    public string Street { get; set; }
-    public string City { get; set; }
+    public string Street { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
 }
 
-[Relationship(Label = "LIVES_AT")]
-public class LivesAt : IRelationship<Person, Address>
+[Relationship("LIVES_AT")]
+public record LivesAt(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
 {
     public DateTime Since { get; set; }
 }
@@ -98,9 +96,8 @@ public class LivesAt : IRelationship<Person, Address>
 
 ```csharp
 // Avoid: Complex nested properties
-public class Person : INode
+public record Person : Node
 {
-    public string Id { get; set; }
     public Address HomeAddress { get; set; } // This won't work well
 }
 ```
@@ -110,11 +107,11 @@ public class Person : INode
 **Do**: Use descriptive, domain-specific relationship names
 
 ```csharp
-[Relationship(Label = "REPORTS_TO")]
-public class ReportsTo : IRelationship<Employee, Manager> { }
+[Relationship("REPORTS_TO")]
+public record ReportsTo(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
 
-[Relationship(Label = "PURCHASED")]
-public class Purchased : IRelationship<Customer, Product>
+[Relationship("PURCHASED")]
+public record Purchased(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
 {
     public DateTime PurchaseDate { get; set; }
     public decimal Amount { get; set; }
@@ -125,8 +122,8 @@ public class Purchased : IRelationship<Customer, Product>
 
 ```csharp
 // Avoid: Too generic
-[Relationship(Label = "RELATED_TO")]
-public class RelatedTo : IRelationship<INode, INode> { }
+[Relationship("RELATED_TO")]
+public record RelatedTo(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
 ```
 
 ### 4. Model Time Appropriately
@@ -134,12 +131,12 @@ public class RelatedTo : IRelationship<INode, INode> { }
 **Do**: Add temporal properties to relationships when needed
 
 ```csharp
-[Relationship(Label = "WORKED_AT")]
-public class WorkedAt : IRelationship<Person, Company>
+[Relationship("WORKED_AT")]
+public record WorkedAt(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
 {
     public DateTime StartDate { get; set; }
     public DateTime? EndDate { get; set; }
-    public string Position { get; set; }
+    public string Position { get; set; } = string.Empty;
 
     public bool IsCurrent => EndDate == null;
 }
@@ -229,7 +226,7 @@ public async Task TransferEmployee(string employeeId, string newDeptId)
 
     // Update the relationship
     await graph.DeleteRelationshipAsync(employee.CurrentDeptRelationshipId, transaction: tx);
-    var newRel = new WorksIn { Source = employee, Target = newDept };
+    var newRel = new WorksIn(employee.Id, newDept.Id);
     await graph.CreateRelationshipAsync(newRel, transaction: tx);
 
     await tx.CommitAsync();
@@ -243,7 +240,7 @@ public async Task TransferEmployee(string employeeId, string newDeptId)
 await using var tx = await graph.GetTransactionAsync();
 var data = await FetchFromExternalApi(); // Don't do this in a transaction!
 await ProcessData(data);
-await graph.CreateNodeAsync(result, transaction: tx);
+await graph.CreateNodeAsync(person, transaction: tx);
 await tx.CommitAsync();
 ```
 
@@ -323,9 +320,11 @@ var knows = graph.Relationships<Knows>()
 // Avoid: Inefficient relationship discovery
 var allPeople = await graph.Nodes<Person>()
     .ToListAsync();
-var personRelationships = allPeople
-    .First(p => p.Id == personId)
-    .Knows;
+var allRelationships = await graph.Relationships<Knows>()
+    .ToListAsync();
+var personRelationships = allRelationships
+    .Where(k => k.StartNodeId == personId || k.EndNodeId == personId)
+    .ToList();
 ```
 
 ## Error Handling
@@ -393,9 +392,7 @@ public class PersonService
     }
 }
 
-// In tests
-var mockGraph = new Mock<IGraph>();
-var service = new PersonService(mockGraph.Object);
+// In tests, pass your IGraph test double to the service constructor.
 ```
 
 ### 2. Test Transactions

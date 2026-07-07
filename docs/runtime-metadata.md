@@ -137,7 +137,7 @@ public abstract record Node : INode
     /// <summary>
     /// Gets the labels for this node as they are stored in the graph database.
     /// </summary>
-    public virtual IReadOnlyList<string> Labels { get; init; } = Array.Empty<string>();
+    public virtual IReadOnlyList<string> Labels { get; set; } = Array.Empty<string>();
 }
 ```
 
@@ -169,7 +169,7 @@ public abstract record Relationship(
     /// <summary>
     /// Gets the type of this relationship as it is stored in the graph database.
     /// </summary>
-    public virtual string Type { get; init; } = string.Empty;
+    public virtual string Type { get; set; } = string.Empty;
 }
 ```
 
@@ -211,7 +211,9 @@ public record Person : INode
     public IReadOnlyList<string> Labels { get; } = new List<string>(); // Don't do this!
     public string Name { get; set; } = string.Empty;
 }
+```
 
+```csharp
 // ✅ Recommended approach
 [Node("Person")]
 public record Person : Node
@@ -267,12 +269,14 @@ If you have existing code that directly implements `INode` or `IRelationship`:
 public class Person : INode
 {
     public string Id { get; init; } = Guid.NewGuid().ToString();
+    public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
     public string Name { get; set; } = string.Empty;
 }
 
 public class Knows : IRelationship
 {
     public string Id { get; init; } = Guid.NewGuid().ToString();
+    public string Type { get; } = "KNOWS";
     public string StartNodeId { get; init; } = string.Empty;
     public string EndNodeId { get; init; } = string.Empty;
     public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
