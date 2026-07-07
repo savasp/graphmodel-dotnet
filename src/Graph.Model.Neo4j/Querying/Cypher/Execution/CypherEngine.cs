@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
@@ -26,6 +27,18 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 internal sealed class CypherEngine
 {
+    private enum ElementTerminal
+    {
+        None,
+        First,
+        FirstOrDefault,
+        Last,
+        Single,
+        SingleOrDefault,
+    }
+
+    private static readonly IReadOnlyDictionary<MethodInfo, ElementTerminal> ElementTerminalMethods = CreateElementTerminalMethods();
+
     private readonly EntityFactory _entityFactory;
     private readonly ILogger<CypherEngine> _logger;
     private readonly CypherExecutor _executor;
@@ -64,6 +77,8 @@ internal sealed class CypherEngine
                 cypherQuery.Parameters,
                 transaction,
                 cancellationToken).ConfigureAwait(false);
+
+            ValidateElementTerminalRecordCount(GetElementTerminal(expression), records.Count);
 
             // Let the materializer handle everything - no need to duplicate logic here
             var result = await _materializer.MaterializeAsync<T>(records, cypherQuery.GraphPathTypes, cancellationToken).ConfigureAwait(false);
@@ -153,6 +168,65 @@ internal sealed class CypherEngine
         if (currentHops is { Count: > 0 })
         {
             yield return _materializer.MaterializeGraphPath(currentHops, graphPathTypes);
+        }
+    }
+
+    private static IReadOnlyDictionary<MethodInfo, ElementTerminal> CreateElementTerminalMethods()
+    {
+        var methods = new Dictionary<MethodInfo, ElementTerminal>();
+
+        AddAll(nameof(QueryTerminals.FirstAsyncMarker), ElementTerminal.First);
+        AddAll(nameof(QueryTerminals.FirstOrDefaultAsyncMarker), ElementTerminal.FirstOrDefault);
+        AddAll(nameof(QueryTerminals.LastAsyncMarker), ElementTerminal.Last);
+        AddAll(nameof(QueryTerminals.SingleAsyncMarker), ElementTerminal.Single);
+        AddAll(nameof(QueryTerminals.SingleOrDefaultAsyncMarker), ElementTerminal.SingleOrDefault);
+
+        return methods;
+
+        void AddAll(string name, ElementTerminal terminal)
+        {
+            foreach (var method in typeof(QueryTerminals).GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                .Where(m => m.Name == name))
+            {
+                methods[method] = terminal;
+            }
+        }
+    }
+
+    private static ElementTerminal GetElementTerminal(Expression expression)
+    {
+        if (expression is not MethodCallExpression methodCall)
+            return ElementTerminal.None;
+
+        var key = methodCall.Method.IsGenericMethod
+            ? methodCall.Method.GetGenericMethodDefinition()
+            : methodCall.Method;
+
+        return ElementTerminalMethods.TryGetValue(key, out var terminal)
+            ? terminal
+            : ElementTerminal.None;
+    }
+
+    private static void ValidateElementTerminalRecordCount(ElementTerminal terminal, int recordCount)
+    {
+        switch (terminal)
+        {
+            case ElementTerminal.First when recordCount == 0:
+            case ElementTerminal.Last when recordCount == 0:
+            case ElementTerminal.Single when recordCount == 0:
+                throw new InvalidOperationException("Sequence contains no elements");
+
+            case ElementTerminal.Single when recordCount > 1:
+            case ElementTerminal.SingleOrDefault when recordCount > 1:
+                throw new InvalidOperationException("Sequence contains more than one element");
+
+            case ElementTerminal.None:
+            case ElementTerminal.First:
+            case ElementTerminal.FirstOrDefault:
+            case ElementTerminal.Last:
+            case ElementTerminal.Single:
+            case ElementTerminal.SingleOrDefault:
+                return;
         }
     }
 

@@ -520,7 +520,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleFirst(MethodCallExpression node, Expression? result, string methodName)
     {
-        // Set limit to 1 for First/Single operations
+        // Set limit to 1 for First operations
         _context.Builder.SetLimit(1);
 
         // Handle optional where clause
@@ -540,8 +540,8 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
     private Expression HandleSingle(MethodCallExpression node, Expression? result, string methodName)
     {
-        // Set limit to 1 for First/Single operations
-        _context.Builder.SetLimit(1);
+        // Single operations need up to two rows to distinguish a single match from multiple matches.
+        _context.Builder.SetLimit(2);
 
         // Handle optional where clause
         if (node.Arguments.Count == 2)
@@ -554,7 +554,7 @@ internal class CypherQueryVisitor : ExpressionVisitor
             }
         }
 
-        _logger.LogDebug("Added LIMIT 1 for {Method}", methodName);
+        _logger.LogDebug("Added LIMIT 2 for {Method}", methodName);
         return result ?? node.Arguments[0];
     }
 

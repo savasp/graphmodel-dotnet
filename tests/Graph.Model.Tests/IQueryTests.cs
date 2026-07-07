@@ -282,6 +282,145 @@ public interface IQueryTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task FirstAsync_EmptySource_Throws()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var missingGroup = $"FirstAsync-empty-{Guid.NewGuid():N}";
+
+        var query = this.Graph.Nodes<Person>().Where(p => p.LastName == missingGroup);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => query.FirstAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task SingleAsync_EmptySource_Throws()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var missingGroup = $"SingleAsync-empty-{Guid.NewGuid():N}";
+
+        var query = this.Graph.Nodes<Person>().Where(p => p.LastName == missingGroup);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => query.SingleAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task SingleAsync_MultipleElements_Throws()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"SingleAsync-many-{Guid.NewGuid():N}";
+        await this.Graph.CreateNodeAsync(new Person { FirstName = "A", LastName = group }, null, cancellationToken);
+        await this.Graph.CreateNodeAsync(new Person { FirstName = "B", LastName = group }, null, cancellationToken);
+
+        var query = this.Graph.Nodes<Person>().Where(p => p.LastName == group);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => query.SingleAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task SingleOrDefaultAsync_MultipleElements_Throws()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"SingleOrDefaultAsync-many-{Guid.NewGuid():N}";
+        await this.Graph.CreateNodeAsync(new Person { FirstName = "A", LastName = group }, null, cancellationToken);
+        await this.Graph.CreateNodeAsync(new Person { FirstName = "B", LastName = group }, null, cancellationToken);
+
+        var query = this.Graph.Nodes<Person>().Where(p => p.LastName == group);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => query.SingleOrDefaultAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task FirstOrDefaultAsync_EmptySource_ReturnsDefault()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var missingGroup = $"FirstOrDefaultAsync-empty-{Guid.NewGuid():N}";
+
+        var result = await this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == missingGroup)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task SingleOrDefaultAsync_EmptySource_ReturnsDefault()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var missingGroup = $"SingleOrDefaultAsync-empty-{Guid.NewGuid():N}";
+
+        var result = await this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == missingGroup)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task SingleAsync_SingleElement_ReturnsElement()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"SingleAsync-one-{Guid.NewGuid():N}";
+        var person = new Person { FirstName = "Only", LastName = group };
+        await this.Graph.CreateNodeAsync(person, null, cancellationToken);
+
+        var result = await this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == group)
+            .SingleAsync(cancellationToken);
+
+        Assert.Equal(person.Id, result.Id);
+    }
+
+    [Fact]
+    public async Task SingleOrDefaultAsync_SingleElement_ReturnsElement()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"SingleOrDefaultAsync-one-{Guid.NewGuid():N}";
+        var person = new Person { FirstName = "Only", LastName = group };
+        await this.Graph.CreateNodeAsync(person, null, cancellationToken);
+
+        var result = await this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == group)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal(person.Id, result.Id);
+    }
+
+    [Fact]
+    public async Task FirstAsync_DefaultValueProjection_ReturnsDefaultValue()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"FirstAsync-default-{Guid.NewGuid():N}";
+        await this.Graph.CreateNodeAsync(new Person { FirstName = "Default", LastName = group, Age = 0 }, null, cancellationToken);
+
+        var result = await this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == group)
+            .Select(p => p.Age)
+            .FirstAsync(cancellationToken);
+
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public async Task SingleAsync_DefaultValueProjection_ReturnsDefaultValue()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"SingleAsync-default-{Guid.NewGuid():N}";
+        await this.Graph.CreateNodeAsync(new Person { FirstName = "Default", LastName = group, Age = 0 }, null, cancellationToken);
+
+        var result = await this.Graph.Nodes<Person>()
+            .Where(p => p.LastName == group)
+            .Select(p => p.Age)
+            .SingleAsync(cancellationToken);
+
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
     public async Task CanQueryWithAnyAndCount()
     {
         var p1 = new Person { FirstName = "A" };

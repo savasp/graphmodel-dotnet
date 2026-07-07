@@ -135,8 +135,8 @@
               Condition="!Exists('$(LocalFeedSentinelFile)')" 
               ContinueOnError="true" />
 
-        <!-- Create sentinel file -->
-        <WriteLinesToFile File="$(LocalFeedSentinelFile)" Lines="Local feed setup completed at $([System.DateTime]::Now)" Overwrite="true" />
+        <!-- Create or update sentinel file -->
+        <Touch Files="$(LocalFeedSentinelFile)" AlwaysCreate="true" />
 
         <Message Text="✅ Local NuGet feed ready at: $(LocalFeedPath)" Importance="high" />
     </Target>
