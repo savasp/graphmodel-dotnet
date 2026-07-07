@@ -65,8 +65,9 @@ public class Person : INode
     // Good: Using init-only setter
     public string Id { get; init; } = Guid.NewGuid().ToString();
 
-    // Alternative: Read-only after construction
-    public string Id { get; private set; } = Guid.NewGuid().ToString();
+    public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
+
+    // Alternative: inherit from Node to get Id and Labels automatically.
 }
 ```
 
@@ -116,10 +117,10 @@ public interface INode : IEntity
 [Node("Person")]
 public record Person : Node  // Use Node base class
 {
-    [Property("first_name", Index = true)]
+    [Property(Label = "first_name", IsIndexed = true)]
     public string FirstName { get; set; } = string.Empty;
 
-    [Property("last_name", Index = true)]
+    [Property(Label = "last_name", IsIndexed = true)]
     public string LastName { get; set; } = string.Empty;
 
     // The Property attribute is optional
@@ -159,25 +160,25 @@ Implementations of the Graph Model must support polymorphic behavior.
 public abstract record Person : Node  // Use Node base class
 {
 
-    [Property("first_name")]
+    [Property(Label = "first_name")]
     public string FirstName { get; set; } = string.Empty;
 
-    [Property("last_name")]
+    [Property(Label = "last_name")]
     public string LastName { get; set; } = string.Empty;
     public DateTime DateOfBirth { get; set; }
 }
 
 [Node("Employee")]
-public class Employee : Person
+public record Employee : Person
 {
-    [Property("employee_id", Index = true)]
+    [Property(Label = "employee_id", IsIndexed = true)]
     public string EmployeeId { get; set; } = string.Empty;
     public string Department { get; set; } = string.Empty;
     public decimal Salary { get; set; }
 }
 
 [Node("Manager")]
-public class Manager : Employee
+public record Manager : Employee
 {
     public string ManagementLevel { get; set; } = string.Empty;
 }
@@ -186,11 +187,18 @@ public class Manager : Employee
 If you add a manager to the graph via an employee variable, you will get back a manager even if you ask for an Employee...
 
 ```csharp
-Employee employee = new Manager { ... }
+Employee employee = new Manager
+{
+    FirstName = "Alice",
+    LastName = "Smith",
+    EmployeeId = "E-001",
+    Department = "Engineering",
+    ManagementLevel = "Director"
+};
 await graph.CreateNodeAsync(employee);
 
-Person person = await graph.GetNodeAsync<Employee>(employee.Id)
-Assert.Equal(typeof(Manager), person.GetType())
+Person person = await graph.GetNodeAsync<Employee>(employee.Id);
+Assert.Equal(typeof(Manager), person.GetType());
 ```
 
 ## 🔗 Relationships: IRelationship Interfaces
@@ -304,8 +312,8 @@ public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNo
 
 > **Note**: Strongly-typed relationships (`IRelationship<TSource, TTarget>`) are currently being redesigned and are not yet supported in the current version. Use the simple relationship pattern shown above.
 
-```csharp
-// Coming in a future release
+```text
+Pseudo-code: coming in a future release.
 [Relationship("KNOWS")]
 public record Knows : Relationship<Person, Person>
 {
@@ -318,13 +326,13 @@ public record Knows : Relationship<Person, Person>
 
 ```csharp
 [Relationship("EMPLOYS")]
-public record Employment : Relationship
+public record Employment(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
 {
     public string Position { get; set; } = string.Empty;
     public DateTime StartDate { get; set; }
     public DateTime? EndDate { get; set; }
     public decimal Salary { get; set; }
-    public EmploymentType Type { get; set; } = EmploymentType.FullTime;
+    public EmploymentType EmploymentKind { get; set; } = EmploymentType.FullTime;
 
     // Computed property
     [Property(Ignore = true)]
@@ -363,8 +371,8 @@ public class NodeAttribute : Attribute
 Examples:
 
 ```csharp
-[Node(Label = "Person")]
-public class Manager : INode { }
+[Node("Person")]
+public record Manager : Node { }
 ```
 
 ### Relationship Attribute
@@ -386,7 +394,7 @@ Examples:
 
 ```csharp
 [Relationship("KNOWS")]
-public record ReportsTo : Relationship { }
+public record ReportsTo(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
 ```
 
 ### Property Attribute
@@ -408,10 +416,12 @@ public class PropertyAttribute : Attribute
 Examples:
 
 ```csharp
-public class Person : INode
+public record Person : Node
 {
     [Property(Label = "first_name")]        // Custom name
     public string FirstName { get; set; } = string.Empty;
+
+    public string LastName { get; set; } = string.Empty;
 
     [Property]                              // Auto name (uses property name)
     public string Email { get; set; } = string.Empty;
@@ -437,18 +447,18 @@ public interface IGraph
 {
     // Synchronous query roots for LINQ support - building a queryable performs no I/O; any
     // transaction/session acquisition happens when the query is executed.
-    IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null) where N : INode;
-    IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null) where R : IRelationship;
+    IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null) where N : class, INode;
+    IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null) where R : class, IRelationship;
 
     // CRUD operations
-    Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : INode;
-    Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : IRelationship;
+    Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : class, INode;
+    Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : class, IRelationship;
 
-    Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : INode;
-    Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : IRelationship;
+    Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : class, INode;
+    Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : class, IRelationship;
 
-    Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : INode;
-    Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : IRelationship;
+    Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : class, INode;
+    Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : class, IRelationship;
 
     Task DeleteNodeAsync(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
     Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
@@ -531,10 +541,10 @@ catch
 }
 
 // Pattern 2: Using statement with automatic rollback
-await using var transaction = await graph.GetTransactionAsync();
-await graph.CreateNodeAsync(node, transaction: transaction);
-await graph.CreateRelationshipAsync(relationship, transaction: transaction);
-await transaction.CommitAsync(); // Must explicitly commit
+await using var secondTransaction = await graph.GetTransactionAsync();
+await graph.CreateNodeAsync(node, transaction: secondTransaction);
+await graph.CreateRelationshipAsync(relationship, transaction: secondTransaction);
+await secondTransaction.CommitAsync(); // Must explicitly commit
 ```
 
 ## 🔍 Path Segments

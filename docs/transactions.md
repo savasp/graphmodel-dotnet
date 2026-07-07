@@ -22,12 +22,7 @@ try
     await graph.CreateNodeAsync(person, transaction: transaction);
     await graph.CreateNodeAsync(company, transaction: transaction);
 
-    var worksAt = new WorksAt
-    {
-        StartNodeId = person.Id,
-        EndNodeId = company.Id,
-        StartDate = DateTime.UtcNow
-    };
+    var worksAt = new WorksIn(person.Id, company.Id);
     await graph.CreateRelationshipAsync(worksAt, transaction: transaction);
 
     // Explicitly commit if all operations succeed
@@ -49,9 +44,10 @@ Transactions implement `IAsyncDisposable`, providing automatic rollback if not e
 await using (var transaction = await graph.GetTransactionAsync())
 {
     await graph.CreateNodeAsync(node, transaction: transaction);
-    await graph.UpdateNodeAsync(existingNode, transaction: transaction);
+    var existingPerson = await graph.GetNodeAsync<Person>(id, transaction: transaction);
+    await graph.UpdateNodeAsync(existingPerson, transaction: transaction);
 
-    if (someBusinessCondition)
+    if (!string.IsNullOrEmpty(existingPerson.Email))
     {
         await transaction.CommitAsync();
     }
@@ -66,14 +62,18 @@ All graph operations support an optional transaction parameter:
 ### Node Operations
 
 ```csharp
+await using var transaction = await graph.GetTransactionAsync();
+
 // Create
-await graph.CreateNodeAsync(node, transaction: transaction);
+var newPerson = new Person { FirstName = "Alice" };
+await graph.CreateNodeAsync(newPerson, transaction: transaction);
 
 // Read
-var node = await graph.GetNodeAsync<Person>(id, transaction: transaction);
+var existingPerson = await graph.GetNodeAsync<Person>(id, transaction: transaction);
 
 // Update
-await graph.UpdateNodeAsync(node, transaction: transaction);
+existingPerson.LastName = "Smith";
+await graph.UpdateNodeAsync(existingPerson, transaction: transaction);
 
 // Delete
 await graph.DeleteNodeAsync(id, transaction: transaction);
@@ -82,6 +82,8 @@ await graph.DeleteNodeAsync(id, transaction: transaction);
 ### Relationship Operations
 
 ```csharp
+await using var transaction = await graph.GetTransactionAsync();
+
 // Create
 await graph.CreateRelationshipAsync(relationship, transaction: transaction);
 
@@ -98,12 +100,14 @@ await graph.DeleteRelationshipAsync(id, transaction: transaction);
 ### Query Operations
 
 ```csharp
+await using var transaction = await graph.GetTransactionAsync();
+
 // Queries also support transactions
-var results = graph.Nodes<Person>(transaction: transaction)
+var results = await graph.Nodes<Person>(transaction: transaction)
     .Where(p => p.Department == "Engineering")
     .ToListAsync();
 
-var relationships = graph.Relationships<Knows>(transaction: transaction)
+var relationships = await graph.Relationships<Knows>(transaction: transaction)
     .Where(k => k.Since > DateTime.UtcNow.AddDays(-7))
     .ToListAsync();
 ```
@@ -152,7 +156,7 @@ try
         await graph.CreateNodeAsync(activity, transaction: transaction);
 
         // Create relationship
-        var performed = new Performed { Source = person, Target = activity };
+        var performed = new Performed(person.Id, activity.Id);
         await graph.CreateRelationshipAsync(performed, transaction: transaction);
 
         await transaction.CommitAsync();
@@ -195,11 +199,7 @@ try
 
             if (manager != null)
             {
-                var reportsTo = new ReportsTo
-                {
-                    Source = person,
-                    Target = manager
-                };
+                var reportsTo = new ReportsTo(person.Id, manager.Id);
                 await graph.CreateRelationshipAsync(reportsTo, transaction: transaction);
             }
         }
@@ -236,7 +236,7 @@ try
     }
 
     // Create the relationship
-    var worksIn = new WorksIn { Source = employee, Target = department };
+    var worksIn = new WorksIn(employee.Id, department.Id);
     await graph.CreateRelationshipAsync(worksIn, transaction: transaction);
 
     await transaction.CommitAsync();
@@ -292,10 +292,10 @@ await graph.CreateRelationshipAsync(rel, transaction: tx);
 await tx.CommitAsync();
 
 // Avoid: Long-running transactions
-await using var tx = await graph.GetTransactionAsync();
+await using var longRunningTx = await graph.GetTransactionAsync();
 var data = await FetchDataFromExternalService(); // Don't do this in transaction
-await graph.CreateNodeAsync(data, transaction: tx);
-await tx.CommitAsync();
+await graph.CreateNodeAsync(data, transaction: longRunningTx);
+await longRunningTx.CommitAsync();
 ```
 
 ### 2. Use Try-Finally for Critical Cleanup
@@ -357,7 +357,14 @@ foreach (var batch in dataBatches)
     {
         foreach (var item in batch)
         {
-            await graph.CreateNodeAsync(item, transaction: transaction);
+            var person = new Person
+            {
+                FirstName = item.FirstName,
+                LastName = item.LastName,
+                Email = item.Email
+            };
+
+            await graph.CreateNodeAsync(person, transaction: transaction);
         }
         await transaction.CommitAsync();
         results.Add(new ImportResult { Batch = batch, Success = true });

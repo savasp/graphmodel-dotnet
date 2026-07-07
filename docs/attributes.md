@@ -21,10 +21,9 @@ Graph Model uses attributes to provide declarative configuration for how your do
 The `[Node]` attribute specifies how a class maps to a graph node with custom labeling support.
 
 ```csharp
-[Node(Label = "Person")]
-public class Person : INode
+[Node("Person")]
+public record Person : Node
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = string.Empty;
 }
 ```
@@ -33,9 +32,8 @@ public class Person : INode
 
 ```csharp
 // This will create nodes with label "Employee"
-public class Employee : INode
+public record Employee : Node
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
 }
 ```
 
@@ -46,11 +44,9 @@ public class Employee : INode
 The `[Property]` attribute provides fine-grained control over property mapping, including custom names, indexing, and serialization behavior:
 
 ```csharp
-[Node(Label = "Person")]
-public class Person : INode
+[Node("Person")]
+public record Person : Node
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-
     [Property(Label = "full_name")]
     public string FullName { get; set; } = string.Empty;
 
@@ -73,8 +69,9 @@ public class Person : INode
 | -------- | ------------------------------------- | --------------------------------- |
 | `Label`  | Custom property name in graph storage | `[Property(Label = "full_name")]` |
 | `Ignore` | Exclude from graph persistence        | `[Property(Ignore = true)]`       |
+| `IsIndexed` | Request a provider index for the property | `[Property(IsIndexed = true)]` |
 
-**Note**: Indexing is handled automatically by the Neo4j provider based on usage patterns and constraints, not through PropertyAttribute. However, attribute-based configuration of indexing behavior is a possible future feature.
+**Note**: Providers decide how to apply requested indexes and constraints for their storage engine.
 
 ### Property Types
 
@@ -91,9 +88,8 @@ Supported property types:
 - "Complex" (as defined by the Graph Model)
 
 ```csharp
-public class Person : INode
+public record Person : Node
 {
-    public string Id { get; set; }
     public string Name { get; set; }
     public int Age { get; set; }
     public double Height { get; set; }
@@ -109,18 +105,16 @@ public class Person : INode
 
 ### RelationshipAttribute
 
-The `[Relationship]` attribute configures how relationship classes map to graph edges, with support for directionality and custom labeling:
+The `[Relationship]` attribute configures how relationship classes map to graph edges, with support for custom labeling:
 
 ```csharp
-[Relationship(Label = "KNOWS", Direction = RelationshipDirection.Bidirectional)]
-public class Knows : IRelationship
+[Relationship("KNOWS")]
+public record Knows(string StartNodeId, string EndNodeId)
+    : Relationship(StartNodeId, EndNodeId, RelationshipDirection.Bidirectional)
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string StartNodeId { get; set; } = string.Empty;
-    public string EndNodeId { get; set; } = string.Empty;
-    public bool IsBidirectional { get; set; } = true;
+    public bool IsBidirectional => Direction == RelationshipDirection.Bidirectional;
 
-    [Property(Label = "since_date", Index = true)]
+    [Property(Label = "since_date", IsIndexed = true)]
     public DateTime Since { get; set; }
 }
 ```
@@ -142,26 +136,22 @@ public enum RelationshipDirection
 
 ```csharp
 // Unidirectional: Person follows another Person
-[Relationship(Label = "FOLLOWS", Direction = RelationshipDirection.Outgoing)]
-public class Follows : IRelationship
-{
-    // Implementation...
-}
+[Relationship("FOLLOWS")]
+public record Follows(string StartNodeId, string EndNodeId)
+    : Relationship(StartNodeId, EndNodeId, RelationshipDirection.Outgoing);
 
 // Bidirectional: Person is friends with another Person
-[Relationship(Label = "FRIENDS_WITH", Direction = RelationshipDirection.Bidirectional)]
-public class FriendsWith : IRelationship
+[Relationship("FRIENDS_WITH")]
+public record FriendsWith(string StartNodeId, string EndNodeId)
+    : Relationship(StartNodeId, EndNodeId, RelationshipDirection.Bidirectional)
 {
-    public bool IsBidirectional { get; set; } = true;
-    // Implementation...
+    public bool IsBidirectional => Direction == RelationshipDirection.Bidirectional;
 }
 
 // Incoming relationship (less common)
-[Relationship(Label = "REPORTS_TO", Direction = RelationshipDirection.Incoming)]
-public class ReportsTo : IRelationship
-{
-    // Implementation...
-}
+[Relationship("REPORTS_TO")]
+public record ReportsTo(string StartNodeId, string EndNodeId)
+    : Relationship(StartNodeId, EndNodeId, RelationshipDirection.Incoming);
 ```
 
 ## Inheritance and Polymorphism
@@ -171,24 +161,24 @@ public class ReportsTo : IRelationship
 The Graph Model requires provider implementors to support, if possible, the materialization of object instances to the type that was used during serialization. Consider the following type hierarchy:
 
 ```csharp
-[Node(Label = "Asset")]
+[Node("Asset")]
 public record Asset : Node
 {
-    public string Name { get; set; }
+    public string Name { get; set; } = string.Empty;
     public decimal Value { get; set; }
 }
 
-[Node(Label = "Vehicle")]
+[Node("Vehicle")]
 public record Vehicle : Asset
 {
-    public string VIN { get; set; }
+    public string VIN { get; set; } = string.Empty;
     public int Year { get; set; }
 }
 
-[Node(Label = "RealEstate")]
+[Node("RealEstate")]
 public record RealEstate : Asset
 {
-    public string Address { get; set; }
+    public string Address { get; set; } = string.Empty;
     public double SquareFeet { get; set; }
 }
 ```
@@ -196,11 +186,17 @@ public record RealEstate : Asset
 We can store a `RealEstate` instance even though the variable that holds it is of type `Asset`.
 
 ```csharp
-Asset realEstate = new RealEstate { ... }
-await graph.CreateNodeAsync(realEstate)
+Asset realEstate = new RealEstate
+{
+    Name = "Office",
+    Value = 1_250_000m,
+    Address = "123 Main St",
+    SquareFeet = 2_400
+};
+await graph.CreateNodeAsync(realEstate);
 ```
 
-The underlying provider serializes the instance of the actual instance, which in this case is `RealEstate`. It stores enough metadata to know the type to be used when retrieving the node from the graph. If a different process, with a completely different type hierarchy is used to retrieve the graph node, the node's label is used in an attempt to identify the right type. In the above case, a type which has been annotated with the attribute `Node(Label = "RealEstate")` will be discovered and the deserialization will be attempted. If the type isn't compatible or a type annotated with that specific label isn't discovered, that is considered a runtime exception.
+The underlying provider serializes the instance of the actual instance, which in this case is `RealEstate`. It stores enough metadata to know the type to be used when retrieving the node from the graph. If a different process, with a completely different type hierarchy is used to retrieve the graph node, the node's label is used in an attempt to identify the right type. In the above case, a type which has been annotated with the attribute `Node("RealEstate")` will be discovered and the deserialization will be attempted. If the type isn't compatible or a type annotated with that specific label isn't discovered, that is considered a runtime exception.
 
 ## Best Practices
 

@@ -70,23 +70,17 @@ var rangedConnections = await graph.Nodes<Person>()
 ### Performance Optimization
 
 ```csharp
-// Use caching for expensive queries
-var cachedResults = await graph.Nodes<Person>()
-    .Where(p => p.Age > 30)
-    .Cached(TimeSpan.FromMinutes(5))
-    .ToListAsync();
-
-// Provide query hints
+// Project only the fields you need
 var optimizedQuery = await graph.Nodes<Person>()
-    .WithHint("USE_INDEX")
-    .UseIndex("person_age_idx")
     .Where(p => p.Age > 30)
+    .Select(p => new { p.Id, p.FirstName, p.LastName })
     .ToListAsync();
 
-// Enable profiling for performance analysis
-var profiledQuery = await graph.Nodes<Person>()
-    .WithProfiling()
+// Page large result sets
+var firstPage = await graph.Nodes<Person>()
     .Where(p => p.Age > 30)
+    .OrderBy(p => p.LastName)
+    .Take(100)
     .ToListAsync();
 ```
 
@@ -96,7 +90,10 @@ var profiledQuery = await graph.Nodes<Person>()
 await using var transaction = await graph.GetTransactionAsync();
 
 var results = await graph.Nodes<Person>()
-    .InTransaction(transaction)
+    .Where(p => p.Age > 30)
+    .ToListAsync();
+
+var transactionalResults = await graph.Nodes<Person>(transaction: transaction)
     .Where(p => p.Age > 30)
     .ToListAsync();
 
@@ -252,24 +249,24 @@ var stats = await graph.Nodes<Person>()
     .FirstAsync();
 
 // Get single (throws if multiple)
-var theAlice = graph.Nodes<Person>()
+var theAlice = await graph.Nodes<Person>()
     .SingleAsync(p => p.FirstName == "Alice");
 
 // Get last
-var youngest = graph.Nodes<Person>()
+var youngest = await graph.Nodes<Person>()
     .OrderBy(p => p.Age)
     .LastAsync();
 
 // Safe versions that return null
-var maybeAlice = graph.Nodes<Person>()
-    .FirstOrDefault(p => p.FirstName == "Alice");
+var maybeAlice = await graph.Nodes<Person>()
+    .FirstOrDefaultAsync(p => p.FirstName == "Alice");
 ```
 
 ### GroupBy and Aggregates
 
 ```csharp
 // Group by with count
-var byLastName = graph.Nodes<Person>()
+var byLastName = await graph.Nodes<Person>()
     .GroupBy(p => p.LastName)
     .Select(g => new
     {
@@ -279,7 +276,7 @@ var byLastName = graph.Nodes<Person>()
     .ToListAsync();
 
 // Multiple aggregations
-var ageStats = graph.Nodes<Person>()
+var ageStats = await graph.Nodes<Person>()
     .GroupBy(p => p.Department)
     .Select(g => new
     {
@@ -298,19 +295,19 @@ var ageStats = graph.Nodes<Person>()
 
 ```csharp
 // Filter relationships
-var recentConnections = graph.Relationships<Knows>()
+var recentConnections = await graph.Relationships<Knows>()
     .Where(k => k.Since > DateTime.UtcNow.AddDays(-30))
-    .ToList();
+    .ToListAsync();
 
 // Relationships from specific node
-var aliceKnows = graph.Relationships<Knows>()
+var aliceKnows = await graph.Relationships<Knows>()
     .Where(k => k.StartNodeId == aliceId)
-    .ToList();
+    .ToListAsync();
 
 // Bidirectional search
-var connectedToAlice = graph.Relationships<Knows>()
+var connectedToAlice = await graph.Relationships<Knows>()
     .Where(k => k.StartNodeId == aliceId || k.EndNodeId == aliceId)
-    .ToList();
+    .ToListAsync();
 ```
 
 ## Full-Text Search

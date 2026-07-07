@@ -56,14 +56,12 @@ dotnet add package Cvoya.Graph.Model.Analyzers
 using Cvoya.Graph.Model;
 
 [Node("Person")]
-public class Person : INode
+public record Person : Node
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-
-    [Property("first_name", Index = true)]
+    [Property(Label = "first_name", IsIndexed = true)]
     public string FirstName { get; set; } = string.Empty;
 
-    [Property("last_name", Index = true)]
+    [Property(Label = "last_name", IsIndexed = true)]
     public string LastName { get; set; } = string.Empty;
 
     // The Property attribute is optional
@@ -81,13 +79,8 @@ public class Address
 }
 
 [Relationship("KNOWS")]
-public class Knows : IRelationship
+public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string StartNodeId { get; set; } = string.Empty;
-    public string EndNodeId { get; set; } = string.Empty;
-    public RelationshipDirection Direction { get; init; } = RelationshipDirection.Outgoing;
-
     public DateTime Since { get; set; }
 
     // Relationships cannot have complex properties
@@ -105,13 +98,15 @@ public record Person : Node
     public Address? HomeAddress { get; set; }
 }
 
-public record Knows : Relationship
+public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId)
 {
     public DateTime Since { get; set; }
 }
+```
 
-// or
+or:
 
+```csharp
 public record Knows : Relationship
 {
     public Knows() : base(Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N")) { }
@@ -159,24 +154,23 @@ await graph.CreateNodeAsync(alice);
 var bob = new Person { FirstName = "Bob", LastName = "Jones", Age = 25 };
 await graph.CreateNodeAsync(bob);
 
-var friendship = new Knows(alice, bob)
+var friendship = new Knows(alice.Id, bob.Id)
 {
     Since = DateTime.UtcNow.AddYears(-2)
 };
 await graph.CreateRelationshipAsync(friendship);
 
 // Query with LINQ
-var youngPeople = await (await graph.NodesAsync<Person>())
+var youngPeople = await graph.Nodes<Person>()
     .Where(p => p.Age < 30)
     .Where(p => p.HomeAddress != null && p.HomeAddress.City == "Portland")
     .OrderBy(p => p.FirstName)
     .ToListAsync();
 
 // Graph traversal
-var alicesFriends = await (await graph.NodesAsync<Person>())
+var alicesFriends = await graph.Nodes<Person>()
     .Where(p => p.FirstName == "Alice")
-    .Traverse<Person, Knows, Person>()
-    .WithDepth(1, 2)
+    .Traverse<Knows, Person>(minDepth: 1, maxDepth: 2)
     .Where(friend => friend.Age > 20)
     .ToListAsync();
 ```
