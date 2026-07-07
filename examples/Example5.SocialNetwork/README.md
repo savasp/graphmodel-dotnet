@@ -87,7 +87,7 @@ Suggest new connections based on:
 
 The example demonstrates common social network patterns:
 
-- Bidirectional relationships (mutual following)
+- Query-time traversal in either direction for mutual-following patterns
 - Content engagement tracking
 - Social graph traversal and analytics
 - Basic recommendation algorithms

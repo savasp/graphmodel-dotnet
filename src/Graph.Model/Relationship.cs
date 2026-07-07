@@ -20,7 +20,10 @@ namespace Cvoya.Graph.Model;
 /// </summary>
 /// <param name="StartNodeId">The ID of the start node in the relationship.</param>
 /// <param name="EndNodeId">The ID of the end node in the relationship.</param>
-/// <param name="Direction">The direction of the relationship, defaulting to <see cref="RelationshipDirection.Outgoing"/>.</param>
+/// <param name="Direction">
+/// The physical storage direction of the relationship relative to <paramref name="StartNodeId"/>
+/// and <paramref name="EndNodeId"/>, defaulting to <see cref="RelationshipDirection.Outgoing"/>.
+/// </param>
 /// <remarks>
 /// Use this class as a base class for your domain-specific relationship models to get automatic ID generation
 /// and basic relationship functionality.

@@ -132,6 +132,22 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task OrderByThenCount_DropsOrderingFromAggregate()
+    {
+        var source = Root.Nodes<Person>().OrderBy(p => p.LastName);
+        var expr = MarkerExpressions.Call<Person>("CountAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task OrderByTakeThenCount_PreservesOrderingInPipedWith()
+    {
+        var source = Root.Nodes<Person>().OrderBy(p => p.LastName).Take(5);
+        var expr = MarkerExpressions.Call<Person>("CountAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
     public Task Count_WithPredicate()
     {
         var source = Root.Nodes<Person>();
@@ -179,6 +195,15 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
     public Task Max_WithSelector()
     {
         var source = Root.Nodes<Person>();
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("MaxAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task OrderByThenMax_DropsOrderingFromAggregate()
+    {
+        var source = Root.Nodes<Person>().OrderBy(p => p.LastName);
         Expression<Func<Person, int>> selector = p => p.Age;
         var expr = MarkerExpressions.Call<Person>("MaxAsyncMarker", source.Expression, selector);
         return VerifyTranslation(typeof(Person), expr);

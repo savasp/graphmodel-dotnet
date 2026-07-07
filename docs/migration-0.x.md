@@ -344,7 +344,34 @@ When constructed with an external `IDriver`, the caller keeps driver ownership a
 Missing entities from get/update/delete operations now throw `EntityNotFoundException`, which
 derives from `GraphException`, instead of relying on the broader graph exception contract.
 
-## 13. `FirstAsync` and `SingleAsync` now throw on empty query results
+## 13. `RelationshipDirection.Bidirectional` is removed
+
+`RelationshipDirection` now has only `Outgoing` and `Incoming`, and it describes storage direction
+at rest. `Outgoing` stores the physical edge as `StartNodeId -> EndNodeId`; `Incoming` stores it as
+`EndNodeId -> StartNodeId`. There is no undirected stored relationship shape in Neo4j, so
+`RelationshipDirection.Bidirectional` no longer compiles:
+
+```diff
+-new Knows { StartNodeId = a.Id, EndNodeId = b.Id, Direction = RelationshipDirection.Bidirectional }
++new Knows { StartNodeId = a.Id, EndNodeId = b.Id }
+```
+
+If you need to traverse relationships in either direction, keep the stored relationship directed
+and choose both-direction traversal at query time:
+
+```csharp
+var connected = await graph.Nodes<Person>()
+    .Where(p => p.Id == personId)
+    .Traverse<Knows, Person>(GraphTraversalDirection.Both)
+    .ToListAsync();
+```
+
+Pre-existing stored data written by older GraphModel versions with `Direction = Bidirectional` is
+not rewritten. The Neo4j provider ignores unrecognized relationship direction values on read and
+materializes them as `RelationshipDirection.Outgoing`, so legacy data remains readable but no
+longer represents a bidirectional storage contract.
+
+## 14. `FirstAsync` and `SingleAsync` now throw on empty query results
 
 Graph query terminals now match LINQ-to-Objects element semantics for empty and multiple-result
 sources. `FirstAsync` and `SingleAsync` throw `InvalidOperationException` when the query returns no

@@ -63,6 +63,14 @@ public class WhereTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task Where_CapturedQueryableConstantContainsEntityId()
+    {
+        IQueryable<string> ids = new[] { "person-1", "person-2" }.AsQueryable();
+        var query = Root.Nodes<Person>().Where(p => ids.Contains(p.Id));
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task Where_ComplexPropertyNavigation()
     {
         var query = Root.Nodes<Person>().Where(p => p.HomeAddress!.City == "Seattle");

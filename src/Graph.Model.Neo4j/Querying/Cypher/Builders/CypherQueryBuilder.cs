@@ -94,6 +94,8 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     private bool _loadPathSegment;
     private bool _hasMultiplePathSegments;
     private bool _isGraphPathResult;
+    private bool _isAggregateTerminalQuery;
+    private bool _hasPaginationAfterOrdering;
 
     public PathSegmentProjectionEnum PathSegmentProjection = PathSegmentProjectionEnum.Full;
 
@@ -169,6 +171,12 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     {
         _orderByPart.SetAggregationQuery();
         _logger.LogDebug("Query marked as aggregation query - ORDER BY clauses will be disabled");
+    }
+
+    public void SetAggregateTerminalQuery()
+    {
+        _isAggregateTerminalQuery = true;
+        SetAggregationQuery();
     }
 
     public void SetDepth(int minDepth, int maxDepth)
@@ -303,8 +311,18 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         _orderByPart.AddOrderBy(expression, isDescending);
     }
 
-    public void SetSkip(int skip) => _paginationPart.SetSkip(skip);
-    public void SetLimit(int limit) => _paginationPart.SetLimit(limit);
+    public void SetSkip(int skip)
+    {
+        _hasPaginationAfterOrdering |= _orderByPart.HasOrderBy;
+        _paginationPart.SetSkip(skip);
+    }
+
+    public void SetLimit(int limit)
+    {
+        _hasPaginationAfterOrdering |= _orderByPart.HasOrderBy;
+        _paginationPart.SetLimit(limit);
+    }
+
     public void SetAggregation(string function, string expression) => _returnPart.SetAggregation(function, expression);
 
     public string AddParameter(object? value)
@@ -343,12 +361,16 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         // Handle special query types first
         if (_returnPart.IsExistsQuery)
         {
-            return BuildExistsQuery();
+            return ShouldPipeAggregateTerminalRows()
+                ? BuildAggregateTerminalQueryWithPipedRows()
+                : BuildExistsQuery();
         }
 
         if (_returnPart.IsNotExistsQuery)
         {
-            return BuildNotExistsQuery();
+            return ShouldPipeAggregateTerminalRows()
+                ? BuildAggregateTerminalQueryWithPipedRows()
+                : BuildNotExistsQuery();
         }
 
         // Handle complex properties if needed
@@ -368,7 +390,9 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         }
 
         // Build a simple query using the focused query parts
-        return BuildSimpleQuery();
+        return ShouldPipeAggregateTerminalRows()
+            ? BuildAggregateTerminalQueryWithPipedRows()
+            : BuildSimpleQuery();
     }
 
     public bool NeedsComplexProperties(Type type)
@@ -646,6 +670,27 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         {
             part.AppendTo(query, _parameters);
         }
+
+        return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
+    }
+
+    private bool ShouldPipeAggregateTerminalRows() =>
+        _isAggregateTerminalQuery && _hasPaginationAfterOrdering;
+
+    private CypherQuery BuildAggregateTerminalQueryWithPipedRows()
+    {
+        _logger.LogDebug("Building aggregate terminal query with ordered/paginated piped rows");
+
+        var query = new StringBuilder();
+
+        _wherePart.FinalizePendingClauses();
+        _matchPart.AppendTo(query, _parameters);
+        _wherePart.AppendTo(query, _parameters);
+
+        query.AppendLine($"WITH {_mainNodeAlias ?? RootNodeAlias ?? "src"}");
+        _orderByPart.AppendTo(query, _parameters);
+        _paginationPart.AppendTo(query, _parameters);
+        _returnPart.AppendTo(query, _parameters);
 
         return new CypherQuery(query.ToString().Trim(), new Dictionary<string, object?>(_parameters));
     }
