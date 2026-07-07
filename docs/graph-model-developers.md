@@ -176,7 +176,7 @@ query suite. To catch those findings before pushing, install the CodeQL CLI and 
 The script writes SARIF output to `artifacts/codeql/results/csharp.sarif`. It
 downloads the `codeql/csharp-queries` pack by default so local scans use the same
 query suite as `.github/workflows/codeql.yml`. The default CodeQL build mode is
-`none`, which is the most portable local option for C#. In that mode, the script
+`none`, which is the required portable local gate for C#. In that mode, the script
 analyzes a disposable source copy and temporary database outside the checkout so
 CodeQL dependency probing cannot rewrite repository files.
 
@@ -186,6 +186,13 @@ use manual build mode:
 ```bash
 ./scripts/run-codeql.sh --build-mode manual
 ```
+
+Manual mode is optional because it relies on CodeQL compiler tracing support for
+the local platform and .NET toolchain. If manual mode completes the build but
+CodeQL exits with "could not process any" C# source, rerun the default command
+without `--build-mode manual`. A successful default run satisfies the local
+CodeQL gate; capture the manual-mode CodeQL version and `db/csharp/log` path in
+PR notes only if the manual failure is relevant.
 
 For a stricter local gate:
 
