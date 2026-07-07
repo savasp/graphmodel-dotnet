@@ -1012,7 +1012,7 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
 
     protected override Expression VisitConstant(ConstantExpression node)
     {
-        _logger.LogDebug("Visiting constant: {Value}", node.Value);
+        _logger.LogDebug("Visiting constant of type {ConstantType}", node.Value?.GetType().Name ?? "null");
 
         if (node.Value == null)
         {
@@ -1020,7 +1020,10 @@ internal class ExpressionToCypherVisitor : ExpressionVisitor
         }
 
         var paramRef = _queryBuilder.AddParameter(node.Value);
-        _logger.LogDebug("Added parameter: {Value} -> {ParamRef}", node.Value, paramRef);
+        _logger.LogDebug(
+            "Added parameter reference {ParamRef} for constant type {ConstantType}",
+            paramRef,
+            node.Value.GetType().Name);
         return Expression.Constant(paramRef);
     }
 

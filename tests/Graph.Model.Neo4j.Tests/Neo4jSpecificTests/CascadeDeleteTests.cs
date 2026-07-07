@@ -91,7 +91,7 @@ public class CascadeDeleteTests(TestInfrastructureFixture fixture) :
 
     private async Task CreateRawCollisionNodeAsync(string nodeId)
     {
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var neo4jTransaction = (GraphTransaction)transaction;
 
         const string cypher = @"
@@ -118,7 +118,7 @@ public class CascadeDeleteTests(TestInfrastructureFixture fixture) :
 
     private async Task<int> ReadCountAsync(string cypher, object parameters)
     {
-        await using var transaction = await Graph.GetTransactionAsync();
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var neo4jTransaction = (GraphTransaction)transaction;
 
         var result = await neo4jTransaction.Transaction.RunAsync(cypher, parameters);

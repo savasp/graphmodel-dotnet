@@ -60,17 +60,23 @@ internal class Neo4jGraph : IGraph
     public SchemaRegistry SchemaRegistry => _schemaRegistry;
 
     /// <inheritdoc />
-    public async Task<IGraphTransaction> GetTransactionAsync()
+    public async Task<IGraphTransaction> GetTransactionAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             _logger.LogDebug("Beginning new transaction");
 
             var graphTransaction = new GraphTransaction(_graphContext);
-            await graphTransaction.BeginTransactionAsync().ConfigureAwait(false);
+            await graphTransaction.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully began transaction");
             return graphTransaction;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -151,6 +157,8 @@ internal class Neo4jGraph : IGraph
         if (string.IsNullOrEmpty(node.Id))
             throw new ArgumentException("Node ID cannot be null or empty.", nameof(node.Id));
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             _logger.LogDebug("Creating node of type {NodeType}", typeof(N).Name);
@@ -162,9 +170,14 @@ internal class Neo4jGraph : IGraph
                 graphContext: _graphContext,
                 transaction: transaction,
                 tx => _graphContext.NodeManager.CreateNodeAsync(node, tx, cancellationToken),
-                $"Failed to create node of type {typeof(N).Name}").ConfigureAwait(false);
+                $"Failed to create node of type {typeof(N).Name}",
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully created node {NodeId}", node.Id);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -191,6 +204,8 @@ internal class Neo4jGraph : IGraph
         if (string.IsNullOrEmpty(relationship.Id))
             throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship.Id));
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             _logger.LogDebug("Creating relationship of type {RelationshipType}", typeof(R).Name);
@@ -203,12 +218,17 @@ internal class Neo4jGraph : IGraph
                 transaction,
                 async tx =>
                 {
-                    await _graphContext.RelationshipManager.CreateRelationshipAsync(relationship, tx).ConfigureAwait(false);
+                    await _graphContext.RelationshipManager.CreateRelationshipAsync(relationship, tx, cancellationToken).ConfigureAwait(false);
                     return true;
                 },
-                $"Failed to create relationship of type {typeof(R).Name}").ConfigureAwait(false);
+                $"Failed to create relationship of type {typeof(R).Name}",
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully created relationship {RelationshipId}", relationship.Id);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -237,6 +257,8 @@ internal class Neo4jGraph : IGraph
 
         GraphDataModel.EnforceGraphConstraintsForNode(node);
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             _logger.LogDebug("Updating node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
@@ -246,12 +268,17 @@ internal class Neo4jGraph : IGraph
                 transaction,
                 async tx =>
                 {
-                    await _graphContext.NodeManager.UpdateNodeAsync(node, tx).ConfigureAwait(false);
+                    await _graphContext.NodeManager.UpdateNodeAsync(node, tx, cancellationToken).ConfigureAwait(false);
                     return true;
                 },
-            $"Failed to update node {node.Id} of type {typeof(N).Name}").ConfigureAwait(false);
+                $"Failed to update node {node.Id} of type {typeof(N).Name}",
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully updated node {NodeId}", node.Id);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -280,6 +307,8 @@ internal class Neo4jGraph : IGraph
 
         GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             _logger.LogDebug("Updating relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
@@ -289,12 +318,17 @@ internal class Neo4jGraph : IGraph
                 transaction,
                 async tx =>
                 {
-                    await _graphContext.RelationshipManager.UpdateRelationshipAsync(relationship, tx).ConfigureAwait(false);
+                    await _graphContext.RelationshipManager.UpdateRelationshipAsync(relationship, tx, cancellationToken).ConfigureAwait(false);
                     return true;
                 },
-            $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}").ConfigureAwait(false);
+                $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}",
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully updated relationship {RelationshipId}", relationship.Id);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -317,22 +351,29 @@ internal class Neo4jGraph : IGraph
         if (string.IsNullOrEmpty(id))
             throw new ArgumentException("Node ID cannot be null or empty.", nameof(id));
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             _logger.LogDebug("Deleting node {NodeId}", id);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
-            _graphContext,
-            transaction,
+                _graphContext,
+                transaction,
                 async tx =>
                 {
                     await _graphContext.NodeManager.DeleteNodeAsync(id, tx, cascadeDelete, cancellationToken).ConfigureAwait(false);
                     return true;
                 },
-            $"Failed to delete node {id}").ConfigureAwait(false);
+                $"Failed to delete node {id}",
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully deleted node {NodeId}", id);
 
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -354,22 +395,29 @@ internal class Neo4jGraph : IGraph
         if (string.IsNullOrEmpty(id))
             throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(id));
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             _logger.LogDebug("Deleting relationship {RelationshipId}", id);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
-            _graphContext,
-            transaction,
+                _graphContext,
+                transaction,
                 async tx =>
                 {
                     await _graphContext.RelationshipManager.DeleteRelationshipAsync(id, tx, cancellationToken).ConfigureAwait(false);
                     return true;
                 },
                 $"Failed to delete relationship {id}",
-                _logger).ConfigureAwait(false);
+                _logger,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully deleted relationship {RelationshipId}", id);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -432,7 +480,7 @@ internal class Neo4jGraph : IGraph
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        _logger.LogDebug("Building full text search queryable for query: {Query}", query);
+        _logger.LogDebug("Building full text search queryable; query length: {QueryLength}", query.Length);
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -444,7 +492,7 @@ internal class Neo4jGraph : IGraph
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        _logger.LogDebug("Building full text search queryable for nodes with query: {Query}", query);
+        _logger.LogDebug("Building full text search queryable for nodes; query length: {QueryLength}", query.Length);
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -456,7 +504,7 @@ internal class Neo4jGraph : IGraph
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        _logger.LogDebug("Building full text search queryable for relationships with query: {Query}", query);
+        _logger.LogDebug("Building full text search queryable for relationships; query length: {QueryLength}", query.Length);
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -468,7 +516,10 @@ internal class Neo4jGraph : IGraph
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        _logger.LogDebug("Building full text search queryable for nodes of type {NodeType} with query: {Query}", typeof(T).Name, query);
+        _logger.LogDebug(
+            "Building full text search queryable for nodes of type {NodeType}; query length: {QueryLength}",
+            typeof(T).Name,
+            query.Length);
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -480,7 +531,10 @@ internal class Neo4jGraph : IGraph
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        _logger.LogDebug("Building full text search queryable for relationships of type {RelationshipType} with query: {Query}", typeof(T).Name, query);
+        _logger.LogDebug(
+            "Building full text search queryable for relationships of type {RelationshipType}; query length: {QueryLength}",
+            typeof(T).Name,
+            query.Length);
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -495,6 +549,10 @@ internal class Neo4jGraph : IGraph
             _logger.LogInformation("Recreating indexes for Neo4j graph");
             await _graphContext.SchemaManager.RecreateIndexesAsync(cancellationToken).ConfigureAwait(false);
             _logger.LogInformation("Index recreation completed successfully");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

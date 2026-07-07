@@ -15,7 +15,7 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 
 using System.Linq.Expressions;
-using System.Text.Json;
+using System.Runtime.CompilerServices;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
@@ -30,7 +30,6 @@ internal sealed class CypherEngine
     private readonly ILogger<CypherEngine> _logger;
     private readonly CypherExecutor _executor;
     private readonly ResultMaterializer _materializer;
-    private readonly CypherResultProcessor _resultProcessor;
     private readonly ILoggerFactory? _loggerFactory;
 
     public CypherEngine(EntityFactory entityFactory, ILoggerFactory? loggerFactory)
@@ -41,7 +40,6 @@ internal sealed class CypherEngine
         // Create our internal components
         _executor = new CypherExecutor(loggerFactory);
         _materializer = new ResultMaterializer(entityFactory, loggerFactory);
-        _resultProcessor = new CypherResultProcessor(_entityFactory, loggerFactory);
         _loggerFactory = loggerFactory;
 
     }
@@ -58,8 +56,7 @@ internal sealed class CypherEngine
             // Build the Cypher query from the expression
             var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
 
-            _logger.LogDebug($"Generated Cypher: {cypherQuery.Text}");
-            _logger.LogDebug($"Parameters: {JsonSerializer.Serialize(cypherQuery.Parameters)}");
+            LogCypherQuery(cypherQuery);
 
             // Execute the query
             var records = await _executor.ExecuteAsync(
@@ -72,10 +69,108 @@ internal sealed class CypherEngine
             var result = await _materializer.MaterializeAsync<T>(records, cypherQuery.GraphPathTypes, cancellationToken).ConfigureAwait(false);
             return result;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to execute query for type {Type}", typeof(T).Name);
             throw;
+        }
+    }
+
+    public async IAsyncEnumerable<T> StreamAsync<T>(
+        Expression expression,
+        GraphTransaction transaction,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        _logger.LogDebug("Streaming query for type {Type}", typeof(T).Name);
+
+        var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
+        LogCypherQuery(cypherQuery);
+
+        var records = _executor.StreamAsync(
+            cypherQuery.Text,
+            cypherQuery.Parameters,
+            transaction,
+            cancellationToken);
+
+        if (cypherQuery.GraphPathTypes is { } graphPathTypes && typeof(T) == typeof(IGraphPath))
+        {
+            await foreach (var path in StreamGraphPathsAsync(records, graphPathTypes, cancellationToken)
+                .WithCancellation(cancellationToken)
+                .ConfigureAwait(false))
+            {
+                yield return (T)path;
+            }
+
+            yield break;
+        }
+
+        await foreach (var record in records.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var item = await _materializer.MaterializeRecordAsync<T>(
+                record,
+                cancellationToken).ConfigureAwait(false);
+
+            if (item is not null)
+            {
+                yield return item;
+            }
+        }
+    }
+
+    private async IAsyncEnumerable<IGraphPath> StreamGraphPathsAsync(
+        IAsyncEnumerable<global::Neo4j.Driver.IRecord> records,
+        (Type Source, Type Relationship, Type Target) graphPathTypes,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        List<CypherResultProcessor.GraphPathHop>? currentHops = null;
+        int? currentPathIndex = null;
+
+        await foreach (var record in records.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // TraversePaths orders rows by pathIndex, then hopIndex, so a path can be emitted once its index changes.
+            var hop = _materializer.ProcessGraphPathHop(record, graphPathTypes, cancellationToken);
+            if (currentPathIndex is int pathIndex && hop.PathIndex != pathIndex)
+            {
+                yield return _materializer.MaterializeGraphPath(currentHops!, graphPathTypes);
+                currentHops = [];
+            }
+
+            currentPathIndex = hop.PathIndex;
+            currentHops ??= [];
+            currentHops.Add(hop);
+        }
+
+        if (currentHops is { Count: > 0 })
+        {
+            yield return _materializer.MaterializeGraphPath(currentHops, graphPathTypes);
+        }
+    }
+
+    private void LogCypherQuery(CypherQuery cypherQuery)
+    {
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            var parameterNames = cypherQuery.Parameters.Keys.ToArray();
+            _logger.LogDebug("Generated Cypher: {Cypher}", cypherQuery.Text);
+            _logger.LogDebug(
+                "Generated Cypher parameter names: {ParameterNames}; count: {ParameterCount}",
+                parameterNames,
+                parameterNames.Length);
+        }
+
+        if (_logger.IsEnabled(LogLevel.Trace))
+        {
+            _logger.LogTrace("Generated Cypher parameters: {Parameters}", cypherQuery.Parameters);
         }
     }
 

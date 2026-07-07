@@ -99,6 +99,10 @@ internal class Neo4jSchemaManager
             _isSchemaInitialized = true;
             _logger.LogInformation("Neo4j schema initialization completed successfully");
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to initialize Neo4j schema");
@@ -117,6 +121,8 @@ internal class Neo4jSchemaManager
     /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task RecreateIndexesAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         _logger.LogInformation("Recreating Neo4j indexes...");
 
         try
@@ -142,6 +148,10 @@ internal class Neo4jSchemaManager
             await CreateGeneralFullTextIndexesAsync(cancellationToken).ConfigureAwait(false);
 
             _logger.LogInformation("Neo4j indexes recreated successfully");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

@@ -297,14 +297,14 @@ public interface IErrorHandlingTests : IGraphModelTest
     }
 
     [Fact]
-    public async Task CancelledOperation_ThrowsGraphException()
+    public async Task CancelledOperation_ThrowsOperationCanceledException()
     {
         var node = new TestNode { Name = "CancelTest" };
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel(); // Cancel immediately
+        await cts.CancelAsync();
 
-        await Assert.ThrowsAnyAsync<GraphException>(async () =>
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
         {
             await Graph.CreateNodeAsync(node, null, cts.Token);
         });
@@ -360,7 +360,7 @@ public interface IErrorHandlingTests : IGraphModelTest
     [Fact]
     public async Task Transaction_UseAfterCommit_ThrowsException()
     {
-        var transaction = await Graph.GetTransactionAsync();
+        var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var node = new TestNode { Name = "TransactionTest" };
 
         await Graph.CreateNodeAsync(node, transaction, TestContext.Current.CancellationToken);
@@ -378,7 +378,7 @@ public interface IErrorHandlingTests : IGraphModelTest
     [Fact]
     public async Task Transaction_UseAfterRollback_ThrowsException()
     {
-        var transaction = await Graph.GetTransactionAsync();
+        var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var node = new TestNode { Name = "TransactionTest" };
 
         await Graph.CreateNodeAsync(node, transaction, TestContext.Current.CancellationToken);
@@ -396,7 +396,7 @@ public interface IErrorHandlingTests : IGraphModelTest
     [Fact]
     public async Task Transaction_UseAfterDispose_ThrowsException()
     {
-        var transaction = await Graph.GetTransactionAsync();
+        var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
         var node = new TestNode { Name = "TransactionTest" };
 
         await Graph.CreateNodeAsync(node, transaction, TestContext.Current.CancellationToken);
@@ -414,7 +414,7 @@ public interface IErrorHandlingTests : IGraphModelTest
     {
         var task1 = Task.Run(async () =>
         {
-            await using var transaction = await Graph.GetTransactionAsync();
+            await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
             var node = new TestNode { Name = "Transaction1" };
             await Graph.CreateNodeAsync(node, transaction, TestContext.Current.CancellationToken);
             await Task.Delay(100); // Simulate work
@@ -424,7 +424,7 @@ public interface IErrorHandlingTests : IGraphModelTest
 
         var task2 = Task.Run(async () =>
         {
-            await using var transaction = await Graph.GetTransactionAsync();
+            await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
             var node = new TestNode { Name = "Transaction2" };
             await Graph.CreateNodeAsync(node, transaction, TestContext.Current.CancellationToken);
             await Task.Delay(100); // Simulate work

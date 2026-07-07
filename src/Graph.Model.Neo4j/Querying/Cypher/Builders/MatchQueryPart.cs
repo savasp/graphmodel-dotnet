@@ -155,7 +155,10 @@ internal class MatchQueryPart : ICypherQueryPart
             builder.Append("MATCH ");
             builder.AppendJoin(", ", _matchClauses);
             builder.AppendLine();
-            _logger.LogDebug("[MatchQueryPart] Added main MATCH clauses: {Clauses}", string.Join(", ", _matchClauses));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("[MatchQueryPart] Added main MATCH clauses: {Clauses}", string.Join(", ", _matchClauses));
+            }
         }
 
         // Add additional MATCH statements (for complex properties, etc.)

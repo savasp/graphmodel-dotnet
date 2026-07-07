@@ -454,7 +454,7 @@ public interface IGraph : IAsyncDisposable
     Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
 
     // Transaction management
-    Task<IGraphTransaction> GetTransactionAsync();
+    Task<IGraphTransaction> GetTransactionAsync(CancellationToken cancellationToken = default);
 }
 ```
 

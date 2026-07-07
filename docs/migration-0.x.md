@@ -300,6 +300,27 @@ they resolve by namespace, not class name. You only need a change if you referen
 *by name*, i.e. static-style invocation (`DynamicEntityExtensions.GetProperty<int>(node, "age")`
 → `Neo4jDynamicEntityExtensions.GetProperty<int>(node, "age")`) or reflection by type name.
 
+## 11. Cancellation is now propagated and streaming is incremental
+
+`IGraph.GetTransactionAsync` now accepts an optional `CancellationToken`:
+
+```csharp
+await using var transaction = await graph.GetTransactionAsync(cancellationToken);
+```
+
+This is source-compatible for normal calls because the parameter is optional, but it is a binary
+change for consumers compiled against the previous pre-1.0 API.
+
+Cancellation tokens are now checked and propagated through the Neo4j provider's transaction,
+CRUD/schema, query execution, result-processing, and materialization paths. A pre-cancelled or
+cancelled operation now surfaces `OperationCanceledException`; it is no longer converted into an
+empty result or wrapped in `GraphException`.
+
+`await foreach` over a Neo4j `IGraphQueryable<T>` now consumes the driver cursor incrementally.
+Buffered terminal operators such as `ToListAsync` still buffer by design. If an auto-transaction
+owned by the streaming query is abandoned before enumeration completes, the provider rolls it back
+and disposes it; caller-owned ambient transactions remain caller-owned.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.
@@ -309,7 +330,5 @@ they resolve by namespace, not class name. You only need a change if you referen
 - The depth/direction overload *shapes* on `Traverse`/`TraversePaths` (no-args, `maxDepth`,
   `minDepth, maxDepth`, `direction`, options-lambda) — unchanged; only the type-argument count
   changed (§7), not which overloads exist.
-- Cancellation token support on `IGraph` members — tracked separately (issue #73); not touched here.
-- Exception-type contract for terminal operators — tracked separately (issue #76); not touched here.
-- True incremental streaming for `IAsyncEnumerable<T>` — tracked separately (issue #78); this
-  release lands the interface and a correct buffered implementation only.
+- Non-cancellation exception-type cleanup for terminal operators — tracked separately (issue #76);
+  cancellation now consistently surfaces `OperationCanceledException`.

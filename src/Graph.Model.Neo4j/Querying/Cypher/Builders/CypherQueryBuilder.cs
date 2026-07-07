@@ -309,17 +309,23 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     public string AddParameter(object? value)
     {
-        _logger.LogDebug("Adding parameter with value: {Value}", value);
-
         // Check if we already have this value as a parameter
         var existingParam = _parameters.FirstOrDefault(p => Equals(p.Value, value));
         if (existingParam.Key != null)
         {
+            _logger.LogDebug(
+                "Reusing Cypher parameter {ParameterName} of type {ParameterType}",
+                existingParam.Key,
+                value?.GetType().Name ?? "null");
             return $"${existingParam.Key}";
         }
 
         var paramName = $"p{_parameterCounter++}";
         _parameters[paramName] = value;
+        _logger.LogDebug(
+            "Added Cypher parameter {ParameterName} of type {ParameterType}",
+            paramName,
+            value?.GetType().Name ?? "null");
         return $"${paramName}";
     }
 
@@ -989,9 +995,15 @@ internal class CypherQueryBuilder(CypherQueryContext context)
         if (!string.IsNullOrEmpty(_intermediateTargetAlias) && src == "src" && PathSegmentSourceAlias == "src" && !_hasMultiplePathSegments)
         {
             _logger.LogDebug("Updating user projections for combined pattern - replacing {OldAlias} with {NewAlias}", src, _intermediateTargetAlias);
-            _logger.LogDebug("Return clauses before update: {Clauses}", string.Join(", ", _returnPart.ReturnClauses));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("Return clauses before update: {Clauses}", string.Join(", ", _returnPart.ReturnClauses));
+            }
             _returnPart.UpdateAliasesForPathSegments(src, _intermediateTargetAlias);
-            _logger.LogDebug("Return clauses after update: {Clauses}", string.Join(", ", _returnPart.ReturnClauses));
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("Return clauses after update: {Clauses}", string.Join(", ", _returnPart.ReturnClauses));
+            }
         }
 
         // Add ordering and pagination before the final return
@@ -1101,7 +1113,10 @@ internal class CypherQueryBuilder(CypherQueryContext context)
             _ => throw new NotSupportedException($"Unknown traversal direction: {direction}")
         };
 
-        _logger.LogDebug($"Building deferred path segment pattern with direction {direction}: {pattern}");
+        _logger.LogDebug(
+            "Building deferred path segment pattern with direction {Direction}: {Pattern}",
+            direction,
+            pattern);
 
         // Check if we have nested path segments by looking at the source alias
         // If the source alias is "tgt", it means we're extending an existing pattern

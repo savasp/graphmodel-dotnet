@@ -92,6 +92,10 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
             return node;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating node of type {NodeType}", typeof(TNode).Name);
@@ -142,7 +146,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             _logger.LogInformation("Updated node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
             return true;
         }
-        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException)
+        catch (Exception ex) when (ex is not GraphException and not KeyNotFoundException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Error updating node {NodeId} of type {NodeType}", node.Id, typeof(TNode).Name);
             throw new GraphException($"Failed to update node: {ex.Message}", ex);
@@ -238,7 +242,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             _logger.LogInformation("Deleted node with ID {NodeId}", nodeId);
             return true;
         }
-        catch (Exception ex) when (ex is not KeyNotFoundException && ex is not GraphException)
+        catch (Exception ex) when (ex is not KeyNotFoundException && ex is not GraphException && ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Error deleting node with ID: {NodeId}", nodeId);
             throw new GraphException($"Failed to delete node: {ex.Message}", ex);

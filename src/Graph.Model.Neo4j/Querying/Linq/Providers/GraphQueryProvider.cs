@@ -15,10 +15,12 @@
 namespace Cvoya.Graph.Model.Neo4j.Querying.Linq.Providers;
 
 using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using Cvoya.Graph.Model.Neo4j.Core;
 using Cvoya.Graph.Model.Neo4j.Linq.Helpers;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Execution;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -121,12 +123,15 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(expression);
+        cancellationToken.ThrowIfCancellationRequested();
 
         _logger.LogDebug("Executing async query for result type: {ResultType}", typeof(TResult).Name);
         _logger.LogDebug("Expression type: {ExpressionType}", expression.Type.Name);
 
-        // Log the expression tree for debugging
-        LogExpressionTree(expression);
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            LogExpressionTree(expression);
+        }
 
         try
         {
@@ -143,15 +148,91 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
                 },
                 "Error executing query",
                 _logger,
-                isReadOnly: _isReadOnly).ConfigureAwait(false);
+                isReadOnly: _isReadOnly,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             return result!;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error executing query");
 
             throw;
+        }
+    }
+
+    public async IAsyncEnumerable<TResult> StreamAsync<TResult>(
+        Expression expression,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        _logger.LogDebug("Streaming async query for result type: {ResultType}", typeof(TResult).Name);
+        _logger.LogDebug("Expression type: {ExpressionType}", expression.Type.Name);
+
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            LogExpressionTree(expression);
+        }
+
+        GraphTransaction? tx = null;
+        var ownsTransaction = _transaction is null;
+        var completed = false;
+
+        try
+        {
+            tx = await TransactionHelpers.GetOrCreateTransactionAsync(
+                _graphContext,
+                _transaction,
+                _isReadOnly,
+                cancellationToken).ConfigureAwait(false);
+
+            await foreach (var item in _cypherEngine.StreamAsync<TResult>(expression, tx, cancellationToken)
+                .WithCancellation(cancellationToken)
+                .ConfigureAwait(false))
+            {
+                yield return item;
+            }
+
+            if (ownsTransaction)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await tx.CommitAsync().ConfigureAwait(false);
+            }
+
+            completed = true;
+        }
+        finally
+        {
+            if (ownsTransaction && tx is not null)
+            {
+                if (!completed && tx.IsActive)
+                {
+                    try
+                    {
+                        await tx.Rollback().ConfigureAwait(false);
+                    }
+                    catch (GraphException ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to roll back abandoned streaming query transaction");
+                    }
+                    catch (Neo4jException ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to roll back abandoned streaming query transaction");
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to roll back abandoned streaming query transaction");
+                    }
+                }
+
+                await tx.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 

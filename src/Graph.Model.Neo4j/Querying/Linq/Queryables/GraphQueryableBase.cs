@@ -81,18 +81,8 @@ internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGrap
 
     #region IAsyncEnumerable Implementation
 
-    public async IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
-    {
-        // Execute the query asynchronously
-        var results = await Provider.ExecuteAsync<IEnumerable<T>>(Expression, cancellationToken).ConfigureAwait(false);
-
-        // Yield each result
-        foreach (var item in results)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            yield return item;
-        }
-    }
+    public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
+        Provider.StreamAsync<T>(Expression, cancellationToken).GetAsyncEnumerator(cancellationToken);
 
     #endregion
 

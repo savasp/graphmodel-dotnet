@@ -52,11 +52,7 @@ internal sealed class CypherResultProcessor
     {
         _logger.LogDebug("Processing records for target type: {TargetType}", targetType.Name);
 
-        if (cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogDebug("Processing cancelled.");
-            return Task.FromResult(new List<EntityInfo>());
-        }
+        cancellationToken.ThrowIfCancellationRequested();
 
         // Handle path segments specially
         if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(IGraphPathSegment<,,>))
@@ -392,23 +388,28 @@ internal sealed class CypherResultProcessor
 
         foreach (var record in records)
         {
-            var pathIndex = record["pathIndex"].As<int>();
-            var hopIndex = record["hopIndex"].As<int>();
-
-            var pathSegment = DeserializePathSegment(record["PathSegment"].As<Dictionary<string, object>>())
-                ?? throw new GraphException("Failed to deserialize path segment hop from record.");
-
-            var startNodeEntityInfo = ProcessSingleNodeResult(pathSegment.StartNode, sourceType);
-            var relEntityInfo = ProcessSingleRelationshipFromPathSegment(
-                pathSegment.Relationship, relationshipType,
-                GetNodeId(pathSegment.StartNode.Node),
-                GetNodeId(pathSegment.EndNode.Node));
-            var endNodeEntityInfo = ProcessSingleNodeResult(pathSegment.EndNode, targetType);
-
-            results.Add(new GraphPathHop(pathIndex, hopIndex, startNodeEntityInfo, relEntityInfo, endNodeEntityInfo));
+            results.Add(ProcessGraphPathHop(record, sourceType, relationshipType, targetType));
         }
 
         return results;
+    }
+
+    public GraphPathHop ProcessGraphPathHop(IRecord record, Type sourceType, Type relationshipType, Type targetType)
+    {
+        var pathIndex = record["pathIndex"].As<int>();
+        var hopIndex = record["hopIndex"].As<int>();
+
+        var pathSegment = DeserializePathSegment(record["PathSegment"].As<Dictionary<string, object>>())
+            ?? throw new GraphException("Failed to deserialize path segment hop from record.");
+
+        var startNodeEntityInfo = ProcessSingleNodeResult(pathSegment.StartNode, sourceType);
+        var relEntityInfo = ProcessSingleRelationshipFromPathSegment(
+            pathSegment.Relationship, relationshipType,
+            GetNodeId(pathSegment.StartNode.Node),
+            GetNodeId(pathSegment.EndNode.Node));
+        var endNodeEntityInfo = ProcessSingleNodeResult(pathSegment.EndNode, targetType);
+
+        return new GraphPathHop(pathIndex, hopIndex, startNodeEntityInfo, relEntityInfo, endNodeEntityInfo);
     }
 
     private List<EntityInfo> ProcessProjections(List<IRecord> records, Type targetType)
@@ -470,10 +471,12 @@ internal sealed class CypherResultProcessor
                 // This is a complex property structure - deserialize it properly
                 if (complexPropStructure["Node"] is INode node)
                 {
-                    // Debug: Log the node properties to see what we have
-                    _logger.LogDebug("Complex property structure node has {PropertyCount} properties: [{Properties}]",
-                        node.Properties.Count,
-                        string.Join(", ", node.Properties.Select(kv => $"{kv.Key}={kv.Value}")));
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.LogDebug("Complex property structure node has {PropertyCount} properties: [{Properties}]",
+                            node.Properties.Count,
+                            string.Join(", ", node.Properties.Keys));
+                    }
 
                     // Create the base EntityInfo from the node
                     EntityInfo nodeEntityInfo;
@@ -507,11 +510,13 @@ internal sealed class CypherResultProcessor
                         nodeEntityInfo = CreateEntityInfoFromNode(node, actualNodeType);
                     }
 
-                    // Debug: Log the created EntityInfo
-                    _logger.LogDebug("Created EntityInfo with {SimpleCount} simple properties: [{SimpleProps}], {ComplexCount} complex properties",
-                        nodeEntityInfo.SimpleProperties.Count,
-                        string.Join(", ", nodeEntityInfo.SimpleProperties.Select(kv => $"{kv.Key}={kv.Value.Value}")),
-                        nodeEntityInfo.ComplexProperties.Count);
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.LogDebug("Created EntityInfo with {SimpleCount} simple properties: [{SimpleProps}], {ComplexCount} complex properties",
+                            nodeEntityInfo.SimpleProperties.Count,
+                            string.Join(", ", nodeEntityInfo.SimpleProperties.Keys),
+                            nodeEntityInfo.ComplexProperties.Count);
+                    }
 
                     complexProperties[key] = new Property(
                         PropertyInfo: null!, // We'll handle this differently for projections
@@ -964,8 +969,11 @@ internal sealed class CypherResultProcessor
         }
 
         // Step 3: Fall back to target type
-        _logger.LogDebug("Falling back to target type {TargetType} for node with labels [{Labels}]",
-            targetType.Name, string.Join(", ", node.Labels));
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug("Falling back to target type {TargetType} for node with labels [{Labels}]",
+                targetType.Name, string.Join(", ", node.Labels));
+        }
         return targetType;
     }
 

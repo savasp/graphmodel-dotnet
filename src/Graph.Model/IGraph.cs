@@ -29,8 +29,9 @@ public interface IGraph : IAsyncDisposable
     /// <summary>
     /// Gets a new transaction that can be used for multiple operations
     /// </summary>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>An <see cref="IGraphTransaction"/> instance</returns>
-    Task<IGraphTransaction> GetTransactionAsync();
+    Task<IGraphTransaction> GetTransactionAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets a queryable interface to dynamic nodes in the graph. Building the queryable performs
