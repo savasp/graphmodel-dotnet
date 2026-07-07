@@ -39,17 +39,11 @@ internal sealed class CodeGenModelBuilder
     public static TypeDiscoverySet Build(IEnumerable<INamedTypeSymbol> roots)
     {
         var builder = new CodeGenModelBuilder();
-        var rootModels = new List<SerializableTypeModel>();
         var seenRoots = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var root in roots)
-        {
-            var rootModel = builder.BuildType(root);
-            if (seenRoots.Add(rootModel.Type.Identity))
-            {
-                rootModels.Add(rootModel);
-            }
-        }
+        var rootModels = roots
+            .Select(builder.BuildType)
+            .Where(rootModel => seenRoots.Add(rootModel.Type.Identity))
+            .ToList();
 
         return new TypeDiscoverySet(
             EquatableArray<SerializableTypeModel>.From(rootModels),
@@ -182,28 +176,26 @@ internal sealed class CodeGenModelBuilder
 
         for (var currentType = type; currentType != null; currentType = currentType.BaseType)
         {
-            foreach (var property in currentType.GetMembers().OfType<IPropertySymbol>())
-            {
-                if (property.DeclaredAccessibility == Accessibility.Public &&
+            foreach (var property in currentType.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
                     property.GetMethod != null &&
                     !property.IsStatic &&
-                    seenProperties.Add(property.Name))
-                {
-                    properties.Add(property);
-                }
+                    seenProperties.Add(property.Name)))
+            {
+                properties.Add(property);
             }
         }
 
         foreach (var interfaceType in type.AllInterfaces)
         {
-            foreach (var property in interfaceType.GetMembers().OfType<IPropertySymbol>())
-            {
-                if (property.DeclaredAccessibility == Accessibility.Public &&
+            foreach (var property in interfaceType.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
                     property.GetMethod != null &&
-                    seenProperties.Add(property.Name))
-                {
-                    properties.Add(property);
-                }
+                    seenProperties.Add(property.Name)))
+            {
+                properties.Add(property);
             }
         }
 
@@ -217,23 +209,21 @@ internal sealed class CodeGenModelBuilder
 
         foreach (var interfaceType in type.AllInterfaces)
         {
-            foreach (var property in interfaceType.GetMembers().OfType<IPropertySymbol>())
+            foreach (var property in interfaceType.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(property => ShouldIncludeSchemaProperty(property) && seenProperties.Add(property.Name)))
             {
-                if (ShouldIncludeSchemaProperty(property) && seenProperties.Add(property.Name))
-                {
-                    properties.Add(property);
-                }
+                properties.Add(property);
             }
         }
 
         for (var currentType = type; currentType != null; currentType = currentType.BaseType)
         {
-            foreach (var property in currentType.GetMembers().OfType<IPropertySymbol>())
+            foreach (var property in currentType.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(property => ShouldIncludeSchemaProperty(property) && seenProperties.Add(property.Name)))
             {
-                if (ShouldIncludeSchemaProperty(property) && seenProperties.Add(property.Name))
-                {
-                    properties.Add(property);
-                }
+                properties.Add(property);
             }
         }
 
@@ -271,31 +261,33 @@ internal sealed class CodeGenModelBuilder
 
     private static IEnumerable<INamedTypeSymbol> DiscoverComplexPropertyTypes(INamedTypeSymbol type)
     {
-        var properties = type.GetMembers().OfType<IPropertySymbol>()
+        return type.GetMembers()
+            .OfType<IPropertySymbol>()
             .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
                 property.GetMethod != null &&
-                property.SetMethod != null);
+                property.SetMethod != null)
+            .Select(property => GetComplexPropertyType(property.Type))
+            .OfType<INamedTypeSymbol>();
+    }
 
-        foreach (var property in properties)
+    private static INamedTypeSymbol? GetComplexPropertyType(ITypeSymbol propertyType)
+    {
+        if (GraphDataModel.IsSimple(propertyType) || GraphDataModel.IsCollectionOfSimple(propertyType))
         {
-            var propertyType = property.Type;
-
-            if (!GraphDataModel.IsSimple(propertyType) && !GraphDataModel.IsCollectionOfSimple(propertyType))
-            {
-                if (GraphDataModel.IsCollectionOfComplex(propertyType))
-                {
-                    var elementType = GraphDataModel.GetCollectionElementType(propertyType);
-                    if (elementType is INamedTypeSymbol namedElementType && IsSerializableComplexType(namedElementType))
-                    {
-                        yield return namedElementType;
-                    }
-                }
-                else if (propertyType is INamedTypeSymbol namedPropertyType && IsSerializableComplexType(namedPropertyType))
-                {
-                    yield return namedPropertyType;
-                }
-            }
+            return null;
         }
+
+        if (GraphDataModel.IsCollectionOfComplex(propertyType))
+        {
+            var elementType = GraphDataModel.GetCollectionElementType(propertyType);
+            return elementType is INamedTypeSymbol namedElementType && IsSerializableComplexType(namedElementType)
+                ? namedElementType
+                : null;
+        }
+
+        return propertyType is INamedTypeSymbol namedPropertyType && IsSerializableComplexType(namedPropertyType)
+            ? namedPropertyType
+            : null;
     }
 
     private static bool IsSerializableComplexType(INamedTypeSymbol type)

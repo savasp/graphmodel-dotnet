@@ -550,12 +550,9 @@ internal sealed class TypeDiscoverySet : IEquatable<TypeDiscoverySet>
         HashSet<string> seen,
         ImmutableArray<SerializableTypeModel> source)
     {
-        foreach (var type in source)
+        foreach (var type in source.Where(type => seen.Add(type.Type.Identity)))
         {
-            if (seen.Add(type.Type.Identity))
-            {
-                target.Add(type);
-            }
+            target.Add(type);
         }
     }
 }
