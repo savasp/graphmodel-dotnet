@@ -31,8 +31,11 @@ using System.Reflection;
 /// </remarks>
 [Trait("Area", "RuntimeLabelCollision")]
 [Collection("SchemaRegistry")]
-public class RuntimeLabelCollisionTests
+public class RuntimeLabelCollisionTests : IDisposable
 {
+    public void Dispose()
+        => Labels.ClearCachesForTesting();
+
     // ===== SchemaRegistry: GM009 mirror (duplicate node labels) =====
 
     [Fact]
@@ -202,10 +205,8 @@ public class RuntimeLabelCollisionTests
         // normalization rule treats them as the same type identity.
         //
         // Uses a name distinct from RegisterNodeTypes_GenuinelyDifferentTypeSharingGenericFallbackLabel's
-        // fixture below: Labels.GetLabelFromType's cache is static and process-wide and (being keyed by
-        // Type, which the cache itself roots) is never actually reclaimed even after this method's
-        // AssemblyLoadContext unloads, so two different tests' generic fixtures sharing a fallback label
-        // would collide with each other across tests, not just within one test's intentional pair.
+        // fixture below so any failure points at this test's intentional pair instead of a cross-test
+        // label reuse.
         const string source = """
             using Cvoya.Graph.Model;
 
@@ -603,6 +604,222 @@ public class RuntimeLabelCollisionTests
                 "Duplicate label(s) detected while registering graph entity types:\n" +
                 string.Join('\n', collisions.Select(c => $"  - {c}")));
         }
+    }
+
+    // ===== Labels: reverse type lookup (cold-cache scan path) =====
+
+    [Fact]
+    public void Labels_GetTypeFromLabel_ColdCacheDistinctNodeTypesSameExplicitLabel_ThrowsWithAllCandidates()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            [Node("Labels_RLC_ReverseExplicitNode")]
+            public sealed record ReverseExplicitNodeA : Node;
+
+            [Node("Labels_RLC_ReverseExplicitNode")]
+            public sealed record ReverseExplicitNodeB : Node;
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["ReverseExplicitNodeA", "ReverseExplicitNodeB"],
+            types =>
+            {
+                Labels.ClearCachesForTesting();
+
+                var exception = Assert.Throws<GraphException>(() =>
+                    Labels.GetTypeFromLabel("Labels_RLC_ReverseExplicitNode"));
+
+                Assert.Contains("Labels_RLC_ReverseExplicitNode", exception.Message, StringComparison.Ordinal);
+                Assert.Contains(types[0].FullName!, exception.Message, StringComparison.Ordinal);
+                Assert.Contains(types[1].FullName!, exception.Message, StringComparison.Ordinal);
+            });
+    }
+
+    [Fact]
+    public void Labels_GetTypeFromLabel_ColdCacheDistinctRelationshipTypesSameExplicitLabel_ThrowsWithAllCandidates()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            [Relationship("Labels_RLC_REVERSE_EXPLICIT_REL")]
+            public sealed record ReverseExplicitRelA(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+
+            [Relationship("Labels_RLC_REVERSE_EXPLICIT_REL")]
+            public sealed record ReverseExplicitRelB(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["ReverseExplicitRelA", "ReverseExplicitRelB"],
+            types =>
+            {
+                Labels.ClearCachesForTesting();
+
+                var exception = Assert.Throws<GraphException>(() =>
+                    Labels.GetTypeFromLabel("Labels_RLC_REVERSE_EXPLICIT_REL"));
+
+                Assert.Contains("Labels_RLC_REVERSE_EXPLICIT_REL", exception.Message, StringComparison.Ordinal);
+                Assert.Contains(types[0].FullName!, exception.Message, StringComparison.Ordinal);
+                Assert.Contains(types[1].FullName!, exception.Message, StringComparison.Ordinal);
+            });
+    }
+
+    [Fact]
+    public void Labels_GetTypeFromLabel_ColdCacheFindsRelationshipAndFallbackLabels()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            [Relationship("Labels_RLC_REVERSE_REL")]
+            public sealed record ReverseLookupRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+
+            public sealed record ReverseLookupFallbackNode : Node;
+
+            public sealed record ReverseLookupFallbackRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["ReverseLookupRelationship", "ReverseLookupFallbackNode", "ReverseLookupFallbackRelationship"],
+            types =>
+            {
+                Labels.ClearCachesForTesting();
+                Assert.Equal(types[0], Labels.GetTypeFromLabel("Labels_RLC_REVERSE_REL"));
+
+                Labels.ClearCachesForTesting();
+                Assert.Equal(types[1], Labels.GetTypeFromLabel("ReverseLookupFallbackNode"));
+
+                Labels.ClearCachesForTesting();
+                Assert.Equal(types[2], Labels.GetTypeFromLabel("ReverseLookupFallbackRelationship"));
+            });
+    }
+
+    [Fact]
+    public void Labels_GetTypeFromLabel_ColdCacheNodeLabelAndRelationshipTypeSameName_NoThrow()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            [Node("Labels_RLC_ReverseSharedName")]
+            public sealed record ReverseSharedNameNode : Node;
+
+            [Relationship("Labels_RLC_ReverseSharedName")]
+            public sealed record ReverseSharedNameRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["ReverseSharedNameNode", "ReverseSharedNameRelationship"],
+            types =>
+            {
+                Labels.ClearCachesForTesting();
+
+                var resolved = Labels.GetTypeFromLabel("Labels_RLC_ReverseSharedName");
+
+                Assert.Equal(types[0], resolved);
+            });
+    }
+
+    // ===== Labels: reverse property lookup (cold-cache scan path) =====
+
+    [Fact]
+    public void Labels_GetPropertyFromLabel_ColdCacheHonorsEnclosingType()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            public sealed record ReversePropertyOwnerA : Node
+            {
+                [Property(Label = "labels_reverse_shared_prop")]
+                public string First { get; init; } = string.Empty;
+            }
+
+            public sealed record ReversePropertyOwnerB : Node
+            {
+                [Property(Label = "labels_reverse_shared_prop")]
+                public string Second { get; init; } = string.Empty;
+            }
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["ReversePropertyOwnerA", "ReversePropertyOwnerB"],
+            types =>
+            {
+                Labels.ClearCachesForTesting();
+
+                var first = Labels.GetPropertyFromLabel("labels_reverse_shared_prop", types[0]);
+                var second = Labels.GetPropertyFromLabel("labels_reverse_shared_prop", types[1]);
+
+                Assert.Equal("First", first.Name);
+                Assert.Equal(types[0], first.DeclaringType);
+                Assert.Equal("Second", second.Name);
+                Assert.Equal(types[1], second.DeclaringType);
+            });
+    }
+
+    [Fact]
+    public void Labels_GetPropertyFromLabel_ColdCacheSameTypeDifferentPropertiesSameLabel_ThrowsWithAllCandidates()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            public sealed record ReversePropertyCollisionNode : Node
+            {
+                [Property(Label = "labels_reverse_dup_prop")]
+                public string First { get; init; } = string.Empty;
+
+                [Property(Label = "labels_reverse_dup_prop")]
+                public string Second { get; init; } = string.Empty;
+            }
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["ReversePropertyCollisionNode"],
+            types =>
+            {
+                Labels.ClearCachesForTesting();
+
+                var exception = Assert.Throws<GraphException>(() =>
+                    Labels.GetPropertyFromLabel("labels_reverse_dup_prop", types[0]));
+
+                Assert.Contains("labels_reverse_dup_prop", exception.Message, StringComparison.Ordinal);
+                Assert.Contains("First", exception.Message, StringComparison.Ordinal);
+                Assert.Contains("Second", exception.Message, StringComparison.Ordinal);
+            });
+    }
+
+    [Fact]
+    public void Labels_ClearCachesForTesting_AllowsDifferentFixtureTypeWithSameLabel()
+    {
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            [Node("Labels_RLC_ClearCacheReuse")]
+            public sealed record ClearCacheReuseNodeA : Node;
+
+            [Node("Labels_RLC_ClearCacheReuse")]
+            public sealed record ClearCacheReuseNodeB : Node;
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["ClearCacheReuseNodeA", "ClearCacheReuseNodeB"],
+            types =>
+            {
+                Labels.ClearCachesForTesting();
+                Assert.Equal("Labels_RLC_ClearCacheReuse", Labels.GetLabelFromType(types[0]));
+
+                Labels.ClearCachesForTesting();
+
+                var exception = Record.Exception(() =>
+                    Assert.Equal("Labels_RLC_ClearCacheReuse", Labels.GetLabelFromType(types[1])));
+
+                Assert.Null(exception);
+            });
     }
 
     // ===== Fixtures: Labels layer (non-colliding cases only - safe as ordinary static members since a

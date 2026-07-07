@@ -473,6 +473,10 @@ public class SchemaRegistry : IDisposable
         return Labels.GetLabelFromProperty(property);
     }
 
+    /// <remarks>
+    /// If an aggregated <see cref="GraphException"/> is thrown, non-colliding schemas and scanned-assembly
+    /// marks registered before the throw remain; the exception is expected to be fatal for this registry.
+    /// </remarks>
     private void RegisterGraphEntityTypes(IEnumerable<Assembly> assemblies)
     {
         // Collisions are collected across the whole scan (rather than thrown on the first one found) so a

@@ -59,22 +59,7 @@ public static class Labels
             return label;
         }
 
-        // Check for custom label from Node attribute
-        var nodeAttr = type.GetCustomAttribute<NodeAttribute>(inherit: false);
-        if (nodeAttr?.Label is { Length: > 0 })
-        {
-            label = nodeAttr.Label;
-        }
-
-        // Check for custom label from Relationship attribute
-        var relAttr = type.GetCustomAttribute<RelationshipAttribute>(inherit: false);
-        if (relAttr?.Label is { Length: > 0 })
-        {
-            label = relAttr.Label;
-        }
-
-        // Fall back to the type name with backticks removed
-        label ??= type.Name.Replace("`", "") ?? throw new GraphException($"Type '{type}' does not have a valid name.");
+        label = ResolveLabelFromType(type);
 
         // GM008/GM009 mirror: two distinct node types (or two distinct relationship types) must not resolve
         // to the same label. Re-resolving the same type - including a different closed form of the same
@@ -105,6 +90,28 @@ public static class Labels
 
     private static Type NormalizeForGenericIdentity(Type type)
         => type.IsConstructedGenericType ? type.GetGenericTypeDefinition() : type;
+
+    private static string ResolveLabelFromType(Type type)
+    {
+        string? label = null;
+
+        // Check for custom label from Node attribute
+        var nodeAttr = type.GetCustomAttribute<NodeAttribute>(inherit: false);
+        if (nodeAttr?.Label is { Length: > 0 })
+        {
+            label = nodeAttr.Label;
+        }
+
+        // Check for custom label from Relationship attribute
+        var relAttr = type.GetCustomAttribute<RelationshipAttribute>(inherit: false);
+        if (relAttr?.Label is { Length: > 0 })
+        {
+            label = relAttr.Label;
+        }
+
+        // Fall back to the type name with backticks removed
+        return label ?? type.Name.Replace("`", "") ?? throw new GraphException($"Type '{type}' does not have a valid name.");
+    }
 
     /// <summary>
     /// Determines whether <paramref name="left"/> and <paramref name="right"/> occupy the same "kind"
@@ -145,13 +152,7 @@ public static class Labels
         }
 
         var propertyAttr = propertyInfo.GetCustomAttribute<PropertyAttribute>(inherit: false);
-        if (propertyAttr?.Label is { Length: > 0 })
-        {
-            label = propertyAttr.Label;
-        }
-
-        // Fall back to the property name with backticks removed
-        label ??= propertyInfo.Name.Replace("`", "") ?? throw new GraphException($"Property '{propertyInfo}' does not have a valid name.");
+        label = ResolveLabelFromProperty(propertyInfo, propertyAttr);
 
         var cacheKey = (propertyInfo.DeclaringType, label);
 
@@ -178,6 +179,23 @@ public static class Labels
     private static bool AreSameProperty(PropertyInfo left, PropertyInfo right)
         => left == right || (left.DeclaringType == right.DeclaringType && left.Name == right.Name);
 
+    private static string ResolveLabelFromProperty(PropertyInfo propertyInfo)
+    {
+        var propertyAttr = propertyInfo.GetCustomAttribute<PropertyAttribute>(inherit: false);
+        return ResolveLabelFromProperty(propertyInfo, propertyAttr);
+    }
+
+    private static string ResolveLabelFromProperty(PropertyInfo propertyInfo, PropertyAttribute? propertyAttr)
+    {
+        if (propertyAttr?.Label is { Length: > 0 })
+        {
+            return propertyAttr.Label;
+        }
+
+        // Fall back to the property name with backticks removed
+        return propertyInfo.Name.Replace("`", "") ?? throw new GraphException($"Property '{propertyInfo}' does not have a valid name.");
+    }
+
     /// <summary>
     /// Finds the .NET type for a given label.
     /// </summary>
@@ -195,29 +213,21 @@ public static class Labels
             return type;
         }
 
-        // Check for custom label from Node attribute
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        var candidates = AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(GetLoadableTypes)
+            .Where(IsGraphEntityType)
+            .Where(candidate => ResolveLabelFromType(candidate) == label)
+            .ToList();
+
+        if (candidates.Count == 0)
         {
-            try
-            {
-                foreach (var t in assembly.GetTypes())
-                {
-                    var nodeAttr = t.GetCustomAttribute<NodeAttribute>(inherit: false);
-                    if (nodeAttr?.Label == label)
-                    {
-                        LabelToTypeCache[label] = t;
-                        TypeToLabelCache[t] = label;
-                        return t;
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore types that cannot be loaded
-            }
+            throw new GraphException($"No type found for label '{label}'.");
         }
 
-        throw new GraphException($"No type found for label '{label}'.");
+        type = SelectTypeFromReverseLookupCandidates(label, candidates);
+        LabelToTypeCache[label] = type;
+        TypeToLabelCache[type] = label;
+        return type;
     }
 
     /// <summary>
@@ -230,6 +240,7 @@ public static class Labels
     public static PropertyInfo GetPropertyFromLabel(string label, Type enclosingType)
     {
         ArgumentNullException.ThrowIfNull(label);
+        ArgumentNullException.ThrowIfNull(enclosingType);
 
         LabelToPropertyCache.TryGetValue((enclosingType, label), out var propertyInfo);
 
@@ -238,32 +249,103 @@ public static class Labels
             return propertyInfo;
         }
 
-        // Check for custom label from Property attribute
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        var candidates = enclosingType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(prop => ResolveLabelFromProperty(prop) == label)
+            .ToList();
+
+        if (candidates.Count == 0)
         {
-            try
+            throw new GraphException($"No property found for label '{label}' on '{enclosingType.FullName}'.");
+        }
+
+        propertyInfo = SelectPropertyFromReverseLookupCandidates(label, enclosingType, candidates);
+        LabelToPropertyCache[(enclosingType, label)] = propertyInfo;
+        PropertyToLabelCache[propertyInfo] = label;
+        return propertyInfo;
+    }
+
+    private static Type SelectTypeFromReverseLookupCandidates(string label, IReadOnlyCollection<Type> candidates)
+    {
+        var distinctCandidates = candidates
+            .GroupBy(NormalizeForGenericIdentity)
+            .Select(group => group.First())
+            .ToList();
+
+        var collidingCandidates = distinctCandidates
+            .Where(candidate => distinctCandidates.Any(other =>
+                !AreSameTypeIdentity(candidate, other) && AreSameLabelKind(candidate, other)))
+            .ToList();
+
+        if (collidingCandidates.Count > 0)
+        {
+            throw new GraphException(
+                $"Label '{label}' is used by multiple graph entity types: " +
+                string.Join(", ", collidingCandidates.Select(FormatTypeName)) + ".");
+        }
+
+        // A node and relationship may legitimately share the same graph label/type string. With no kind
+        // parameter on this API, prefer the node candidate to preserve the historical node-first contract.
+        return distinctCandidates.FirstOrDefault(static candidate => typeof(INode).IsAssignableFrom(candidate))
+            ?? distinctCandidates[0];
+    }
+
+    private static PropertyInfo SelectPropertyFromReverseLookupCandidates(
+        string label,
+        Type enclosingType,
+        IReadOnlyCollection<PropertyInfo> candidates)
+    {
+        var distinctCandidates = new List<PropertyInfo>();
+        foreach (var candidate in candidates)
+        {
+            if (!distinctCandidates.Any(existing => AreSameProperty(existing, candidate)))
             {
-                foreach (var t in assembly.GetTypes())
-                {
-                    foreach (var prop in t.GetProperties())
-                    {
-                        var propertyAttr = prop.GetCustomAttribute<PropertyAttribute>(inherit: false);
-                        if (propertyAttr?.Label == label)
-                        {
-                            LabelToPropertyCache[(t, label)] = prop;
-                            PropertyToLabelCache[prop] = label;
-                            return prop;
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore types that cannot be loaded
+                distinctCandidates.Add(candidate);
             }
         }
 
-        throw new GraphException($"No property found for label '{label}'.");
+        if (distinctCandidates.Count > 1)
+        {
+            throw new GraphException(
+                $"Property label '{label}' on '{enclosingType.FullName}' is used by multiple properties: " +
+                string.Join(", ", distinctCandidates.Select(FormatPropertyName)) + ".");
+        }
+
+        return distinctCandidates[0];
+    }
+
+    private static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            return ex.Types.Where(static type => type is not null).Cast<Type>();
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static bool IsGraphEntityType(Type type)
+        => !type.IsInterface &&
+           (typeof(INode).IsAssignableFrom(type) || typeof(IRelationship).IsAssignableFrom(type));
+
+    private static string FormatTypeName(Type type)
+        => $"'{type.FullName}'";
+
+    private static string FormatPropertyName(PropertyInfo property)
+        => $"'{property.DeclaringType?.FullName}.{property.Name}'";
+
+    internal static void ClearCachesForTesting()
+    {
+        LabelToTypeCache.Clear();
+        TypeToLabelCache.Clear();
+        PropertyToLabelCache.Clear();
+        LabelToPropertyCache.Clear();
+        MostDerivedTypeCache.Clear();
     }
 
     /// <summary>
