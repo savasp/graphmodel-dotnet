@@ -35,6 +35,9 @@ dotnet build --configuration Release
 
 # Run performance benchmarks
 ./scripts/run-benchmarks.sh
+
+# Run local CodeQL analysis
+./scripts/run-codeql.sh
 ```
 
 ## 📦 Build Configurations
@@ -159,6 +162,41 @@ dotnet test --configuration Debug
 # 3. Performance testing when needed
 dotnet build --configuration Benchmark
 ./scripts/run-benchmarks.sh
+```
+
+### Local CodeQL Analysis
+
+GraphModel's GitHub workflow runs CodeQL for C# with the `security-and-quality`
+query suite. To catch those findings before pushing, install the CodeQL CLI and run:
+
+```bash
+./scripts/run-codeql.sh
+```
+
+The script writes SARIF output to `artifacts/codeql/results/csharp.sarif`. It
+downloads the `codeql/csharp-queries` pack by default so local scans use the same
+query suite as `.github/workflows/codeql.yml`. The default CodeQL build mode is
+`none`, which is the most portable local option for C#. In that mode, the script
+analyzes a disposable source copy and temporary database outside the checkout so
+CodeQL dependency probing cannot rewrite repository files.
+
+To trace the same `LocalFeed` and `Release` builds used by the GitHub workflow,
+use manual build mode:
+
+```bash
+./scripts/run-codeql.sh --build-mode manual
+```
+
+For a stricter local gate:
+
+```bash
+./scripts/run-codeql.sh --fail-on-alerts
+```
+
+To include CodeQL in the full build-system validation pass:
+
+```bash
+./scripts/validate-build.sh --codeql
 ```
 
 ### Release Preparation Workflow
