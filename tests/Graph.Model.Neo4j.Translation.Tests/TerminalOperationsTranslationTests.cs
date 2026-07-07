@@ -187,6 +187,14 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task Contains_OnConcreteNodeQueryableConstant()
+    {
+        var source = Root.ConcreteNodeQueryableConstant<Person>().Select(p => p.FirstName);
+        var expr = MarkerExpressions.Call<string>("ContainsAsyncMarker", source.Expression, Expression.Constant("Alice"));
+        return VerifyTranslation(typeof(string), expr);
+    }
+
+    [Fact]
     public Task ElementAt_ByIndex()
     {
         var source = Root.Nodes<Person>().OrderBy(p => p.LastName);

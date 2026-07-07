@@ -39,6 +39,16 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task Traverse_WidenedToINodeBeforeWhere_UsesINodeStartLabels()
+    {
+        var query = ((IGraphQueryable<INode>)Root.Nodes<Person>())
+            .Where(n => n.Id != "")
+            .Traverse<Knows, Person>();
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task Traverse_WithMaxDepth()
     {
         var query = Root.Nodes<Person>().Traverse<Knows, Person>(3);

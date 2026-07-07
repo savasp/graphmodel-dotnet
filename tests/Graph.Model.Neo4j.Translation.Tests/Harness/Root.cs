@@ -33,6 +33,14 @@ internal static class Root
         return new FakeGraphNodeQueryable<T>(provider, expression);
     }
 
+    public static IGraphQueryable<T> ConcreteNodeQueryableConstant<T>() where T : class, INode
+    {
+        var provider = new FakeGraphQueryProvider();
+        var placeholder = new FakeGraphNodeQueryable<T>(provider, Expression.Constant(null, typeof(Expression)));
+        var expression = Expression.Constant(placeholder);
+        return new FakeGraphNodeQueryable<T>(provider, expression);
+    }
+
     public static IGraphQueryable<T> Relationships<T>() where T : class, IRelationship
     {
         var provider = new FakeGraphQueryProvider();
