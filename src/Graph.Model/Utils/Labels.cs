@@ -296,12 +296,10 @@ public static class Labels
         IReadOnlyCollection<PropertyInfo> candidates)
     {
         var distinctCandidates = new List<PropertyInfo>();
-        foreach (var candidate in candidates)
+        foreach (var candidate in candidates.Where(candidate =>
+            !distinctCandidates.Any(existing => AreSameProperty(existing, candidate))))
         {
-            if (!distinctCandidates.Any(existing => AreSameProperty(existing, candidate)))
-            {
-                distinctCandidates.Add(candidate);
-            }
+            distinctCandidates.Add(candidate);
         }
 
         if (distinctCandidates.Count > 1)
