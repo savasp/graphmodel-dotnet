@@ -14,7 +14,6 @@
 
 namespace Cvoya.Graph.Model;
 
-using System.Globalization;
 using System.Linq.Expressions;
 using System.Numerics;
 
@@ -914,37 +913,12 @@ public static class QueryableAsyncExtensions
         Expression expression,
         CancellationToken cancellationToken)
     {
-        if (!RequiresNonEmptySequence(typeof(TResult)))
+        if (RequiresNonEmptySequence(typeof(TResult)))
         {
-            return await graphProvider.ExecuteAsync<TResult?>(expression, cancellationToken).ConfigureAwait(false);
+            return await graphProvider.ExecuteAsync<TResult>(expression, cancellationToken).ConfigureAwait(false);
         }
 
-        var result = await graphProvider.ExecuteAsync(expression, cancellationToken).ConfigureAwait(false);
-        if (result is null)
-        {
-            throw new InvalidOperationException("Sequence contains no elements");
-        }
-
-        return ConvertAggregateResult<TResult>(result);
-    }
-
-    private static TResult ConvertAggregateResult<TResult>(object value)
-    {
-        if (value is TResult typedValue)
-        {
-            return typedValue;
-        }
-
-        var targetType = Nullable.GetUnderlyingType(typeof(TResult)) ?? typeof(TResult);
-        if (targetType.IsEnum)
-        {
-            var enumValue = value is string stringValue
-                ? Enum.Parse(targetType, stringValue)
-                : Enum.ToObject(targetType, value);
-            return (TResult)enumValue;
-        }
-
-        return (TResult)Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture);
+        return await graphProvider.ExecuteAsync<TResult?>(expression, cancellationToken).ConfigureAwait(false);
     }
 
     private static bool RequiresNonEmptySequence(Type type)

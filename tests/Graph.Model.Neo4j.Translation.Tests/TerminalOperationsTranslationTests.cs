@@ -281,13 +281,15 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
 
     private static async Task AssertSingleAggregateExecutionAsync(
         string expectedMarkerName,
-        Func<IGraphQueryable<Person>, Task> execute)
+        Func<IGraphQueryable<Person>, Task<int>> execute)
     {
         var provider = new FakeGraphQueryProvider(allowExecution: true);
+        provider.ExecutionResult = 10;
         var source = CreateExecutableRoot(provider);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => execute(source));
+        var result = await execute(source);
 
+        Assert.Equal(10, result);
         var expression = Assert.Single(provider.ExecutedExpressions);
         var methodCall = Assert.IsAssignableFrom<MethodCallExpression>(expression);
         Assert.Equal(expectedMarkerName, methodCall.Method.Name);

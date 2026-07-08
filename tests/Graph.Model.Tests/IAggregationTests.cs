@@ -25,6 +25,7 @@ public interface IAggregationTests : IGraphModelTest
         public decimal NetWorth { get; set; }
         public double Height { get; set; }
         public float Weight { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 
     [Fact]
@@ -321,6 +322,29 @@ public interface IAggregationTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task CanCountEmptyLimitedUnorderedQuery()
+    {
+        var group = $"issue-185-empty-limited-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var limitedCount = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .Take(0)
+            .CountAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, limitedCount);
+    }
+
+    [Fact]
     public async Task CanCountSkippedUnorderedQuery()
     {
         var group = $"issue-185-skipped-{Guid.NewGuid():N}";
@@ -342,6 +366,40 @@ public interface IAggregationTests : IGraphModelTest
             .CountAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(1, skippedCount);
+    }
+
+    [Fact]
+    public async Task OrderBySkipTakeAggregateQueries_ApplyWindowBeforeAggregate()
+    {
+        var group = $"issue-185-window-aggregates-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 },
+            new PersonWithNumbers { FirstName = group, Age = 30 },
+            new PersonWithNumbers { FirstName = group, Age = 40 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var query = Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .OrderBy(p => p.Age)
+            .Skip(1)
+            .Take(2);
+
+        var sum = await query.SumAsync(p => p.Age, TestContext.Current.CancellationToken);
+        var average = await query.AverageAsync(p => p.Age, TestContext.Current.CancellationToken);
+        var min = await query.MinAsync(p => p.Age, TestContext.Current.CancellationToken);
+        var max = await query.MaxAsync(p => p.Age, TestContext.Current.CancellationToken);
+
+        Assert.Equal(50, sum);
+        Assert.Equal(25.0, average, 1);
+        Assert.Equal(20, min);
+        Assert.Equal(30, max);
     }
 
     [Fact]
@@ -457,6 +515,104 @@ public interface IAggregationTests : IGraphModelTest
             .MaxAsync(p => (int?)p.Age, TestContext.Current.CancellationToken);
 
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task MinAsync_NonEmptySource_NullableSelector_ReturnsValue()
+    {
+        var group = $"MinAsync-nullable-nonempty-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 30 },
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MinAsync(p => (int?)p.Age, TestContext.Current.CancellationToken);
+
+        Assert.Equal(10, result);
+    }
+
+    [Fact]
+    public async Task MaxAsync_NonEmptySource_NullableSelector_ReturnsValue()
+    {
+        var group = $"MaxAsync-nullable-nonempty-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 30 },
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MaxAsync(p => (int?)p.Age, TestContext.Current.CancellationToken);
+
+        Assert.Equal(30, result);
+    }
+
+    [Fact]
+    public async Task MinAsync_NonNullableDateTimeSelector_ReturnsValue()
+    {
+        var group = $"MinAsync-datetime-{Guid.NewGuid():N}";
+        var earliest = new DateTime(2026, 1, 1, 8, 0, 0, DateTimeKind.Utc);
+        var middle = new DateTime(2026, 1, 2, 8, 0, 0, DateTimeKind.Utc);
+        var latest = new DateTime(2026, 1, 3, 8, 0, 0, DateTimeKind.Utc);
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, CreatedAt = middle },
+            new PersonWithNumbers { FirstName = group, CreatedAt = latest },
+            new PersonWithNumbers { FirstName = group, CreatedAt = earliest }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MinAsync(p => p.CreatedAt, TestContext.Current.CancellationToken);
+
+        Assert.Equal(earliest, result.ToUniversalTime());
+    }
+
+    [Fact]
+    public async Task MaxAsync_NonNullableDateTimeSelector_ReturnsValue()
+    {
+        var group = $"MaxAsync-datetime-{Guid.NewGuid():N}";
+        var earliest = new DateTime(2026, 1, 1, 8, 0, 0, DateTimeKind.Utc);
+        var middle = new DateTime(2026, 1, 2, 8, 0, 0, DateTimeKind.Utc);
+        var latest = new DateTime(2026, 1, 3, 8, 0, 0, DateTimeKind.Utc);
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, CreatedAt = middle },
+            new PersonWithNumbers { FirstName = group, CreatedAt = latest },
+            new PersonWithNumbers { FirstName = group, CreatedAt = earliest }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MaxAsync(p => p.CreatedAt, TestContext.Current.CancellationToken);
+
+        Assert.Equal(latest, result.ToUniversalTime());
     }
 
     [Fact]
