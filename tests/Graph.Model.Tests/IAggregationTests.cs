@@ -478,8 +478,10 @@ public interface IAggregationTests : IGraphModelTest
         var query = Graph.Nodes<PersonWithNumbers>()
             .Where(p => p.FirstName == missingGroup);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => query.MinAsync(p => p.Age, TestContext.Current.CancellationToken));
+
+        Assert.Equal("Sequence contains no elements", exception.Message);
     }
 
     [Fact]
@@ -490,8 +492,10 @@ public interface IAggregationTests : IGraphModelTest
         var query = Graph.Nodes<PersonWithNumbers>()
             .Where(p => p.FirstName == missingGroup);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => query.MaxAsync(p => p.Age, TestContext.Current.CancellationToken));
+
+        Assert.Equal("Sequence contains no elements", exception.Message);
     }
 
     [Fact]
@@ -682,8 +686,10 @@ public interface IAggregationTests : IGraphModelTest
             .OrderBy(p => p.Age)
             .Take(0);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => query.MinAsync(p => p.Age, TestContext.Current.CancellationToken));
+
+        Assert.Equal("Sequence contains no elements", exception.Message);
     }
 
     [Fact]

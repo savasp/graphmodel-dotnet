@@ -39,6 +39,8 @@ internal sealed class CypherEngine
 
     private static readonly IReadOnlyDictionary<MethodInfo, ElementTerminal> ElementTerminalMethods = CreateElementTerminalMethods();
 
+    private static readonly IReadOnlySet<MethodInfo> MinMaxTerminalMethods = CreateMinMaxTerminalMethods();
+
     private readonly EntityFactory _entityFactory;
     private readonly ILogger<CypherEngine> _logger;
     private readonly CypherExecutor _executor;
@@ -79,6 +81,7 @@ internal sealed class CypherEngine
                 cancellationToken).ConfigureAwait(false);
 
             ValidateElementTerminalRecordCount(GetElementTerminal(expression), records.Count);
+            ValidateMinMaxTerminalValue<T>(expression, records);
 
             // Let the materializer handle everything - no need to duplicate logic here
             var result = await _materializer.MaterializeAsync<T>(records, cypherQuery.GraphPathTypes, cancellationToken).ConfigureAwait(false);
@@ -193,6 +196,14 @@ internal sealed class CypherEngine
         }
     }
 
+    private static IReadOnlySet<MethodInfo> CreateMinMaxTerminalMethods()
+    {
+        return typeof(QueryTerminals)
+            .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .Where(m => m.Name is nameof(QueryTerminals.MinAsyncMarker) or nameof(QueryTerminals.MaxAsyncMarker))
+            .ToHashSet();
+    }
+
     private static ElementTerminal GetElementTerminal(Expression expression)
     {
         if (expression is not MethodCallExpression methodCall)
@@ -205,6 +216,32 @@ internal sealed class CypherEngine
         return ElementTerminalMethods.TryGetValue(key, out var terminal)
             ? terminal
             : ElementTerminal.None;
+    }
+
+    private static void ValidateMinMaxTerminalValue<T>(Expression expression, List<global::Neo4j.Driver.IRecord> records)
+    {
+        if (!typeof(T).IsValueType || Nullable.GetUnderlyingType(typeof(T)) is not null)
+            return;
+
+        if (!IsMinMaxTerminal(expression))
+            return;
+
+        // min()/max() over zero rows yields a single record holding a null aggregate value,
+        // not zero records, so the empty-sequence signal cannot come from the record count.
+        if (records is [var record] && record.Values.Count == 1 && record.Values.Values.First() is null)
+            throw new InvalidOperationException("Sequence contains no elements");
+    }
+
+    private static bool IsMinMaxTerminal(Expression expression)
+    {
+        if (expression is not MethodCallExpression methodCall)
+            return false;
+
+        var key = methodCall.Method.IsGenericMethod
+            ? methodCall.Method.GetGenericMethodDefinition()
+            : methodCall.Method;
+
+        return MinMaxTerminalMethods.Contains(key);
     }
 
     private static void ValidateElementTerminalRecordCount(ElementTerminal terminal, int recordCount)
