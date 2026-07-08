@@ -148,6 +148,94 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task TakeThenCount_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Take(5);
+        var expr = MarkerExpressions.Call<Person>("CountAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task SkipThenCount_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Skip(5);
+        var expr = MarkerExpressions.Call<Person>("CountAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task TakeThenSum_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Take(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("SumAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task SkipThenSum_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Skip(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("SumAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task TakeThenAverage_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Take(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("AverageAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task SkipThenAverage_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Skip(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("AverageAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task TakeThenMin_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Take(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("MinAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task SkipThenMin_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Skip(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("MinAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task TakeThenMax_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Take(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("MaxAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task SkipThenMax_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Skip(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("MaxAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
     public Task Count_WithPredicate()
     {
         var source = Root.Nodes<Person>();
@@ -210,6 +298,20 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public async Task MinMaxAsync_NonNullableSelectors_ExecuteSingleAggregateQuery()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await AssertSingleAggregateExecutionAsync(
+            "MinAsyncMarker",
+            source => source.MinAsync(p => p.Age, cancellationToken));
+
+        await AssertSingleAggregateExecutionAsync(
+            "MaxAsyncMarker",
+            source => source.MaxAsync(p => p.Age, cancellationToken));
+    }
+
+    [Fact]
     public Task Contains_OnScalarProjection()
     {
         var source = Root.Nodes<Person>().Select(p => p.FirstName);
@@ -247,5 +349,29 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
         var source = Root.Nodes<Person>().OrderBy(p => p.LastName);
         var expr = MarkerExpressions.Call<Person>("ElementAtOrDefaultAsyncMarker", source.Expression, Expression.Constant(3));
         return VerifyTranslation(typeof(Person), expr);
+    }
+
+    private static async Task AssertSingleAggregateExecutionAsync(
+        string expectedMarkerName,
+        Func<IGraphQueryable<Person>, Task<int>> execute)
+    {
+        var provider = new FakeGraphQueryProvider(allowExecution: true);
+        provider.ExecutionResult = 10;
+        var source = CreateExecutableRoot(provider);
+
+        var result = await execute(source);
+
+        Assert.Equal(10, result);
+        var expression = Assert.Single(provider.ExecutedExpressions);
+        var methodCall = Assert.IsAssignableFrom<MethodCallExpression>(expression);
+        Assert.Equal(expectedMarkerName, methodCall.Method.Name);
+        Assert.DoesNotContain(provider.ExecutedExpressions.OfType<MethodCallExpression>(), call => call.Method.Name == "AnyAsyncMarker");
+    }
+
+    private static IGraphQueryable<Person> CreateExecutableRoot(FakeGraphQueryProvider provider)
+    {
+        var placeholder = new FakeGraphNodeQueryable<Person>(provider, Expression.Constant(null, typeof(Expression)));
+        var expression = Expression.Constant(placeholder, typeof(IGraphQueryable<Person>));
+        return new FakeGraphNodeQueryable<Person>(provider, expression);
     }
 }

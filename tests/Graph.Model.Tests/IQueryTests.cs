@@ -406,6 +406,32 @@ public interface IQueryTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task FirstAsync_NullScalarProjectionToNonNullableValue_ThrowsClearMaterializationError()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var group = $"FirstAsync-null-scalar-{Guid.NewGuid():N}";
+        var node = new DynamicNode(
+            [nameof(Person)],
+            new Dictionary<string, object?>
+            {
+                [nameof(Person.FirstName)] = "NullScalar",
+                [nameof(Person.LastName)] = group
+            });
+
+        await this.Graph.CreateNodeAsync(node, null, cancellationToken);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            this.Graph.Nodes<Person>()
+                .Where(p => p.LastName == group)
+                .Select(p => p.Age)
+                .FirstAsync(cancellationToken));
+
+        Assert.Contains("Cannot materialize null into non-nullable type", exception.Message);
+        Assert.Contains(typeof(int).FullName!, exception.Message);
+        Assert.DoesNotContain("Sequence contains no elements", exception.Message);
+    }
+
+    [Fact]
     public async Task SingleAsync_DefaultValueProjection_ReturnsDefaultValue()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

@@ -595,15 +595,18 @@ internal sealed class CypherResultProcessor
             // Handle regular values
             try
             {
-                var convertedValue = SerializationBridge.FromNeo4jValue(value, typeof(object))
-                    ?? throw new InvalidOperationException($"Failed to convert value for property '{key}'");
+                var convertedValue = SerializationBridge.FromNeo4jValue(value, typeof(object));
+                if (convertedValue is null && value is not null)
+                {
+                    throw new InvalidOperationException($"Failed to convert value for property '{key}'");
+                }
 
                 // Create a simple property info (we don't have real PropertyInfo for projections)
                 simpleProperties[key] = new Property(
                     PropertyInfo: null!, // We'll handle this differently for projections
                     Label: key,
                     IsNullable: true, // Assume nullable for projections
-                    Value: new SimpleValue(convertedValue, convertedValue.GetType())
+                    Value: new SimpleValue(convertedValue!, convertedValue?.GetType() ?? typeof(object))
                 );
             }
             catch (Exception ex)

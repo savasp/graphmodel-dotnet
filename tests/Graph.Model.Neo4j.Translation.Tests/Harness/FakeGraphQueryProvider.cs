@@ -24,10 +24,14 @@ using System.Reflection;
 /// <c>GraphQueryProvider.CreateQuery&lt;TElement&gt;</c> (node vs. relationship vs. plain
 /// queryable) closely enough that the public LINQ extension methods on
 /// <c>IGraphQueryable&lt;T&gt;</c> can be used to build expression trees without ever touching
-/// a Neo4j driver, transaction, or graph context.
+/// a Neo4j driver, transaction, or graph context. Execution remains disabled by default, but
+/// tests can opt in to recording terminal expressions without a provider.
 /// </summary>
-internal sealed class FakeGraphQueryProvider : IGraphQueryProvider
+internal sealed class FakeGraphQueryProvider(bool allowExecution = false) : IGraphQueryProvider
 {
+    public List<Expression> ExecutedExpressions { get; } = [];
+    public object? ExecutionResult { get; set; }
+
     public IGraph Graph => throw new NotSupportedException("FakeGraphQueryProvider never executes.");
 
     public IQueryable CreateQuery(Expression expression)
@@ -63,11 +67,27 @@ internal sealed class FakeGraphQueryProvider : IGraphQueryProvider
     public TResult Execute<TResult>(Expression expression) =>
         throw new NotSupportedException("FakeGraphQueryProvider never executes.");
 
-    public Task<TResult> ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("FakeGraphQueryProvider never executes.");
+    public Task<TResult> ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken = default)
+    {
+        if (!allowExecution)
+        {
+            throw new NotSupportedException("FakeGraphQueryProvider never executes.");
+        }
 
-    public Task<object?> ExecuteAsync(Expression expression, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("FakeGraphQueryProvider never executes.");
+        ExecutedExpressions.Add(expression);
+        return Task.FromResult((TResult)ExecutionResult!);
+    }
+
+    public Task<object?> ExecuteAsync(Expression expression, CancellationToken cancellationToken = default)
+    {
+        if (!allowExecution)
+        {
+            throw new NotSupportedException("FakeGraphQueryProvider never executes.");
+        }
+
+        ExecutedExpressions.Add(expression);
+        return Task.FromResult(ExecutionResult);
+    }
 
     private static Type GetElementType(Type queryType)
     {

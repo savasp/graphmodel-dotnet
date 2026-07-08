@@ -188,6 +188,11 @@ internal sealed class ResultMaterializer
 
     private object? CreateObjectFromEntityInfo(EntityInfo entityInfo, Type targetType)
     {
+        if (targetType == typeof(object) && entityInfo.SimpleProperties.Count == 1 && entityInfo.ComplexProperties.Count == 0)
+        {
+            return CreateSimpleValue(entityInfo, targetType);
+        }
+
         // Handle path segments specially
         if (IsPathSegmentType(targetType))
         {
@@ -242,6 +247,13 @@ internal sealed class ResultMaterializer
             var singleProperty = entityInfo.SimpleProperties.Values.First();
             if (singleProperty.Value is SimpleValue simpleValue)
             {
+                if (simpleValue.Object is null &&
+                    targetType.IsValueType &&
+                    Nullable.GetUnderlyingType(targetType) is null)
+                {
+                    throw new InvalidOperationException($"Cannot materialize null into non-nullable type {targetType.FullName}.");
+                }
+
                 return ConvertValueToTargetType(simpleValue.Object, targetType);
             }
         }

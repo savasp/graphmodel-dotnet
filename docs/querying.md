@@ -262,6 +262,8 @@ var maybeAlice = await graph.Nodes<Person>()
     .FirstOrDefaultAsync(p => p.FirstName == "Alice");
 ```
 
+Value aggregates such as `SumAsync`, `MinAsync`, `MaxAsync`, and `AverageAsync` after unordered `Take` or `Skip` operate over an arbitrary row subset; add `OrderBy` before pagination when deterministic results matter.
+
 ### GroupBy and Aggregates
 
 ```csharp

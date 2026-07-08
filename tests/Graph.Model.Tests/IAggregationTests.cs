@@ -25,6 +25,8 @@ public interface IAggregationTests : IGraphModelTest
         public decimal NetWorth { get; set; }
         public double Height { get; set; }
         public float Weight { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public Guid TrackingId { get; set; }
     }
 
     [Fact]
@@ -297,6 +299,111 @@ public interface IAggregationTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task CanCountLimitedUnorderedQuery()
+    {
+        var group = $"issue-185-limited-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 },
+            new PersonWithNumbers { FirstName = group, Age = 30 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var limitedCount = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .Take(2)
+            .CountAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, limitedCount);
+    }
+
+    [Fact]
+    public async Task CanCountEmptyLimitedUnorderedQuery()
+    {
+        var group = $"issue-185-empty-limited-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var limitedCount = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .Take(0)
+            .CountAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, limitedCount);
+    }
+
+    [Fact]
+    public async Task CanCountSkippedUnorderedQuery()
+    {
+        var group = $"issue-185-skipped-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 },
+            new PersonWithNumbers { FirstName = group, Age = 30 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var skippedCount = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .Skip(2)
+            .CountAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, skippedCount);
+    }
+
+    [Fact]
+    public async Task OrderBySkipTakeAggregateQueries_ApplyWindowBeforeAggregate()
+    {
+        var group = $"issue-185-window-aggregates-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 },
+            new PersonWithNumbers { FirstName = group, Age = 30 },
+            new PersonWithNumbers { FirstName = group, Age = 40 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var query = Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .OrderBy(p => p.Age)
+            .Skip(1)
+            .Take(2);
+
+        var sum = await query.SumAsync(p => p.Age, TestContext.Current.CancellationToken);
+        var average = await query.AverageAsync(p => p.Age, TestContext.Current.CancellationToken);
+        var min = await query.MinAsync(p => p.Age, TestContext.Current.CancellationToken);
+        var max = await query.MaxAsync(p => p.Age, TestContext.Current.CancellationToken);
+
+        Assert.Equal(50, sum);
+        Assert.Equal(25.0, average, 1);
+        Assert.Equal(20, min);
+        Assert.Equal(30, max);
+    }
+
+    [Fact]
     public async Task SumWithFilter_CalculatesCorrectTotal()
     {
         var people = new[]
@@ -361,6 +468,228 @@ public interface IAggregationTests : IGraphModelTest
                 .Where(p => p.FirstName == "NonExistent")
                 .AverageAsync(p => p.Age, TestContext.Current.CancellationToken);
         });
+    }
+
+    [Fact]
+    public async Task MinAsync_EmptySource_NonNullableSelector_Throws()
+    {
+        var missingGroup = $"MinAsync-empty-{Guid.NewGuid():N}";
+
+        var query = Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == missingGroup);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => query.MinAsync(p => p.Age, TestContext.Current.CancellationToken));
+
+        Assert.Equal("Sequence contains no elements", exception.Message);
+    }
+
+    [Fact]
+    public async Task MaxAsync_EmptySource_NonNullableSelector_Throws()
+    {
+        var missingGroup = $"MaxAsync-empty-{Guid.NewGuid():N}";
+
+        var query = Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == missingGroup);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => query.MaxAsync(p => p.Age, TestContext.Current.CancellationToken));
+
+        Assert.Equal("Sequence contains no elements", exception.Message);
+    }
+
+    [Fact]
+    public async Task MinAsync_EmptySource_NullableSelector_ReturnsNull()
+    {
+        var missingGroup = $"MinAsync-nullable-empty-{Guid.NewGuid():N}";
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == missingGroup)
+            .MinAsync(p => (int?)p.Age, TestContext.Current.CancellationToken);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task MaxAsync_EmptySource_NullableSelector_ReturnsNull()
+    {
+        var missingGroup = $"MaxAsync-nullable-empty-{Guid.NewGuid():N}";
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == missingGroup)
+            .MaxAsync(p => (int?)p.Age, TestContext.Current.CancellationToken);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task MinAsync_NonEmptySource_NullableSelector_ReturnsValue()
+    {
+        var group = $"MinAsync-nullable-nonempty-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 30 },
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MinAsync(p => (int?)p.Age, TestContext.Current.CancellationToken);
+
+        Assert.Equal(10, result);
+    }
+
+    [Fact]
+    public async Task MaxAsync_NonEmptySource_NullableSelector_ReturnsValue()
+    {
+        var group = $"MaxAsync-nullable-nonempty-{Guid.NewGuid():N}";
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, Age = 30 },
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            new PersonWithNumbers { FirstName = group, Age = 20 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MaxAsync(p => (int?)p.Age, TestContext.Current.CancellationToken);
+
+        Assert.Equal(30, result);
+    }
+
+    [Fact]
+    public async Task MinAsync_NonNullableDateTimeSelector_ReturnsValue()
+    {
+        var group = $"MinAsync-datetime-{Guid.NewGuid():N}";
+        var earliest = new DateTime(2026, 1, 1, 8, 0, 0, DateTimeKind.Utc);
+        var middle = new DateTime(2026, 1, 2, 8, 0, 0, DateTimeKind.Utc);
+        var latest = new DateTime(2026, 1, 3, 8, 0, 0, DateTimeKind.Utc);
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, CreatedAt = middle },
+            new PersonWithNumbers { FirstName = group, CreatedAt = latest },
+            new PersonWithNumbers { FirstName = group, CreatedAt = earliest }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MinAsync(p => p.CreatedAt, TestContext.Current.CancellationToken);
+
+        Assert.Equal(earliest, result.ToUniversalTime());
+    }
+
+    [Fact]
+    public async Task MaxAsync_NonNullableDateTimeSelector_ReturnsValue()
+    {
+        var group = $"MaxAsync-datetime-{Guid.NewGuid():N}";
+        var earliest = new DateTime(2026, 1, 1, 8, 0, 0, DateTimeKind.Utc);
+        var middle = new DateTime(2026, 1, 2, 8, 0, 0, DateTimeKind.Utc);
+        var latest = new DateTime(2026, 1, 3, 8, 0, 0, DateTimeKind.Utc);
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, CreatedAt = middle },
+            new PersonWithNumbers { FirstName = group, CreatedAt = latest },
+            new PersonWithNumbers { FirstName = group, CreatedAt = earliest }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MaxAsync(p => p.CreatedAt, TestContext.Current.CancellationToken);
+
+        Assert.Equal(latest, result.ToUniversalTime());
+    }
+
+    [Fact]
+    public async Task MinAsync_NonNullableGuidSelector_ReturnsValue()
+    {
+        var group = $"MinAsync-guid-{Guid.NewGuid():N}";
+        var first = Guid.Parse("00000000-0000-0000-0000-000000000001");
+        var middle = Guid.Parse("00000000-0000-0000-0000-000000000002");
+        var last = Guid.Parse("00000000-0000-0000-0000-000000000003");
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, TrackingId = middle },
+            new PersonWithNumbers { FirstName = group, TrackingId = last },
+            new PersonWithNumbers { FirstName = group, TrackingId = first }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MinAsync(p => p.TrackingId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(first, result);
+    }
+
+    [Fact]
+    public async Task MaxAsync_NonNullableGuidSelector_ReturnsValue()
+    {
+        var group = $"MaxAsync-guid-{Guid.NewGuid():N}";
+        var first = Guid.Parse("00000000-0000-0000-0000-000000000001");
+        var middle = Guid.Parse("00000000-0000-0000-0000-000000000002");
+        var last = Guid.Parse("00000000-0000-0000-0000-000000000003");
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, TrackingId = middle },
+            new PersonWithNumbers { FirstName = group, TrackingId = last },
+            new PersonWithNumbers { FirstName = group, TrackingId = first }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MaxAsync(p => p.TrackingId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(last, result);
+    }
+
+    [Fact]
+    public async Task OrderByTakeMinAsync_EmptyWindow_Throws()
+    {
+        var group = $"issue-185-186-empty-window-{Guid.NewGuid():N}";
+        await Graph.CreateNodeAsync(
+            new PersonWithNumbers { FirstName = group, Age = 10 },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var query = Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .OrderBy(p => p.Age)
+            .Take(0);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => query.MinAsync(p => p.Age, TestContext.Current.CancellationToken));
+
+        Assert.Equal("Sequence contains no elements", exception.Message);
     }
 
     [Fact]

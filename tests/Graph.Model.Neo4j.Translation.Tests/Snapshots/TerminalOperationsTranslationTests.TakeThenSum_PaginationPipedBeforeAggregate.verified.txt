@@ -1,0 +1,8 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WITH src
+LIMIT 5
+RETURN sum(src.Age)
+
+== Parameters ==
+(none)

@@ -95,7 +95,7 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     private bool _hasMultiplePathSegments;
     private bool _isGraphPathResult;
     private bool _isAggregateTerminalQuery;
-    private bool _hasPaginationAfterOrdering;
+    private bool _hasRowPaginationBeforeAggregate;
 
     public PathSegmentProjectionEnum PathSegmentProjection = PathSegmentProjectionEnum.Full;
 
@@ -313,13 +313,13 @@ internal class CypherQueryBuilder(CypherQueryContext context)
 
     public void SetSkip(int skip)
     {
-        _hasPaginationAfterOrdering |= _orderByPart.HasOrderBy;
+        _hasRowPaginationBeforeAggregate = true;
         _paginationPart.SetSkip(skip);
     }
 
     public void SetLimit(int limit)
     {
-        _hasPaginationAfterOrdering |= _orderByPart.HasOrderBy;
+        _hasRowPaginationBeforeAggregate = true;
         _paginationPart.SetLimit(limit);
     }
 
@@ -675,11 +675,11 @@ internal class CypherQueryBuilder(CypherQueryContext context)
     }
 
     private bool ShouldPipeAggregateTerminalRows() =>
-        _isAggregateTerminalQuery && _hasPaginationAfterOrdering;
+        _isAggregateTerminalQuery && _hasRowPaginationBeforeAggregate;
 
     private CypherQuery BuildAggregateTerminalQueryWithPipedRows()
     {
-        _logger.LogDebug("Building aggregate terminal query with ordered/paginated piped rows");
+        _logger.LogDebug("Building aggregate terminal query with piped row pagination");
 
         var query = new StringBuilder();
 

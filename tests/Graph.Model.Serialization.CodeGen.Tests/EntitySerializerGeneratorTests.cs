@@ -43,6 +43,27 @@ public class EntitySerializerGeneratorTests
     }
 
     [Fact]
+    public Task NodeWithGuidSimpleValues()
+    {
+        const string source = """
+            using System;
+            using System.Collections.Generic;
+            using Cvoya.Graph.Model;
+
+            namespace TestNamespace;
+
+            [Node("Tracked")]
+            public record TrackedNode : Node
+            {
+                public Guid TrackingId { get; set; }
+                public List<Guid> RelatedIds { get; set; } = new();
+            }
+            """;
+
+        return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
+    }
+
+    [Fact]
     public Task Relationship()
     {
         const string source = """
