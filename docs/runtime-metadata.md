@@ -205,9 +205,9 @@ The `GM011` analyzer rule warns when types directly implement `INode` or `IRelat
 
 ```csharp
 // ❌ Triggers GM011 warning
-// GM011 recommends inheriting from Node instead unless you need full control.
 public record Person : INode
 {
+    // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public IReadOnlyList<string> Labels { get; } = new List<string>(); // Don't do this!
     public string Name { get; set; } = string.Empty;
@@ -269,7 +269,7 @@ If you have existing code that directly implements `INode` or `IRelationship`:
 ```csharp
 public class Person : INode
 {
-    // GM011 recommends inheriting from Node instead unless you need full control.
+    // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
     public string Name { get; set; } = string.Empty;
@@ -277,7 +277,7 @@ public class Person : INode
 
 public class Knows : IRelationship
 {
-    // GM011 recommends inheriting from Relationship instead unless you need full control.
+    // GM011 warns on direct IRelationship implementations; inherit from Relationship unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public string Type { get; } = "KNOWS";
     public string StartNodeId { get; init; } = string.Empty;

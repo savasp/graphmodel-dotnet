@@ -137,7 +137,7 @@ InvalidCastException: Unable to cast object of type 'System.String' to type 'Sys
    // If database has string IDs but your model expects int:
    public class User : INode
    {
-       // GM011 recommends inheriting from Node instead unless you need full control.
+       // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
        public string Id { get; init; } = Guid.NewGuid().ToString();  // Use string if Neo4j stores as string
        public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
        // Not: public int Id { get; set; }
@@ -149,7 +149,7 @@ InvalidCastException: Unable to cast object of type 'System.String' to type 'Sys
    ```csharp
    public class User : INode
    {
-       // GM011 recommends inheriting from Node instead unless you need full control.
+       // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
        public string Id { get; init; } = Guid.NewGuid().ToString();
        public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
        public int? Age { get; set; }           // Nullable if not always present

@@ -41,9 +41,9 @@ public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNo
 
 ```csharp
 // Avoid: Implementing interface directly (triggers GM011 warning)
-// GM011 recommends inheriting from Node instead unless you need full control.
 public record Person : INode
 {
+    // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public IReadOnlyList<string> Labels { get; } = new List<string> { "Person" }; // Don't manage these manually!
     public string Name { get; set; } = string.Empty;
