@@ -776,6 +776,29 @@ public class RuntimeLabelCollisionTests : IDisposable
             });
     }
 
+    [Fact]
+    public void Labels_GetTypeFromLabel_ColdCacheMatchesLabelCaseInsensitively()
+    {
+        // Labels are unique case-insensitively, and the cache is OrdinalIgnoreCase; the cold-cache scan
+        // must agree, so a lookup whose casing differs from the declared label still resolves the type.
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            [Node("Labels_RLC_CaseInsensitiveNode")]
+            public sealed record CaseInsensitiveReverseNode : Node;
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["CaseInsensitiveReverseNode"],
+            types =>
+            {
+                Labels.ClearCachesForTesting();
+
+                Assert.Equal(types[0], Labels.GetTypeFromLabel("labels_rlc_caseinsensitivenode"));
+            });
+    }
+
     // ===== Labels: reverse property lookup (cold-cache scan path) =====
 
     [Fact]

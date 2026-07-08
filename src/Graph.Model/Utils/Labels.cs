@@ -206,9 +206,11 @@ public static class Labels
     /// <exception cref="GraphException">If no .NET type was found for the given label.</exception>
     /// <remarks>
     /// A type maps to exactly one label, and <see cref="SchemaRegistry"/> forbids two loaded types from
-    /// sharing a label (case-insensitive), so this reverse lookup is deterministic. It is the portability
-    /// path: when a node's stored metadata type is not loadable in this process (a different app, or the
-    /// type was renamed/moved), the label recovers a compatible local type. Matching is case-insensitive.
+    /// sharing a label (case-insensitive), so this reverse lookup is deterministic; matching is
+    /// case-insensitive. This is a Model-layer utility for recovering a type from a stored label - the
+    /// portability path when a node's stored metadata type is not loadable (a different app, or the type was
+    /// renamed/moved). A provider may use it or implement its own equivalent resolution; the Neo4j provider
+    /// does the latter.
     /// </remarks>
     public static Type GetTypeFromLabel(string label)
     {
@@ -224,7 +226,9 @@ public static class Labels
         var candidates = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(GetLoadableTypes)
             .Where(IsGraphEntityType)
-            .Where(candidate => ResolveLabelFromType(candidate) == label)
+            // Case-insensitive to match the cache (LabelToTypeCache) and the process-wide uniqueness rule,
+            // so a cold-cache lookup resolves the same type a warm one would regardless of label casing.
+            .Where(candidate => string.Equals(ResolveLabelFromType(candidate), label, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         if (candidates.Count == 0)

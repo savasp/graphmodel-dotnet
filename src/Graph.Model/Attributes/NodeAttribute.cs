@@ -25,8 +25,8 @@ using System;
 /// system. A node type maps to exactly one label. If the attribute is omitted (or its <see cref="Label"/> is
 /// left unset), the class name is used. The label must be unique (case-insensitive) across every node type
 /// loaded in the process; <see cref="SchemaRegistry"/> enforces this. The label is also the portability key:
-/// when a stored node's metadata type is not loadable in the reading process, the label is used to find a
-/// compatible local type (see <see cref="Labels.GetTypeFromLabel"/>).
+/// each stored entity records its concrete .NET type, but when that type is not loadable in the reading
+/// process the provider falls back to the label to find a compatible local type.
 /// </remarks>
 /// <example>
 /// <code>
