@@ -122,7 +122,7 @@ public record Person : Node
 }
 ```
 
-The addresses could have been modelled as separate nodes, which is a great way to model this information. The `Address` would have had to implement `INode`. In this case, however, the developer decided to model the home and work addresses as properties on `Person`. The Graph Model supports this data modeling choice and requires providers to support it. Indeed, the Neo4j implementation of the Graph Model automatically creates a separate graph node for an `Address` using private relationships. Queries that access the members of `Address` properties are supported...
+The addresses could have been modelled as separate nodes, which is a great way to model this information. The `Address` would normally inherit from `Node` to satisfy `INode`; implementing `INode` directly triggers analyzer warning GM011 unless you need full control. In this case, however, the developer decided to model the home and work addresses as properties on `Person`. The Graph Model supports this data modeling choice and requires providers to support it. Indeed, the Neo4j implementation of the Graph Model automatically creates a separate graph node for an `Address` using private relationships. Queries that access the members of `Address` properties are supported...
 
 ```csharp
 // Automatically creates two separate graph nodes for the "HomeAddress" and "WorkAddress" properties
@@ -368,24 +368,24 @@ var summaries = await graph.Nodes<Article>()
 
 ```csharp
 // Contains search
-var results = graph.Nodes<Article>()
+var results = await graph.Nodes<Article>()
     .Where(a => a.Content.Contains("machine learning"))
-    .ToList();
+    .ToListAsync();
 
 // Case-insensitive search
-var caseInsensitive = graph.Nodes<Article>()
+var caseInsensitive = await graph.Nodes<Article>()
     .Where(a => a.Title.ToLower().Contains("graph"))
-    .ToList();
+    .ToListAsync();
 
 // Multiple term search
-var multiTerm = graph.Nodes<Article>()
+var multiTerm = await graph.Nodes<Article>()
     .Where(a => a.Content.Contains("graph") && a.Content.Contains("database"))
-    .ToList();
+    .ToListAsync();
 
 // Starts with / Ends with
-var prefixSearch = graph.Nodes<Person>()
+var prefixSearch = await graph.Nodes<Person>()
     .Where(p => p.Email.StartsWith("admin@"))
-    .ToList();
+    .ToListAsync();
 ```
 
 ### Search Features
@@ -402,8 +402,8 @@ For complex scenarios, you can execute multiple queries and join in memory:
 
 ```csharp
 // Get all data
-var people = graph.Nodes<Person>().ToList();
-var knows = graph.Relationships<Knows>().ToList();
+var people = await graph.Nodes<Person>().ToListAsync();
+var knows = await graph.Relationships<Knows>().ToListAsync();
 
 // Join to find connections
 var connections = from person in people
@@ -446,7 +446,7 @@ var popular = knows
 ### Conditional Logic in Projections
 
 ```csharp
-var categorized = graph.Nodes<Person>()
+var categorized = await graph.Nodes<Person>()
     .Select(p => new
     {
         p.FirstName,
@@ -455,5 +455,5 @@ var categorized = graph.Nodes<Person>()
                    "Senior",
         Discount = p.Age < 18 || p.Age >= 65 ? 0.2 : 0.0
     })
-    .ToList();
+    .ToListAsync();
 ```
