@@ -47,16 +47,16 @@ public interface INode : IEntity
 
 ```csharp
 // Query nodes and filter by runtime labels
-var adminUsers = graph.Nodes<User>()
+var adminUsers = await graph.Nodes<User>()
     .Where(u => u.Labels.Contains("Admin"))
-    .ToList();
+    .ToListAsync();
 
 // Filter in path traversal
-var query = graph.Nodes<User>()
+var memorySegments = await graph.Nodes<User>()
     .Where(u => u.Id == userId)
     .PathSegments<User, IRelationship, INode>()
     .Where(ps => ps.EndNode.Labels.Contains("Memory"))
-    .ToList();
+    .ToListAsync();
 ```
 
 ## The IRelationship.Type Property
@@ -97,16 +97,16 @@ public interface IRelationship : IEntity
 
 ```csharp
 // Filter relationships by type in path traversal
-var query = graph.Nodes<User>()
+var memoryRelationships = await graph.Nodes<User>()
     .Where(u => u.Id == userId)
     .PathSegments<User, UserMemory, Memory>()
     .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == "REMEMBERS")
-    .ToList();
+    .ToListAsync();
 
 // Filter polymorphic relationships
-var adminRelationships = graph.Relationships<IRelationship>()
+var adminRelationships = await graph.Relationships<IRelationship>()
     .Where(r => r.Type.StartsWith("ADMIN_"))
-    .ToList();
+    .ToListAsync();
 ```
 
 ## Using the Node and Relationship Base Classes
@@ -205,6 +205,7 @@ The `GM011` analyzer rule warns when types directly implement `INode` or `IRelat
 
 ```csharp
 // ❌ Triggers GM011 warning
+// GM011 recommends inheriting from Node instead unless you need full control.
 public record Person : INode
 {
     public string Id { get; init; } = Guid.NewGuid().ToString();
@@ -268,6 +269,7 @@ If you have existing code that directly implements `INode` or `IRelationship`:
 ```csharp
 public class Person : INode
 {
+    // GM011 recommends inheriting from Node instead unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
     public string Name { get; set; } = string.Empty;
@@ -275,6 +277,7 @@ public class Person : INode
 
 public class Knows : IRelationship
 {
+    // GM011 recommends inheriting from Relationship instead unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public string Type { get; } = "KNOWS";
     public string StartNodeId { get; init; } = string.Empty;

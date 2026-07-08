@@ -21,7 +21,7 @@ The provider store owns database connectivity and releases provider resources. `
 
 ## Entities And Schema
 
-Domain nodes implement `INode`; relationships implement `IRelationship`. The base `Node` and `Relationship` records generate opaque string IDs with `Guid.NewGuid().ToString("N")`. Providers must treat IDs as caller-visible opaque strings, not database-native IDs.
+Domain node types satisfy `INode`; relationship types satisfy `IRelationship`. Application models should normally inherit from the base `Node` and `Relationship` records, because direct interface implementation triggers analyzer warning GM011 unless the model needs full control. The base records generate opaque string IDs with `Guid.NewGuid().ToString("N")`. Providers must treat IDs as caller-visible opaque strings, not database-native IDs.
 
 Labels and relationship types come from attributes first:
 

@@ -109,29 +109,8 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
         try
         {
-            var storedDirection = await GetStoredRelationshipDirectionAsync(
-                relationship.Id,
-                transaction.Transaction,
-                cancellationToken).ConfigureAwait(false);
-
-            if (!storedDirection.Exists)
-            {
-                _logger.LogWarning("Relationship with ID {RelationshipId} not found for update", relationship.Id);
-                throw new EntityNotFoundException($"Relationship with ID {relationship.Id} not found for update");
-            }
-
-            if (storedDirection.Direction != relationship.Direction)
-            {
-                throw new GraphException(
-                    "Direction cannot be changed on update; delete and recreate the relationship. " +
-                    $"Stored direction is {storedDirection.Direction}; incoming direction is {relationship.Direction}.");
-            }
-
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
-
-            // Validate property constraints at application level
-            ValidateRelationshipProperties(relationship);
 
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);
@@ -147,15 +126,26 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             var updated = await UpdateRelationshipPropertiesAsync(
                 relationship.Id,
                 entity,
-                storedDirection.Value,
+                relationship.Direction,
                 transaction.Transaction,
                 cancellationToken).ConfigureAwait(false);
 
-            if (!updated)
+            if (!updated.Exists)
             {
                 _logger.LogWarning("Relationship with ID {RelationshipId} not found for update", relationship.Id);
                 throw new EntityNotFoundException($"Relationship with ID {relationship.Id} not found for update");
             }
+
+            if (!updated.DirectionMatches)
+            {
+                throw new GraphException(
+                    "Direction cannot be changed on update; delete and recreate the relationship. " +
+                    $"Stored direction is {updated.StoredDirection}; incoming direction is {relationship.Direction}.");
+            }
+
+            // Validate property constraints after confirming the target row exists. If validation
+            // fails, the transaction rolls back the guarded update statement above.
+            ValidateRelationshipProperties(relationship);
 
             _logger.LogInformation("Updated relationship of type {RelationshipType} with ID {RelationshipId}",
                 typeof(TRelationship).Name, relationship.Id);
@@ -250,18 +240,27 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     }
 
 
-    private async Task<bool> UpdateRelationshipPropertiesAsync(
+    private async Task<(bool Exists, bool DirectionMatches, RelationshipDirection StoredDirection)> UpdateRelationshipPropertiesAsync(
         string relationshipId,
         EntityInfo entity,
-        object? storedDirectionValue,
+        RelationshipDirection incomingDirection,
         IAsyncTransaction transaction,
         CancellationToken cancellationToken)
     {
         var cypher = @"
-            MATCH ()-[r {Id: $relId}]->()
-            SET r = $props
-            SET r.Direction = $storedDirection
-            RETURN r IS NOT NULL AS updated";
+            OPTIONAL MATCH ()-[r {Id: $relId}]->()
+            WITH r,
+                 r.Direction AS storedDirection,
+                 CASE
+                     WHEN r IS NULL THEN false
+                     WHEN r.Direction IS NULL THEN $incomingDirection = $defaultDirection
+                     ELSE toString(r.Direction) = $incomingDirection
+                 END AS directionMatches
+            FOREACH (_ IN CASE WHEN r IS NOT NULL AND directionMatches THEN [1] ELSE [] END |
+                SET r = $props, r.Direction = storedDirection)
+            RETURN r IS NOT NULL AS exists,
+                   directionMatches AS directionMatches,
+                   storedDirection AS storedDirection";
 
         var properties = SerializationHelpers.SerializeSimpleProperties(entity)
             .Where(kv => !_ignoredProperties.Contains(kv.Key))
@@ -271,29 +270,15 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         {
             relId = relationshipId,
             props = properties,
-            storedDirection = storedDirectionValue
+            incomingDirection = incomingDirection.ToString(),
+            defaultDirection = RelationshipDirection.Outgoing.ToString()
         }).ConfigureAwait(false);
 
-        return await result.CountAsync(cancellationToken).ConfigureAwait(false) > 0;
-    }
-
-    private static async Task<(bool Exists, object? Value, RelationshipDirection Direction)> GetStoredRelationshipDirectionAsync(
-        string relationshipId,
-        IAsyncTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        var result = await transaction.RunAsync(
-            "MATCH ()-[r {Id: $relId}]->() RETURN r.Direction AS storedDirection",
-            new { relId = relationshipId }).ConfigureAwait(false);
-
-        var record = await result.SingleOrDefaultAsync(cancellationToken).ConfigureAwait(false);
-        if (record == null)
-        {
-            return (false, null, RelationshipDirection.Outgoing);
-        }
-
+        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
+        var exists = record["exists"].As<bool>();
+        var directionMatches = record["directionMatches"].As<bool>();
         var storedDirectionValue = record["storedDirection"];
-        return (true, storedDirectionValue, ToRelationshipDirection(storedDirectionValue));
+        return (exists, directionMatches, ToRelationshipDirection(storedDirectionValue));
     }
 
     private static RelationshipDirection ToRelationshipDirection(object? value)

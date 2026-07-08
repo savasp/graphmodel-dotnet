@@ -782,6 +782,8 @@ internal sealed class CypherResultProcessor
 
         if (!endpointsMatchPath && !endpointsMatchReversePath)
         {
+            // This should be unreachable for well-formed single-hop projections; fail fast
+            // rather than fabricating logical endpoint IDs from an unrelated row shape.
             throw new GraphException(
                 "Relationship endpoint element IDs do not match the projected endpoint nodes. " +
                 "StartNodeId and EndNodeId cannot be reconstructed.");

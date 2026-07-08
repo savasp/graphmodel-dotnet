@@ -89,6 +89,8 @@ public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNo
 
 For your convenience, the `Cvoya.Graph.Model` package also offers `Node` and `Relationship` records so that you only have to focus on your domain-specific properties:
 
+Prefer these base records in application models; implementing `INode` or `IRelationship` directly triggers analyzer warning GM011 unless you need full control.
+
 ```csharp
 public record Person : Node
 {

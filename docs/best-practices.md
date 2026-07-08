@@ -41,6 +41,7 @@ public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNo
 
 ```csharp
 // Avoid: Implementing interface directly (triggers GM011 warning)
+// GM011 recommends inheriting from Node instead unless you need full control.
 public record Person : INode
 {
     public string Id { get; init; } = Guid.NewGuid().ToString();
@@ -60,10 +61,11 @@ The `Labels` property on `INode` and `Type` property on `IRelationship` are **ru
 
 ```csharp
 // Querying with runtime metadata
-var query = graph.Nodes<User>()
+var memorySegments = await graph.Nodes<User>()
     .Where(u => u.Id == userId)
     .PathSegments<User, UserMemory, Memory>()
-    .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == relationshipType); // Using runtime Type property
+    .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == relationshipType) // Using runtime Type property
+    .ToListAsync();
 ```
 
 ### 2. Choose the Right Granularity
@@ -150,10 +152,10 @@ public record WorkedAt(string StartNodeId, string EndNodeId) : Relationship(Star
 
 ```csharp
 // Good: Only fetch required fields
-var names = graph.Nodes<Person>()
+var names = await graph.Nodes<Person>()
     .Where(p => p.Department == "Sales")
     .Select(p => new { p.FirstName, p.LastName })
-    .ToList();
+    .ToListAsync();
 ```
 
 **Don't**: Fetch entire entities when you only need a few properties
@@ -309,7 +311,7 @@ public async Task ImportPeople(List<PersonData> peopleData)
 
 ```csharp
 // Good: Direct relationship query
-var knows = graph.Relationships<Knows>()
+var knows = await graph.Relationships<Knows>()
     .Where(k => k.StartNodeId == personId || k.EndNodeId == personId)
     .ToListAsync();
 ```
@@ -449,9 +451,9 @@ public async Task<Person> CreatePerson(PersonInput input)
 public async Task<IEnumerable<Document>> GetUserDocuments(string userId)
 {
     // Only return documents the user has access to
-    return graph.Nodes<Document>()
+    return await graph.Nodes<Document>()
         .Where(d => d.OwnerId == userId || d.IsPublic)
-        .ToList();
+        .ToListAsync();
 }
 ```
 
@@ -487,7 +489,7 @@ public async Task<List<T>> ExecuteQueryWithMetrics<T>(
     using (var activity = Activity.StartActivity(queryName))
     {
         var stopwatch = Stopwatch.StartNew();
-        var results = query.ToList();
+        var results = await query.ToListAsync();
 
         activity?.SetTag("query.duration", stopwatch.ElapsedMilliseconds);
         activity?.SetTag("query.count", results.Count);
