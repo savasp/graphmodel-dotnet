@@ -1635,12 +1635,14 @@ internal class CypherQueryVisitor : ExpressionVisitor
 
             if (typeof(Model.IRelationship).IsAssignableFrom(memberType))
             {
-                // Relationships typically map to "r"
-                return @"{
-                    StartNode: { Node: src, ComplexProperties: src_flat_properties },
-                    Relationship: r,
-                    EndNode: { Node: tgt, ComplexProperties: tgt_flat_properties }
-                }";
+                var srcAlias = _context.Builder.GetActualAlias("src");
+                var relAlias = _context.Builder.GetActualAlias("r");
+                var tgtAlias = _context.Builder.GetActualAlias("tgt");
+                return $@"{{
+                    StartNode: {{ Node: {srcAlias}, ComplexProperties: src_flat_properties }},
+                    Relationship: {relAlias},
+                    EndNode: {{ Node: {tgtAlias}, ComplexProperties: tgt_flat_properties }}
+                }}";
             }
         }
 

@@ -148,6 +148,45 @@ public interface IBasicTests : IGraphModelTest
     }
 
     [Fact]
+    public async Task RelationshipDirection_ChangedOnUpdate_IncomingToOutgoing_Throws()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var originalSince = DateTime.UtcNow;
+        var knows = new Knows
+        {
+            StartNodeId = p1.Id,
+            EndNodeId = p2.Id,
+            Direction = RelationshipDirection.Incoming,
+            Since = originalSince
+        };
+
+        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+
+        var changedDirection = knows with
+        {
+            Direction = RelationshipDirection.Outgoing,
+            Since = originalSince.AddDays(1)
+        };
+
+        var exception = await Assert.ThrowsAsync<GraphException>(async () =>
+            await this.Graph.UpdateRelationshipAsync(changedDirection, null, TestContext.Current.CancellationToken));
+
+        Assert.Contains(
+            "Direction cannot be changed on update; delete and recreate the relationship",
+            exception.Message);
+
+        var fetched = await this.Graph.GetRelationshipAsync<Knows>(knows.Id, null, TestContext.Current.CancellationToken);
+        Assert.Equal(RelationshipDirection.Incoming, fetched.Direction);
+        Assert.Equal(p1.Id, fetched.StartNodeId);
+        Assert.Equal(p2.Id, fetched.EndNodeId);
+        Assert.Equal(originalSince, fetched.Since);
+    }
+
+    [Fact]
     public async Task RelationshipDirection_UnchangedOnUpdate_Succeeds()
     {
         var p1 = new Person { FirstName = "A" };
@@ -201,6 +240,66 @@ public interface IBasicTests : IGraphModelTest
             .Select(r => new { Relationship = r })
             .FirstAsync(TestContext.Current.CancellationToken);
 
+        Assert.Equal(knows.Id, projection.Relationship.Id);
+        Assert.Equal(p1.Id, projection.Relationship.StartNodeId);
+        Assert.Equal(p2.Id, projection.Relationship.EndNodeId);
+        Assert.Equal(RelationshipDirection.Incoming, projection.Relationship.Direction);
+    }
+
+    [Fact]
+    public async Task BareRelationshipProjection_OutgoingEdge_HasLogicalEndpointIds()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var knows = new Knows
+        {
+            StartNodeId = p1.Id,
+            EndNodeId = p2.Id,
+            Direction = RelationshipDirection.Outgoing,
+            Since = DateTime.UtcNow
+        };
+
+        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+
+        var projection = await this.Graph.Relationships<Knows>()
+            .Where(r => r.Id == knows.Id)
+            .Select(r => new { Relationship = r })
+            .FirstAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(knows.Id, projection.Relationship.Id);
+        Assert.Equal(p1.Id, projection.Relationship.StartNodeId);
+        Assert.Equal(p2.Id, projection.Relationship.EndNodeId);
+        Assert.Equal(RelationshipDirection.Outgoing, projection.Relationship.Direction);
+    }
+
+    [Fact]
+    public async Task BareRelationshipProjection_MixedIncomingEdge_HasLogicalEndpointIds()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await this.Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var since = DateTime.UtcNow;
+        var knows = new Knows
+        {
+            StartNodeId = p1.Id,
+            EndNodeId = p2.Id,
+            Direction = RelationshipDirection.Incoming,
+            Since = since
+        };
+
+        await this.Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+
+        var projection = await this.Graph.Relationships<Knows>()
+            .Where(r => r.Id == knows.Id)
+            .Select(r => new { r.Since, Relationship = r })
+            .FirstAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(since, projection.Since);
         Assert.Equal(knows.Id, projection.Relationship.Id);
         Assert.Equal(p1.Id, projection.Relationship.StartNodeId);
         Assert.Equal(p2.Id, projection.Relationship.EndNodeId);

@@ -636,9 +636,9 @@ internal sealed class CypherResultProcessor
         result = default;
 
         if (value is not IReadOnlyDictionary<string, object> structuredObject ||
-            !structuredObject.ContainsKey("StartNode") ||
-            !structuredObject.ContainsKey("Relationship") ||
-            !structuredObject.ContainsKey("EndNode"))
+            !structuredObject.TryGetValue("StartNode", out var startNodeValue) ||
+            !structuredObject.TryGetValue("Relationship", out var relationshipValue) ||
+            !structuredObject.TryGetValue("EndNode", out var endNodeValue))
         {
             return false;
         }
@@ -649,9 +649,9 @@ internal sealed class CypherResultProcessor
             return false;
         }
 
-        var startNode = ExtractProjectedNode(structuredObject["StartNode"]);
-        var relationship = structuredObject["Relationship"] as IRelationship;
-        var endNode = ExtractProjectedNode(structuredObject["EndNode"]);
+        var startNode = ExtractProjectedNode(startNodeValue);
+        var relationship = relationshipValue as IRelationship;
+        var endNode = ExtractProjectedNode(endNodeValue);
 
         if (startNode == null || relationship == null || endNode == null)
         {
