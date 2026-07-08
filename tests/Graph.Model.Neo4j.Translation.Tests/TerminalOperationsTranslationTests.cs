@@ -164,6 +164,78 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task TakeThenSum_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Take(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("SumAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task SkipThenSum_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Skip(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("SumAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task TakeThenAverage_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Take(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("AverageAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task SkipThenAverage_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Skip(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("AverageAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task TakeThenMin_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Take(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("MinAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task SkipThenMin_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Skip(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("MinAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task TakeThenMax_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Take(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("MaxAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task SkipThenMax_PaginationPipedBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Skip(5);
+        Expression<Func<Person, int>> selector = p => p.Age;
+        var expr = MarkerExpressions.Call<Person>("MaxAsyncMarker", source.Expression, selector);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
     public Task Count_WithPredicate()
     {
         var source = Root.Nodes<Person>();

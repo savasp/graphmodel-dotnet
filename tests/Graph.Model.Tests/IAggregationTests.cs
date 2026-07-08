@@ -26,6 +26,7 @@ public interface IAggregationTests : IGraphModelTest
         public double Height { get; set; }
         public float Weight { get; set; }
         public DateTime CreatedAt { get; set; }
+        public Guid TrackingId { get; set; }
     }
 
     [Fact]
@@ -613,6 +614,58 @@ public interface IAggregationTests : IGraphModelTest
             .MaxAsync(p => p.CreatedAt, TestContext.Current.CancellationToken);
 
         Assert.Equal(latest, result.ToUniversalTime());
+    }
+
+    [Fact]
+    public async Task MinAsync_NonNullableGuidSelector_ReturnsValue()
+    {
+        var group = $"MinAsync-guid-{Guid.NewGuid():N}";
+        var first = Guid.Parse("00000000-0000-0000-0000-000000000001");
+        var middle = Guid.Parse("00000000-0000-0000-0000-000000000002");
+        var last = Guid.Parse("00000000-0000-0000-0000-000000000003");
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, TrackingId = middle },
+            new PersonWithNumbers { FirstName = group, TrackingId = last },
+            new PersonWithNumbers { FirstName = group, TrackingId = first }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MinAsync(p => p.TrackingId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(first, result);
+    }
+
+    [Fact]
+    public async Task MaxAsync_NonNullableGuidSelector_ReturnsValue()
+    {
+        var group = $"MaxAsync-guid-{Guid.NewGuid():N}";
+        var first = Guid.Parse("00000000-0000-0000-0000-000000000001");
+        var middle = Guid.Parse("00000000-0000-0000-0000-000000000002");
+        var last = Guid.Parse("00000000-0000-0000-0000-000000000003");
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = group, TrackingId = middle },
+            new PersonWithNumbers { FirstName = group, TrackingId = last },
+            new PersonWithNumbers { FirstName = group, TrackingId = first }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var result = await Graph.Nodes<PersonWithNumbers>()
+            .Where(p => p.FirstName == group)
+            .MaxAsync(p => p.TrackingId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(last, result);
     }
 
     [Fact]

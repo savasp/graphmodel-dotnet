@@ -251,7 +251,7 @@ internal sealed class ResultMaterializer
                     targetType.IsValueType &&
                     Nullable.GetUnderlyingType(targetType) is null)
                 {
-                    throw new InvalidOperationException("Sequence contains no elements");
+                    throw new InvalidOperationException($"Cannot materialize null into non-nullable type {targetType.FullName}.");
                 }
 
                 return ConvertValueToTargetType(simpleValue.Object, targetType);

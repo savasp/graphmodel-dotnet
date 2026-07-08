@@ -319,10 +319,10 @@ internal static class Deserialization
         }
         else if (targetType.IsSimple)
         {
-            sb.AppendLine($"{indentStr}// Extract simple value - no conversion, just cast");
+            sb.AppendLine($"{indentStr}// {GetSimpleValueExtractionComment(targetType)}");
             sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is SimpleValue simpleValue)");
             sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    {variableName} = ({targetType.DisplayName})simpleValue.Object;");
+            GenerateSimpleValueAssignment(sb, targetType, variableName, "simpleValue.Object", indent + 4);
             sb.AppendLine($"{indentStr}}}");
             sb.AppendLine($"{indentStr}else");
             sb.AppendLine($"{indentStr}{{");
@@ -420,12 +420,12 @@ internal static class Deserialization
             {
                 sb.AppendLine($"{indentStr}        if (simpleValue.Object != null)");
                 sb.AppendLine($"{indentStr}        {{");
-                sb.AppendLine($"{indentStr}            collection.Add(({elementType.DisplayName})simpleValue.Object);");
+                sb.AppendLine($"{indentStr}            collection.Add({GetSimpleValueConversionExpression(elementType, "simpleValue.Object")});");
                 sb.AppendLine($"{indentStr}        }}");
             }
             else
             {
-                sb.AppendLine($"{indentStr}        collection.Add(({elementType.DisplayName})simpleValue.Object);");
+                sb.AppendLine($"{indentStr}        collection.Add({GetSimpleValueConversionExpression(elementType, "simpleValue.Object")});");
             }
 
             sb.AppendLine($"{indentStr}    }}");
@@ -529,7 +529,7 @@ internal static class Deserialization
                 SpecialType.System_Double => "0.0",
                 SpecialType.System_Boolean => "false",
                 SpecialType.System_DateTime => "System.DateTime.MinValue",
-                _ when type.Name == "Guid" => "System.Guid.NewGuid().ToString(\"N\")",
+                _ when IsGuid(type) => "System.Guid.Empty",
                 _ when type.IsEnum => $"default({type.DisplayName})",
                 _ => null
             };
@@ -551,5 +551,47 @@ internal static class Deserialization
         }
 
         return value ?? string.Empty;
+    }
+
+    private static void GenerateSimpleValueAssignment(
+        StringBuilder sb,
+        TypeReferenceModel targetType,
+        string variableName,
+        string sourceExpression,
+        int indent)
+    {
+        var indentStr = new string(' ', indent);
+        sb.AppendLine($"{indentStr}{variableName} = {GetSimpleValueConversionExpression(targetType, sourceExpression)};");
+    }
+
+    private static string GetSimpleValueExtractionComment(TypeReferenceModel targetType)
+    {
+        return RequiresSimpleValueConversion(targetType)
+            ? "Extract simple value with conversion from provider wire types"
+            : "Extract simple value - no conversion, just cast";
+    }
+
+    private static string GetSimpleValueConversionExpression(TypeReferenceModel targetType, string sourceExpression)
+    {
+        if (IsGuid(targetType))
+        {
+            return $"{sourceExpression} is System.Guid guidValue ? guidValue : System.Guid.Parse({sourceExpression}.ToString()!)";
+        }
+
+        return $"({targetType.DisplayName}){sourceExpression}";
+    }
+
+    private static bool RequiresSimpleValueConversion(TypeReferenceModel targetType)
+    {
+        return IsGuid(targetType);
+    }
+
+    private static bool IsGuid(TypeReferenceModel type)
+    {
+        return type.Name == "Guid" ||
+            type.DisplayName == "System.Guid" ||
+            type.DisplayName == "System.Guid?" ||
+            type.TypeOfName == "System.Guid" ||
+            type.TypeOfName == "System.Guid?";
     }
 }
