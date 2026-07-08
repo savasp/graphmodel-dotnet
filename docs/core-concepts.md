@@ -62,7 +62,7 @@ public interface IEntity
 ```csharp
 public class Person : INode
 {
-    // Note: implementing INode directly triggers analyzer warning GM011; prefer the Node base class unless you need full control.
+    // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
     // Good: Using init-only setter
     public string Id { get; init; } = Guid.NewGuid().ToString();
 
@@ -302,6 +302,10 @@ public enum RelationshipDirection
 Traversal direction is a query-time choice. Use `GraphTraversalDirection.Outgoing`,
 `GraphTraversalDirection.Incoming`, or `GraphTraversalDirection.Both` on traversal operators when
 you want to choose which stored arrows a query follows.
+
+`Direction` is immutable once a relationship has been persisted. Updating relationship properties
+with the same `Direction` succeeds, but changing `Direction` during an update throws
+`GraphException`; delete and recreate the relationship when you need to reverse the stored edge.
 
 ### Relationship Implementation Patterns
 

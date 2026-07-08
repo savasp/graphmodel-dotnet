@@ -380,6 +380,13 @@ rows; earlier provider materialization could return `default` for those empty sc
 row matches. `FirstOrDefaultAsync` and `SingleOrDefaultAsync` still return `default` for empty
 sources.
 
+## 15. Relationship direction changes now fail during update
+
+Updating a persisted relationship with a different `Direction` now throws `GraphException`:
+`Direction cannot be changed on update; delete and recreate the relationship`. Property updates
+with the same `Direction` continue to work. To reverse the stored edge direction, delete and
+recreate the relationship.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

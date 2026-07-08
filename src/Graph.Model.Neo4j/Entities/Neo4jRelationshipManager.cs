@@ -112,9 +112,6 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
 
-            // Validate property constraints at application level
-            ValidateRelationshipProperties(relationship);
-
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);
 
@@ -129,14 +126,26 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             var updated = await UpdateRelationshipPropertiesAsync(
                 relationship.Id,
                 entity,
+                relationship.Direction,
                 transaction.Transaction,
                 cancellationToken).ConfigureAwait(false);
 
-            if (!updated)
+            if (!updated.Exists)
             {
                 _logger.LogWarning("Relationship with ID {RelationshipId} not found for update", relationship.Id);
                 throw new EntityNotFoundException($"Relationship with ID {relationship.Id} not found for update");
             }
+
+            if (!updated.DirectionMatches)
+            {
+                throw new GraphException(
+                    "Direction cannot be changed on update; delete and recreate the relationship. " +
+                    $"Stored direction is {updated.StoredDirection}; incoming direction is {relationship.Direction}.");
+            }
+
+            // Validate property constraints after confirming the target row exists. If validation
+            // fails, the transaction rolls back the guarded update statement above.
+            ValidateRelationshipProperties(relationship);
 
             _logger.LogInformation("Updated relationship of type {RelationshipType} with ID {RelationshipId}",
                 typeof(TRelationship).Name, relationship.Id);
@@ -231,18 +240,27 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     }
 
 
-    private async Task<bool> UpdateRelationshipPropertiesAsync(
+    private async Task<(bool Exists, bool DirectionMatches, RelationshipDirection StoredDirection)> UpdateRelationshipPropertiesAsync(
         string relationshipId,
         EntityInfo entity,
+        RelationshipDirection incomingDirection,
         IAsyncTransaction transaction,
         CancellationToken cancellationToken)
     {
         var cypher = @"
-            MATCH ()-[r {Id: $relId}]->()
-            WITH r, r.Direction AS storedDirection
-            SET r = $props
-            SET r.Direction = storedDirection
-            RETURN r IS NOT NULL AS updated";
+            OPTIONAL MATCH ()-[r {Id: $relId}]->()
+            WITH r,
+                 r.Direction AS storedDirection,
+                 CASE
+                     WHEN r IS NULL THEN false
+                     WHEN r.Direction IS NULL THEN $incomingDirection = $defaultDirection
+                     ELSE toString(r.Direction) = $incomingDirection
+                 END AS directionMatches
+            FOREACH (_ IN CASE WHEN r IS NOT NULL AND directionMatches THEN [1] ELSE [] END |
+                SET r = $props, r.Direction = storedDirection)
+            RETURN r IS NOT NULL AS exists,
+                   directionMatches AS directionMatches,
+                   storedDirection AS storedDirection";
 
         var properties = SerializationHelpers.SerializeSimpleProperties(entity)
             .Where(kv => !_ignoredProperties.Contains(kv.Key))
@@ -251,10 +269,29 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         var result = await transaction.RunAsync(cypher, new
         {
             relId = relationshipId,
-            props = properties
+            props = properties,
+            incomingDirection = incomingDirection.ToString(),
+            defaultDirection = RelationshipDirection.Outgoing.ToString()
         }).ConfigureAwait(false);
 
-        return await result.CountAsync(cancellationToken).ConfigureAwait(false) > 0;
+        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
+        var exists = record["exists"].As<bool>();
+        var directionMatches = record["directionMatches"].As<bool>();
+        var storedDirectionValue = record["storedDirection"];
+        return (exists, directionMatches, ToRelationshipDirection(storedDirectionValue));
+    }
+
+    private static RelationshipDirection ToRelationshipDirection(object? value)
+    {
+        return value switch
+        {
+            RelationshipDirection direction when Enum.IsDefined(direction) => direction,
+            string directionString when Enum.TryParse<RelationshipDirection>(directionString, out var parsedDirection) &&
+                Enum.IsDefined(parsedDirection) => parsedDirection,
+            not null when Enum.TryParse<RelationshipDirection>(value.ToString(), out var parsedDirection) &&
+                Enum.IsDefined(parsedDirection) => parsedDirection,
+            _ => RelationshipDirection.Outgoing
+        };
     }
 
     private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Model.IRelationship

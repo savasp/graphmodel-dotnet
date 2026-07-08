@@ -43,7 +43,7 @@ public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNo
 // Avoid: Implementing interface directly (triggers GM011 warning)
 public record Person : INode
 {
-    // Note: implementing INode directly triggers analyzer warning GM011; prefer the Node base class unless you need full control.
+    // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public IReadOnlyList<string> Labels { get; } = new List<string> { "Person" }; // Don't manage these manually!
     public string Name { get; set; } = string.Empty;
@@ -61,10 +61,11 @@ The `Labels` property on `INode` and `Type` property on `IRelationship` are **ru
 
 ```csharp
 // Querying with runtime metadata
-var query = graph.Nodes<User>()
+var memorySegments = await graph.Nodes<User>()
     .Where(u => u.Id == userId)
     .PathSegments<User, UserMemory, Memory>()
-    .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == relationshipType); // Using runtime Type property
+    .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == relationshipType) // Using runtime Type property
+    .ToListAsync();
 ```
 
 ### 2. Choose the Right Granularity
