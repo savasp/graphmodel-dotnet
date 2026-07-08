@@ -24,12 +24,16 @@ using Xunit.v3;
 /// Applied at the interface level, every method the interface declares requires the capability
 /// (used for whole optional feature areas, e.g. <see cref="IFullTextSearchTests"/>). Applied at
 /// the method level, only that individual test requires it. <see cref="CompatibilityTest"/> reads
-/// both levels (xunit.v3 aggregates method-level and declaring-interface-level trait attributes
-/// onto the running test's trait collection) and skips when the provider's declared
-/// <see cref="CapabilitySet"/> does not include the required capability.
+/// both levels by reflecting the running test's method - its own attributes plus those on its
+/// declaring interface - and skips when the provider's declared <see cref="CapabilitySet"/> does
+/// not include the required capability.
 /// <para>
-/// Also doubles as an xUnit trait - <c>("Capability", "&lt;EnumName&gt;")</c> - so a provider's
-/// test runner can filter by capability, e.g. <c>--filter-trait Capability=FullTextSearch</c>.
+/// This type is also an <see cref="ITraitAttribute"/>, emitting a
+/// <c>("Capability", "&lt;EnumName&gt;")</c> trait so a runner can filter <b>method-level</b>
+/// requirements, e.g. <c>--filter-trait Capability=FullTextSearch</c>. Note that xunit.v3 does not
+/// surface interface-type-level trait attributes on default-interface-method tests, so trait
+/// filtering reflects only method-level requirements; the skip decision above does not rely on
+/// traits and covers both levels.
 /// </para>
 /// </remarks>
 /// <param name="capability">The capability the annotated test or interface requires.</param>

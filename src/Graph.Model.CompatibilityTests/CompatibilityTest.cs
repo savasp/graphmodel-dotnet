@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.CompatibilityTests;
 
 using System.Reflection;
+using Xunit.v3;
 
 /// <summary>
 /// The base class every compatibility test interface binding derives from (via a provider's own
@@ -106,18 +107,36 @@ public abstract class CompatibilityTest(
         $"Capability '{capability}' not declared by provider '{providerName}' " +
         $"(Cvoya.Graph.Model.CompatibilityTests {SuiteVersion})";
 
-    private static IEnumerable<GraphCapability> GetRequiredCapabilities()
+    private static IReadOnlyCollection<GraphCapability> GetRequiredCapabilities()
+    {
+        // Resolve the running test's method and read RequiresCapability at BOTH the method and its
+        // declaring-interface level, reusing the same reflection ComplianceInventory uses to size
+        // MinimumExecuted - so the runtime skip decision and the expected-count never disagree.
+        //
+        // We deliberately do NOT read xUnit's aggregated trait collection: in xunit.v3 (3.2.2) an
+        // interface-TYPE-level ITraitAttribute on a default-interface-method test is not surfaced
+        // onto the running test's traits (only method-level ones are), and the suite gates whole
+        // optional areas at the interface level (e.g. IFullTextSearchTests). Reflecting the method
+        // covers both shapes; trusting traits silently ran interface-gated tests unskipped.
+        if (TestContext.Current.TestMethod is IXunitTestMethod { Method: { } method })
+        {
+            return ComplianceInventory.RequiredCapabilities(method);
+        }
+
+        // Fallback for a host that cannot surface the MethodInfo: method-level trait aggregation
+        // still works, so honor those rather than silently running a gated test.
+        return GetRequiredCapabilitiesFromTraits();
+    }
+
+    private static IReadOnlyCollection<GraphCapability> GetRequiredCapabilitiesFromTraits()
     {
         var traits = TestContext.Current.Test?.Traits;
         if (traits is null || !traits.TryGetValue("Capability", out var values))
         {
-            yield break;
+            return [];
         }
 
-        foreach (var value in values)
-        {
-            yield return Enum.Parse<GraphCapability>(value);
-        }
+        return [.. values.Select(Enum.Parse<GraphCapability>)];
     }
 
     private static string GetSuiteVersion()
