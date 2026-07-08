@@ -20,26 +20,6 @@ using System.Reflection;
 [Trait("Area", "Attributes")]
 public class AttributesAndLabelsTests
 {
-    public static TheoryData<NodeAttribute, string[]> NodeLabelCases => new()
-    {
-        { new NodeAttribute(), Array.Empty<string>() },
-        { new NodeAttribute("Primary"), new[] { "Primary" } },
-        { new NodeAttribute("Primary", "Secondary", "Tertiary"), new[] { "Primary", "Secondary", "Tertiary" } },
-        { new NodeAttribute("", "Secondary"), new[] { "Secondary" } },
-        { new NodeAttribute("Primary", ""), new[] { "Primary" } },
-        { new NodeAttribute("Primary", "Primary"), new[] { "Primary", "Primary" } },
-    };
-
-    public static TheoryData<RelationshipAttribute, string[]> RelationshipLabelCases => new()
-    {
-        { new RelationshipAttribute(), Array.Empty<string>() },
-        { new RelationshipAttribute("CONNECTS"), new[] { "CONNECTS" } },
-        { new RelationshipAttribute("CONNECTS", "AUDITED", "CURRENT"), new[] { "CONNECTS", "AUDITED", "CURRENT" } },
-        { new RelationshipAttribute("", "AUDITED"), new[] { "AUDITED" } },
-        { new RelationshipAttribute("CONNECTS", ""), new[] { "CONNECTS" } },
-        { new RelationshipAttribute("CONNECTS", "CONNECTS"), new[] { "CONNECTS", "CONNECTS" } },
-    };
-
     public static TheoryData<Type, string> TypeLabelCases => new()
     {
         { typeof(PlainNode), nameof(PlainNode) },
@@ -58,17 +38,23 @@ public class AttributesAndLabelsTests
     };
 
     [Theory]
-    [MemberData(nameof(NodeLabelCases))]
-    public void NodeAttribute_GetAllLabels_PreservesOrderAndCurrentDuplicateBehavior(NodeAttribute attribute, string[] expected)
+    [InlineData(null, null)]
+    [InlineData("Person", "Person")]
+    public void NodeAttribute_Label_ReflectsConstructorAndDefault(string? label, string? expected)
     {
-        Assert.Equal(expected, attribute.GetAllLabels());
+        var attribute = label is null ? new NodeAttribute() : new NodeAttribute(label);
+
+        Assert.Equal(expected, attribute.Label);
     }
 
     [Theory]
-    [MemberData(nameof(RelationshipLabelCases))]
-    public void RelationshipAttribute_GetAllLabels_PreservesOrderAndCurrentDuplicateBehavior(RelationshipAttribute attribute, string[] expected)
+    [InlineData(null, null)]
+    [InlineData("CONNECTS", "CONNECTS")]
+    public void RelationshipAttribute_Label_ReflectsConstructorAndDefault(string? label, string? expected)
     {
-        Assert.Equal(expected, attribute.GetAllLabels());
+        var attribute = label is null ? new RelationshipAttribute() : new RelationshipAttribute(label);
+
+        Assert.Equal(expected, attribute.Label);
     }
 
     [Theory]
@@ -142,12 +128,12 @@ public class AttributesAndLabelsTests
 
     private sealed record PlainNode : Node;
 
-    [Node("CoreAttributedNode", "CoreAdditionalNode")]
+    [Node("CoreAttributedNode")]
     private sealed record AttributedNode : Node;
 
     private sealed record GenericNode<T> : Node;
 
-    [Relationship("CORE_ATTRIBUTED_REL", "CORE_REL_AUDIT")]
+    [Relationship("CORE_ATTRIBUTED_REL")]
     private sealed record AttributedRelationship(string Start, string End) : Relationship(Start, End);
 
     private sealed record PlainRelationship(string Start, string End) : Relationship(Start, End);

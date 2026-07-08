@@ -37,6 +37,12 @@ public record Employee : Node
 }
 ```
 
+**One label per type**: a node type maps to exactly one label, and a relationship type to exactly one type name. This label is the correlation key between the stored node and the .NET type used to materialize it (see [Type resolution](#type-resolution) below).
+
+**Uniqueness**: the label must be unique across every node type loaded in the process, compared **case-insensitively** (`Person` and `person` are treated as the same label). Two loaded node types that resolve to the same label — whether both declare it explicitly, or one falls back to a class name that matches another's label — are rejected at registration with a `GraphException`. The same rule applies independently to relationship type names. This mirrors the compile-time analyzers (`GM008`/`GM009`), which flag the collision before you run.
+
+> Multiple labels on a single typed node are not supported. If you need arbitrary, runtime-defined label sets (for example cross-cutting tags), use `DynamicNode`, whose `Labels` collection you manage yourself.
+
 ## Property Configuration
 
 ### PropertyAttribute
@@ -190,6 +196,18 @@ await graph.CreateNodeAsync(realEstate);
 ```
 
 The underlying provider serializes the instance of the actual instance, which in this case is `RealEstate`. It stores enough metadata to know the type to be used when retrieving the node from the graph. If a different process, with a completely different type hierarchy is used to retrieve the graph node, the node's label is used in an attempt to identify the right type. In the above case, a type which has been annotated with the attribute `Node("RealEstate")` will be discovered and the deserialization will be attempted. If the type isn't compatible or a type annotated with that specific label isn't discovered, that is considered a runtime exception.
+
+### Type resolution
+
+When materializing a stored node, the provider resolves the .NET type in this order:
+
+1. **Stored metadata (exact).** Each entity is persisted with its concrete .NET type name. If that type is loadable in the reading process and is assignable to the requested type, it is used directly — an exact round-trip.
+2. **Label (portable).** If the metadata type is not loadable (a different application, or the type was renamed or moved) or is not assignable to the requested type, the node's **label** is used to find a compatible local type. Because a label maps to exactly one type per process, this is deterministic. The requested type scopes the search, so you materialize the node as the type you asked for (`GetNodeAsync<T>` / `Nodes<T>()`), provided its properties are compatible.
+3. **Fallback.** Otherwise the requested type itself is used. For untyped reads, `DynamicNode` always succeeds, exposing the raw labels and properties.
+
+This is why the explicit label is a durable contract: the metadata pointer is a fast path that is allowed to miss, and the label recovers the type across processes and across refactors.
+
+**Polymorphic queries** rely on the class hierarchy rather than on multiple labels. `Nodes<Asset>()` matches not only `:Asset` but also `:Vehicle` and `:RealEstate` — at query-construction time the hierarchy is expanded to the set of compatible labels (each concrete subtype contributes its own single label). Only subtypes the registry has discovered (their assembly is loaded) participate.
 
 ## Best Practices
 

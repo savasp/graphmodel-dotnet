@@ -25,10 +25,10 @@ Domain node types satisfy `INode`; relationship types satisfy `IRelationship`. A
 
 Labels and relationship types come from attributes first:
 
-- `[Node("Person")]` or `[Node("Person", "Employee")]` controls node labels.
-- `[Relationship("KNOWS")]` controls relationship type.
+- `[Node("Person")]` controls the node label. A node type maps to exactly one label, unique (case-insensitive) across all node types loaded in the process; `SchemaRegistry` throws a `GraphException` on a collision.
+- `[Relationship("KNOWS")]` controls the relationship type (also one per type, unique case-insensitively).
 - Without an attribute, `Labels.GetLabelFromType` derives a label/type from the CLR type name.
-- Dynamic nodes use `DynamicNode.Labels`; dynamic relationships use `DynamicRelationship.Type`.
+- Dynamic nodes use `DynamicNode.Labels` (an arbitrary, caller-managed label set); dynamic relationships use `DynamicRelationship.Type`.
 
 Runtime metadata properties are provider-populated. `INode.Labels` and `IRelationship.Type` are empty before persistence for base records and should be populated after create/read based on actual stored labels/types.
 

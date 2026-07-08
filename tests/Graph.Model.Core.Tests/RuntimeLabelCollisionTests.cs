@@ -95,12 +95,10 @@ public class RuntimeLabelCollisionTests : IDisposable
             });
     }
 
-    // Deliberately not mirroring GM009's case-insensitive label comparison here: Neo4j labels are
-    // case-sensitive, and SchemaRegistry's _nodeSchemas/_relationshipSchemas dictionaries correctly treat
-    // "Person" and "person" as distinct, legitimate labels today. Broadening collision *detection* to be
-    // case-insensitive without changing the dictionaries' storage/lookup comparer would be an isolated
-    // special case; changing the comparer itself would be a separate, riskier behavioral change (it would
-    // silently merge two currently-valid distinct registrations) that is out of scope for this issue.
+    // Label uniqueness is case-insensitive (one label per type): SchemaRegistry's
+    // _nodeSchemas/_relationshipSchemas use StringComparer.OrdinalIgnoreCase, matching the resolver's
+    // case-insensitive label comparison, so "Person" and "person" collide rather than registering as two
+    // types the reader could not tell apart. See RegisterNodeTypes_DistinctTypesSameLabelDifferentCasing_Collides.
 
     [Fact]
     public void RegisterNodeTypes_UniqueLabels_NoCollision()
@@ -517,6 +515,37 @@ public class RuntimeLabelCollisionTests : IDisposable
             });
     }
 
+    // ===== SchemaRegistry: case-insensitive label uniqueness (one label per type) =====
+
+    [Fact]
+    public void RegisterNodeTypes_DistinctTypesSameLabelDifferentCasing_Collides()
+    {
+        // A node type maps to exactly one label, unique case-insensitively across loaded types: "Person"
+        // and "person" cannot both be registered, because the resolver compares stored labels
+        // case-insensitively and could not tell them apart on read.
+        const string source = """
+            using Cvoya.Graph.Model;
+
+            [Node("RLC_CasePerson")]
+            public sealed record CasePersonUpper : Node;
+
+            [Node("rlc_caseperson")]
+            public sealed record CasePersonLower : Node;
+            """;
+
+        RuntimeLabelCollisionFixtureAssembly.Run(
+            source,
+            ["CasePersonUpper", "CasePersonLower"],
+            types =>
+            {
+                var collisions = RegisterNodes(types);
+
+                var message = Assert.Single(collisions);
+                Assert.Contains(types[0].FullName!, message, StringComparison.Ordinal);
+                Assert.Contains(types[1].FullName!, message, StringComparison.Ordinal);
+            });
+    }
+
     // ===== Reflection helpers driving SchemaRegistry's private registration methods directly =====
 
     private static List<string> RegisterNodes(Type[] types)
@@ -541,6 +570,31 @@ public class RuntimeLabelCollisionTests : IDisposable
         {
             InvokeRegisterRelationship(registry, type, collisions);
         }
+
+        return collisions;
+    }
+
+    /// <summary>
+    /// Registers <paramref name="nodeTypes"/> into a fresh registry, then runs the real
+    /// <c>SchemaRegistry.DetectAdditionalLabelCollisions</c> pass over the populated schemas - mirroring
+    /// <c>RegisterGraphEntityTypes</c>'s register-then-reconcile sequence for the secondary-label rule
+    /// without going through full-<see cref="AppDomain"/> assembly discovery. The fixtures used here carry
+    /// no primary/property collisions, so the returned list isolates the additional-label collisions.
+    /// </summary>
+    private static List<string> RegisterNodesThenDetectAdditional(Type[] nodeTypes)
+    {
+        var registry = new SchemaRegistry();
+        var collisions = new List<string>();
+
+        foreach (var type in nodeTypes)
+        {
+            InvokeRegisterNode(registry, type, collisions);
+        }
+
+        var method = typeof(SchemaRegistry).GetMethod("DetectAdditionalLabelCollisions", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("SchemaRegistry.DetectAdditionalLabelCollisions was not found.");
+
+        InvokeUnwrapped(method, registry, [collisions]);
 
         return collisions;
     }

@@ -27,8 +27,13 @@ public class SchemaRegistry : IDisposable
     // there's no write/write race), but reads must be safe to run lock-free, concurrently with a
     // writer holding the semaphore (e.g. a lazy rescan triggered by another thread). That's
     // exactly what ConcurrentDictionary.TryGetValue guarantees without taking any lock itself.
-    private readonly ConcurrentDictionary<string, EntitySchemaInfo> _nodeSchemas = new();
-    private readonly ConcurrentDictionary<string, EntitySchemaInfo> _relationshipSchemas = new();
+    // Case-insensitive keys: a node type maps to exactly one label and no two loaded types may share a
+    // label (case-insensitive). This matches the resolver, which compares stored labels case-insensitively
+    // (Neo4j labels are case-sensitive, but GraphModel controls their casing on write, so "Person" and
+    // "person" can never both be legitimately loaded - treating them as distinct would only let two types
+    // register under labels the reader cannot tell apart).
+    private readonly ConcurrentDictionary<string, EntitySchemaInfo> _nodeSchemas = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, EntitySchemaInfo> _relationshipSchemas = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Assembly> _scannedAssemblies = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private volatile bool _isInitialized = false;

@@ -274,60 +274,6 @@ public class GM009_DuplicateNodeAttributeLabelTests
     }
 
     [Fact]
-    public async Task NodeWithMultipleLabels_ChecksAllLabels()
-    {
-        var test = """
-            using Cvoya.Graph.Model;
-            
-            [Node("Person", "Individual")]
-            public class PersonNode : Node
-            {
-                public string Id { get; init; } = string.Empty;
-                public string Name { get; set; } = string.Empty;
-            }
-            
-            [Node("Employee", "Person")]
-            public class {|#0:EmployeeNode|} : Node
-            {
-                public string Id { get; init; } = string.Empty;
-                public string Name { get; set; } = string.Empty;
-                public string Department { get; set; } = string.Empty;
-            }
-            """;
-
-        var expected = VerifyCS.Diagnostic("GM009")
-            .WithLocation(0)
-            .WithArguments("EmployeeNode", "Person", "PersonNode");
-
-        await VerifyAnalyzerAsync(test, expected);
-    }
-
-    [Fact]
-    public async Task NodeWithUniqueMultipleLabels_NoDiagnostic()
-    {
-        var test = """
-            using Cvoya.Graph.Model;
-            
-            [Node("Person", "Individual")]
-            public class PersonNode : Node
-            {
-                public string Id { get; init; } = string.Empty;
-                public string Name { get; set; } = string.Empty;
-            }
-            
-            [Node("Employee", "Worker")]
-            public class EmployeeNode : Node
-            {
-                public string Id { get; init; } = string.Empty;
-                public string Name { get; set; } = string.Empty;
-                public string Department { get; set; } = string.Empty;
-            }
-            """;
-
-        await VerifyAnalyzerAsync(test);
-    }
-
-    [Fact]
     public async Task ClassNotImplementingGraphInterface_NoDuplicateLabelDiagnostic()
     {
         // GM009 only compares labels across types that implement INode - neither of these classes
