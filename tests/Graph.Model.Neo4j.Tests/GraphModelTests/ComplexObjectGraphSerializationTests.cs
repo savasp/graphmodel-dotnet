@@ -14,8 +14,10 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-public class ComplexObjectGraphSerializationTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.IComplexObjectGraphSerializationTests
+using Cvoya.Graph.Model.CompatibilityTests;
+
+public class ComplexObjectGraphSerializationTests(Neo4jHarness harness) :
+    Neo4jTest(harness),
+    IComplexObjectGraphSerializationTests
 {
 }

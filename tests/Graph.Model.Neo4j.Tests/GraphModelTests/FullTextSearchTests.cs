@@ -14,8 +14,10 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-public class FullTextSearchTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture, true),
-    Model.Tests.IFullTextSearchTests
+using Cvoya.Graph.Model.CompatibilityTests;
+
+public class FullTextSearchTests(Neo4jHarness harness) :
+    Neo4jTest(harness, StoreIsolation.FreshStore),
+    IFullTextSearchTests
 {
 }

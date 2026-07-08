@@ -14,8 +14,10 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-public class AttributeValidationTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.IAttributeValidationTests
+using Cvoya.Graph.Model.CompatibilityTests;
+
+public class AttributeValidationTests(Neo4jHarness harness) :
+    Neo4jTest(harness),
+    IAttributeValidationTests
 {
 }

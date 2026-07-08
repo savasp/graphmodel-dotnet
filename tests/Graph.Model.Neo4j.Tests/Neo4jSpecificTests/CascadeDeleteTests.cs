@@ -14,13 +14,14 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
+using Cvoya.Graph.Model.CompatibilityTests;
+
 using Cvoya.Graph.Model.Neo4j.Core;
-using Cvoya.Graph.Model.Tests;
 using global::Neo4j.Driver;
 
 
-public class CascadeDeleteTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture)
+public class CascadeDeleteTests(Neo4jHarness harness) :
+    Neo4jTest(harness)
 {
     [Fact]
     public async Task DeleteNodeAsync_RemovesFullComplexPropertySubtree()

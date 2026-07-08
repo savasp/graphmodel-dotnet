@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model.Tests;
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-public class BasicTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.IBasicTests
+using Cvoya.Graph.Model.CompatibilityTests;
+
+public class BasicTests(Neo4jHarness harness) :
+    Neo4jTest(harness),
+    IBasicTests
 {
     [Fact]
     public async Task RuntimeMetadataProperties_AreStoredAndRetrievedCorrectly()

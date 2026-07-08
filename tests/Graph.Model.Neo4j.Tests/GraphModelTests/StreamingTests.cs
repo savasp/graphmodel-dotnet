@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model.Tests;
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-public class StreamingTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.IStreamingTests
+using Cvoya.Graph.Model.CompatibilityTests;
+
+public class StreamingTests(Neo4jHarness harness) :
+    Neo4jTest(harness),
+    IStreamingTests
 {
 }

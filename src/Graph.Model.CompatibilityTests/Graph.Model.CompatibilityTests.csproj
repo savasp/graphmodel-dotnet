@@ -1,0 +1,91 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <!--
+          Deliberately no explicit TargetFramework here: this project inherits the root
+          Directory.Build.props's TargetFrameworks (plural). Setting both TargetFramework and
+          TargetFrameworks - as every other packable src/ project (Graph.Model, Graph.Model.Neo4j,
+          Graph.Model.Serialization) also avoids - collapses the SDK's cross-targeting outer/inner
+          build split into a single IsInnerBuild=true pass, which silently disables the
+          GeneratePackageOnBuild pack-on-build hook (NuGet.Build.Tasks.Pack.targets'
+          _PackAsBuildAfterTarget requires IsInnerBuild != 'true').
+        -->
+        <OutputType>library</OutputType>
+        <RootNamespace>Cvoya.Graph.Model.CompatibilityTests</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Model.CompatibilityTests</AssemblyName>
+
+        <!-- Keep the code generated files -->
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+
+        <!--
+          The domain model and the suite's default-interface-method test bodies are shipped public
+          API (consumers implement the I*Tests interfaces on their own binding classes), but they
+          are not meant to be documented as a browsable API surface, so CS1591 is suppressed at the
+          project level rather than requiring XML docs on every test method and domain-model member.
+
+          CA2007 (ConfigureAwait) is suppressed because, despite living under src/ for packaging
+          reasons (see the design doc for #95), this project's content is test code: every I*Tests
+          default-interface method runs under a provider's test host, never a sync-context-sensitive
+          caller, matching the ConfigureAwait-free style used throughout every other test project in
+          this repository (tests/Directory.Build.props does not enable CA2007).
+        -->
+        <NoWarn>$(NoWarn);CS1591;CA2007</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <PackageId>Cvoya.Graph.Model.CompatibilityTests</PackageId>
+        <Description>A shippable compatibility test suite (TCK) for GraphModel providers: a harness SPI, capability-aware skips, and a compliance guard, so a provider can prove it implements the GraphModel contract.</Description>
+        <PackageTags>graph;testing;tck;compatibility;xunit</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Suite meta-tests are the suite's own consumer, verifying the SPI/guard mechanics work
+             the way an external provider would use them - allowed to see internals; external
+             consumers (providers) never need an internals grant. -->
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Model.CompatibilityTests.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
+        <!--
+          Narrow (non-MTP) xunit.v3 components: attributes + TestContext + ITraitAttribute
+          (extensibility.core) and Assert (assert). The package must not pull in
+          Microsoft.Testing.Platform - the consumer's own test project owns the runner choice.
+        -->
+        <PackageReference Include="xunit.v3.extensibility.core" />
+        <PackageReference Include="xunit.v3.assert" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+    </ItemGroup>
+
+    <!-- Use project references for development (default) -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
+        <ProjectReference Include="../Graph.Model/Graph.Model.csproj" />
+        <ProjectReference Include="../Graph.Model.Serialization/Graph.Model.Serialization.csproj" />
+        <!--
+          The CodeGen source generator is only wired in as a Roslyn analyzer for real compilations. DocFX's
+          metadata step (docs/apiref/docfx.json passes -p:BuildingForDocfx=true) loads this project without
+          compiling it, using a bundled compiler older than the one the generator DLL targets; loading the
+          generator as an analyzer there would only surface a harmless but noisy FailedToLoadAnalyzer warning
+          during API reference generation, with no effect on the generated docs.
+        -->
+        <ProjectReference Include="../Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" Condition="'$(BuildingForDocfx)' != 'true'" />
+        <ProjectReference Include="../Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" ReferenceOutputAssembly="false" Condition="'$(BuildingForDocfx)' == 'true'" />
+        <ProjectReference Include="../Graph.Model.Analyzers/Graph.Model.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
+
+    <!-- Use package references for releases -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'false'">
+        <PackageReference Include="Cvoya.Graph.Model" />
+        <PackageReference Include="Cvoya.Graph.Model.Serialization" />
+    </ItemGroup>
+
+    <!-- Include the CodeGen analyzer in the package when building packages -->
+    <ItemGroup Condition="'$(GeneratePackageOnBuild)' == 'true'">
+        <None Include="../Graph.Model.Serialization.CodeGen/bin/$(Configuration)/netstandard2.0/Graph.Model.Serialization.CodeGen.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
+    </ItemGroup>
+
+</Project>

@@ -12,7 +12,8 @@ src/Graph.Model.Neo4j/              Neo4j provider: LINQ-to-Cypher, transactions
 src/Graph.Model.Analyzers/          Roslyn analyzers (GM001…) for consumer domain models
 src/Graph.Model.Serialization/      runtime serialization representation (EntityInfo, schemas)
 src/Graph.Model.Serialization.CodeGen/  incremental source generator for entity serializers
-tests/                              see "Build and test" — the four projects differ in what they need
+src/Graph.Model.CompatibilityTests/ packable provider contract suite (TCK): harness SPI, capability registry, guard
+tests/                              see "Build and test" — the projects differ in what they need
 examples/                           runnable usage examples
 docs/                               concept docs, developer/build docs
 scripts/                            release + container helper scripts
@@ -25,12 +26,13 @@ dotnet build --configuration Debug     # day-to-day build (project references)
 dotnet test  --configuration Debug     # full suite — needs a local Neo4j (see below)
 ```
 
-The four test projects have different requirements — get this right:
+The test projects have different requirements — get this right:
 
 | Project | What it is | Needs |
 |---------|------------|-------|
-| `tests/Graph.Model.Tests` | **Abstract provider contract suite.** Test classes are inherited by provider test projects; it executes ~no tests standalone. Add provider-agnostic tests here so every provider inherits them. | nothing (but running it alone proves nothing) |
+| `src/Graph.Model.CompatibilityTests` | **Provider contract suite (TCK), packed as `Cvoya.Graph.Model.CompatibilityTests`.** Test interfaces with default xUnit methods, a harness SPI (`IGraphProviderTestHarness`), and a capability registry; providers bind those interfaces in their own test project. It executes ~no tests standalone. Add provider-agnostic tests here so every provider inherits them. See [docs/provider-implementers-guide.md](docs/provider-implementers-guide.md#certifying-a-provider). | nothing (but running it alone proves nothing) |
 | `tests/Graph.Model.Neo4j.Tests` | The contract suite bound to Neo4j + provider-specific tests. This is where the suite actually runs. | a running Neo4j at `NEO4J_URI`, or reachable at the default `bolt://localhost:7687` with `neo4j/password`. Start one with `scripts/containers/start-neo4j.sh` (Podman preferred locally; Docker fallback; set `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` to force one). There is **no** automatic container startup — `CI=true` does nothing (that path is disabled; see #88). |
+| `tests/Graph.Model.CompatibilityTests.Tests` | Meta-tests for the TCK itself (harness SPI lifecycle, capability skips, the compliance guard). | nothing — runs anywhere; the fast no-Docker lane |
 | `tests/Graph.Model.Analyzers.Tests` | Analyzer tests. | nothing — runs anywhere; the fast no-Docker lane |
 | `tests/Graph.Model.Performance.Tests` | Benchmarks. | not part of the normal gate |
 

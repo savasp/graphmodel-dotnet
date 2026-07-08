@@ -14,8 +14,10 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-public class AdvancedQueryTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.IAdvancedQueryTests
+using Cvoya.Graph.Model.CompatibilityTests;
+
+public class AdvancedQueryTests(Neo4jHarness harness) :
+    Neo4jTest(harness),
+    IAdvancedQueryTests
 {
 }

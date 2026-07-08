@@ -9,7 +9,8 @@ This checklist ensures GraphModel is ready for public release with proper qualit
 - [ ] **Run full test suite**
 
   ```bash
-  dotnet test tests/Graph.Model.Tests
+  dotnet test src/Graph.Model.CompatibilityTests
+  dotnet test tests/Graph.Model.CompatibilityTests.Tests
   dotnet test tests/Graph.Model.Analyzers.Tests
   dotnet test tests/Graph.Model.Neo4j.Tests
   ```

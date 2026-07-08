@@ -136,11 +136,12 @@ src/
 ├── Graph.Model/                 # Core abstractions
 ├── Graph.Model.Neo4j/          # Neo4j provider
 ├── Graph.Model.Serialization/  # Object serialization
-└── Graph.Model.Analyzers/      # Roslyn analyzers
+├── Graph.Model.Analyzers/      # Roslyn analyzers
+└── Graph.Model.CompatibilityTests/  # Provider contract suite (TCK)
 
 tests/
-├── Graph.Model.Tests/          # Unit tests
-└── Graph.Model.Neo4j.Tests/   # Integration tests
+├── Graph.Model.Neo4j.Tests/               # Integration tests (the contract suite bound to Neo4j)
+└── Graph.Model.CompatibilityTests.Tests/  # Meta-tests for the TCK itself
 
 examples/                       # Usage examples
 docs/                          # Documentation

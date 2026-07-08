@@ -181,7 +181,7 @@ jobs:
       - name: Test Core
         run: >
           dotnet test
-          --project tests/Graph.Model.Tests/Graph.Model.Tests.csproj
+          --project tests/Graph.Model.CompatibilityTests.Tests/Graph.Model.CompatibilityTests.Tests.csproj
           --no-build
           --configuration Release
           --verbosity normal

@@ -120,7 +120,7 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test Core
-        run: dotnet test --project tests/Graph.Model.Tests/Graph.Model.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: dotnet test --project tests/Graph.Model.CompatibilityTests.Tests/Graph.Model.CompatibilityTests.Tests.csproj --no-build --configuration Release --verbosity normal
 
       - name: Test Core Libraries
         run: dotnet test --project tests/Graph.Model.Core.Tests/Graph.Model.Core.Tests.csproj --no-build --configuration Release --verbosity normal
@@ -317,6 +317,7 @@ jobs:
           dotnet build --configuration Release --no-restore src/Graph.Model/Graph.Model.csproj
           dotnet build --configuration Release --no-restore src/Graph.Model.Serialization/Graph.Model.Serialization.csproj
           dotnet build --configuration Release --no-restore src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj
+          dotnet build --configuration Release --no-restore src/Graph.Model.CompatibilityTests/Graph.Model.CompatibilityTests.csproj
           dotnet build --configuration Release --no-restore src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj
           dotnet build --configuration Release --no-restore src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj
 
@@ -325,6 +326,7 @@ jobs:
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model/Graph.Model.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model.Serialization/Graph.Model.Serialization.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model.CompatibilityTests/Graph.Model.CompatibilityTests.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj
 

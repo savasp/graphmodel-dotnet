@@ -14,10 +14,11 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-using Cvoya.Graph.Model.Tests;
+using Cvoya.Graph.Model.CompatibilityTests;
 
-public class HostileDynamicIdentifierTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
+
+public class HostileDynamicIdentifierTests(Neo4jHarness harness) :
+    Neo4jTest(harness),
     IHostileDynamicIdentifierTests
 {
 }
