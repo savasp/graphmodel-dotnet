@@ -52,7 +52,7 @@ var adminUsers = await graph.Nodes<User>()
     .ToListAsync();
 
 // Filter in path traversal
-var query = await graph.Nodes<User>()
+var memorySegments = await graph.Nodes<User>()
     .Where(u => u.Id == userId)
     .PathSegments<User, IRelationship, INode>()
     .Where(ps => ps.EndNode.Labels.Contains("Memory"))
@@ -97,7 +97,7 @@ public interface IRelationship : IEntity
 
 ```csharp
 // Filter relationships by type in path traversal
-var query = await graph.Nodes<User>()
+var memoryRelationships = await graph.Nodes<User>()
     .Where(u => u.Id == userId)
     .PathSegments<User, UserMemory, Memory>()
     .Where(ps => ps.EndNode.Id == memoryId && ps.Relationship.Type == "REMEMBERS")
@@ -207,6 +207,7 @@ The `GM011` analyzer rule warns when types directly implement `INode` or `IRelat
 // ❌ Triggers GM011 warning
 public record Person : INode
 {
+    // Note: implementing INode directly triggers analyzer warning GM011; prefer the Node base class unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public IReadOnlyList<string> Labels { get; } = new List<string>(); // Don't do this!
     public string Name { get; set; } = string.Empty;
@@ -276,6 +277,7 @@ public class Person : INode
 
 public class Knows : IRelationship
 {
+    // Note: implementing IRelationship directly triggers analyzer warning GM011; prefer the Relationship base class unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public string Type { get; } = "KNOWS";
     public string StartNodeId { get; init; } = string.Empty;

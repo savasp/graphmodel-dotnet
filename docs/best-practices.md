@@ -43,6 +43,7 @@ public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNo
 // Avoid: Implementing interface directly (triggers GM011 warning)
 public record Person : INode
 {
+    // Note: implementing INode directly triggers analyzer warning GM011; prefer the Node base class unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public IReadOnlyList<string> Labels { get; } = new List<string> { "Person" }; // Don't manage these manually!
     public string Name { get; set; } = string.Empty;

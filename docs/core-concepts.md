@@ -62,6 +62,7 @@ public interface IEntity
 ```csharp
 public class Person : INode
 {
+    // Note: implementing INode directly triggers analyzer warning GM011; prefer the Node base class unless you need full control.
     // Good: Using init-only setter
     public string Id { get; init; } = Guid.NewGuid().ToString();
 
