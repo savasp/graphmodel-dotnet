@@ -122,7 +122,7 @@ public record Person : Node
 }
 ```
 
-The addresses could have been modelled as separate nodes, which is a great way to model this information. The `Address` would have had to implement `INode`. In this case, however, the developer decided to model the home and work addresses as properties on `Person`. The Graph Model supports this data modeling choice and requires providers to support it. Indeed, the Neo4j implementation of the Graph Model automatically creates a separate graph node for an `Address` using private relationships. Queries that access the members of `Address` properties are supported...
+The addresses could have been modelled as separate nodes, which is a great way to model this information. The `Address` would normally inherit from `Node` to satisfy `INode`; implementing `INode` directly triggers analyzer warning GM011 unless you need full control. In this case, however, the developer decided to model the home and work addresses as properties on `Person`. The Graph Model supports this data modeling choice and requires providers to support it. Indeed, the Neo4j implementation of the Graph Model automatically creates a separate graph node for an `Address` using private relationships. Queries that access the members of `Address` properties are supported...
 
 ```csharp
 // Automatically creates two separate graph nodes for the "HomeAddress" and "WorkAddress" properties
