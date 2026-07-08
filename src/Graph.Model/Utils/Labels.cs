@@ -23,7 +23,9 @@ using System.Reflection;
 /// </summary>
 public static class Labels
 {
-    private static readonly ConcurrentDictionary<string, Type> LabelToTypeCache = new();
+    // Case-insensitive: a type maps to exactly one label and no two loaded types may share one
+    // (case-insensitive), matching the resolver's case-insensitive label comparison. See SchemaRegistry.
+    private static readonly ConcurrentDictionary<string, Type> LabelToTypeCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<Type, string> TypeToLabelCache = new();
     private static readonly ConcurrentDictionary<PropertyInfo, string> PropertyToLabelCache = new();
     private static readonly ConcurrentDictionary<(Type, string), PropertyInfo> LabelToPropertyCache = new();
@@ -202,6 +204,14 @@ public static class Labels
     /// <param name="label">The label</param>
     /// <returns>The .NET associated with that label.</returns>
     /// <exception cref="GraphException">If no .NET type was found for the given label.</exception>
+    /// <remarks>
+    /// A type maps to exactly one label, and <see cref="SchemaRegistry"/> forbids two loaded types from
+    /// sharing a label (case-insensitive), so this reverse lookup is deterministic; matching is
+    /// case-insensitive. This is a Model-layer utility for recovering a type from a stored label - the
+    /// portability path when a node's stored metadata type is not loadable (a different app, or the type was
+    /// renamed/moved). A provider may use it or implement its own equivalent resolution; the Neo4j provider
+    /// does the latter.
+    /// </remarks>
     public static Type GetTypeFromLabel(string label)
     {
         ArgumentNullException.ThrowIfNull(label);
@@ -216,7 +226,9 @@ public static class Labels
         var candidates = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(GetLoadableTypes)
             .Where(IsGraphEntityType)
-            .Where(candidate => ResolveLabelFromType(candidate) == label)
+            // Case-insensitive to match the cache (LabelToTypeCache) and the process-wide uniqueness rule,
+            // so a cold-cache lookup resolves the same type a warm one would regardless of label casing.
+            .Where(candidate => string.Equals(ResolveLabelFromType(candidate), label, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         if (candidates.Count == 0)
@@ -421,6 +433,13 @@ public static class Labels
     /// </summary>
     /// <param name="targetType">The base type to find compatible labels for</param>
     /// <returns>A list of labels that represent types assignable to the target type</returns>
+    /// <remarks>
+    /// Returns one label per type (<see cref="GetLabelFromType"/>) - the target type's label plus the label
+    /// of each concrete type that derives from it. This is how a polymorphic query
+    /// (e.g. <c>Nodes&lt;Person&gt;()</c>) matches subtypes: the class hierarchy is expanded to the set of
+    /// compatible labels at query-construction time. Only subtypes the registry has discovered
+    /// (their assembly loaded) are included.
+    /// </remarks>
     public static List<string> GetCompatibleLabels(Type targetType)
     {
         ArgumentNullException.ThrowIfNull(targetType);

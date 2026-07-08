@@ -15,15 +15,18 @@
 namespace Cvoya.Graph.Model;
 
 using System;
-using System.Linq;
 
 
 /// <summary>
-/// Attribute to specify custom labels for graph nodes.
+/// Attribute to specify the label for a graph node.
 /// </summary>
 /// <remarks>
-/// Use this attribute on classes implementing INode to define how the node
-/// should be labeled in the graph storage system.
+/// Use this attribute on classes implementing INode to define how the node is labeled in the graph storage
+/// system. A node type maps to exactly one label. If the attribute is omitted (or its <see cref="Label"/> is
+/// left unset), the class name is used. The label must be unique (case-insensitive) across every node type
+/// loaded in the process; <see cref="SchemaRegistry"/> enforces this. The label is also the portability key:
+/// each stored entity records its concrete .NET type, but when that type is not loadable in the reading
+/// process the provider falls back to the label to find a compatible local type.
 /// </remarks>
 /// <example>
 /// <code>
@@ -48,43 +51,8 @@ public class NodeAttribute() : Attribute
     }
 
     /// <summary>
-    /// Initializes a new instance of the NodeAttribute class with multiple labels.
-    /// </summary>
-    /// <param name="labels">The labels to apply to the node.</param>
-    public NodeAttribute(params string[] labels) : this()
-    {
-        if (labels.Length > 0)
-        {
-            Label = labels[0]; // Primary label
-            AdditionalLabels = labels.Skip(1).ToArray();
-        }
-    }
-
-    /// <summary>
     /// Gets or sets the label to apply to the node. If null, the name of the class is used as the label.
     /// </summary>
     /// <value>The node label used for graph storage.</value>
     public string Label { get; set; } = null!;
-
-    /// <summary>
-    /// Gets additional labels for the node.
-    /// </summary>
-    /// <value>Additional labels used for graph storage.</value>
-    public string[] AdditionalLabels { get; private set; } = Array.Empty<string>();
-
-    /// <summary>
-    /// Gets all labels (primary + additional) for the node.
-    /// </summary>
-    /// <returns>All labels for this node.</returns>
-    public IEnumerable<string> GetAllLabels()
-    {
-        if (!string.IsNullOrEmpty(Label))
-            yield return Label;
-
-        foreach (var additionalLabel in AdditionalLabels)
-        {
-            if (!string.IsNullOrEmpty(additionalLabel))
-                yield return additionalLabel;
-        }
-    }
 }

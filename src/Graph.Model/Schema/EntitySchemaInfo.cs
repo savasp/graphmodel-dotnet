@@ -25,7 +25,9 @@ public class EntitySchemaInfo
     public Type Type { get; set; } = null!;
 
     /// <summary>
-    /// Gets the label/type name used in the graph database.
+    /// Gets the single label/type name used in the graph database. A node type maps to exactly one label,
+    /// unique (case-insensitive) across all types loaded in the process; registry lookups
+    /// (<see cref="SchemaRegistry.GetNodeSchema"/> and its siblings) are keyed on it.
     /// </summary>
     public string Label { get; set; } = string.Empty;
 

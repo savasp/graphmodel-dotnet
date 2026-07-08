@@ -23,8 +23,10 @@ public interface IAttributeValidationTests : IGraphModelTest
         public string LastName { get; set; } = string.Empty;
     }
 
-    [Node("Employee", "Person", "SomeUser")]
-    public record PersonWithMultipleLabels : Node
+    // A node type maps to exactly one label (#157). This fixture exercises create/retrieve round-trip for
+    // an explicitly-labelled node; the label must be unique across this assembly's node types.
+    [Node("Employee")]
+    public record PersonWithExplicitLabel : Node
     {
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
@@ -725,9 +727,9 @@ public interface IAttributeValidationTests : IGraphModelTest
     }
 
     [Fact]
-    public async Task NodeWithMultipleLabels_CreatedSuccessfully()
+    public async Task NodeWithExplicitLabel_CreatedSuccessfully()
     {
-        var person = new PersonWithMultipleLabels
+        var person = new PersonWithExplicitLabel
         {
             FirstName = "Jane",
             LastName = "Smith",
@@ -736,7 +738,7 @@ public interface IAttributeValidationTests : IGraphModelTest
 
         await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
-        var retrieved = await Graph.GetNodeAsync<PersonWithMultipleLabels>(person.Id, null, TestContext.Current.CancellationToken);
+        var retrieved = await Graph.GetNodeAsync<PersonWithExplicitLabel>(person.Id, null, TestContext.Current.CancellationToken);
         Assert.Equal("Jane", retrieved.FirstName);
         Assert.Equal("Smith", retrieved.LastName);
         Assert.Equal("Engineering", retrieved.Department);
