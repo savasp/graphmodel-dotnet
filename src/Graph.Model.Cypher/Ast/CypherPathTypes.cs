@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
+namespace Cvoya.Graph.Model.Cypher.Ast;
 
-/// <summary>
-/// Information about a traversal operation.
-/// </summary>
-internal record TraversalInfo(
-    Type SourceNodeType,
-    Type RelationshipType,
-    Type TargetNodeType);
+/// <summary>Carries the CLR types needed to materialize a decomposed graph path.</summary>
+/// <param name="Source">The source node type.</param>
+/// <param name="Relationship">The relationship type.</param>
+/// <param name="Target">The target node type.</param>
+public sealed record CypherPathTypes(Type Source, Type Relationship, Type Target);

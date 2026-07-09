@@ -153,6 +153,87 @@ public class CypherAstValidatorTests
         validator.Run(statement);
     }
 
+    [Fact]
+    public void Run_ThrowsPreciseException_WhenEntityProjectionAliasIsUnbound()
+    {
+        var statement = new CypherStatement(
+        [
+            MatchNode("n"),
+            new EntityProjectionClause(
+                EntityProjectionShape.Node,
+                "missing",
+                relationshipAlias: null,
+                targetAlias: null,
+                loadSourceProperties: false,
+                loadTargetProperties: false)
+        ], new Dictionary<string, object?>());
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(statement));
+
+        Assert.Contains("'missing'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_ThrowsPreciseException_WhenEntityProjectionTargetAliasIsUnbound()
+    {
+        var statement = new CypherStatement(
+        [
+            new MatchClause([new PathPattern(
+            [
+                new NodePattern("src", ["Person"]),
+                new RelationshipPattern("r", "KNOWS", CypherDirection.Outgoing, null),
+                new NodePattern("tgt", ["Person"])
+            ])], optional: false),
+            new EntityProjectionClause(
+                EntityProjectionShape.PathSegment,
+                "src",
+                relationshipAlias: "r",
+                targetAlias: "elsewhere",
+                loadSourceProperties: false,
+                loadTargetProperties: false)
+        ], new Dictionary<string, object?>());
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(statement));
+
+        Assert.Contains("'elsewhere'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_DoesNotLeakPatternSubqueryAliasesIntoOuterScope()
+    {
+        var subquery = new PatternSubqueryExpression(
+            PatternSubqueryKind.Exists,
+            new PathPattern(
+            [
+                new NodePattern("n", []),
+                new RelationshipPattern(null, "HAS", CypherDirection.Outgoing, null),
+                new NodePattern("inner", ["Address"])
+            ]));
+        var statement = new CypherStatement(
+        [
+            MatchNode("n"),
+            new WhereClause(subquery),
+            new ReturnClause([new ReturnItem(new VariableRef("inner"), null)], distinct: false)
+        ], new Dictionary<string, object?>());
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(statement));
+
+        Assert.Contains("'inner'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_WildcardWith_PreservesTheCurrentScope()
+    {
+        var statement = new CypherStatement(
+        [
+            MatchNode("n"),
+            WithClause.All,
+            new ReturnClause([new ReturnItem(new VariableRef("n"), null)], distinct: false)
+        ], new Dictionary<string, object?>());
+
+        validator.Run(statement);
+    }
+
     private static MatchClause MatchNode(string alias)
     {
         return new MatchClause([new PathPattern([new NodePattern(alias, ["Person"])])], optional: false);

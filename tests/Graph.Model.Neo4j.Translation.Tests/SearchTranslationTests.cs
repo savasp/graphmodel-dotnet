@@ -39,4 +39,11 @@ public class SearchTranslationTests : TranslationTestBase
         var query = Root.Nodes<Person>().Search("Alice").Where(p => p.Age > 21);
         return VerifyTranslation(query);
     }
+
+    [Fact]
+    public Task Traverse_ThenSearch()
+    {
+        var query = Root.Nodes<Person>().Traverse<Knows, Person>().Search("Alice");
+        return VerifyTranslation(query);
+    }
 }

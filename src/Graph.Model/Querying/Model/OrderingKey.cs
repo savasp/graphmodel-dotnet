@@ -27,8 +27,20 @@ public sealed record OrderingKey
     /// <param name="keySelector">The normalized ordering key selector.</param>
     /// <param name="descending">A value indicating whether the key is sorted descending.</param>
     public OrderingKey(LambdaExpression keySelector, bool descending)
+        : this(keySelector, descending, alias: null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes an ordering key associated with a semantic query scope.
+    /// </summary>
+    /// <param name="keySelector">The normalized ordering key selector.</param>
+    /// <param name="descending">A value indicating whether the key is sorted descending.</param>
+    /// <param name="alias">The semantic scope associated with the key, if known.</param>
+    public OrderingKey(LambdaExpression keySelector, bool descending, string? alias)
     {
         ArgumentNullException.ThrowIfNull(keySelector);
+        QueryModelGuard.RequireNullOrNotWhiteSpace(alias, nameof(alias));
 
         if (keySelector.ReturnType == typeof(void))
         {
@@ -37,6 +49,7 @@ public sealed record OrderingKey
 
         KeySelector = keySelector;
         Descending = descending;
+        Alias = alias;
     }
 
     /// <summary>
@@ -48,4 +61,7 @@ public sealed record OrderingKey
     /// Gets a value indicating whether the key is sorted descending.
     /// </summary>
     public bool Descending { get; }
+
+    /// <summary>Gets the semantic scope associated with the key, if known.</summary>
+    public string? Alias { get; }
 }

@@ -409,7 +409,8 @@ internal sealed class PersonSerializer : IEntitySerializer
                 PropertyInfo: propInfo,
                 Label: "HomeAddress",
                 IsNullable: true,
-                Value: serializedValue
+                Value: serializedValue,
+                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
             );
             complexProperties["HomeAddress"] = propertyRep;
         }
@@ -567,7 +568,8 @@ internal sealed class PersonSerializer : IEntitySerializer
                 PropertyName: "HomeAddress",
                 PropertyType: PropertyType.Complex,
                 IsNullable: true,
-                NestedSchema: TestNamespace.Generated.AddressSerializer.GetSchemaStatic()
+                NestedSchema: TestNamespace.Generated.AddressSerializer.GetSchemaStatic(),
+                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
             );
         }
 

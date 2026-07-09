@@ -142,7 +142,12 @@ internal static class Serialization
         sb.AppendLine($"                PropertyInfo: propInfo,");
         sb.AppendLine($"                Label: \"{propertyName}\",");
         sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLower()},");
-        sb.AppendLine($"                Value: serializedValue");
+        var isComplex = !isSimple && (!isCollection || propertyType.IsCollectionOfComplex);
+        sb.AppendLine($"                Value: serializedValue{(isComplex ? "," : string.Empty)}");
+        if (isComplex)
+        {
+            sb.AppendLine("                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)");
+        }
         sb.AppendLine($"            );");
         sb.AppendLine($"            {dictionaryName}[\"{propertyName}\"] = propertyRep;");
         sb.AppendLine($"        }}");

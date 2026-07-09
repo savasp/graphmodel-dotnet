@@ -44,7 +44,11 @@ public sealed class CypherAstValidator : ICypherPass
 
                 case WithClause with:
                     ValidateReturnItems(with.Items, scope, input.Parameters);
-                    scope = ProjectWithScope(with);
+                    if (!with.Wildcard)
+                    {
+                        scope = ProjectWithScope(with);
+                    }
+
                     break;
 
                 case UnwindClause unwind:
@@ -56,7 +60,21 @@ public sealed class CypherAstValidator : ICypherPass
                     ValidateExpressions(call.Arguments, scope, input.Parameters);
                     foreach (var yield in call.Yields)
                     {
-                        scope.Add(yield);
+                        scope.Add(yield.Alias ?? yield.Name);
+                    }
+
+                    break;
+
+                case EntityProjectionClause projection:
+                    ValidateAlias(projection.SourceAlias, scope);
+                    if (projection.RelationshipAlias is { } relationshipAlias)
+                    {
+                        ValidateAlias(relationshipAlias, scope);
+                    }
+
+                    if (projection.TargetAlias is { } targetAlias)
+                    {
+                        ValidateAlias(targetAlias, scope);
                     }
 
                     break;
@@ -93,6 +111,11 @@ public sealed class CypherAstValidator : ICypherPass
     {
         foreach (var pattern in match.Patterns)
         {
+            if (pattern.Alias is not null)
+            {
+                scope.Add(pattern.Alias);
+            }
+
             foreach (var element in pattern.Elements)
             {
                 switch (element)
@@ -165,6 +188,10 @@ public sealed class CypherAstValidator : ICypherPass
                 ValidateExpression(property.Target, scope, parameters);
                 break;
 
+            case EscapedPropertyAccess property:
+                ValidateExpression(property.Target, scope, parameters);
+                break;
+
             case QueryParameter parameter:
                 ValidateParameter(parameter.Name, parameters);
                 break;
@@ -186,11 +213,87 @@ public sealed class CypherAstValidator : ICypherPass
                 ValidateExpression(label.Target, scope, parameters);
                 break;
 
+            case ListExpression list:
+                ValidateExpressions(list.Items, scope, parameters);
+                break;
+
+            case MapExpression map:
+                ValidateExpressions(map.Entries.Select(entry => entry.Value).ToArray(), scope, parameters);
+                break;
+
+            case EntityProjectionExpression entity:
+                ValidateAlias(entity.Alias, scope);
+                break;
+
+            case IndexExpression index:
+                ValidateExpression(index.Target, scope, parameters);
+                ValidateExpression(index.Index, scope, parameters);
+                break;
+
+            case CaseExpression @case:
+                ValidateExpression(@case.Condition, scope, parameters);
+                ValidateExpression(@case.WhenTrue, scope, parameters);
+                if (@case.WhenFalse is not null)
+                {
+                    ValidateExpression(@case.WhenFalse, scope, parameters);
+                }
+                break;
+
+            case ConjunctionExpression conjunction:
+                ValidateExpressions(conjunction.Predicates, scope, parameters);
+                break;
+
+            case PatternSubqueryExpression subquery:
+                {
+                    var subqueryScope = new HashSet<string>(scope, StringComparer.Ordinal);
+                    BindPatternAliases(subqueryScope, subquery.Pattern);
+                    if (subquery.Predicate is not null)
+                    {
+                        ValidateExpression(subquery.Predicate, subqueryScope, parameters);
+                    }
+
+                    break;
+                }
+
+            case PatternComprehensionExpression comprehension:
+                {
+                    var comprehensionScope = new HashSet<string>(scope, StringComparer.Ordinal);
+                    BindPatternAliases(comprehensionScope, comprehension.Pattern);
+                    if (comprehension.Predicate is not null)
+                    {
+                        ValidateExpression(comprehension.Predicate, comprehensionScope, parameters);
+                    }
+
+                    ValidateExpression(comprehension.Projection, comprehensionScope, parameters);
+                    break;
+                }
+
             case Literal:
                 break;
 
             default:
                 throw new GraphException($"Unsupported Cypher expression '{expression.GetType().Name}'.");
+        }
+    }
+
+    private static void BindPatternAliases(HashSet<string> scope, PathPattern pattern)
+    {
+        if (pattern.Alias is not null)
+        {
+            scope.Add(pattern.Alias);
+        }
+
+        foreach (var element in pattern.Elements)
+        {
+            switch (element)
+            {
+                case NodePattern { Alias: not null } node:
+                    scope.Add(node.Alias);
+                    break;
+                case RelationshipPattern { Alias: not null } relationship:
+                    scope.Add(relationship.Alias);
+                    break;
+            }
         }
     }
 

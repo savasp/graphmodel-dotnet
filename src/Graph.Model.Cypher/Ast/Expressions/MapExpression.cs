@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Model.Cypher.Internal;
 
-using System.Reflection;
-using Cvoya.Graph.Model.Querying;
-using SharedDispatch = Cvoya.Graph.Model.Querying.LinqOperatorDispatch;
+namespace Cvoya.Graph.Model.Cypher.Ast.Expressions;
 
-/// <summary>
-/// Temporary compatibility shim for the Neo4j visitor until its shared-front-end cutover.
-/// </summary>
-internal static class LinqOperatorDispatch
+/// <summary>Represents a Cypher map expression.</summary>
+public sealed record MapExpression : CypherExpression
 {
-    public static LinqOperator? Resolve(MethodInfo method) => SharedDispatch.Resolve(method);
+    /// <summary>Initializes a map expression.</summary>
+    public MapExpression(IReadOnlyList<MapEntry> entries)
+    {
+        Entries = ArgumentValidation.List(entries, nameof(entries));
+    }
 
-    public static IReadOnlyDictionary<MethodInfo, LinqOperator> AllRegisteredMethods =>
-        SharedDispatch.AllRegisteredMethods;
+    /// <summary>Gets the map entries.</summary>
+    public IReadOnlyList<MapEntry> Entries { get; }
 }

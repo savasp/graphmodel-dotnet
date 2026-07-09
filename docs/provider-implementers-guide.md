@@ -87,17 +87,29 @@ Simple properties are properties whose types pass `GraphDataModel.IsSimple` or `
 
 ### Complex Properties
 
-Complex node properties are stored as provider-private graph nodes connected from the owner by relationship types in this exact form:
+Complex properties are first-class graph structure. A property named `Home` whose CLR type is
+`Address` is stored as:
 
 ```text
-__PROPERTY__{propertyName}__
+(:Person)-[:Home]->(:Address)
 ```
 
-The constants live in `GraphDataModel.PropertyRelationshipTypeNamePrefix` and `GraphDataModel.PropertyRelationshipTypeNameSuffix`; use `GraphDataModel.PropertyNameToRelationshipTypeName`.
+The relationship type is the property name by convention. `[ComplexProperty(RelationshipType =
+"LIVES_AT")]` overrides it. Providers should use
+`GraphDataModel.GetComplexPropertyRelationshipType` so generated and reflection-based serializers
+agree on the mapping.
 
 Collections of complex properties use one relationship per collection item and store a `SequenceNumber` relationship property. Deserialization orders collection items by `SequenceNumber`. Nested complex properties recurse with the same relationship-type convention.
 
-Providers must exclude these private `__PROPERTY__...__` relationships from user-visible relationship queries and normal cascade/delete semantics except where complex-property cleanup is explicitly required.
+Every occurrence is a separate value node, even when two owners reference the same in-memory object.
+Nodes and relationships need stable GraphModel IDs and remain visible to ordinary graph queries.
+Providers may add an internal relationship marker for cascade cleanup, but must not infer
+complex-property edges from a reserved relationship-name prefix.
+
+Declared properties auto-load recursively. Writes and reads must reject cycles and paths deeper than
+`GraphDataModel.DefaultDepthAllowed` (currently 5). A read type that omits the property leaves it
+unpopulated; callers can still traverse the semantic relationship and co-load the owner and value via
+the normal path-segment projection.
 
 ### Type Metadata
 
@@ -105,7 +117,7 @@ The de facto metadata convention is a property named `__metadata__` containing a
 
 ## Behavioral Contracts
 
-Mutations must validate entity constraints before writing: non-null entities, non-empty IDs, relationship endpoints, required properties, and no reference cycles. Cycle detection is implemented by `GraphDataModel.HasReferenceCycle` / `EnsureNoReferenceCycle`.
+Mutations must validate entity constraints before writing: non-null entities, non-empty IDs, relationship endpoints, required properties, no reference cycles, and bounded complex-property depth. Cycle detection is implemented by `GraphDataModel.HasReferenceCycle` / `EnsureNoReferenceCycle`; depth validation uses `EnsureComplexPropertyDepth`.
 
 Queries must stay provider-side for supported LINQ operators. Unsupported operators should fail with a clear `GraphException`. Avoid silent client-side evaluation unless the operator explicitly materializes results.
 

@@ -617,7 +617,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                     GetPropertyInfo(valueType, propertyName),
                     propertyName,
                     false,
-                    new EntityCollection(elementType, complexValues));
+                    new EntityCollection(elementType, complexValues),
+                    RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
             }
             else if (valueType.IsAssignableTo(typeof(IDictionary<string, object?>)) || valueType.IsAssignableTo(typeof(IDictionary<string, object>)))
             {
@@ -655,7 +656,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                             GetPropertyInfo(value.GetType(), key),
                             key,
                             false,
-                            nestedComplexEntityInfo);
+                            nestedComplexEntityInfo,
+                            RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(key));
                     }
                 }
 
@@ -670,7 +672,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                     GetPropertyInfo(valueType, propertyName),
                     propertyName,
                     false,
-                    dictEntityInfo);
+                    dictEntityInfo,
+                    RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
             }
             else
             {
@@ -680,7 +683,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                     GetPropertyInfo(valueType, propertyName),
                     propertyName,
                     false,
-                    complexEntityInfo);
+                    complexEntityInfo,
+                    RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
             }
         }
     }
@@ -788,7 +792,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                         propertyInfo,
                         propertyName,
                         false,
-                        new EntityCollection(elementType, complexValues));
+                        new EntityCollection(elementType, complexValues),
+                        RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propertyInfo));
                 }
                 else
                 {
@@ -798,7 +803,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                         propertyInfo,
                         propertyName,
                         false,
-                        complexEntityInfo);
+                        complexEntityInfo,
+                        RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propertyInfo));
                 }
             }
 

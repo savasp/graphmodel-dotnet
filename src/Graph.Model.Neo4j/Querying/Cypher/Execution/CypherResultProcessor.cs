@@ -121,6 +121,8 @@ internal sealed class CypherResultProcessor
                 SequenceNumber: dict["SequenceNumber"].As<int>(),
                 Property: dict["Property"].As<INode>()
         ))
+        .GroupBy(cp => cp.Relationship.ElementId, StringComparer.Ordinal)
+        .Select(group => group.First())
         .OrderBy(cp => cp.SequenceNumber)
         .ToList();
 
@@ -141,12 +143,18 @@ internal sealed class CypherResultProcessor
                 ?? throw new GraphException("Failed to deserialize path segment from record.");
 
             // Process each component
-            var startNodeEntityInfo = ProcessSingleNodeResult(pathSegment.StartNode, sourceType);
+            var startNodeEntityInfo = ProcessSingleNodeResult(
+                pathSegment.StartNode,
+                sourceType,
+                preserveInterfaceShape: true);
             var relEntityInfo = ProcessSingleRelationshipFromPathSegment(
                 pathSegment.Relationship, relType,
                 pathSegment.StartNode.Node,
                 pathSegment.EndNode.Node);
-            var endNodeEntityInfo = ProcessSingleNodeResult(pathSegment.EndNode, targetType);
+            var endNodeEntityInfo = ProcessSingleNodeResult(
+                pathSegment.EndNode,
+                targetType,
+                preserveInterfaceShape: true);
 
             // Create the composite path segment EntityInfo
             var pathSegmentEntityInfo = CreatePathSegmentEntityInfo(
@@ -189,12 +197,18 @@ internal sealed class CypherResultProcessor
         return results;
     }
 
-    private EntityInfo ProcessSingleNodeResult(NodeResult nodeResult, Type targetType)
+    private EntityInfo ProcessSingleNodeResult(
+        NodeResult nodeResult,
+        Type targetType,
+        bool preserveInterfaceShape = false)
     {
         // Use the new recursive deserializer for complex properties
-        if (targetType.IsAssignableTo(typeof(DynamicNode)))
+        if (typeof(Model.DynamicNode).IsAssignableFrom(targetType) ||
+            preserveInterfaceShape && targetType == typeof(Model.INode))
         {
-            // For dynamic nodes
+            // An interface-only read shape intentionally omits declared properties, so keep it
+            // dynamic instead of rediscovering a concrete type whose required complex properties
+            // were not requested by the projection.
             return DeserializeComplexPropertiesForDynamicNode(nodeResult.Node, nodeResult.ComplexProperties, typeof(DynamicNode));
         }
 
@@ -208,8 +222,20 @@ internal sealed class CypherResultProcessor
     private EntityInfo DeserializeComplexPropertiesForTypedNode(
         INode node,
         List<ComplexProperty> allComplexProperties,
-        Type nodeType)
+        Type nodeType,
+        int depth = 0,
+        HashSet<string>? visitedNodeIds = null)
     {
+        if (depth > GraphDataModel.DefaultDepthAllowed)
+        {
+            throw new GraphException(
+                $"Complex properties cannot exceed {GraphDataModel.DefaultDepthAllowed} levels of depth.");
+        }
+
+        visitedNodeIds ??= new HashSet<string>(StringComparer.Ordinal);
+        if (!visitedNodeIds.Add(node.ElementId))
+            throw new GraphException("A cycle or shared node was detected in the persisted complex-property graph.");
+
         // Create the base entity info for this node
         var actualType = DiscoverActualNodeType(node, nodeType);
         Dictionary<string, Property> simpleProperties;
@@ -266,7 +292,8 @@ internal sealed class CypherResultProcessor
 
         foreach (var (propertyName, propertySchema) in schema.ComplexProperties)
         {
-            var expectedRelType = GraphDataModel.PropertyNameToRelationshipTypeName(propertyName);
+            var expectedRelType = propertySchema.RelationshipType ??
+                GraphDataModel.GetComplexPropertyRelationshipType(propertySchema.PropertyInfo);
 
             // Find all complex properties for this property
             var matchingProps = directComplexProps
@@ -283,7 +310,9 @@ internal sealed class CypherResultProcessor
             if (propertySchema.PropertyType == PropertyType.ComplexCollection)
             {
                 var children = matchingProps
-                    .Select(cp => DeserializeComplexPropertiesForTypedNode(cp.Property, allComplexProperties, childType))
+                    .OrderBy(cp => cp.SequenceNumber)
+                    .Select(cp => DeserializeComplexPropertiesForTypedNode(
+                        cp.Property, allComplexProperties, childType, depth + 1, visitedNodeIds))
                     .ToList();
 
                 entityInfo.ComplexProperties[propertyName] = new Property(
@@ -294,7 +323,8 @@ internal sealed class CypherResultProcessor
             }
             else if (propertySchema.PropertyType == PropertyType.Complex)
             {
-                var child = DeserializeComplexPropertiesForTypedNode(matchingProps[0].Property, allComplexProperties, childType);
+                var child = DeserializeComplexPropertiesForTypedNode(
+                    matchingProps[0].Property, allComplexProperties, childType, depth + 1, visitedNodeIds);
 
                 entityInfo.ComplexProperties[propertyName] = new Property(
                     propertySchema.PropertyInfo,
@@ -313,8 +343,20 @@ internal sealed class CypherResultProcessor
     private EntityInfo DeserializeComplexPropertiesForDynamicNode(
         INode node,
         List<ComplexProperty> allComplexProperties,
-        Type nodeType)
+        Type nodeType,
+        int depth = 0,
+        HashSet<string>? visitedNodeIds = null)
     {
+        if (depth > GraphDataModel.DefaultDepthAllowed)
+        {
+            throw new GraphException(
+                $"Complex properties cannot exceed {GraphDataModel.DefaultDepthAllowed} levels of depth.");
+        }
+
+        visitedNodeIds ??= new HashSet<string>(StringComparer.Ordinal);
+        if (!visitedNodeIds.Add(node.ElementId))
+            throw new GraphException("A cycle or shared node was detected in the persisted complex-property graph.");
+
         // Create the base entity info for this node
         Dictionary<string, Property> simpleProperties;
 
@@ -332,21 +374,27 @@ internal sealed class CypherResultProcessor
             .Where(cp => cp.ParentNode.ElementId == node.ElementId)
             .ToList();
 
-        // For dynamic nodes, attach all direct complex properties using the property name derived from the relationship type
-        foreach (var cp in directComplexProps)
+        // For dynamic nodes, attach all direct complex properties using the property name derived
+        // from the relationship type. Multiple relationships of the same type are a stored
+        // collection and must materialize as one - assigning them to a single slot would keep only
+        // the last item. (A one-item collection is indistinguishable from a single value without a
+        // schema and materializes as a single value.)
+        foreach (var group in directComplexProps.GroupBy(cp => cp.Relationship.Type))
         {
-            var propertyName = cp.Relationship.Type;
-            // Remove __PROPERTY__ prefix and __ suffix if present
-            if (propertyName.StartsWith(GraphDataModel.PropertyRelationshipTypeNamePrefix) && propertyName.EndsWith(GraphDataModel.PropertyRelationshipTypeNameSuffix))
-            {
-                propertyName = propertyName.Substring(GraphDataModel.PropertyRelationshipTypeNamePrefix.Length, propertyName.Length - GraphDataModel.PropertyRelationshipTypeNamePrefix.Length - GraphDataModel.PropertyRelationshipTypeNameSuffix.Length);
-            }
-            var childEntity = DeserializeComplexPropertiesForDynamicNode(cp.Property, allComplexProperties, typeof(object));
+            var propertyName = group.Key;
+            var children = group
+                .OrderBy(cp => cp.SequenceNumber)
+                .Select(cp => DeserializeComplexPropertiesForDynamicNode(
+                    cp.Property, allComplexProperties, typeof(object), depth + 1, visitedNodeIds))
+                .ToList();
+
             entityInfo.ComplexProperties[propertyName] = new Property(
                 PropertyInfo: null!,
                 Label: propertyName,
                 IsNullable: true,
-                Value: childEntity
+                Value: children.Count == 1
+                    ? children[0]
+                    : new EntityCollection(typeof(object), children)
             );
         }
 
@@ -400,12 +448,18 @@ internal sealed class CypherResultProcessor
         var pathSegment = DeserializePathSegment(record["PathSegment"].As<Dictionary<string, object>>())
             ?? throw new GraphException("Failed to deserialize path segment hop from record.");
 
-        var startNodeEntityInfo = ProcessSingleNodeResult(pathSegment.StartNode, sourceType);
+        var startNodeEntityInfo = ProcessSingleNodeResult(
+            pathSegment.StartNode,
+            sourceType,
+            preserveInterfaceShape: true);
         var relEntityInfo = ProcessSingleRelationshipFromPathSegment(
             pathSegment.Relationship, relationshipType,
             pathSegment.StartNode.Node,
             pathSegment.EndNode.Node);
-        var endNodeEntityInfo = ProcessSingleNodeResult(pathSegment.EndNode, targetType);
+        var endNodeEntityInfo = ProcessSingleNodeResult(
+            pathSegment.EndNode,
+            targetType,
+            preserveInterfaceShape: true);
 
         return new GraphPathHop(pathIndex, hopIndex, startNodeEntityInfo, relEntityInfo, endNodeEntityInfo);
     }
@@ -504,6 +558,8 @@ internal sealed class CypherResultProcessor
                                 SequenceNumber: dict["SequenceNumber"].As<int>(),
                                 Property: dict["Property"].As<INode>()
                             ))
+                            .GroupBy(cp => cp.Relationship.ElementId, StringComparer.Ordinal)
+                            .Select(group => group.First())
                             .OrderBy(cp => cp.SequenceNumber)
                             .ToList();
 

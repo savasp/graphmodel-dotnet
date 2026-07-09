@@ -20,7 +20,7 @@ using System.Reflection;
 /// <summary>
 /// Builds <see cref="MethodCallExpression"/> nodes for the internal
 /// <see cref="QueryTerminals"/> methods that <c>CypherQueryVisitor.HandleLinqMethod</c> (via
-/// <c>LinqOperatorDispatch</c>) dispatches on (e.g. <c>FirstAsyncMarker</c>,
+/// the shared query-model builder dispatches on (e.g. <c>FirstAsyncMarker</c>,
 /// <c>CountAsyncMarker</c>). The real async extension methods
 /// (<see cref="GraphQueryableExtensions"/>, <c>QueryableAsyncExtensions</c>) build these same
 /// marker calls internally but then immediately execute them via the provider - since this

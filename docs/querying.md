@@ -122,13 +122,14 @@ public record Person : Node
 }
 ```
 
-The addresses could have been modelled as separate nodes, which is a great way to model this information. The `Address` would normally inherit from `Node` to satisfy `INode`; implementing `INode` directly triggers analyzer warning GM011 unless you need full control. In this case, however, the developer decided to model the home and work addresses as properties on `Person`. The Graph Model supports this data modeling choice and requires providers to support it. Indeed, the Neo4j implementation of the Graph Model automatically creates a separate graph node for an `Address` using private relationships. Queries that access the members of `Address` properties are supported...
+The developer-facing type remains a value object, but its stored representation is first-class graph
+structure. Neo4j creates a separate `:Address` value node for each occurrence and connects it with
+`:HomeAddress` or `:WorkAddress`. Use
+`[ComplexProperty(RelationshipType = "LIVES_AT")]` when the property name is not the desired graph
+relationship type.
 
 ```csharp
-// Automatically creates two separate graph nodes for the "HomeAddress" and "WorkAddress" properties
-// The relationship between the Person node and its complex properties isn't discoverable. It's considered
-// a private implementation detail. The Neo4j provider translates the LINQ query below to the appropriate Cypher
-// query so that these private relationships are considered as one would have expected.
+// Automatically creates two separate, visible Address nodes connected by semantic relationships.
 
 // Create many people nodes...
 await using var tx = await graph.GetTransactionAsync();
@@ -141,6 +142,23 @@ var waStateResidents = await graph.Nodes<Person>()
     .Where(p => p.HomeAddress.State == StateEnum.WA)
     .ToListAsync();
 ```
+
+Nested navigation is not limited to one level. Complex collections lower to graph patterns as well:
+
+```csharp
+var regional = await graph.Nodes<Company>()
+    .Where(c => c.Headquarters.Region.Name == "Northwest")
+    .Where(c => c.Offices.Any(office => office.City == "Seattle"))
+    .Where(c => c.Offices.All(office => office.IsOpen))
+    .Where(c => c.Offices.Count > 1)
+    .Select(c => c.Offices.Select(office => office.City))
+    .ToListAsync();
+```
+
+Comparing a complex property with `null` tests whether its relationship exists; it does not read a
+scalar property from the owner node. Declared complex properties auto-load recursively with a five-level
+depth guard. A slim read type that omits a property does not populate it, while normal traversal/path
+projection can still return the owner, semantic relationship, and related value node together.
 
 ## Advanced Graph Traversal
 

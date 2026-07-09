@@ -40,6 +40,11 @@ public record Person : Node
 
     public Address? HomeAddress { get; set; }
 
+    [ComplexProperty(RelationshipType = "MAILING_ADDRESS")]
+    public Address? MailingAddress { get; set; }
+
+    public List<Address> Offices { get; set; } = [];
+
     public List<string> Nicknames { get; set; } = [];
 
     public EmploymentStatus Status { get; set; }
@@ -71,6 +76,13 @@ public record Address
     public string Street { get; set; } = string.Empty;
 
     public string City { get; set; } = string.Empty;
+
+    public Region? Region { get; set; }
+}
+
+public record Region
+{
+    public string Name { get; set; } = string.Empty;
 }
 
 [Relationship("KNOWS")]

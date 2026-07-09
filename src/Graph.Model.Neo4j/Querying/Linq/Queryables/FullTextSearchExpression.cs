@@ -16,11 +16,12 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 
 using System.Linq.Expressions;
 using Cvoya.Graph.Model;
+using Cvoya.Graph.Model.Querying;
 
 /// <summary>
 /// Represents a full text search query expression
 /// </summary>
-internal class FullTextSearchExpression : Expression
+internal class FullTextSearchExpression : Expression, IGraphSearchRootExpression
 {
     public string SearchQuery { get; }
     public Type EntityType { get; }
@@ -36,6 +37,13 @@ internal class FullTextSearchExpression : Expression
     public override ExpressionType NodeType => ExpressionType.Extension;
 
     public override Type Type => typeof(IGraphQueryable<>).MakeGenericType(EntityType);
+
+    SearchRootTarget IGraphSearchRootExpression.Target => QueryableKind switch
+    {
+        GraphQueryableKind.Node => SearchRootTarget.Nodes,
+        GraphQueryableKind.Relationship => SearchRootTarget.Relationships,
+        _ => SearchRootTarget.Entities,
+    };
 }
 
 /// <summary>

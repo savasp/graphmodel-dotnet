@@ -213,7 +213,8 @@ internal sealed class PersonSerializer : IEntitySerializer
                 PropertyInfo: propInfo,
                 Label: "PhoneNumbers",
                 IsNullable: false,
-                Value: serializedValue
+                Value: serializedValue,
+                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
             );
             complexProperties["PhoneNumbers"] = propertyRep;
         }
@@ -370,8 +371,10 @@ internal sealed class PersonSerializer : IEntitySerializer
                 PropertyInfo: propInfo,
                 PropertyName: "PhoneNumbers",
                 PropertyType: PropertyType.ComplexCollection,
+                ElementType: typeof(TestNamespace.PhoneNumber),
                 IsNullable: false,
-                NestedSchema: TestNamespace.Generated.PhoneNumberSerializer.GetSchemaStatic()
+                NestedSchema: TestNamespace.Generated.PhoneNumberSerializer.GetSchemaStatic(),
+                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
             );
         }
 

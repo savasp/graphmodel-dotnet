@@ -41,6 +41,80 @@ public sealed record GraphQueryModel
         IReadOnlyList<OrderingKey> ordering,
         Paging paging,
         TerminalOperation terminal)
+        : this(root, predicates, traversal, projection, ordering, paging, terminal, false, null, null, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a complete provider-independent query model.
+    /// </summary>
+    /// <param name="root">The query root.</param>
+    /// <param name="predicates">Predicates applied to the root scope.</param>
+    /// <param name="traversal">Traversal steps applied after root predicates.</param>
+    /// <param name="projection">The projection shape, or <see langword="null"/> for the current element.</param>
+    /// <param name="ordering">Ordering keys applied to the current element.</param>
+    /// <param name="paging">Skip/take paging information.</param>
+    /// <param name="terminal">The terminal operation or terminal modifier for the query.</param>
+    /// <param name="distinct">Whether the result projection is distinct.</param>
+    /// <param name="terminalOperand">The operand carried by a terminal operation such as Contains.</param>
+    /// <param name="pathShape">Graph-path materialization metadata, when the query returns paths.</param>
+    /// <param name="join">The equijoin description, when present.</param>
+    public GraphQueryModel(
+        QueryRoot root,
+        IReadOnlyList<PredicateFragment> predicates,
+        IReadOnlyList<TraversalStep> traversal,
+        ProjectionShape? projection,
+        IReadOnlyList<OrderingKey> ordering,
+        Paging paging,
+        TerminalOperation terminal,
+        bool distinct,
+        object? terminalOperand,
+        QueryPathShape? pathShape,
+        JoinFragment? join)
+        : this(
+            root,
+            predicates,
+            traversal,
+            projection,
+            ordering,
+            paging,
+            terminal,
+            distinct,
+            terminalOperand,
+            pathShape,
+            join,
+            searchFilter: null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a complete provider-independent query model.
+    /// </summary>
+    /// <param name="root">The query root.</param>
+    /// <param name="predicates">Predicates applied to the root scope.</param>
+    /// <param name="traversal">Traversal steps applied after root predicates.</param>
+    /// <param name="projection">The projection shape, or <see langword="null"/> for the current element.</param>
+    /// <param name="ordering">Ordering keys applied to the current element.</param>
+    /// <param name="paging">Skip/take paging information.</param>
+    /// <param name="terminal">The terminal operation or terminal modifier for the query.</param>
+    /// <param name="distinct">Whether the result projection is distinct.</param>
+    /// <param name="terminalOperand">The operand carried by a terminal operation such as Contains.</param>
+    /// <param name="pathShape">Graph-path materialization metadata, when the query returns paths.</param>
+    /// <param name="join">The equijoin description, when present.</param>
+    /// <param name="searchFilter">A full-text search applied to the current query scope after traversal.</param>
+    public GraphQueryModel(
+        QueryRoot root,
+        IReadOnlyList<PredicateFragment> predicates,
+        IReadOnlyList<TraversalStep> traversal,
+        ProjectionShape? projection,
+        IReadOnlyList<OrderingKey> ordering,
+        Paging paging,
+        TerminalOperation terminal,
+        bool distinct,
+        object? terminalOperand,
+        QueryPathShape? pathShape,
+        JoinFragment? join,
+        SearchRoot? searchFilter)
     {
         Root = root ?? throw new ArgumentNullException(nameof(root));
         Predicates = QueryModelGuard.CopyRequiredList(predicates, nameof(predicates));
@@ -50,6 +124,11 @@ public sealed record GraphQueryModel
         Paging = paging ?? throw new ArgumentNullException(nameof(paging));
         QueryModelGuard.RequireDefinedEnum(terminal, nameof(terminal));
         Terminal = terminal;
+        Distinct = distinct;
+        TerminalOperand = terminalOperand;
+        PathShape = pathShape;
+        Join = join;
+        SearchFilter = searchFilter;
     }
 
     /// <summary>
@@ -86,4 +165,19 @@ public sealed record GraphQueryModel
     /// Gets the terminal operation or terminal modifier for the query.
     /// </summary>
     public TerminalOperation Terminal { get; }
+
+    /// <summary>Gets a value indicating whether the result projection is distinct.</summary>
+    public bool Distinct { get; }
+
+    /// <summary>Gets the operand carried by a terminal operation such as Contains.</summary>
+    public object? TerminalOperand { get; }
+
+    /// <summary>Gets graph-path materialization metadata, when the query returns paths.</summary>
+    public QueryPathShape? PathShape { get; }
+
+    /// <summary>Gets the equijoin description, when present.</summary>
+    public JoinFragment? Join { get; }
+
+    /// <summary>Gets a full-text search applied to the current query scope after traversal.</summary>
+    public SearchRoot? SearchFilter { get; }
 }

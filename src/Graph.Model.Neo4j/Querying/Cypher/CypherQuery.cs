@@ -17,6 +17,8 @@ namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher;
 /// <summary>
 /// Represents a Cypher query with its parameters and optional transaction context.
 /// </summary>
+/// <param name="Text">The rendered Cypher text.</param>
+/// <param name="Parameters">The parameters referenced by <paramref name="Text"/>.</param>
 /// <param name="GraphPathTypes">
 /// When this query is a decomposed <c>TraversePaths</c> result (one row per hop, tagged with
 /// <c>pathIndex</c>/<c>hopIndex</c> columns), the source/relationship/target types needed to

@@ -80,4 +80,11 @@ public class SelectTranslationTests : TranslationTestBase
         var query = Root.Nodes<Person>().Where(p => p.Age > 18).Select(p => p.FirstName);
         return VerifyTranslation(query);
     }
+
+    [Fact]
+    public Task Select_ComplexCollectionProjection()
+    {
+        var query = Root.Nodes<Person>().Select(p => p.Offices.Select(office => office.City));
+        return VerifyTranslation(query);
+    }
 }

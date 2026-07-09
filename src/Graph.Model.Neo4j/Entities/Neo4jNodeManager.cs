@@ -49,7 +49,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 AND any(label IN labels(n) WHERE label IN $registeredNodeLabels)
                 AND NOT EXISTS {{
                     MATCH ()-[incomingProperty]->(n)
-                    WHERE type(incomingProperty) STARTS WITH $propertyPrefix
+                    WHERE incomingProperty.{ComplexPropertyStorage.RelationshipMarkerProperty} = true
                 }}
             )
         )";
@@ -68,6 +68,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         {
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(node);
+            GraphDataModel.EnsureComplexPropertyDepth(node);
 
             // Validate property constraints at application level
             ValidateNodeProperties(node);
@@ -78,15 +79,9 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // Create the main node
             var nodeId = await CreateMainNodeAsync(entity, transaction.Transaction, cancellationToken).ConfigureAwait(false);
 
-            // Create complex properties
-            var success = await _complexPropertyManager.CreateComplexPropertiesAsync(
+            // Create complex properties (throws on failure)
+            await _complexPropertyManager.CreateComplexPropertiesAsync(
                 transaction.Transaction, nodeId, entity, cancellationToken).ConfigureAwait(false);
-
-            if (!success)
-            {
-                _logger.LogWarning("Failed to create all complex properties for node {NodeId}", node.Id);
-                throw new GraphException($"Failed to create node of type {typeof(TNode).Name} with ID {node.Id}");
-            }
 
             _logger.LogInformation("Created node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
 
@@ -117,6 +112,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         {
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(node);
+            GraphDataModel.EnsureComplexPropertyDepth(node);
 
             // Validate property constraints at application level
             ValidateNodeProperties(node);
@@ -124,24 +120,19 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // Serialize the node
             var entity = _serializer.Serialize(node);
 
-            // Update the node properties
-            var updated = await UpdateMainNodeAsync(node.Id, entity, transaction.Transaction, cancellationToken).ConfigureAwait(false);
+            // Update the node properties. ComplexPropertyManager matches parents by Neo4j's
+            // elementId, not the domain Id, so capture it from the same MATCH.
+            var parentElementId = await UpdateMainNodeAsync(node.Id, entity, transaction.Transaction, cancellationToken).ConfigureAwait(false);
 
-            if (!updated)
+            if (parentElementId is null)
             {
                 _logger.LogWarning("Node with ID {NodeId} not found for update", node.Id);
                 throw new EntityNotFoundException($"Node with ID {node.Id} not found for update");
             }
 
-            // Update complex properties
-            var complexPropertiesUpdated = await _complexPropertyManager.UpdateComplexPropertiesAsync(
-                transaction.Transaction, node.Id, entity, cancellationToken).ConfigureAwait(false);
-
-            if (!complexPropertiesUpdated && entity.ComplexProperties.Count > 0)
-            {
-                _logger.LogWarning("Failed to update complex properties for node {NodeId}", node.Id);
-                throw new GraphException($"Failed to update the node's complex properties");
-            }
+            // Update complex properties (throws on failure)
+            await _complexPropertyManager.UpdateComplexPropertiesAsync(
+                transaction.Transaction, parentElementId, entity, cancellationToken).ConfigureAwait(false);
 
             _logger.LogInformation("Updated node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
             return true;
@@ -190,13 +181,12 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 var checkCypher = $@"
                     {RootMatchPrelude}
                     OPTIONAL MATCH (n)-[r]-()
-                    WHERE NOT type(r) STARTS WITH $propertyPrefix
+                    WHERE coalesce(r.{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = false
                     RETURN COUNT(r) AS businessRelationshipCount";
 
                 var checkResult = await transaction.Transaction.RunAsync(checkCypher, new
                 {
                     nodeId,
-                    propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
                     nodeEntityKind = SerializationBridge.NodeEntityKind,
                     registeredNodeLabels
                 }).ConfigureAwait(false);
@@ -215,8 +205,8 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // Now perform the deletion
             var cypher = $@"
                 {RootMatchPrelude}
-                OPTIONAL MATCH propertyPath = (n)-[propertyRels*1..]->(propertyNode)
-                WHERE ALL(rel IN propertyRels WHERE type(rel) STARTS WITH $propertyPrefix)
+                OPTIONAL MATCH propertyPath = (n)-[propertyRels*1..{GraphDataModel.DefaultDepthAllowed}]->(propertyNode)
+                WHERE ALL(rel IN propertyRels WHERE rel.{ComplexPropertyStorage.RelationshipMarkerProperty} = true)
                 WITH n, [propertyNode IN collect(DISTINCT propertyNode) WHERE propertyNode IS NOT NULL] AS propertyNodes
                 FOREACH (propertyNode IN propertyNodes | DETACH DELETE propertyNode)
                 DETACH DELETE n
@@ -225,7 +215,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var result = await transaction.Transaction.RunAsync(cypher, new
             {
                 nodeId,
-                propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
                 nodeEntityKind = SerializationBridge.NodeEntityKind,
                 registeredNodeLabels
             }).ConfigureAwait(false);
@@ -262,7 +251,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         var result = await transaction.RunAsync(cypher, new
         {
             nodeId,
-            propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
             nodeEntityKind = SerializationBridge.NodeEntityKind,
             registeredNodeLabels
         }).ConfigureAwait(false);
@@ -327,7 +315,8 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             ?? throw new GraphException("Failed to create node - no ID returned");
     }
 
-    private async Task<bool> UpdateMainNodeAsync(
+    /// <returns>The updated node's Neo4j elementId, or <see langword="null"/> when no node matched.</returns>
+    private async Task<string?> UpdateMainNodeAsync(
         string nodeId,
         EntityInfo entity,
         IAsyncTransaction transaction,
@@ -366,16 +355,17 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var newLabels = CypherIdentifier.EscapeLabels(entity.ActualLabels);
             var setLabelsClause = $"SET n:{newLabels} ";
 
-            cypher = $"MATCH (n {{Id: $nodeId}}) {removeLabelsClause}SET n = $props {setLabelsClause}RETURN n";
+            cypher = $"MATCH (n {{Id: $nodeId}}) {removeLabelsClause}SET n = $props {setLabelsClause}RETURN elementId(n) AS elementId";
         }
         else
         {
             // For non-dynamic nodes, just update properties
-            cypher = "MATCH (n {Id: $nodeId}) SET n = $props RETURN n";
+            cypher = "MATCH (n {Id: $nodeId}) SET n = $props RETURN elementId(n) AS elementId";
         }
 
         var result = await transaction.RunAsync(cypher, new { nodeId, props = simpleProperties }).ConfigureAwait(false);
-        return await GetCountAsync(result, cancellationToken).ConfigureAwait(false) > 0;
+        var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+        return records.Count > 0 ? records[0]["elementId"].As<string>() : null;
     }
 
     private void ValidateNodeProperties<TNode>(TNode node) where TNode : class, Model.INode

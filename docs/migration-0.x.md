@@ -387,6 +387,27 @@ Updating a persisted relationship with a different `Direction` now throws `Graph
 with the same `Direction` continue to work. To reverse the stored edge direction, delete and
 recreate the relationship.
 
+## 16. Complex properties are now first-class graph structure
+
+Complex properties no longer use reserved, mangled relationship names or an APOC-based hidden
+reconstruction query. A property such as `Person.HomeAddress` now persists as
+`(:Person)-[:HomeAddress]->(:Address)`. Use
+`[ComplexProperty(RelationshipType = "LIVES_AT")]` to override the relationship type.
+
+This is a breaking storage change. Existing databases must either be rebuilt from the source of truth or
+migrated before the new provider reads them. A migration should, for every legacy complex-property edge:
+
+1. derive the owning CLR property (including any new attribute override),
+2. create the semantic relationship type,
+3. preserve collection `SequenceNumber`,
+4. assign GraphModel IDs to the value node and relationship, and
+5. add the provider's complex-property marker used for bounded recursive loading and cascade cleanup.
+
+Do not keep mixed old and new representations: the new query planner only follows semantic relationship
+types. Declared properties auto-load recursively to `GraphDataModel.DefaultDepthAllowed` (5); deeper
+object graphs and cycles now fail before writing. Each property occurrence is stored as a distinct value
+node, even if multiple owners reference the same in-memory instance.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

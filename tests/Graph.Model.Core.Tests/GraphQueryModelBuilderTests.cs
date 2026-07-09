@@ -161,8 +161,43 @@ public class GraphQueryModelBuilderTests
         var step = Assert.Single(model.Traversal);
         Assert.Equal(GraphDataModel.PropertyNameToRelationshipTypeName(nameof(Person.Home)), step.RelationshipType);
         Assert.Equal(new DepthRange(1, 1), step.Depth);
-        Assert.Null(step.TargetType);
+        Assert.Equal(typeof(Address), step.TargetType);
 
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void ComplexPropertyAccess_ProducesArbitraryDepthTraversalSteps()
+    {
+        var query = Root<Person>().Where(person => person.Home.Region.Name == "Northwest");
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Collection(
+            model.Traversal,
+            home => Assert.Equal("Home", home.RelationshipType),
+            region => Assert.Equal("Region", region.RelationshipType));
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void ComplexPropertyAccess_UsesRelationshipTypeOverride()
+    {
+        var query = Root<Person>().Where(person => person.Mailing.City == "Seattle");
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal("MAILING_ADDRESS", Assert.Single(model.Traversal).RelationshipType);
+    }
+
+    [Fact]
+    public void ComplexCollectionPredicate_ProducesPropertyTraversalStep()
+    {
+        var query = Root<Person>().Where(person => person.Offices.Any(office => office.City == "Seattle"));
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal("Offices", Assert.Single(model.Traversal).RelationshipType);
         GraphQueryModelValidator.Validate(model);
     }
 
@@ -278,7 +313,6 @@ public class GraphQueryModelBuilderTests
     [Theory]
     [InlineData(nameof(GraphQueryableExtensions.SelectMany))]
     [InlineData(nameof(GraphQueryableExtensions.GroupBy))]
-    [InlineData(nameof(Queryable.Join))]
     [InlineData(nameof(Queryable.Union))]
     public void UnrepresentableOperators_ThrowInsteadOfProducingLossyModel(string operatorName)
     {
@@ -287,16 +321,142 @@ public class GraphQueryModelBuilderTests
         {
             nameof(GraphQueryableExtensions.SelectMany) => source.SelectMany(person => person.Nicknames).Expression,
             nameof(GraphQueryableExtensions.GroupBy) => source.GroupBy(person => person.Age).Expression,
-            nameof(Queryable.Join) => source.AsQueryable().Join(
-                Root<Company>(),
-                person => person.CompanyId,
-                company => company.Id,
-                (person, company) => company).Expression,
             nameof(Queryable.Union) => source.AsQueryable().Union(Root<Person>()).Expression,
             _ => throw new InvalidOperationException($"Unknown operator '{operatorName}'."),
         };
 
         Assert.Throws<GraphQueryTranslationException>(() => GraphQueryModelBuilder.Build(expression));
+    }
+
+    [Fact]
+    public void Join_ProducesEquijoinFragment()
+    {
+        var query = Root<Person>().AsQueryable().Join(
+            Root<Company>(),
+            person => person.CompanyId,
+            company => company.Id,
+            (person, company) => company);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.NotNull(model.Join);
+        Assert.IsType<NodeRoot>(model.Join.InnerRoot);
+        Assert.Equal(typeof(string), model.Join.OuterKeySelector.ReturnType);
+        Assert.Equal(typeof(string), model.Join.InnerKeySelector.ReturnType);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void Join_WithComposedInnerSource_ThrowsInsteadOfDroppingOperators()
+    {
+        var query = Root<Person>().AsQueryable().Join(
+            Root<Company>().Where(company => company.Id != ""),
+            person => person.CompanyId,
+            company => company.Id,
+            (person, company) => company);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("bare node or relationship set", exception.Message);
+    }
+
+    [Fact]
+    public void Join_WithPagedInnerSource_ThrowsInsteadOfDroppingOperators()
+    {
+        var query = Root<Person>().AsQueryable().Join(
+            Root<Company>().Take(3),
+            person => person.CompanyId,
+            company => company.Id,
+            (person, company) => company);
+
+        Assert.Throws<GraphQueryTranslationException>(() => GraphQueryModelBuilder.Build(query.Expression));
+    }
+
+    [Fact]
+    public void IndexedWhere_ThrowsActionableException()
+    {
+        var query = Root<Person>().AsQueryable().Where((person, index) => index < 5);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("indexed", exception.Message);
+    }
+
+    [Fact]
+    public void IndexedSelect_ThrowsActionableException()
+    {
+        var query = Root<Person>().AsQueryable().Select((person, index) => person.FirstName);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("indexed", exception.Message);
+    }
+
+    [Fact]
+    public void ChainedSelect_ComposesProjectionsOverTheRootParameter()
+    {
+        var query = Root<Person>().Select(person => person.FirstName).Select(name => name.Length);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var projection = model.Projection ?? throw new InvalidOperationException("Expected a projection.");
+        Assert.Equal(ProjectionKind.Scalar, projection.Kind);
+        var selector = projection.Selector ?? throw new InvalidOperationException("Expected a selector.");
+        Assert.Equal(typeof(Person), Assert.Single(selector.Parameters).Type);
+        Assert.Equal(typeof(int), selector.ReturnType);
+    }
+
+    [Fact]
+    public void SelectAfterJoin_ThrowsInsteadOfDiscardingResultSelector()
+    {
+        var query = Root<Person>().AsQueryable().Join(
+                Root<Company>(),
+                person => person.CompanyId,
+                company => company.Id,
+                (person, company) => company)
+            .Select(company => company.Id);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("compose chained Select", exception.Message);
+    }
+
+    [Fact]
+    public void WithDepth_InvalidRange_ThrowsTranslationException()
+    {
+#pragma warning disable CS0618
+        var query = Root<Person>()
+            .PathSegments<Person, Knows, Company>()
+            .WithDepth(0);
+#pragma warning restore CS0618
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("depth range [1..0] is invalid", exception.Message);
+    }
+
+    [Fact]
+    public void SearchAfterTraversal_ProducesSearchFilterOnCurrentScope()
+    {
+#pragma warning disable CS0618
+        var query = Root<Person>()
+            .PathSegments<Person, Knows, Company>()
+            .Search("engineer");
+#pragma warning restore CS0618
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.IsType<NodeRoot>(model.Root);
+        var filter = Assert.IsType<SearchRoot>(model.SearchFilter);
+        Assert.Equal("engineer", filter.Query);
+        Assert.Equal(SearchRootTarget.Nodes, filter.Target);
+        Assert.Equal(typeof(Company), filter.ElementType);
+        GraphQueryModelValidator.Validate(model);
     }
 
     [Fact]
@@ -431,6 +591,13 @@ public class GraphQueryModelBuilderTests
     private sealed record Address
     {
         public string City { get; init; } = string.Empty;
+
+        public Region Region { get; init; } = new();
+    }
+
+    private sealed record Region
+    {
+        public string Name { get; init; } = string.Empty;
     }
 
     [Node("MODEL_BUILDER_PERSON")]
@@ -447,6 +614,11 @@ public class GraphQueryModelBuilderTests
         public IReadOnlyList<string> Nicknames { get; init; } = [];
 
         public Address Home { get; init; } = new();
+
+        [ComplexProperty(RelationshipType = "MAILING_ADDRESS")]
+        public Address Mailing { get; init; } = new();
+
+        public IReadOnlyList<Address> Offices { get; init; } = [];
     }
 
     [Relationship(Label = "MODEL_BUILDER_KNOWS")]

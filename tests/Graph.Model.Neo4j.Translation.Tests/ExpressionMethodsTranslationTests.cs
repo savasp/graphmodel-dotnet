@@ -18,7 +18,7 @@ using Cvoya.Graph.Model.Neo4j.Translation.Tests.Harness;
 using Cvoya.Graph.Model.Neo4j.Translation.Tests.Model;
 
 /// <summary>
-/// Covers expression-level constructs handled by <c>ExpressionToCypherVisitor</c>: string
+/// Covers expression-level constructs lowered through the shared Cypher planner: string
 /// methods, DateTime members/arithmetic, Math methods, closures, and null comparisons. (Enum
 /// comparisons and complex-property navigation in predicates are covered in
 /// <see cref="WhereTranslationTests"/>.)

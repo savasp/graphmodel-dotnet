@@ -153,6 +153,22 @@ public record ReportsTo(string StartNodeId, string EndNodeId)
 Use `GraphTraversalDirection.Both` on traversal queries when you want to traverse matching stored
 edges in either physical direction.
 
+## ComplexPropertyAttribute
+
+Complex CLR properties become first-class value nodes connected by a relationship whose type defaults
+to the property name. Override that graph name when the domain calls for a different semantic edge:
+
+```csharp
+public record Person : Node
+{
+    [ComplexProperty(RelationshipType = "LIVES_AT")]
+    public Address Home { get; init; } = new();
+}
+```
+
+The resulting structure is `(:Person)-[:LIVES_AT]->(:Address)`. The attribute changes the relationship
+mapping only; the CLR property name and serialized value-node label are unchanged.
+
 ## Inheritance and Polymorphism
 
 ### Base Classes
