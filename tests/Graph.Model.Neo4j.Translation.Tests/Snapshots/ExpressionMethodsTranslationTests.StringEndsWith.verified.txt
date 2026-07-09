@@ -1,34 +1,20 @@
 == Cypher ==
 MATCH (src:Person|Manager)
 WHERE src.FirstName ENDS WITH $p0
-
-            // All complex property paths from src
-            OPTIONAL MATCH src_path = (src)-[rels*1..]->(prop)
-            WHERE ALL(rel in rels WHERE type(rel) STARTS WITH '__PROPERTY__')
-            WITH src,
-                CASE 
-                    WHEN src_path IS NULL THEN []
-                    ELSE [i IN range(0, size(rels)-1) | {
-                        ParentNode: 
-                            CASE 
-                                WHEN i = 0 THEN src
-                                ELSE nodes(src_path)[i]
-                            END,
-                        Relationship: rels[i],
-                        SequenceNumber: rels[i].SequenceNumber,
-                        Property: nodes(src_path)[i+1]
-                    }]
-                END AS src_flat_property
-
-            WITH src,
-                reduce(flat = [], l IN collect(src_flat_property) | flat + l) AS src_flat_properties
-            WITH src, apoc.coll.toSet(src_flat_properties) AS src_flat_properties
-
-
-            RETURN {
-                Node: src,
-                ComplexProperties: src_flat_properties
-            } AS Node
+OPTIONAL MATCH src_path = (src)-[rels*1..5]->(prop)
+WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)
+WITH src,
+    CASE WHEN src_path IS NULL THEN [] ELSE [i IN range(0, size(rels) - 1) | {
+        ParentNode: CASE WHEN i = 0 THEN src ELSE nodes(src_path)[i] END,
+        Relationship: rels[i],
+        SequenceNumber: rels[i].SequenceNumber,
+        Property: nodes(src_path)[i + 1]
+    }] END AS src_property_path
+WITH src, reduce(flat = [], path IN collect(src_property_path) | flat + path) AS src_properties
+RETURN {
+    Node: src,
+    ComplexProperties: src_properties
+} AS Node
 
 == Parameters ==
 p0 = "e"

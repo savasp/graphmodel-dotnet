@@ -26,13 +26,15 @@ using System.Reflection;
 /// <param name="ElementType">For collections, the type of elements.</param>
 /// <param name="IsNullable">Whether the property can be null.</param>
 /// <param name="NestedSchema">For complex properties, the schema of the nested type.</param>
+/// <param name="RelationshipType">For complex properties, the semantic graph relationship type.</param>
 public record PropertySchema(
     PropertyInfo PropertyInfo,
     string PropertyName,
     PropertyType PropertyType,
     Type? ElementType = null,
     bool IsNullable = false,
-    EntitySchema? NestedSchema = null
+    EntitySchema? NestedSchema = null,
+    string? RelationshipType = null
 );
 
 /// <summary>

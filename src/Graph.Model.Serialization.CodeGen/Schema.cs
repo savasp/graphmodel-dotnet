@@ -168,8 +168,10 @@ internal static class Schema
                 sb.AppendLine("                PropertyInfo: propInfo,");
                 sb.AppendLine($"                PropertyName: \"{propertyName}\",");
                 sb.AppendLine("                PropertyType: PropertyType.ComplexCollection,");
+                sb.AppendLine($"                ElementType: typeof({elementType.TypeOfName}),");
                 sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
-                sb.AppendLine($"                NestedSchema: {nestedSchemaCall}");
+                sb.AppendLine($"                NestedSchema: {nestedSchemaCall},");
+                sb.AppendLine("                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)");
                 sb.AppendLine("            );");
             }
         }
@@ -182,7 +184,8 @@ internal static class Schema
             sb.AppendLine($"                PropertyName: \"{propertyName}\",");
             sb.AppendLine("                PropertyType: PropertyType.Complex,");
             sb.AppendLine($"                IsNullable: {isNullable.ToString().ToLowerInvariant()},");
-            sb.AppendLine($"                NestedSchema: {nestedSchemaCall}");
+            sb.AppendLine($"                NestedSchema: {nestedSchemaCall},");
+            sb.AppendLine("                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)");
             sb.AppendLine("            );");
         }
 

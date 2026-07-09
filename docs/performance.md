@@ -130,6 +130,11 @@ foreach (var user in users)
 
 ### Complex Property Optimization
 
+Complex properties are stored as first-class value nodes, so each value adds a node and relationship.
+They auto-load recursively for declared read shapes, bounded at five relationship levels. Keep frequently
+filtered scalar values near the owning node, and use explicit graph entities when a value needs shared
+identity across owners. Collections preserve order through relationship sequence metadata.
+
 ```csharp
 // For large complex objects, consider splitting into separate nodes
 public record User : Node
@@ -140,7 +145,7 @@ public record User : Node
     public string Name { get; set; } = string.Empty;
     public DateTime CreatedDate { get; set; }
 
-    // ❌ Avoid - very large complex properties
+    // ❌ Avoid - very large auto-loaded complex-property subgraphs
     // public List<VeryLargeObject> ComplexData { get; set; }
 }
 

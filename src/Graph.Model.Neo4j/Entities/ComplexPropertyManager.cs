@@ -15,6 +15,8 @@
 namespace Cvoya.Graph.Model.Neo4j.Entities;
 
 using Cvoya.Graph.Model.Neo4j.Core;
+using Cvoya.Graph.Model.Neo4j.Querying.Cypher;
+using Cvoya.Graph.Model.Neo4j.Serialization;
 using Cvoya.Graph.Model.Serialization;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
@@ -35,8 +37,26 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         EntityInfo entity,
         CancellationToken cancellationToken = default)
     {
+        return await CreateComplexPropertiesAsync(
+            transaction, parentId, entity, depth: 0, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<bool> CreateComplexPropertiesAsync(
+        IAsyncTransaction transaction,
+        string parentId,
+        EntityInfo entity,
+        int depth,
+        CancellationToken cancellationToken)
+    {
         if (entity.ComplexProperties.Count == 0)
             return true;
+
+        if (depth >= GraphDataModel.DefaultDepthAllowed &&
+            entity.ComplexProperties.Values.Any(property => property.Value is not null))
+        {
+            throw new GraphException(
+                $"Complex properties cannot exceed {GraphDataModel.DefaultDepthAllowed} levels of depth.");
+        }
 
         var allCreated = true;
 
@@ -46,12 +66,14 @@ internal sealed class ComplexPropertyManager(GraphContext context)
             {
                 case EntityInfo childEntity:
                     allCreated &= await CreateSingleComplexPropertyAsync(
-                        transaction, parentId, propertyName, childEntity, 0, cancellationToken).ConfigureAwait(false);
+                        transaction, parentId, propertyName, complexProperty, childEntity, 0, depth, cancellationToken)
+                        .ConfigureAwait(false);
                     break;
 
                 case EntityCollection collection:
                     allCreated &= await CreateComplexPropertyCollectionAsync(
-                        transaction, parentId, propertyName, collection, cancellationToken).ConfigureAwait(false);
+                        transaction, parentId, propertyName, complexProperty, collection, depth, cancellationToken)
+                        .ConfigureAwait(false);
                     break;
 
                 case null:
@@ -88,21 +110,33 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         IAsyncTransaction transaction,
         string parentId,
         string propertyName,
+        Property property,
         EntityInfo entity,
         int sequenceNumber,
+        int depth,
         CancellationToken cancellationToken)
     {
-        var relationshipType = GraphDataModel.PropertyNameToRelationshipTypeName(propertyName);
-        var label = entity.Label;
+        var relationshipType = property.RelationshipType ?? (property.PropertyInfo is null
+            ? GraphDataModel.PropertyNameToRelationshipTypeName(propertyName)
+            : GraphDataModel.GetComplexPropertyRelationshipType(property.PropertyInfo));
+        var escapedRelationshipType = CypherIdentifier.Escape(relationshipType, "complex-property relationship type");
+        var escapedLabel = CypherIdentifier.Escape(entity.Label, "complex-property node label");
 
         var cypher = @$"
             MATCH (parent)
             WHERE elementId(parent) = $parentId
-            CREATE (parent)-[r:{relationshipType} $relProps]->(complex:{label} $props)
+            CREATE (parent)-[r:{escapedRelationshipType} $relProps]->(complex:{escapedLabel} $props)
             RETURN elementId(complex) as nodeId";
 
         var nodeProps = SerializationHelpers.SerializeSimpleProperties(entity);
-        var relProps = new Dictionary<string, object> { ["SequenceNumber"] = sequenceNumber };
+        nodeProps[nameof(Model.IEntity.Id)] = Guid.NewGuid().ToString("D");
+        nodeProps[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
+        var relProps = new Dictionary<string, object>
+        {
+            [nameof(Model.IEntity.Id)] = Guid.NewGuid().ToString("D"),
+            ["SequenceNumber"] = sequenceNumber,
+            [ComplexPropertyStorage.RelationshipMarkerProperty] = true
+        };
 
         var result = await transaction.RunAsync(cypher, new
         {
@@ -120,14 +154,17 @@ internal sealed class ComplexPropertyManager(GraphContext context)
             complexNodeId, propertyName, parentId);
 
         // Recursively create nested complex properties
-        return await CreateComplexPropertiesAsync(transaction, complexNodeId, entity, cancellationToken).ConfigureAwait(false);
+        return await CreateComplexPropertiesAsync(transaction, complexNodeId, entity, depth + 1, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async Task<bool> CreateComplexPropertyCollectionAsync(
         IAsyncTransaction transaction,
         string parentId,
         string propertyName,
+        Property property,
         EntityCollection collection,
+        int depth,
         CancellationToken cancellationToken)
     {
         var allCreated = true;
@@ -136,7 +173,8 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         foreach (var entity in collection.Entities)
         {
             allCreated &= await CreateSingleComplexPropertyAsync(
-                transaction, parentId, propertyName, entity, index++, cancellationToken).ConfigureAwait(false);
+                transaction, parentId, propertyName, property, entity, index++, depth, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return allCreated;
@@ -147,18 +185,16 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         string parentId,
         CancellationToken cancellationToken)
     {
-        var cypher = @"
-            MATCH (n {Id: $parentId})-[r]->(complex)
-            WHERE type(r) STARTS WITH $propertyPrefix
-            DETACH DELETE complex
-            DELETE r
-            RETURN COUNT(r) AS deletedCount";
+        var cypher = $@"
+            MATCH (parent)
+            WHERE elementId(parent) = $parentId
+            OPTIONAL MATCH (parent)-[propertyRels*1..{GraphDataModel.DefaultDepthAllowed}]->(propertyNode)
+            WHERE ALL(rel IN propertyRels WHERE rel.{ComplexPropertyStorage.RelationshipMarkerProperty} = true)
+            WITH [node IN collect(DISTINCT propertyNode) WHERE node IS NOT NULL] AS propertyNodes
+            FOREACH (propertyNode IN propertyNodes | DETACH DELETE propertyNode)
+            RETURN size(propertyNodes) AS deletedCount";
 
-        var result = await transaction.RunAsync(cypher, new
-        {
-            parentId,
-            propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix
-        }).ConfigureAwait(false);
+        var result = await transaction.RunAsync(cypher, new { parentId }).ConfigureAwait(false);
 
         var deletedCount = (await GetFirstRecordAsync(result, cancellationToken).ConfigureAwait(false))["deletedCount"].As<int>();
 

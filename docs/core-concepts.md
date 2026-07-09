@@ -140,17 +140,26 @@ public record Person : Node  // Use Node base class
 public record Company : Node  // Use Node base class
 {
     public string Name { get; set; } = string.Empty;
+
+    [ComplexProperty(RelationshipType = "HEADQUARTERED_AT")]
     public Address Headquarters { get; set; } = new(); // Complex type
     public List<Address> Offices { get; set; } = new(); // Collection
 }
 
-public class Address // Not a node - just a value object from the Graph Model's perspective
+public class Address // A value object in the CLR model
 {
     public string Street { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
 }
 ```
+
+Complex CLR properties are stored as first-class value nodes and semantic relationships. In this
+example the graph contains `(:Company)-[:HEADQUARTERED_AT]->(:Address)` and one `:Offices` edge per
+collection item. The attribute is optional; without it, the property name is the relationship type.
+Each occurrence gets its own value node, preserving value-object rather than shared-entity semantics.
+Declared properties round-trip transparently up to five nested levels; deeper graphs and cycles are
+rejected.
 
 #### 3. Node Inheritance Hierarchy
 

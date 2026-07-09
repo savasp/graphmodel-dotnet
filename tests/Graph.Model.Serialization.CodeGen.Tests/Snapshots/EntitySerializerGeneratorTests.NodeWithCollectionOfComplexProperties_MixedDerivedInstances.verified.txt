@@ -701,7 +701,8 @@ internal sealed class KennelSerializer : IEntitySerializer
                 PropertyInfo: propInfo,
                 Label: "Animals",
                 IsNullable: false,
-                Value: serializedValue
+                Value: serializedValue,
+                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
             );
             complexProperties["Animals"] = propertyRep;
         }
@@ -847,8 +848,10 @@ internal sealed class KennelSerializer : IEntitySerializer
                 PropertyInfo: propInfo,
                 PropertyName: "Animals",
                 PropertyType: PropertyType.ComplexCollection,
+                ElementType: typeof(TestNamespace.AnimalDescription),
                 IsNullable: false,
-                NestedSchema: TestNamespace.Generated.AnimalDescriptionSerializer.GetSchemaStatic()
+                NestedSchema: TestNamespace.Generated.AnimalDescriptionSerializer.GetSchemaStatic(),
+                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
             );
         }
 
@@ -1035,7 +1038,8 @@ internal sealed class PoliceDogDescriptionSerializer : IEntitySerializer
                 PropertyInfo: propInfo,
                 Label: "Handler",
                 IsNullable: true,
-                Value: serializedValue
+                Value: serializedValue,
+                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
             );
             complexProperties["Handler"] = propertyRep;
         }
@@ -1158,7 +1162,8 @@ internal sealed class PoliceDogDescriptionSerializer : IEntitySerializer
                 PropertyName: "Handler",
                 PropertyType: PropertyType.Complex,
                 IsNullable: true,
-                NestedSchema: TestNamespace.Generated.HandlerDescriptionSerializer.GetSchemaStatic()
+                NestedSchema: TestNamespace.Generated.HandlerDescriptionSerializer.GetSchemaStatic(),
+                RelationshipType: GraphDataModel.GetComplexPropertyRelationshipType(propInfo)
             );
         }
 

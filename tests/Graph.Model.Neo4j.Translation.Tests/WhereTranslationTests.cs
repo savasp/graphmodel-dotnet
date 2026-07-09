@@ -78,6 +78,41 @@ public class WhereTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task Where_ComplexPropertyNavigation_ArbitraryDepth()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.HomeAddress!.Region!.Name == "Northwest");
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ComplexPropertyNavigation_UsesRelationshipOverride()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.MailingAddress!.City == "Seattle");
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ComplexCollectionAny()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.Offices.Any(office => office.City == "Seattle"));
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ComplexCollectionAll()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.Offices.All(office => office.City != "Closed"));
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ComplexCollectionCount()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.Offices.Count > 1);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task Where_OnRelationshipQueryable()
     {
         var query = Root.Relationships<Knows>().Where(k => k.Since > 2020);

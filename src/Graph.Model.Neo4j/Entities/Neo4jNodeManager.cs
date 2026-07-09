@@ -49,7 +49,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 AND any(label IN labels(n) WHERE label IN $registeredNodeLabels)
                 AND NOT EXISTS {{
                     MATCH ()-[incomingProperty]->(n)
-                    WHERE type(incomingProperty) STARTS WITH $propertyPrefix
+                    WHERE incomingProperty.{ComplexPropertyStorage.RelationshipMarkerProperty} = true
                 }}
             )
         )";
@@ -68,6 +68,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         {
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(node);
+            GraphDataModel.EnsureComplexPropertyDepth(node);
 
             // Validate property constraints at application level
             ValidateNodeProperties(node);
@@ -117,6 +118,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         {
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(node);
+            GraphDataModel.EnsureComplexPropertyDepth(node);
 
             // Validate property constraints at application level
             ValidateNodeProperties(node);
@@ -190,13 +192,12 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 var checkCypher = $@"
                     {RootMatchPrelude}
                     OPTIONAL MATCH (n)-[r]-()
-                    WHERE NOT type(r) STARTS WITH $propertyPrefix
+                    WHERE coalesce(r.{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = false
                     RETURN COUNT(r) AS businessRelationshipCount";
 
                 var checkResult = await transaction.Transaction.RunAsync(checkCypher, new
                 {
                     nodeId,
-                    propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
                     nodeEntityKind = SerializationBridge.NodeEntityKind,
                     registeredNodeLabels
                 }).ConfigureAwait(false);
@@ -215,8 +216,8 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             // Now perform the deletion
             var cypher = $@"
                 {RootMatchPrelude}
-                OPTIONAL MATCH propertyPath = (n)-[propertyRels*1..]->(propertyNode)
-                WHERE ALL(rel IN propertyRels WHERE type(rel) STARTS WITH $propertyPrefix)
+                OPTIONAL MATCH propertyPath = (n)-[propertyRels*1..{GraphDataModel.DefaultDepthAllowed}]->(propertyNode)
+                WHERE ALL(rel IN propertyRels WHERE rel.{ComplexPropertyStorage.RelationshipMarkerProperty} = true)
                 WITH n, [propertyNode IN collect(DISTINCT propertyNode) WHERE propertyNode IS NOT NULL] AS propertyNodes
                 FOREACH (propertyNode IN propertyNodes | DETACH DELETE propertyNode)
                 DETACH DELETE n
@@ -225,7 +226,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             var result = await transaction.Transaction.RunAsync(cypher, new
             {
                 nodeId,
-                propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
                 nodeEntityKind = SerializationBridge.NodeEntityKind,
                 registeredNodeLabels
             }).ConfigureAwait(false);
@@ -262,7 +262,6 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         var result = await transaction.RunAsync(cypher, new
         {
             nodeId,
-            propertyPrefix = GraphDataModel.PropertyRelationshipTypeNamePrefix,
             nodeEntityKind = SerializationBridge.NodeEntityKind,
             registeredNodeLabels
         }).ConfigureAwait(false);

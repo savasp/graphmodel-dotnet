@@ -1,30 +1,9 @@
 == Cypher ==
 MATCH (src:Person|Manager)-[r:WORKS_AT]->(tgt:Company)
-
-                // Complex properties from target node
-                OPTIONAL MATCH tgt_path = (tgt)-[trels*1..]->(tprop)
-                WHERE ALL(rel in trels WHERE type(rel) STARTS WITH '__PROPERTY__')
-                WITH src, r, tgt,
-                    CASE 
-                        WHEN tgt_path IS NULL THEN []
-                        ELSE [i IN range(0, size(trels)-1) | {
-                            ParentNode: CASE 
-                                WHEN i = 0 THEN tgt
-                                ELSE nodes(tgt_path)[i]
-                            END,
-                            Relationship: trels[i],
-                            SequenceNumber: trels[i].SequenceNumber,
-                            Property: nodes(tgt_path)[i+1]
-                        }]
-                    END AS tgt_flat_property
-                WITH src, r, tgt,
-                    reduce(flat = [], l IN collect(tgt_flat_property) | flat + l) AS tgt_flat_properties
-                WITH src, r, tgt, apoc.coll.toSet(tgt_flat_properties) AS tgt_flat_properties
-
-                RETURN {
-                    Node: tgt,
-                    ComplexProperties: tgt_flat_properties
-                } AS Node
+RETURN {
+                Node: tgt,
+                ComplexProperties: []
+            } AS Node
 
 == Parameters ==
 (none)

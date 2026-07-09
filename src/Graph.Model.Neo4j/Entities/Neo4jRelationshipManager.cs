@@ -54,6 +54,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         {
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
+            GraphDataModel.EnsureComplexPropertyDepth(relationship);
 
             // Validate property constraints at application level
             ValidateRelationshipProperties(relationship);
@@ -111,6 +112,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         {
             // Validate no reference cycles
             GraphDataModel.EnsureNoReferenceCycle(relationship);
+            GraphDataModel.EnsureComplexPropertyDepth(relationship);
 
             // Serialize the relationship
             var entity = _serializer.Serialize(relationship);

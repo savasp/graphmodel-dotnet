@@ -99,6 +99,8 @@ public class EntitySerializerGeneratorTests
             public record Person : Node
             {
                 public string FirstName { get; set; } = string.Empty;
+
+                [ComplexProperty(RelationshipType = "LIVES_AT")]
                 public Address? HomeAddress { get; set; }
             }
             """;
