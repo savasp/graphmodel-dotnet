@@ -82,3 +82,6 @@ _site/
 
 # Jekyll
 .jekyll-cache
+
+# CodeGraph
+.codegraph/
