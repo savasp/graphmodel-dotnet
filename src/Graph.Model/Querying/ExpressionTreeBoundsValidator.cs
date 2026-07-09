@@ -69,4 +69,9 @@ internal sealed class ExpressionTreeBoundsValidator : ExpressionVisitor
             _depth--;
         }
     }
+
+    protected override Expression VisitExtension(Expression node)
+    {
+        return node.CanReduce ? base.VisitExtension(node) : node;
+    }
 }

@@ -12,22 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Querying;
+namespace Cvoya.Graph.Model;
 
 /// <summary>
-/// Represents a dynamically typed query root.
+/// Configures the graph relationship used to store a complex property.
 /// </summary>
-public sealed record DynamicRoot : QueryRoot
+/// <remarks>
+/// By default, a complex property is connected to its owning node by a relationship whose
+/// type is the property name. Use this attribute when the graph relationship needs a different
+/// semantic name.
+/// </remarks>
+[AttributeUsage(AttributeTargets.Property, Inherited = true, AllowMultiple = false)]
+public sealed class ComplexPropertyAttribute : Attribute
 {
     /// <summary>
-    /// Initializes a dynamically typed query root.
+    /// Gets or sets the relationship type used for the complex property.
     /// </summary>
-    /// <param name="elementType">The dynamic element type, when known.</param>
-    public DynamicRoot(Type? elementType = null)
-    {
-        ElementType = elementType;
-    }
-
-    /// <summary>Gets the dynamic element type, when known.</summary>
-    public Type? ElementType { get; }
+    public string? RelationshipType { get; set; }
 }

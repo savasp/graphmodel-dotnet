@@ -33,11 +33,86 @@ public sealed record TraversalStep
         DepthRange depth,
         IReadOnlyList<PredicateFragment> relationshipPredicates,
         Type? targetType)
+        : this(relationshipType, direction, depth, relationshipPredicates, targetType, null, false)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TraversalStep"/> record.
+    /// </summary>
+    /// <param name="relationshipType">The relationship type label to traverse, or <see langword="null"/> for any relationship type.</param>
+    /// <param name="direction">The traversal direction.</param>
+    /// <param name="depth">The traversal depth range.</param>
+    /// <param name="relationshipPredicates">Predicates applied to relationships traversed by the step.</param>
+    /// <param name="targetType">The target node or value-node type, if known.</param>
+    /// <param name="relationshipClrType">The CLR relationship type, if known.</param>
+    public TraversalStep(
+        string? relationshipType,
+        GraphTraversalDirection direction,
+        DepthRange depth,
+        IReadOnlyList<PredicateFragment> relationshipPredicates,
+        Type? targetType,
+        Type? relationshipClrType)
+        : this(relationshipType, direction, depth, relationshipPredicates, targetType, relationshipClrType, false)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TraversalStep"/> record.
+    /// </summary>
+    /// <param name="relationshipType">The relationship type label to traverse, or <see langword="null"/> for any relationship type.</param>
+    /// <param name="direction">The traversal direction.</param>
+    /// <param name="depth">The traversal depth range.</param>
+    /// <param name="relationshipPredicates">Predicates applied to relationships traversed by the step.</param>
+    /// <param name="targetType">The target node or value-node type, if known.</param>
+    /// <param name="relationshipClrType">The CLR relationship type, if known.</param>
+    /// <param name="isComplexPropertyTraversal">Whether the step came from a complex-property member access.</param>
+    public TraversalStep(
+        string? relationshipType,
+        GraphTraversalDirection direction,
+        DepthRange depth,
+        IReadOnlyList<PredicateFragment> relationshipPredicates,
+        Type? targetType,
+        Type? relationshipClrType,
+        bool isComplexPropertyTraversal)
+        : this(
+            relationshipType,
+            direction,
+            depth,
+            relationshipPredicates,
+            targetType,
+            relationshipClrType,
+            isComplexPropertyTraversal,
+            sourceAlias: null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a traversal step with an explicit source scope.
+    /// </summary>
+    /// <param name="relationshipType">The relationship type label to traverse, or <see langword="null"/> for any relationship type.</param>
+    /// <param name="direction">The traversal direction.</param>
+    /// <param name="depth">The traversal depth range.</param>
+    /// <param name="relationshipPredicates">Predicates applied to relationships traversed by the step.</param>
+    /// <param name="targetType">The target node or value-node type, if known.</param>
+    /// <param name="relationshipClrType">The CLR relationship type, if known.</param>
+    /// <param name="isComplexPropertyTraversal">Whether the step came from a complex-property member access.</param>
+    /// <param name="sourceAlias">The semantic source scope for this step, if known.</param>
+    public TraversalStep(
+        string? relationshipType,
+        GraphTraversalDirection direction,
+        DepthRange depth,
+        IReadOnlyList<PredicateFragment> relationshipPredicates,
+        Type? targetType,
+        Type? relationshipClrType,
+        bool isComplexPropertyTraversal,
+        string? sourceAlias)
     {
         QueryModelGuard.RequireNullOrNotWhiteSpace(relationshipType, nameof(relationshipType));
+        QueryModelGuard.RequireNullOrNotWhiteSpace(sourceAlias, nameof(sourceAlias));
         QueryModelGuard.RequireDefinedEnum(direction, nameof(direction));
 
-        if (targetType is not null)
+        if (targetType is not null && relationshipClrType is not null)
         {
             QueryModelGuard.RequireAssignableTo(targetType, typeof(INode), nameof(targetType));
         }
@@ -47,6 +122,9 @@ public sealed record TraversalStep
         Depth = depth ?? throw new ArgumentNullException(nameof(depth));
         RelationshipPredicates = QueryModelGuard.CopyRequiredList(relationshipPredicates, nameof(relationshipPredicates));
         TargetType = targetType;
+        RelationshipClrType = relationshipClrType;
+        IsComplexPropertyTraversal = isComplexPropertyTraversal;
+        SourceAlias = sourceAlias;
     }
 
     /// <summary>
@@ -73,4 +151,15 @@ public sealed record TraversalStep
     /// Gets the target node type, if known.
     /// </summary>
     public Type? TargetType { get; }
+
+    /// <summary>
+    /// Gets the CLR relationship type, if known.
+    /// </summary>
+    public Type? RelationshipClrType { get; }
+
+    /// <summary>Gets whether this step represents complex-property navigation.</summary>
+    public bool IsComplexPropertyTraversal { get; }
+
+    /// <summary>Gets the semantic source scope for this step, if known.</summary>
+    public string? SourceAlias { get; }
 }

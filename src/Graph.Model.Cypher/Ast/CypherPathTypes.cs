@@ -12,22 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Querying;
+namespace Cvoya.Graph.Model.Cypher.Ast;
 
-/// <summary>
-/// Represents a dynamically typed query root.
-/// </summary>
-public sealed record DynamicRoot : QueryRoot
-{
-    /// <summary>
-    /// Initializes a dynamically typed query root.
-    /// </summary>
-    /// <param name="elementType">The dynamic element type, when known.</param>
-    public DynamicRoot(Type? elementType = null)
-    {
-        ElementType = elementType;
-    }
-
-    /// <summary>Gets the dynamic element type, when known.</summary>
-    public Type? ElementType { get; }
-}
+/// <summary>Carries the CLR types needed to materialize a decomposed graph path.</summary>
+/// <param name="Source">The source node type.</param>
+/// <param name="Relationship">The relationship type.</param>
+/// <param name="Target">The target node type.</param>
+public sealed record CypherPathTypes(Type Source, Type Relationship, Type Target);

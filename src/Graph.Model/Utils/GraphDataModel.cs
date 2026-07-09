@@ -31,38 +31,35 @@ public static class GraphDataModel
     public const int DefaultDepthAllowed = 5;
 
     /// <summary>
-    /// Converts a property name to a relationship type name.
-    /// This is used to create a relationship type for properties of an entity.
-    /// The relationship type name is prefixed and suffixed with special strings to avoid conflicts with other relationship types.
-    /// The resulting relationship type name will be in the format: "__PROPERTY__{propertyName}__".
+    /// Converts a property name to the conventional semantic relationship type used for a complex property.
     /// </summary>
     /// <param name="propertyName"> The name of the property to convert</param>
-    /// <returns>>The relationship type name for the property</returns>
-    public static string PropertyNameToRelationshipTypeName(string propertyName) =>
-        $"{PropertyRelationshipTypeNamePrefix}{propertyName}{PropertyRelationshipTypeNameSuffix}";
+    /// <returns>The relationship type name for the property.</returns>
+    public static string PropertyNameToRelationshipTypeName(string propertyName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+        return propertyName;
+    }
 
     /// <summary>
-    /// Prefix and suffix used to create relationship type names for properties.
+    /// Gets the semantic relationship type used to store a complex property.
     /// </summary>
-    public const string PropertyRelationshipTypeNamePrefix = "__PROPERTY__";
+    /// <param name="property">The complex property.</param>
+    /// <returns>The configured relationship type, or the property name by convention.</returns>
+    public static string GetComplexPropertyRelationshipType(PropertyInfo property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+
+        var configured = property.GetCustomAttribute<ComplexPropertyAttribute>(inherit: true)?.RelationshipType;
+        return string.IsNullOrWhiteSpace(configured) ? property.Name : configured;
+    }
 
     /// <summary>
-    /// Suffix used to create relationship type names for properties.
+    /// Converts a semantic complex-property relationship type back to its conventional property name.
     /// </summary>
-    public const string PropertyRelationshipTypeNameSuffix = "__";
-
-    /// <summary>
-    /// Converts a relationship type name back to a property name.
-    /// This is used to extract the property name from a relationship type name that was created using <see cref="PropertyNameToRelationshipTypeName"/>.
-    /// The relationship type name is expected to be in the format: "__PROPERTY__{propertyName}__".
-    /// If the relationship type name does not match this format, it is returned unchanged.
-    /// </summary>
-    /// <param name="relationshipTypeName"> The relationship type name to convert</param>
-    /// <returns>The property name extracted from the relationship type name</returns>
-    public static string RelationshipTypeNameToPropertyName(string relationshipTypeName) =>
-        relationshipTypeName.StartsWith(PropertyRelationshipTypeNamePrefix) && relationshipTypeName.EndsWith(PropertyRelationshipTypeNameSuffix)
-            ? relationshipTypeName[12..^2]
-            : relationshipTypeName;
+    /// <param name="relationshipTypeName">The relationship type name to convert.</param>
+    /// <returns>The conventional property name.</returns>
+    public static string RelationshipTypeNameToPropertyName(string relationshipTypeName) => relationshipTypeName;
 
     /// <summary>
     /// Gets the simple properties of a type.
@@ -80,7 +77,7 @@ public static class GraphDataModel
     /// <returns>An enumerable of complex properties</returns>
     public static IEnumerable<PropertyInfo> GetComplexProperties(Type type) =>
         type.GetProperties()
-            .Where(p => IsComplex(p.PropertyType));
+            .Where(p => IsComplex(p.PropertyType) || IsCollectionOfComplex(p.PropertyType));
 
     /// <summary>
     /// Gets the simple and complex properties of an object.
@@ -107,6 +104,24 @@ public static class GraphDataModel
         {
             throw new GraphException($"Reference cycle detected in the entity with ID '{entity.Id}'");
         }
+    }
+
+    /// <summary>
+    /// Ensures that an entity's complex-property graph does not exceed the supported storage depth.
+    /// </summary>
+    /// <param name="entity">The entity to check.</param>
+    /// <param name="maximumDepth">The maximum number of complex-property relationships from the entity root.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maximumDepth"/> is less than one.</exception>
+    /// <exception cref="GraphException">The complex-property graph is deeper than <paramref name="maximumDepth"/>.</exception>
+    public static void EnsureComplexPropertyDepth(
+        this IEntity entity,
+        int maximumDepth = DefaultDepthAllowed)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumDepth, 1);
+
+        var currentPath = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        CheckComplexPropertyDepth(entity, depth: 0, maximumDepth, currentPath);
     }
 
     /// <summary>
@@ -160,6 +175,7 @@ public static class GraphDataModel
 
         // Ensure the entity has no reference cycles
         entity.EnsureNoReferenceCycle();
+        entity.EnsureComplexPropertyDepth();
     }
 
     /// <summary>
@@ -405,6 +421,75 @@ public static class GraphDataModel
         {
             // CRITICAL: Remove from current path when backtracking!
             currentPath.Remove(obj);
+        }
+    }
+
+    private static void CheckComplexPropertyDepth(
+        object value,
+        int depth,
+        int maximumDepth,
+        HashSet<object> currentPath)
+    {
+        if (depth > maximumDepth)
+        {
+            throw new GraphException($"Complex properties cannot exceed {maximumDepth} levels of depth.");
+        }
+
+        if (value.GetType().IsValueType || value is string)
+            return;
+
+        if (!currentPath.Add(value))
+        {
+            throw new GraphException("Reference cycle detected while checking complex-property depth.");
+        }
+
+        try
+        {
+            if (value is IDictionary dictionary)
+            {
+                foreach (var item in dictionary.Values.Cast<object?>().Where(item => item is not null))
+                {
+                    var itemType = item!.GetType();
+                    if (IsComplex(itemType) || IsCollectionOfComplex(itemType) || IsDictionary(itemType))
+                        CheckComplexPropertyDepth(item, depth + 1, maximumDepth, currentPath);
+                }
+
+                return;
+            }
+
+            if (value is IEnumerable enumerable)
+            {
+                foreach (var item in enumerable.Cast<object?>().Where(item => item is not null))
+                    CheckComplexPropertyDepth(item!, depth, maximumDepth, currentPath);
+
+                return;
+            }
+
+            foreach (var property in value.GetType().GetProperties()
+                         .Where(property => property.CanRead && property.GetIndexParameters().Length == 0))
+            {
+                var propertyValue = property.GetValue(value);
+                if (propertyValue is null)
+                    continue;
+
+                if (IsComplex(property.PropertyType))
+                {
+                    CheckComplexPropertyDepth(propertyValue, depth + 1, maximumDepth, currentPath);
+                }
+                else if (IsCollectionOfComplex(property.PropertyType))
+                {
+                    foreach (var item in ((IEnumerable)propertyValue).Cast<object?>().Where(item => item is not null))
+                        CheckComplexPropertyDepth(item!, depth + 1, maximumDepth, currentPath);
+                }
+                else if (IsDictionary(property.PropertyType))
+                {
+                    CheckComplexPropertyDepth(propertyValue, depth, maximumDepth, currentPath);
+                }
+            }
+        }
+        finally
+        {
+            currentPath.Remove(value);
         }
     }
 

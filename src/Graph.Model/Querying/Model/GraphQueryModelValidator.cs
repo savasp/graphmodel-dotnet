@@ -31,7 +31,7 @@ public static class GraphQueryModelValidator
         ArgumentNullException.ThrowIfNull(model);
 
         var currentType = ResolveRootType(model.Root);
-        ValidatePredicateList(model.Predicates, currentType, "Root predicate");
+        var possibleScopeTypes = new List<Type?> { currentType };
 
         for (var i = 0; i < model.Traversal.Count; i++)
         {
@@ -39,28 +39,45 @@ public static class GraphQueryModelValidator
 
             ValidateDepthRange(step.Depth, i);
 
-            if (currentType is not null && !typeof(INode).IsAssignableFrom(currentType))
+            if (!step.IsComplexPropertyTraversal &&
+                currentType is not null &&
+                !typeof(INode).IsAssignableFrom(currentType))
             {
                 throw new GraphException($"Traversal step {i} requires a node input, but the current scope is '{currentType.FullName}'.");
             }
 
             ValidatePredicateList(step.RelationshipPredicates, typeof(IRelationship), $"Traversal step {i} relationship predicate");
 
-            currentType = step.TargetType ?? typeof(INode);
+            if (!step.IsComplexPropertyTraversal)
+            {
+                currentType = step.TargetType ?? typeof(INode);
+                possibleScopeTypes.Add(currentType);
+            }
         }
 
-        if (model.Projection?.Selector is { } selector)
+        for (var i = 0; i < model.Predicates.Count; i++)
         {
-            var projectionScope = model.Projection.Kind == ProjectionKind.PathSegment
-                ? typeof(IGraphPathSegment)
-                : currentType;
+            var predicate = model.Predicates[i];
+            var name = predicate.Alias is { Length: > 0 } alias
+                ? $"Root predicate '{alias}'"
+                : $"Root predicate {i}";
+            ValidateLambdaReferences(predicate.Predicate, possibleScopeTypes, name);
+        }
 
-            ValidateLambdaReferences(selector, projectionScope, "Projection selector");
+        if (model.Join is { } join)
+        {
+            ValidateLambdaReferences(join.OuterKeySelector, [ResolveRootType(model.Root)], "Join outer key selector");
+            ValidateLambdaReferences(join.InnerKeySelector, [ResolveRootType(join.InnerRoot)], "Join inner key selector");
+        }
+        else if (model.Projection?.Selector is { } selector)
+        {
+            ValidateLambdaReferences(selector, possibleScopeTypes, "Projection selector");
+            possibleScopeTypes.Add(selector.ReturnType);
         }
 
         for (var i = 0; i < model.Ordering.Count; i++)
         {
-            ValidateLambdaReferences(model.Ordering[i].KeySelector, currentType, $"Ordering key {i}");
+            ValidateLambdaReferences(model.Ordering[i].KeySelector, possibleScopeTypes, $"Ordering key {i}");
         }
     }
 
@@ -108,18 +125,29 @@ public static class GraphQueryModelValidator
 
     private static void ValidateLambdaReferences(LambdaExpression lambda, Type? currentType, string description)
     {
+        ValidateLambdaReferences(lambda, [currentType], description);
+    }
+
+    private static void ValidateLambdaReferences(
+        LambdaExpression lambda,
+        IReadOnlyCollection<Type?> possibleScopeTypes,
+        string description)
+    {
         if (lambda.Parameters.Count == 0)
         {
             throw new GraphException($"{description} must declare at least one parameter.");
         }
 
-        if (currentType is not null)
+        var definedScopeTypes = possibleScopeTypes.Where(type => type is not null).Cast<Type>().ToArray();
+        if (definedScopeTypes.Length > 0 &&
+            !lambda.Parameters.Any(parameter => typeof(IGraphPathSegment).IsAssignableFrom(parameter.Type)))
         {
             foreach (var parameter in lambda.Parameters.Where(parameter =>
-                !parameter.Type.IsAssignableFrom(currentType) && !currentType.IsAssignableFrom(parameter.Type)))
+                !definedScopeTypes.Any(scopeType =>
+                    parameter.Type.IsAssignableFrom(scopeType) || scopeType.IsAssignableFrom(parameter.Type))))
             {
                 throw new GraphException(
-                    $"{description} parameter '{parameter.Name}' has type '{parameter.Type.FullName}', which is outside the current scope '{currentType.FullName}'.");
+                    $"{description} parameter '{parameter.Name}' has type '{parameter.Type.FullName}', which is outside the current query scopes.");
             }
         }
 

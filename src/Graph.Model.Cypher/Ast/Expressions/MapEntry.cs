@@ -12,22 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Querying;
+using Cvoya.Graph.Model.Cypher.Internal;
 
-/// <summary>
-/// Represents a dynamically typed query root.
-/// </summary>
-public sealed record DynamicRoot : QueryRoot
+namespace Cvoya.Graph.Model.Cypher.Ast.Expressions;
+
+/// <summary>Represents one entry in a Cypher map expression.</summary>
+public sealed record MapEntry
 {
-    /// <summary>
-    /// Initializes a dynamically typed query root.
-    /// </summary>
-    /// <param name="elementType">The dynamic element type, when known.</param>
-    public DynamicRoot(Type? elementType = null)
+    /// <summary>Initializes a map entry.</summary>
+    public MapEntry(string key, CypherExpression value)
     {
-        ElementType = elementType;
+        Key = ArgumentValidation.RequiredName(key, nameof(key));
+        Value = value ?? throw new ArgumentNullException(nameof(value));
     }
 
-    /// <summary>Gets the dynamic element type, when known.</summary>
-    public Type? ElementType { get; }
+    /// <summary>Gets the map key.</summary>
+    public string Key { get; }
+
+    /// <summary>Gets the map value.</summary>
+    public CypherExpression Value { get; }
 }

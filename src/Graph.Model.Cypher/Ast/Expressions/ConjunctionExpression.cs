@@ -12,22 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Querying;
+using Cvoya.Graph.Model.Cypher.Internal;
+
+namespace Cvoya.Graph.Model.Cypher.Ast.Expressions;
 
 /// <summary>
-/// Represents a dynamically typed query root.
+/// Represents top-level predicate fragments joined by AND without adding expression-level grouping.
 /// </summary>
-public sealed record DynamicRoot : QueryRoot
+public sealed record ConjunctionExpression : CypherExpression
 {
-    /// <summary>
-    /// Initializes a dynamically typed query root.
-    /// </summary>
-    /// <param name="elementType">The dynamic element type, when known.</param>
-    public DynamicRoot(Type? elementType = null)
+    /// <summary>Initializes a conjunction.</summary>
+    public ConjunctionExpression(IReadOnlyList<CypherExpression> predicates)
     {
-        ElementType = elementType;
+        Predicates = ArgumentValidation.RequiredList(predicates, nameof(predicates));
     }
 
-    /// <summary>Gets the dynamic element type, when known.</summary>
-    public Type? ElementType { get; }
+    /// <summary>Gets the predicates.</summary>
+    public IReadOnlyList<CypherExpression> Predicates { get; }
 }

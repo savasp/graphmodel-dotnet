@@ -28,11 +28,26 @@ public sealed record CypherStatement
     /// <param name="clauses">The ordered clauses that make up the statement.</param>
     /// <param name="parameters">The parameter values available to the statement.</param>
     public CypherStatement(IReadOnlyList<ICypherClause> clauses, IReadOnlyDictionary<string, object?> parameters)
+        : this(clauses, parameters, null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CypherStatement"/> class.
+    /// </summary>
+    /// <param name="clauses">The ordered clauses that make up the statement.</param>
+    /// <param name="parameters">The parameter values available to the statement.</param>
+    /// <param name="pathTypes">The path materialization types, when the statement returns decomposed paths.</param>
+    public CypherStatement(
+        IReadOnlyList<ICypherClause> clauses,
+        IReadOnlyDictionary<string, object?> parameters,
+        CypherPathTypes? pathTypes)
     {
         ArgumentNullException.ThrowIfNull(parameters);
 
         Clauses = ArgumentValidation.RequiredList(clauses, nameof(clauses));
         Parameters = CopyParameters(parameters);
+        PathTypes = pathTypes;
     }
 
     /// <summary>
@@ -44,6 +59,9 @@ public sealed record CypherStatement
     /// Gets the parameter values available to the statement.
     /// </summary>
     public IReadOnlyDictionary<string, object?> Parameters { get; }
+
+    /// <summary>Gets path materialization metadata, when present.</summary>
+    public CypherPathTypes? PathTypes { get; }
 
     private static IReadOnlyDictionary<string, object?> CopyParameters(IReadOnlyDictionary<string, object?> parameters)
     {

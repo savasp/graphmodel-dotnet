@@ -153,23 +153,15 @@ public class GraphDataModelTypeClassificationTests
         "Address",
         "phone_numbers",
         "UPPER",
-        "already__contains__suffix",
-        "__PROPERTY__already__",
-        "",
-        " ",
+        "already_contains_suffix",
         "Name With Spaces",
     };
 
-    public static TheoryData<string, string> RelationshipTypeParseCases => new()
+    public static TheoryData<string> RelationshipTypeParseCases => new()
     {
-        { "__PROPERTY__Address__", "Address" },
-        { "__PROPERTY____", "" },
-        { "__PROPERTY__Name With Spaces__", "Name With Spaces" },
-        { "KNOWS", "KNOWS" },
-        { "PROPERTY__Address__", "PROPERTY__Address__" },
-        { "__PROPERTY__Address", "__PROPERTY__Address" },
-        { "Address__", "Address__" },
-        { "", "" },
+        "Address",
+        "KNOWS",
+        "Name With Spaces",
     };
 
     [Theory]
@@ -209,21 +201,52 @@ public class GraphDataModelTypeClassificationTests
 
     [Theory]
     [MemberData(nameof(PropertyNameCases))]
-    public void PropertyNameToRelationshipTypeName_UsesExactSentinelFormatAndRoundTrips(string propertyName)
+    public void PropertyNameToRelationshipTypeName_UsesSemanticNameAndRoundTrips(string propertyName)
     {
         var relationshipTypeName = GraphDataModel.PropertyNameToRelationshipTypeName(propertyName);
 
-        Assert.Equal(
-            $"{GraphDataModel.PropertyRelationshipTypeNamePrefix}{propertyName}{GraphDataModel.PropertyRelationshipTypeNameSuffix}",
-            relationshipTypeName);
+        Assert.Equal(propertyName, relationshipTypeName);
         Assert.Equal(propertyName, GraphDataModel.RelationshipTypeNameToPropertyName(relationshipTypeName));
     }
 
     [Theory]
     [MemberData(nameof(RelationshipTypeParseCases))]
-    public void RelationshipTypeNameToPropertyName_ParsesOnlySentinelWrappedNames(string relationshipTypeName, string expected)
+    public void RelationshipTypeNameToPropertyName_PreservesSemanticName(string relationshipTypeName)
     {
-        Assert.Equal(expected, GraphDataModel.RelationshipTypeNameToPropertyName(relationshipTypeName));
+        Assert.Equal(relationshipTypeName, GraphDataModel.RelationshipTypeNameToPropertyName(relationshipTypeName));
+    }
+
+    [Fact]
+    public void GetComplexPropertyRelationshipType_UsesAttributeOverride()
+    {
+        var property = typeof(AttributedNode).GetProperty(nameof(AttributedNode.Home))!;
+
+        Assert.Equal("LIVES_AT", GraphDataModel.GetComplexPropertyRelationshipType(property));
+    }
+
+    [Fact]
+    public void EnsureComplexPropertyDepth_AllowsDefaultDepthAndRejectsDeeperGraph()
+    {
+        var allowed = new DepthNode { Value = CreateChain(GraphDataModel.DefaultDepthAllowed) };
+        var tooDeep = new DepthNode { Value = CreateChain(GraphDataModel.DefaultDepthAllowed + 1) };
+
+        allowed.EnsureComplexPropertyDepth();
+        var exception = Assert.Throws<GraphException>(() => tooDeep.EnsureComplexPropertyDepth());
+
+        Assert.Contains(GraphDataModel.DefaultDepthAllowed.ToString(), exception.Message, StringComparison.Ordinal);
+    }
+
+    private static DepthValue CreateChain(int depth)
+    {
+        var root = new DepthValue();
+        var current = root;
+        for (var index = 1; index < depth; index++)
+        {
+            current.Next = new DepthValue();
+            current = current.Next;
+        }
+
+        return root;
     }
 
     private enum GraphDataModelTestEnum
@@ -243,5 +266,21 @@ public class GraphDataModelTypeClassificationTests
     private sealed class RecursiveValueObject
     {
         public RecursiveValueObject? Next { get; set; }
+    }
+
+    private sealed record AttributedNode : Node
+    {
+        [ComplexProperty(RelationshipType = "LIVES_AT")]
+        public FlatValueObject Home { get; init; } = new();
+    }
+
+    private sealed record DepthNode : Node
+    {
+        public DepthValue Value { get; init; } = new();
+    }
+
+    private sealed class DepthValue
+    {
+        public DepthValue? Next { get; set; }
     }
 }

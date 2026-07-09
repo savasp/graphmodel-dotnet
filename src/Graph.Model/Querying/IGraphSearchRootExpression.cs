@@ -14,20 +14,11 @@
 
 namespace Cvoya.Graph.Model.Querying;
 
-/// <summary>
-/// Represents a dynamically typed query root.
-/// </summary>
-public sealed record DynamicRoot : QueryRoot
+internal interface IGraphSearchRootExpression
 {
-    /// <summary>
-    /// Initializes a dynamically typed query root.
-    /// </summary>
-    /// <param name="elementType">The dynamic element type, when known.</param>
-    public DynamicRoot(Type? elementType = null)
-    {
-        ElementType = elementType;
-    }
+    string SearchQuery { get; }
 
-    /// <summary>Gets the dynamic element type, when known.</summary>
-    public Type? ElementType { get; }
+    Type EntityType { get; }
+
+    SearchRootTarget Target { get; }
 }

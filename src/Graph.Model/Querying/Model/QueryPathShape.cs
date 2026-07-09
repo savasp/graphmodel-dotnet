@@ -15,19 +15,9 @@
 namespace Cvoya.Graph.Model.Querying;
 
 /// <summary>
-/// Represents a dynamically typed query root.
+/// Carries the CLR types required to materialize a decomposed graph path result.
 /// </summary>
-public sealed record DynamicRoot : QueryRoot
-{
-    /// <summary>
-    /// Initializes a dynamically typed query root.
-    /// </summary>
-    /// <param name="elementType">The dynamic element type, when known.</param>
-    public DynamicRoot(Type? elementType = null)
-    {
-        ElementType = elementType;
-    }
-
-    /// <summary>Gets the dynamic element type, when known.</summary>
-    public Type? ElementType { get; }
-}
+/// <param name="SourceType">The path source node type.</param>
+/// <param name="RelationshipType">The path relationship type.</param>
+/// <param name="TargetType">The path target node type.</param>
+public sealed record QueryPathShape(Type SourceType, Type RelationshipType, Type TargetType);

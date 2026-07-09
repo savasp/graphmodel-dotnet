@@ -161,8 +161,43 @@ public class GraphQueryModelBuilderTests
         var step = Assert.Single(model.Traversal);
         Assert.Equal(GraphDataModel.PropertyNameToRelationshipTypeName(nameof(Person.Home)), step.RelationshipType);
         Assert.Equal(new DepthRange(1, 1), step.Depth);
-        Assert.Null(step.TargetType);
+        Assert.Equal(typeof(Address), step.TargetType);
 
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void ComplexPropertyAccess_ProducesArbitraryDepthTraversalSteps()
+    {
+        var query = Root<Person>().Where(person => person.Home.Region.Name == "Northwest");
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Collection(
+            model.Traversal,
+            home => Assert.Equal("Home", home.RelationshipType),
+            region => Assert.Equal("Region", region.RelationshipType));
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void ComplexPropertyAccess_UsesRelationshipTypeOverride()
+    {
+        var query = Root<Person>().Where(person => person.Mailing.City == "Seattle");
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal("MAILING_ADDRESS", Assert.Single(model.Traversal).RelationshipType);
+    }
+
+    [Fact]
+    public void ComplexCollectionPredicate_ProducesPropertyTraversalStep()
+    {
+        var query = Root<Person>().Where(person => person.Offices.Any(office => office.City == "Seattle"));
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal("Offices", Assert.Single(model.Traversal).RelationshipType);
         GraphQueryModelValidator.Validate(model);
     }
 
@@ -278,7 +313,6 @@ public class GraphQueryModelBuilderTests
     [Theory]
     [InlineData(nameof(GraphQueryableExtensions.SelectMany))]
     [InlineData(nameof(GraphQueryableExtensions.GroupBy))]
-    [InlineData(nameof(Queryable.Join))]
     [InlineData(nameof(Queryable.Union))]
     public void UnrepresentableOperators_ThrowInsteadOfProducingLossyModel(string operatorName)
     {
@@ -287,16 +321,29 @@ public class GraphQueryModelBuilderTests
         {
             nameof(GraphQueryableExtensions.SelectMany) => source.SelectMany(person => person.Nicknames).Expression,
             nameof(GraphQueryableExtensions.GroupBy) => source.GroupBy(person => person.Age).Expression,
-            nameof(Queryable.Join) => source.AsQueryable().Join(
-                Root<Company>(),
-                person => person.CompanyId,
-                company => company.Id,
-                (person, company) => company).Expression,
             nameof(Queryable.Union) => source.AsQueryable().Union(Root<Person>()).Expression,
             _ => throw new InvalidOperationException($"Unknown operator '{operatorName}'."),
         };
 
         Assert.Throws<GraphQueryTranslationException>(() => GraphQueryModelBuilder.Build(expression));
+    }
+
+    [Fact]
+    public void Join_ProducesEquijoinFragment()
+    {
+        var query = Root<Person>().AsQueryable().Join(
+            Root<Company>(),
+            person => person.CompanyId,
+            company => company.Id,
+            (person, company) => company);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.NotNull(model.Join);
+        Assert.IsType<NodeRoot>(model.Join.InnerRoot);
+        Assert.Equal(typeof(string), model.Join.OuterKeySelector.ReturnType);
+        Assert.Equal(typeof(string), model.Join.InnerKeySelector.ReturnType);
+        GraphQueryModelValidator.Validate(model);
     }
 
     [Fact]
@@ -431,6 +478,13 @@ public class GraphQueryModelBuilderTests
     private sealed record Address
     {
         public string City { get; init; } = string.Empty;
+
+        public Region Region { get; init; } = new();
+    }
+
+    private sealed record Region
+    {
+        public string Name { get; init; } = string.Empty;
     }
 
     [Node("MODEL_BUILDER_PERSON")]
@@ -447,6 +501,11 @@ public class GraphQueryModelBuilderTests
         public IReadOnlyList<string> Nicknames { get; init; } = [];
 
         public Address Home { get; init; } = new();
+
+        [ComplexProperty(RelationshipType = "MAILING_ADDRESS")]
+        public Address Mailing { get; init; } = new();
+
+        public IReadOnlyList<Address> Offices { get; init; } = [];
     }
 
     [Relationship(Label = "MODEL_BUILDER_KNOWS")]

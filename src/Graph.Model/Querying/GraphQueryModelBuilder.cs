@@ -15,6 +15,7 @@
 namespace Cvoya.Graph.Model.Querying;
 
 using System.Linq.Expressions;
+using System.Reflection;
 
 internal sealed class GraphQueryModelBuilder : ExpressionVisitor
 {
@@ -31,7 +32,12 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
     private readonly HashSet<string> _complexNavigationPaths = new(StringComparer.Ordinal);
     private QueryRoot? _root;
     private ProjectionShape? _projection;
+    private JoinFragment? _join;
+    private QueryPathShape? _pathShape;
+    private object? _terminalOperand;
+    private SearchRoot? _searchFilter;
     private TerminalOperation _terminal = TerminalOperation.ToListOrArray;
+    private bool _distinct;
     private Type? _currentType;
     private string? _currentAlias;
     private int? _skip;
@@ -69,7 +75,12 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             builder._projection,
             builder._ordering,
             new Paging(builder._skip, builder._take),
-            builder._terminal);
+            builder._terminal,
+            builder._distinct,
+            builder._terminalOperand,
+            builder._pathShape,
+            builder._join,
+            builder._searchFilter);
     }
 
     protected override Expression VisitMethodCall(MethodCallExpression node)
@@ -112,6 +123,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
                 _skip = EvaluateArgument<int>(node, 1, "Skip count");
                 break;
             case LinqOperator.Distinct:
+                _distinct = true;
                 _terminal = TerminalOperation.Distinct;
                 break;
             case LinqOperator.ToListOrArray:
@@ -148,7 +160,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
                 HandleSelectorTerminal(node, TerminalOperation.Max);
                 break;
             case LinqOperator.Contains:
-                EvaluateArgument<object?>(node, 1, "Contains item");
+                _terminalOperand = EvaluateArgument<object?>(node, 1, "Contains item");
                 _terminal = TerminalOperation.Contains;
                 break;
             case LinqOperator.ElementAt:
@@ -177,7 +189,8 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             case LinqOperator.GroupBy:
                 throw Unsupported(node, "GroupBy is not supported by graph query translation yet; see #100.");
             case LinqOperator.Join:
-                throw Unsupported(node, "Join cannot be represented by the current GraphQueryModel shape.");
+                HandleJoin(node);
+                break;
             case LinqOperator.Union:
                 throw Unsupported(node, "Union is not supported by graph query translation yet.");
             default:
@@ -185,6 +198,20 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         }
 
         return node;
+    }
+
+    protected override Expression VisitExtension(Expression node)
+    {
+        if (node is IGraphSearchRootExpression search)
+        {
+            _root = new SearchRoot(search.SearchQuery, search.Target,
+                search.Target == SearchRootTarget.Entities ? null : search.EntityType);
+            _currentType = search.EntityType;
+            _currentAlias = search.Target == SearchRootTarget.Relationships ? "r" : "n";
+            return node;
+        }
+
+        return node.CanReduce ? base.VisitExtension(node) : node;
     }
 
     protected override Expression VisitConstant(ConstantExpression node)
@@ -199,7 +226,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
 
         if (elementType == typeof(DynamicNode) || elementType == typeof(DynamicRelationship))
         {
-            _root = new DynamicRoot();
+            _root = new DynamicRoot(elementType);
             _currentAlias = elementType == typeof(DynamicRelationship) ? "r" : "src";
         }
         else if (typeof(INode).IsAssignableFrom(elementType))
@@ -214,7 +241,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         }
         else
         {
-            _root = new DynamicRoot();
+            _root = new DynamicRoot(elementType);
             _currentAlias = null;
         }
 
@@ -234,14 +261,31 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
     private void AddPredicate(MethodCallExpression node, string operatorName)
     {
         var lambda = RequireLambda(node, 1, operatorName);
+        WidenRootScope(lambda);
         AddComplexPropertyTraversals(lambda);
         _predicates.Add(new PredicateFragment(lambda, _currentAlias));
+    }
+
+    private void WidenRootScope(LambdaExpression lambda)
+    {
+        if (_explicitTraversalCount != 0 || _root is not NodeRoot root || lambda.Parameters.Count != 1)
+            return;
+
+        var parameterType = lambda.Parameters[0].Type;
+        if (parameterType != root.ElementType &&
+            typeof(INode).IsAssignableFrom(parameterType) &&
+            parameterType.IsAssignableFrom(root.ElementType))
+        {
+            _root = new NodeRoot(parameterType);
+            _currentType = parameterType;
+        }
     }
 
     private void HandleSelect(MethodCallExpression node)
     {
         var selector = RequireLambda(node, 1, "Select");
         AddComplexPropertyTraversals(selector);
+        selector = ComposeProjection(_projection?.Selector, selector);
 
         var body = StripConvert(selector.Body);
         var kind = selector.Parameters.Any(parameter => typeof(IGraphPathSegment).IsAssignableFrom(parameter.Type))
@@ -272,11 +316,34 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         }
     }
 
+    private static LambdaExpression ComposeProjection(
+        LambdaExpression? previous,
+        LambdaExpression current)
+    {
+        if (previous is null || previous.Parameters.Count != 1 || current.Parameters.Count != 1 ||
+            current.Parameters[0].Type != previous.ReturnType)
+        {
+            return current;
+        }
+
+        var body = new ParameterReplacementVisitor(current.Parameters[0], previous.Body)
+            .Visit(current.Body) ?? current.Body;
+        return Expression.Lambda(body, previous.Parameters);
+    }
+
     private void AddOrdering(MethodCallExpression node, bool descending)
     {
         var selector = RequireLambda(node, 1, "ordering");
         AddComplexPropertyTraversals(selector);
-        _ordering.Add(new OrderingKey(selector, descending));
+        _ordering.Add(new OrderingKey(selector, descending, _currentAlias));
+    }
+
+    private sealed class ParameterReplacementVisitor(
+        ParameterExpression parameter,
+        Expression replacement) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) =>
+            node == parameter ? replacement : base.VisitParameter(node);
     }
 
     private void HandlePredicateTerminal(MethodCallExpression node, TerminalOperation terminal)
@@ -334,6 +401,15 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
 
         var relationshipType = types[1];
         var targetType = types[2];
+        if (_currentType is not null &&
+            !_currentType.IsAssignableFrom(types[0]) &&
+            !types[0].IsAssignableFrom(_currentType))
+        {
+            throw Unsupported(
+                node,
+                $"PathSegments source type '{types[0].FullName}' does not match the current scope '{_currentType.FullName}'.");
+        }
+
         AddExplicitTraversal(relationshipType, targetType, new DepthRange(1, 1));
 
         var parameter = Expression.Parameter(node.Type.GetGenericArguments()[0], "segment");
@@ -365,14 +441,17 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         var minDepth = EvaluateArgument<int>(node, 1, "minimum traversal depth");
         var maxDepth = EvaluateArgument<int>(node, 2, "maximum traversal depth");
 
+        var sourceType = _currentType ?? typeof(INode);
         AddExplicitTraversal(relationshipType, targetType, new DepthRange(minDepth, maxDepth));
         _isGraphPathResult = true;
+        _pathShape = new QueryPathShape(sourceType, relationshipType, targetType);
         _currentType = typeof(IGraphPath);
         _projection = null;
     }
 
     private void AddExplicitTraversal(Type relationshipType, Type targetType, DepthRange depth)
     {
+        var sourceAlias = _currentAlias ?? (_explicitTraversalCount == 0 ? "src" : CurrentTargetAlias);
         _explicitTraversalCount++;
         _lastExplicitTraversalIndex = _traversal.Count;
         _traversal.Add(new TraversalStep(
@@ -380,7 +459,10 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             GraphTraversalDirection.Outgoing,
             depth,
             [],
-            targetType));
+            targetType,
+            relationshipType,
+            isComplexPropertyTraversal: false,
+            sourceAlias: sourceAlias));
 
         _currentType = targetType;
         _currentAlias = CurrentTargetAlias;
@@ -404,7 +486,18 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
     {
         if (_explicitTraversalCount > 0)
         {
-            throw Unsupported(node, "Search after a traversal cannot be represented by the current GraphQueryModel shape.");
+            var filterQuery = EvaluateArgument<string>(node, 1, "search query");
+            var filterTarget = _currentType switch
+            {
+                { } type when typeof(INode).IsAssignableFrom(type) => SearchRootTarget.Nodes,
+                { } type when typeof(IRelationship).IsAssignableFrom(type) => SearchRootTarget.Relationships,
+                _ => SearchRootTarget.Entities,
+            };
+            _searchFilter = new SearchRoot(
+                filterQuery,
+                filterTarget,
+                filterTarget == SearchRootTarget.Entities ? null : _currentType);
+            return;
         }
 
         var query = EvaluateArgument<string>(node, 1, "search query");
@@ -434,7 +527,10 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             direction ?? current.Direction,
             depth ?? current.Depth,
             current.RelationshipPredicates,
-            current.TargetType);
+            current.TargetType,
+            current.RelationshipClrType,
+            current.IsComplexPropertyTraversal,
+            current.SourceAlias);
     }
 
     private void AddComplexPropertyTraversals(LambdaExpression lambda)
@@ -447,12 +543,37 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             }
 
             _traversal.Add(new TraversalStep(
-                GraphDataModel.PropertyNameToRelationshipTypeName(navigation.PropertyName),
+                GraphDataModel.GetComplexPropertyRelationshipType(navigation.Property),
                 GraphTraversalDirection.Outgoing,
                 new DepthRange(1, 1),
                 [],
-                targetType: null));
+                navigation.TargetType,
+                relationshipClrType: null,
+                isComplexPropertyTraversal: true));
         }
+    }
+
+    private void HandleJoin(MethodCallExpression node)
+    {
+        if (node.Arguments.Count != 5)
+        {
+            throw Unsupported(node, "Join requires outer source, inner source, two key selectors, and a result selector.");
+        }
+
+        var inner = Build(node.Arguments[1]);
+        var outerKey = RequireLambda(node, 2, "Join outer key");
+        var innerKey = RequireLambda(node, 3, "Join inner key");
+        var result = RequireLambda(node, 4, "Join result selector");
+        _join = new JoinFragment(inner.Root, outerKey, innerKey, result);
+
+        _projection = new ProjectionShape(
+            StripConvert(result.Body) is ParameterExpression ? ProjectionKind.Identity : ProjectionKind.Scalar,
+            result);
+        _currentType = result.ReturnType;
+        _currentAlias = StripConvert(result.Body) is ParameterExpression parameter &&
+            result.Parameters.IndexOf(parameter) == 1
+                ? "joined"
+                : _currentAlias;
     }
 
     private void ThrowIfUnsupportedAfterTraversePaths(LinqOperator op, string methodName)
@@ -535,17 +656,25 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         protected override Expression VisitMember(MemberExpression node)
         {
             var chain = GetMemberChain(node);
-            for (var i = 0; i < chain.Count - 1; i++)
+            for (var i = 0; i < chain.Count; i++)
             {
                 var member = chain[i];
                 var memberType = member.Type;
-                if (!GraphDataModel.IsComplex(memberType) || typeof(IEntity).IsAssignableFrom(memberType))
+                var targetType = GraphDataModel.IsCollectionOfComplex(memberType)
+                    ? memberType.GetElementType() ?? memberType.GetGenericArguments().FirstOrDefault()
+                    : memberType;
+                if (targetType is null ||
+                    (!GraphDataModel.IsComplex(targetType) && !GraphDataModel.IsCollectionOfComplex(memberType)) ||
+                    typeof(IEntity).IsAssignableFrom(targetType))
                 {
                     continue;
                 }
 
                 var path = string.Join('.', chain.Take(i + 1).Select(item => item.Member.Name));
-                _navigations.Add(new ComplexPropertyNavigation(path, member.Member.Name));
+                if (member.Member is PropertyInfo property)
+                {
+                    _navigations.Add(new ComplexPropertyNavigation(path, property, targetType));
+                }
             }
 
             return base.VisitMember(node);
@@ -565,5 +694,5 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         }
     }
 
-    private sealed record ComplexPropertyNavigation(string Path, string PropertyName);
+    private sealed record ComplexPropertyNavigation(string Path, PropertyInfo Property, Type TargetType);
 }
