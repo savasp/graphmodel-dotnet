@@ -452,7 +452,7 @@ public sealed class CypherQueryPlanner
             return;
         }
 
-        if (model.Root is SearchRoot { Target: SearchRootTarget.Nodes } searchNode)
+        if (model.Root is SearchRoot { Target: SearchRootTarget.Nodes })
         {
             clauses.Add(CallClause.WithAliasedYields(
                 "search.nodes",
@@ -665,19 +665,28 @@ public sealed class CypherQueryPlanner
 
         var reverseOrdering = model.Terminal == TerminalOperation.Last;
         AddOrderingAndPaging(clauses, ordering, model.Paging, reverseOrdering);
+        AddTerminalLimit(clauses, model);
 
-        var terminalLimit = model.Terminal switch
+        AddProjectionClause(clauses, model, projection);
+    }
+
+    /// <summary>
+    /// Adds the row limit implied by a cardinality terminal. An explicit Take already bounds the
+    /// query, so the terminal's limit would only narrow it further.
+    /// </summary>
+    private static void AddTerminalLimit(List<ICypherClause> clauses, GraphQueryModel model)
+    {
+        int? terminalLimit = model.Terminal switch
         {
             TerminalOperation.First or TerminalOperation.Last => 1,
             TerminalOperation.Single => 2,
-            _ => (int?)null,
+            _ => null,
         };
+
         if (terminalLimit is not null && model.Paging.Take is null)
         {
             clauses.Add(new LimitClause(new Literal(terminalLimit.Value)));
         }
-
-        AddProjectionClause(clauses, model, projection);
     }
 
     private static void AddDistinctScalarProjection(
@@ -709,17 +718,7 @@ public sealed class CypherQueryPlanner
             projectedOrdering,
             model.Paging,
             reverseOrdering: model.Terminal == TerminalOperation.Last);
-
-        var terminalLimit = model.Terminal switch
-        {
-            TerminalOperation.First or TerminalOperation.Last => 1,
-            TerminalOperation.Single => 2,
-            _ => (int?)null,
-        };
-        if (terminalLimit is not null && model.Paging.Take is null)
-        {
-            clauses.Add(new LimitClause(new Literal(terminalLimit.Value)));
-        }
+        AddTerminalLimit(clauses, model);
 
         clauses.Add(new ReturnClause(
             items.Select((item, index) => new ReturnItem(new VariableRef(aliases[index]), item.Alias)).ToArray(),

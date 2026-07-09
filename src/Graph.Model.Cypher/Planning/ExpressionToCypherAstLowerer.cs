@@ -51,10 +51,8 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
 
         foreach (var parameter in lambda.Parameters)
         {
-            if (!aliases.ContainsKey(parameter))
-            {
-                aliases.Add(parameter, ResolveDefaultAlias(parameter.Type, defaultAlias));
-            }
+            // Explicit aliases win; TryAdd leaves an already-bound parameter untouched.
+            aliases.TryAdd(parameter, ResolveDefaultAlias(parameter.Type, defaultAlias));
         }
 
         return Lower(lambda.Body, aliases);
