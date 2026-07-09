@@ -136,7 +136,17 @@ A new provider test project follows the same three-piece shape (harness → inte
 
 ### Level-1 GraphQueryModel (#84)
 
-Stub. #84 will define the shared query IR and LINQ front-end extraction. Until it lands, providers implement their own expression visitor and use the current marker-method protocol.
+`Cvoya.Graph.Model.Querying.GraphQueryModel` is the public, provider-neutral semantic query model. Its
+roots, predicates, traversal steps, projection, ordering, paging, and terminal operation describe what a
+query asks for without choosing a query language. Providers that do not target Cypher may consume this
+model directly; the expression-to-model builder remains internal so the public LINQ surface and its
+recognition table evolve as one release unit.
+
+Recognition uses `MethodInfo` identity against the shared dispatch table, never method-name strings. Before
+recognition, the front-end enforces configurable expression-tree bounds (10,000 nodes and depth 100 by
+default). Funcletization evaluates parameter-free closure values and method calls; expressions referencing a
+query parameter are not evaluated during translation. This is a structural allowlist, not a security sandbox
+for application code.
 
 ### Dialect Capabilities (#85)
 

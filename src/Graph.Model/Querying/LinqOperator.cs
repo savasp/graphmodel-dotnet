@@ -12,19 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
+namespace Cvoya.Graph.Model.Querying;
 
-using System.Reflection;
-using Cvoya.Graph.Model.Querying;
-using SharedDispatch = Cvoya.Graph.Model.Querying.LinqOperatorDispatch;
-
-/// <summary>
-/// Temporary compatibility shim for the Neo4j visitor until its shared-front-end cutover.
-/// </summary>
-internal static class LinqOperatorDispatch
+internal enum LinqOperator
 {
-    public static LinqOperator? Resolve(MethodInfo method) => SharedDispatch.Resolve(method);
-
-    public static IReadOnlyDictionary<MethodInfo, LinqOperator> AllRegisteredMethods =>
-        SharedDispatch.AllRegisteredMethods;
+    Where,
+    Select,
+    OrderBy,
+    OrderByDescending,
+    ThenBy,
+    ThenByDescending,
+    Take,
+    Skip,
+    Distinct,
+    ToListOrArray,
+    First,
+    Single,
+    Last,
+    Any,
+    All,
+    Count,
+    Sum,
+    Average,
+    Min,
+    Max,
+    Contains,
+    ElementAt,
+    ElementAtOrDefault,
+    SelectMany,
+    GroupBy,
+    Join,
+    Union,
+    PathSegments,
+    TraversePaths,
+    Direction,
+    WithDepth,
+    Search,
 }

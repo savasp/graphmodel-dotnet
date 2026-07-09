@@ -159,6 +159,14 @@ means" checklist on #66/#53.
 - **Cost per new operator drops to one binding:** surface + `GraphQueryModel` node + planner lowering +
   per-dialect rendering + capability entry + suite tests (#96) — instead of one full visitor-stack
   implementation per provider.
+- **Funcletization is bounded and structurally allowlisted:** the shared front-end evaluates only
+  parameter-free expression subtrees at translation time. That includes closure-member reads and
+  parameterless method calls, matching standard LINQ-provider behavior; an expression that references a
+  query parameter is never compiled and invoked. This is deliberately not a method/type sandbox: query
+  authors already execute application code while constructing expression trees, so the policy prevents
+  accidental evaluation of server-side expressions without pretending to isolate trusted application
+  code. Translation rejects trees over 10,000 nodes or 100 levels deep by default; internal callers may
+  override both limits for generated queries.
 - **Breaking-change window:** consumers absorb one breaking release (#94, with #76/#73 adjacent), with
   `docs/migration-0.x.md` covering every break.
 - The provider guide (#82) grows a "Certifying a provider" chapter driven by the compatibility suite.
