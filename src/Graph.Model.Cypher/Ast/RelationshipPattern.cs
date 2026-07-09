@@ -32,7 +32,7 @@ public sealed record RelationshipPattern : PatternElement
     {
         Alias = ArgumentValidation.OptionalName(alias, nameof(alias));
         Type = ArgumentValidation.OptionalName(type, nameof(type));
-        Direction = direction;
+        Direction = ArgumentValidation.DefinedEnum(direction, nameof(direction));
         Depth = depth;
     }
 

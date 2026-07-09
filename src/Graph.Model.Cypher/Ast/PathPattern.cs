@@ -43,9 +43,13 @@ public sealed record PathPattern
             throw new ArgumentException("A path pattern must start and end with a node pattern.", parameterName);
         }
 
-        for (var i = 1; i < elements.Count; i++)
+        for (var i = 0; i < elements.Count; i++)
         {
-            if (elements[i].GetType() == elements[i - 1].GetType())
+            var hasExpectedType = i % 2 == 0
+                ? elements[i] is NodePattern
+                : elements[i] is RelationshipPattern;
+
+            if (!hasExpectedType)
             {
                 throw new ArgumentException("A path pattern must alternate node and relationship patterns.", parameterName);
             }

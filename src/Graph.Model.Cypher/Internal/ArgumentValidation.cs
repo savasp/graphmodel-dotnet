@@ -94,4 +94,15 @@ internal static class ArgumentValidation
 
         return value;
     }
+
+    internal static TEnum DefinedEnum<TEnum>(TEnum value, string parameterName)
+        where TEnum : struct, Enum
+    {
+        if (!Enum.IsDefined(value))
+        {
+            throw new ArgumentOutOfRangeException(parameterName, value, "The value is not defined.");
+        }
+
+        return value;
+    }
 }

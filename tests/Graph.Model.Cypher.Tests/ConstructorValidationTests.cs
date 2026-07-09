@@ -70,6 +70,35 @@ public class ConstructorValidationTests
     }
 
     [Fact]
+    public void PathPattern_RejectsUnsupportedPatternElement()
+    {
+        var ex = Assert.ThrowsAny<ArgumentException>(
+            () => new PathPattern(
+            [
+                new NodePattern("a", []),
+                new UnsupportedPatternElement(),
+                new NodePattern("b", [])
+            ]));
+
+        Assert.Contains("alternate", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void PathPattern_AcceptsMultipleHops()
+    {
+        var pattern = new PathPattern(
+        [
+            new NodePattern("a", []),
+            new RelationshipPattern("r1", "KNOWS", CypherDirection.Outgoing, null),
+            new NodePattern("b", []),
+            new RelationshipPattern("r2", "REPORTS_TO", CypherDirection.Incoming, null),
+            new NodePattern("c", [])
+        ]);
+
+        Assert.Equal(5, pattern.Elements.Count);
+    }
+
+    [Fact]
     public void RequiredNames_RejectWhitespace()
     {
         var ex = Assert.ThrowsAny<ArgumentException>(() => new VariableRef(" "));
@@ -112,4 +141,57 @@ public class ConstructorValidationTests
 
         Assert.Contains("target", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void RelationshipPattern_RejectsUndefinedDirection()
+    {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(
+            () => new RelationshipPattern(null, null, (CypherDirection)99, null));
+
+        Assert.Equal("direction", ex.ParamName);
+    }
+
+    [Fact]
+    public void RelationshipPattern_AcceptsDefinedDirection()
+    {
+        var relationship = new RelationshipPattern(null, null, CypherDirection.Both, null);
+
+        Assert.Equal(CypherDirection.Both, relationship.Direction);
+    }
+
+    [Fact]
+    public void BinaryExpression_RejectsUndefinedOperator()
+    {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(
+            () => new BinaryExpression((CypherBinaryOperator)99, new Literal(1), new Literal(2)));
+
+        Assert.Equal("op", ex.ParamName);
+    }
+
+    [Fact]
+    public void BinaryExpression_AcceptsDefinedOperator()
+    {
+        var expression = new BinaryExpression(CypherBinaryOperator.Add, new Literal(1), new Literal(2));
+
+        Assert.Equal(CypherBinaryOperator.Add, expression.Op);
+    }
+
+    [Fact]
+    public void UnaryExpression_RejectsUndefinedOperator()
+    {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(
+            () => new UnaryExpression((CypherUnaryOperator)99, new Literal(1)));
+
+        Assert.Equal("op", ex.ParamName);
+    }
+
+    [Fact]
+    public void UnaryExpression_AcceptsDefinedOperator()
+    {
+        var expression = new UnaryExpression(CypherUnaryOperator.Negate, new Literal(1));
+
+        Assert.Equal(CypherUnaryOperator.Negate, expression.Op);
+    }
+
+    private sealed record UnsupportedPatternElement : PatternElement;
 }

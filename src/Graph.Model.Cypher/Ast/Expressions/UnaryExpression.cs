@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using Cvoya.Graph.Model.Cypher.Internal;
+
 namespace Cvoya.Graph.Model.Cypher.Ast.Expressions;
 
 /// <summary>
@@ -28,7 +30,7 @@ public sealed record UnaryExpression : CypherExpression
     {
         ArgumentNullException.ThrowIfNull(operand);
 
-        Op = op;
+        Op = ArgumentValidation.DefinedEnum(op, nameof(op));
         Operand = operand;
     }
 
