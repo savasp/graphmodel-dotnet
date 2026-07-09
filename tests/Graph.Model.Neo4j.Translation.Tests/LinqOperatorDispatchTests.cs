@@ -18,6 +18,8 @@ using System.Reflection;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
 using Cvoya.Graph.Model.Neo4j.Translation.Tests.Model;
+using Cvoya.Graph.Model.Querying;
+using LinqOperatorDispatch = Cvoya.Graph.Model.Neo4j.Querying.Cypher.Visitors.Core.LinqOperatorDispatch;
 
 /// <summary>
 /// Guards the <c>MethodInfo</c>-identity dispatch table (issue #94 testing requirement 3) against

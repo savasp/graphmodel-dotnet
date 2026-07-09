@@ -21,6 +21,7 @@ using Cvoya.Graph.Model;
 using Cvoya.Graph.Model.Neo4j.Linq.Helpers;
 using Cvoya.Graph.Model.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Model.Neo4j.Querying.Linq.Queryables;
+using Cvoya.Graph.Model.Querying;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
