@@ -1,0 +1,51 @@
+// Copyright 2025 Savas Parastatidis
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+namespace Cvoya.Graph.Model.Querying;
+
+using System.Linq.Expressions;
+
+/// <summary>
+/// Describes one ordering key.
+/// </summary>
+public sealed record OrderingKey
+{
+    /// <summary>
+    /// Initializes a new instance of the <see cref="OrderingKey"/> record.
+    /// </summary>
+    /// <param name="keySelector">The normalized ordering key selector.</param>
+    /// <param name="descending">A value indicating whether the key is sorted descending.</param>
+    public OrderingKey(LambdaExpression keySelector, bool descending)
+    {
+        ArgumentNullException.ThrowIfNull(keySelector);
+
+        if (keySelector.ReturnType == typeof(void))
+        {
+            throw new ArgumentException("An ordering key selector must return a value.", nameof(keySelector));
+        }
+
+        KeySelector = keySelector;
+        Descending = descending;
+    }
+
+    /// <summary>
+    /// Gets the normalized ordering key selector.
+    /// </summary>
+    public LambdaExpression KeySelector { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the key is sorted descending.
+    /// </summary>
+    public bool Descending { get; }
+}
