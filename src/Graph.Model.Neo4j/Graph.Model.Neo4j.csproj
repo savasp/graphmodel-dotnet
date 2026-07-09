@@ -28,6 +28,7 @@
     <!-- Use project references for development (default) -->
     <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
         <ProjectReference Include="../Graph.Model/Graph.Model.csproj" />
+        <ProjectReference Include="../Graph.Model.Cypher/Graph.Model.Cypher.csproj" />
         <ProjectReference Include="../Graph.Model.Serialization/Graph.Model.Serialization.csproj" />
         <!--
           The CodeGen source generator is only wired in as a Roslyn analyzer for real compilations. DocFX's
@@ -43,6 +44,7 @@
     <!-- Use package references for releases -->
     <ItemGroup Condition="'$(UseProjectReferences)' == 'false'">
         <PackageReference Include="Cvoya.Graph.Model" />
+        <PackageReference Include="Cvoya.Graph.Model.Cypher" />
         <PackageReference Include="Cvoya.Graph.Model.Serialization" />
     </ItemGroup>
 
