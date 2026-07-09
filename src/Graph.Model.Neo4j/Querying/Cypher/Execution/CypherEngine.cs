@@ -306,32 +306,6 @@ internal sealed class CypherEngine
         return new CypherQuery(query.Text, convertedParams, query.GraphPathTypes);
     }
 
-    // Helper visitor to detect if we have a projection
-    private sealed class ProjectionDetectorVisitor : ExpressionVisitor
-    {
-        public bool HasProjection { get; private set; }
-
-        protected override Expression VisitMethodCall(MethodCallExpression node)
-        {
-            if (node.Method.Name == "Select" && node.Arguments.Count >= 2)
-            {
-                // Check if the selector is projecting to a different type
-                if (node.Arguments[1] is UnaryExpression { Operand: LambdaExpression lambda })
-                {
-                    var sourceType = lambda.Parameters[0].Type;
-                    var resultType = lambda.ReturnType;
-
-                    if (sourceType != resultType)
-                    {
-                        HasProjection = true;
-                    }
-                }
-            }
-
-            return base.VisitMethodCall(node);
-        }
-    }
-
     private static Type ExtractElementType(Type resultType, Expression expression)
     {
         // If the result type is a collection (List<T>, IEnumerable<T>, etc.), 
