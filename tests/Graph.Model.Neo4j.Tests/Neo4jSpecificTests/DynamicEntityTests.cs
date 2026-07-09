@@ -14,8 +14,10 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
-public class DynamicEntityTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture)
+using Cvoya.Graph.Model.CompatibilityTests;
+
+public class DynamicEntityTests(Neo4jHarness harness) :
+    Neo4jTest(harness)
 {
     [Fact]
     public async Task CanCreateAndGetDynamicNodeWithPrimitiveProperties()

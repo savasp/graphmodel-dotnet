@@ -16,8 +16,8 @@ namespace Cvoya.Graph.Model.Neo4j.Translation.Tests.Model;
 
 /// <summary>
 /// Minimal test domain used by the LINQ-to-Cypher characterization suite. Deliberately
-/// separate from the contract-suite domain model in Graph.Model.Tests (that project is an
-/// xunit test project, awkward to reference from here).
+/// separate from the contract-suite domain model in Graph.Model.CompatibilityTests (that project
+/// is an xunit test project, awkward to reference from here).
 /// </summary>
 [Node("Person")]
 public record Person : Node

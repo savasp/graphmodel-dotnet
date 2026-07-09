@@ -14,32 +14,26 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests;
 
+using Cvoya.Graph.Model.CompatibilityTests;
 using Microsoft.Extensions.Logging;
 using Serilog.Context;
 
-public class Neo4jTest : IAsyncLifetime, IClassFixture<TestInfrastructureFixture>
+/// <summary>
+/// The Neo4j binding of <see cref="CompatibilityTest"/>: adds correlation-scoped logging around
+/// the base class's capability-skip/store-acquisition choreography.
+/// </summary>
+public abstract class Neo4jTest(Neo4jHarness harness, StoreIsolation isolation = StoreIsolation.CleanSharedStore)
+    : CompatibilityTest(harness, isolation), IClassFixture<Neo4jHarness>
 {
-    private readonly TestInfrastructureFixture fixture;
-    private IGraph? graph;
-    private readonly bool getNewDatabase;
+    private readonly ILogger<Neo4jTest> logger = harness.LoggerFactory.CreateLogger<Neo4jTest>();
     protected IDisposable? correlationScope;
-    private readonly ILogger<Neo4jTest> logger;
 
     public static class TestContextCorrelation
     {
         public static readonly AsyncLocal<string?> CorrelationId = new();
     }
 
-    public Neo4jTest(TestInfrastructureFixture fixture, bool getNewDatabase = false)
-    {
-        this.fixture = fixture;
-        this.getNewDatabase = getNewDatabase;
-        this.logger = fixture.LoggerFactory.CreateLogger<Neo4jTest>();
-    }
-
-    public IGraph Graph => graph ?? throw new InvalidOperationException("Graph not initialized");
-
-    public async ValueTask InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         var testName = TestContext.Current?.Test?.TestDisplayName ?? "UnknownTest";
 
@@ -49,22 +43,14 @@ public class Neo4jTest : IAsyncLifetime, IClassFixture<TestInfrastructureFixture
         TestContextCorrelation.CorrelationId.Value = testId;
         correlationScope = LogContext.PushProperty("CorrelationId", testId);
 
-        try
-        {
-            graph = await fixture.GetGraph(getNewDatabase);
-        }
-        catch (TestInfrastructureFixture.Neo4jTestInfrastructureUnavailableException ex)
-        {
-            Assert.Skip(ex.Message);
-            throw;
-        }
+        await base.InitializeAsync();
 
         logger.LogInformation("Test {TestName} initialized successfully", testName);
     }
 
-    public async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         correlationScope?.Dispose();
-        await ValueTask.CompletedTask;
+        await base.DisposeAsync();
     }
 }

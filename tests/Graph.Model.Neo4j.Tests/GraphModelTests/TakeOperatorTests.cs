@@ -14,8 +14,10 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-public class TakeOperatorTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.ITakeOperatorTests
+using Cvoya.Graph.Model.CompatibilityTests;
+
+public class TakeOperatorTests(Neo4jHarness harness) :
+    Neo4jTest(harness),
+    ITakeOperatorTests
 {
 }

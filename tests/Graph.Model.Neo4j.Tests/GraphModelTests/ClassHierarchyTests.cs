@@ -15,8 +15,10 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-public class ClassHierarchyTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture),
-    Model.Tests.IClassHierarchyTests
+using Cvoya.Graph.Model.CompatibilityTests;
+
+public class ClassHierarchyTests(Neo4jHarness harness) :
+    Neo4jTest(harness),
+    IClassHierarchyTests
 {
 }

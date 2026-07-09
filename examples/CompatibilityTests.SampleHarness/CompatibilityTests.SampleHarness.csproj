@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Library</OutputType>
+        <RootNamespace>Cvoya.Graph.Model.CompatibilityTests.SampleHarness</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Model.CompatibilityTests.SampleHarness</AssemblyName>
+    </PropertyGroup>
+
+    <!-- Use project references for development (default) -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
+        <ProjectReference Include="../../src/Graph.Model/Graph.Model.csproj" />
+        <ProjectReference Include="../../src/Graph.Model.CompatibilityTests/Graph.Model.CompatibilityTests.csproj" />
+    </ItemGroup>
+
+    <!-- Use package references to prove the suite is consumable as a packed NuGet package -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'false'">
+        <PackageReference Include="Cvoya.Graph.Model" />
+        <PackageReference Include="Cvoya.Graph.Model.CompatibilityTests" />
+    </ItemGroup>
+
+</Project>

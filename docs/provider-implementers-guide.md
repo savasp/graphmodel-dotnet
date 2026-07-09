@@ -2,7 +2,7 @@
 
 This guide documents the current provider contract. It describes what a provider must implement today and the storage/query conventions that must remain compatible across providers.
 
-Future provider work is tracked separately: the shared `GraphQueryModel` layer is #84, dialect capabilities are #85, and reusable provider certification is #95.
+Future provider work is tracked separately: the shared `GraphQueryModel` layer is #84 and dialect capabilities are #85. Reusable provider certification (#95) has landed - see [Certifying a provider](#certifying-a-provider).
 
 ## Public SPI
 
@@ -121,33 +121,16 @@ Exception behavior follows the public API contract: provider/backend failures ar
 
 ## Contract-Test Reuse
 
-`tests/Graph.Model.Tests` is the provider contract suite. It mostly defines test interfaces with default xUnit test methods; running that project alone proves little because providers must inherit those interfaces in a provider-specific test project.
+The provider contract suite is the `Cvoya.Graph.Model.CompatibilityTests` package (`src/Graph.Model.CompatibilityTests`) - see [Certifying a provider](#certifying-a-provider) below for the full workflow. It mostly defines test interfaces with default xUnit test methods; running the package alone proves little because providers must bind those interfaces in a provider-specific test project.
 
 The Neo4j provider pattern is:
 
-- `tests/Graph.Model.Neo4j.Tests/Neo4jTest.cs` owns provider setup and exposes `IGraph Graph`.
-- Concrete classes in `tests/Graph.Model.Neo4j.Tests/GraphModelTests/` inherit `Neo4jTest` and implement one or more `Cvoya.Graph.Model.Tests.I...Tests` interfaces.
+- `tests/Graph.Model.Neo4j.Tests/Infrastructure/Neo4jHarness.cs` implements the suite's `IGraphProviderTestHarness` SPI, wrapping the existing Testcontainers/database-pool setup.
+- `tests/Graph.Model.Neo4j.Tests/Neo4jTest.cs` derives from `CompatibilityTest`, adds correlation-scoped logging, and exposes `IGraph Graph`.
+- Concrete classes in `tests/Graph.Model.Neo4j.Tests/GraphModelTests/` inherit `Neo4jTest` and implement one or more `Cvoya.Graph.Model.CompatibilityTests.I...Tests` interfaces.
 - Provider-specific tests live beside the inherited contract tests.
 
-A new provider test project should create an equivalent fixture/base class and inherit these contract interfaces:
-
-- `IBasicTests`
-- `IAdvancedQueryTests`
-- `IAggregationTests`
-- `IAttributeValidationTests`
-- `IClassHierarchyTests`
-- `IComplexObjectGraphSerializationTests`
-- `IDynamicEntitySchemaValidationTests`
-- `IErrorHandlingTests`
-- `IFullTextSearchTests`
-- `INullablePropertyDeserializationTests`
-- `IQueryTests`
-- `IQueryTraversalTests`
-- `ISchemaDefinitionTests`
-- `ITakeOperatorTests`
-- `ITransactionTests`
-
-Each provider may add backend-specific tests for connection setup, dialect behavior, and dynamic entity materialization, but the shared interfaces are the compatibility baseline.
+A new provider test project follows the same three-piece shape (harness → intermediate base class → one-line interface bindings). `examples/CompatibilityTests.SampleHarness` is a compiling skeleton; `tests/Graph.Model.Neo4j.Tests` is the full reference implementation.
 
 ## Future Chapters
 
@@ -159,6 +142,70 @@ Stub. #84 will define the shared query IR and LINQ front-end extraction. Until i
 
 Stub. #85 will define dialect feature switches and the neutral result wire model. Until it lands, providers should document unsupported LINQ/search features and fail clearly.
 
-### Certifying A Provider (#95)
+## Certifying A Provider
 
-Stub. #95 will package the contract tests as a reusable TCK with harness SPI and capability model. Until it lands, copy the Neo4j test inheritance pattern and run the shared test interfaces in the provider test project.
+The `Cvoya.Graph.Model.CompatibilityTests` package is a shippable TCK: a harness SPI, a capability registry so backends that legitimately lack a feature (e.g. server-side full-text search) skip rather than fail, and a compliance guard that catches a mis-wired provider project (one that discovers/runs far fewer tests than it should) instead of letting it silently "pass" with almost nothing executed.
+
+### 1. Implement the harness SPI
+
+```csharp
+public sealed class MyProviderHarness : IGraphProviderTestHarness
+{
+    public string ProviderName => "MyCompany.GraphModel.MyProvider";
+
+    // Declare only what your backing store actually supports. Unlisted capabilities' tests skip,
+    // never fail - see GraphCapability in src/Graph.Model for the full member list.
+    public CapabilitySet Capabilities => CapabilitySet.All.Except(GraphCapability.FullTextSearch);
+
+    public ValueTask InitializeAsync() => /* start/connect infrastructure once per test class */;
+    public ValueTask DisposeAsync() => /* release it */;
+
+    public ValueTask<IGraph> GetGraphAsync(StoreIsolation isolation, CancellationToken ct)
+    {
+        // StoreIsolation.CleanSharedStore: reuse the per-class store, wipe its data.
+        // StoreIsolation.FreshStore: provision a brand-new store (needed where a data wipe alone
+        // doesn't reset auxiliary state, e.g. full-text index state).
+        // Throw GraphProviderUnavailableException if infrastructure (e.g. Docker) can't start -
+        // it renders as a skip locally, and a failure under GRAPHMODEL_COMPLIANCE_STRICT=1.
+    }
+}
+```
+
+### 2. Extend `CompatibilityTest` once
+
+```csharp
+public abstract class MyProviderTest(MyProviderHarness harness)
+    : CompatibilityTest(harness), IClassFixture<MyProviderHarness>;
+```
+
+### 3. Bind the `I*Tests` interfaces
+
+One line per suite interface (see `src/Graph.Model.CompatibilityTests/I*.cs` for the full set):
+
+```csharp
+public class BasicTests(MyProviderHarness h) : MyProviderTest(h), IBasicTests;
+public class FullTextSearchTests(MyProviderHarness h) : MyProviderTest(h, StoreIsolation.FreshStore), IFullTextSearchTests;
+// ... one per interface
+```
+
+### 4. Arm the compliance guard
+
+```csharp
+[assembly: AssemblyFixture(typeof(Cvoya.Graph.Model.CompatibilityTests.ComplianceGuard))]
+```
+
+The guard is unarmed by default (a local run with no reachable backing store stays a plain skip). Set `GRAPHMODEL_COMPLIANCE_STRICT=1` to arm it - CI compliance lanes should always run this way:
+
+```bash
+GRAPHMODEL_COMPLIANCE_STRICT=1 dotnet test <your-test-project> --report-trx
+```
+
+Under strict mode, the guard also promotes `GraphProviderUnavailableException` (unavailable infrastructure) from a skip to a hard failure, so a compliance lane can never "pass" simply because its backing store never came up.
+
+### 5. Read the results
+
+- **Capability skips** carry a fixed, parseable reason: `Capability '<Name>' not declared by provider '<ProviderName>' (Cvoya.Graph.Model.CompatibilityTests <version>)`. Any other skip or a nonzero failure count needs investigation.
+- **The compliance report**: fill in `COMPLIANCE.md` (template in `src/Graph.Model.CompatibilityTests/COMPLIANCE.md`) from your TRX results - N passed / M skipped-by-declared-capability / 0 failed, where N is at least `ComplianceInventory.MinimumExecuted(yourDeclaredCapabilities)`.
+- **"Compatible"** means: 0 failed, every skip is a declared-capability skip, and the executed count meets the guard's floor for your declared capabilities.
+
+See `examples/CompatibilityTests.SampleHarness` for a minimal compiling skeleton of all three pieces, and `tests/Graph.Model.Neo4j.Tests` for the full in-tree reference implementation.

@@ -14,8 +14,10 @@
 
 namespace Cvoya.Graph.Model.Neo4j.Tests.GraphModelTests;
 
-public class SchemaDefinitionTests(TestInfrastructureFixture fixture) :
-    Neo4jTest(fixture, getNewDatabase: true),
-    Model.Tests.ISchemaDefinitionTests
+using Cvoya.Graph.Model.CompatibilityTests;
+
+public class SchemaDefinitionTests(Neo4jHarness harness) :
+    Neo4jTest(harness, StoreIsolation.FreshStore),
+    ISchemaDefinitionTests
 {
 }

@@ -1,8 +1,8 @@
 # Tests
 
-The `Graph.Model.Tests` project contains [xUnit](https://xunit.net/) tests, contained in abstract classes, which can be used with any implementation of `Graph.Model.IGraph`. You can't run these tests directly.
+The `src/Graph.Model.CompatibilityTests` project (packed as `Cvoya.Graph.Model.CompatibilityTests`) contains [xUnit](https://xunit.net/) tests, defined as interfaces with default-implemented methods, which any provider can bind to via the harness SPI (`IGraphProviderTestHarness`, `CompatibilityTest`). You can't run these tests directly - see [docs/provider-implementers-guide.md](../docs/provider-implementers-guide.md#certifying-a-provider) for the full workflow.
 
-The `Graph.Model.Neo4j.Tests` project runs implements the abstract classes and uses `Graph.Model.Neo4j` which implements the Graph Model abstraction layer.
+The `Graph.Model.Neo4j.Tests` project implements the harness SPI and binds the suite's interfaces, using `Graph.Model.Neo4j` which implements the Graph Model abstraction layer. `Graph.Model.CompatibilityTests.Tests` holds meta-tests for the suite itself (harness lifecycle, capability skips, the compliance guard) and needs no backing store.
 
 ## Running Neo4j Tests
 
