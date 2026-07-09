@@ -57,6 +57,11 @@ public static class GraphDataModel
     /// <summary>
     /// Converts a semantic complex-property relationship type back to its conventional property name.
     /// </summary>
+    /// <remarks>
+    /// The reverse mapping is exact only for the convention-based case (relationship type equals the
+    /// property name). When <see cref="ComplexPropertyAttribute.RelationshipType"/> overrides the
+    /// type, the override is returned unchanged; the mapping is not invertible under overrides.
+    /// </remarks>
     /// <param name="relationshipTypeName">The relationship type name to convert.</param>
     /// <returns>The conventional property name.</returns>
     public static string RelationshipTypeNameToPropertyName(string relationshipTypeName) => relationshipTypeName;
@@ -435,7 +440,11 @@ public static class GraphDataModel
             throw new GraphException($"Complex properties cannot exceed {maximumDepth} levels of depth.");
         }
 
-        if (value.GetType().IsValueType || value is string)
+        // Only simple values terminate the walk: IsComplex admits non-enum structs, and a complex
+        // struct can transitively hold deeply nested reference-type complex properties that must
+        // still be depth-validated. (Boxed structs are fresh references, so the cycle set is safe.)
+        var valueType = value.GetType();
+        if (value is string || (valueType.IsValueType && IsSimple(valueType)))
             return;
 
         if (!currentPath.Add(value))
@@ -459,6 +468,10 @@ public static class GraphDataModel
 
             if (value is IEnumerable enumerable)
             {
+                // A collection does not add a level of its own; its items sit at the collection's
+                // depth. Callers that hop from an owner to a collection already added the +1
+                // (dictionary values above, complex-collection properties below), so both paths
+                // count items exactly one level below the owner.
                 foreach (var item in enumerable.Cast<object?>().Where(item => item is not null))
                     CheckComplexPropertyDepth(item!, depth, maximumDepth, currentPath);
 

@@ -22,6 +22,12 @@ namespace Cvoya.Graph.Model.Cypher.Ast;
 public sealed record EntityProjectionClause : ICypherClause
 {
     /// <summary>Initializes an entity wire projection.</summary>
+    /// <param name="shape">The projection shape.</param>
+    /// <param name="sourceAlias">The source node alias.</param>
+    /// <param name="relationshipAlias">The relationship alias for a path segment.</param>
+    /// <param name="targetAlias">The target node alias for a path segment.</param>
+    /// <param name="loadSourceProperties">Whether declared complex properties are loaded from the source node.</param>
+    /// <param name="loadTargetProperties">Whether declared complex properties are loaded from the target node.</param>
     public EntityProjectionClause(
         EntityProjectionShape shape,
         string sourceAlias,
@@ -41,6 +47,13 @@ public sealed record EntityProjectionClause : ICypherClause
     }
 
     /// <summary>Initializes an entity wire projection.</summary>
+    /// <param name="shape">The projection shape.</param>
+    /// <param name="sourceAlias">The source node alias.</param>
+    /// <param name="relationshipAlias">The relationship alias for a path segment.</param>
+    /// <param name="targetAlias">The target node alias for a path segment.</param>
+    /// <param name="loadSourceProperties">Whether declared complex properties are loaded from the source node.</param>
+    /// <param name="loadTargetProperties">Whether declared complex properties are loaded from the target node.</param>
+    /// <param name="includePathCoordinates">Whether the projection includes graph-path and hop indexes.</param>
     public EntityProjectionClause(
         EntityProjectionShape shape,
         string sourceAlias,
@@ -85,14 +98,4 @@ public sealed record EntityProjectionClause : ICypherClause
 
     /// <summary>Gets whether the projection includes graph-path and hop indexes.</summary>
     public bool IncludePathCoordinates { get; }
-}
-
-/// <summary>Defines supported entity wire-projection shapes.</summary>
-public enum EntityProjectionShape
-{
-    /// <summary>A single node projection.</summary>
-    Node,
-
-    /// <summary>A start-node, relationship, and end-node path segment.</summary>
-    PathSegment,
 }

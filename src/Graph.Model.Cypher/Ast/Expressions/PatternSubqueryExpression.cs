@@ -39,13 +39,3 @@ public sealed record PatternSubqueryExpression : CypherExpression
     /// <summary>Gets the optional pattern predicate.</summary>
     public CypherExpression? Predicate { get; }
 }
-
-/// <summary>Defines pattern subquery result kinds.</summary>
-public enum PatternSubqueryKind
-{
-    /// <summary>An existence predicate.</summary>
-    Exists,
-
-    /// <summary>A row count expression.</summary>
-    Count,
-}

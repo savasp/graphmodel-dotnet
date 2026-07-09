@@ -31,17 +31,17 @@ internal sealed class ComplexPropertyManager(GraphContext context)
     private readonly ILogger<ComplexPropertyManager> logger = context.LoggerFactory?.CreateLogger<ComplexPropertyManager>()
         ?? NullLogger<ComplexPropertyManager>.Instance;
 
-    public async Task<bool> CreateComplexPropertiesAsync(
+    public async Task CreateComplexPropertiesAsync(
         IAsyncTransaction transaction,
         string parentId,
         EntityInfo entity,
         CancellationToken cancellationToken = default)
     {
-        return await CreateComplexPropertiesAsync(
+        await CreateComplexPropertiesAsync(
             transaction, parentId, entity, depth: 0, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<bool> CreateComplexPropertiesAsync(
+    private async Task CreateComplexPropertiesAsync(
         IAsyncTransaction transaction,
         string parentId,
         EntityInfo entity,
@@ -49,7 +49,7 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         CancellationToken cancellationToken)
     {
         if (entity.ComplexProperties.Count == 0)
-            return true;
+            return;
 
         if (depth >= GraphDataModel.DefaultDepthAllowed &&
             entity.ComplexProperties.Values.Any(property => property.Value is not null))
@@ -58,20 +58,18 @@ internal sealed class ComplexPropertyManager(GraphContext context)
                 $"Complex properties cannot exceed {GraphDataModel.DefaultDepthAllowed} levels of depth.");
         }
 
-        var allCreated = true;
-
         foreach (var (propertyName, complexProperty) in entity.ComplexProperties)
         {
             switch (complexProperty.Value)
             {
                 case EntityInfo childEntity:
-                    allCreated &= await CreateSingleComplexPropertyAsync(
+                    await CreateSingleComplexPropertyAsync(
                         transaction, parentId, propertyName, complexProperty, childEntity, 0, depth, cancellationToken)
                         .ConfigureAwait(false);
                     break;
 
                 case EntityCollection collection:
-                    allCreated &= await CreateComplexPropertyCollectionAsync(
+                    await CreateComplexPropertyCollectionAsync(
                         transaction, parentId, propertyName, complexProperty, collection, depth, cancellationToken)
                         .ConfigureAwait(false);
                     break;
@@ -89,11 +87,9 @@ internal sealed class ComplexPropertyManager(GraphContext context)
                         $"Unsupported complex property type: {complexProperty.Value.GetType().Name} for property {propertyName}");
             }
         }
-
-        return allCreated;
     }
 
-    public async Task<bool> UpdateComplexPropertiesAsync(
+    public async Task UpdateComplexPropertiesAsync(
         IAsyncTransaction transaction,
         string parentId,
         EntityInfo entity,
@@ -103,10 +99,10 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         await DeleteExistingComplexPropertiesAsync(transaction, parentId, cancellationToken).ConfigureAwait(false);
 
         // Then create the new ones
-        return await CreateComplexPropertiesAsync(transaction, parentId, entity, cancellationToken).ConfigureAwait(false);
+        await CreateComplexPropertiesAsync(transaction, parentId, entity, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<bool> CreateSingleComplexPropertyAsync(
+    private async Task CreateSingleComplexPropertyAsync(
         IAsyncTransaction transaction,
         string parentId,
         string propertyName,
@@ -154,11 +150,11 @@ internal sealed class ComplexPropertyManager(GraphContext context)
             complexNodeId, propertyName, parentId);
 
         // Recursively create nested complex properties
-        return await CreateComplexPropertiesAsync(transaction, complexNodeId, entity, depth + 1, cancellationToken)
+        await CreateComplexPropertiesAsync(transaction, complexNodeId, entity, depth + 1, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    private async Task<bool> CreateComplexPropertyCollectionAsync(
+    private async Task CreateComplexPropertyCollectionAsync(
         IAsyncTransaction transaction,
         string parentId,
         string propertyName,
@@ -167,17 +163,13 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         int depth,
         CancellationToken cancellationToken)
     {
-        var allCreated = true;
         var index = 0;
-
         foreach (var entity in collection.Entities)
         {
-            allCreated &= await CreateSingleComplexPropertyAsync(
+            await CreateSingleComplexPropertyAsync(
                 transaction, parentId, propertyName, property, entity, index++, depth, cancellationToken)
                 .ConfigureAwait(false);
         }
-
-        return allCreated;
     }
 
     private async Task DeleteExistingComplexPropertiesAsync(

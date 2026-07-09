@@ -44,7 +44,11 @@ public sealed class CypherAstValidator : ICypherPass
 
                 case WithClause with:
                     ValidateReturnItems(with.Items, scope, input.Parameters);
-                    scope = ProjectWithScope(with);
+                    if (!with.Wildcard)
+                    {
+                        scope = ProjectWithScope(with);
+                    }
+
                     break;
 
                 case UnwindClause unwind:

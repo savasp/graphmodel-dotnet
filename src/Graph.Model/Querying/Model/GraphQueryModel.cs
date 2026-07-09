@@ -48,6 +48,17 @@ public sealed record GraphQueryModel
     /// <summary>
     /// Initializes a complete provider-independent query model.
     /// </summary>
+    /// <param name="root">The query root.</param>
+    /// <param name="predicates">Predicates applied to the root scope.</param>
+    /// <param name="traversal">Traversal steps applied after root predicates.</param>
+    /// <param name="projection">The projection shape, or <see langword="null"/> for the current element.</param>
+    /// <param name="ordering">Ordering keys applied to the current element.</param>
+    /// <param name="paging">Skip/take paging information.</param>
+    /// <param name="terminal">The terminal operation or terminal modifier for the query.</param>
+    /// <param name="distinct">Whether the result projection is distinct.</param>
+    /// <param name="terminalOperand">The operand carried by a terminal operation such as Contains.</param>
+    /// <param name="pathShape">Graph-path materialization metadata, when the query returns paths.</param>
+    /// <param name="join">The equijoin description, when present.</param>
     public GraphQueryModel(
         QueryRoot root,
         IReadOnlyList<PredicateFragment> predicates,
@@ -79,6 +90,18 @@ public sealed record GraphQueryModel
     /// <summary>
     /// Initializes a complete provider-independent query model.
     /// </summary>
+    /// <param name="root">The query root.</param>
+    /// <param name="predicates">Predicates applied to the root scope.</param>
+    /// <param name="traversal">Traversal steps applied after root predicates.</param>
+    /// <param name="projection">The projection shape, or <see langword="null"/> for the current element.</param>
+    /// <param name="ordering">Ordering keys applied to the current element.</param>
+    /// <param name="paging">Skip/take paging information.</param>
+    /// <param name="terminal">The terminal operation or terminal modifier for the query.</param>
+    /// <param name="distinct">Whether the result projection is distinct.</param>
+    /// <param name="terminalOperand">The operand carried by a terminal operation such as Contains.</param>
+    /// <param name="pathShape">Graph-path materialization metadata, when the query returns paths.</param>
+    /// <param name="join">The equijoin description, when present.</param>
+    /// <param name="searchFilter">A full-text search applied to the current query scope after traversal.</param>
     public GraphQueryModel(
         QueryRoot root,
         IReadOnlyList<PredicateFragment> predicates,

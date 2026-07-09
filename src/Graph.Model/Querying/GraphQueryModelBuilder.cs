@@ -211,7 +211,13 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             return node;
         }
 
-        return node.CanReduce ? base.VisitExtension(node) : node;
+        if (node.CanReduce)
+        {
+            return base.VisitExtension(node);
+        }
+
+        throw new GraphQueryTranslationException(
+            $"Expression '{node.GetType().Name}' is not a recognized graph query expression.");
     }
 
     protected override Expression VisitConstant(ConstantExpression node)
@@ -261,6 +267,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
     private void AddPredicate(MethodCallExpression node, string operatorName)
     {
         var lambda = RequireLambda(node, 1, operatorName);
+        RejectIndexedLambda(node, lambda, operatorName);
         WidenRootScope(lambda);
         AddComplexPropertyTraversals(lambda);
         _predicates.Add(new PredicateFragment(lambda, _currentAlias));
@@ -284,6 +291,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
     private void HandleSelect(MethodCallExpression node)
     {
         var selector = RequireLambda(node, 1, "Select");
+        RejectIndexedLambda(node, selector, "Select");
         AddComplexPropertyTraversals(selector);
         selector = ComposeProjection(_projection?.Selector, selector);
 
@@ -320,10 +328,17 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         LambdaExpression? previous,
         LambdaExpression current)
     {
-        if (previous is null || previous.Parameters.Count != 1 || current.Parameters.Count != 1 ||
-            current.Parameters[0].Type != previous.ReturnType)
+        if (previous is null)
         {
             return current;
+        }
+
+        if (previous.Parameters.Count != 1 || current.Parameters.Count != 1 ||
+            current.Parameters[0].Type != previous.ReturnType)
+        {
+            throw new GraphQueryTranslationException(
+                "Cannot compose chained Select projections: the later selector does not consume the earlier " +
+                "selector's result. Combine the projections into a single Select.");
         }
 
         var body = new ParameterReplacementVisitor(current.Parameters[0], previous.Body)
@@ -442,7 +457,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         var maxDepth = EvaluateArgument<int>(node, 2, "maximum traversal depth");
 
         var sourceType = _currentType ?? typeof(INode);
-        AddExplicitTraversal(relationshipType, targetType, new DepthRange(minDepth, maxDepth));
+        AddExplicitTraversal(relationshipType, targetType, CreateDepthRange(node, minDepth, maxDepth));
         _isGraphPathResult = true;
         _pathShape = new QueryPathShape(sourceType, relationshipType, targetType);
         _currentType = typeof(IGraphPath);
@@ -472,14 +487,28 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
     {
         var depth = node.Arguments.Count switch
         {
-            2 => new DepthRange(1, EvaluateArgument<int>(node, 1, "maximum traversal depth")),
-            3 => new DepthRange(
+            2 => CreateDepthRange(node, 1, EvaluateArgument<int>(node, 1, "maximum traversal depth")),
+            3 => CreateDepthRange(
+                node,
                 EvaluateArgument<int>(node, 1, "minimum traversal depth"),
                 EvaluateArgument<int>(node, 2, "maximum traversal depth")),
             _ => throw Unsupported(node, "WithDepth must have one or two depth arguments."),
         };
 
         UpdateLastTraversal(depth: depth);
+    }
+
+    private static DepthRange CreateDepthRange(MethodCallExpression node, int min, int max)
+    {
+        if (min < 0 || max < min)
+        {
+            throw Unsupported(
+                node,
+                $"traversal depth range [{min}..{max}] is invalid: the minimum must be non-negative and the " +
+                "maximum must be at least the minimum.");
+        }
+
+        return new DepthRange(min, max);
     }
 
     private void HandleSearch(MethodCallExpression node)
@@ -561,6 +590,17 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         }
 
         var inner = Build(node.Arguments[1]);
+        if (inner.Predicates.Count > 0 || inner.Traversal.Count > 0 || inner.Ordering.Count > 0 ||
+            inner.Projection is not null || inner.Paging.Skip is not null || inner.Paging.Take is not null ||
+            inner.Distinct || inner.Join is not null || inner.SearchFilter is not null ||
+            inner.PathShape is not null || inner.Terminal != TerminalOperation.ToListOrArray)
+        {
+            throw Unsupported(
+                node,
+                "Join inner sources must be a bare node or relationship set; operators such as Where, Select, " +
+                "OrderBy, Skip, or Take on the inner source are not translated. Apply them to the join result instead.");
+        }
+
         var outerKey = RequireLambda(node, 2, "Join outer key");
         var innerKey = RequireLambda(node, 3, "Join inner key");
         var result = RequireLambda(node, 4, "Join result selector");
@@ -592,6 +632,17 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
     {
         return TryGetLambda(node, argumentIndex)
             ?? throw Unsupported(node, $"{operatorName} requires a lambda expression.");
+    }
+
+    private static void RejectIndexedLambda(MethodCallExpression node, LambdaExpression lambda, string operatorName)
+    {
+        if (lambda.Parameters.Count != 1)
+        {
+            throw Unsupported(
+                node,
+                $"the indexed {operatorName} overload is not supported; graph queries have no positional " +
+                "element index to translate.");
+        }
     }
 
     private static LambdaExpression? TryGetLambda(MethodCallExpression node, int argumentIndex)

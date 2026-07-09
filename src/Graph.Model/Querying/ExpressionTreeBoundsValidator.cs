@@ -72,6 +72,18 @@ internal sealed class ExpressionTreeBoundsValidator : ExpressionVisitor
 
     protected override Expression VisitExtension(Expression node)
     {
-        return node.CanReduce ? base.VisitExtension(node) : node;
+        if (node.CanReduce)
+        {
+            return base.VisitExtension(node);
+        }
+
+        if (node is IGraphSearchRootExpression)
+        {
+            // A search root is a leaf: there are no children to count toward the bounds.
+            return node;
+        }
+
+        throw new GraphQueryTranslationException(
+            $"Expression '{node.GetType().Name}' is not a recognized graph query expression.");
     }
 }

@@ -24,23 +24,27 @@ internal sealed class CypherParameterRegistry
 
     public QueryParameter Add(object? value)
     {
+        var normalized = Normalize(value);
         foreach (var (name, existing) in _parameters)
         {
-            if (Equals(existing, value))
+            if (Equals(existing, normalized))
             {
                 return new QueryParameter(name);
             }
         }
 
         var parameterName = $"p{_parameters.Count}";
-        _parameters.Add(parameterName, Normalize(value));
+        _parameters.Add(parameterName, normalized);
         return new QueryParameter(parameterName);
     }
 
     private static object? Normalize(object? value)
     {
         return value is Enum enumValue
-            ? Convert.ToInt32(enumValue, System.Globalization.CultureInfo.InvariantCulture)
+            ? Convert.ChangeType(
+                enumValue,
+                Enum.GetUnderlyingType(enumValue.GetType()),
+                System.Globalization.CultureInfo.InvariantCulture)
             : value;
     }
 }

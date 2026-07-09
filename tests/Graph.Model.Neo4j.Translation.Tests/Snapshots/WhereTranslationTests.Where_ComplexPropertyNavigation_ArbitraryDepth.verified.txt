@@ -1,7 +1,8 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-MATCH (src)-[:HomeAddress]->(src_homeaddress:Address)
-MATCH (src_homeaddress)-[:Region]->(src_homeaddress_region:Region)
+OPTIONAL MATCH (src)-[:HomeAddress]->(src_homeaddress:Address)
+OPTIONAL MATCH (src_homeaddress)-[:Region]->(src_homeaddress_region:Region)
+WITH *
 WHERE src_homeaddress_region.Name = $p0
 OPTIONAL MATCH src_path = (src)-[rels*1..5]->(prop)
 WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)

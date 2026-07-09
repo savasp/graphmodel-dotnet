@@ -214,6 +214,115 @@ public class CypherQueryPlannerTests
         new CypherAstValidator().Run(statement);
     }
 
+    [Fact]
+    public void Plan_DeduplicatesEqualParameterValues()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Age == 18 || person.Name == "Ada" && person.Age == 18;
+
+        var statement = planner.Plan(Model(predicates: [new PredicateFragment(predicate, "src")]));
+
+        Assert.Equal(["p0", "p1"], statement.Parameters.Keys);
+        Assert.Equal(18, statement.Parameters["p0"]);
+        Assert.Equal("Ada", statement.Parameters["p1"]);
+    }
+
+    [Fact]
+    public void Plan_NormalizesAndDeduplicatesEnumParameters()
+    {
+        var status = PersonStatus.Active;
+        Expression<Func<Person, bool>> predicate = person =>
+            person.Status == status || person.Name == "Ada" && person.Status == status;
+
+        var statement = planner.Plan(Model(predicates: [new PredicateFragment(predicate, "src")]));
+
+        var enumParameter = Assert.Single(statement.Parameters.Values, value => value is int number && number == (int)PersonStatus.Active);
+        Assert.IsType<int>(enumParameter);
+    }
+
+    [Fact]
+    public void Plan_NormalizesLongBackedEnumParametersWithoutOverflow()
+    {
+        var flag = WideFlag.High;
+        Expression<Func<Person, bool>> predicate = person => person.WideFlag == flag;
+
+        var statement = planner.Plan(Model(predicates: [new PredicateFragment(predicate, "src")]));
+
+        Assert.Contains(statement.Parameters.Values, value => value is long number && number == (long)WideFlag.High);
+    }
+
+    [Fact]
+    public void Plan_LowersSearchFilterAfterTraversalToCallAndAliasPredicate()
+    {
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Model.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows));
+        var model = Model(
+            traversal: [traversal],
+            searchFilter: new SearchRoot("Ada", SearchRootTarget.Nodes, typeof(Person)));
+
+        var statement = planner.Plan(model);
+
+        var call = Assert.Single(statement.Clauses.OfType<CallClause>());
+        Assert.Equal("search.nodes", call.Procedure);
+        Assert.Equal("searchedNode", Assert.Single(call.Yields).Alias);
+        Assert.Equal("Ada", statement.Parameters["p0"]);
+        var where = Assert.Single(statement.Clauses.OfType<WhereClause>());
+        Assert.Contains(
+            Descendants(where.Predicate),
+            expression => expression is AstBinaryExpression
+            {
+                Op: CypherBinaryOperator.Equal,
+                Left: VariableRef { Alias: "tgt" },
+                Right: VariableRef { Alias: "searchedNode" },
+            });
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_OrderingAfterConstructorProjection_Throws()
+    {
+        Expression<Func<Person, PersonDto>> projection = person => new PersonDto(person.Name);
+        Expression<Func<PersonDto, string>> ordering = dto => dto.Name;
+        var model = Model(
+            projection: new ProjectionShape(ProjectionKind.Anonymous, projection),
+            ordering: [new OrderingKey(ordering, descending: false)]);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+
+        Assert.Contains("ordering key cannot be mapped", exception.Message);
+    }
+
+    [Fact]
+    public void Plan_InsertsWildcardWithBetweenOptionalNavigationAndWhere()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Home!.City == "Seattle";
+
+        var statement = planner.Plan(Model(predicates: [new PredicateFragment(predicate, "src")]));
+
+        var navigation = Assert.Single(statement.Clauses.OfType<MatchClause>().Skip(1));
+        Assert.True(navigation.Optional);
+        var withIndex = statement.Clauses.ToList().FindIndex(clause => clause is WithClause { Wildcard: true });
+        var whereIndex = statement.Clauses.ToList().FindIndex(clause => clause is WhereClause);
+        Assert.True(withIndex >= 0 && withIndex == whereIndex - 1);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_ContainsOnComplexCollection_Throws()
+    {
+        var office = new Address();
+        Expression<Func<Person, bool>> predicate = person => person.Offices.Contains(office);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            planner.Plan(Model(predicates: [new PredicateFragment(predicate, "src")])));
+
+        Assert.Contains("complex-property collection", exception.Message);
+    }
+
     private static IEnumerable<CypherExpression> Descendants(CypherExpression expression)
     {
         yield return expression;
@@ -225,6 +334,13 @@ public class CypherQueryPlannerTests
                 break;
             case AstUnaryExpression unary:
                 foreach (var item in Descendants(unary.Operand)) yield return item;
+                break;
+            case ConjunctionExpression conjunction:
+                foreach (var predicate in conjunction.Predicates)
+                {
+                    foreach (var item in Descendants(predicate)) yield return item;
+                }
+
                 break;
         }
     }
@@ -238,7 +354,8 @@ public class CypherQueryPlannerTests
         ProjectionShape? projection = null,
         TerminalOperation terminal = TerminalOperation.ToListOrArray,
         bool distinct = false,
-        JoinFragment? join = null) =>
+        JoinFragment? join = null,
+        SearchRoot? searchFilter = null) =>
         new(
             root ?? new NodeRoot(typeof(Person)),
             predicates ?? [],
@@ -250,7 +367,21 @@ public class CypherQueryPlannerTests
             distinct,
             terminalOperand: null,
             pathShape: null,
-            join);
+            join,
+            searchFilter);
+
+    private enum PersonStatus
+    {
+        Inactive = 0,
+        Active = 1,
+    }
+
+    private enum WideFlag : long
+    {
+        High = 1L << 40,
+    }
+
+    private sealed record PersonDto(string Name);
 
     [Node("Person")]
     private sealed record Person : Node
@@ -258,6 +389,10 @@ public class CypherQueryPlannerTests
         public int Age { get; init; }
 
         public string Name { get; init; } = string.Empty;
+
+        public PersonStatus Status { get; init; }
+
+        public WideFlag WideFlag { get; init; }
 
         public Address? Home { get; init; }
 

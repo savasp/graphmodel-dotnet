@@ -218,7 +218,7 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
             return aggregateExpression;
         }
 
-        if (node.Method.Name.StartsWith("op_", StringComparison.Ordinal) && node.Arguments.Count == 1)
+        if (node.Method.Name is "op_Implicit" or "op_Explicit" && node.Arguments.Count == 1)
         {
             return Lower(node.Arguments[0], aliases);
         }
@@ -538,6 +538,16 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
             return false;
         }
 
+        if (GraphDataModel.IsCollectionOfComplex(source.Type))
+        {
+            // Lowering would compare a parameter against the property node itself, which evaluates to
+            // false/null in Cypher instead of matching by value.
+            throw Unsupported(
+                node,
+                "Contains on a complex-property collection cannot be translated; use .Any(x => ...) with " +
+                "explicit property comparisons instead.");
+        }
+
         expression = new AstBinaryExpression(CypherBinaryOperator.In, Lower(item, aliases), Lower(source, aliases));
         return true;
     }
@@ -637,9 +647,18 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
         };
 
         var selector = node.Arguments.Skip(1).Select(ExtractLambda).FirstOrDefault(lambda => lambda is not null);
-        expression = selector is null
-            ? Function(functionName, Lower(node.Arguments[0], aliases))
-            : Function(functionName, LowerLambda(selector, ResolveAlias(selector.Parameters[0], aliases), aliases));
+        if (selector is null)
+        {
+            expression = Function(functionName, Lower(node.Arguments[0], aliases));
+            return true;
+        }
+
+        // The selector's parameter ranges over the aggregated source, which the aggregate function
+        // evaluates against the current scope; default it deliberately rather than via ResolveAlias.
+        var selectorAlias = aliases.TryGetValue(selector.Parameters[0], out var boundAlias)
+            ? boundAlias
+            : ResolveDefaultAlias(selector.Parameters[0].Type, "src");
+        expression = Function(functionName, LowerLambda(selector, selectorAlias, aliases));
         return true;
     }
 
@@ -799,7 +818,9 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
                     depth: null),
                 new NodePattern(targetAlias, [Labels.GetLabelFromType(targetType)])
             ])
-        ], optional: false));
+            // Optional so that rows without the navigated property survive: a required MATCH would
+            // silently drop them from OR-predicates, projections, and orderings that touch the path.
+        ], optional: true));
     }
 
     private static bool TryMapPathSegmentMember(
@@ -970,9 +991,15 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
         ParameterExpression parameter,
         IReadOnlyDictionary<ParameterExpression, string> aliases)
     {
-        return aliases.TryGetValue(parameter, out var alias)
-            ? alias
-            : ResolveDefaultAlias(parameter.Type, "src");
+        if (aliases.TryGetValue(parameter, out var alias))
+        {
+            return alias;
+        }
+
+        // Guessing an alias here would render a syntactically valid query over the wrong variable;
+        // Cypher would then return nulls instead of erroring, silently producing wrong results.
+        throw new GraphQueryTranslationException(
+            $"Lambda parameter '{parameter.Name}' of type '{parameter.Type.Name}' is not bound to a query scope.");
     }
 
     private static string RequireConstantIdentifier(Expression expression, string methodName)

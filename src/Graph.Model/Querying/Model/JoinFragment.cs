@@ -24,6 +24,10 @@ public sealed record JoinFragment
     /// <summary>
     /// Initializes a new join description.
     /// </summary>
+    /// <param name="innerRoot">The joined query root.</param>
+    /// <param name="outerKeySelector">The outer key selector.</param>
+    /// <param name="innerKeySelector">The inner key selector.</param>
+    /// <param name="resultSelector">The result selector.</param>
     public JoinFragment(
         QueryRoot innerRoot,
         LambdaExpression outerKeySelector,

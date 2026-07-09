@@ -224,6 +224,33 @@ public class GraphDataModelTypeClassificationTests
         Assert.Equal("LIVES_AT", GraphDataModel.GetComplexPropertyRelationshipType(property));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData(null)]
+    public void PropertyNameToRelationshipTypeName_RejectsNullOrWhitespace(string? propertyName)
+    {
+        Assert.ThrowsAny<ArgumentException>(() => GraphDataModel.PropertyNameToRelationshipTypeName(propertyName!));
+    }
+
+    [Fact]
+    public void EnsureComplexPropertyDepth_WalksThroughComplexStructs()
+    {
+        var allowed = new StructDepthNode
+        {
+            Holder = new StructHolder(CreateChain(GraphDataModel.DefaultDepthAllowed - 1)),
+        };
+        var tooDeep = new StructDepthNode
+        {
+            Holder = new StructHolder(CreateChain(GraphDataModel.DefaultDepthAllowed)),
+        };
+
+        allowed.EnsureComplexPropertyDepth();
+        var exception = Assert.Throws<GraphException>(() => tooDeep.EnsureComplexPropertyDepth());
+
+        Assert.Contains(GraphDataModel.DefaultDepthAllowed.ToString(), exception.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void EnsureComplexPropertyDepth_AllowsDefaultDepthAndRejectsDeeperGraph()
     {
@@ -277,6 +304,13 @@ public class GraphDataModelTypeClassificationTests
     private sealed record DepthNode : Node
     {
         public DepthValue Value { get; init; } = new();
+    }
+
+    private readonly record struct StructHolder(DepthValue? Inner);
+
+    private sealed record StructDepthNode : Node
+    {
+        public StructHolder Holder { get; init; }
     }
 
     private sealed class DepthValue

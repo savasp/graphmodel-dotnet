@@ -38,9 +38,10 @@ public sealed class CypherQueryPlanner
     {
         ArgumentNullException.ThrowIfNull(model);
 
-#if DEBUG
+        // Unconditional: the model validator guards user-reachable semantic errors that Cypher cannot
+        // catch (it returns nulls for mis-bound references instead of erroring). One cheap pass per
+        // query is negligible next to the network round-trip.
         GraphQueryModelValidator.Validate(model);
-#endif
 
         var parameters = new CypherParameterRegistry();
         var lowerer = new ExpressionToCypherAstLowerer(parameters);
@@ -57,6 +58,12 @@ public sealed class CypherQueryPlanner
 
         if (predicates.Count > 0)
         {
+            if (lowerer.NavigationMatches.Count > 0)
+            {
+                // A bare WHERE would attach to the last OPTIONAL MATCH above and stop filtering rows.
+                clauses.Add(WithClause.All);
+            }
+
             clauses.Add(new WhereClause(predicates.Count == 1
                 ? predicates[0]
                 : new ConjunctionExpression(predicates)));
@@ -253,9 +260,39 @@ public sealed class CypherQueryPlanner
             return ordering;
         }
 
-        var body = new ProjectedValueRewriter(ordering.Parameters[0], projection.Body).Visit(ordering.Body)
+        var orderingParameter = ordering.Parameters[0];
+        var body = new ProjectedValueRewriter(orderingParameter, projection.Body).Visit(ordering.Body)
             ?? ordering.Body;
+        if (ReferencesParameter(body, orderingParameter))
+        {
+            throw new GraphQueryTranslationException(
+                "The ordering key cannot be mapped through the preceding Select projection; order before " +
+                "projecting, or project the ordering key explicitly.");
+        }
+
         return Expression.Lambda(body, projection.Parameters);
+    }
+
+    private static bool ReferencesParameter(Expression body, ParameterExpression parameter)
+    {
+        var finder = new ParameterReferenceFinder(parameter);
+        finder.Visit(body);
+        return finder.Found;
+    }
+
+    private sealed class ParameterReferenceFinder(ParameterExpression parameter) : ExpressionVisitor
+    {
+        public bool Found { get; private set; }
+
+        protected override Expression VisitParameter(ParameterExpression node)
+        {
+            if (node == parameter)
+            {
+                Found = true;
+            }
+
+            return node;
+        }
     }
 
     private static ProjectionPlan LowerProjection(
@@ -840,22 +877,28 @@ public sealed class CypherQueryPlanner
             nameof(IGraphPathSegment.EndNode);
     }
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, bool> ComplexPropertyCache = new();
+
     private static bool HasComplexProperties(Type? type)
     {
         if (type is null || type == typeof(DynamicNode))
             return true;
 
-        return Labels.GetCompatibleLabels(type).Any(label =>
-        {
-            try
+        return ComplexPropertyCache.GetOrAdd(type, static queried =>
+            Labels.GetCompatibleLabels(queried).Any(label =>
             {
-                return GraphDataModel.GetComplexProperties(Labels.GetTypeFromLabel(label)).Any();
-            }
-            catch (GraphException)
-            {
-                return false;
-            }
-        });
+                try
+                {
+                    return GraphDataModel.GetComplexProperties(Labels.GetTypeFromLabel(label)).Any();
+                }
+                catch (GraphException)
+                {
+                    // "Could not resolve the label to a type" must not become "has no complex
+                    // properties": that would silently skip loading and materialize nulls. Loading
+                    // for a type that turns out to have none is only wasted work.
+                    return true;
+                }
+            }));
     }
 
     private static Type? GetRootType(QueryRoot root)

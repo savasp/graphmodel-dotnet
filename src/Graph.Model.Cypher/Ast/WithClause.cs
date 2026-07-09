@@ -32,8 +32,24 @@ public sealed record WithClause : ICypherClause
         Distinct = distinct;
     }
 
+    private WithClause()
+    {
+        Items = [];
+        Distinct = false;
+        Wildcard = true;
+    }
+
     /// <summary>
-    /// Gets the projected items.
+    /// Gets a clause that carries every bound variable forward unchanged (<c>WITH *</c>).
+    /// </summary>
+    /// <remarks>
+    /// A bare <c>WHERE</c> attaches to the immediately preceding <c>MATCH</c>/<c>OPTIONAL MATCH</c>;
+    /// inserting this clause turns the subsequent <c>WHERE</c> into a row filter instead.
+    /// </remarks>
+    public static WithClause All { get; } = new();
+
+    /// <summary>
+    /// Gets the projected items. Empty when <see cref="Wildcard"/> is set.
     /// </summary>
     public IReadOnlyList<ReturnItem> Items { get; }
 
@@ -41,4 +57,9 @@ public sealed record WithClause : ICypherClause
     /// Gets a value indicating whether the projection is distinct.
     /// </summary>
     public bool Distinct { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the clause projects all bound variables (<c>WITH *</c>).
+    /// </summary>
+    public bool Wildcard { get; }
 }

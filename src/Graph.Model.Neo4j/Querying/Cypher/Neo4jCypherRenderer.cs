@@ -68,7 +68,7 @@ internal sealed class Neo4jCypherRenderer
                     builder.Append("DISTINCT ");
                 }
 
-                builder.Append(string.Join(", ", with.Items.Select(RenderReturnItem)));
+                builder.Append(with.Wildcard ? "*" : string.Join(", ", with.Items.Select(RenderReturnItem)));
                 break;
 
             case ReturnClause @return:
@@ -338,7 +338,8 @@ internal sealed class Neo4jCypherRenderer
             CypherUnaryOperator.Not => $"NOT ({operand})",
             CypherUnaryOperator.IsNull => $"{operand} IS NULL",
             CypherUnaryOperator.IsNotNull => $"{operand} IS NOT NULL",
-            CypherUnaryOperator.Negate => $"-{operand}",
+            // Parenthesized: -(a + b) must not render as -a + b.
+            CypherUnaryOperator.Negate => $"-({operand})",
             _ => throw new GraphException($"Unsupported Cypher unary operator '{unary.Op}'."),
         };
     }
@@ -383,22 +384,47 @@ internal sealed class Neo4jCypherRenderer
         return value switch
         {
             null => "null",
-            string text => $"'{text.Replace("'", "\\'", StringComparison.Ordinal)}'",
-            char character => $"'{character}'",
+            string text => RenderStringLiteral(text),
+            char character => RenderStringLiteral(character.ToString()),
             bool boolean => boolean ? "true" : "false",
             float number => RenderFloating(number),
             double number => RenderFloating(number),
             decimal number => RenderFloating(number),
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-            _ => value.ToString() ?? "null",
+            _ => throw new GraphException(
+                $"Cannot render a literal of type '{value.GetType().Name}' into Cypher text; " +
+                "pass the value as a query parameter instead."),
         };
+    }
+
+    private static string RenderStringLiteral(string text)
+    {
+        // Backslashes first: escaping quotes introduces backslashes that must not be re-escaped.
+        var escaped = text
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("'", "\\'", StringComparison.Ordinal);
+        return $"'{escaped}'";
     }
 
     private static string RenderFloating<T>(T number)
         where T : IFormattable
     {
         var text = number.ToString(null, CultureInfo.InvariantCulture);
-        return text.Contains('.', StringComparison.Ordinal) ? text : text + ".0";
+
+        // Exponent notation is already a valid Cypher float literal; appending ".0" would corrupt it.
+        if (text.Contains('.', StringComparison.Ordinal) || text.Contains('E', StringComparison.OrdinalIgnoreCase))
+        {
+            return text;
+        }
+
+        var digits = text.StartsWith('-') ? text.AsSpan(1) : text.AsSpan();
+        if (digits.Length > 0 && !digits.ContainsAnyExceptInRange('0', '9'))
+        {
+            return text + ".0";
+        }
+
+        // NaN and Infinity have no Cypher literal form.
+        throw new GraphException($"Cannot render '{text}' as a Cypher float literal.");
     }
 
     private static string RenderProcedureName(string procedure) => procedure switch

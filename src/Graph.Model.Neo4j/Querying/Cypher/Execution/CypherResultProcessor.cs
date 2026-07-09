@@ -374,17 +374,27 @@ internal sealed class CypherResultProcessor
             .Where(cp => cp.ParentNode.ElementId == node.ElementId)
             .ToList();
 
-        // For dynamic nodes, attach all direct complex properties using the property name derived from the relationship type
-        foreach (var cp in directComplexProps.OrderBy(cp => cp.SequenceNumber))
+        // For dynamic nodes, attach all direct complex properties using the property name derived
+        // from the relationship type. Multiple relationships of the same type are a stored
+        // collection and must materialize as one - assigning them to a single slot would keep only
+        // the last item. (A one-item collection is indistinguishable from a single value without a
+        // schema and materializes as a single value.)
+        foreach (var group in directComplexProps.GroupBy(cp => cp.Relationship.Type))
         {
-            var propertyName = cp.Relationship.Type;
-            var childEntity = DeserializeComplexPropertiesForDynamicNode(
-                cp.Property, allComplexProperties, typeof(object), depth + 1, visitedNodeIds);
+            var propertyName = group.Key;
+            var children = group
+                .OrderBy(cp => cp.SequenceNumber)
+                .Select(cp => DeserializeComplexPropertiesForDynamicNode(
+                    cp.Property, allComplexProperties, typeof(object), depth + 1, visitedNodeIds))
+                .ToList();
+
             entityInfo.ComplexProperties[propertyName] = new Property(
                 PropertyInfo: null!,
                 Label: propertyName,
                 IsNullable: true,
-                Value: childEntity
+                Value: children.Count == 1
+                    ? children[0]
+                    : new EntityCollection(typeof(object), children)
             );
         }
 
