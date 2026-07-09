@@ -61,8 +61,8 @@ public sealed class SkipReasonFormatTests
         var reason = CompatibilityTest.SkipReason(GraphCapability.FullTextSearch, "AnyProvider");
 
         var informational = typeof(CompatibilityTest).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        Assert.NotNull(informational);
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? throw new InvalidOperationException("Suite assembly has no informational version.");
 
         var plusIndex = informational.IndexOf('+', StringComparison.Ordinal);
         var expectedVersion = plusIndex >= 0 ? informational[..plusIndex] : informational;

@@ -87,13 +87,9 @@ public static class ComplianceInventory
                 continue;
             }
 
-            foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-            {
-                if (method.GetCustomAttribute<FactAttribute>(inherit: false) is not null)
-                {
-                    methods.Add(method);
-                }
-            }
+            methods.AddRange(
+                type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Where(method => method.GetCustomAttribute<FactAttribute>(inherit: false) is not null));
         }
 
         return methods;

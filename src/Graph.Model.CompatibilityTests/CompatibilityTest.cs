@@ -48,13 +48,10 @@ public abstract class CompatibilityTest(
     /// </summary>
     public virtual async ValueTask InitializeAsync()
     {
-        foreach (var capability in GetRequiredCapabilities())
+        foreach (var capability in GetRequiredCapabilities().Where(c => !harness.Capabilities.Has(c)))
         {
-            if (!harness.Capabilities.Has(capability))
-            {
-                Assert.Skip(SkipReason(capability, harness.ProviderName));
-                return;
-            }
+            Assert.Skip(SkipReason(capability, harness.ProviderName));
+            return;
         }
 
         try
