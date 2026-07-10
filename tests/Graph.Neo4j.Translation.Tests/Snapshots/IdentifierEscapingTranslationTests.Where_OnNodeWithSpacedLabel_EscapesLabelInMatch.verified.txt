@@ -1,0 +1,10 @@
+== Cypher ==
+MATCH (src:`Label With Space`)
+WHERE src.Name = $p0
+RETURN {
+                Node: src,
+                ComplexProperties: []
+            } AS Node
+
+== Parameters ==
+p0 = "Alice"

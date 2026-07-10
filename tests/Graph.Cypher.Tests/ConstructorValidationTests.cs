@@ -149,6 +149,18 @@ public class ConstructorValidationTests
     }
 
     [Fact]
+    public void RelationshipPattern_AcceptsMultipleTypes()
+    {
+        var relationship = new RelationshipPattern(
+            "r",
+            CypherDirection.Outgoing,
+            depth: null,
+            ["KNOWS", "REPORTS_TO"]);
+
+        Assert.Equal(["KNOWS", "REPORTS_TO"], relationship.Types);
+    }
+
+    [Fact]
     public void BinaryExpression_RejectsUndefinedOperator()
     {
         var ex = Assert.Throws<ArgumentOutOfRangeException>(

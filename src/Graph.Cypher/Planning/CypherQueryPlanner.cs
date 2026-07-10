@@ -27,6 +27,26 @@ public sealed class CypherQueryPlanner
     {
         ArgumentNullException.ThrowIfNull(model);
 
+        // Representation and support are distinct: the model can carry these operations, but this
+        // planner cannot lower them yet. Reject before validation so the error is stable.
+        if (model.SelectMany is not null)
+        {
+            throw new GraphQueryTranslationException(
+                "Cannot plan the query: SelectMany is not supported by graph query translation yet; see #100.");
+        }
+
+        if (model.GroupBy is not null)
+        {
+            throw new GraphQueryTranslationException(
+                "Cannot plan the query: GroupBy is not supported by graph query translation yet; see #100.");
+        }
+
+        if (model.Union is not null)
+        {
+            throw new GraphQueryTranslationException(
+                "Cannot plan the query: Union is not supported by graph query translation yet.");
+        }
+
         // Unconditional: the model validator guards user-reachable semantic errors that Cypher cannot
         // catch (it returns nulls for mis-bound references instead of erroring). One cheap pass per
         // query is negligible next to the network round-trip.
@@ -89,6 +109,7 @@ public sealed class CypherQueryPlanner
         {
             SearchRoot { Target: SearchRootTarget.Nodes } => "n",
             SearchRoot { Target: SearchRootTarget.Relationships } => "r",
+            SearchRoot { Target: SearchRootTarget.Entities } => "entity",
             RelationshipRoot => "r",
             DynamicRoot { ElementType: { } type } when typeof(IRelationship).IsAssignableFrom(type) => "r",
             NodeRoot when rootType is { IsInterface: true } &&
@@ -101,8 +122,8 @@ public sealed class CypherQueryPlanner
         var targetAlias = explicitTraversal.Length switch
         {
             0 => rootAlias,
-            1 => "tgt",
-            _ => $"tgt_{explicitTraversal.Length}",
+            _ => explicitTraversal[^1].TargetAlias ??
+                (explicitTraversal.Length == 1 ? "tgt" : $"tgt_{explicitTraversal.Length}"),
         };
         var targetType = explicitTraversal.LastOrDefault()?.TargetType ?? rootType;
 
@@ -137,16 +158,7 @@ public sealed class CypherQueryPlanner
 
         foreach (var predicate in model.Predicates)
         {
-            var alias = predicate.Alias ?? state.CurrentAlias;
-            if (alias == "src" && state.RootAlias == "src_1")
-            {
-                alias = state.RootAlias;
-            }
-
-            if (model.Root is SearchRoot { Target: SearchRootTarget.Nodes })
-            {
-                alias = "n";
-            }
+            var alias = ResolveLambdaAlias(model, state, predicate.Alias);
 
             predicates.Add(lowerer.LowerLambda(predicate.Predicate, alias));
         }
@@ -157,6 +169,27 @@ public sealed class CypherQueryPlanner
         }
 
         return predicates;
+    }
+
+    private static string ResolveLambdaAlias(
+        GraphQueryModel model,
+        PlanningState state,
+        string? declaredAlias)
+    {
+        if (model.Root is SearchRoot { Target: SearchRootTarget.Nodes })
+        {
+            return "n";
+        }
+
+        if (model.Root is SearchRoot { Target: SearchRootTarget.Entities })
+        {
+            return "entity";
+        }
+
+        var alias = declaredAlias ?? state.CurrentAlias;
+        return alias == "src" && state.RootAlias == "src_1"
+            ? state.RootAlias
+            : alias;
     }
 
     private static IReadOnlyList<CypherExpression> BuildSearchFilterPredicates(
@@ -234,7 +267,7 @@ public sealed class CypherQueryPlanner
             .Select(key => new OrderByItem(
                 lowerer.LowerLambda(
                     RewriteOrderingAfterProjection(model.Projection?.Selector, key.KeySelector),
-                    key.Alias ?? state.CurrentAlias),
+                    ResolveLambdaAlias(model, state, key.Alias)),
                 key.Descending))
             .ToArray();
     }
@@ -516,13 +549,17 @@ public sealed class CypherQueryPlanner
             RelationshipRoot relationship => new PathPattern(
             [
                 new NodePattern("src", []),
-                new RelationshipPattern("r", string.Join('|', Labels.GetCompatibleLabels(relationship.ElementType)), CypherDirection.Outgoing, null),
+                new RelationshipPattern(
+                    "r",
+                    CypherDirection.Outgoing,
+                    depth: null,
+                    Labels.GetCompatibleLabels(relationship.ElementType)),
                 new NodePattern("tgt", [])
             ]),
             DynamicRoot { ElementType: { } type } when typeof(IRelationship).IsAssignableFrom(type) => new PathPattern(
             [
                 new NodePattern("src", []),
-                new RelationshipPattern("r", null, CypherDirection.Outgoing, null),
+                new RelationshipPattern("r", CypherDirection.Outgoing, depth: null, types: []),
                 new NodePattern("tgt", [])
             ]),
             DynamicRoot => new PathPattern([new NodePattern(alias, [])]),
@@ -547,7 +584,7 @@ public sealed class CypherQueryPlanner
         {
             var step = traversal[index];
             var relationshipAlias = index == 0 ? "r" : $"r_{index + 1}";
-            var targetAlias = index == 0 ? "tgt" : $"tgt_{index + 1}";
+            var targetAlias = step.TargetAlias ?? (index == 0 ? "tgt" : $"tgt_{index + 1}");
             var sourceAlias = step.SourceAlias == "src" && rootAlias == "src_1"
                 ? rootAlias
                 : step.SourceAlias ?? (index == 0 ? rootAlias : index == 1 ? "tgt" : $"tgt_{index}");
@@ -562,9 +599,6 @@ public sealed class CypherQueryPlanner
                     sourceAlias == rootAlias && rootType is not null ? Labels.GetCompatibleLabels(rootType) : []),
                 new RelationshipPattern(
                     relationshipAlias,
-                    step.RelationshipClrType is null
-                        ? step.RelationshipType
-                        : string.Join('|', Labels.GetCompatibleLabels(step.RelationshipClrType)),
                     step.Direction switch
                     {
                         GraphTraversalDirection.Outgoing => CypherDirection.Outgoing,
@@ -572,7 +606,10 @@ public sealed class CypherQueryPlanner
                         GraphTraversalDirection.Both => CypherDirection.Both,
                         _ => throw new GraphQueryTranslationException($"Traversal direction '{step.Direction}' is not supported."),
                     },
-                    depth),
+                    depth,
+                    step.RelationshipClrType is null
+                        ? step.RelationshipType is { } relationshipType ? [relationshipType] : []
+                        : Labels.GetCompatibleLabels(step.RelationshipClrType)),
                 new NodePattern(
                     targetAlias,
                     step.TargetType is null ? [] : Labels.GetCompatibleLabels(step.TargetType))
@@ -592,15 +629,8 @@ public sealed class CypherQueryPlanner
     {
         var aggregate = model.Terminal is TerminalOperation.Count or TerminalOperation.Sum or
             TerminalOperation.Average or TerminalOperation.Min or TerminalOperation.Max;
-        var hasPaging = model.Paging.Skip is not null || model.Paging.Take is not null;
-
-        if (aggregate && hasPaging)
-        {
-            clauses.Add(new WithClause([new ReturnItem(new VariableRef(state.CurrentAlias), null)], distinct: false));
-            AddOrderingAndPaging(clauses, ordering, model.Paging, reverseOrdering: false);
-            clauses.Add(BuildAggregateReturn(model, state, projection));
-            return;
-        }
+        var paging = EffectivePaging(model);
+        var hasPaging = paging.Skip is not null || paging.Take is not null;
 
         if (model.Terminal is TerminalOperation.Any or TerminalOperation.All)
         {
@@ -639,31 +669,138 @@ public sealed class CypherQueryPlanner
             return;
         }
 
+        var distinctApplied = false;
+        var effectiveOrdering = ordering;
+        if (ShouldPipeDistinct(model, projection, aggregate, hasPaging, ordering.Count > 0))
+        {
+            (projection, effectiveOrdering) = AddDistinctProjection(
+                clauses,
+                projection,
+                ordering,
+                rejectMultiValueProjection: aggregate);
+            distinctApplied = true;
+        }
+
+        if (aggregate && hasPaging)
+        {
+            if (!distinctApplied)
+            {
+                clauses.Add(new WithClause(
+                    [new ReturnItem(new VariableRef(state.CurrentAlias), null)],
+                    distinct: false));
+            }
+
+            AddOrderingAndPaging(clauses, effectiveOrdering, paging, reverseOrdering: false);
+            clauses.Add(BuildAggregateReturn(model, state, projection));
+            return;
+        }
+
         if (aggregate)
         {
             clauses.Add(BuildAggregateReturn(model, state, projection));
             return;
         }
 
-        if (model.Distinct && projection.Items is { Count: > 0 } items &&
-            (hasPaging || ordering.Count > 0))
+        var reverseOrdering = model.Terminal == TerminalOperation.Last;
+        AddOrderingAndPaging(clauses, effectiveOrdering, paging, reverseOrdering);
+        AddTerminalLimit(clauses, model, paging);
+
+        AddProjectionClause(clauses, model, projection, distinctApplied);
+    }
+
+    /// <summary>
+    /// The paging a terminal implies. ElementAt carries its index as a first-class terminal
+    /// operand; it lowers to SKIP index / LIMIT 1, superseding any explicit paging operators.
+    /// </summary>
+    private static Paging EffectivePaging(GraphQueryModel model)
+    {
+        return model.Terminal is TerminalOperation.ElementAt or TerminalOperation.ElementAtOrDefault
+            ? new Paging((int)model.TerminalOperand!, 1)
+            : model.Paging;
+    }
+
+    private static bool ShouldPipeDistinct(
+        GraphQueryModel model,
+        ProjectionPlan projection,
+        bool aggregate,
+        bool hasPaging,
+        bool hasOrdering)
+    {
+        if (!model.Distinct)
         {
-            AddDistinctScalarProjection(clauses, model, ordering, items);
-            return;
+            return false;
         }
 
-        var reverseOrdering = model.Terminal == TerminalOperation.Last;
-        AddOrderingAndPaging(clauses, ordering, model.Paging, reverseOrdering);
-        AddTerminalLimit(clauses, model);
+        // Scalar materialization can keep the compact RETURN DISTINCT form when nothing follows
+        // it. Entity projection has no DISTINCT form of its own, while aggregates, ordering,
+        // paging, and cardinality terminals must all observe the distinct row set first.
+        return aggregate || projection.Items is null || hasPaging || hasOrdering ||
+            model.Terminal is TerminalOperation.First or TerminalOperation.Last or TerminalOperation.Single;
+    }
 
-        AddProjectionClause(clauses, model, projection);
+    private static (ProjectionPlan Projection, IReadOnlyList<OrderByItem> Ordering) AddDistinctProjection(
+        List<ICypherClause> clauses,
+        ProjectionPlan projection,
+        IReadOnlyList<OrderByItem> ordering,
+        bool rejectMultiValueProjection)
+    {
+        if (projection.Items is { Count: > 0 } items)
+        {
+            if (rejectMultiValueProjection && items.Count > 1)
+            {
+                // Piping the tuple through WITH DISTINCT and aggregating a single column would
+                // silently aggregate the wrong thing; reject until tuple aggregation is modeled.
+                throw new GraphQueryTranslationException(
+                    "Distinct over a multi-value projection cannot be combined with an aggregate terminal; " +
+                    "project a single value before Distinct, or materialize the query first.");
+            }
+
+            var aliases = items
+                .Select((item, index) => item.Alias ?? $"__value{index}")
+                .ToArray();
+            clauses.Add(new WithClause(
+                items.Select((item, index) => new ReturnItem(item.Expression, aliases[index])).ToArray(),
+                distinct: true));
+
+            var projectedOrdering = ordering.Select(order =>
+            {
+                var index = FindProjectionIndex(items, order.Expression);
+                if (index < 0)
+                {
+                    throw new GraphQueryTranslationException(
+                        "Ordering a distinct projection requires the ordering key to be part of the projection.");
+                }
+
+                return new OrderByItem(new VariableRef(aliases[index]), order.Descending);
+            }).ToArray();
+            var projectedItems = items
+                .Select((item, index) => new ReturnItem(new VariableRef(aliases[index]), item.Alias))
+                .ToArray();
+            return (ProjectionPlan.Scalar(projectedItems), projectedOrdering);
+        }
+
+        IReadOnlyList<ReturnItem> entityItems = projection.Shape switch
+        {
+            EntityProjectionShape.Node =>
+                [new ReturnItem(new VariableRef(projection.SourceAlias!), null)],
+            EntityProjectionShape.PathSegment =>
+            [
+                new ReturnItem(new VariableRef(projection.SourceAlias!), null),
+                new ReturnItem(new VariableRef(projection.RelationshipAlias!), null),
+                new ReturnItem(new VariableRef(projection.TargetAlias!), null),
+            ],
+            _ => throw new GraphQueryTranslationException(
+                $"Distinct entity projection shape '{projection.Shape}' is not supported."),
+        };
+        clauses.Add(new WithClause(entityItems, distinct: true));
+        return (projection, ordering);
     }
 
     /// <summary>
     /// Adds the row limit implied by a cardinality terminal. An explicit Take already bounds the
     /// query, so the terminal's limit would only narrow it further.
     /// </summary>
-    private static void AddTerminalLimit(List<ICypherClause> clauses, GraphQueryModel model)
+    private static void AddTerminalLimit(List<ICypherClause> clauses, GraphQueryModel model, Paging paging)
     {
         int? terminalLimit = model.Terminal switch
         {
@@ -672,46 +809,10 @@ public sealed class CypherQueryPlanner
             _ => null,
         };
 
-        if (terminalLimit is not null && model.Paging.Take is null)
+        if (terminalLimit is not null && paging.Take is null)
         {
             clauses.Add(new LimitClause(new Literal(terminalLimit.Value)));
         }
-    }
-
-    private static void AddDistinctScalarProjection(
-        List<ICypherClause> clauses,
-        GraphQueryModel model,
-        IReadOnlyList<OrderByItem> ordering,
-        IReadOnlyList<ReturnItem> items)
-    {
-        var aliases = items
-            .Select((item, index) => item.Alias ?? $"__value{index}")
-            .ToArray();
-        clauses.Add(new WithClause(
-            items.Select((item, index) => new ReturnItem(item.Expression, aliases[index])).ToArray(),
-            distinct: true));
-
-        var projectedOrdering = ordering.Select(order =>
-        {
-            var index = FindProjectionIndex(items, order.Expression);
-            if (index < 0)
-            {
-                throw new GraphQueryTranslationException(
-                    "Ordering a distinct projection requires the ordering key to be part of the projection.");
-            }
-
-            return new OrderByItem(new VariableRef(aliases[index]), order.Descending);
-        }).ToArray();
-        AddOrderingAndPaging(
-            clauses,
-            projectedOrdering,
-            model.Paging,
-            reverseOrdering: model.Terminal == TerminalOperation.Last);
-        AddTerminalLimit(clauses, model);
-
-        clauses.Add(new ReturnClause(
-            items.Select((item, index) => new ReturnItem(new VariableRef(aliases[index]), item.Alias)).ToArray(),
-            distinct: false));
     }
 
     private static int FindProjectionIndex(
@@ -772,13 +873,12 @@ public sealed class CypherQueryPlanner
     private static void AddProjectionClause(
         List<ICypherClause> clauses,
         GraphQueryModel model,
-        ProjectionPlan projection)
+        ProjectionPlan projection,
+        bool distinctApplied)
     {
         if (projection.Items is not null)
         {
-            clauses.Add(new ReturnClause(
-                projection.Items,
-                model.Distinct || model.Terminal == TerminalOperation.Distinct));
+            clauses.Add(new ReturnClause(projection.Items, model.Distinct && !distinctApplied));
             return;
         }
 

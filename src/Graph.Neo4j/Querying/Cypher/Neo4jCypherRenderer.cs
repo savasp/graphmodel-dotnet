@@ -142,7 +142,9 @@ internal sealed class Neo4jCypherRenderer
 
                     if (node.Labels.Count > 0)
                     {
-                        builder.Append(':').Append(string.Join('|', node.Labels));
+                        builder.Append(':').Append(string.Join(
+                            '|',
+                            node.Labels.Select(label => CypherIdentifier.EscapeIfNeeded(label, "node label"))));
                     }
 
                     builder.Append(')');
@@ -174,9 +176,13 @@ internal sealed class Neo4jCypherRenderer
             builder.Append(relationship.Alias);
         }
 
-        if (relationship.Type is not null)
+        if (relationship.Types.Count > 0)
         {
-            builder.Append(':').Append(relationship.Type);
+            // The AST carries type names individually; the alternation join happens here, so a
+            // literal '|' inside a type name escapes as part of that name rather than splitting it.
+            builder.Append(':').Append(string.Join(
+                '|',
+                relationship.Types.Select(type => CypherIdentifier.EscapeIfNeeded(type, "relationship type"))));
         }
 
         if (relationship.Depth is not null)

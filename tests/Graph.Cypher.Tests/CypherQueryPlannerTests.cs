@@ -67,7 +67,7 @@ public class CypherQueryPlannerTests
 
         var match = Assert.IsType<MatchClause>(statement.Clauses[0]);
         var relationship = Assert.IsType<RelationshipPattern>(match.Patterns[0].Elements[1]);
-        Assert.Equal("KNOWS", relationship.Type);
+        Assert.Equal("KNOWS", Assert.Single(relationship.Types));
         Assert.Equal(new Cvoya.Graph.Cypher.Ast.DepthRange(1, 3), relationship.Depth);
         new CypherAstValidator().Run(statement);
     }
@@ -85,7 +85,7 @@ public class CypherQueryPlannerTests
         var exists = Assert.IsType<PatternSubqueryExpression>(not.Operand);
         Assert.Equal(PatternSubqueryKind.Exists, exists.Kind);
         var relationship = Assert.IsType<RelationshipPattern>(exists.Pattern.Elements[1]);
-        Assert.Equal("Home", relationship.Type);
+        Assert.Equal("Home", Assert.Single(relationship.Types));
     }
 
     [Fact]
@@ -115,8 +115,8 @@ public class CypherQueryPlannerTests
 
         var matches = statement.Clauses.OfType<MatchClause>().ToArray();
         Assert.Equal(3, matches.Length);
-        Assert.Equal("Home", Assert.IsType<RelationshipPattern>(matches[1].Patterns[0].Elements[1]).Type);
-        Assert.Equal("Region", Assert.IsType<RelationshipPattern>(matches[2].Patterns[0].Elements[1]).Type);
+        Assert.Equal("Home", Assert.Single(Assert.IsType<RelationshipPattern>(matches[1].Patterns[0].Elements[1]).Types));
+        Assert.Equal("Region", Assert.Single(Assert.IsType<RelationshipPattern>(matches[2].Patterns[0].Elements[1]).Types));
         new CypherAstValidator().Run(statement);
     }
 
@@ -312,6 +312,203 @@ public class CypherQueryPlannerTests
         Assert.Contains("complex-property collection", exception.Message);
     }
 
+    [Fact]
+    public void Plan_GroupByModel_ThrowsDefinedTranslationError()
+    {
+        Expression<Func<Person, int>> key = person => person.Age;
+        var model = Model(groupBy: new GroupByFragment(key, null, null));
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+
+        Assert.Contains("GroupBy is not supported by graph query translation yet; see #100.", exception.Message);
+    }
+
+    [Fact]
+    public void Plan_SelectManyModel_ThrowsDefinedTranslationError()
+    {
+        Expression<Func<Person, IEnumerable<Address>>> collection = person => person.Offices;
+        var model = Model(selectMany: new SelectManyFragment(collection, null));
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+
+        Assert.Contains("SelectMany is not supported by graph query translation yet; see #100.", exception.Message);
+    }
+
+    [Fact]
+    public void Plan_UnionModel_ThrowsDefinedTranslationError()
+    {
+        var operand = Model();
+        var model = Model(union: new UnionFragment(operand, operand, typeof(Person)));
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+
+        Assert.Contains("Union is not supported by graph query translation yet.", exception.Message);
+    }
+
+    [Fact]
+    public void Plan_DistinctScalarAggregate_PipesDistinctProjectionBeforeAggregate()
+    {
+        Expression<Func<Person, string>> selector = person => person.Name;
+        var model = Model(
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector),
+            terminal: TerminalOperation.Count,
+            distinct: true);
+
+        var statement = planner.Plan(model);
+
+        var with = Assert.IsType<WithClause>(statement.Clauses[1]);
+        Assert.True(with.Distinct);
+        var @return = Assert.IsType<ReturnClause>(statement.Clauses[2]);
+        var function = Assert.IsType<FunctionCall>(Assert.Single(@return.Items).Expression);
+        Assert.Equal("count", function.Name);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_DistinctScalarAggregateWithPaging_PipesProjectedValueBeforePaging()
+    {
+        Expression<Func<Person, int>> selector = person => person.Age;
+        var model = Model(
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector),
+            paging: new Paging(skip: null, take: 2),
+            terminal: TerminalOperation.Count,
+            distinct: true);
+
+        var statement = planner.Plan(model);
+
+        var with = Assert.Single(statement.Clauses.OfType<WithClause>());
+        Assert.True(with.Distinct);
+        Assert.IsType<PropertyAccess>(Assert.Single(with.Items).Expression);
+        var limit = Assert.Single(statement.Clauses.OfType<LimitClause>());
+        Assert.Equal(2, Assert.IsType<Literal>(limit.Count).Value);
+        var @return = Assert.Single(statement.Clauses.OfType<ReturnClause>());
+        var aggregate = Assert.IsType<FunctionCall>(Assert.Single(@return.Items).Expression);
+        Assert.Equal("__value0", Assert.IsType<VariableRef>(Assert.Single(aggregate.Arguments)).Alias);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_DistinctEntityProjection_PipesDistinctAliasBeforeMaterialization()
+    {
+        var statement = planner.Plan(Model(distinct: true));
+
+        Assert.Collection(
+            statement.Clauses,
+            clause => Assert.IsType<MatchClause>(clause),
+            clause => Assert.True(Assert.IsType<WithClause>(clause).Distinct),
+            clause => Assert.IsType<EntityProjectionClause>(clause));
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_DistinctSingle_AppliesCardinalityLimitAfterDistinct()
+    {
+        Expression<Func<Person, string>> selector = person => person.Name;
+        var statement = planner.Plan(Model(
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector),
+            terminal: TerminalOperation.Single,
+            distinct: true));
+
+        Assert.Collection(
+            statement.Clauses,
+            clause => Assert.IsType<MatchClause>(clause),
+            clause => Assert.True(Assert.IsType<WithClause>(clause).Distinct),
+            clause => Assert.Equal(2, Assert.IsType<Literal>(Assert.IsType<LimitClause>(clause).Count).Value),
+            clause => Assert.IsType<ReturnClause>(clause));
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_DistinctAggregateOverMultiValueProjection_Throws()
+    {
+        Expression<Func<Person, object>> selector = person => new { person.Name, person.Age };
+        var model = Model(
+            projection: new ProjectionShape(ProjectionKind.Anonymous, selector),
+            terminal: TerminalOperation.Count,
+            distinct: true);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+
+        Assert.Contains("multi-value projection", exception.Message);
+    }
+
+    [Fact]
+    public void Plan_DistinctPagedAggregateOverMultiValueProjection_Throws()
+    {
+        Expression<Func<Person, object>> selector = person => new { person.Name, person.Age };
+        var model = Model(
+            projection: new ProjectionShape(ProjectionKind.Anonymous, selector),
+            paging: new Paging(skip: null, take: 2),
+            terminal: TerminalOperation.Count,
+            distinct: true);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+
+        Assert.Contains("multi-value projection", exception.Message);
+    }
+
+    [Fact]
+    public void Plan_PreSearchOrderingAlias_MapsToSearchScope()
+    {
+        Expression<Func<Person, string>> ordering = person => person.Name;
+        var model = Model(
+            root: new SearchRoot("Ada", SearchRootTarget.Nodes, typeof(Person)),
+            ordering: [new OrderingKey(ordering, descending: false, alias: "src")]);
+
+        var statement = planner.Plan(model);
+
+        var orderBy = Assert.Single(statement.Clauses.OfType<OrderByClause>());
+        var property = Assert.IsType<PropertyAccess>(Assert.Single(orderBy.Items).Expression);
+        Assert.Equal("n", Assert.IsType<VariableRef>(property.Target).Alias);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Theory]
+    [InlineData(TerminalOperation.ElementAt)]
+    [InlineData(TerminalOperation.ElementAtOrDefault)]
+    public void Plan_ElementAt_LowersTerminalIndexAsSkipLimit(TerminalOperation terminal)
+    {
+        var model = Model(terminal: terminal, terminalOperand: 4);
+
+        var statement = planner.Plan(model);
+
+        var skip = Assert.Single(statement.Clauses.OfType<SkipClause>());
+        Assert.Equal(4, Assert.IsType<Literal>(skip.Count).Value);
+        var limit = Assert.Single(statement.Clauses.OfType<LimitClause>());
+        Assert.Equal(1, Assert.IsType<Literal>(limit.Count).Value);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_TraversalTargetAlias_BindsPostTraversalPredicate()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 18;
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows),
+            isComplexPropertyTraversal: false,
+            sourceAlias: "src",
+            targetAlias: "friend");
+        var model = Model(
+            predicates: [new PredicateFragment(predicate, "friend")],
+            traversal: [traversal]);
+
+        var statement = planner.Plan(model);
+
+        var match = Assert.IsType<MatchClause>(statement.Clauses[0]);
+        var target = Assert.IsType<NodePattern>(match.Patterns[0].Elements[2]);
+        Assert.Equal("friend", target.Alias);
+        var where = Assert.Single(statement.Clauses.OfType<WhereClause>());
+        var binary = Assert.IsType<AstBinaryExpression>(where.Predicate);
+        var property = Assert.IsType<PropertyAccess>(binary.Left);
+        Assert.Equal("friend", Assert.IsType<VariableRef>(property.Target).Alias);
+        new CypherAstValidator().Run(statement);
+    }
+
     private static IEnumerable<CypherExpression> Descendants(CypherExpression expression)
     {
         yield return expression;
@@ -343,8 +540,12 @@ public class CypherQueryPlannerTests
         ProjectionShape? projection = null,
         TerminalOperation terminal = TerminalOperation.ToListOrArray,
         bool distinct = false,
+        object? terminalOperand = null,
         JoinFragment? join = null,
-        SearchRoot? searchFilter = null) =>
+        SearchRoot? searchFilter = null,
+        GroupByFragment? groupBy = null,
+        SelectManyFragment? selectMany = null,
+        UnionFragment? union = null) =>
         new(
             root ?? new NodeRoot(typeof(Person)),
             predicates ?? [],
@@ -354,10 +555,13 @@ public class CypherQueryPlannerTests
             paging ?? new Paging(null, null),
             terminal,
             distinct,
-            terminalOperand: null,
+            terminalOperand,
             pathShape: null,
             join,
-            searchFilter);
+            searchFilter,
+            groupBy,
+            selectMany,
+            union);
 
     private enum PersonStatus
     {
