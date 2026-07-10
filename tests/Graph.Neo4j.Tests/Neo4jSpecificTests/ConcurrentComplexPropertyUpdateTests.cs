@@ -111,7 +111,7 @@ public sealed class ConcurrentComplexPropertyUpdateTests(Neo4jHarness harness) :
             await transaction.CommitAsync();
             return null;
         }
-        catch (Exception ex)
+        catch (Neo4jException ex) when (ex.ErrorCode?.StartsWith("Neo.TransientError.", StringComparison.Ordinal) == true)
         {
             return ex;
         }
