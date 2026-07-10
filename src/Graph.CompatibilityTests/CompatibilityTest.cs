@@ -17,7 +17,7 @@ using Xunit.v3;
 /// <see cref="StoreIsolation.CleanSharedStore"/>.</param>
 public abstract class CompatibilityTest(
     IGraphProviderTestHarness harness,
-    StoreIsolation isolation = StoreIsolation.CleanSharedStore) : IGraphModelTest, IAsyncLifetime
+    StoreIsolation isolation = StoreIsolation.CleanSharedStore) : IGraphTest, IAsyncLifetime
 {
     private static readonly string SuiteVersion = GetSuiteVersion();
 

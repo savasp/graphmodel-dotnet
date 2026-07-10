@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IAggregationTests : IGraphModelTest
+public interface IAggregationTests : IGraphTest
 {
     public record PersonWithNumbers : Node
     {

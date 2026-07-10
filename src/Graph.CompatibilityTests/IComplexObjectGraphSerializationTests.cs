@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IComplexObjectGraphSerializationTests : IGraphModelTest
+public interface IComplexObjectGraphSerializationTests : IGraphTest
 {
     [Fact]
     public async Task CanCreateAndGetNodeWithComplexProperty()

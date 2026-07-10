@@ -8,6 +8,6 @@ using Cvoya.Graph.CompatibilityTests;
 /// <summary>
 /// A single example binding: implementing one <c>I*Tests</c> interface is a one-line class. A
 /// real provider's test project has one of these per suite interface it wants to run (typically
-/// all of them) - see <c>tests/Graph.Neo4j.Tests/GraphModelTests</c> for the full set.
+/// all of them) - see <c>tests/Graph.Neo4j.Tests/GraphTests</c> for the full set.
 /// </summary>
 public sealed class SampleBasicTests(SampleHarness harness) : SampleProviderTest(harness), IBasicTests;

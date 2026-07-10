@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface ITransactionTests : IGraphModelTest
+public interface ITransactionTests : IGraphTest
 {
     [Fact]
     public async Task TransactionCommit_PersistsChanges()

@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IDynamicEntitySchemaValidationTests : IGraphModelTest
+public interface IDynamicEntitySchemaValidationTests : IGraphTest
 {
     [Fact]
     public async Task DynamicNode_WithExistingSchema_ValidatesRequiredProperties()

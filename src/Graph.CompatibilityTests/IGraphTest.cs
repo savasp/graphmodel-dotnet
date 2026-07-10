@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IGraphModelTest
+public interface IGraphTest
 {
     IGraph Graph { get; }
 }

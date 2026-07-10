@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IClassHierarchyTests : IGraphModelTest
+public interface IClassHierarchyTests : IGraphTest
 {
     [Fact]
     public async Task CanCreateAndRetrieveNodeViaBaseType()

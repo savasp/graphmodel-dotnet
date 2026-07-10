@@ -4,7 +4,7 @@
 namespace Cvoya.Graph.CompatibilityTests;
 
 [RequiresCapability(GraphCapability.FullTextSearch)]
-public interface IFullTextSearchTests : IGraphModelTest
+public interface IFullTextSearchTests : IGraphTest
 {
     [Fact]
     public async Task CanSearchNodesWithFullTextSearch()

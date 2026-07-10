@@ -7,7 +7,7 @@ using Xunit;
 
 
 using static Cvoya.Graph.Analyzers.Tests.TestHelpers.AnalyzerTestHelpers;
-using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerVerifier<Cvoya.Graph.Analyzers.GraphModelAnalyzer, Microsoft.CodeAnalysis.Testing.DefaultVerifier>;
+using VerifyCS = Microsoft.CodeAnalysis.CSharp.Testing.CSharpAnalyzerVerifier<Cvoya.Graph.Analyzers.GraphAnalyzer, Microsoft.CodeAnalysis.Testing.DefaultVerifier>;
 
 public class CG001_MissingParameterlessRecordConstructorTests
 {

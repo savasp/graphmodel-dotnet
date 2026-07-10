@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface INullablePropertyDeserializationTests : IGraphModelTest
+public interface INullablePropertyDeserializationTests : IGraphTest
 {
     [Node]
     public record PersonWithNullableProperties : Node

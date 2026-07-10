@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface ICancellationTests : IGraphModelTest
+public interface ICancellationTests : IGraphTest
 {
     [Fact]
     public async Task PreCancelledToken_ThrowsOperationCanceledException_ForCrudAsyncEntryPoints()

@@ -266,7 +266,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
 
     private string GenerateDatabaseName(int i)
     {
-        return "GraphModelTests" + i.ToString("D3");
+        return "GraphTests" + i.ToString("D3");
     }
 
     private static bool IsMultiDatabaseUnsupported(Exception exception)

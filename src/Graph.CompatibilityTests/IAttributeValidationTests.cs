@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IAttributeValidationTests : IGraphModelTest
+public interface IAttributeValidationTests : IGraphTest
 {
     [Node("CustomPersonLabel")]
     public record PersonWithCustomLabel : Node

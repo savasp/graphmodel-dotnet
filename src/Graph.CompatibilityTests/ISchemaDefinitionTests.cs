@@ -41,7 +41,7 @@ public record ConfigTestKnows : Relationship
     public string? Notes { get; set; }
 }
 
-public interface ISchemaDefinitionTests : IGraphModelTest
+public interface ISchemaDefinitionTests : IGraphTest
 {
     SchemaRegistry Registry => Graph.SchemaRegistry;
 

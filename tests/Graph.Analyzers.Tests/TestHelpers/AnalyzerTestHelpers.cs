@@ -24,7 +24,7 @@ public static class AnalyzerTestHelpers
     /// </summary>
     public static async Task VerifyAnalyzerAsync(string source, params DiagnosticResult[] expected)
     {
-        var test = new FilteringAnalyzerTest<GraphModelAnalyzer>
+        var test = new FilteringAnalyzerTest<GraphAnalyzer>
         {
             TestState =
             {

@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IStreamingTests : IGraphModelTest
+public interface IStreamingTests : IGraphTest
 {
     [Fact]
     public async Task StreamingQuery_DisposingEnumeratorBeforeExhaustion_CleansUpAutoTransaction()

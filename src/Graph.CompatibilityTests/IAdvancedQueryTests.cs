@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IAdvancedQueryTests : IGraphModelTest
+public interface IAdvancedQueryTests : IGraphTest
 {
     [Fact]
     public async Task CanQueryWithMultipleConditions()

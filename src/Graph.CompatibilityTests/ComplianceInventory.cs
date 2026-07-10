@@ -71,7 +71,7 @@ public static class ComplianceInventory
 
         foreach (var type in typeof(ComplianceInventory).Assembly.GetTypes())
         {
-            if (!type.IsInterface || !type.IsPublic || !typeof(IGraphModelTest).IsAssignableFrom(type))
+            if (!type.IsInterface || !type.IsPublic || !typeof(IGraphTest).IsAssignableFrom(type))
             {
                 continue;
             }

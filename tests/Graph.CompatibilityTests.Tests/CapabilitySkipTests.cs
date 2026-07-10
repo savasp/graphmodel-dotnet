@@ -49,7 +49,7 @@ public sealed class CapabilitySkipTests(FakeHarness harness) : FakeProviderTest(
 /// not by reading traits.
 /// </summary>
 [RequiresCapability(GraphCapability.FullTextSearch)]
-public interface IFakeFullTextArea : IGraphModelTest
+public interface IFakeFullTextArea : IGraphTest
 {
     [Fact]
     void InterfaceGatedTest_MustSkip() =>

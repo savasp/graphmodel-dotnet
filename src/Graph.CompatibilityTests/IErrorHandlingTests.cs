@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IErrorHandlingTests : IGraphModelTest
+public interface IErrorHandlingTests : IGraphTest
 {
     public record TestNode : Node
     {

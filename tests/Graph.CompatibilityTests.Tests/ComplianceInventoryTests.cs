@@ -31,8 +31,8 @@ public sealed class ComplianceInventoryTests
     {
         // Re-derives the count independently of ComplianceInventory's own implementation, so this
         // test can't pass merely because both counts share the same (potentially buggy) logic.
-        var expected = typeof(IGraphModelTest).Assembly.GetTypes()
-            .Where(t => t.IsInterface && t.IsPublic && typeof(IGraphModelTest).IsAssignableFrom(t))
+        var expected = typeof(IGraphTest).Assembly.GetTypes()
+            .Where(t => t.IsInterface && t.IsPublic && typeof(IGraphTest).IsAssignableFrom(t))
             .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             .Count(m => m.GetCustomAttributes(inherit: false).Any(a => a is FactAttribute));
 

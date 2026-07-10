@@ -12,7 +12,7 @@ namespace Cvoya.Graph.CompatibilityTests;
 /// round-tripped as an inert literal string with no side effects on any other data in the graph.
 /// It must never be able to execute as Cypher.
 /// </summary>
-public interface IHostileDynamicIdentifierTests : IGraphModelTest
+public interface IHostileDynamicIdentifierTests : IGraphTest
 {
     /// <summary>
     /// A label containing an embedded backtick is either rejected outright, or - if accepted -

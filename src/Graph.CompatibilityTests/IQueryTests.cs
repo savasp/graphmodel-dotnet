@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IQueryTests : IGraphModelTest
+public interface IQueryTests : IGraphTest
 {
     [Fact]
     public async Task CanQueryNodesByProperty()

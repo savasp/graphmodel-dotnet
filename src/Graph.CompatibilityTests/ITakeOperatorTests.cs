@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface ITakeOperatorTests : IGraphModelTest
+public interface ITakeOperatorTests : IGraphTest
 {
     [Fact]
     public async Task TakeOperator_GeneratesCorrectCypherLimit()

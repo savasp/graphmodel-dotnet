@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IBasicTests : IGraphModelTest
+public interface IBasicTests : IGraphTest
 {
     [Fact]
     public async Task CanCreateAndGetNodeWithPrimitiveProperties()

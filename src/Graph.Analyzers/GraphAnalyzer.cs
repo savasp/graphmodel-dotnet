@@ -12,7 +12,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 /// Analyzer for enforcing Cvoya.Graph implementation rules.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class GraphModelAnalyzer : DiagnosticAnalyzer
+public class GraphAnalyzer : DiagnosticAnalyzer
 {
     /// <summary>
     ///  Gets the list of diagnostics that this analyzer supports.

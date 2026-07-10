@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
-public interface IQueryTraversalTests : IGraphModelTest
+public interface IQueryTraversalTests : IGraphTest
 {
     #region Basic Traversal Tests
 
