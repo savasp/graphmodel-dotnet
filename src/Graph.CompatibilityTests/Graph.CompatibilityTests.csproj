@@ -34,7 +34,7 @@
 
     <PropertyGroup>
         <PackageId>Cvoya.Graph.CompatibilityTests</PackageId>
-        <Description>A shippable compatibility test suite (TCK) for GraphModel providers: a harness SPI, capability-aware skips, and a compliance guard, so a provider can prove it implements the GraphModel contract.</Description>
+        <Description>A shippable compatibility test suite (TCK) for CVOYA graph providers: a harness SPI, capability-aware skips, and a compliance guard, so a provider can prove it implements the CVOYA graph contract.</Description>
         <PackageTags>graph;testing;tck;compatibility;xunit</PackageTags>
     </PropertyGroup>
 
