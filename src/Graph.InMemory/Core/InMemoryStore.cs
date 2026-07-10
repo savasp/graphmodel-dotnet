@@ -6,8 +6,9 @@ namespace Cvoya.Graph.InMemory;
 /// <summary>
 /// The mutable cell holding the current committed <see cref="StoreState"/>. All commits are
 /// serialized through one lock and applied by replaying the transaction's buffered mutations
-/// against the latest committed state, so concurrent transactions cannot lose each other's
-/// writes. Reads take the current snapshot without locking beyond the field read.
+/// against the latest committed state, so disjoint concurrent writes are preserved instead of
+/// being overwritten by a snapshot state-swap. Reads take the current snapshot without locking
+/// beyond the field read.
 /// </summary>
 internal sealed class InMemoryStore
 {
@@ -28,8 +29,8 @@ internal sealed class InMemoryStore
 
     /// <summary>
     /// Applies the given mutations atomically against the latest committed state. Each mutation
-    /// re-validates against that state, so a conflicting concurrent commit surfaces as the
-    /// mutation's own <see cref="GraphException"/> rather than silently overwriting.
+    /// re-validates its own invariants against that state, so duplicate ids, missing endpoints,
+    /// and constraint conflicts surface through the mutation's <see cref="GraphException"/>.
     /// </summary>
     public void Commit(IReadOnlyList<Func<StoreState, StoreState>> mutations)
     {

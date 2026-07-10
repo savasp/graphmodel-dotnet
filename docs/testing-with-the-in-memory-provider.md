@@ -72,8 +72,8 @@ creating a new store.
   relationships (per ADR-0002), so create/update/delete cascade and hydration semantics are the
   real thing.
 - **Transactions**: buffered writes with read-your-writes, atomic commit, rollback/dispose
-  discards, use-after-completion throws `GraphException`, and concurrent transactions don't lose
-  each other's commits.
+  discards, use-after-completion throws `GraphException`, and disjoint concurrent writes are
+  replayed without replacing the latest committed snapshot.
 - **LINQ querying**: `Where`/`Select`/ordering/paging/aggregates, traversals
   (`Traverse`, `PathSegments`, `TraversePaths` with depth and direction options), and streaming
   via `await foreach` — all executed by interpreting the same query model the Cypher pipeline
