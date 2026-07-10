@@ -5,7 +5,7 @@
 
 # CVOYA Graph
 
-**A [CVOYA](https://cvoya.com) project.** Part of [the code CVOYA publishes](https://cvoya-com.github.io/).
+**A [CVOYA](https://cvoya.com) project.** Part of [the code CVOYA publishes](https://oss.cvoya.com/).
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![.NET](https://img.shields.io/badge/.NET-10.0+-purple.svg)](https://dotnet.microsoft.com/download)
