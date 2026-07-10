@@ -46,6 +46,8 @@ To get started, you only need to install the Neo4j provider package:
 | `Cvoya.Graph.Serialization`         | Serialization-related functionality                     | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Serialization.svg)         |
 | `Cvoya.Graph.CompatibilityTests`    | Provider compatibility test suite (**optional, provider authors**) | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.CompatibilityTests.svg) |
 
+All packages are published by CVOYA on NuGet: <https://www.nuget.org/profiles/cvoya>.
+
 Building your own provider? See [Certifying a provider](docs/provider-implementers-guide.md#certifying-a-provider) for how to run the shared compatibility suite against it.
 
 ## Quick Start
