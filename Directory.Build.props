@@ -24,8 +24,9 @@
 
         <!-- Package settings -->
         <IncludeBuildOutput>true</IncludeBuildOutput>
-        <Authors>Cvoya</Authors>
-        <Company>Cvoya</Company>
+        <Authors>CVOYA LLC</Authors>
+        <Company>CVOYA LLC</Company>
+        <Copyright>Copyright 2025 CVOYA LLC</Copyright>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/cvoya-com/graph</PackageProjectUrl>
         <RepositoryUrl>https://github.com/cvoya-com/graph</RepositoryUrl>
