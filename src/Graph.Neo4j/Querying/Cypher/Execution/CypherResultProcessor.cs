@@ -491,7 +491,7 @@ internal sealed class CypherResultProcessor
             }
 
             // Handle Neo4j relationships specially - convert them to EntityInfo
-            if (value is IRelationship rel)
+            if (value is IRelationship)
             {
                 throw new GraphException(
                     $"Relationship projection '{key}' did not include endpoint node data. " +
@@ -945,26 +945,11 @@ internal sealed class CypherResultProcessor
             if (key is SerializationBridge.MetadataPropertyName or SerializationBridge.EntityKindPropertyName)
                 continue;
             // Use SerializationBridge to convert Neo4j values to .NET types
-            object? convertedValue = value;
-            if (value is List<object> listValue)
-            {
-                // Try to infer element type from contents (string, int, etc.)
-                var elementType = listValue.FirstOrDefault()?.GetType() ?? typeof(object);
-                // If all elements are string, treat as List<string>
-                if (listValue.All(x => x is string || x == null))
-                {
-                    convertedValue = listValue.Cast<string?>().ToList();
-                }
-                else
-                {
-                    // Fallback: use SerializationBridge to convert to List<object>
-                    convertedValue = SerializationBridge.FromNeo4jValue(listValue, typeof(List<object>));
-                }
-            }
-            else
-            {
-                convertedValue = SerializationBridge.FromNeo4jValue(value, value?.GetType() ?? typeof(object));
-            }
+            object? convertedValue = value is List<object> listValue
+                ? listValue.All(x => x is string || x == null)
+                    ? listValue.Cast<string?>().ToList()
+                    : SerializationBridge.FromNeo4jValue(listValue, typeof(List<object>))
+                : SerializationBridge.FromNeo4jValue(value, value?.GetType() ?? typeof(object));
             result[key] = new Property(
                 PropertyInfo: null!,
                 Label: key,

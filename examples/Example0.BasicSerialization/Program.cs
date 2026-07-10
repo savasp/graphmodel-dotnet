@@ -102,8 +102,8 @@ try
     // Save complex node to graph
     await graph.CreateNodeAsync(charlie);
     Console.WriteLine($"✓ Created employee with address: {charlie.Name}");
-    Console.WriteLine($"  Home Address: {charlie.HomeAddress.Street}, {charlie.HomeAddress.City}, {charlie.HomeAddress.State} {charlie.HomeAddress.ZipCode}, {charlie.HomeAddress.Country}");
-    Console.WriteLine($"  Work Address: {charlie.WorkAddress.Street}, {charlie.WorkAddress.City}, {charlie.WorkAddress.State} {charlie.WorkAddress.ZipCode}, {charlie.WorkAddress.Country}\n");
+    Console.WriteLine($"  Home Address: {charlie.HomeAddress.Street}, {charlie.HomeAddress.City.Name}, {charlie.HomeAddress.State} {charlie.HomeAddress.ZipCode}, {charlie.HomeAddress.Country}");
+    Console.WriteLine($"  Work Address: {charlie.WorkAddress.Street}, {charlie.WorkAddress.City.Name}, {charlie.WorkAddress.State} {charlie.WorkAddress.ZipCode}, {charlie.WorkAddress.Country}\n");
 
     var seattle = new City { Name = "Seattle" };
     var foo = new Foo
@@ -206,7 +206,7 @@ try
     Console.WriteLine($"✓ Created employee with multiple addresses: {dave.Name}");
     foreach (var address in dave.PreviousAddresses)
     {
-        Console.WriteLine($"  Address: {address.Street}, {address.City}, {address.State} {address.ZipCode}, {address.Country}");
+        Console.WriteLine($"  Address: {address.Street}, {address.City.Name}, {address.State} {address.ZipCode}, {address.Country}");
     }
 
     // Serialize a relationship
@@ -262,9 +262,5 @@ catch (Exception ex)
 finally
 {
     await store.DisposeAsync();
-    await using (var session = driver.AsyncSession())
-    {
-        //await session.RunAsync($"DROP DATABASE {databaseName}");
-    }
     await driver.DisposeAsync();
 }

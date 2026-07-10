@@ -373,7 +373,7 @@ internal sealed class ResultMaterializer
             {
                 array.SetValue(items[i], i);
             }
-            return (T)(object)array;
+            return Cast<T>(array);
         }
 
         if (targetType.IsGenericType)
@@ -396,5 +396,10 @@ internal sealed class ResultMaterializer
         }
 
         throw new NotSupportedException($"Cannot convert results to collection type {targetType}");
+    }
+
+    private static T Cast<T>(object value)
+    {
+        return (T)value;
     }
 }

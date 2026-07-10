@@ -12,6 +12,7 @@
         <PackageVersion Include="Cvoya.Graph" Version="$(Version)" />
         <PackageVersion Include="Cvoya.Graph.CompatibilityTests" Version="$(Version)" />
         <PackageVersion Include="Cvoya.Graph.Analyzers" Version="$(Version)" />
+        <PackageVersion Include="Cvoya.Graph.Cypher" Version="$(Version)" />
         <PackageVersion Include="Cvoya.Graph.Neo4j" Version="$(Version)" />
         <PackageVersion Include="Cvoya.Graph.Serialization" Version="$(Version)" />
         <PackageVersion Include="Cvoya.Graph.Serialization.CodeGen" Version="$(Version)" />

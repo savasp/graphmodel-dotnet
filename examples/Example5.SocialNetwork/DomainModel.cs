@@ -110,32 +110,6 @@ public record Wrote : Relationship
     }
 }
 
-[Relationship(Label = "AUTHORED_BY")]
-public record Author : Relationship
-{
-    public DateTime PublishedDate { get; set; }
-    public int Likes { get; set; }
-
-    // Parameterless constructor required by IRelationship
-    public Author() : base(string.Empty, string.Empty)
-    {
-    }
-
-    // Constructor to initialize all properties
-    public Author(string startNodeId, string endNodeId, DateTime publishedDate, int likes)
-        : base(startNodeId, endNodeId)
-    {
-        PublishedDate = publishedDate;
-        Likes = likes;
-    }
-
-    // Constructor for just start and end node IDs
-    public Author(string startNodeId, string endNodeId)
-        : base(startNodeId, endNodeId)
-    {
-    }
-}
-
 [Node(Label = "Post")]
 public record Post : Node
 {

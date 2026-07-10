@@ -1083,13 +1083,11 @@ public interface IQueryTraversalTests : IGraphTest
         var alice = new Person { FirstName = "Alice", LastName = "Smith" };
         await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
 
-        var friends = new List<Person>();
         const int friendCount = 50; // Reduced for test performance
 
         for (int i = 0; i < friendCount; i++)
         {
             var friend = new Person { FirstName = $"Friend{i}", LastName = "Test" };
-            friends.Add(friend);
             await Graph.CreateNodeAsync(friend, null, TestContext.Current.CancellationToken);
             await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = friend.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
         }

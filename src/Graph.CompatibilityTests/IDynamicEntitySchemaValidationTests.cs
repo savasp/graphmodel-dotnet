@@ -113,7 +113,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert
-        GraphException exception = await Assert.ThrowsAsync<GraphException>(() =>
+        await Assert.ThrowsAsync<GraphException>(() =>
             Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken));
     }
 
@@ -143,7 +143,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert
-        GraphException exception = await Assert.ThrowsAsync<GraphException>(() =>
+        await Assert.ThrowsAsync<GraphException>(() =>
             Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken));
     }
 
@@ -174,7 +174,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert - Should throw for wrong property name
-        GraphException exception = await Assert.ThrowsAsync<GraphException>(() =>
+        await Assert.ThrowsAsync<GraphException>(() =>
             Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken));
     }
 
@@ -204,7 +204,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert
-        GraphException exception = await Assert.ThrowsAsync<GraphException>(() =>
+        await Assert.ThrowsAsync<GraphException>(() =>
             Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken));
     }
 
@@ -306,7 +306,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert - Should throw because property names don't match the schema
-        GraphException exception = await Assert.ThrowsAsync<GraphException>(() =>
+        await Assert.ThrowsAsync<GraphException>(() =>
             Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken));
     }
 
@@ -331,7 +331,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert - Should throw because of invalid enum value
-        GraphException exception = await Assert.ThrowsAsync<GraphException>(() =>
+        await Assert.ThrowsAsync<GraphException>(() =>
             Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken));
     }
 
@@ -359,7 +359,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert - Should fail because extra properties aren't part of the schema
-        GraphException exception = await Assert.ThrowsAsync<GraphException>(() =>
+        await Assert.ThrowsAsync<GraphException>(() =>
             Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken));
     }
 
@@ -519,7 +519,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => Graph.CreateNodeAsync(dynamicNode, null, TestContext.Current.CancellationToken));
     }
 
@@ -597,7 +597,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken));
     }
 
@@ -626,7 +626,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken));
     }
 
@@ -684,7 +684,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken));
     }
 
@@ -710,7 +710,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
         };
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<GraphException>(
+        await Assert.ThrowsAsync<GraphException>(
             () => Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken));
     }
 

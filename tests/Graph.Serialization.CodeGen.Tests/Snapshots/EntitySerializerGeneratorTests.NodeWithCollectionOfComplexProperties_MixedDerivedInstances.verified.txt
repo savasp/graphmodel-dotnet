@@ -43,22 +43,12 @@ internal sealed class AnimalDescriptionSerializer : IEntitySerializer
         // Look for property 'Name' in both simple and complex properties
         var namePropRep = entity.SimpleProperties.TryGetValue("Name", out var nameSimpleProp) ? nameSimpleProp
                     : entity.ComplexProperties.TryGetValue("Name", out var nameComplexProp) ? nameComplexProp : null;
-        if (namePropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (namePropRep.Value is SimpleValue simpleValue)
-            {
-                result.Name = (string)simpleValue.Object;
-            }
-            else
-            {
-                result.Name = string.Empty;
-            }
-        }
-        else
-        {
-            result.Name = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        result.Name = namePropRep is null
+            ? string.Empty
+            : namePropRep.Value is SimpleValue namePropRepSimpleValue
+                ? (string)namePropRepSimpleValue.Object
+                : string.Empty;
         return result;
     }
 
@@ -72,15 +62,14 @@ internal sealed class AnimalDescriptionSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.AnimalDescription).GetProperty("Name")!;
             var value = entity.Name;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -201,41 +190,21 @@ internal sealed class DogDescriptionSerializer : IEntitySerializer
         // Look for property 'Breed' in both simple and complex properties
         var breedPropRep = entity.SimpleProperties.TryGetValue("Breed", out var breedSimpleProp) ? breedSimpleProp
                     : entity.ComplexProperties.TryGetValue("Breed", out var breedComplexProp) ? breedComplexProp : null;
-        if (breedPropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (breedPropRep.Value is SimpleValue simpleValue)
-            {
-                result.Breed = (string)simpleValue.Object;
-            }
-            else
-            {
-                result.Breed = string.Empty;
-            }
-        }
-        else
-        {
-            result.Breed = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        result.Breed = breedPropRep is null
+            ? string.Empty
+            : breedPropRep.Value is SimpleValue breedPropRepSimpleValue
+                ? (string)breedPropRepSimpleValue.Object
+                : string.Empty;
         // Look for property 'Name' in both simple and complex properties
         var namePropRep = entity.SimpleProperties.TryGetValue("Name", out var nameSimpleProp) ? nameSimpleProp
                     : entity.ComplexProperties.TryGetValue("Name", out var nameComplexProp) ? nameComplexProp : null;
-        if (namePropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (namePropRep.Value is SimpleValue simpleValue)
-            {
-                result.Name = (string)simpleValue.Object;
-            }
-            else
-            {
-                result.Name = string.Empty;
-            }
-        }
-        else
-        {
-            result.Name = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        result.Name = namePropRep is null
+            ? string.Empty
+            : namePropRep.Value is SimpleValue namePropRepSimpleValue
+                ? (string)namePropRepSimpleValue.Object
+                : string.Empty;
         return result;
     }
 
@@ -249,15 +218,14 @@ internal sealed class DogDescriptionSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.DogDescription).GetProperty("Breed")!;
             var value = entity.Breed;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -272,15 +240,14 @@ internal sealed class DogDescriptionSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.AnimalDescription).GetProperty("Name")!;
             var value = entity.Name;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -412,22 +379,12 @@ internal sealed class HandlerDescriptionSerializer : IEntitySerializer
         // Look for property 'Name' in both simple and complex properties
         var namePropRep = entity.SimpleProperties.TryGetValue("Name", out var nameSimpleProp) ? nameSimpleProp
                     : entity.ComplexProperties.TryGetValue("Name", out var nameComplexProp) ? nameComplexProp : null;
-        if (namePropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (namePropRep.Value is SimpleValue simpleValue)
-            {
-                result.Name = (string)simpleValue.Object;
-            }
-            else
-            {
-                result.Name = string.Empty;
-            }
-        }
-        else
-        {
-            result.Name = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        result.Name = namePropRep is null
+            ? string.Empty
+            : namePropRep.Value is SimpleValue namePropRepSimpleValue
+                ? (string)namePropRepSimpleValue.Object
+                : string.Empty;
         return result;
     }
 
@@ -441,15 +398,14 @@ internal sealed class HandlerDescriptionSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.HandlerDescription).GetProperty("Name")!;
             var value = entity.Name;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -571,22 +527,12 @@ internal sealed class KennelSerializer : IEntitySerializer
         // Look for property 'Id' in both simple and complex properties
         var idPropRep = entity.SimpleProperties.TryGetValue("Id", out var idSimpleProp) ? idSimpleProp
                     : entity.ComplexProperties.TryGetValue("Id", out var idComplexProp) ? idComplexProp : null;
-        if (idPropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (idPropRep.Value is SimpleValue simpleValue)
-            {
-                idValue = (string)simpleValue.Object;
-            }
-            else
-            {
-                idValue = Guid.NewGuid().ToString("N");
-            }
-        }
-        else
-        {
-            idValue = Guid.NewGuid().ToString("N");
-        }
+        // Extract simple value - no conversion, just cast
+        idValue = idPropRep is null
+            ? Guid.NewGuid().ToString("N")
+            : idPropRep.Value is SimpleValue idPropRepSimpleValue
+                ? (string)idPropRepSimpleValue.Object
+                : Guid.NewGuid().ToString("N");
 
         var result = new TestNamespace.Kennel(
         )
@@ -598,64 +544,30 @@ internal sealed class KennelSerializer : IEntitySerializer
         // Look for property 'Animals' in both simple and complex properties
         var animalsPropRep = entity.SimpleProperties.TryGetValue("Animals", out var animalsSimpleProp) ? animalsSimpleProp
                     : entity.ComplexProperties.TryGetValue("Animals", out var animalsComplexProp) ? animalsComplexProp : null;
-        if (animalsPropRep != null)
-        {
-            // Extract collection value
-            if (animalsPropRep.Value is EntityCollection entityCollection)
-            {
-                var collection = new List<TestNamespace.AnimalDescription>();
-                foreach (var entityItem in entityCollection.Entities)
-                {
-                    var itemSerializer = _serializerRegistry.GetSerializer(entityItem.ActualType)
-                        ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.AnimalDescription));
-                    if (itemSerializer == null)
-                    {
-                        throw new InvalidOperationException($"No serializer found for element type {entityItem.ActualType}");
-                    }
-                    var deserializedItem = itemSerializer.Deserialize(entityItem);
-                    if (deserializedItem is TestNamespace.AnimalDescription typedItem)
-                    {
-                        collection.Add(typedItem);
-                    }
-                }
-                result.Animals = collection;
-            }
-            else
-            {
-                throw new InvalidOperationException("Required collection property 'Animals' is missing or null");
-            }
-        }
-        else
-        {
-            result.Animals = new System.Collections.Generic.List<TestNamespace.AnimalDescription>();
-        }
+        // Extract collection value
+        result.Animals = animalsPropRep is null
+            ? new System.Collections.Generic.List<TestNamespace.AnimalDescription>()
+            : animalsPropRep.Value is EntityCollection animalsPropRepEntityCollection
+                ? animalsPropRepEntityCollection.Entities
+                    .Select(entityItem => (_serializerRegistry.GetSerializer(entityItem.ActualType)
+                        ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.AnimalDescription))
+                        ?? throw new InvalidOperationException($"No serializer found for element type {entityItem.ActualType}"))
+                        .Deserialize(entityItem))
+                    .OfType<TestNamespace.AnimalDescription>()
+                    .ToList()
+                : throw new InvalidOperationException("Required collection property 'Animals' is missing or null");
         // Look for property 'Labels' in both simple and complex properties
         var labelsPropRep = entity.SimpleProperties.TryGetValue("Labels", out var labelsSimpleProp) ? labelsSimpleProp
                     : entity.ComplexProperties.TryGetValue("Labels", out var labelsComplexProp) ? labelsComplexProp : null;
-        if (labelsPropRep != null)
-        {
-            // Extract collection value
-            if (labelsPropRep.Value is SimpleCollection simpleCollection)
-            {
-                var collection = new List<string>();
-                foreach (var simpleValue in simpleCollection.Values)
-                {
-                    if (simpleValue.Object != null)
-                    {
-                        collection.Add((string)simpleValue.Object);
-                    }
-                }
-                result.Labels = collection;
-            }
-            else
-            {
-                throw new InvalidOperationException("Required collection property 'Labels' is missing or null");
-            }
-        }
-        else
-        {
-            result.Labels = new System.Collections.Generic.List<string>();
-        }
+        // Extract collection value
+        result.Labels = labelsPropRep is null
+            ? new System.Collections.Generic.List<string>()
+            : labelsPropRep.Value is SimpleCollection labelsPropRepSimpleCollection
+                ? labelsPropRepSimpleCollection.Values
+                    .Where(simpleValue => simpleValue.Object is not null)
+                    .Select(simpleValue => (string)simpleValue.Object)
+                    .ToList()
+                : throw new InvalidOperationException("Required collection property 'Labels' is missing or null");
         return result;
     }
 
@@ -669,33 +581,21 @@ internal sealed class KennelSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.Kennel).GetProperty("Animals")!;
             var value = entity.Animals;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                var entities = new List<EntityInfo>();
-                foreach (var item in value)
-                {
-                    if (item != null)
-                    {
-                        var itemSerializer = _serializerRegistry.GetSerializer(item.GetType())
-                            ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.AnimalDescription));
-                        if (itemSerializer == null)
-                        {
-                            throw new InvalidOperationException($"No serializer found for type {item.GetType()}");
-                        }
-                        var serializedItem = itemSerializer.Serialize(item);
-                        if (serializedItem is EntityInfo entityItem)
-                        {
-                            entities.Add(entityItem);
-                        }
-                    }
-                }
-                serializedValue = new EntityCollection(
+            serializedValue = value is null
+                ? null
+                : new EntityCollection(
                     Type: typeof(TestNamespace.AnimalDescription),
-                    Entities: entities
+                    Entities: value
+                        .Where(item => item is not null)
+                        .Select(item =>
+                            (_serializerRegistry.GetSerializer(item!.GetType())
+                                ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.AnimalDescription))
+                                ?? throw new InvalidOperationException($"No serializer found for type {item.GetType()}"))
+                                .Serialize(item))
+                        .ToList()
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -711,15 +611,14 @@ internal sealed class KennelSerializer : IEntitySerializer
         {
             var propInfo = typeof(Cvoya.Graph.Node).GetProperty("Id")!;
             var value = entity.Id;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -734,23 +633,16 @@ internal sealed class KennelSerializer : IEntitySerializer
         {
             var propInfo = typeof(Cvoya.Graph.Node).GetProperty("Labels")!;
             var value = entity.Labels;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                var values = new List<SimpleValue>();
-                foreach (var item in value)
-                {
-                    values.Add(new SimpleValue(
-                        Object: item!,
-                        Type: typeof(string)
-                    ));
-                }
-                serializedValue = new SimpleCollection(
-                    Values: values,
+            serializedValue = value is null
+                ? null
+                : new SimpleCollection(
+                    Values: value
+                        .Select(item => new SimpleValue(item!, typeof(string)))
+                        .ToList(),
                     ElementType: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -901,88 +793,42 @@ internal sealed class PoliceDogDescriptionSerializer : IEntitySerializer
         // Look for property 'Badge' in both simple and complex properties
         var badgePropRep = entity.SimpleProperties.TryGetValue("Badge", out var badgeSimpleProp) ? badgeSimpleProp
                     : entity.ComplexProperties.TryGetValue("Badge", out var badgeComplexProp) ? badgeComplexProp : null;
-        if (badgePropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (badgePropRep.Value is SimpleValue simpleValue)
-            {
-                result.Badge = (string)simpleValue.Object;
-            }
-            else
-            {
-                result.Badge = string.Empty;
-            }
-        }
-        else
-        {
-            result.Badge = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        result.Badge = badgePropRep is null
+            ? string.Empty
+            : badgePropRep.Value is SimpleValue badgePropRepSimpleValue
+                ? (string)badgePropRepSimpleValue.Object
+                : string.Empty;
         // Look for property 'Handler' in both simple and complex properties
         var handlerPropRep = entity.SimpleProperties.TryGetValue("Handler", out var handlerSimpleProp) ? handlerSimpleProp
                     : entity.ComplexProperties.TryGetValue("Handler", out var handlerComplexProp) ? handlerComplexProp : null;
-        if (handlerPropRep != null)
-        {
-            // Extract complex value using registered serializer
-            if (handlerPropRep.Value is EntityInfo complexEntity)
-            {
-                var complexSerializer = _serializerRegistry.GetSerializer(complexEntity.ActualType)
-                    ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.HandlerDescription));
-                if (complexSerializer != null)
-                {
-                    result.Handler = (TestNamespace.HandlerDescription?)complexSerializer.Deserialize(complexEntity);
-                }
-                else
-                {
-                    throw new InvalidOperationException($"No serializer found for type {complexEntity.ActualType}");
-                }
-            }
-            else
-            {
-                result.Handler = null;
-            }
-        }
-        else
-        {
-            result.Handler = null;
-        }
+        // Extract complex value using registered serializer
+        result.Handler = handlerPropRep is null
+            ? null
+            : handlerPropRep.Value is EntityInfo handlerPropRepComplexEntity
+                ? (TestNamespace.HandlerDescription?)(_serializerRegistry.GetSerializer(handlerPropRepComplexEntity.ActualType)
+                    ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.HandlerDescription))
+                    ?? throw new InvalidOperationException($"No serializer found for type {handlerPropRepComplexEntity.ActualType}"))
+                    .Deserialize(handlerPropRepComplexEntity)
+                : null;
         // Look for property 'Breed' in both simple and complex properties
         var breedPropRep = entity.SimpleProperties.TryGetValue("Breed", out var breedSimpleProp) ? breedSimpleProp
                     : entity.ComplexProperties.TryGetValue("Breed", out var breedComplexProp) ? breedComplexProp : null;
-        if (breedPropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (breedPropRep.Value is SimpleValue simpleValue)
-            {
-                result.Breed = (string)simpleValue.Object;
-            }
-            else
-            {
-                result.Breed = string.Empty;
-            }
-        }
-        else
-        {
-            result.Breed = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        result.Breed = breedPropRep is null
+            ? string.Empty
+            : breedPropRep.Value is SimpleValue breedPropRepSimpleValue
+                ? (string)breedPropRepSimpleValue.Object
+                : string.Empty;
         // Look for property 'Name' in both simple and complex properties
         var namePropRep = entity.SimpleProperties.TryGetValue("Name", out var nameSimpleProp) ? nameSimpleProp
                     : entity.ComplexProperties.TryGetValue("Name", out var nameComplexProp) ? nameComplexProp : null;
-        if (namePropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (namePropRep.Value is SimpleValue simpleValue)
-            {
-                result.Name = (string)simpleValue.Object;
-            }
-            else
-            {
-                result.Name = string.Empty;
-            }
-        }
-        else
-        {
-            result.Name = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        result.Name = namePropRep is null
+            ? string.Empty
+            : namePropRep.Value is SimpleValue namePropRepSimpleValue
+                ? (string)namePropRepSimpleValue.Object
+                : string.Empty;
         return result;
     }
 
@@ -996,15 +842,14 @@ internal sealed class PoliceDogDescriptionSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.PoliceDogDescription).GetProperty("Badge")!;
             var value = entity.Badge;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -1019,20 +864,13 @@ internal sealed class PoliceDogDescriptionSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.PoliceDogDescription).GetProperty("Handler")!;
             var value = entity.Handler;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                var complexSerializer = _serializerRegistry.GetSerializer(value.GetType());
-                if (complexSerializer != null)
-                {
-                    serializedValue = complexSerializer.Serialize(value);
-                }
-                else
-                {
-                    throw new InvalidOperationException($"No serializer found for type {value.GetType().Name}");
-                }
-            }
+            serializedValue = value is null
+                ? null
+                : (_serializerRegistry.GetSerializer(value.GetType())
+                    ?? throw new InvalidOperationException($"No serializer found for type {value.GetType().Name}"))
+                    .Serialize(value);
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -1048,15 +886,14 @@ internal sealed class PoliceDogDescriptionSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.DogDescription).GetProperty("Breed")!;
             var value = entity.Breed;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -1071,15 +908,14 @@ internal sealed class PoliceDogDescriptionSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.AnimalDescription).GetProperty("Name")!;
             var value = entity.Name;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,

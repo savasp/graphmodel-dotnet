@@ -22,8 +22,9 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
     public async Task CanCreateAndGetNodeWithComplexPropertyTree()
     {
         // Create n1 -> A -> B
-        var n1 = new Class1 { Property1 = "Value A", Property2 = "Value B", A = new ComplexClassA { Property1 = "Nested A", Property2 = "Nested B" } };
-        n1.A.B = new ComplexClassB { Property1 = "Nested B1" };
+        var nestedA = new ComplexClassA { Property1 = "Nested A", Property2 = "Nested B" };
+        var n1 = new Class1 { Property1 = "Value A", Property2 = "Value B", A = nestedA };
+        nestedA.B = new ComplexClassB { Property1 = "Nested B1" };
 
         await this.Graph.CreateNodeAsync(n1, null, TestContext.Current.CancellationToken);
         var fetched = await this.Graph.GetNodeAsync<Class1>(n1.Id, null, TestContext.Current.CancellationToken);
@@ -39,13 +40,14 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
     {
         // Create
         // n1 -> A
-        var n1 = new Class1 { Property1 = "Value A", Property2 = "Value B", A = new ComplexClassA { Property1 = "Nested A", Property2 = "Nested B" } };
+        var nestedA = new ComplexClassA { Property1 = "Nested A", Property2 = "Nested B" };
+        var n1 = new Class1 { Property1 = "Value A", Property2 = "Value B", A = nestedA };
         // A -> B
-        n1.A.B = new ComplexClassB { Property1 = "Nested B1" };
+        nestedA.B = new ComplexClassB { Property1 = "Nested B1" };
         // A -> C
-        n1.A.C = new ComplexClassC { Property1 = "Nested C1" };
+        nestedA.C = new ComplexClassC { Property1 = "Nested C1" };
         // C -> B
-        n1.A.C.B = new ComplexClassB();
+        nestedA.C.B = new ComplexClassB();
 
         await this.Graph.CreateNodeAsync(n1, null, TestContext.Current.CancellationToken);
         var fetched = await this.Graph.GetNodeAsync<Class1>(n1.Id, null, TestContext.Current.CancellationToken);

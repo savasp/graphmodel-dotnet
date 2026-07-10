@@ -344,7 +344,7 @@ internal static class GeneratorTestHelpers
             .Split(Path.PathSeparator);
 
         var references = trustedAssemblies
-            .Where(path => Path.GetFileName(path) is "System.Private.CoreLib.dll" or "System.Runtime.dll" or "netstandard.dll" or "System.Collections.dll" or "System.Linq.dll" or "System.ComponentModel.Primitives.dll")
+            .Where(path => Path.GetFileName(path) is "System.Private.CoreLib.dll" or "System.Runtime.dll" or "netstandard.dll" or "System.Collections.dll" or "System.Linq.dll" or "System.Linq.Expressions.dll" or "System.ComponentModel.Primitives.dll")
             .Select(path => (MetadataReference)MetadataReference.CreateFromFile(path))
             .ToList();
 

@@ -144,34 +144,14 @@ internal static class Deserialization
         sb.AppendLine($"        // Look for property '{propertyName}' in both simple and complex properties");
         sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
         sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
-        sb.AppendLine($"        if ({propRepVar} != null)");
-        sb.AppendLine("        {");
-
-        GenerateValueExtraction(sb, property.Type, variableName, propertyName, propRepVar, 12);
-
-        sb.AppendLine("        }");
-        sb.AppendLine("        else");
-        sb.AppendLine("        {");
-
-        // Handle missing init-only properties with proper defaults
-        var defaultValue = GetDefaultValueForProperty(propName, property.Type, out var shouldThrow);
-
-        // Check if the property type is nullable
-        if (property.Type.IsNullable)
-        {
-            // For nullable types, set to null if no value is provided
-            sb.AppendLine($"            {variableName} = null;");
-        }
-        else if (shouldThrow)
-        {
-            sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for property '{propertyName}' of type '{property.Type.DisplayName}'.\");");
-        }
-        else
-        {
-            sb.AppendLine($"            {variableName} = {defaultValue};");
-        }
-
-        sb.AppendLine("        }");
+        GenerateValueExtraction(
+            sb,
+            property.Type,
+            variableName,
+            propertyName,
+            propRepVar,
+            8,
+            GetMissingPropertyValueExpression(propName, propertyName, property.Type));
     }
 
     private static string GetDefaultValueForProperty(string propertyName, TypeReferenceModel propertyType, out bool shouldThrow)
@@ -204,42 +184,14 @@ internal static class Deserialization
         sb.AppendLine($"        // Look for property '{propertyName}' in both simple and complex properties");
         sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
         sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
-        sb.AppendLine($"        if ({propRepVar} != null)");
-        sb.AppendLine("        {");
-
-        GenerateValueExtraction(sb, parameter.Type, paramName, propertyName, propRepVar, 12);
-
-        sb.AppendLine("        }");
-        sb.AppendLine("        else");
-        sb.AppendLine("        {");
-
-        // Handle missing parameters with proper defaults
-        if (parameter.HasExplicitDefaultValue)
-        {
-            sb.AppendLine($"            {paramName} = {parameter.ExplicitDefaultValueExpression};");
-        }
-        else
-        {
-            // For required properties, use sensible defaults based on the property name and type
-            var defaultValue = GetDefaultValueForParameter(paramName, parameter.Type, out var shouldThrow);
-
-            // Check if the parameter type is nullable
-            if (parameter.Type.IsNullable)
-            {
-                // For nullable types, set to null if no value is provided
-                sb.AppendLine($"            {paramName} = null;");
-            }
-            else if (shouldThrow)
-            {
-                sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for parameter '{paramName}' of type '{parameter.Type.DisplayName}'.\");");
-            }
-            else
-            {
-                sb.AppendLine($"            {paramName} = {defaultValue};");
-            }
-        }
-
-        sb.AppendLine("        }");
+        GenerateValueExtraction(
+            sb,
+            parameter.Type,
+            paramName,
+            propertyName,
+            propRepVar,
+            8,
+            GetMissingParameterValueExpression(parameter));
     }
 
     private static void GeneratePropertySetters(
@@ -261,34 +213,14 @@ internal static class Deserialization
             sb.AppendLine($"        // Look for property '{propertyName}' in both simple and complex properties");
             sb.AppendLine($"        var {propRepVar} = {entityVar}.SimpleProperties.TryGetValue(\"{propertyName}\", out var {simplePropVar}) ? {simplePropVar}");
             sb.AppendLine($"                    : {entityVar}.ComplexProperties.TryGetValue(\"{propertyName}\", out var {complexPropVar}) ? {complexPropVar} : null;");
-            sb.AppendLine($"        if ({propRepVar} != null)");
-            sb.AppendLine("        {");
-
-            GenerateValueExtraction(sb, property.Type, $"{variableName}.{propName}", propertyName, propRepVar, 12);
-
-            sb.AppendLine("        }");
-            sb.AppendLine("        else");
-            sb.AppendLine("        {");
-
-            // Handle missing properties
-            if (property.Type.IsNullable)
-            {
-                sb.AppendLine($"            {variableName}.{propName} = null;");
-            }
-            else
-            {
-                var defaultValue = GetDefaultValueForProperty(propertyName, property.Type, out var shouldThrow);
-                if (shouldThrow)
-                {
-                    sb.AppendLine($"            throw new InvalidOperationException(\"No sensible default value for property '{propertyName}' of type '{property.Type.DisplayName}'.\");");
-                }
-                else
-                {
-                    sb.AppendLine($"            {variableName}.{propName} = {defaultValue};");
-                }
-            }
-
-            sb.AppendLine("        }");
+            GenerateValueExtraction(
+                sb,
+                property.Type,
+                $"{variableName}.{propName}",
+                propertyName,
+                propRepVar,
+                8,
+                GetMissingPropertyValueExpression(propertyName, propertyName, property.Type));
         }
     }
 
@@ -298,79 +230,48 @@ internal static class Deserialization
         string variableName,
         string propertyLabel,
         string propRepVarName,
-        int indent)
+        int indent,
+        string missingValueExpression)
     {
         var indentStr = new string(' ', indent);
 
         if (targetType.IsCollectionOfSimple || targetType.IsCollectionOfComplex)
         {
-            GenerateCollectionDeserialization(sb, targetType, variableName, propertyLabel, propRepVarName, indent);
+            GenerateCollectionDeserialization(
+                sb,
+                targetType,
+                variableName,
+                propertyLabel,
+                propRepVarName,
+                indent,
+                missingValueExpression);
         }
         else if (targetType.IsSimple)
         {
+            var simpleValueName = $"{propRepVarName}SimpleValue";
             sb.AppendLine($"{indentStr}// {GetSimpleValueExtractionComment(targetType)}");
-            sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is SimpleValue simpleValue)");
-            sb.AppendLine($"{indentStr}{{");
-            GenerateSimpleValueAssignment(sb, targetType, variableName, "simpleValue.Object", indent + 4);
-            sb.AppendLine($"{indentStr}}}");
-            sb.AppendLine($"{indentStr}else");
-            sb.AppendLine($"{indentStr}{{");
-
-            if (targetType.IsNullable)
-            {
-                sb.AppendLine($"{indentStr}    {variableName} = null;");
-            }
-            else
-            {
-                // For non-nullable types, use sensible defaults
-                var defaultValue = GetDefaultValueForProperty(propertyLabel, targetType, out var shouldThrow);
-                if (shouldThrow)
-                {
-                    sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"No sensible default value for property '{propertyLabel}' of type '{targetType.DisplayName}'.\");");
-                }
-                else
-                {
-                    sb.AppendLine($"{indentStr}    {variableName} = {defaultValue};");
-                }
-            }
-
-            sb.AppendLine($"{indentStr}}}");
+            sb.AppendLine($"{indentStr}{variableName} = {propRepVarName} is null");
+            sb.AppendLine($"{indentStr}    ? {missingValueExpression}");
+            sb.AppendLine($"{indentStr}    : {propRepVarName}.Value is SimpleValue {simpleValueName}");
+            sb.AppendLine($"{indentStr}        ? {GetSimpleValueConversionExpression(targetType, $"{simpleValueName}.Object")}");
+            sb.AppendLine($"{indentStr}        : {GetInvalidSimpleValueExpression(propertyLabel, targetType)};");
         }
         else
         {
+            var complexEntityName = $"{propRepVarName}ComplexEntity";
             // Complex type handling - delegate to other serializers, resolved by the serialized
             // entity's ActualType (same dispatch mechanism used for top-level Node/Relationship
             // polymorphism and for complex collections), falling back to the statically-declared
             // type only when no serializer is registered for ActualType (e.g. legacy data).
             sb.AppendLine($"{indentStr}// Extract complex value using registered serializer");
-            sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is EntityInfo complexEntity)");
-            sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    var complexSerializer = _serializerRegistry.GetSerializer(complexEntity.ActualType)");
-            sb.AppendLine($"{indentStr}        ?? _serializerRegistry.GetSerializer(typeof({targetType.TypeOfName}));");
-            sb.AppendLine($"{indentStr}    if (complexSerializer != null)");
-            sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        {variableName} = ({targetType.DisplayName})complexSerializer.Deserialize(complexEntity);");
-            sb.AppendLine($"{indentStr}    }}");
-            sb.AppendLine($"{indentStr}    else");
-            sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        throw new InvalidOperationException($\"No serializer found for type {{complexEntity.ActualType}}\");");
-            sb.AppendLine($"{indentStr}    }}");
-            sb.AppendLine($"{indentStr}}}");
-            sb.AppendLine($"{indentStr}else");
-            sb.AppendLine($"{indentStr}{{");
-
-            if (targetType.IsNullable)
-            {
-                sb.AppendLine($"{indentStr}    {variableName} = null;");
-            }
-            else
-            {
-                // For non-nullable complex types, we can't create a sensible default
-                // so we should throw an exception
-                sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required complex property '{propertyLabel}' is missing or null\");");
-            }
-
-            sb.AppendLine($"{indentStr}}}");
+            sb.AppendLine($"{indentStr}{variableName} = {propRepVarName} is null");
+            sb.AppendLine($"{indentStr}    ? {missingValueExpression}");
+            sb.AppendLine($"{indentStr}    : {propRepVarName}.Value is EntityInfo {complexEntityName}");
+            sb.AppendLine($"{indentStr}        ? ({targetType.DisplayName})(_serializerRegistry.GetSerializer({complexEntityName}.ActualType)");
+            sb.AppendLine($"{indentStr}            ?? _serializerRegistry.GetSerializer(typeof({targetType.TypeOfName}))");
+            sb.AppendLine($"{indentStr}            ?? throw new InvalidOperationException($\"No serializer found for type {{{complexEntityName}.ActualType}}\"))");
+            sb.AppendLine($"{indentStr}            .Deserialize({complexEntityName})");
+            sb.AppendLine($"{indentStr}        : {GetInvalidComplexValueExpression(propertyLabel, targetType)};");
         }
     }
 
@@ -380,7 +281,8 @@ internal static class Deserialization
         string variableName,
         string propertyLabel,
         string propRepVarName,
-        int indent)
+        int indent,
+        string missingValueExpression)
     {
         var indentStr = new string(' ', indent);
         var elementType = collectionType.ElementType;
@@ -388,7 +290,7 @@ internal static class Deserialization
         if (elementType == null)
         {
             sb.AppendLine($"{indentStr}// Warning: Could not determine element type for collection");
-            sb.AppendLine($"{indentStr}{variableName} = default({collectionType.DisplayName});");
+            sb.AppendLine($"{indentStr}{variableName} = {missingValueExpression};");
             return;
         }
 
@@ -398,76 +300,47 @@ internal static class Deserialization
 
         if (isElementSimple)
         {
-            sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is SimpleCollection simpleCollection)");
-            sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.DisplayName}>();");
-            sb.AppendLine($"{indentStr}    foreach (var simpleValue in simpleCollection.Values)");
-            sb.AppendLine($"{indentStr}    {{");
+            var simpleCollectionName = $"{propRepVarName}SimpleCollection";
+            sb.AppendLine($"{indentStr}{variableName} = {propRepVarName} is null");
+            sb.AppendLine($"{indentStr}    ? {missingValueExpression}");
+            sb.AppendLine($"{indentStr}    : {propRepVarName}.Value is SimpleCollection {simpleCollectionName}");
+            sb.AppendLine($"{indentStr}        ? {simpleCollectionName}.Values");
 
-            // Pure casting - no conversion logic
             if (elementType.IsReferenceType || elementType.IsNullable)
             {
-                sb.AppendLine($"{indentStr}        if (simpleValue.Object != null)");
-                sb.AppendLine($"{indentStr}        {{");
-                sb.AppendLine($"{indentStr}            collection.Add({GetSimpleValueConversionExpression(elementType, "simpleValue.Object")});");
-                sb.AppendLine($"{indentStr}        }}");
-            }
-            else
-            {
-                sb.AppendLine($"{indentStr}        collection.Add({GetSimpleValueConversionExpression(elementType, "simpleValue.Object")});");
+                sb.AppendLine($"{indentStr}            .Where(simpleValue => simpleValue.Object is not null)");
             }
 
-            sb.AppendLine($"{indentStr}    }}");
+            sb.AppendLine($"{indentStr}            .Select(simpleValue => {GetSimpleValueConversionExpression(elementType, "simpleValue.Object")})");
         }
         else
         {
+            var entityCollectionName = $"{propRepVarName}EntityCollection";
             // Complex collection handling. Each element is resolved by its own EntityInfo.ActualType
             // (the same dispatch mechanism used for top-level Node/Relationship polymorphism), falling
             // back to the statically-declared element type only when no serializer is registered for
             // ActualType (e.g. legacy data serialized before ActualType was recorded per element).
-            sb.AppendLine($"{indentStr}if ({propRepVarName}.Value is EntityCollection entityCollection)");
-            sb.AppendLine($"{indentStr}{{");
-            sb.AppendLine($"{indentStr}    var collection = new List<{elementType.DisplayName}>();");
-            sb.AppendLine($"{indentStr}    foreach (var entityItem in entityCollection.Entities)");
-            sb.AppendLine($"{indentStr}    {{");
-            sb.AppendLine($"{indentStr}        var itemSerializer = _serializerRegistry.GetSerializer(entityItem.ActualType)");
-            sb.AppendLine($"{indentStr}            ?? _serializerRegistry.GetSerializer(typeof({elementType.TypeOfName}));");
-            sb.AppendLine($"{indentStr}        if (itemSerializer == null)");
-            sb.AppendLine($"{indentStr}        {{");
-            sb.AppendLine($"{indentStr}            throw new InvalidOperationException($\"No serializer found for element type {{entityItem.ActualType}}\");");
-            sb.AppendLine($"{indentStr}        }}");
-            sb.AppendLine($"{indentStr}        var deserializedItem = itemSerializer.Deserialize(entityItem);");
-            sb.AppendLine($"{indentStr}        if (deserializedItem is {elementType.DisplayName} typedItem)");
-            sb.AppendLine($"{indentStr}        {{");
-            sb.AppendLine($"{indentStr}            collection.Add(typedItem);");
-            sb.AppendLine($"{indentStr}        }}");
-            sb.AppendLine($"{indentStr}    }}");
+            sb.AppendLine($"{indentStr}{variableName} = {propRepVarName} is null");
+            sb.AppendLine($"{indentStr}    ? {missingValueExpression}");
+            sb.AppendLine($"{indentStr}    : {propRepVarName}.Value is EntityCollection {entityCollectionName}");
+            sb.AppendLine($"{indentStr}        ? {entityCollectionName}.Entities");
+            sb.AppendLine($"{indentStr}            .Select(entityItem => (_serializerRegistry.GetSerializer(entityItem.ActualType)");
+            sb.AppendLine($"{indentStr}                ?? _serializerRegistry.GetSerializer(typeof({elementType.TypeOfName}))");
+            sb.AppendLine($"{indentStr}                ?? throw new InvalidOperationException($\"No serializer found for element type {{entityItem.ActualType}}\"))");
+            sb.AppendLine($"{indentStr}                .Deserialize(entityItem))");
+            sb.AppendLine($"{indentStr}            .OfType<{elementType.DisplayName}>()");
         }
 
-        // Convert to appropriate collection type
         if (collectionType.IsArray)
         {
-            sb.AppendLine($"{indentStr}    {variableName} = collection.ToArray();");
+            sb.AppendLine($"{indentStr}            .ToArray()");
         }
         else
         {
-            sb.AppendLine($"{indentStr}    {variableName} = collection;");
+            sb.AppendLine($"{indentStr}            .ToList()");
         }
 
-        sb.AppendLine($"{indentStr}}}");
-        sb.AppendLine($"{indentStr}else");
-        sb.AppendLine($"{indentStr}{{");
-
-        if (collectionType.IsReferenceType && !collectionType.IsNullable)
-        {
-            sb.AppendLine($"{indentStr}    throw new InvalidOperationException(\"Required collection property '{propertyLabel}' is missing or null\");");
-        }
-        else
-        {
-            sb.AppendLine($"{indentStr}    {variableName} = default({collectionType.DisplayName});");
-        }
-
-        sb.AppendLine($"{indentStr}}}");
+        sb.AppendLine($"{indentStr}        : {GetInvalidCollectionValueExpression(propertyLabel, collectionType)};");
     }
 
     private static string GetDefaultValueForParameter(string paramName, TypeReferenceModel paramType, out bool shouldThrow)
@@ -482,6 +355,67 @@ internal static class Deserialization
             "endnodeid" when paramType.SpecialType == SpecialType.System_String => "string.Empty",
             _ => GetTypeDefault(paramType, out shouldThrow)
         };
+    }
+
+    private static string GetMissingPropertyValueExpression(
+        string propertyName,
+        string propertyLabel,
+        TypeReferenceModel propertyType)
+    {
+        if (propertyType.IsNullable)
+        {
+            return "null";
+        }
+
+        var defaultValue = GetDefaultValueForProperty(propertyName, propertyType, out var shouldThrow);
+        return shouldThrow
+            ? $"throw new InvalidOperationException(\"No sensible default value for property '{propertyLabel}' of type '{propertyType.DisplayName}'.\")"
+            : defaultValue;
+    }
+
+    private static string GetMissingParameterValueExpression(ParameterModel parameter)
+    {
+        if (parameter.HasExplicitDefaultValue)
+        {
+            return parameter.ExplicitDefaultValueExpression;
+        }
+
+        if (parameter.Type.IsNullable)
+        {
+            return "null";
+        }
+
+        var defaultValue = GetDefaultValueForParameter(parameter.Name, parameter.Type, out var shouldThrow);
+        return shouldThrow
+            ? $"throw new InvalidOperationException(\"No sensible default value for parameter '{parameter.Name}' of type '{parameter.Type.DisplayName}'.\")"
+            : defaultValue;
+    }
+
+    private static string GetInvalidSimpleValueExpression(string propertyLabel, TypeReferenceModel targetType)
+    {
+        if (targetType.IsNullable)
+        {
+            return "null";
+        }
+
+        var defaultValue = GetDefaultValueForProperty(propertyLabel, targetType, out var shouldThrow);
+        return shouldThrow
+            ? $"throw new InvalidOperationException(\"No sensible default value for property '{propertyLabel}' of type '{targetType.DisplayName}'.\")"
+            : defaultValue;
+    }
+
+    private static string GetInvalidComplexValueExpression(string propertyLabel, TypeReferenceModel targetType)
+    {
+        return targetType.IsNullable
+            ? "null"
+            : $"throw new InvalidOperationException(\"Required complex property '{propertyLabel}' is missing or null\")";
+    }
+
+    private static string GetInvalidCollectionValueExpression(string propertyLabel, TypeReferenceModel collectionType)
+    {
+        return collectionType.IsReferenceType && !collectionType.IsNullable
+            ? $"throw new InvalidOperationException(\"Required collection property '{propertyLabel}' is missing or null\")"
+            : $"default({collectionType.DisplayName})";
     }
 
     private static string GetTypeDefault(TypeReferenceModel type, out bool shouldThrow)
@@ -540,17 +474,6 @@ internal static class Deserialization
         }
 
         return value ?? string.Empty;
-    }
-
-    private static void GenerateSimpleValueAssignment(
-        StringBuilder sb,
-        TypeReferenceModel targetType,
-        string variableName,
-        string sourceExpression,
-        int indent)
-    {
-        var indentStr = new string(' ', indent);
-        sb.AppendLine($"{indentStr}{variableName} = {GetSimpleValueConversionExpression(targetType, sourceExpression)};");
     }
 
     private static string GetSimpleValueExtractionComment(TypeReferenceModel targetType)

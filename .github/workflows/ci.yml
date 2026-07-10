@@ -119,6 +119,12 @@ jobs:
       - name: Set up local feed
         run: dotnet build --configuration LocalFeed --no-restore
 
+      - name: Verify local feed package set
+        run: ./scripts/verify-package-set.sh ./local-nuget-feed
+
+      - name: Build consumer example against local feed
+        run: dotnet build examples/SimpleMovieExample/SimpleMovieExample.csproj --configuration Release
+
       - name: Build
         run: dotnet build --no-restore --configuration Release
 

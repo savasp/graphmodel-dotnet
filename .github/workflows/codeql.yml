@@ -69,6 +69,36 @@ jobs:
         run: dotnet build --configuration Release --no-restore
 
       - name: Perform CodeQL Analysis
+        id: analyze
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
+          output: codeql-results
+
+      - name: Enforce CodeQL warning threshold
+        shell: bash
+        env:
+          SARIF_DIRECTORY: ${{ steps.analyze.outputs.sarif-output }}
+        run: |
+          mapfile -t sarif_files < <(find "$SARIF_DIRECTORY" -type f -name '*.sarif' -print)
+          if [[ ${#sarif_files[@]} -eq 0 ]]; then
+            echo "::error::CodeQL did not produce a SARIF file in $SARIF_DIRECTORY"
+            exit 1
+          fi
+
+          alert_count=$(jq -s '[
+            .[]
+            | .runs[] as $run
+            | $run.results[]? as $result
+            | ($run.tool.driver.rules[$result.ruleIndex].defaultConfiguration.level
+                // $result.level
+                // "warning") as $level
+            | select($level == "error" or $level == "warning")
+          ] | length' "${sarif_files[@]}")
+
+          if [[ "$alert_count" -gt 0 ]]; then
+            echo "::error::CodeQL found $alert_count error/warning alert(s)."
+            exit 1
+          fi
+
+          echo "CodeQL found no error/warning alerts."

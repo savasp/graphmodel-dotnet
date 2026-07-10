@@ -40,22 +40,12 @@ internal sealed class PersonSerializer : IEntitySerializer
         // Look for property 'Id' in both simple and complex properties
         var idPropRep = entity.SimpleProperties.TryGetValue("Id", out var idSimpleProp) ? idSimpleProp
                     : entity.ComplexProperties.TryGetValue("Id", out var idComplexProp) ? idComplexProp : null;
-        if (idPropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (idPropRep.Value is SimpleValue simpleValue)
-            {
-                idValue = (string)simpleValue.Object;
-            }
-            else
-            {
-                idValue = Guid.NewGuid().ToString("N");
-            }
-        }
-        else
-        {
-            idValue = Guid.NewGuid().ToString("N");
-        }
+        // Extract simple value - no conversion, just cast
+        idValue = idPropRep is null
+            ? Guid.NewGuid().ToString("N")
+            : idPropRep.Value is SimpleValue idPropRepSimpleValue
+                ? (string)idPropRepSimpleValue.Object
+                : Guid.NewGuid().ToString("N");
 
         var result = new TestNamespace.Person(
         )
@@ -67,87 +57,42 @@ internal sealed class PersonSerializer : IEntitySerializer
         // Look for property 'FirstName' in both simple and complex properties
         var firstnamePropRep = entity.SimpleProperties.TryGetValue("FirstName", out var firstnameSimpleProp) ? firstnameSimpleProp
                     : entity.ComplexProperties.TryGetValue("FirstName", out var firstnameComplexProp) ? firstnameComplexProp : null;
-        if (firstnamePropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (firstnamePropRep.Value is SimpleValue simpleValue)
-            {
-                result.FirstName = (string)simpleValue.Object;
-            }
-            else
-            {
-                result.FirstName = string.Empty;
-            }
-        }
-        else
-        {
-            result.FirstName = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        result.FirstName = firstnamePropRep is null
+            ? string.Empty
+            : firstnamePropRep.Value is SimpleValue firstnamePropRepSimpleValue
+                ? (string)firstnamePropRepSimpleValue.Object
+                : string.Empty;
         // Look for property 'LastName' in both simple and complex properties
         var lastnamePropRep = entity.SimpleProperties.TryGetValue("LastName", out var lastnameSimpleProp) ? lastnameSimpleProp
                     : entity.ComplexProperties.TryGetValue("LastName", out var lastnameComplexProp) ? lastnameComplexProp : null;
-        if (lastnamePropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (lastnamePropRep.Value is SimpleValue simpleValue)
-            {
-                result.LastName = (string)simpleValue.Object;
-            }
-            else
-            {
-                result.LastName = string.Empty;
-            }
-        }
-        else
-        {
-            result.LastName = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        result.LastName = lastnamePropRep is null
+            ? string.Empty
+            : lastnamePropRep.Value is SimpleValue lastnamePropRepSimpleValue
+                ? (string)lastnamePropRepSimpleValue.Object
+                : string.Empty;
         // Look for property 'Age' in both simple and complex properties
         var agePropRep = entity.SimpleProperties.TryGetValue("Age", out var ageSimpleProp) ? ageSimpleProp
                     : entity.ComplexProperties.TryGetValue("Age", out var ageComplexProp) ? ageComplexProp : null;
-        if (agePropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (agePropRep.Value is SimpleValue simpleValue)
-            {
-                result.Age = (int)simpleValue.Object;
-            }
-            else
-            {
-                result.Age = 0;
-            }
-        }
-        else
-        {
-            result.Age = 0;
-        }
+        // Extract simple value - no conversion, just cast
+        result.Age = agePropRep is null
+            ? 0
+            : agePropRep.Value is SimpleValue agePropRepSimpleValue
+                ? (int)agePropRepSimpleValue.Object
+                : 0;
         // Look for property 'Labels' in both simple and complex properties
         var labelsPropRep = entity.SimpleProperties.TryGetValue("Labels", out var labelsSimpleProp) ? labelsSimpleProp
                     : entity.ComplexProperties.TryGetValue("Labels", out var labelsComplexProp) ? labelsComplexProp : null;
-        if (labelsPropRep != null)
-        {
-            // Extract collection value
-            if (labelsPropRep.Value is SimpleCollection simpleCollection)
-            {
-                var collection = new List<string>();
-                foreach (var simpleValue in simpleCollection.Values)
-                {
-                    if (simpleValue.Object != null)
-                    {
-                        collection.Add((string)simpleValue.Object);
-                    }
-                }
-                result.Labels = collection;
-            }
-            else
-            {
-                throw new InvalidOperationException("Required collection property 'Labels' is missing or null");
-            }
-        }
-        else
-        {
-            result.Labels = new System.Collections.Generic.List<string>();
-        }
+        // Extract collection value
+        result.Labels = labelsPropRep is null
+            ? new System.Collections.Generic.List<string>()
+            : labelsPropRep.Value is SimpleCollection labelsPropRepSimpleCollection
+                ? labelsPropRepSimpleCollection.Values
+                    .Where(simpleValue => simpleValue.Object is not null)
+                    .Select(simpleValue => (string)simpleValue.Object)
+                    .ToList()
+                : throw new InvalidOperationException("Required collection property 'Labels' is missing or null");
         return result;
     }
 
@@ -161,15 +106,14 @@ internal sealed class PersonSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.Person).GetProperty("FirstName")!;
             var value = entity.FirstName;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -184,15 +128,14 @@ internal sealed class PersonSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.Person).GetProperty("LastName")!;
             var value = entity.LastName;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -207,7 +150,7 @@ internal sealed class PersonSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.Person).GetProperty("Age")!;
             var value = entity.Age;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
             serializedValue = new SimpleValue(
                 Object: value!,
@@ -227,15 +170,14 @@ internal sealed class PersonSerializer : IEntitySerializer
         {
             var propInfo = typeof(Cvoya.Graph.Node).GetProperty("Id")!;
             var value = entity.Id;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -250,23 +192,16 @@ internal sealed class PersonSerializer : IEntitySerializer
         {
             var propInfo = typeof(Cvoya.Graph.Node).GetProperty("Labels")!;
             var value = entity.Labels;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                var values = new List<SimpleValue>();
-                foreach (var item in value)
-                {
-                    values.Add(new SimpleValue(
-                        Object: item!,
-                        Type: typeof(string)
-                    ));
-                }
-                serializedValue = new SimpleCollection(
-                    Values: values,
+            serializedValue = value is null
+                ? null
+                : new SimpleCollection(
+                    Values: value
+                        .Select(item => new SimpleValue(item!, typeof(string)))
+                        .ToList(),
                     ElementType: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
