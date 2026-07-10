@@ -207,6 +207,36 @@ public sealed class FirstClassComplexPropertyTests(Neo4jHarness harness) : Neo4j
     }
 
     [Fact]
+    public async Task ComplexPropertyCollection_LargeCollection_RoundTrips()
+    {
+        var offices = Enumerable.Range(0, 50)
+            .Select(i => new ComplexOffice
+            {
+                Name = $"Office {i:D2}",
+                Address = new ComplexAddress { City = $"City {i:D2}", Street = $"Street {i:D2}" }
+            })
+            .ToList();
+
+        var node = new LargeComplexCollectionOwner { Offices = offices };
+        await Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken);
+
+        var fetched = await Graph.GetNodeAsync<LargeComplexCollectionOwner>(
+            node.Id, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(offices, fetched.Offices);
+
+        Assert.Equal(50, await CountAsync(
+            "MATCH (:LargeComplexCollectionOwner {Id: $id})-[r:Offices]->(:ComplexOffice) " +
+            "WHERE r.__graphModelComplexProperty = true RETURN count(r) AS count",
+            new { id = node.Id }));
+
+        Assert.Equal(50, await CountAsync(
+            "MATCH (:LargeComplexCollectionOwner {Id: $id})-[:Offices]->(:ComplexOffice)-[r:Address]->(:ComplexAddress) " +
+            "WHERE r.__graphModelComplexProperty = true RETURN count(r) AS count",
+            new { id = node.Id }));
+    }
+
+    [Fact]
     public async Task ComplexPropertyCollection_EmptyRoundTrips_ThenUpdateAddsItems()
     {
         var node = new ComplexPropertyCollectionOwner { Addresses = [] };
@@ -286,4 +316,10 @@ public sealed record ComplexOffice
 public sealed record NestedComplexPropertyOwner : Node
 {
     public ComplexOffice Office { get; init; } = new();
+}
+
+[Node("LargeComplexCollectionOwner")]
+public sealed record LargeComplexCollectionOwner : Node
+{
+    public List<ComplexOffice> Offices { get; init; } = [];
 }
