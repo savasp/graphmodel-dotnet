@@ -304,7 +304,11 @@ echo ""
 RESULT_LEVELS_JQ='[
     .runs[] as $run
     | $run.results[]? as $result
-    | ($run.tool.driver.rules[$result.ruleIndex].defaultConfiguration.level
+    | ([
+        $run.tool.driver.rules[]?
+        | select(.id == $result.ruleId)
+        | .defaultConfiguration.level
+      ][0]
         // $result.level
         // "warning")
 ]'
