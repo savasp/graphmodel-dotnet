@@ -101,17 +101,35 @@ public static class GraphQueryModelValidator
 
         if (model.Union is { } union)
         {
+            Validate(union.First);
             Validate(union.Second);
-
-            var firstType = ResolveRootType(model.Root);
-            var secondType = ResolveRootType(union.Second.Root);
-            if (firstType is not null && secondType is not null &&
-                !firstType.IsAssignableFrom(secondType) && !secondType.IsAssignableFrom(firstType))
-            {
-                throw new GraphException(
-                    $"Union sources must have compatible element types; '{firstType.FullName}' and '{secondType.FullName}' are unrelated.");
-            }
+            ValidateUnionOperandType(union.First, union.ElementType, "first");
+            ValidateUnionOperandType(union.Second, union.ElementType, "second");
         }
+    }
+
+    private static void ValidateUnionOperandType(GraphQueryModel operand, Type elementType, string description)
+    {
+        var operandType = ResolveOutputType(operand);
+        if (operandType is not null &&
+            !elementType.IsAssignableFrom(operandType) && !operandType.IsAssignableFrom(elementType))
+        {
+            throw new GraphException(
+                $"Union {description} source produces '{operandType.FullName}', which is incompatible with " +
+                $"the union element type '{elementType.FullName}'.");
+        }
+    }
+
+    private static Type? ResolveOutputType(GraphQueryModel model)
+    {
+        if (model.GroupBy is not null || model.SelectMany is not null || model.Union is not null)
+        {
+            // These fragments carry their own operator boundary types; the containing root and
+            // projection do not necessarily describe the sequence element at that boundary.
+            return null;
+        }
+
+        return model.Projection?.Selector?.ReturnType ?? ResolveRootType(model.Root);
     }
 
     private static void ValidateTerminalOperand(GraphQueryModel model)
@@ -135,7 +153,7 @@ public static class GraphQueryModelValidator
 
     private static void ValidateAliasBindings(GraphQueryModel model)
     {
-        var bound = CollectRootAliases(model.Root);
+        var bound = CollectRootAliases(model);
         if (model.Join is not null)
         {
             bound.Add("joined");
@@ -181,10 +199,10 @@ public static class GraphQueryModelValidator
         }
     }
 
-    private static HashSet<string> CollectRootAliases(QueryRoot root)
+    private static HashSet<string> CollectRootAliases(GraphQueryModel model)
     {
         HashSet<string> aliases = new(StringComparer.Ordinal);
-        switch (root)
+        switch (model.Root)
         {
             case RelationshipRoot:
             case DynamicRoot { ElementType: { } dynamicType } when typeof(IRelationship).IsAssignableFrom(dynamicType):
@@ -198,16 +216,22 @@ public static class GraphQueryModelValidator
                 // scope alias; planners remap it onto the search scope.
                 aliases.Add("n");
                 aliases.Add("src");
-                aliases.Add("src_1");
                 break;
-            case SearchRoot:
+            case SearchRoot { Target: SearchRootTarget.Entities }:
                 aliases.Add("entity");
-                aliases.Add("n");
-                aliases.Add("src");
                 break;
             default:
                 aliases.Add("src");
-                aliases.Add("src_1");
+                if (model.Root is NodeRoot { ElementType: { IsInterface: true } elementType } &&
+                    typeof(INode).IsAssignableFrom(elementType) &&
+                    model.Traversal.Any(step => !step.IsComplexPropertyTraversal))
+                {
+                    // Interface traversal roots render as src_1 to avoid colliding with the
+                    // concrete source alias inside the traversal pattern. Builder-produced
+                    // predicates can still retain src and are remapped by the planner.
+                    aliases.Add("src_1");
+                }
+
                 break;
         }
 

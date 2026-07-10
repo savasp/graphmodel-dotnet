@@ -15,12 +15,22 @@ public sealed record UnionFragment
     /// <summary>
     /// Initializes a new union description.
     /// </summary>
-    /// <param name="second">The second query model whose results are unioned with the current query.</param>
-    public UnionFragment(GraphQueryModel second)
+    /// <param name="first">The first query model at the union boundary.</param>
+    /// <param name="second">The second query model at the union boundary.</param>
+    /// <param name="elementType">The element type shared by both operands at the union boundary.</param>
+    public UnionFragment(GraphQueryModel first, GraphQueryModel second, Type elementType)
     {
+        First = first ?? throw new ArgumentNullException(nameof(first));
         Second = second ?? throw new ArgumentNullException(nameof(second));
+        ElementType = elementType ?? throw new ArgumentNullException(nameof(elementType));
     }
 
-    /// <summary>Gets the second query model whose results are unioned with the current query.</summary>
+    /// <summary>Gets the first query model at the union boundary.</summary>
+    public GraphQueryModel First { get; }
+
+    /// <summary>Gets the second query model at the union boundary.</summary>
     public GraphQueryModel Second { get; }
+
+    /// <summary>Gets the element type shared by both operands at the union boundary.</summary>
+    public Type ElementType { get; }
 }

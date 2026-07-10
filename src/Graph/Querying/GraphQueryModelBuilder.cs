@@ -204,7 +204,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             _root = new SearchRoot(search.SearchQuery, search.Target,
                 search.Target == SearchRootTarget.Entities ? null : search.EntityType);
             _currentType = search.EntityType;
-            _currentAlias = search.Target == SearchRootTarget.Relationships ? "r" : "n";
+            _currentAlias = SearchAlias(search.Target);
             return node;
         }
 
@@ -536,8 +536,16 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         };
 
         _root = new SearchRoot(query, target, target == SearchRootTarget.Entities ? null : elementType);
-        _currentAlias = target == SearchRootTarget.Relationships ? "r" : "n";
+        _currentAlias = SearchAlias(target);
     }
+
+    private static string SearchAlias(SearchRootTarget target) => target switch
+    {
+        SearchRootTarget.Nodes => "n",
+        SearchRootTarget.Relationships => "r",
+        SearchRootTarget.Entities => "entity",
+        _ => throw new GraphQueryTranslationException($"Search target '{target}' is not supported."),
+    };
 
     private void UpdateLastTraversal(
         GraphTraversalDirection? direction = null,
@@ -623,7 +631,13 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             throw Unsupported(node, "Union requires a second source.");
         }
 
-        _union = new UnionFragment(Build(node.Arguments[1]));
+        var elementType = node.Method.IsGenericMethod
+            ? node.Method.GetGenericArguments()[0]
+            : throw Unsupported(node, "Union must declare its element type.");
+        _union = new UnionFragment(
+            Build(node.Arguments[0]),
+            Build(node.Arguments[1]),
+            elementType);
     }
 
     private void HandleJoin(MethodCallExpression node)
@@ -637,7 +651,8 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         if (inner.Predicates.Count > 0 || inner.Traversal.Count > 0 || inner.Ordering.Count > 0 ||
             inner.Projection is not null || inner.Paging.Skip is not null || inner.Paging.Take is not null ||
             inner.Distinct || inner.Join is not null || inner.SearchFilter is not null ||
-            inner.PathShape is not null || inner.Terminal != TerminalOperation.ToListOrArray)
+            inner.PathShape is not null || inner.GroupBy is not null || inner.SelectMany is not null ||
+            inner.Union is not null || inner.Terminal != TerminalOperation.ToListOrArray)
         {
             throw Unsupported(
                 node,

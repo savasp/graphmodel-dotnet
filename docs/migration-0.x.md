@@ -431,8 +431,9 @@ index in `GraphQueryModel.TerminalOperand` instead of encoding it as `Paging`.
 `Cvoya.Graph.Cypher.Ast.RelationshipPattern` carries relationship type names as
 `IReadOnlyList<string> Types` instead of a single pre-joined `Type` string (#214). Renderers join
 alternatives with `|` and escape each name, so a literal `|` or backtick in a type name is part of
-the name. Pass each type as its own list entry; the single-`string` constructor overload remains
-for one-type patterns.
+the name. Pass each type as its own list entry to the multi-type constructor
+`(alias, direction, depth, types)`; the original single-`string` constructor overload remains for
+one-type and any-type patterns, including an uncast `null` type argument.
 
 ## Non-changes (things that look related but aren't)
 

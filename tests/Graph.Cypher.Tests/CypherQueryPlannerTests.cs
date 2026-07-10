@@ -337,7 +337,8 @@ public class CypherQueryPlannerTests
     [Fact]
     public void Plan_UnionModel_ThrowsDefinedTranslationError()
     {
-        var model = Model(union: new UnionFragment(Model()));
+        var operand = Model();
+        var model = Model(union: new UnionFragment(operand, operand, typeof(Person)));
 
         var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
 
@@ -364,6 +365,60 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_DistinctScalarAggregateWithPaging_PipesProjectedValueBeforePaging()
+    {
+        Expression<Func<Person, int>> selector = person => person.Age;
+        var model = Model(
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector),
+            paging: new Paging(skip: null, take: 2),
+            terminal: TerminalOperation.Count,
+            distinct: true);
+
+        var statement = planner.Plan(model);
+
+        var with = Assert.Single(statement.Clauses.OfType<WithClause>());
+        Assert.True(with.Distinct);
+        Assert.IsType<PropertyAccess>(Assert.Single(with.Items).Expression);
+        var limit = Assert.Single(statement.Clauses.OfType<LimitClause>());
+        Assert.Equal(2, Assert.IsType<Literal>(limit.Count).Value);
+        var @return = Assert.Single(statement.Clauses.OfType<ReturnClause>());
+        var aggregate = Assert.IsType<FunctionCall>(Assert.Single(@return.Items).Expression);
+        Assert.Equal("__value0", Assert.IsType<VariableRef>(Assert.Single(aggregate.Arguments)).Alias);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_DistinctEntityProjection_PipesDistinctAliasBeforeMaterialization()
+    {
+        var statement = planner.Plan(Model(distinct: true));
+
+        Assert.Collection(
+            statement.Clauses,
+            clause => Assert.IsType<MatchClause>(clause),
+            clause => Assert.True(Assert.IsType<WithClause>(clause).Distinct),
+            clause => Assert.IsType<EntityProjectionClause>(clause));
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_DistinctSingle_AppliesCardinalityLimitAfterDistinct()
+    {
+        Expression<Func<Person, string>> selector = person => person.Name;
+        var statement = planner.Plan(Model(
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector),
+            terminal: TerminalOperation.Single,
+            distinct: true));
+
+        Assert.Collection(
+            statement.Clauses,
+            clause => Assert.IsType<MatchClause>(clause),
+            clause => Assert.True(Assert.IsType<WithClause>(clause).Distinct),
+            clause => Assert.Equal(2, Assert.IsType<Literal>(Assert.IsType<LimitClause>(clause).Count).Value),
+            clause => Assert.IsType<ReturnClause>(clause));
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
     public void Plan_DistinctAggregateOverMultiValueProjection_Throws()
     {
         Expression<Func<Person, object>> selector = person => new { person.Name, person.Age };
@@ -375,6 +430,37 @@ public class CypherQueryPlannerTests
         var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
 
         Assert.Contains("multi-value projection", exception.Message);
+    }
+
+    [Fact]
+    public void Plan_DistinctPagedAggregateOverMultiValueProjection_Throws()
+    {
+        Expression<Func<Person, object>> selector = person => new { person.Name, person.Age };
+        var model = Model(
+            projection: new ProjectionShape(ProjectionKind.Anonymous, selector),
+            paging: new Paging(skip: null, take: 2),
+            terminal: TerminalOperation.Count,
+            distinct: true);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+
+        Assert.Contains("multi-value projection", exception.Message);
+    }
+
+    [Fact]
+    public void Plan_PreSearchOrderingAlias_MapsToSearchScope()
+    {
+        Expression<Func<Person, string>> ordering = person => person.Name;
+        var model = Model(
+            root: new SearchRoot("Ada", SearchRootTarget.Nodes, typeof(Person)),
+            ordering: [new OrderingKey(ordering, descending: false, alias: "src")]);
+
+        var statement = planner.Plan(model);
+
+        var orderBy = Assert.Single(statement.Clauses.OfType<OrderByClause>());
+        var property = Assert.IsType<PropertyAccess>(Assert.Single(orderBy.Items).Expression);
+        Assert.Equal("n", Assert.IsType<VariableRef>(property.Target).Alias);
+        new CypherAstValidator().Run(statement);
     }
 
     [Theory]

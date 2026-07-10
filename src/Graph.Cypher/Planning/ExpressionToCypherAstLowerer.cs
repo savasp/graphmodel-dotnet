@@ -1067,8 +1067,23 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
                 object? target = null;
                 if (member.Expression is not null)
                 {
+                    // A non-null Nullable<T> receiver is boxed as T, so reflecting Nullable<T>
+                    // members such as Value or HasValue on the recursively evaluated object would
+                    // throw TargetException instead of matching the compiled expression. Decline
+                    // before evaluating the receiver so a property getter is never invoked twice.
+                    if (Nullable.GetUnderlyingType(member.Expression.Type) is not null)
+                    {
+                        return false;
+                    }
+
                     if (!TryEvaluateDirect(member.Expression, remainingMemberDepth - 1, out target) ||
                         target is null)
+                    {
+                        return false;
+                    }
+
+                    if (member.Member.DeclaringType is not { } declaringType ||
+                        !declaringType.IsInstanceOfType(target))
                     {
                         return false;
                     }

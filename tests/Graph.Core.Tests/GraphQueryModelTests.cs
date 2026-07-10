@@ -255,9 +255,13 @@ public class GraphQueryModelTests
     }
 
     [Fact]
-    public void UnionFragment_RequiresSecondModel()
+    public void UnionFragment_RequiresBoundaryModelsAndElementType()
     {
-        Assert.Throws<ArgumentNullException>(() => new UnionFragment(null!));
+        var operand = CreateUnionOperand(typeof(Person));
+
+        Assert.Throws<ArgumentNullException>(() => new UnionFragment(null!, operand, typeof(Person)));
+        Assert.Throws<ArgumentNullException>(() => new UnionFragment(operand, null!, typeof(Person)));
+        Assert.Throws<ArgumentNullException>(() => new UnionFragment(operand, operand, null!));
     }
 
     [Fact]
@@ -349,6 +353,20 @@ public class GraphQueryModelTests
         Assert.Contains("Ordering key 0 alias 'elsewhere' is not bound", exception.Message);
     }
 
+    [Fact]
+    public void Validator_RejectsSrc1AliasWhenOrdinaryNodeRootDoesNotBindIt()
+    {
+        var model = CreateValidModel(
+            predicates: [Predicate<Person>(person => person.Name.Length > 0, alias: "src_1")],
+            traversal: [],
+            projection: null,
+            ordering: []);
+
+        var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
+
+        Assert.Contains("alias 'src_1' is not bound", exception.Message);
+    }
+
     [Theory]
     [InlineData(TerminalOperation.ElementAt)]
     [InlineData(TerminalOperation.ElementAtOrDefault)]
@@ -380,24 +398,19 @@ public class GraphQueryModelTests
     [Fact]
     public void Validator_RejectsUnionWithUnrelatedElementTypes()
     {
-        var second = new GraphQueryModel(
-            new NodeRoot(typeof(Company)),
-            [],
-            [],
-            null,
-            [],
-            new Paging(null, null),
-            TerminalOperation.ToListOrArray);
-        var model = CreateModelWithUnion(new UnionFragment(second));
+        var first = CreateUnionOperand(typeof(Person));
+        var second = CreateUnionOperand(typeof(Company));
+        var model = CreateModelWithUnion(new UnionFragment(first, second, typeof(Person)));
 
         var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
 
-        Assert.Contains("Union sources must have compatible element types", exception.Message);
+        Assert.Contains("Union second source produces", exception.Message);
     }
 
     [Fact]
     public void Validator_ValidatesUnionSecondModel()
     {
+        var first = CreateUnionOperand(typeof(Person));
         var second = new GraphQueryModel(
             new NodeRoot(typeof(Person)),
             [Predicate<Person>(person => person.Name.Length > 0, alias: "elsewhere")],
@@ -406,7 +419,7 @@ public class GraphQueryModelTests
             [],
             new Paging(null, null),
             TerminalOperation.ToListOrArray);
-        var model = CreateModelWithUnion(new UnionFragment(second));
+        var model = CreateModelWithUnion(new UnionFragment(first, second, typeof(Person)));
 
         var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
 
@@ -416,16 +429,10 @@ public class GraphQueryModelTests
     [Fact]
     public void Validator_AcceptsUnionOfCompatibleModels()
     {
-        var second = new GraphQueryModel(
-            new NodeRoot(typeof(Person)),
-            [],
-            [],
-            null,
-            [],
-            new Paging(null, null),
-            TerminalOperation.ToListOrArray);
+        var first = CreateUnionOperand(typeof(Person));
+        var second = CreateUnionOperand(typeof(Person));
 
-        GraphQueryModelValidator.Validate(CreateModelWithUnion(new UnionFragment(second)));
+        GraphQueryModelValidator.Validate(CreateModelWithUnion(new UnionFragment(first, second, typeof(Person))));
     }
 
     [Fact]
@@ -478,6 +485,18 @@ public class GraphQueryModelTests
             groupBy: null,
             selectMany: null,
             union: union);
+    }
+
+    private static GraphQueryModel CreateUnionOperand(Type elementType)
+    {
+        return new GraphQueryModel(
+            new NodeRoot(elementType),
+            [],
+            [],
+            null,
+            [],
+            new Paging(null, null),
+            TerminalOperation.ToListOrArray);
     }
 
     private static GraphQueryModel CreateValidModel(

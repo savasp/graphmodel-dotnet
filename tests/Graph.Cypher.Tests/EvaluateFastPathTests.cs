@@ -111,6 +111,19 @@ public class EvaluateFastPathTests
         Assert.False(ExpressionToCypherAstLowerer.TryEvaluateDirect(lambda.Body, out _));
     }
 
+    [Fact]
+    public void NullableValueReceiver_FallsBackToCompilation()
+    {
+        int? captured = 31;
+        Expression<Func<int>> lambda = () => captured!.Value;
+
+        // Nullable<T> boxes a non-null value as T. Reflection therefore cannot invoke the outer
+        // Nullable<T>.Value member on the recursively evaluated boxed target, while compilation
+        // preserves the nullable receiver and returns the expected value.
+        Assert.False(ExpressionToCypherAstLowerer.TryEvaluateDirect(lambda.Body, out _));
+        Assert.Equal(31, Compile(lambda.Body));
+    }
+
     private static void AssertFastPathMatchesCompilation(Expression expression)
     {
         Assert.True(

@@ -22,9 +22,10 @@ public sealed record RelationshipPattern : PatternElement
     public RelationshipPattern(string? alias, string? type, CypherDirection direction, DepthRange? depth)
         : this(
             alias,
-            ArgumentValidation.OptionalName(type, nameof(type)) is { } single ? [single] : [],
             direction,
-            depth)
+            depth,
+            ArgumentValidation.OptionalName(type, nameof(type)) is { } single ? [single] : [],
+            nameof(type))
     {
     }
 
@@ -33,15 +34,29 @@ public sealed record RelationshipPattern : PatternElement
     /// several relationship types.
     /// </summary>
     /// <param name="alias">The optional relationship alias.</param>
+    /// <param name="direction">The relationship direction.</param>
+    /// <param name="depth">The optional variable-length depth range.</param>
     /// <param name="types">The relationship type names to match as alternatives; empty matches any
     /// type. Each entry is one identifier — renderers join and escape them, so a <c>|</c> inside a
     /// name is part of that name, not an alternation separator.</param>
-    /// <param name="direction">The relationship direction.</param>
-    /// <param name="depth">The optional variable-length depth range.</param>
-    public RelationshipPattern(string? alias, IReadOnlyList<string> types, CypherDirection direction, DepthRange? depth)
+    public RelationshipPattern(
+        string? alias,
+        CypherDirection direction,
+        DepthRange? depth,
+        IReadOnlyList<string> types)
+        : this(alias, direction, depth, types, nameof(types))
+    {
+    }
+
+    private RelationshipPattern(
+        string? alias,
+        CypherDirection direction,
+        DepthRange? depth,
+        IReadOnlyList<string> types,
+        string typesParameterName)
     {
         Alias = ArgumentValidation.OptionalName(alias, nameof(alias));
-        Types = ArgumentValidation.StringList(types, nameof(types));
+        Types = ArgumentValidation.StringList(types, typesParameterName);
         Direction = ArgumentValidation.DefinedEnum(direction, nameof(direction));
         Depth = depth;
     }

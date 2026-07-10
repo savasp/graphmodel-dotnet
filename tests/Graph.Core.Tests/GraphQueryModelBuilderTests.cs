@@ -376,15 +376,29 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
-    public void Union_ProducesUnionFragmentWithSecondModel()
+    public void Union_ProducesUnionFragmentWithBothBoundaryModels()
     {
         var query = Root<Person>().AsQueryable().Union(Root<Person>().Where(person => person.Age > 30));
 
         var model = GraphQueryModelBuilder.Build(query.Expression);
 
         Assert.NotNull(model.Union);
+        Assert.Equal(typeof(Person), Assert.IsType<NodeRoot>(model.Union.First.Root).ElementType);
         Assert.Equal(typeof(Person), Assert.IsType<NodeRoot>(model.Union.Second.Root).ElementType);
+        Assert.Equal(typeof(Person), model.Union.ElementType);
         Assert.Single(model.Union.Second.Predicates);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void Union_WithProjectedUnrelatedRoots_ValidatesAtStringElementBoundary()
+    {
+        var query = Root<Person>().Select(person => person.Id)
+            .Union(Root<Company>().Select(company => company.Id));
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal(typeof(string), model.Union?.ElementType);
         GraphQueryModelValidator.Validate(model);
     }
 
@@ -444,6 +458,34 @@ public class GraphQueryModelBuilderTests
             (person, company) => company);
 
         Assert.Throws<GraphQueryTranslationException>(() => GraphQueryModelBuilder.Build(query.Expression));
+    }
+
+    [Fact]
+    public void Join_WithUnionInnerSource_ThrowsInsteadOfDroppingUnion()
+    {
+        var inner = Root<Company>().AsQueryable().Union(Root<Company>());
+        var query = Root<Person>().AsQueryable().Join(
+            inner,
+            person => person.CompanyId,
+            company => company.Id,
+            (person, company) => company);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("bare node or relationship set", exception.Message);
+    }
+
+    [Fact]
+    public void OrderingBeforeSearch_ProducesAValidSearchModel()
+    {
+        var query = Root<Person>().OrderBy(person => person.LastName).Search("engineer");
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.IsType<SearchRoot>(model.Root);
+        Assert.Equal("src", Assert.Single(model.Ordering).Alias);
+        GraphQueryModelValidator.Validate(model);
     }
 
     [Fact]
