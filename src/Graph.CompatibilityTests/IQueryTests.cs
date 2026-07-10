@@ -24,6 +24,68 @@ public interface IQueryTests : IGraphTest
     }
 
     [Fact]
+    public async Task CanQueryNodeWithEscapableLabel()
+    {
+        var venue = new SpacedLabelVenue { Name = "Union Hall" };
+        await this.Graph.CreateNodeAsync(venue, null, TestContext.Current.CancellationToken);
+
+        var found = await this.Graph.Nodes<SpacedLabelVenue>()
+            .Where(v => v.Name == "Union Hall")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var roundTripped = Assert.Single(found);
+        Assert.Equal(venue.Id, roundTripped.Id);
+        Assert.Equal("Union Hall", roundTripped.Name);
+    }
+
+    /// <summary>
+    /// Pins the #221 decision: complex-property navigation is null-propagating, so a leaf
+    /// null-comparison matches BOTH owners with no complex-property node at all and owners whose
+    /// leaf value is literally null (mirroring Cypher's null semantics and C#'s ?. intuition).
+    /// Recorded on #221; a future revisit is tracked in #233.
+    /// </summary>
+    [Fact]
+    public async Task NavigationEquality_NullMatchesMissingComplexProperty()
+    {
+        var missing = new PersonWithOptionalProfile { FirstName = "NoProfile", Profile = null };
+        var nullLeaf = new PersonWithOptionalProfile { FirstName = "NullMotto", Profile = new OptionalProfileValue { Motto = null } };
+        var populated = new PersonWithOptionalProfile { FirstName = "HasMotto", Profile = new OptionalProfileValue { Motto = "carpe diem" } };
+        await this.Graph.CreateNodeAsync(missing, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(nullLeaf, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(populated, null, TestContext.Current.CancellationToken);
+
+        var matches = await this.Graph.Nodes<PersonWithOptionalProfile>()
+            .Where(p => p.Profile!.Motto == null)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, matches.Count);
+        Assert.Contains(matches, p => p.FirstName == "NoProfile");
+        Assert.Contains(matches, p => p.FirstName == "NullMotto");
+        Assert.DoesNotContain(matches, p => p.FirstName == "HasMotto");
+    }
+
+    /// <summary>
+    /// The projection counterpart of the #221 decision: projecting a leaf through a missing
+    /// complex property yields a null value for that row instead of dropping the row.
+    /// </summary>
+    [Fact]
+    public async Task NavigationProjection_MissingComplexPropertyYieldsNull()
+    {
+        var missing = new PersonWithOptionalProfile { FirstName = "NoProfile", Profile = null };
+        var populated = new PersonWithOptionalProfile { FirstName = "HasMotto", Profile = new OptionalProfileValue { Motto = "carpe diem" } };
+        await this.Graph.CreateNodeAsync(missing, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(populated, null, TestContext.Current.CancellationToken);
+
+        var rows = await this.Graph.Nodes<PersonWithOptionalProfile>()
+            .Select(p => new { p.FirstName, p.Profile!.Motto })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, r => r.FirstName == "NoProfile" && r.Motto == null);
+        Assert.Contains(rows, r => r.FirstName == "HasMotto" && r.Motto == "carpe diem");
+    }
+
+    [Fact]
     public async Task CanQueryNodesByMultipleProperties()
     {
         var p1 = new Person { FirstName = "Alice", LastName = "Smith" };

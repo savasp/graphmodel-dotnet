@@ -164,6 +164,45 @@ public class CypherIdentifierTests
         Assert.Throws<GraphException>(() => CypherIdentifier.EscapeLabels(["Person", ""]));
     }
 
+    [Theory]
+    [InlineData("Person")]
+    [InlineData("KNOWS")]
+    [InlineData("_private")]
+    [InlineData("Label2")]
+    public void EscapeIfNeeded_PlainSymbolicName_IsLeftUnquoted(string identifier)
+    {
+        Assert.Equal(identifier, CypherIdentifier.EscapeIfNeeded(identifier));
+    }
+
+    [Theory]
+    [InlineData("Label With Space", "`Label With Space`")]
+    [InlineData("PIPE|SEPARATED", "`PIPE|SEPARATED`")]
+    [InlineData("2StartsWithDigit", "`2StartsWithDigit`")]
+    [InlineData("unicode-Ñame-é", "`unicode-Ñame-é`")]
+    public void EscapeIfNeeded_NonSymbolicName_IsBacktickQuoted(string identifier, string expected)
+    {
+        Assert.Equal(expected, CypherIdentifier.EscapeIfNeeded(identifier));
+    }
+
+    [Fact]
+    public void EscapeIfNeeded_EmbeddedBacktick_IsDoubled()
+    {
+        var escaped = CypherIdentifier.EscapeIfNeeded("BACK`TICK");
+
+        Assert.Equal("`BACK``TICK`", escaped);
+        AssertNoUnescapedBacktick(escaped);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("has\nnewline")]
+    public void EscapeIfNeeded_HostileOrBlankInput_Throws(string? identifier)
+    {
+        Assert.Throws<GraphException>(() => CypherIdentifier.EscapeIfNeeded(identifier));
+    }
+
     private static void AssertNoUnescapedBacktick(string escaped)
     {
         // Strip the outer quoting, then confirm every remaining backtick appears as part of a

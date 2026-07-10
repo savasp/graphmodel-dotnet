@@ -66,6 +66,18 @@ public class WhereTranslationTests : TranslationTestBase
         return VerifyTranslation(query);
     }
 
+    /// <summary>
+    /// Pins the #221 decision: complex-property navigation is null-propagating. The navigation
+    /// hoists as OPTIONAL MATCH with a WITH * barrier before WHERE, so rows without the complex
+    /// property stay in play for the other OR branch instead of being dropped by a required MATCH.
+    /// </summary>
+    [Fact]
+    public Task Where_NavigationInOrPredicate_KeepsRowsWithoutComplexProperty()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.HomeAddress!.City == "Seattle" || p.FirstName == "Alice");
+        return VerifyTranslation(query);
+    }
+
     [Fact]
     public Task Where_ComplexPropertyNavigation_ArbitraryDepth()
     {

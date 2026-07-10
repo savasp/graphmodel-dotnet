@@ -96,9 +96,46 @@ public sealed record TraversalStep
         Type? relationshipClrType,
         bool isComplexPropertyTraversal,
         string? sourceAlias)
+        : this(
+            relationshipType,
+            direction,
+            depth,
+            relationshipPredicates,
+            targetType,
+            relationshipClrType,
+            isComplexPropertyTraversal,
+            sourceAlias,
+            targetAlias: null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a traversal step with explicit source and target scopes.
+    /// </summary>
+    /// <param name="relationshipType">The relationship type label to traverse, or <see langword="null"/> for any relationship type.</param>
+    /// <param name="direction">The traversal direction.</param>
+    /// <param name="depth">The traversal depth range.</param>
+    /// <param name="relationshipPredicates">Predicates applied to relationships traversed by the step.</param>
+    /// <param name="targetType">The target node or value-node type, if known.</param>
+    /// <param name="relationshipClrType">The CLR relationship type, if known.</param>
+    /// <param name="isComplexPropertyTraversal">Whether the step came from a complex-property member access.</param>
+    /// <param name="sourceAlias">The semantic source scope for this step, if known.</param>
+    /// <param name="targetAlias">The semantic scope bound by this step's target, if known. Predicates
+    /// and ordering keys whose alias equals this value apply to the traversal target.</param>
+    public TraversalStep(
+        string? relationshipType,
+        GraphTraversalDirection direction,
+        DepthRange depth,
+        IReadOnlyList<PredicateFragment> relationshipPredicates,
+        Type? targetType,
+        Type? relationshipClrType,
+        bool isComplexPropertyTraversal,
+        string? sourceAlias,
+        string? targetAlias)
     {
         QueryModelGuard.RequireNullOrNotWhiteSpace(relationshipType, nameof(relationshipType));
         QueryModelGuard.RequireNullOrNotWhiteSpace(sourceAlias, nameof(sourceAlias));
+        QueryModelGuard.RequireNullOrNotWhiteSpace(targetAlias, nameof(targetAlias));
         QueryModelGuard.RequireDefinedEnum(direction, nameof(direction));
 
         if (targetType is not null && relationshipClrType is not null)
@@ -114,6 +151,7 @@ public sealed record TraversalStep
         RelationshipClrType = relationshipClrType;
         IsComplexPropertyTraversal = isComplexPropertyTraversal;
         SourceAlias = sourceAlias;
+        TargetAlias = targetAlias;
     }
 
     /// <summary>
@@ -151,4 +189,10 @@ public sealed record TraversalStep
 
     /// <summary>Gets the semantic source scope for this step, if known.</summary>
     public string? SourceAlias { get; }
+
+    /// <summary>
+    /// Gets the semantic scope bound by this step's target, if known. Predicates and ordering keys
+    /// whose alias equals this value apply to the traversal target.
+    /// </summary>
+    public string? TargetAlias { get; }
 }

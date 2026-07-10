@@ -1029,13 +1029,80 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
     {
         try
         {
-            return Expression.Lambda(expression).Compile().DynamicInvoke();
+            return TryEvaluateDirect(expression, out var value)
+                ? value
+                : Expression.Lambda(expression).Compile().DynamicInvoke();
         }
         catch (TargetInvocationException exception) when (exception.InnerException is not null)
         {
             throw new GraphQueryTranslationException(
                 $"Failed to evaluate parameter-free expression '{expression}': {exception.InnerException.Message}",
                 exception.InnerException);
+        }
+    }
+
+    /// <summary>
+    /// Evaluates the dominant parameter-free shapes reflectively - a constant, a member over a
+    /// constant (the compiler-generated closure access), one further nested member, and static
+    /// members - so the common case skips <c>Expression.Compile</c>, which is expensive on the
+    /// planning path of every parameterized query (#216). Anything else, including a null
+    /// instance target (whose failure must match the compiled path), reports <see langword="false"/>
+    /// and falls back to compilation.
+    /// </summary>
+    internal static bool TryEvaluateDirect(Expression expression, out object? value)
+    {
+        return TryEvaluateDirect(expression, remainingMemberDepth: 2, out value);
+    }
+
+    private static bool TryEvaluateDirect(Expression expression, int remainingMemberDepth, out object? value)
+    {
+        value = null;
+        switch (expression)
+        {
+            case ConstantExpression constant:
+                value = constant.Value;
+                return true;
+
+            case MemberExpression member when remainingMemberDepth > 0:
+                object? target = null;
+                if (member.Expression is not null)
+                {
+                    // A non-null Nullable<T> receiver is boxed as T, so reflecting Nullable<T>
+                    // members such as Value or HasValue on the recursively evaluated object would
+                    // throw TargetException instead of matching the compiled expression. Decline
+                    // before evaluating the receiver so a property getter is never invoked twice.
+                    if (Nullable.GetUnderlyingType(member.Expression.Type) is not null)
+                    {
+                        return false;
+                    }
+
+                    if (!TryEvaluateDirect(member.Expression, remainingMemberDepth - 1, out target) ||
+                        target is null)
+                    {
+                        return false;
+                    }
+
+                    if (member.Member.DeclaringType is not { } declaringType ||
+                        !declaringType.IsInstanceOfType(target))
+                    {
+                        return false;
+                    }
+                }
+
+                switch (member.Member)
+                {
+                    case FieldInfo field:
+                        value = field.GetValue(target);
+                        return true;
+                    case PropertyInfo { GetMethod: not null } property when property.GetIndexParameters().Length == 0:
+                        value = property.GetValue(target);
+                        return true;
+                    default:
+                        return false;
+                }
+
+            default:
+                return false;
         }
     }
 

@@ -332,6 +332,35 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
         return VerifyTranslation(typeof(Person), expr);
     }
 
+    /// <summary>
+    /// The ElementAt index is a first-class terminal operand (#210); it supersedes explicit
+    /// paging operators rather than composing with them, matching the pre-existing behavior of
+    /// the paging-based encoding it replaced.
+    /// </summary>
+    [Fact]
+    public Task ElementAt_AfterSkip_IndexSupersedesPaging()
+    {
+        var source = Root.Nodes<Person>().OrderBy(p => p.LastName).Skip(2);
+        var expr = MarkerExpressions.Call<Person>("ElementAtAsyncMarker", source.Expression, Expression.Constant(3));
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
+    [Fact]
+    public Task DistinctThenCount_ProjectsDistinctBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>().Select(p => p.LastName).Distinct();
+        var expr = MarkerExpressions.Call<string>("CountAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(string), expr);
+    }
+
+    [Fact]
+    public Task DistinctIdentityThenCount_PipesDistinctRows()
+    {
+        var source = Root.Nodes<Person>().Distinct();
+        var expr = MarkerExpressions.Call<Person>("CountAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(Person), expr);
+    }
+
     [Fact]
     public Task ElementAtOrDefault_ByIndex()
     {

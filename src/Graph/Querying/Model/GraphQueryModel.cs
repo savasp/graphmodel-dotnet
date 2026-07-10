@@ -104,6 +104,59 @@ public sealed record GraphQueryModel
         QueryPathShape? pathShape,
         JoinFragment? join,
         SearchRoot? searchFilter)
+        : this(
+            root,
+            predicates,
+            traversal,
+            projection,
+            ordering,
+            paging,
+            terminal,
+            distinct,
+            terminalOperand,
+            pathShape,
+            join,
+            searchFilter,
+            groupBy: null,
+            selectMany: null,
+            union: null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a complete provider-independent query model.
+    /// </summary>
+    /// <param name="root">The query root.</param>
+    /// <param name="predicates">Predicates applied to the root scope.</param>
+    /// <param name="traversal">Traversal steps applied after root predicates.</param>
+    /// <param name="projection">The projection shape, or <see langword="null"/> for the current element.</param>
+    /// <param name="ordering">Ordering keys applied to the current element.</param>
+    /// <param name="paging">Skip/take paging information.</param>
+    /// <param name="terminal">The terminal operation for the query.</param>
+    /// <param name="distinct">Whether the result projection is distinct.</param>
+    /// <param name="terminalOperand">The operand carried by a terminal operation such as Contains or ElementAt.</param>
+    /// <param name="pathShape">Graph-path materialization metadata, when the query returns paths.</param>
+    /// <param name="join">The equijoin description, when present.</param>
+    /// <param name="searchFilter">A full-text search applied to the current query scope after traversal.</param>
+    /// <param name="groupBy">The grouping description, when present.</param>
+    /// <param name="selectMany">The flattening-projection description, when present.</param>
+    /// <param name="union">The set-union description, when present.</param>
+    public GraphQueryModel(
+        QueryRoot root,
+        IReadOnlyList<PredicateFragment> predicates,
+        IReadOnlyList<TraversalStep> traversal,
+        ProjectionShape? projection,
+        IReadOnlyList<OrderingKey> ordering,
+        Paging paging,
+        TerminalOperation terminal,
+        bool distinct,
+        object? terminalOperand,
+        QueryPathShape? pathShape,
+        JoinFragment? join,
+        SearchRoot? searchFilter,
+        GroupByFragment? groupBy,
+        SelectManyFragment? selectMany,
+        UnionFragment? union)
     {
         Root = root ?? throw new ArgumentNullException(nameof(root));
         Predicates = QueryModelGuard.CopyRequiredList(predicates, nameof(predicates));
@@ -118,6 +171,9 @@ public sealed record GraphQueryModel
         PathShape = pathShape;
         Join = join;
         SearchFilter = searchFilter;
+        GroupBy = groupBy;
+        SelectMany = selectMany;
+        Union = union;
     }
 
     /// <summary>
@@ -169,4 +225,13 @@ public sealed record GraphQueryModel
 
     /// <summary>Gets a full-text search applied to the current query scope after traversal.</summary>
     public SearchRoot? SearchFilter { get; }
+
+    /// <summary>Gets the grouping description, when present.</summary>
+    public GroupByFragment? GroupBy { get; }
+
+    /// <summary>Gets the flattening-projection description, when present.</summary>
+    public SelectManyFragment? SelectMany { get; }
+
+    /// <summary>Gets the set-union description, when present.</summary>
+    public UnionFragment? Union { get; }
 }

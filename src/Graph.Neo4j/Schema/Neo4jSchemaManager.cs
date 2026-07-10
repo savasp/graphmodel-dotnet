@@ -6,6 +6,7 @@ namespace Cvoya.Graph.Neo4j.Schema;
 using System.Linq;
 using Cvoya.Graph;
 using Cvoya.Graph.Neo4j.Core;
+using Cvoya.Graph.Neo4j.Querying.Cypher;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -229,10 +230,10 @@ internal class Neo4jSchemaManager
             var existingConstraints = await GetExistingConstraintsAsync(tx, label, isNode: true).ConfigureAwait(false);
 
             // Always create unique constraint on Id if it doesn't exist
-            var idConstraintName = $"unique_{label}_Id".ToLowerInvariant();
+            var idConstraintName = CypherIdentifier.EscapeIfNeeded($"unique_{label}_Id".ToLowerInvariant(), "constraint name");
             if (!existingConstraints.Any(c => c.Contains("Id") && c.Contains("UNIQUE")))
             {
-                var idConstraint = $"CREATE CONSTRAINT {idConstraintName} IF NOT EXISTS FOR (n:{label}) REQUIRE n.Id IS UNIQUE";
+                var idConstraint = $"CREATE CONSTRAINT {idConstraintName} IF NOT EXISTS FOR (n:{EscapedLabel(label)}) REQUIRE n.Id IS UNIQUE";
                 var result = await tx.RunAsync(idConstraint).ConfigureAwait(false);
                 await result.ConsumeAsync().ConfigureAwait(false);
                 _logger.LogDebug("Created unique Id constraint for label {Label}", label);
@@ -243,7 +244,8 @@ internal class Neo4jSchemaManager
             {
                 var keyProperties = schema.GetKeyProperties().ToList();
                 var keyPropertyNames = keyProperties.Select(p => p.Name).ToList();
-                var compositeKeyConstraintName = $"composite_key_{label}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
+                var compositeKeyConstraintName = CypherIdentifier.EscapeIfNeeded(
+                    $"composite_key_{label}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant(), "constraint name");
 
                 // Check if composite key constraint already exists
                 var compositeExists = existingConstraints.Any(c =>
@@ -252,7 +254,7 @@ internal class Neo4jSchemaManager
                 if (!compositeExists)
                 {
                     var cypherPropertyNames = keyPropertyNames.Select(p => $"n.{p}").ToList();
-                    var compositeKeyConstraint = $"CREATE CONSTRAINT {compositeKeyConstraintName} IF NOT EXISTS FOR (n:{label}) REQUIRE ({string.Join(", ", cypherPropertyNames)}) IS UNIQUE";
+                    var compositeKeyConstraint = $"CREATE CONSTRAINT {compositeKeyConstraintName} IF NOT EXISTS FOR (n:{EscapedLabel(label)}) REQUIRE ({string.Join(", ", cypherPropertyNames)}) IS UNIQUE";
 
                     var result = await tx.RunAsync(compositeKeyConstraint).ConfigureAwait(false);
                     await result.ConsumeAsync().ConfigureAwait(false);
@@ -273,8 +275,9 @@ internal class Neo4jSchemaManager
 
                     if (!propertyExists)
                     {
-                        var uniqueConstraintName = $"unique_{label}_{propertySchema.Name}".ToLowerInvariant();
-                        var uniqueConstraint = $"CREATE CONSTRAINT {uniqueConstraintName} IF NOT EXISTS FOR (n:{label}) REQUIRE n.{propertySchema.Name} IS UNIQUE";
+                        var uniqueConstraintName = CypherIdentifier.EscapeIfNeeded(
+                            $"unique_{label}_{propertySchema.Name}".ToLowerInvariant(), "constraint name");
+                        var uniqueConstraint = $"CREATE CONSTRAINT {uniqueConstraintName} IF NOT EXISTS FOR (n:{EscapedLabel(label)}) REQUIRE n.{propertySchema.Name} IS UNIQUE";
                         var result = await tx.RunAsync(uniqueConstraint).ConfigureAwait(false);
                         await result.ConsumeAsync().ConfigureAwait(false);
                         _logger.LogDebug("Created unique constraint for property {Property} on label {Label}", propertySchema.Name, label);
@@ -302,8 +305,9 @@ internal class Neo4jSchemaManager
 
                     if (!requiredExists)
                     {
-                        var notNullConstraintName = $"notnull_{label}_{propertySchema.Name}".ToLowerInvariant();
-                        var notNullConstraint = $"CREATE CONSTRAINT {notNullConstraintName} IF NOT EXISTS FOR (n:{label}) REQUIRE n.{propertySchema.Name} IS NOT NULL";
+                        var notNullConstraintName = CypherIdentifier.EscapeIfNeeded(
+                            $"notnull_{label}_{propertySchema.Name}".ToLowerInvariant(), "constraint name");
+                        var notNullConstraint = $"CREATE CONSTRAINT {notNullConstraintName} IF NOT EXISTS FOR (n:{EscapedLabel(label)}) REQUIRE n.{propertySchema.Name} IS NOT NULL";
                         var result = await tx.RunAsync(notNullConstraint).ConfigureAwait(false);
                         await result.ConsumeAsync().ConfigureAwait(false);
                         _logger.LogDebug("Created not null constraint for property {Property} on label {Label}", propertySchema.Name, label);
@@ -335,10 +339,10 @@ internal class Neo4jSchemaManager
             var existingConstraints = await GetExistingConstraintsAsync(tx, type, isNode: false).ConfigureAwait(false);
 
             // Always create unique constraint on Id if it doesn't exist
-            var idConstraintName = $"unique_rel_{type}_Id".ToLowerInvariant();
+            var idConstraintName = CypherIdentifier.EscapeIfNeeded($"unique_rel_{type}_Id".ToLowerInvariant(), "constraint name");
             if (!existingConstraints.Any(c => c.Contains("Id") && c.Contains("UNIQUE")))
             {
-                var idConstraint = $"CREATE CONSTRAINT {idConstraintName} IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.Id IS UNIQUE";
+                var idConstraint = $"CREATE CONSTRAINT {idConstraintName} IF NOT EXISTS FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.Id IS UNIQUE";
                 var result = await tx.RunAsync(idConstraint).ConfigureAwait(false);
                 await result.ConsumeAsync().ConfigureAwait(false);
                 _logger.LogDebug("Created unique Id constraint for relationship type {Type}", type);
@@ -349,7 +353,8 @@ internal class Neo4jSchemaManager
             {
                 var keyProperties = schema.GetKeyProperties().ToList();
                 var keyPropertyNames = keyProperties.Select(p => p.Name).ToList();
-                var compositeKeyConstraintName = $"composite_key_rel_{type}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
+                var compositeKeyConstraintName = CypherIdentifier.EscapeIfNeeded(
+                    $"composite_key_rel_{type}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant(), "constraint name");
 
                 // Check if composite key constraint already exists
                 var compositeExists = existingConstraints.Any(c =>
@@ -358,7 +363,7 @@ internal class Neo4jSchemaManager
                 if (!compositeExists)
                 {
                     var cypherPropertyNames = keyPropertyNames.Select(p => $"r.{p}").ToList();
-                    var compositeKeyConstraint = $"CREATE CONSTRAINT {compositeKeyConstraintName} IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE ({string.Join(", ", cypherPropertyNames)}) IS UNIQUE";
+                    var compositeKeyConstraint = $"CREATE CONSTRAINT {compositeKeyConstraintName} IF NOT EXISTS FOR ()-[r:{EscapedType(type)}]-() REQUIRE ({string.Join(", ", cypherPropertyNames)}) IS UNIQUE";
 
                     var result = await tx.RunAsync(compositeKeyConstraint).ConfigureAwait(false);
                     await result.ConsumeAsync().ConfigureAwait(false);
@@ -379,8 +384,9 @@ internal class Neo4jSchemaManager
 
                     if (!propertyExists)
                     {
-                        var uniqueConstraintName = $"unique_rel_{type}_{propertySchema.Name}".ToLowerInvariant();
-                        var uniqueConstraint = $"CREATE CONSTRAINT {uniqueConstraintName} IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.{propertySchema.Name} IS UNIQUE";
+                        var uniqueConstraintName = CypherIdentifier.EscapeIfNeeded(
+                            $"unique_rel_{type}_{propertySchema.Name}".ToLowerInvariant(), "constraint name");
+                        var uniqueConstraint = $"CREATE CONSTRAINT {uniqueConstraintName} IF NOT EXISTS FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.{propertySchema.Name} IS UNIQUE";
                         var result = await tx.RunAsync(uniqueConstraint).ConfigureAwait(false);
                         await result.ConsumeAsync().ConfigureAwait(false);
                         _logger.LogDebug("Created unique constraint for property {Property} on relationship type {Type}", propertySchema.Name, type);
@@ -400,8 +406,9 @@ internal class Neo4jSchemaManager
 
                     if (!requiredExists)
                     {
-                        var notNullConstraintName = $"notnull_rel_{type}_{propertySchema.Name}".ToLowerInvariant();
-                        var notNullConstraint = $"CREATE CONSTRAINT {notNullConstraintName} IF NOT EXISTS FOR ()-[r:{type}]-() REQUIRE r.{propertySchema.Name} IS NOT NULL";
+                        var notNullConstraintName = CypherIdentifier.EscapeIfNeeded(
+                            $"notnull_rel_{type}_{propertySchema.Name}".ToLowerInvariant(), "constraint name");
+                        var notNullConstraint = $"CREATE CONSTRAINT {notNullConstraintName} IF NOT EXISTS FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.{propertySchema.Name} IS NOT NULL";
                         var result = await tx.RunAsync(notNullConstraint).ConfigureAwait(false);
                         await result.ConsumeAsync().ConfigureAwait(false);
                         _logger.LogDebug("Created not null constraint for property {Property} on relationship type {Type}", propertySchema.Name, type);
@@ -506,8 +513,9 @@ internal class Neo4jSchemaManager
 
                 if (propertySchema.IsIndexed)
                 {
-                    var indexName = $"idx_{label}_{propertySchema.Name}".ToLowerInvariant();
-                    var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR (n:{label}) ON (n.{propertySchema.Name})";
+                    var indexName = CypherIdentifier.EscapeIfNeeded(
+                        $"idx_{label}_{propertySchema.Name}".ToLowerInvariant(), "index name");
+                    var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR (n:{EscapedLabel(label)}) ON (n.{propertySchema.Name})";
                     var result = await tx.RunAsync(createIndex).ConfigureAwait(false);
                     await result.ConsumeAsync().ConfigureAwait(false);
                     _logger.LogDebug("Created index {Index} for property {Property} on label {Label}", indexName, propertySchema.Name, label);
@@ -541,8 +549,9 @@ internal class Neo4jSchemaManager
 
                 if (propertySchema.IsIndexed)
                 {
-                    var indexName = $"idx_{type}_{propertySchema.Name}".ToLowerInvariant();
-                    var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR ()-[r:{type}]-() ON (r.{propertySchema.Name})";
+                    var indexName = CypherIdentifier.EscapeIfNeeded(
+                        $"idx_{type}_{propertySchema.Name}".ToLowerInvariant(), "index name");
+                    var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR ()-[r:{EscapedType(type)}]-() ON (r.{propertySchema.Name})";
                     var result = await tx.RunAsync(createIndex).ConfigureAwait(false);
                     await result.ConsumeAsync().ConfigureAwait(false);
                     _logger.LogDebug("Created index {Index} for property {Property} on relationship type {Type}", indexName, propertySchema.Name, type);
@@ -593,7 +602,7 @@ internal class Neo4jSchemaManager
             // Create node index if we have labels and string properties
             if (nodeLabels.Count > 0 && nodeStringProps.Count > 0)
             {
-                var labelList = string.Join("|", nodeLabels);
+                var labelList = string.Join("|", nodeLabels.Select(EscapedLabel));
                 var propList = string.Join(", ", nodeStringProps.Select(p => $"n.{p}"));
                 var createNodeIndex = $"CREATE FULLTEXT INDEX node_fulltext_index IF NOT EXISTS FOR (n:{labelList}) ON EACH [{propList}]";
                 await tx.RunAsync(createNodeIndex).ConfigureAwait(false);
@@ -628,7 +637,7 @@ internal class Neo4jSchemaManager
             // Create relationship index if we have types and string properties
             if (relTypes.Count > 0 && relStringProps.Count > 0)
             {
-                var typeList = string.Join("|", relTypes);
+                var typeList = string.Join("|", relTypes.Select(EscapedType));
                 var propList = string.Join(", ", relStringProps.Select(p => $"r.{p}"));
                 var createRelIndex = $"CREATE FULLTEXT INDEX rel_fulltext_index IF NOT EXISTS FOR ()-[r:{typeList}]-() ON EACH [{propList}]";
                 await tx.RunAsync(createRelIndex).ConfigureAwait(false);
@@ -671,7 +680,7 @@ internal class Neo4jSchemaManager
                 var indexName = record["name"].ToString();
                 if (!string.IsNullOrEmpty(indexName))
                 {
-                    var dropIndex = $"DROP INDEX {indexName} IF EXISTS";
+                    var dropIndex = $"DROP INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} IF EXISTS";
                     await tx.RunAsync(dropIndex).ConfigureAwait(false);
                     _logger.LogDebug("Dropped index: {IndexName}", indexName);
                 }
@@ -686,6 +695,14 @@ internal class Neo4jSchemaManager
             throw;
         }
     }
+
+    // Labels, relationship types, and constraint/index names come from user model metadata;
+    // they must be escaped before interpolation, exactly like the entity managers do (#214).
+    private static string EscapedLabel(string label) =>
+        CypherIdentifier.EscapeIfNeeded(label, "node label");
+
+    private static string EscapedType(string type) =>
+        CypherIdentifier.EscapeIfNeeded(type, "relationship type");
 
     /// <summary>
     /// Clears the processed schemas cache and resets the initialization state.

@@ -54,6 +54,45 @@ internal static class CypherIdentifier
     }
 
     /// <summary>
+    /// Validates <paramref name="identifier"/> and returns it backtick-quoted only when it is not a
+    /// plain Cypher symbolic name (an ASCII letter or underscore followed by ASCII letters, digits,
+    /// or underscores). Use this on read-path rendering, where ordinary identifiers must appear
+    /// unquoted so generated Cypher stays byte-stable.
+    /// </summary>
+    /// <param name="identifier">The identifier to validate and, when needed, escape.</param>
+    /// <param name="kind">
+    /// A short description of what <paramref name="identifier"/> represents (for example "node label"),
+    /// used only to produce a precise error message.
+    /// </param>
+    /// <returns>The identifier, backtick-quoted when needed, safe to interpolate into Cypher text.</returns>
+    /// <exception cref="GraphException">
+    /// <paramref name="identifier"/> is null, empty, whitespace-only, or contains a control character.
+    /// </exception>
+    public static string EscapeIfNeeded(string? identifier, string kind = "identifier")
+    {
+        Validate(identifier, kind);
+        return IsPlainSymbolicName(identifier!) ? identifier! : $"`{identifier!.Replace("`", "``")}`";
+    }
+
+    private static bool IsPlainSymbolicName(string identifier)
+    {
+        if (!char.IsAsciiLetter(identifier[0]) && identifier[0] != '_')
+        {
+            return false;
+        }
+
+        for (var i = 1; i < identifier.Length; i++)
+        {
+            if (!char.IsAsciiLetterOrDigit(identifier[i]) && identifier[i] != '_')
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Validates that <paramref name="identifier"/> is an acceptable Cypher identifier without
     /// escaping it. Use this when the identifier will be embedded as one of several colon-joined
     /// labels (for example <c>n:`A`:`B`</c>) rather than a single backtick-quoted token.
