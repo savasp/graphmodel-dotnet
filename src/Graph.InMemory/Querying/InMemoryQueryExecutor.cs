@@ -72,12 +72,16 @@ internal sealed class InMemoryQueryExecutor(
         var materialized = pairs.ToList();
         _cancellationToken.ThrowIfCancellationRequested();
 
-        if (model.Paging.Skip is { } skip)
+        var paging = model.Terminal is TerminalOperation.ElementAt or TerminalOperation.ElementAtOrDefault
+            ? new Paging((int)model.TerminalOperand!, 1)
+            : model.Paging;
+
+        if (paging.Skip is { } skip)
         {
             materialized = [.. materialized.Skip(skip)];
         }
 
-        if (model.Paging.Take is { } take)
+        if (paging.Take is { } take)
         {
             materialized = [.. materialized.Take(take)];
         }
@@ -95,7 +99,6 @@ internal sealed class InMemoryQueryExecutor(
         switch (model.Terminal)
         {
             case TerminalOperation.ToListOrArray:
-            case TerminalOperation.Distinct:
                 return values;
             case TerminalOperation.First:
                 if (values.Count == 0)
@@ -825,11 +828,38 @@ internal sealed class InMemoryQueryExecutor(
     {
         if (!_compiled.TryGetValue(lambda, out var compiled))
         {
-            compiled = lambda.Compile();
+            var nullPropagating = (LambdaExpression)new NullPropagatingMemberAccessVisitor().Visit(lambda)!;
+            compiled = nullPropagating.Compile();
             _compiled[lambda] = compiled;
         }
 
         return compiled;
+    }
+
+    private sealed class NullPropagatingMemberAccessVisitor : ExpressionVisitor
+    {
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            if (node.Expression is null)
+            {
+                return base.VisitMember(node);
+            }
+
+            var instance = Visit(node.Expression);
+            var access = Expression.MakeMemberAccess(instance, node.Member);
+            if (!CanBeNull(instance.Type) || !CanBeNull(access.Type))
+            {
+                return access;
+            }
+
+            return Expression.Condition(
+                Expression.Equal(instance, Expression.Constant(null, instance.Type)),
+                Expression.Default(access.Type),
+                access);
+        }
+
+        private static bool CanBeNull(Type type) =>
+            !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
     }
 
     private static object? Invoke(Delegate compiled, params object?[] arguments)

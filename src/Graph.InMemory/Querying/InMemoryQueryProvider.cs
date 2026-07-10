@@ -105,9 +105,33 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider
             throw MapTranslationException(exception);
         }
 
+        EnsureSupported(model);
+        GraphQueryModelValidator.Validate(model);
+
         var state = _transaction is not null ? _transaction.View : _store.CurrentState;
         var executor = new InMemoryQueryExecutor(_reader, state, cancellationToken);
         return executor.Execute(model, TerminalHints.From(expression));
+    }
+
+    private static void EnsureSupported(GraphQueryModel model)
+    {
+        if (model.SelectMany is not null)
+        {
+            throw new NotSupportedException(
+                "SelectMany is not supported by graph query translation yet; see #100.");
+        }
+
+        if (model.GroupBy is not null)
+        {
+            throw new NotSupportedException(
+                "GroupBy is not supported by graph query translation yet; see #100.");
+        }
+
+        if (model.Union is not null)
+        {
+            throw new GraphException(
+                "Union operations are not yet fully implemented in the refactored architecture");
+        }
     }
 
     /// <summary>
