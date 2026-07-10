@@ -69,19 +69,19 @@ public static class Neo4jDynamicEntityExtensions
             // Create the appropriate collection type
             if (typeof(T) == typeof(IList<string>))
             {
-                return (T)(object)resultList.Where(x => x != null).Cast<string>().ToList();
+                return Cast<T>(resultList.Where(x => x != null).Cast<string>().ToList());
             }
             else if (typeof(T) == typeof(IList<int>))
             {
-                return (T)(object)resultList.Where(x => x != null).Cast<int>().ToList();
+                return Cast<T>(resultList.Where(x => x != null).Cast<int>().ToList());
             }
             else if (typeof(T) == typeof(IList<double>))
             {
-                return (T)(object)resultList.Where(x => x != null).Cast<double>().ToList();
+                return Cast<T>(resultList.Where(x => x != null).Cast<double>().ToList());
             }
             else if (typeof(T) == typeof(IList<bool>))
             {
-                return (T)(object)resultList.Where(x => x != null).Cast<bool>().ToList();
+                return Cast<T>(resultList.Where(x => x != null).Cast<bool>().ToList());
             }
             else
             {
@@ -144,7 +144,7 @@ public static class Neo4jDynamicEntityExtensions
             {
                 try
                 {
-                    var direct = (T)(object)value;
+                    var direct = (T)value;
                     return direct;
                 }
                 catch
@@ -322,5 +322,10 @@ public static class Neo4jDynamicEntityExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
 
         return relationship.Properties.ContainsKey(propertyName);
+    }
+
+    private static T Cast<T>(object value)
+    {
+        return (T)value;
     }
 }

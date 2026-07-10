@@ -7,7 +7,6 @@
     </PropertyGroup>
 
     <PropertyGroup>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>Cvoya.Graph.Cypher</PackageId>
         <Description>A typed Cypher AST and validation framework for CVOYA graph query generation.</Description>
         <PackageTags>graph;database;cypher;ast;linq</PackageTags>

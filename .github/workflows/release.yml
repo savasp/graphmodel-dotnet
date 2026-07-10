@@ -315,6 +315,7 @@ jobs:
       - name: Build packages (Release)
         run: |
           dotnet build --configuration Release --no-restore src/Graph/Graph.csproj
+          dotnet build --configuration Release --no-restore src/Graph.Cypher/Graph.Cypher.csproj
           dotnet build --configuration Release --no-restore src/Graph.Serialization/Graph.Serialization.csproj
           dotnet build --configuration Release --no-restore src/Graph.Neo4j/Graph.Neo4j.csproj
           dotnet build --configuration Release --no-restore src/Graph.CompatibilityTests/Graph.CompatibilityTests.csproj
@@ -324,6 +325,7 @@ jobs:
       - name: Pack
         run: |
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph/Graph.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Cypher/Graph.Cypher.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Serialization/Graph.Serialization.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Neo4j/Graph.Neo4j.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.CompatibilityTests/Graph.CompatibilityTests.csproj
@@ -342,6 +344,9 @@ jobs:
             fi
           done
           ls -la ./artifacts
+
+      - name: Verify release package set
+        run: ./scripts/verify-package-set.sh ./artifacts "${{ needs.verify-version.outputs.version }}"
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2

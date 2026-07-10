@@ -40,85 +40,45 @@ internal sealed class KnowsSerializer : IEntitySerializer
         // Look for property 'StartNodeId' in both simple and complex properties
         var startnodeidPropRep = entity.SimpleProperties.TryGetValue("StartNodeId", out var startnodeidSimpleProp) ? startnodeidSimpleProp
                     : entity.ComplexProperties.TryGetValue("StartNodeId", out var startnodeidComplexProp) ? startnodeidComplexProp : null;
-        if (startnodeidPropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (startnodeidPropRep.Value is SimpleValue simpleValue)
-            {
-                StartNodeId = (string)simpleValue.Object;
-            }
-            else
-            {
-                StartNodeId = string.Empty;
-            }
-        }
-        else
-        {
-            StartNodeId = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        StartNodeId = startnodeidPropRep is null
+            ? string.Empty
+            : startnodeidPropRep.Value is SimpleValue startnodeidPropRepSimpleValue
+                ? (string)startnodeidPropRepSimpleValue.Object
+                : string.Empty;
         // Extracting value for parameter 'EndNodeId'
         string EndNodeId;
         // Look for property 'EndNodeId' in both simple and complex properties
         var endnodeidPropRep = entity.SimpleProperties.TryGetValue("EndNodeId", out var endnodeidSimpleProp) ? endnodeidSimpleProp
                     : entity.ComplexProperties.TryGetValue("EndNodeId", out var endnodeidComplexProp) ? endnodeidComplexProp : null;
-        if (endnodeidPropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (endnodeidPropRep.Value is SimpleValue simpleValue)
-            {
-                EndNodeId = (string)simpleValue.Object;
-            }
-            else
-            {
-                EndNodeId = string.Empty;
-            }
-        }
-        else
-        {
-            EndNodeId = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        EndNodeId = endnodeidPropRep is null
+            ? string.Empty
+            : endnodeidPropRep.Value is SimpleValue endnodeidPropRepSimpleValue
+                ? (string)endnodeidPropRepSimpleValue.Object
+                : string.Empty;
         // Extracting init-only property 'Direction'
         Cvoya.Graph.RelationshipDirection directionValue;
         // Look for property 'Direction' in both simple and complex properties
         var directionPropRep = entity.SimpleProperties.TryGetValue("Direction", out var directionSimpleProp) ? directionSimpleProp
                     : entity.ComplexProperties.TryGetValue("Direction", out var directionComplexProp) ? directionComplexProp : null;
-        if (directionPropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (directionPropRep.Value is SimpleValue simpleValue)
-            {
-                directionValue = (Cvoya.Graph.RelationshipDirection)simpleValue.Object;
-            }
-            else
-            {
-                directionValue = RelationshipDirection.Outgoing;
-            }
-        }
-        else
-        {
-            directionValue = RelationshipDirection.Outgoing;
-        }
+        // Extract simple value - no conversion, just cast
+        directionValue = directionPropRep is null
+            ? RelationshipDirection.Outgoing
+            : directionPropRep.Value is SimpleValue directionPropRepSimpleValue
+                ? (Cvoya.Graph.RelationshipDirection)directionPropRepSimpleValue.Object
+                : RelationshipDirection.Outgoing;
         // Extracting init-only property 'Id'
         string idValue;
         // Look for property 'Id' in both simple and complex properties
         var idPropRep = entity.SimpleProperties.TryGetValue("Id", out var idSimpleProp) ? idSimpleProp
                     : entity.ComplexProperties.TryGetValue("Id", out var idComplexProp) ? idComplexProp : null;
-        if (idPropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (idPropRep.Value is SimpleValue simpleValue)
-            {
-                idValue = (string)simpleValue.Object;
-            }
-            else
-            {
-                idValue = Guid.NewGuid().ToString("N");
-            }
-        }
-        else
-        {
-            idValue = Guid.NewGuid().ToString("N");
-        }
+        // Extract simple value - no conversion, just cast
+        idValue = idPropRep is null
+            ? Guid.NewGuid().ToString("N")
+            : idPropRep.Value is SimpleValue idPropRepSimpleValue
+                ? (string)idPropRepSimpleValue.Object
+                : Guid.NewGuid().ToString("N");
 
         var result = new TestNamespace.Knows(
             StartNodeId,
@@ -133,41 +93,21 @@ internal sealed class KnowsSerializer : IEntitySerializer
         // Look for property 'Since' in both simple and complex properties
         var sincePropRep = entity.SimpleProperties.TryGetValue("Since", out var sinceSimpleProp) ? sinceSimpleProp
                     : entity.ComplexProperties.TryGetValue("Since", out var sinceComplexProp) ? sinceComplexProp : null;
-        if (sincePropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (sincePropRep.Value is SimpleValue simpleValue)
-            {
-                result.Since = (int)simpleValue.Object;
-            }
-            else
-            {
-                result.Since = 0;
-            }
-        }
-        else
-        {
-            result.Since = 0;
-        }
+        // Extract simple value - no conversion, just cast
+        result.Since = sincePropRep is null
+            ? 0
+            : sincePropRep.Value is SimpleValue sincePropRepSimpleValue
+                ? (int)sincePropRepSimpleValue.Object
+                : 0;
         // Look for property 'Type' in both simple and complex properties
         var typePropRep = entity.SimpleProperties.TryGetValue("Type", out var typeSimpleProp) ? typeSimpleProp
                     : entity.ComplexProperties.TryGetValue("Type", out var typeComplexProp) ? typeComplexProp : null;
-        if (typePropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (typePropRep.Value is SimpleValue simpleValue)
-            {
-                result.Type = (string)simpleValue.Object;
-            }
-            else
-            {
-                result.Type = string.Empty;
-            }
-        }
-        else
-        {
-            result.Type = string.Empty;
-        }
+        // Extract simple value - no conversion, just cast
+        result.Type = typePropRep is null
+            ? string.Empty
+            : typePropRep.Value is SimpleValue typePropRepSimpleValue
+                ? (string)typePropRepSimpleValue.Object
+                : string.Empty;
         return result;
     }
 
@@ -181,7 +121,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.Knows).GetProperty("Since")!;
             var value = entity.Since;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
             serializedValue = new SimpleValue(
                 Object: value!,
@@ -201,15 +141,14 @@ internal sealed class KnowsSerializer : IEntitySerializer
         {
             var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("StartNodeId")!;
             var value = entity.StartNodeId;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -224,15 +163,14 @@ internal sealed class KnowsSerializer : IEntitySerializer
         {
             var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("EndNodeId")!;
             var value = entity.EndNodeId;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -247,7 +185,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
         {
             var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("Direction")!;
             var value = entity.Direction;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
             serializedValue = new SimpleValue(
                 Object: value!,
@@ -267,15 +205,14 @@ internal sealed class KnowsSerializer : IEntitySerializer
         {
             var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("Id")!;
             var value = entity.Id;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -290,15 +227,14 @@ internal sealed class KnowsSerializer : IEntitySerializer
         {
             var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("Type")!;
             var value = entity.Type;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,

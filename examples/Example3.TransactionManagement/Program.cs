@@ -231,9 +231,5 @@ catch (Exception ex)
 finally
 {
     await store.DisposeAsync();
-    await using (var session = driver.AsyncSession())
-    {
-        //        await session.RunAsync($"DROP DATABASE {databaseName}");
-    }
     await driver.DisposeAsync();
 }

@@ -49,7 +49,8 @@ Options:
   -o, --output-dir <dir>       SARIF output directory (default: artifacts/codeql)
   --build-mode <mode>          CodeQL build mode: none or manual (default: none; manual is optional and tracer-dependent)
   --no-download                Do not download/update the CodeQL C# query pack
-  --fail-on-alerts             Exit non-zero if the SARIF file contains results
+  --fail-on-alerts             Exit non-zero on error/warning results (default)
+  --allow-alerts               Report results without failing
   --threads <count>            Number of CodeQL evaluator threads
   --ram <mb>                   Maximum RAM for CodeQL, in MB
   -h, --help                   Show this help message
@@ -57,7 +58,7 @@ Options:
 Examples:
   ./scripts/run-codeql.sh
   ./scripts/run-codeql.sh --build-mode manual
-  ./scripts/run-codeql.sh --fail-on-alerts
+  ./scripts/run-codeql.sh --allow-alerts
   ./scripts/run-codeql.sh --threads 4 --ram 8192
 EOF
 }
@@ -65,7 +66,7 @@ EOF
 OUTPUT_DIR="artifacts/codeql"
 BUILD_MODE="none"
 DOWNLOAD_QUERIES=true
-FAIL_ON_ALERTS=false
+FAIL_ON_ALERTS=true
 BUILD_ONLY=false
 THREADS=""
 RAM=""
@@ -110,6 +111,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --fail-on-alerts)
             FAIL_ON_ALERTS=true
+            shift
+            ;;
+        --allow-alerts)
+            FAIL_ON_ALERTS=false
             shift
             ;;
         --build-only)
@@ -184,12 +189,8 @@ else
 fi
 
 if ! command -v jq &> /dev/null; then
-    if [ "$FAIL_ON_ALERTS" = true ]; then
-        print_error "jq is required when --fail-on-alerts is used."
-        exit 1
-    fi
-
-    print_warning "jq not found; result counts will be skipped."
+    print_error "jq is required to evaluate CodeQL result severities."
+    exit 1
 fi
 
 if [ "$BUILD_MODE" = "none" ] && ! command -v rsync &> /dev/null; then
@@ -300,20 +301,32 @@ print_status "Results: $RESULTS_FILE"
 codeql "${ANALYZE_ARGS[@]}"
 echo ""
 
-if command -v jq &> /dev/null; then
-    RESULT_COUNT=$(jq '[.runs[].results[]?] | length' "$RESULTS_FILE")
-    RESULT_SUMMARY=$(jq -r '[.runs[].results[]? | (.level // "warning")] | sort | group_by(.) | map("\(.[0])=\(length)") | join(", ")' "$RESULTS_FILE")
+RESULT_LEVELS_JQ='[
+    .runs[] as $run
+    | $run.results[]? as $result
+    | ($result.level
+        // ([
+          ($run.tool.driver.rules[]?),
+          ($run.tool.extensions[]?.rules[]?)
+          | select(.id == $result.ruleId)
+          | .defaultConfiguration.level
+        ][0])
+        // "warning")
+]'
 
-    if [ -z "$RESULT_SUMMARY" ]; then
-        RESULT_SUMMARY="none"
-    fi
+RESULT_COUNT=$(jq '[.runs[].results[]?] | length' "$RESULTS_FILE")
+RESULT_SUMMARY=$(jq -r "$RESULT_LEVELS_JQ | sort | group_by(.) | map(\"\(.[0])=\(length)\") | join(\", \")" "$RESULTS_FILE")
+GATING_RESULT_COUNT=$(jq "$RESULT_LEVELS_JQ | map(select(. == \"error\" or . == \"warning\")) | length" "$RESULTS_FILE")
 
-    print_status "CodeQL SARIF results: $RESULT_COUNT ($RESULT_SUMMARY)"
+if [ -z "$RESULT_SUMMARY" ]; then
+    RESULT_SUMMARY="none"
+fi
 
-    if [ "$FAIL_ON_ALERTS" = true ] && [ "$RESULT_COUNT" -gt 0 ]; then
-        print_error "CodeQL produced $RESULT_COUNT result(s). See $RESULTS_FILE."
-        exit 2
-    fi
+print_status "CodeQL SARIF results: $RESULT_COUNT ($RESULT_SUMMARY)"
+
+if [ "$FAIL_ON_ALERTS" = true ] && [ "$GATING_RESULT_COUNT" -gt 0 ]; then
+    print_error "CodeQL produced $GATING_RESULT_COUNT error/warning result(s). See $RESULTS_FILE."
+    exit 2
 fi
 
 print_status "CodeQL analysis completed successfully."

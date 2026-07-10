@@ -195,15 +195,19 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
     private object DeserializeDynamicEntity(EntityInfo entity)
     {
-        switch (entity.ActualType)
+        var actualType = entity.ActualType;
+
+        if (actualType.IsAssignableTo(typeof(DynamicNode)))
         {
-            case var t when t.IsAssignableTo(typeof(DynamicNode)):
-                return DeserializeDynamicNode(entity);
-            case var t when t.IsAssignableTo(typeof(DynamicRelationship)):
-                return DeserializeDynamicRelationship(entity);
-            default:
-                throw new GraphException($"Unsupported dynamic entity type: {entity.ActualType.Name}");
+            return DeserializeDynamicNode(entity);
         }
+
+        if (actualType.IsAssignableTo(typeof(DynamicRelationship)))
+        {
+            return DeserializeDynamicRelationship(entity);
+        }
+
+        throw new GraphException($"Unsupported dynamic entity type: {actualType.Name}");
     }
 
     private DynamicNode DeserializeDynamicNode(EntityInfo entity)

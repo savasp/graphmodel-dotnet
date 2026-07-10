@@ -40,22 +40,12 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
         // Look for property 'Id' in both simple and complex properties
         var idPropRep = entity.SimpleProperties.TryGetValue("Id", out var idSimpleProp) ? idSimpleProp
                     : entity.ComplexProperties.TryGetValue("Id", out var idComplexProp) ? idComplexProp : null;
-        if (idPropRep != null)
-        {
-            // Extract simple value - no conversion, just cast
-            if (idPropRep.Value is SimpleValue simpleValue)
-            {
-                idValue = (string)simpleValue.Object;
-            }
-            else
-            {
-                idValue = Guid.NewGuid().ToString("N");
-            }
-        }
-        else
-        {
-            idValue = Guid.NewGuid().ToString("N");
-        }
+        // Extract simple value - no conversion, just cast
+        idValue = idPropRep is null
+            ? Guid.NewGuid().ToString("N")
+            : idPropRep.Value is SimpleValue idPropRepSimpleValue
+                ? (string)idPropRepSimpleValue.Object
+                : Guid.NewGuid().ToString("N");
 
         var result = new TestNamespace.TrackedNode(
         )
@@ -67,73 +57,35 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
         // Look for property 'TrackingId' in both simple and complex properties
         var trackingidPropRep = entity.SimpleProperties.TryGetValue("TrackingId", out var trackingidSimpleProp) ? trackingidSimpleProp
                     : entity.ComplexProperties.TryGetValue("TrackingId", out var trackingidComplexProp) ? trackingidComplexProp : null;
-        if (trackingidPropRep != null)
-        {
-            // Extract simple value with conversion from provider wire types
-            if (trackingidPropRep.Value is SimpleValue simpleValue)
-            {
-                result.TrackingId = simpleValue.Object is System.Guid guidValue ? guidValue : System.Guid.Parse(simpleValue.Object.ToString()!);
-            }
-            else
-            {
-                result.TrackingId = System.Guid.Empty;
-            }
-        }
-        else
-        {
-            result.TrackingId = System.Guid.Empty;
-        }
+        // Extract simple value with conversion from provider wire types
+        result.TrackingId = trackingidPropRep is null
+            ? System.Guid.Empty
+            : trackingidPropRep.Value is SimpleValue trackingidPropRepSimpleValue
+                ? trackingidPropRepSimpleValue.Object is System.Guid guidValue ? guidValue : System.Guid.Parse(trackingidPropRepSimpleValue.Object.ToString()!)
+                : System.Guid.Empty;
         // Look for property 'RelatedIds' in both simple and complex properties
         var relatedidsPropRep = entity.SimpleProperties.TryGetValue("RelatedIds", out var relatedidsSimpleProp) ? relatedidsSimpleProp
                     : entity.ComplexProperties.TryGetValue("RelatedIds", out var relatedidsComplexProp) ? relatedidsComplexProp : null;
-        if (relatedidsPropRep != null)
-        {
-            // Extract collection value
-            if (relatedidsPropRep.Value is SimpleCollection simpleCollection)
-            {
-                var collection = new List<System.Guid>();
-                foreach (var simpleValue in simpleCollection.Values)
-                {
-                    collection.Add(simpleValue.Object is System.Guid guidValue ? guidValue : System.Guid.Parse(simpleValue.Object.ToString()!));
-                }
-                result.RelatedIds = collection;
-            }
-            else
-            {
-                throw new InvalidOperationException("Required collection property 'RelatedIds' is missing or null");
-            }
-        }
-        else
-        {
-            result.RelatedIds = new System.Collections.Generic.List<System.Guid>();
-        }
+        // Extract collection value
+        result.RelatedIds = relatedidsPropRep is null
+            ? new System.Collections.Generic.List<System.Guid>()
+            : relatedidsPropRep.Value is SimpleCollection relatedidsPropRepSimpleCollection
+                ? relatedidsPropRepSimpleCollection.Values
+                    .Select(simpleValue => simpleValue.Object is System.Guid guidValue ? guidValue : System.Guid.Parse(simpleValue.Object.ToString()!))
+                    .ToList()
+                : throw new InvalidOperationException("Required collection property 'RelatedIds' is missing or null");
         // Look for property 'Labels' in both simple and complex properties
         var labelsPropRep = entity.SimpleProperties.TryGetValue("Labels", out var labelsSimpleProp) ? labelsSimpleProp
                     : entity.ComplexProperties.TryGetValue("Labels", out var labelsComplexProp) ? labelsComplexProp : null;
-        if (labelsPropRep != null)
-        {
-            // Extract collection value
-            if (labelsPropRep.Value is SimpleCollection simpleCollection)
-            {
-                var collection = new List<string>();
-                foreach (var simpleValue in simpleCollection.Values)
-                {
-                    if (simpleValue.Object != null)
-                    {
-                        collection.Add((string)simpleValue.Object);
-                    }
-                }
-                result.Labels = collection;
-            }
-            else
-            {
-                throw new InvalidOperationException("Required collection property 'Labels' is missing or null");
-            }
-        }
-        else
-        {
-            result.Labels = new System.Collections.Generic.List<string>();
-        }
+        // Extract collection value
+        result.Labels = labelsPropRep is null
+            ? new System.Collections.Generic.List<string>()
+            : labelsPropRep.Value is SimpleCollection labelsPropRepSimpleCollection
+                ? labelsPropRepSimpleCollection.Values
+                    .Where(simpleValue => simpleValue.Object is not null)
+                    .Select(simpleValue => (string)simpleValue.Object)
+                    .ToList()
+                : throw new InvalidOperationException("Required collection property 'Labels' is missing or null");
         return result;
     }
 
@@ -147,7 +99,7 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.TrackedNode).GetProperty("TrackingId")!;
             var value = entity.TrackingId;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
             serializedValue = new SimpleValue(
                 Object: value!,
@@ -167,23 +119,16 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
         {
             var propInfo = typeof(TestNamespace.TrackedNode).GetProperty("RelatedIds")!;
             var value = entity.RelatedIds;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                var values = new List<SimpleValue>();
-                foreach (var item in value)
-                {
-                    values.Add(new SimpleValue(
-                        Object: item!,
-                        Type: typeof(System.Guid)
-                    ));
-                }
-                serializedValue = new SimpleCollection(
-                    Values: values,
+            serializedValue = value is null
+                ? null
+                : new SimpleCollection(
+                    Values: value
+                        .Select(item => new SimpleValue(item!, typeof(System.Guid)))
+                        .ToList(),
                     ElementType: typeof(System.Guid)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -198,15 +143,14 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
         {
             var propInfo = typeof(Cvoya.Graph.Node).GetProperty("Id")!;
             var value = entity.Id;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                serializedValue = new SimpleValue(
-                    Object: value!,
+            serializedValue = value is null
+                ? null
+                : new SimpleValue(
+                    Object: value,
                     Type: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,
@@ -221,23 +165,16 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
         {
             var propInfo = typeof(Cvoya.Graph.Node).GetProperty("Labels")!;
             var value = entity.Labels;
-            Serialized? serializedValue = null;
+            Serialized? serializedValue;
 
-            if (value != null)
-            {
-                var values = new List<SimpleValue>();
-                foreach (var item in value)
-                {
-                    values.Add(new SimpleValue(
-                        Object: item!,
-                        Type: typeof(string)
-                    ));
-                }
-                serializedValue = new SimpleCollection(
-                    Values: values,
+            serializedValue = value is null
+                ? null
+                : new SimpleCollection(
+                    Values: value
+                        .Select(item => new SimpleValue(item!, typeof(string)))
+                        .ToList(),
                     ElementType: typeof(string)
                 );
-            }
 
             var propertyRep = new Property(
                 PropertyInfo: propInfo,

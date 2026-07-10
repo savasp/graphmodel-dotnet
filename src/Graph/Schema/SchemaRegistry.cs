@@ -410,13 +410,8 @@ public class SchemaRegistry : IDisposable
         var attribute = property.GetCustomAttribute<PropertyAttribute>();
         var isKey = attribute?.IsKey ?? false;
 
-        var includeInFullTextSearch = attribute?.IncludeInFullTextSearch switch
-        {
-            true => property.PropertyType == typeof(string),
-            false => false,
-            null when property.PropertyType == typeof(string) => true, // Default for string properties
-            null => false // Default for non-string properties
-        };
+        var includeInFullTextSearch = property.PropertyType == typeof(string)
+            && (attribute?.IncludeInFullTextSearch ?? true);
 
         return new PropertySchemaInfo
         {

@@ -77,7 +77,7 @@ internal static class Serialization
         sb.AppendLine($"        {{");
         sb.AppendLine($"            var propInfo = typeof({property.ContainingTypeDisplayName}).GetProperty(\"{property.Name}\")!;");
         sb.AppendLine($"            var value = entity.{property.Name};");
-        sb.AppendLine($"            Serialized? serializedValue = null;");
+        sb.AppendLine($"            Serialized? serializedValue;");
         sb.AppendLine();
 
         if (isCollection)
@@ -97,31 +97,23 @@ internal static class Serialization
             }
             else
             {
-                // Reference type or nullable value type - check for null
-                sb.AppendLine($"            if (value != null)");
-                sb.AppendLine($"            {{");
-                sb.AppendLine($"                serializedValue = new SimpleValue(");
-                sb.AppendLine($"                    Object: value!,");
+                // Reference type or nullable value type - preserve null values.
+                sb.AppendLine($"            serializedValue = value is null");
+                sb.AppendLine($"                ? null");
+                sb.AppendLine($"                : new SimpleValue(");
+                sb.AppendLine($"                    Object: value,");
                 sb.AppendLine($"                    Type: typeof({propertyType.TypeOfName})");
                 sb.AppendLine($"                );");
-                sb.AppendLine($"            }}");
             }
         }
         else
         {
-            // Complex type - recursively serialize to Entity
-            sb.AppendLine($"            if (value != null)");
-            sb.AppendLine($"            {{");
-            sb.AppendLine($"                var complexSerializer = _serializerRegistry.GetSerializer(value.GetType());");
-            sb.AppendLine($"                if (complexSerializer != null)");
-            sb.AppendLine($"                {{");
-            sb.AppendLine($"                    serializedValue = complexSerializer.Serialize(value);");
-            sb.AppendLine($"                }}");
-            sb.AppendLine($"                else");
-            sb.AppendLine($"                {{");
-            sb.AppendLine($"                    throw new InvalidOperationException($\"No serializer found for type {{value.GetType().Name}}\");");
-            sb.AppendLine($"                }}");
-            sb.AppendLine($"            }}");
+            // Complex type - recursively serialize to Entity.
+            sb.AppendLine($"            serializedValue = value is null");
+            sb.AppendLine($"                ? null");
+            sb.AppendLine($"                : (_serializerRegistry.GetSerializer(value.GetType())");
+            sb.AppendLine($"                    ?? throw new InvalidOperationException($\"No serializer found for type {{value.GetType().Name}}\"))");
+            sb.AppendLine($"                    .Serialize(value);");
         }
 
         // Add to appropriate dictionary
@@ -146,44 +138,30 @@ internal static class Serialization
     private static void GenerateCollectionSerialization(StringBuilder sb, TypeReferenceModel collectionType)
     {
         var elementType = collectionType.ElementType;
-        if (elementType == null) return; // Should not happen for valid collections
+        if (elementType == null)
+        {
+            sb.AppendLine("            serializedValue = null;");
+            return;
+        }
 
         var isElementSimple = elementType.IsSimple;
 
-        sb.AppendLine($"            if (value != null)");
-        sb.AppendLine($"            {{");
-
         if (isElementSimple)
         {
-            sb.AppendLine($"                var values = new List<SimpleValue>();");
-            sb.AppendLine($"                foreach (var item in value)");
-            sb.AppendLine($"                {{");
+            sb.AppendLine("            serializedValue = value is null");
+            sb.AppendLine("                ? null");
+            sb.AppendLine("                : new SimpleCollection(");
+            sb.AppendLine("                    Values: value");
 
-            // Only add null check for nullable types
             if (elementType.IsNullable)
             {
-                sb.AppendLine($"                    if (item != null)");
-                sb.AppendLine($"                    {{");
-                sb.AppendLine($"                        values.Add(new SimpleValue(");
-                sb.AppendLine($"                            Object: item!,");
-                sb.AppendLine($"                            Type: typeof({elementType.TypeOfName})");
-                sb.AppendLine($"                        ));");
-                sb.AppendLine($"                    }}");
-            }
-            else
-            {
-                // Value types can't be null, so no null check needed
-                sb.AppendLine($"                    values.Add(new SimpleValue(");
-                sb.AppendLine($"                        Object: item!,");
-                sb.AppendLine($"                        Type: typeof({elementType.TypeOfName})");
-                sb.AppendLine($"                    ));");
+                sb.AppendLine("                        .Where(item => item is not null)");
             }
 
-            sb.AppendLine($"                }}");
-            sb.AppendLine($"                serializedValue = new SimpleCollection(");
-            sb.AppendLine($"                    Values: values,");
+            sb.AppendLine($"                        .Select(item => new SimpleValue(item!, typeof({elementType.TypeOfName})))");
+            sb.AppendLine("                        .ToList(),");
             sb.AppendLine($"                    ElementType: typeof({elementType.TypeOfName})");
-            sb.AppendLine($"                );");
+            sb.AppendLine("                );");
         }
         else
         {
@@ -192,51 +170,24 @@ internal static class Serialization
             // item's own serializer - not the declared element type's - records EntityInfo.ActualType
             // and captures derived-only properties, falling back to the declared element type's
             // serializer only when no serializer is registered for the runtime type.
-            sb.AppendLine($"                var entities = new List<EntityInfo>();");
-            sb.AppendLine($"                foreach (var item in value)");
-            sb.AppendLine($"                {{");
+            sb.AppendLine("            serializedValue = value is null");
+            sb.AppendLine("                ? null");
+            sb.AppendLine("                : new EntityCollection(");
+            sb.AppendLine($"                    Type: typeof({elementType.TypeOfName}),");
+            sb.AppendLine("                    Entities: value");
 
-            // Only add null check for reference types
             if (elementType.IsReferenceType || elementType.IsNullable)
             {
-                sb.AppendLine($"                    if (item != null)");
-                sb.AppendLine($"                    {{");
-                sb.AppendLine($"                        var itemSerializer = _serializerRegistry.GetSerializer(item.GetType())");
-                sb.AppendLine($"                            ?? _serializerRegistry.GetSerializer(typeof({elementType.TypeOfName}));");
-                sb.AppendLine($"                        if (itemSerializer == null)");
-                sb.AppendLine($"                        {{");
-                sb.AppendLine($"                            throw new InvalidOperationException($\"No serializer found for type {{item.GetType()}}\");");
-                sb.AppendLine($"                        }}");
-                sb.AppendLine($"                        var serializedItem = itemSerializer.Serialize(item);");
-                sb.AppendLine($"                        if (serializedItem is EntityInfo entityItem)");
-                sb.AppendLine($"                        {{");
-                sb.AppendLine($"                            entities.Add(entityItem);");
-                sb.AppendLine($"                        }}");
-                sb.AppendLine($"                    }}");
-            }
-            else
-            {
-                // Value types can't be null, so no null check needed
-                sb.AppendLine($"                    var itemSerializer = _serializerRegistry.GetSerializer(item!.GetType())");
-                sb.AppendLine($"                        ?? _serializerRegistry.GetSerializer(typeof({elementType.TypeOfName}));");
-                sb.AppendLine($"                    if (itemSerializer == null)");
-                sb.AppendLine($"                    {{");
-                sb.AppendLine($"                        throw new InvalidOperationException($\"No serializer found for type {{item.GetType()}}\");");
-                sb.AppendLine($"                    }}");
-                sb.AppendLine($"                    var serializedItem = itemSerializer.Serialize(item);");
-                sb.AppendLine($"                    if (serializedItem is EntityInfo entityItem)");
-                sb.AppendLine($"                    {{");
-                sb.AppendLine($"                        entities.Add(entityItem);");
-                sb.AppendLine($"                    }}");
+                sb.AppendLine("                        .Where(item => item is not null)");
             }
 
-            sb.AppendLine($"                }}");
-            sb.AppendLine($"                serializedValue = new EntityCollection(");
-            sb.AppendLine($"                    Type: typeof({elementType.TypeOfName}),");
-            sb.AppendLine($"                    Entities: entities");
-            sb.AppendLine($"                );");
+            sb.AppendLine("                        .Select(item =>");
+            sb.AppendLine("                            (_serializerRegistry.GetSerializer(item!.GetType())");
+            sb.AppendLine($"                                ?? _serializerRegistry.GetSerializer(typeof({elementType.TypeOfName}))");
+            sb.AppendLine("                                ?? throw new InvalidOperationException($\"No serializer found for type {item.GetType()}\"))");
+            sb.AppendLine("                                .Serialize(item))");
+            sb.AppendLine("                        .ToList()");
+            sb.AppendLine("                );");
         }
-
-        sb.AppendLine($"            }}");
     }
 }

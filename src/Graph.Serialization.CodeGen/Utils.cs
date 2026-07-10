@@ -84,7 +84,7 @@ internal static class Utils
         var propertyAttribute = property.GetAttributes()
             .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute");
 
-        if (propertyAttribute?.ConstructorArguments.Length > 0)
+        if (propertyAttribute is { ConstructorArguments.Length: > 0 })
         {
             var arg = propertyAttribute.ConstructorArguments[0];
             // Handle TypedConstant properly - check if it's an array
@@ -142,7 +142,7 @@ internal static class Utils
             .FirstOrDefault(a => a.AttributeClass?.Name == "NodeAttribute" &&
                                  a.AttributeClass?.ContainingNamespace?.ToString() == "Cvoya.Graph");
 
-        if (nodeAttribute?.ConstructorArguments.Length > 0)
+        if (nodeAttribute is { ConstructorArguments.Length: > 0 })
         {
             var arg = nodeAttribute.ConstructorArguments[0];
             // Handle TypedConstant properly - check if it's an array
@@ -188,7 +188,7 @@ internal static class Utils
             .FirstOrDefault(a => a.AttributeClass?.Name == "RelationshipAttribute" &&
                                  a.AttributeClass?.ContainingNamespace?.ToString() == "Cvoya.Graph");
 
-        if (relationshipAttribute?.ConstructorArguments.Length > 0)
+        if (relationshipAttribute is { ConstructorArguments.Length: > 0 })
         {
             var arg = relationshipAttribute.ConstructorArguments[0];
             // Handle TypedConstant properly - check if it's an array

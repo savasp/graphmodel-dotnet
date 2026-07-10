@@ -126,7 +126,7 @@ public class CrudOperationsBenchmark
     public async Task ReadSingleNode()
     {
         var id = _personIds[_random.Next(_personIds.Count)];
-        var person = await _graph.GetNodeAsync<Person>(id);
+        _ = await _graph.GetNodeAsync<Person>(id);
     }
 
     [Benchmark]
