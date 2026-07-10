@@ -3,7 +3,7 @@
 [![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Neo4j.svg)](https://www.nuget.org/packages/Cvoya.Graph.Neo4j/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-**Neo4j provider** for GraphModel - enables your applications to work with Neo4j graph databases using the GraphModel abstractions and LINQ-style querying.
+**Neo4j provider** for CVOYA graph - enables your applications to work with Neo4j graph databases using the CVOYA graph abstractions and LINQ-style querying.
 
 ## 🚀 Quick Start
 
@@ -18,7 +18,7 @@ using Cvoya.Graph.Neo4j;
 var store = new Neo4jGraphStore("neo4j+s://your-server:7687", "neo4j", "your-password");
 var graph = store.Graph;
 
-// Use GraphModel APIs
+// Use CVOYA graph APIs
 var users = await (await graph.NodesAsync<User>())
     .Where(u => u.IsActive)
     .OrderBy(u => u.CreatedDate)
@@ -27,7 +27,7 @@ var users = await (await graph.NodesAsync<User>())
 
 ## 📦 Core Features
 
-- **Full GraphModel compatibility** - Works seamlessly with all GraphModel abstractions
+- **Full CVOYA graph compatibility** - Works seamlessly with all CVOYA graph abstractions
 - **Cypher query generation** - Automatic translation from LINQ to optimized Cypher
 - **Connection pooling** - Built-in connection management and pooling
 - **Transaction support** - Full ACID transactions with Neo4j
@@ -54,7 +54,7 @@ var graph = store.Graph;
 
 For comprehensive documentation, examples, and best practices:
 
-**🌐 [Complete Documentation](https://github.com/cvoya-com/graphmodel-dotnet/)**
+**🌐 [Complete Documentation](https://github.com/cvoya-com/graph/)**
 
 ## 🔗 Related Packages
 
@@ -65,12 +65,12 @@ For comprehensive documentation, examples, and best practices:
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see our [Contributing Guide](https://github.com/cvoya-com/graphmodel-dotnet/blob/main/CONTRIBUTING.md).
+Contributions are welcome! Please see our [Contributing Guide](https://github.com/cvoya-com/graph/blob/main/CONTRIBUTING.md).
 
 ## 📄 License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/cvoya-com/graphmodel-dotnet/blob/main/LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/cvoya-com/graph/blob/main/LICENSE) file for details.
 
 ---
 
-**Need help?** Check the [troubleshooting guide](https://github.com/cvoya-com/graphmodel-dotnet/blob/main/docs/troubleshooting.md) or [open an issue](https://github.com/cvoya-com/graphmodel-dotnet/issues).
+**Need help?** Check the [troubleshooting guide](https://github.com/cvoya-com/graph/blob/main/docs/troubleshooting.md) or [open an issue](https://github.com/cvoya-com/graph/issues).

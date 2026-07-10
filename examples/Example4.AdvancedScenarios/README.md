@@ -1,6 +1,6 @@
 # Example 4: Advanced Scenarios
 
-This example demonstrates advanced features of the GraphModel library including polymorphic node types, multiple relationship types, and complex graph operations.
+This example demonstrates advanced features of the CVOYA graph library including polymorphic node types, multiple relationship types, and complex graph operations.
 
 ## What You'll Learn
 

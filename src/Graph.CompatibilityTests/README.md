@@ -3,9 +3,9 @@
 [![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.CompatibilityTests.svg)](https://www.nuget.org/packages/Cvoya.Graph.CompatibilityTests/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A shippable **compatibility test suite (TCK)** for GraphModel providers. Implement one small SPI,
+A shippable **compatibility test suite (TCK)** for CVOYA graph providers. Implement one small SPI,
 bind the suite's `I*Tests` interfaces to your provider, and run the same 345+ contract tests every
-in-tree provider runs - proving your provider actually behaves the way GraphModel promises.
+in-tree provider runs - proving your provider actually behaves the way CVOYA graph promises.
 
 ## 🚀 Quick Start
 
@@ -17,7 +17,7 @@ dotnet add package Cvoya.Graph.CompatibilityTests
 // 1. Implement the harness SPI against your provider.
 public sealed class MyProviderHarness : IGraphProviderTestHarness
 {
-    public string ProviderName => "MyCompany.GraphModel.MyProvider";
+    public string ProviderName => "MyCompany.CVOYA graph.MyProvider";
     public CapabilitySet Capabilities => CapabilitySet.All; // or Except(...) for what you don't support
     public ValueTask InitializeAsync() => /* start/connect infrastructure once per test class */;
     public ValueTask DisposeAsync() => /* release it */;
@@ -36,7 +36,7 @@ public class QueryTests(MyProviderHarness h) : MyProviderTest(h), IQueryTests;
 ```
 
 Run with `GRAPHMODEL_COMPLIANCE_STRICT=1 dotnet test --report-trx` for the certifying, guard-armed
-run. See the **[Certifying a provider](https://github.com/cvoya-com/graphmodel-dotnet/blob/main/docs/provider-implementers-guide.md#certifying-a-provider)**
+run. See the **[Certifying a provider](https://github.com/cvoya-com/graph/blob/main/docs/provider-implementers-guide.md#certifying-a-provider)**
 chapter for the full workflow, and `examples/CompatibilityTests.SampleHarness` for a compiling
 skeleton.
 
@@ -56,7 +56,7 @@ need a capability you haven't declared, with a fixed, parseable skip reason.
 
 ## 📚 Documentation
 
-**🌐 [Complete Documentation](https://github.com/cvoya-com/graphmodel-dotnet/)**
+**🌐 [Complete Documentation](https://github.com/cvoya-com/graph/)**
 
 ## 🔗 Related Packages
 
@@ -66,8 +66,8 @@ need a capability you haven't declared, with a fixed, parseable skip reason.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see our [Contributing Guide](https://github.com/cvoya-com/graphmodel-dotnet/blob/main/CONTRIBUTING.md).
+Contributions are welcome! Please see our [Contributing Guide](https://github.com/cvoya-com/graph/blob/main/CONTRIBUTING.md).
 
 ## 📄 License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/cvoya-com/graphmodel-dotnet/blob/main/LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/cvoya-com/graph/blob/main/LICENSE) file for details.

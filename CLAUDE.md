@@ -1,4 +1,4 @@
-# GraphModel — Claude Code entry point
+# CVOYA graph — Claude Code entry point
 
 **Read [AGENTS.md](AGENTS.md) first — it is the canonical project instruction set** (layout, build/test requirements, conventions, multi-agent workflow, issue tracking). This file only adds what is Claude Code-specific.
 
@@ -16,7 +16,13 @@
 ```bash
 dotnet build --configuration Debug   # build
 dotnet test  --configuration Debug   # full suite — Neo4j required; see AGENTS.md "Build and test"
-dotnet test tests/Graph.Model.Analyzers.Tests --configuration Debug   # fast lane, no Docker
+dotnet test tests/Graph.Analyzers.Tests --configuration Debug   # fast lane, no Docker
 ```
 
-Test-project semantics (contract suite vs. integration vs. analyzers) are in AGENTS.md — do not assume `src/Graph.Model.CompatibilityTests` runs the unit tests; it is an abstract provider contract suite (packed as `Cvoya.Graph.CompatibilityTests`).
+Test-project semantics (contract suite vs. integration vs. analyzers) are in AGENTS.md — do not assume `src/Graph.CompatibilityTests` runs the unit tests; it is an abstract provider contract suite (packed as `Cvoya.Graph.CompatibilityTests`).
+
+## Diagnostic codes
+
+Compile-time analyzer codes use the `CG0XX` prefix (CVOYA Graph):
+- `CG001`–`CG009` — core validation rules
+- Suppressed via `.editorconfig` or `#pragma warning disable CG0XX`

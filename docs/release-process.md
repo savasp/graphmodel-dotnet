@@ -1,6 +1,6 @@
 # Release Process
 
-GraphModel releases are tag-triggered and fully automated by
+CVOYA graph releases are tag-triggered and fully automated by
 [`.github/workflows/release.yml`](../.github/workflows/release.yml). There is
 no manual publish step and no CI stamping of version numbers: the `VERSION`
 file at the repository root is the single source of truth for the package
@@ -27,7 +27,7 @@ version, and the workflow fails loudly if the pushed tag doesn't match it.
    ```bash
    dotnet build --configuration Release
    dotnet test --configuration Release
-   dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model/Graph.Model.csproj
+   dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model/Cvoya.Graph.csproj
    ```
 
 3. **Commit and tag.** The tag must be `v` followed by the exact `VERSION`
@@ -52,7 +52,7 @@ version, and the workflow fails loudly if the pushed tag doesn't match it.
      `Cvoya.Graph.Analyzers`, `Cvoya.Graph.Serialization.CodeGen`).
    - Generates a build provenance attestation for every package
      (`actions/attest-build-provenance`), verifiable with
-     `gh attestation verify <file> --repo cvoya-com/graphmodel-dotnet`.
+     `gh attestation verify <file> --repo cvoya-com/graph`.
    - Publishes to nuget.org using **Trusted Publishing** (OIDC) — no API key
      is stored anywhere, long-lived or otherwise.
    - Creates a GitHub Release for the tag with auto-generated release notes.
@@ -78,7 +78,7 @@ the account/org that will own them):
    choose **Trusted Publishing**.
 2. Add a new trusted publishing policy with:
    - **Repository Owner:** `cvoya-com`
-   - **Repository:** `graphmodel-dotnet`
+   - **Repository:** `graph`
    - **Workflow File:** `release.yml` (the file name only, not the
      `.github/workflows/` path)
    - **Environment:** leave empty (the workflow does not use a GitHub

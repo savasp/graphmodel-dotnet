@@ -1,6 +1,6 @@
 # Example 5: Social Network
 
-This example demonstrates a complete social network implementation using the GraphModel library, showcasing real-world relationship patterns and graph analytics.
+This example demonstrates a complete social network implementation using the CVOYA graph library, showcasing real-world relationship patterns and graph analytics.
 
 ## What You'll Learn
 

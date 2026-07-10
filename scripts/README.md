@@ -1,6 +1,6 @@
-# GraphModel Scripts
+# CVOYA graph Scripts
 
-This directory contains utility scripts for the GraphModel project.
+This directory contains utility scripts for the CVOYA graph project.
 
 ## 🚀 Quick Start Commands
 
@@ -121,7 +121,7 @@ For testing Release configuration with local packages before publishing:
 
 ### `setup-local-feed-msbuild.sh` ⭐ **Recommended**
 
-Uses MSBuild integration to automatically create a local NuGet feed with all GraphModel packages:
+Uses MSBuild integration to automatically create a local NuGet feed with all CVOYA graph packages:
 
 ```bash
 # Set up local feed using script

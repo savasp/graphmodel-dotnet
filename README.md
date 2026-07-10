@@ -1,17 +1,17 @@
-# GraphModel
+# CVOYA graph
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![.NET](https://img.shields.io/badge/.NET-10.0+-purple.svg)](https://dotnet.microsoft.com/download)
-[![GitHub release](https://img.shields.io/github/v/release/cvoya-com/graphmodel-dotnet)](https://github.com/cvoya-com/graphmodel-dotnet/releases)
-[![CI](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/ci.yml/badge.svg)](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/ci.yml)
-[![Documentation](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/docs.yml/badge.svg)](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/docs.yml)
-[![Codecov](https://codecov.io/gh/cvoya-com/graphmodel-dotnet/branch/main/graph/badge.svg)](https://codecov.io/gh/cvoya-com/graphmodel-dotnet)
-[![CodeQL](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/codeql.yml/badge.svg)](https://github.com/cvoya-com/graphmodel-dotnet/actions/workflows/codeql.yml)
-[![Contributors](https://img.shields.io/github/contributors/cvoya-com/graphmodel-dotnet.svg)](https://github.com/cvoya-com/graphmodel-dotnet/graphs/contributors)
-[![Issues](https://img.shields.io/github/issues/cvoya-com/graphmodel-dotnet.svg)](https://github.com/cvoya-com/graphmodel-dotnet/issues)
-[![Stars](https://img.shields.io/github/stars/cvoya-com/graphmodel-dotnet.svg)](https://github.com/cvoya-com/graphmodel-dotnet/stargazers)
+[![GitHub release](https://img.shields.io/github/v/release/cvoya-com/graph)](https://github.com/cvoya-com/graph/releases)
+[![CI](https://github.com/cvoya-com/graph/actions/workflows/ci.yml/badge.svg)](https://github.com/cvoya-com/graph/actions/workflows/ci.yml)
+[![Documentation](https://github.com/cvoya-com/graph/actions/workflows/docs.yml/badge.svg)](https://github.com/cvoya-com/graph/actions/workflows/docs.yml)
+[![Codecov](https://codecov.io/gh/cvoya-com/graph/branch/main/graph/badge.svg)](https://codecov.io/gh/cvoya-com/graph)
+[![CodeQL](https://github.com/cvoya-com/graph/actions/workflows/codeql.yml/badge.svg)](https://github.com/cvoya-com/graph/actions/workflows/codeql.yml)
+[![Contributors](https://img.shields.io/github/contributors/cvoya-com/graph.svg)](https://github.com/cvoya-com/graph/graphs/contributors)
+[![Issues](https://img.shields.io/github/issues/cvoya-com/graph.svg)](https://github.com/cvoya-com/graph/issues)
+[![Stars](https://img.shields.io/github/stars/cvoya-com/graph.svg)](https://github.com/cvoya-com/graph/stargazers)
 
-A powerful, type-safe .NET library ecosystem for working with graph data structures and graph databases. GraphModel provides a clean abstraction layer over graph databases with advanced LINQ querying, transaction management, and relationship traversal capabilities.
+A powerful, type-safe .NET library ecosystem for working with graph data structures and graph databases. CVOYA graph provides a clean abstraction layer over graph databases with advanced LINQ querying, transaction management, and relationship traversal capabilities.
 
 ## 🚀 Features
 
@@ -92,7 +92,7 @@ public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNo
 
 For your convenience, the `Cvoya.Graph` package also offers `Node` and `Relationship` records so that you only have to focus on your domain-specific properties:
 
-Prefer these base records in application models; implementing `INode` or `IRelationship` directly triggers analyzer warning GM011 unless you need full control.
+Prefer these base records in application models; implementing `INode` or `IRelationship` directly triggers analyzer warning CG011 unless you need full control.
 
 ```csharp
 public record Person : Node
@@ -199,16 +199,16 @@ catch
 
 ## 📚 Documentation
 
-- **[API Reference](https://cvoya-com.github.io/graphmodel-dotnet/api/)** - Generated API documentation for all packages
+- **[API Reference](https://cvoya-com.github.io/graph/api/)** - Generated API documentation for all packages
 - **[Core Concepts](docs/core-concepts.md)** - Understanding nodes, relationships, and entities
 - **[LINQ Querying](docs/querying.md)** - Advanced query patterns and graph traversal
 - **[Transaction Management](docs/transactions.md)** - Working with ACID transactions
 - **[Attributes & Configuration](docs/attributes.md)** - Customizing nodes and relationships
 - **[Best Practices](docs/best-practices.md)** - Performance tips and patterns
 - **[Provider Implementers Guide](docs/provider-implementers-guide.md)** - Current provider SPI, storage conventions, and contract-test reuse
-- **[Neo4j Provider](src/Graph.Model.Neo4j/README.md)** - Neo4j-specific features and configuration
-- **[Code Analyzers](src/Graph.Model.Analyzers/README.md)** - Compile-time validation rules
-- **[Code Generation](src/Graph.Model.Serialization.CodeGen/README.md)** - Build-time code generation for serialization
+- **[Neo4j Provider](src/Cvoya.Graph.Neo4j/README.md)** - Neo4j-specific features and configuration
+- **[Code Analyzers](src/Cvoya.Graph.Analyzers/README.md)** - Compile-time validation rules
+- **[Code Generation](src/Cvoya.Graph.Serialization.CodeGen/README.md)** - Build-time code generation for serialization
 - **[Troubleshooting](docs/troubleshooting.md)** - In case you encounter issues
 - **[Building Graph Model](docs/graph-model-developers.md)** - Building the projects in this repository
 - **[AI agent documentation](docs/ai-agents.md)** - Where to find context for Claude Code, Codex, Copilot, and other AI coding tools
@@ -230,7 +230,7 @@ Explore comprehensive examples in the [`examples/`](examples/) directory:
 
 ### Build Configurations
 
-GraphModel supports multiple build configurations for different scenarios:
+CVOYA graph supports multiple build configurations for different scenarios:
 
 ```bash
 # Development (fastest, project references)
@@ -262,7 +262,7 @@ See **[Build System Documentation](docs/graph-model-developers.md)** for complet
 
 ## 🏗️ Architecture
 
-GraphModel follows a clean, layered architecture:
+CVOYA graph follows a clean, layered architecture:
 
 ```
 ┌─────────────────────────────────┐
@@ -270,7 +270,7 @@ GraphModel follows a clean, layered architecture:
 ├─────────────────────────────────┤
 │        Graph.Model (Core)       │  ← Abstractions & LINQ
 ├─────────────────────────────────┤
-│     Graph.Model.Neo4j           │  ← Provider Implementation
+│     Cvoya.Graph.Neo4j           │  ← Provider Implementation
 ├─────────────────────────────────┤
 │         Neo4j Database          │  ← Storage Layer
 └─────────────────────────────────┘
@@ -292,7 +292,7 @@ GraphModel follows a clean, layered architecture:
 
 ## 📖 Related Resources
 
-- [Blog Post: GraphModel: A .NET Abstraction for Graphs](https://savas.me/2025/06/27/graphmodel-a-net-abstraction-for-graphs/)
+- [Blog Post: CVOYA graph: A .NET Abstraction for Graphs](https://savas.me/2025/06/27/graphmodel-a-net-abstraction-for-graphs/)
 - [Blog Post: Playing with graphs and neo4j](https://savas.me/2025/05/23/playing-with-graphs-and-neo4j/) by [Savas Parastatidis](https://savas.me)
 - [Neo4j Documentation](https://neo4j.com/docs/)
 - [Graph Database Concepts](https://neo4j.com/developer/graph-database/)

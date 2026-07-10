@@ -1,4 +1,5 @@
-// Copyright 2025 Savas Parastatidis
+// Copyright CVOYA. Licensed under the Apache License, Version 2.0.
+// See LICENSE in the project root for full license terms.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

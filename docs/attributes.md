@@ -39,7 +39,7 @@ public record Employee : Node
 
 **One label per type**: a node type maps to exactly one label, and a relationship type to exactly one type name. This label is the correlation key between the stored node and the .NET type used to materialize it (see [Type resolution](#type-resolution) below).
 
-**Uniqueness**: the label must be unique across every node type loaded in the process, compared **case-insensitively** (`Person` and `person` are treated as the same label). Two loaded node types that resolve to the same label — whether both declare it explicitly, or one falls back to a class name that matches another's label — are rejected at registration with a `GraphException`. The same rule applies independently to relationship type names. This mirrors the compile-time analyzers (`GM008`/`GM009`), which flag the collision before you run.
+**Uniqueness**: the label must be unique across every node type loaded in the process, compared **case-insensitively** (`Person` and `person` are treated as the same label). Two loaded node types that resolve to the same label — whether both declare it explicitly, or one falls back to a class name that matches another's label — are rejected at registration with a `GraphException`. The same rule applies independently to relationship type names. This mirrors the compile-time analyzers (`CG008`/`CG009`), which flag the collision before you run.
 
 > Multiple labels on a single typed node are not supported. If you need arbitrary, runtime-defined label sets (for example cross-cutting tags), use `DynamicNode`, whose `Labels` collection you manage yourself.
 

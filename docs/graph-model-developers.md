@@ -1,6 +1,6 @@
-# GraphModel Build System Guide
+# CVOYA graph Build System Guide
 
-This document explains the GraphModel build configurations, version management, and development workflows.
+This document explains the CVOYA graph build configurations, version management, and development workflows.
 
 ## 🚀 Quick Start
 
@@ -42,7 +42,7 @@ dotnet build --configuration Release
 
 ## 📦 Build Configurations
 
-GraphModel uses **four distinct build configurations** optimized for different scenarios:
+CVOYA graph uses **four distinct build configurations** optimized for different scenarios:
 
 | Configuration | Project Refs | Optimizations | Packages | VERSION Required | Use Case                |
 | ------------- | ------------ | ------------- | -------- | ---------------- | ----------------------- |
@@ -87,7 +87,7 @@ GraphModel uses **four distinct build configurations** optimized for different s
 
 ## 🏷️ Version Management
 
-GraphModel uses a **VERSION file-based system** that ensures consistent versioning across all packages and prevents accidental releases.
+CVOYA graph uses a **VERSION file-based system** that ensures consistent versioning across all packages and prevents accidental releases.
 
 ### VERSION File Format
 
@@ -166,7 +166,7 @@ dotnet build --configuration Benchmark
 
 ### Local CodeQL Analysis
 
-GraphModel's GitHub workflow runs CodeQL for C# with the `security-and-quality`
+CVOYA graph's GitHub workflow runs CodeQL for C# with the `security-and-quality`
 query suite. To catch those findings before pushing, install the CodeQL CLI and run:
 
 ```bash

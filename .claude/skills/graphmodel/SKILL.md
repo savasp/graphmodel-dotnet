@@ -1,14 +1,14 @@
 ---
 name: graphmodel
-description: GraphModel .NET library context. Use when working on GraphModel, graph model, Neo4j provider, LINQ graph queries, node/relationship types, analyzers, or serialization codegen.
+description: CVOYA graph .NET library context. Use when working on CVOYA graph, graph model, Neo4j provider, LINQ graph queries, node/relationship types, analyzers, or serialization codegen.
 ---
 
-# GraphModel project skill
+# CVOYA graph project skill
 
 ## When to use what
 
-- **Analyzers** (`Graph.Model.Analyzers`): Compile-time validation (e.g. base class usage, record constructors). Recommend to consumers; implement in `src/Graph.Model.Analyzers/`.
-- **Code generation** (`Graph.Model.Serialization.CodeGen`): Build-time serialization/deserialization for domain types. Used by the serialization layer; implement in `src/Graph.Model.Serialization.CodeGen/`.
+- **Analyzers** (`Cvoya.Graph.Analyzers`): Compile-time validation (e.g. base class usage, record constructors). Recommend to consumers; implement in `src/Cvoya.Graph.Analyzers/`.
+- **Code generation** (`Cvoya.Graph.Serialization.CodeGen`): Build-time serialization/deserialization for domain types. Used by the serialization layer; implement in `src/Cvoya.Graph.Serialization.CodeGen/`.
 
 ## Build configurations
 
@@ -21,9 +21,9 @@ description: GraphModel .NET library context. Use when working on GraphModel, gr
 ## Key locations
 
 - **Core:** `src/Graph.Model/` — `IGraph`, `INode`, `IRelationship`, LINQ, attributes.
-- **Neo4j:** `src/Graph.Model.Neo4j/` — provider, LINQ-to-Cypher, transactions.
-- **Serialization:** `src/Graph.Model.Serialization/`, `src/Graph.Model.Serialization.CodeGen/`.
-- **Tests:** `tests/Graph.Model.Tests/` (abstract provider contract suite — executes via provider test projects), `tests/Graph.Model.Neo4j.Tests/` (the contract suite bound to Neo4j + provider tests; needs a running Neo4j — `scripts/containers/start-neo4j.sh`), `tests/Graph.Model.Analyzers.Tests/` (no external deps). See [AGENTS.md](AGENTS.md).
+- **Neo4j:** `src/Cvoya.Graph.Neo4j/` — provider, LINQ-to-Cypher, transactions.
+- **Serialization:** `src/Cvoya.Graph.Serialization/`, `src/Cvoya.Graph.Serialization.CodeGen/`.
+- **Tests:** `tests/Cvoya.Graph.Tests/` (abstract provider contract suite — executes via provider test projects), `tests/Cvoya.Graph.Neo4j.Tests/` (the contract suite bound to Neo4j + provider tests; needs a running Neo4j — `scripts/containers/start-neo4j.sh`), `tests/Cvoya.Graph.Analyzers.Tests/` (no external deps). See [AGENTS.md](AGENTS.md).
 
 ## References
 

@@ -1,6 +1,6 @@
 # Example 2: LINQ and Traversal
 
-This example demonstrates LINQ querying capabilities and graph traversal with depth control using the GraphModel library.
+This example demonstrates LINQ querying capabilities and graph traversal with depth control using the CVOYA graph library.
 
 ## What You'll Learn
 

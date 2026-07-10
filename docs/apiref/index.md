@@ -1,6 +1,6 @@
-# GraphModel API Reference
+# CVOYA graph API Reference
 
-This site contains the generated API reference for the GraphModel .NET libraries, produced from the XML documentation
+This site contains the generated API reference for the CVOYA graph .NET libraries, produced from the XML documentation
 comments in the source code.
 
 ## Packages
@@ -12,4 +12,4 @@ comments in the source code.
 - **Cvoya.Graph.Analyzers** — Roslyn analyzers that flag common mistakes in consumer domain models.
 
 Browse the [API namespaces](api/toc.yml) for full type and member documentation, or return to the
-[project documentation](https://cvoya-com.github.io/graphmodel-dotnet/).
+[project documentation](https://cvoya-com.github.io/graph/).

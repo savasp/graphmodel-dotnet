@@ -118,7 +118,7 @@ The `Node` and `Relationship` base classes provide:
 1. **Automatic ID Generation**: No need to manually create GUIDs
 2. **Runtime Metadata Management**: The `Labels` and `Type` properties are automatically initialized
 3. **Correct Initialization**: Base classes ensure proper initialization patterns
-4. **Analyzer Support**: The GM011 analyzer warns when interfaces are implemented directly
+4. **Analyzer Support**: The CG011 analyzer warns when interfaces are implemented directly
 
 ### The Node Base Class
 
@@ -183,13 +183,13 @@ public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNo
 }
 ```
 
-## Analyzer Rule: GM011
+## Analyzer Rule: CG011
 
-The `GM011` analyzer rule warns when types directly implement `INode` or `IRelationship` without inheriting from the base classes:
+The `CG011` analyzer rule warns when types directly implement `INode` or `IRelationship` without inheriting from the base classes:
 
 ### Rule Details
 
-- **ID**: GM011
+- **ID**: CG011
 - **Category**: Graph.Model
 - **Severity**: Warning
 - **Message**: "Type '{TypeName}' should inherit from '{BaseClass}' instead of implementing '{Interface}' directly. The base class provides default implementations for runtime metadata properties"
@@ -204,10 +204,10 @@ The `GM011` analyzer rule warns when types directly implement `INode` or `IRelat
 ### Example
 
 ```csharp
-// ❌ Triggers GM011 warning
+// ❌ Triggers CG011 warning
 public record Person : INode
 {
-    // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
+    // CG011 warns on direct INode implementations; inherit from Node unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public IReadOnlyList<string> Labels { get; } = new List<string>(); // Don't do this!
     public string Name { get; set; } = string.Empty;
@@ -269,7 +269,7 @@ If you have existing code that directly implements `INode` or `IRelationship`:
 ```csharp
 public class Person : INode
 {
-    // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
+    // CG011 warns on direct INode implementations; inherit from Node unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
     public string Name { get; set; } = string.Empty;
@@ -277,7 +277,7 @@ public class Person : INode
 
 public class Knows : IRelationship
 {
-    // GM011 warns on direct IRelationship implementations; inherit from Relationship unless you need full control.
+    // CG011 warns on direct IRelationship implementations; inherit from Relationship unless you need full control.
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public string Type { get; } = "KNOWS";
     public string StartNodeId { get; init; } = string.Empty;

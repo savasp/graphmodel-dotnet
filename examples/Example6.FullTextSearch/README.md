@@ -1,6 +1,6 @@
 # Example 6: Full Text Search
 
-This example demonstrates the comprehensive full text search capabilities of the GraphModel library with Neo4j.
+This example demonstrates the comprehensive full text search capabilities of the CVOYA graph library with Neo4j.
 
 ## What You'll Learn
 
@@ -119,7 +119,7 @@ The example will:
 ## Key Technical Concepts
 
 ### Automatic Index Management
-The GraphModel library automatically creates and manages full text indexes for:
+The CVOYA graph library automatically creates and manages full text indexes for:
 - All string properties on nodes and relationships
 - Proper handling of property inclusion/exclusion settings
 - Dynamic index updates when new entity types are discovered

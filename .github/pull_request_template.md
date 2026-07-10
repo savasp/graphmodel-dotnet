@@ -5,7 +5,7 @@
 ## Validation
 
 - [ ] `dotnet build --configuration Debug`
-- [ ] `dotnet test tests/Graph.Model.Analyzers.Tests --configuration Debug`
+- [ ] `dotnet test tests/Cvoya.Graph.Analyzers.Tests --configuration Debug`
 - [ ] `dotnet test --configuration Debug` (requires Neo4j)
 
 ## Checklist

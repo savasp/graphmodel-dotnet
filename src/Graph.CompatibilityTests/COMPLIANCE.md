@@ -1,4 +1,4 @@
-# GraphModel compatibility compliance report
+# CVOYA graph compatibility compliance report
 
 A provider is **compliant** when its compatibility run reports N passed / M skipped-with-a-declared-capability-reason / 0 failed, where N is at least `ComplianceInventory.MinimumExecuted(declared)` for the capabilities the provider declares. Copy this template into your provider's repository/package and fill it in per release.
 

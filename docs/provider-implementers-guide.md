@@ -21,7 +21,7 @@ The provider store owns database connectivity and releases provider resources. `
 
 ## Entities And Schema
 
-Domain node types satisfy `INode`; relationship types satisfy `IRelationship`. Application models should normally inherit from the base `Node` and `Relationship` records, because direct interface implementation triggers analyzer warning GM011 unless the model needs full control. The base records generate opaque string IDs with `Guid.NewGuid().ToString("N")`. Providers must treat IDs as caller-visible opaque strings, not database-native IDs.
+Domain node types satisfy `INode`; relationship types satisfy `IRelationship`. Application models should normally inherit from the base `Node` and `Relationship` records, because direct interface implementation triggers analyzer warning CG011 unless the model needs full control. The base records generate opaque string IDs with `Guid.NewGuid().ToString("N")`. Providers must treat IDs as caller-visible opaque strings, not database-native IDs.
 
 Labels and relationship types come from attributes first:
 
@@ -69,7 +69,7 @@ Cross-provider compatibility depends on matching these conventions exactly.
 
 ### IDs
 
-Store the public `IEntity.Id` as a normal graph property named `Id`. Do not expose database-native IDs as GraphModel IDs. Relationship `StartNodeId` and `EndNodeId` refer to GraphModel node IDs.
+Store the public `IEntity.Id` as a normal graph property named `Id`. Do not expose database-native IDs as CVOYA graph IDs. Relationship `StartNodeId` and `EndNodeId` refer to CVOYA graph node IDs.
 
 ### Labels And Types
 
@@ -102,7 +102,7 @@ agree on the mapping.
 Collections of complex properties use one relationship per collection item and store a `SequenceNumber` relationship property. Deserialization orders collection items by `SequenceNumber`. Nested complex properties recurse with the same relationship-type convention.
 
 Every occurrence is a separate value node, even when two owners reference the same in-memory object.
-Nodes and relationships need stable GraphModel IDs and remain visible to ordinary graph queries.
+Nodes and relationships need stable CVOYA graph IDs and remain visible to ordinary graph queries.
 Providers may add an internal relationship marker for cascade cleanup, but must not infer
 complex-property edges from a reserved relationship-name prefix.
 
@@ -133,16 +133,16 @@ Exception behavior follows the public API contract: provider/backend failures ar
 
 ## Contract-Test Reuse
 
-The provider contract suite is the `Cvoya.Graph.CompatibilityTests` package (`src/Graph.Model.CompatibilityTests`) - see [Certifying a provider](#certifying-a-provider) below for the full workflow. It mostly defines test interfaces with default xUnit test methods; running the package alone proves little because providers must bind those interfaces in a provider-specific test project.
+The provider contract suite is the `Cvoya.Graph.CompatibilityTests` package (`src/Cvoya.Graph.CompatibilityTests`) - see [Certifying a provider](#certifying-a-provider) below for the full workflow. It mostly defines test interfaces with default xUnit test methods; running the package alone proves little because providers must bind those interfaces in a provider-specific test project.
 
 The Neo4j provider pattern is:
 
-- `tests/Graph.Model.Neo4j.Tests/Infrastructure/Neo4jHarness.cs` implements the suite's `IGraphProviderTestHarness` SPI, wrapping the existing Testcontainers/database-pool setup.
-- `tests/Graph.Model.Neo4j.Tests/Neo4jTest.cs` derives from `CompatibilityTest`, adds correlation-scoped logging, and exposes `IGraph Graph`.
-- Concrete classes in `tests/Graph.Model.Neo4j.Tests/GraphModelTests/` inherit `Neo4jTest` and implement one or more `Cvoya.Graph.CompatibilityTests.I...Tests` interfaces.
+- `tests/Cvoya.Graph.Neo4j.Tests/Infrastructure/Neo4jHarness.cs` implements the suite's `IGraphProviderTestHarness` SPI, wrapping the existing Testcontainers/database-pool setup.
+- `tests/Cvoya.Graph.Neo4j.Tests/Neo4jTest.cs` derives from `CompatibilityTest`, adds correlation-scoped logging, and exposes `IGraph Graph`.
+- Concrete classes in `tests/Cvoya.Graph.Neo4j.Tests/CVOYA graphTests/` inherit `Neo4jTest` and implement one or more `Cvoya.Graph.CompatibilityTests.I...Tests` interfaces.
 - Provider-specific tests live beside the inherited contract tests.
 
-A new provider test project follows the same three-piece shape (harness → intermediate base class → one-line interface bindings). `examples/CompatibilityTests.SampleHarness` is a compiling skeleton; `tests/Graph.Model.Neo4j.Tests` is the full reference implementation.
+A new provider test project follows the same three-piece shape (harness → intermediate base class → one-line interface bindings). `examples/CompatibilityTests.SampleHarness` is a compiling skeleton; `tests/Cvoya.Graph.Neo4j.Tests` is the full reference implementation.
 
 ## Future Chapters
 
@@ -173,7 +173,7 @@ The `Cvoya.Graph.CompatibilityTests` package is a shippable TCK: a harness SPI, 
 ```csharp
 public sealed class MyProviderHarness : IGraphProviderTestHarness
 {
-    public string ProviderName => "MyCompany.GraphModel.MyProvider";
+    public string ProviderName => "MyCompany.CVOYA graph.MyProvider";
 
     // Declare only what your backing store actually supports. Unlisted capabilities' tests skip,
     // never fail - see GraphCapability in src/Graph.Model for the full member list.
@@ -202,7 +202,7 @@ public abstract class MyProviderTest(MyProviderHarness harness)
 
 ### 3. Bind the `I*Tests` interfaces
 
-One line per suite interface (see `src/Graph.Model.CompatibilityTests/I*.cs` for the full set):
+One line per suite interface (see `src/Cvoya.Graph.CompatibilityTests/I*.cs` for the full set):
 
 ```csharp
 public class BasicTests(MyProviderHarness h) : MyProviderTest(h), IBasicTests;
@@ -227,7 +227,7 @@ Under strict mode, the guard also promotes `GraphProviderUnavailableException` (
 ### 5. Read the results
 
 - **Capability skips** carry a fixed, parseable reason: `Capability '<Name>' not declared by provider '<ProviderName>' (Cvoya.Graph.CompatibilityTests <version>)`. Any other skip or a nonzero failure count needs investigation.
-- **The compliance report**: fill in `COMPLIANCE.md` (template in `src/Graph.Model.CompatibilityTests/COMPLIANCE.md`) from your TRX results - N passed / M skipped-by-declared-capability / 0 failed, where N is at least `ComplianceInventory.MinimumExecuted(yourDeclaredCapabilities)`.
+- **The compliance report**: fill in `COMPLIANCE.md` (template in `src/Cvoya.Graph.CompatibilityTests/COMPLIANCE.md`) from your TRX results - N passed / M skipped-by-declared-capability / 0 failed, where N is at least `ComplianceInventory.MinimumExecuted(yourDeclaredCapabilities)`.
 - **"Compatible"** means: 0 failed, every skip is a declared-capability skip, and the executed count meets the guard's floor for your declared capabilities.
 
-See `examples/CompatibilityTests.SampleHarness` for a minimal compiling skeleton of all three pieces, and `tests/Graph.Model.Neo4j.Tests` for the full in-tree reference implementation.
+See `examples/CompatibilityTests.SampleHarness` for a minimal compiling skeleton of all three pieces, and `tests/Cvoya.Graph.Neo4j.Tests` for the full in-tree reference implementation.

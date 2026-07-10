@@ -1,8 +1,8 @@
 # Tests
 
-The `src/Graph.Model.CompatibilityTests` project (packed as `Cvoya.Graph.CompatibilityTests`) contains [xUnit](https://xunit.net/) tests, defined as interfaces with default-implemented methods, which any provider can bind to via the harness SPI (`IGraphProviderTestHarness`, `CompatibilityTest`). You can't run these tests directly - see [docs/provider-implementers-guide.md](../docs/provider-implementers-guide.md#certifying-a-provider) for the full workflow.
+The `src/Cvoya.Graph.CompatibilityTests` project (packed as `Cvoya.Graph.CompatibilityTests`) contains [xUnit](https://xunit.net/) tests, defined as interfaces with default-implemented methods, which any provider can bind to via the harness SPI (`IGraphProviderTestHarness`, `CompatibilityTest`). You can't run these tests directly - see [docs/provider-implementers-guide.md](../docs/provider-implementers-guide.md#certifying-a-provider) for the full workflow.
 
-The `Graph.Model.Neo4j.Tests` project implements the harness SPI and binds the suite's interfaces, using `Graph.Model.Neo4j` which implements the Graph Model abstraction layer. `Graph.Model.CompatibilityTests.Tests` holds meta-tests for the suite itself (harness lifecycle, capability skips, the compliance guard) and needs no backing store.
+The `Cvoya.Graph.Neo4j.Tests` project implements the harness SPI and binds the suite's interfaces, using `Cvoya.Graph.Neo4j` which implements the Graph Model abstraction layer. `Cvoya.Graph.CompatibilityTests.Tests` holds meta-tests for the suite itself (harness lifecycle, capability skips, the compliance guard) and needs no backing store.
 
 ## Running Neo4j Tests
 
@@ -22,13 +22,13 @@ Environment variables:
 Example:
 
 ```bash
-NEO4J_URI=bolt://localhost:7687 dotnet test tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj
+NEO4J_URI=bolt://localhost:7687 dotnet test tests/Cvoya.Graph.Neo4j.Tests/Cvoya.Graph.Neo4j.Tests.csproj
 ```
 
 If a Neo4j instance is reachable at `bolt://localhost:7687` with `neo4j/password`, the test fixture uses it by default:
 
 ```bash
-dotnet test tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj
+dotnet test tests/Cvoya.Graph.Neo4j.Tests/Cvoya.Graph.Neo4j.Tests.csproj
 ```
 
 ### 2. Against a Local Container
@@ -37,7 +37,7 @@ Start a local Neo4j container before running the full integration suite:
 
 ```bash
 ./scripts/containers/start-neo4j.sh
-dotnet test tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj
+dotnet test tests/Cvoya.Graph.Neo4j.Tests/Cvoya.Graph.Neo4j.Tests.csproj
 ```
 
 The script tries Podman first and Docker second. Set `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` to force a runtime.

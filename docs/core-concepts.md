@@ -62,7 +62,7 @@ public interface IEntity
 ```csharp
 public class Person : INode
 {
-    // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
+    // CG011 warns on direct INode implementations; inherit from Node unless you need full control.
     // Good: Using init-only setter
     public string Id { get; init; } = Guid.NewGuid().ToString();
 

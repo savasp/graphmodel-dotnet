@@ -1,6 +1,6 @@
 # Migration guide: Query surface v2 (issue #94)
 
-GraphModel is pre-1.0 alpha; breaking changes are expected between releases. This guide covers
+CVOYA graph is pre-1.0 alpha; breaking changes are expected between releases. This guide covers
 every breaking (and near-breaking) change from the "query surface v2" rework (issue #94). If
 you're upgrading, work through the sections in order — later sections build on earlier ones.
 
@@ -72,11 +72,11 @@ This buffers the full result set today (true incremental streaming is tracked se
 
 **Overload resolution note:** .NET 10 ships `System.Linq.AsyncEnumerable`, a BCL extension-method
 surface over `IAsyncEnumerable<T>` (`ToListAsync`, `FirstOrDefaultAsync`, etc.) that would
-otherwise collide with GraphModel's own `QueryableAsyncExtensions` methods of the same name, now
+otherwise collide with CVOYA graph's own `QueryableAsyncExtensions` methods of the same name, now
 that `IGraphQueryable<T>` implements both `IQueryable<T>` and `IAsyncEnumerable<T>`.
 `QueryableAsyncExtensions`' primary overloads are typed `this IGraphQueryable<T>` (more specific
 than either `IQueryable<T>` or `IAsyncEnumerable<T>`), so calls on an `IGraphQueryable<T>` resolve
-unambiguously to GraphModel's own implementation. A small number of methods (currently
+unambiguously to CVOYA graph's own implementation. A small number of methods (currently
 `ToListAsync`) also keep an `IQueryable<T>`-typed fallback overload for LINQ operators that degrade
 the static type away from `IGraphQueryable<T>` (see §7).
 
@@ -230,7 +230,7 @@ Every `where T : INode` / `where T : IRelationship` generic constraint across th
 types" rule to every other generic entity constraint. If your domain models are `record`/`class`
 types (the norm, and what every in-tree example and analyzer rule assumes), this changes nothing at
 your call sites. A `struct` implementing `INode`/`IRelationship` at a generic entity type parameter
-will now fail to compile; a companion declaration-site analyzer rule (`GM014`, tracked in a separate
+will now fail to compile; a companion declaration-site analyzer rule (`CG014`, tracked in a separate
 issue) flags struct entity type declarations directly.
 
 ## 7b. `ReverseTraverse` — also fixed inverted type-parameter order
@@ -366,7 +366,7 @@ var connected = await graph.Nodes<Person>()
     .ToListAsync();
 ```
 
-Pre-existing stored data written by older GraphModel versions with `Direction = Bidirectional` is
+Pre-existing stored data written by older CVOYA graph versions with `Direction = Bidirectional` is
 not rewritten. The Neo4j provider ignores unrecognized relationship direction values on read and
 materializes them as `RelationshipDirection.Outgoing`, so legacy data remains readable but no
 longer represents a bidirectional storage contract.
@@ -400,7 +400,7 @@ migrated before the new provider reads them. A migration should, for every legac
 1. derive the owning CLR property (including any new attribute override),
 2. create the semantic relationship type,
 3. preserve collection `SequenceNumber`,
-4. assign GraphModel IDs to the value node and relationship, and
+4. assign CVOYA graph IDs to the value node and relationship, and
 5. add the provider's complex-property marker used for bounded recursive loading and cascade cleanup.
 
 Do not keep mixed old and new representations: the new query planner only follows semantic relationship

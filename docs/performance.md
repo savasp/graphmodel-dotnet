@@ -5,7 +5,7 @@ layout: default
 
 # 🚀 Performance Guide
 
-This guide provides best practices and optimization techniques for maximizing performance when using GraphModel.
+This guide provides best practices and optimization techniques for maximizing performance when using CVOYA graph.
 
 ## 📊 General Performance Principles
 
@@ -304,7 +304,7 @@ Create benchmarks for critical operations:
 ```csharp
 [MemoryDiagnoser]
 [SimpleJob(RuntimeMoniker.Net10_0)]
-public class GraphModelBenchmarks
+public class CVOYA graphBenchmarks
 {
     private Neo4jGraphStore _store = null!;
     private IGraph _graph = null!;
@@ -341,7 +341,7 @@ Remember: **Measure first, optimize second**. Use profiling tools to identify ac
 
 ## Performance Testing and Benchmarking
 
-GraphModel includes comprehensive performance testing infrastructure using BenchmarkDotNet to ensure consistent performance across releases and detect regressions.
+CVOYA graph includes comprehensive performance testing infrastructure using BenchmarkDotNet to ensure consistent performance across releases and detect regressions.
 
 ## 📊 Available Benchmarks
 
@@ -407,16 +407,16 @@ You can also run benchmarks directly:
 
 ```bash
 # Build the performance test project
-dotnet build tests/Graph.Model.Performance.Tests --configuration Benchmark
+dotnet build tests/Cvoya.Graph.Performance.Tests --configuration Benchmark
 
 # Run all benchmarks (non-interactive)
-dotnet run --project tests/Graph.Model.Performance.Tests --configuration Benchmark -- --all
+dotnet run --project tests/Cvoya.Graph.Performance.Tests --configuration Benchmark -- --all
 
 # Run specific benchmark class
-dotnet run --project tests/Graph.Model.Performance.Tests --configuration Benchmark -- --filter "*CrudOperations*"
+dotnet run --project tests/Cvoya.Graph.Performance.Tests --configuration Benchmark -- --filter "*CrudOperations*"
 
 # Interactive mode (local development only)
-dotnet run --project tests/Graph.Model.Performance.Tests --configuration Benchmark
+dotnet run --project tests/Cvoya.Graph.Performance.Tests --configuration Benchmark
 ```
 
 ## 🔄 CI/CD Integration
@@ -444,7 +444,7 @@ The performance tests are configured to run automatically in CI environments:
 
 ### Benchmark Configuration
 
-GraphModel uses a special **Benchmark** build configuration that combines:
+CVOYA graph uses a special **Benchmark** build configuration that combines:
 
 - **Release-level optimizations**: Full compiler optimizations enabled
 - **Project references**: Uses local project references instead of NuGet packages
@@ -468,7 +468,7 @@ The performance workflow runs:
 - Uses .NET 10 runtime for latest performance optimizations
 - Uses **Benchmark** configuration for optimal performance with project references
 - Benchmarks run on the host process runtime (.NET 10) for accurate performance measurement
-- GraphModel targets .NET 10 for production use
+- CVOYA graph targets .NET 10 for production use
 
 ## 📈 Interpreting Results
 
