@@ -24,6 +24,21 @@ public interface IQueryTests : IGraphTest
     }
 
     [Fact]
+    public async Task CanQueryNodeWithEscapableLabel()
+    {
+        var venue = new SpacedLabelVenue { Name = "Union Hall" };
+        await this.Graph.CreateNodeAsync(venue, null, TestContext.Current.CancellationToken);
+
+        var found = await this.Graph.Nodes<SpacedLabelVenue>()
+            .Where(v => v.Name == "Union Hall")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var roundTripped = Assert.Single(found);
+        Assert.Equal(venue.Id, roundTripped.Id);
+        Assert.Equal("Union Hall", roundTripped.Name);
+    }
+
+    [Fact]
     public async Task CanQueryNodesByMultipleProperties()
     {
         var p1 = new Person { FirstName = "Alice", LastName = "Smith" };

@@ -94,3 +94,28 @@ public enum EmploymentStatus
     OnLeave,
     Terminated
 }
+
+/// <summary>
+/// A node whose label is not a plain Cypher symbolic name, so pattern rendering must
+/// backtick-escape it (#214). Abstract on purpose: <c>Labels.GetCompatibleLabels</c> unions every
+/// concrete <see cref="INode"/> type in loaded assemblies, so a concrete type here would leak
+/// this label into the INode-widened snapshots this suite pins.
+/// </summary>
+[Node("Label With Space")]
+public abstract record SpacedLabelNode : Node
+{
+    public string Name { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// A relationship whose type contains the alternation separator; the renderer must escape it as
+/// one type name, not split it (#214).
+/// </summary>
+[Relationship("PIPE|SEPARATED")]
+public record PipeTypedRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);
+
+/// <summary>
+/// A relationship whose type contains a backtick, the escape character itself (#214).
+/// </summary>
+[Relationship("BACK`TICK")]
+public record BacktickTypedRelationship(string StartNodeId, string EndNodeId) : Relationship(StartNodeId, EndNodeId);

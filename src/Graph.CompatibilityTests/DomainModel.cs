@@ -79,6 +79,14 @@ public class AddressValue
     public string City { get; set; } = string.Empty;
 }
 
+// A label that is not a plain Cypher symbolic name: providers must escape it on the write path
+// AND in query MATCH patterns, so create-then-query round-trips (#214).
+[Node("Escapable Label")]
+public record SpacedLabelVenue : Node
+{
+    public string Name { get; set; } = string.Empty;
+}
+
 [Relationship(Label = "FRIENDOF")]
 public record Friend : Relationship
 {

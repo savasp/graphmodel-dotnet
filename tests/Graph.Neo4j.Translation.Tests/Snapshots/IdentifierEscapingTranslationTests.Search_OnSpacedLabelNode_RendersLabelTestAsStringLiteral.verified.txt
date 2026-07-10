@@ -1,0 +1,10 @@
+== Cypher ==
+CALL db.index.fulltext.queryNodes('node_fulltext_index', $p0) YIELD node AS n
+WHERE 'Label With Space' IN labels(n)
+RETURN {
+                Node: n,
+                ComplexProperties: []
+            } AS Node
+
+== Parameters ==
+p0 = "alice"

@@ -536,13 +536,13 @@ public sealed class CypherQueryPlanner
             RelationshipRoot relationship => new PathPattern(
             [
                 new NodePattern("src", []),
-                new RelationshipPattern("r", string.Join('|', Labels.GetCompatibleLabels(relationship.ElementType)), CypherDirection.Outgoing, null),
+                new RelationshipPattern("r", Labels.GetCompatibleLabels(relationship.ElementType), CypherDirection.Outgoing, null),
                 new NodePattern("tgt", [])
             ]),
             DynamicRoot { ElementType: { } type } when typeof(IRelationship).IsAssignableFrom(type) => new PathPattern(
             [
                 new NodePattern("src", []),
-                new RelationshipPattern("r", null, CypherDirection.Outgoing, null),
+                new RelationshipPattern("r", types: [], CypherDirection.Outgoing, null),
                 new NodePattern("tgt", [])
             ]),
             DynamicRoot => new PathPattern([new NodePattern(alias, [])]),
@@ -583,8 +583,8 @@ public sealed class CypherQueryPlanner
                 new RelationshipPattern(
                     relationshipAlias,
                     step.RelationshipClrType is null
-                        ? step.RelationshipType
-                        : string.Join('|', Labels.GetCompatibleLabels(step.RelationshipClrType)),
+                        ? step.RelationshipType is { } relationshipType ? [relationshipType] : []
+                        : Labels.GetCompatibleLabels(step.RelationshipClrType),
                     step.Direction switch
                     {
                         GraphTraversalDirection.Outgoing => CypherDirection.Outgoing,

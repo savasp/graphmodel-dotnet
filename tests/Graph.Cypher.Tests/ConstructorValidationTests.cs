@@ -135,7 +135,7 @@ public class ConstructorValidationTests
     public void RelationshipPattern_RejectsUndefinedDirection()
     {
         var ex = Assert.Throws<ArgumentOutOfRangeException>(
-            () => new RelationshipPattern(null, null, (CypherDirection)99, null));
+            () => new RelationshipPattern(null, (string?)null, (CypherDirection)99, null));
 
         Assert.Equal("direction", ex.ParamName);
     }
@@ -143,7 +143,7 @@ public class ConstructorValidationTests
     [Fact]
     public void RelationshipPattern_AcceptsDefinedDirection()
     {
-        var relationship = new RelationshipPattern(null, null, CypherDirection.Both, null);
+        var relationship = new RelationshipPattern(null, (string?)null, CypherDirection.Both, null);
 
         Assert.Equal(CypherDirection.Both, relationship.Direction);
     }

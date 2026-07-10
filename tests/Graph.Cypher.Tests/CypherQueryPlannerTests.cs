@@ -67,7 +67,7 @@ public class CypherQueryPlannerTests
 
         var match = Assert.IsType<MatchClause>(statement.Clauses[0]);
         var relationship = Assert.IsType<RelationshipPattern>(match.Patterns[0].Elements[1]);
-        Assert.Equal("KNOWS", relationship.Type);
+        Assert.Equal("KNOWS", Assert.Single(relationship.Types));
         Assert.Equal(new Cvoya.Graph.Cypher.Ast.DepthRange(1, 3), relationship.Depth);
         new CypherAstValidator().Run(statement);
     }
@@ -85,7 +85,7 @@ public class CypherQueryPlannerTests
         var exists = Assert.IsType<PatternSubqueryExpression>(not.Operand);
         Assert.Equal(PatternSubqueryKind.Exists, exists.Kind);
         var relationship = Assert.IsType<RelationshipPattern>(exists.Pattern.Elements[1]);
-        Assert.Equal("Home", relationship.Type);
+        Assert.Equal("Home", Assert.Single(relationship.Types));
     }
 
     [Fact]
@@ -115,8 +115,8 @@ public class CypherQueryPlannerTests
 
         var matches = statement.Clauses.OfType<MatchClause>().ToArray();
         Assert.Equal(3, matches.Length);
-        Assert.Equal("Home", Assert.IsType<RelationshipPattern>(matches[1].Patterns[0].Elements[1]).Type);
-        Assert.Equal("Region", Assert.IsType<RelationshipPattern>(matches[2].Patterns[0].Elements[1]).Type);
+        Assert.Equal("Home", Assert.Single(Assert.IsType<RelationshipPattern>(matches[1].Patterns[0].Elements[1]).Types));
+        Assert.Equal("Region", Assert.Single(Assert.IsType<RelationshipPattern>(matches[2].Patterns[0].Elements[1]).Types));
         new CypherAstValidator().Run(statement);
     }
 
