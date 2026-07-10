@@ -194,7 +194,10 @@ public interface ITakeOperatorTests : IGraphTest
         Assert.Equal("Bob", results[1].FirstName);
     }
 
+    // Exercises Take over a full-text search root, so it is gated on the capability like the
+    // rest of the full-text surface.
     [Fact]
+    [RequiresCapability(GraphCapability.FullTextSearch)]
     public async Task TakeOperator_WithFullTextSearch_GeneratesCorrectCypher()
     {
         // Arrange
