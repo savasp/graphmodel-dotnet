@@ -14,7 +14,7 @@ using Cvoya.Graph.Cypher.Planning;
 /// </summary>
 public class EvaluateFastPathTests
 {
-    private static int staticProperty = 41;
+    private static readonly int staticProperty = 41;
 
     private static int StaticProperty => staticProperty;
 
