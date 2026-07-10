@@ -242,6 +242,229 @@ public class GraphQueryModelTests
         GraphQueryModelValidator.Validate(model);
     }
 
+    [Fact]
+    public void GroupByFragment_RequiresKeySelector()
+    {
+        Assert.Throws<ArgumentNullException>(() => new GroupByFragment(null!, null, null));
+    }
+
+    [Fact]
+    public void SelectManyFragment_RequiresCollectionSelector()
+    {
+        Assert.Throws<ArgumentNullException>(() => new SelectManyFragment(null!, null));
+    }
+
+    [Fact]
+    public void UnionFragment_RequiresSecondModel()
+    {
+        Assert.Throws<ArgumentNullException>(() => new UnionFragment(null!));
+    }
+
+    [Fact]
+    public void TraversalStep_RejectsBlankTargetAlias()
+    {
+        Assert.Throws<ArgumentException>(() => new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new DepthRange(1, 1),
+            [],
+            typeof(Person),
+            relationshipClrType: null,
+            isComplexPropertyTraversal: false,
+            sourceAlias: null,
+            targetAlias: " "));
+    }
+
+    [Fact]
+    public void Validator_RejectsUnboundPredicateAlias()
+    {
+        var model = CreateValidModel(
+            predicates: [Predicate<Person>(person => person.Name.Length > 0, alias: "elsewhere")],
+            traversal: [],
+            projection: null,
+            ordering: []);
+
+        var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
+
+        Assert.Contains("alias 'elsewhere' is not bound", exception.Message);
+    }
+
+    [Fact]
+    public void Validator_AcceptsPredicateAliasBoundByTraversalTarget()
+    {
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new DepthRange(1, 1),
+            [],
+            typeof(Person),
+            relationshipClrType: null,
+            isComplexPropertyTraversal: false,
+            sourceAlias: "src",
+            targetAlias: "friends");
+        var model = CreateValidModel(
+            predicates: [Predicate<Person>(person => person.Name.Length > 0, alias: "friends")],
+            traversal: [traversal],
+            projection: null,
+            ordering: []);
+
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void Validator_RejectsUnboundTraversalSourceAlias()
+    {
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new DepthRange(1, 1),
+            [],
+            typeof(Person),
+            relationshipClrType: null,
+            isComplexPropertyTraversal: false,
+            sourceAlias: "nowhere",
+            targetAlias: "friends");
+        var model = CreateValidModel(
+            predicates: [],
+            traversal: [traversal],
+            projection: null,
+            ordering: []);
+
+        var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
+
+        Assert.Contains("source alias 'nowhere' is not bound", exception.Message);
+    }
+
+    [Fact]
+    public void Validator_RejectsUnboundOrderingAlias()
+    {
+        var model = CreateValidModel(
+            predicates: [],
+            traversal: [],
+            projection: null,
+            ordering: [new OrderingKey(Selector<Person, string>(person => person.Name), descending: false, "elsewhere")]);
+
+        var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
+
+        Assert.Contains("Ordering key 0 alias 'elsewhere' is not bound", exception.Message);
+    }
+
+    [Theory]
+    [InlineData(TerminalOperation.ElementAt)]
+    [InlineData(TerminalOperation.ElementAtOrDefault)]
+    public void Validator_RejectsElementAtWithoutIntegerIndex(TerminalOperation terminal)
+    {
+        var model = CreateModelWithTerminal(terminal, terminalOperand: null);
+
+        var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
+
+        Assert.Contains("requires an integer index", exception.Message);
+    }
+
+    [Fact]
+    public void Validator_RejectsElementAtWithNegativeIndex()
+    {
+        var model = CreateModelWithTerminal(TerminalOperation.ElementAt, terminalOperand: -1);
+
+        var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
+
+        Assert.Contains("non-negative index", exception.Message);
+    }
+
+    [Fact]
+    public void Validator_AcceptsElementAtWithValidIndex()
+    {
+        GraphQueryModelValidator.Validate(CreateModelWithTerminal(TerminalOperation.ElementAt, terminalOperand: 3));
+    }
+
+    [Fact]
+    public void Validator_RejectsUnionWithUnrelatedElementTypes()
+    {
+        var second = new GraphQueryModel(
+            new NodeRoot(typeof(Company)),
+            [],
+            [],
+            null,
+            [],
+            new Paging(null, null),
+            TerminalOperation.ToListOrArray);
+        var model = CreateModelWithUnion(new UnionFragment(second));
+
+        var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
+
+        Assert.Contains("Union sources must have compatible element types", exception.Message);
+    }
+
+    [Fact]
+    public void Validator_ValidatesUnionSecondModel()
+    {
+        var second = new GraphQueryModel(
+            new NodeRoot(typeof(Person)),
+            [Predicate<Person>(person => person.Name.Length > 0, alias: "elsewhere")],
+            [],
+            null,
+            [],
+            new Paging(null, null),
+            TerminalOperation.ToListOrArray);
+        var model = CreateModelWithUnion(new UnionFragment(second));
+
+        var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
+
+        Assert.Contains("alias 'elsewhere' is not bound", exception.Message);
+    }
+
+    [Fact]
+    public void Validator_AcceptsUnionOfCompatibleModels()
+    {
+        var second = new GraphQueryModel(
+            new NodeRoot(typeof(Person)),
+            [],
+            [],
+            null,
+            [],
+            new Paging(null, null),
+            TerminalOperation.ToListOrArray);
+
+        GraphQueryModelValidator.Validate(CreateModelWithUnion(new UnionFragment(second)));
+    }
+
+    private static GraphQueryModel CreateModelWithTerminal(TerminalOperation terminal, object? terminalOperand)
+    {
+        return new GraphQueryModel(
+            new NodeRoot(typeof(Person)),
+            [],
+            [],
+            null,
+            [],
+            new Paging(null, null),
+            terminal,
+            distinct: false,
+            terminalOperand: terminalOperand,
+            pathShape: null,
+            join: null,
+            searchFilter: null);
+    }
+
+    private static GraphQueryModel CreateModelWithUnion(UnionFragment union)
+    {
+        return new GraphQueryModel(
+            new NodeRoot(typeof(Person)),
+            [],
+            [],
+            null,
+            [],
+            new Paging(null, null),
+            TerminalOperation.ToListOrArray,
+            distinct: false,
+            terminalOperand: null,
+            pathShape: null,
+            join: null,
+            searchFilter: null,
+            groupBy: null,
+            selectMany: null,
+            union: union);
+    }
+
     private static GraphQueryModel CreateValidModel(
         QueryRoot? root = null,
         IReadOnlyList<PredicateFragment>? predicates = null,
@@ -297,6 +520,11 @@ public class GraphQueryModelTests
     }
 
     private sealed record Person : Node
+    {
+        public string Name { get; init; } = string.Empty;
+    }
+
+    private sealed record Company : Node
     {
         public string Name { get; init; } = string.Empty;
     }

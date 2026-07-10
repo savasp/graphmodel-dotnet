@@ -4,6 +4,7 @@
 namespace Cvoya.Graph.Neo4j.Querying.Cypher.Visitors.Core;
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Cypher.Ast;
 using Cvoya.Graph.Cypher.Planning;
 using Cvoya.Graph.Querying;
 using Microsoft.Extensions.Logging;
@@ -32,17 +33,17 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         }
 
         _logger?.LogDebug("Planning graph query rooted at {RootType}", _rootType);
-        GraphQueryModel model;
+        CypherStatement statement;
         try
         {
-            model = GraphQueryModelBuilder.Build(node);
+            var model = GraphQueryModelBuilder.Build(node);
+            statement = new CypherQueryPlanner().Plan(model);
         }
         catch (GraphQueryTranslationException exception)
         {
             throw PreserveLegacyProviderException(exception);
         }
 
-        var statement = new CypherQueryPlanner().Plan(model);
         Query = new Neo4jCypherRenderer().Render(statement);
         _logger?.LogDebug(
             "Added Cypher parameter names: {ParameterNames}; count: {ParameterCount}",

@@ -4,8 +4,12 @@
 namespace Cvoya.Graph.Querying;
 
 /// <summary>
-/// Identifies the terminal LINQ operation, or terminal modifier, represented by a query model.
+/// Identifies the terminal LINQ operation represented by a query model.
 /// </summary>
+/// <remarks>
+/// Distinct is not a terminal operation: it is carried by <see cref="GraphQueryModel.Distinct"/>
+/// so that a query such as <c>Distinct().CountAsync()</c> can represent both semantics at once.
+/// </remarks>
 public enum TerminalOperation
 {
     /// <summary>
@@ -77,9 +81,4 @@ public enum TerminalOperation
     /// Return the element at an index, or the default value for the element type.
     /// </summary>
     ElementAtOrDefault,
-
-    /// <summary>
-    /// Apply a distinct modifier to the query.
-    /// </summary>
-    Distinct,
 }

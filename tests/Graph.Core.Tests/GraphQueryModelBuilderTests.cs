@@ -34,8 +34,22 @@ public class GraphQueryModelBuilderTests
             ordering => Assert.True(ordering.Descending));
         Assert.Equal(2, model.Paging.Skip);
         Assert.Equal(5, model.Paging.Take);
-        Assert.Equal(TerminalOperation.Distinct, model.Terminal);
+        Assert.True(model.Distinct);
+        Assert.Equal(TerminalOperation.ToListOrArray, model.Terminal);
 
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void DistinctThenCount_CarriesBothSemantics()
+    {
+        var source = Root<Person>().Select(person => person.LastName).Distinct();
+        var expression = MarkerCall("CountAsyncMarker", [typeof(string)], source.Expression, []);
+
+        var model = GraphQueryModelBuilder.Build(expression);
+
+        Assert.True(model.Distinct);
+        Assert.Equal(TerminalOperation.Count, model.Terminal);
         GraphQueryModelValidator.Validate(model);
     }
 
@@ -215,8 +229,10 @@ public class GraphQueryModelBuilderTests
         Assert.Equal(expected, model.Terminal);
         if (expected is TerminalOperation.ElementAt or TerminalOperation.ElementAtOrDefault)
         {
-            Assert.Equal(3, model.Paging.Skip);
-            Assert.Equal(1, model.Paging.Take);
+            // The index is a first-class terminal operand, not a paging encoding.
+            Assert.Equal(3, model.TerminalOperand);
+            Assert.Null(model.Paging.Skip);
+            Assert.Null(model.Paging.Take);
         }
     }
 
@@ -299,22 +315,90 @@ public class GraphQueryModelBuilderTests
         Assert.Contains("Materialize the paths first", exception.Message);
     }
 
-    [Theory]
-    [InlineData(nameof(GraphQueryableExtensions.SelectMany))]
-    [InlineData(nameof(GraphQueryableExtensions.GroupBy))]
-    [InlineData(nameof(Queryable.Union))]
-    public void UnrepresentableOperators_ThrowInsteadOfProducingLossyModel(string operatorName)
+    [Fact]
+    public void SelectMany_ProducesFlatteningFragment()
     {
-        var source = Root<Person>();
-        Expression expression = operatorName switch
-        {
-            nameof(GraphQueryableExtensions.SelectMany) => source.SelectMany(person => person.Nicknames).Expression,
-            nameof(GraphQueryableExtensions.GroupBy) => source.GroupBy(person => person.Age).Expression,
-            nameof(Queryable.Union) => source.AsQueryable().Union(Root<Person>()).Expression,
-            _ => throw new InvalidOperationException($"Unknown operator '{operatorName}'."),
-        };
+        var query = Root<Person>().SelectMany(person => person.Nicknames);
 
-        Assert.Throws<GraphQueryTranslationException>(() => GraphQueryModelBuilder.Build(expression));
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.NotNull(model.SelectMany);
+        Assert.Equal(typeof(Person), Assert.Single(model.SelectMany.CollectionSelector.Parameters).Type);
+        Assert.Null(model.SelectMany.ResultSelector);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void GroupBy_ProducesGroupingFragment()
+    {
+        var query = Root<Person>().GroupBy(person => person.Age);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.NotNull(model.GroupBy);
+        Assert.Equal(typeof(int), model.GroupBy.KeySelector.ReturnType);
+        Assert.Null(model.GroupBy.ElementSelector);
+        Assert.Null(model.GroupBy.ResultSelector);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void GroupBy_WithElementAndResultSelectors_CarriesBoth()
+    {
+        var query = Root<Person>().AsQueryable().GroupBy(
+            person => person.Age,
+            person => person.FirstName,
+            (age, names) => age);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.NotNull(model.GroupBy);
+        Assert.NotNull(model.GroupBy.ElementSelector);
+        Assert.Equal(typeof(string), model.GroupBy.ElementSelector.ReturnType);
+        Assert.NotNull(model.GroupBy.ResultSelector);
+        Assert.Equal(2, model.GroupBy.ResultSelector.Parameters.Count);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void GroupBy_WithResultSelectorOnly_ClassifiesByArity()
+    {
+        var query = Root<Person>().AsQueryable().GroupBy(
+            person => person.Age,
+            (age, people) => age);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.NotNull(model.GroupBy);
+        Assert.Null(model.GroupBy.ElementSelector);
+        Assert.NotNull(model.GroupBy.ResultSelector);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void Union_ProducesUnionFragmentWithSecondModel()
+    {
+        var query = Root<Person>().AsQueryable().Union(Root<Person>().Where(person => person.Age > 30));
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.NotNull(model.Union);
+        Assert.Equal(typeof(Person), Assert.IsType<NodeRoot>(model.Union.Second.Root).ElementType);
+        Assert.Single(model.Union.Second.Predicates);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void ChainedUnion_ThrowsInsteadOfProducingLossyModel()
+    {
+        var query = Root<Person>().AsQueryable()
+            .Union(Root<Person>())
+            .Union(Root<Person>());
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("Union", exception.Message);
     }
 
     [Fact]

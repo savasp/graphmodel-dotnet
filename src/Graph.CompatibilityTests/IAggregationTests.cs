@@ -18,6 +18,34 @@ public interface IAggregationTests : IGraphTest
     }
 
     [Fact]
+    public async Task CanCountDistinctQuery()
+    {
+        var people = new[]
+        {
+            new PersonWithNumbers { FirstName = "Alice", Age = 30 },
+            new PersonWithNumbers { FirstName = "Bob", Age = 30 },
+            new PersonWithNumbers { FirstName = "Charlie", Age = 30 },
+            new PersonWithNumbers { FirstName = "Dana", Age = 40 }
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var rawCount = await Graph.Nodes<PersonWithNumbers>()
+            .Select(p => p.Age)
+            .CountAsync(TestContext.Current.CancellationToken);
+        var distinctCount = await Graph.Nodes<PersonWithNumbers>()
+            .Select(p => p.Age)
+            .Distinct()
+            .CountAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, rawCount);
+        Assert.Equal(2, distinctCount);
+    }
+
+    [Fact]
     public async Task SumInt_CalculatesCorrectTotal()
     {
         var people = new[]

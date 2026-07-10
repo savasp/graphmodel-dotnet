@@ -22,6 +22,9 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
     private QueryRoot? _root;
     private ProjectionShape? _projection;
     private JoinFragment? _join;
+    private GroupByFragment? _groupBy;
+    private SelectManyFragment? _selectMany;
+    private UnionFragment? _union;
     private QueryPathShape? _pathShape;
     private object? _terminalOperand;
     private SearchRoot? _searchFilter;
@@ -69,7 +72,10 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             builder._terminalOperand,
             builder._pathShape,
             builder._join,
-            builder._searchFilter);
+            builder._searchFilter,
+            builder._groupBy,
+            builder._selectMany,
+            builder._union);
     }
 
     protected override Expression VisitMethodCall(MethodCallExpression node)
@@ -113,7 +119,6 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
                 break;
             case LinqOperator.Distinct:
                 _distinct = true;
-                _terminal = TerminalOperation.Distinct;
                 break;
             case LinqOperator.ToListOrArray:
                 _terminal = TerminalOperation.ToListOrArray;
@@ -174,14 +179,17 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
                 HandleSearch(node);
                 break;
             case LinqOperator.SelectMany:
-                throw Unsupported(node, "SelectMany is not supported by graph query translation yet; see #100.");
+                HandleSelectMany(node);
+                break;
             case LinqOperator.GroupBy:
-                throw Unsupported(node, "GroupBy is not supported by graph query translation yet; see #100.");
+                HandleGroupBy(node);
+                break;
             case LinqOperator.Join:
                 HandleJoin(node);
                 break;
             case LinqOperator.Union:
-                throw Unsupported(node, "Union is not supported by graph query translation yet.");
+                HandleUnion(node);
+                break;
             default:
                 throw Unsupported(node, $"Operator '{op}' is not supported by graph query translation.");
         }
@@ -391,8 +399,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             throw new GraphQueryTranslationException("ElementAt index must be non-negative.");
         }
 
-        _skip = index;
-        _take = 1;
+        _terminalOperand = index;
         _terminal = terminal;
     }
 
@@ -466,7 +473,8 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             targetType,
             relationshipType,
             isComplexPropertyTraversal: false,
-            sourceAlias: sourceAlias));
+            sourceAlias: sourceAlias,
+            targetAlias: CurrentTargetAlias));
 
         _currentType = targetType;
         _currentAlias = CurrentTargetAlias;
@@ -528,6 +536,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         };
 
         _root = new SearchRoot(query, target, target == SearchRootTarget.Entities ? null : elementType);
+        _currentAlias = target == SearchRootTarget.Relationships ? "r" : "n";
     }
 
     private void UpdateLastTraversal(
@@ -548,7 +557,8 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             current.TargetType,
             current.RelationshipClrType,
             current.IsComplexPropertyTraversal,
-            current.SourceAlias);
+            current.SourceAlias,
+            current.TargetAlias);
     }
 
     private void AddComplexPropertyTraversals(LambdaExpression lambda)
@@ -569,6 +579,55 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
                 relationshipClrType: null,
                 isComplexPropertyTraversal: true));
         }
+    }
+
+    private void HandleGroupBy(MethodCallExpression node)
+    {
+        if (_groupBy is not null)
+        {
+            throw Unsupported(node, "chained GroupBy operations cannot be represented by a single query model.");
+        }
+
+        var keySelector = RequireLambda(node, 1, "GroupBy key");
+        var second = TryGetLambda(node, 2);
+        var third = TryGetLambda(node, 3);
+
+        // Queryable.GroupBy overloads disambiguate by arity of the second lambda: an element
+        // selector takes one parameter, a result selector takes the key and the group.
+        var (elementSelector, resultSelector) = second switch
+        {
+            null => ((LambdaExpression?)null, (LambdaExpression?)null),
+            { Parameters.Count: 1 } => (second, third),
+            _ => (null, second),
+        };
+
+        _groupBy = new GroupByFragment(keySelector, elementSelector, resultSelector);
+    }
+
+    private void HandleSelectMany(MethodCallExpression node)
+    {
+        if (_selectMany is not null)
+        {
+            throw Unsupported(node, "chained SelectMany operations cannot be represented by a single query model.");
+        }
+
+        var collectionSelector = RequireLambda(node, 1, "SelectMany collection selector");
+        _selectMany = new SelectManyFragment(collectionSelector, TryGetLambda(node, 2));
+    }
+
+    private void HandleUnion(MethodCallExpression node)
+    {
+        if (_union is not null)
+        {
+            throw Unsupported(node, "chained Union operations cannot be represented by a single query model.");
+        }
+
+        if (node.Arguments.Count < 2)
+        {
+            throw Unsupported(node, "Union requires a second source.");
+        }
+
+        _union = new UnionFragment(Build(node.Arguments[1]));
     }
 
     private void HandleJoin(MethodCallExpression node)

@@ -19,6 +19,9 @@ public static class GraphQueryModelValidator
     {
         ArgumentNullException.ThrowIfNull(model);
 
+        ValidateTerminalOperand(model);
+        ValidateAliasBindings(model);
+
         var currentType = ResolveRootType(model.Root);
         var possibleScopeTypes = new List<Type?> { currentType };
 
@@ -68,6 +71,142 @@ public static class GraphQueryModelValidator
         {
             ValidateLambdaReferences(model.Ordering[i].KeySelector, possibleScopeTypes, $"Ordering key {i}");
         }
+
+        if (model.GroupBy is { } groupBy)
+        {
+            ValidateLambdaReferences(groupBy.KeySelector, possibleScopeTypes, "GroupBy key selector");
+            if (groupBy.ElementSelector is { } elementSelector)
+            {
+                ValidateLambdaReferences(elementSelector, possibleScopeTypes, "GroupBy element selector");
+            }
+
+            if (groupBy.ResultSelector is { } groupResultSelector)
+            {
+                // The result selector ranges over the key and the group, which are not query scopes;
+                // only parameter containment is checkable here.
+                ValidateParameterContainment(groupResultSelector, "GroupBy result selector");
+            }
+        }
+
+        if (model.SelectMany is { } selectMany)
+        {
+            ValidateLambdaReferences(selectMany.CollectionSelector, possibleScopeTypes, "SelectMany collection selector");
+            if (selectMany.ResultSelector is { } flattenResultSelector)
+            {
+                // The result selector's second parameter ranges over flattened elements, which are
+                // not query scopes; only parameter containment is checkable here.
+                ValidateParameterContainment(flattenResultSelector, "SelectMany result selector");
+            }
+        }
+
+        if (model.Union is { } union)
+        {
+            Validate(union.Second);
+
+            var firstType = ResolveRootType(model.Root);
+            var secondType = ResolveRootType(union.Second.Root);
+            if (firstType is not null && secondType is not null &&
+                !firstType.IsAssignableFrom(secondType) && !secondType.IsAssignableFrom(firstType))
+            {
+                throw new GraphException(
+                    $"Union sources must have compatible element types; '{firstType.FullName}' and '{secondType.FullName}' are unrelated.");
+            }
+        }
+    }
+
+    private static void ValidateTerminalOperand(GraphQueryModel model)
+    {
+        if (model.Terminal is not (TerminalOperation.ElementAt or TerminalOperation.ElementAtOrDefault))
+        {
+            return;
+        }
+
+        if (model.TerminalOperand is not int index)
+        {
+            throw new GraphException(
+                $"Terminal operation '{model.Terminal}' requires an integer index in {nameof(GraphQueryModel.TerminalOperand)}.");
+        }
+
+        if (index < 0)
+        {
+            throw new GraphException($"Terminal operation '{model.Terminal}' requires a non-negative index.");
+        }
+    }
+
+    private static void ValidateAliasBindings(GraphQueryModel model)
+    {
+        var bound = CollectRootAliases(model.Root);
+        if (model.Join is not null)
+        {
+            bound.Add("joined");
+        }
+
+        var explicitIndex = 0;
+        foreach (var step in model.Traversal)
+        {
+            if (step.IsComplexPropertyTraversal)
+            {
+                continue;
+            }
+
+            if (step.SourceAlias is { } sourceAlias && !bound.Contains(sourceAlias))
+            {
+                throw new GraphException(
+                    $"Traversal step source alias '{sourceAlias}' is not bound by the root scope or a preceding traversal target.");
+            }
+
+            // Providers bind a relationship and target scope per explicit step; steps that do not
+            // declare a target alias fall back to the same positional convention.
+            bound.Add(explicitIndex == 0 ? "r" : $"r_{explicitIndex + 1}");
+            bound.Add(step.TargetAlias ?? (explicitIndex == 0 ? "tgt" : $"tgt_{explicitIndex + 1}"));
+            explicitIndex++;
+        }
+
+        for (var i = 0; i < model.Predicates.Count; i++)
+        {
+            if (model.Predicates[i].Alias is { } alias && !bound.Contains(alias))
+            {
+                throw new GraphException(
+                    $"Root predicate {i} alias '{alias}' is not bound by the root scope or a traversal target.");
+            }
+        }
+
+        for (var i = 0; i < model.Ordering.Count; i++)
+        {
+            if (model.Ordering[i].Alias is { } alias && !bound.Contains(alias))
+            {
+                throw new GraphException(
+                    $"Ordering key {i} alias '{alias}' is not bound by the root scope or a traversal target.");
+            }
+        }
+    }
+
+    private static HashSet<string> CollectRootAliases(QueryRoot root)
+    {
+        HashSet<string> aliases = new(StringComparer.Ordinal);
+        switch (root)
+        {
+            case RelationshipRoot:
+            case DynamicRoot { ElementType: { } dynamicType } when typeof(IRelationship).IsAssignableFrom(dynamicType):
+            case SearchRoot { Target: SearchRootTarget.Relationships }:
+                aliases.Add("src");
+                aliases.Add("r");
+                aliases.Add("tgt");
+                break;
+            case SearchRoot { Target: SearchRootTarget.Nodes }:
+                aliases.Add("n");
+                break;
+            case SearchRoot:
+                aliases.Add("entity");
+                aliases.Add("n");
+                break;
+            default:
+                aliases.Add("src");
+                aliases.Add("src_1");
+                break;
+        }
+
+        return aliases;
     }
 
     private static Type? ResolveRootType(QueryRoot root)
@@ -138,6 +277,16 @@ public static class GraphQueryModelValidator
                 throw new GraphException(
                     $"{description} parameter '{parameter.Name}' has type '{parameter.Type.FullName}', which is outside the current query scopes.");
             }
+        }
+
+        ValidateParameterContainment(lambda, description);
+    }
+
+    private static void ValidateParameterContainment(LambdaExpression lambda, string description)
+    {
+        if (lambda.Parameters.Count == 0)
+        {
+            throw new GraphException($"{description} must declare at least one parameter.");
         }
 
         var referencedParameters = ParameterReferenceCollector.Collect(lambda.Body);
