@@ -1,4 +1,11 @@
-# CVOYA graph
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/cvoya-graph-mark-dark.svg">
+  <img src="assets/cvoya-graph-mark.svg" alt="" width="72" height="72">
+</picture>
+
+# CVOYA Graph
+
+**A [CVOYA](https://cvoya.com) project.** Part of the [open source released by CVOYA](https://cvoya-com.github.io/).
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![.NET](https://img.shields.io/badge/.NET-10.0+-purple.svg)](https://dotnet.microsoft.com/download)
@@ -11,9 +18,9 @@
 [![Issues](https://img.shields.io/github/issues/cvoya-com/graph.svg)](https://github.com/cvoya-com/graph/issues)
 [![Stars](https://img.shields.io/github/stars/cvoya-com/graph.svg)](https://github.com/cvoya-com/graph/stargazers)
 
-A powerful, type-safe .NET library ecosystem for working with graph data structures and graph databases. CVOYA graph provides a clean abstraction layer over graph databases with advanced LINQ querying, transaction management, and relationship traversal capabilities.
+A powerful, type-safe .NET library ecosystem for working with graph data structures and graph databases. CVOYA Graph provides a clean abstraction layer over graph databases with advanced LINQ querying, transaction management, and relationship traversal capabilities.
 
-## 🚀 Features
+## Features
 
 - **🔒 Type-Safe Graph Operations** - Work with strongly-typed nodes and relationships using modern C# features
 - **🔍 Advanced LINQ Support** - Query your graph using familiar LINQ syntax with graph-specific extensions
@@ -26,7 +33,7 @@ A powerful, type-safe .NET library ecosystem for working with graph data structu
 - **📈 Build-time code generation** - Automatic code generation for efficient serialization/deserialization of domain data types
 - **🎨 Attribute-Based Configuration** - Configure nodes and relationships using intuitive attributes
 
-## 📦 Packages
+## Packages
 
 To get started, you only need to install the Neo4j provider package:
 
@@ -41,7 +48,7 @@ To get started, you only need to install the Neo4j provider package:
 
 Building your own provider? See [Certifying a provider](docs/provider-implementers-guide.md#certifying-a-provider) for how to run the shared compatibility suite against it.
 
-## 🏃‍♂️ Quick Start
+## Quick Start
 
 ### 1. Installation
 
@@ -197,7 +204,7 @@ catch
 }
 ```
 
-## 📚 Documentation
+## Documentation
 
 - **[API Reference](https://cvoya-com.github.io/graph/api/)** - Generated API documentation for all packages
 - **[Core Concepts](docs/core-concepts.md)** - Understanding nodes, relationships, and entities
@@ -213,7 +220,7 @@ catch
 - **[Building Graph Model](docs/graph-model-developers.md)** - Building the projects in this repository
 - **[AI agent documentation](docs/ai-agents.md)** - Where to find context for Claude Code, Codex, Copilot, and other AI coding tools
 
-## 💡 Examples
+## Examples
 
 Explore comprehensive examples in the [`examples/`](examples/) directory:
 
@@ -226,11 +233,11 @@ Explore comprehensive examples in the [`examples/`](examples/) directory:
 - **[Full Text Search](examples/Example6.FullTextSearch/)** - Search across nodes and relationships
 - **[Simple Movie Example](examples/SimpleMovieExample/)** - Compact movie graph walkthrough
 
-## 🏗️ Building & Testing
+## Building & Testing
 
 ### Build Configurations
 
-CVOYA graph supports multiple build configurations for different scenarios:
+CVOYA Graph supports multiple build configurations for different scenarios:
 
 ```bash
 # Development (fastest, project references)
@@ -260,9 +267,9 @@ dotnet msbuild -target:CleanLocalFeed
 
 See **[Build System Documentation](docs/graph-model-developers.md)** for complete details.
 
-## 🏗️ Architecture
+## Architecture
 
-CVOYA graph follows a clean, layered architecture:
+CVOYA Graph follows a clean, layered architecture:
 
 ```
 ┌─────────────────────────────────┐
@@ -284,24 +291,24 @@ CVOYA graph follows a clean, layered architecture:
 - **IGraphTransaction** - ACID transaction management
 - **Attributes** - Declarative configuration (Node, Relationship, Property)
 
-## 🔧 Requirements
+## Requirements
 
 - **.NET 10.0** or later
 - **Neo4j 4.0+** (5.x recommended for Neo4j provider)
 - **C# 14** language features
 
-## 📖 Related Resources
+## Related Resources
 
 - [Blog Post: CVOYA graph: A .NET Abstraction for Graphs](https://savas.me/2025/06/27/graphmodel-a-net-abstraction-for-graphs/)
 - [Blog Post: Playing with graphs and neo4j](https://savas.me/2025/05/23/playing-with-graphs-and-neo4j/) by [Savas Parastatidis](https://savas.me)
 - [Neo4j Documentation](https://neo4j.com/docs/)
 - [Graph Database Concepts](https://neo4j.com/developer/graph-database/)
 
-## 🤖 AI agent documentation
+## AI agent documentation
 
 This repo provides context for AI coding agents (Claude Code, Codex, Copilot, and others). The canonical instruction set is **[AGENTS.md](AGENTS.md)**; see **[docs/ai-agents.md](docs/ai-agents.md)** for the per-tool map.
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
 
@@ -311,14 +318,25 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
+## Trademarks
+
+CVOYA&trade; and the CVOYA crescent logo are trademarks of CVOYA LLC. The `Cvoya.*` package names on
+NuGet identify software published by CVOYA LLC.
+
+The Apache 2.0 license below grants you rights to the source code. It does not grant rights to the
+CVOYA name or logo. You may use the mark nominatively — to state truthfully that your software uses,
+or is compatible with, CVOYA Graph. You may not use it in a way that suggests CVOYA endorses,
+sponsors, or maintains your work, nor as part of your own product, company, or domain name, nor on a
+modified distribution of this project without renaming that distribution. Questions: info@cvoya.com.
+
+## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Special thanks to the [Neo4j](https://neo4j.com/) team for creating an excellent graph database and driver ecosystem that makes this library possible.
 
 ---
 
-**Built with ❤️ by [Savas Parastatidis](https://savas.me)**
+Built by [Savas Parastatidis](https://savas.me) at [CVOYA](https://cvoya.com).
