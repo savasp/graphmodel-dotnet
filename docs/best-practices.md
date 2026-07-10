@@ -1,3 +1,6 @@
+---
+---
+
 # Best Practices
 
 > **Note:** To use Graph Model, install the Neo4j provider package:

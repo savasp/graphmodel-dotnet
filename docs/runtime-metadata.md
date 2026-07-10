@@ -1,3 +1,6 @@
+---
+---
+
 # Runtime Metadata Properties
 
 This document explains the runtime metadata properties added to `INode` and `IRelationship` interfaces and how they enable more flexible querying while maintaining type safety.

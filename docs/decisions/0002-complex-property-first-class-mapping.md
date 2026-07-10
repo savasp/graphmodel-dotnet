@@ -1,3 +1,6 @@
+---
+---
+
 # 0002 — Complex (nested-object) properties as first-class graph structure
 
 - **Status:** Accepted (decided by @savasp on #199, 2026-07-09)

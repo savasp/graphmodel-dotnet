@@ -208,7 +208,7 @@ catch
 
 ## Documentation
 
-- **[API Reference](https://cvoya-com.github.io/graph/api/)** - Generated API documentation for all packages
+- **[API Reference](https://oss.cvoya.com/graph/api/)** - Generated API documentation for all packages
 - **[Core Concepts](docs/core-concepts.md)** - Understanding nodes, relationships, and entities
 - **[LINQ Querying](docs/querying.md)** - Advanced query patterns and graph traversal
 - **[Transaction Management](docs/transactions.md)** - Working with ACID transactions

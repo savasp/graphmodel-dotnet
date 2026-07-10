@@ -1,3 +1,6 @@
+---
+---
+
 # AI agent documentation
 
 This repository is set up so AI coding agents can discover project context, build and test commands, and tool-specific configuration.

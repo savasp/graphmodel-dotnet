@@ -12,4 +12,4 @@ comments in the source code.
 - **Cvoya.Graph.Analyzers** — Roslyn analyzers that flag common mistakes in consumer domain models.
 
 Browse the [API namespaces](api/toc.yml) for full type and member documentation, or return to the
-[project documentation](https://cvoya-com.github.io/graph/).
+[project documentation](https://oss.cvoya.com/graph/).

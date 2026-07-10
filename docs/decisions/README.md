@@ -1,3 +1,7 @@
+---
+permalink: /docs/decisions/
+---
+
 # Architecture decision records
 
 This directory holds the project's architecture decision records (ADRs): short documents that capture one
