@@ -17,6 +17,10 @@
   href: provider-implementers-guide.md
 - name: Neo4j Provider
   href: ../src/Graph.Neo4j/README.md
+- name: In-Memory Provider
+  href: ../src/Graph.InMemory/README.md
+- name: Testing with the In-Memory Provider
+  href: testing-with-the-in-memory-provider.md
 - name: Code Analyzers
   href: ../src/Graph.Analyzers/README.md
 - name: Code Generation

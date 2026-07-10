@@ -29,6 +29,9 @@
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Cvoya.Graph.Neo4j.Translation.Tests</_Parameter1>
         </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.InMemory</_Parameter1>
+        </AssemblyAttribute>
         <!-- Lets core tests exercise narrow internal test seams without widening the public API. -->
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Cvoya.Graph.Core.Tests</_Parameter1>
