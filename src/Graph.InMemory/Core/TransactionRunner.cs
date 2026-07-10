@@ -23,9 +23,9 @@ internal static class TransactionRunner
         return transaction switch
         {
             null => (new InMemoryTransaction(store), true),
-            InMemoryTransaction inMemory => (inMemory, false),
+            InMemoryTransaction inMemory when inMemory.BelongsTo(store) => (inMemory, false),
             _ => throw new GraphException(
-                "The given transaction is not a valid in-memory transaction. " +
+                "The given transaction is not valid for this in-memory graph store. " +
                 "Use InMemoryGraphStore.Graph.GetTransactionAsync() to create one."),
         };
     }

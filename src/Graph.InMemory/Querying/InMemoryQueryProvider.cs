@@ -4,6 +4,7 @@
 namespace Cvoya.Graph.InMemory.Querying;
 
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Cvoya.Graph.Querying;
 
@@ -152,13 +153,14 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider
         apply = null;
 
         if (expression is not MethodCallExpression call ||
-            call.Method.DeclaringType?.FullName != "Cvoya.Graph.QueryTerminals")
+            call.Method.DeclaringType != typeof(QueryTerminals))
         {
             return false;
         }
 
         var name = call.Method.Name;
-        if (name is not ("ToDictionaryAsyncMarker" or "ToLookupAsyncMarker"))
+        if (name is not (nameof(QueryTerminals.ToDictionaryAsyncMarker) or
+            nameof(QueryTerminals.ToLookupAsyncMarker)))
         {
             return false;
         }
@@ -169,20 +171,72 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider
             .Select(l => l.Compile())
             .ToList();
 
-        source = call.Arguments[0];
-        apply = items =>
-        {
-            var list = ((System.Collections.IEnumerable)(items ?? Array.Empty<object?>())).Cast<object?>().ToList();
-            var pairs = list.Select(item => (
-                Key: lambdas[0].DynamicInvoke(item),
-                Value: lambdas.Count > 1 ? lambdas[1].DynamicInvoke(item) : item));
+        var resultTypes = call.Type.GetGenericArguments();
+        var materializerName = name == nameof(QueryTerminals.ToDictionaryAsyncMarker)
+            ? nameof(BuildDictionary)
+            : nameof(BuildLookup);
+        var materializer = typeof(InMemoryQueryProvider)
+            .GetMethod(materializerName, BindingFlags.NonPublic | BindingFlags.Static)!
+            .MakeGenericMethod(resultTypes);
 
-            return name == "ToDictionaryAsyncMarker"
-                ? pairs.ToDictionary(p => p.Key!, p => p.Value)
-                : pairs.ToLookup(p => p.Key!, p => p.Value);
-        };
+        source = call.Arguments[0];
+        apply = items => InvokeMaterializer(
+            materializer,
+            items,
+            lambdas[0],
+            lambdas.Count > 1 ? lambdas[1] : null);
 
         return true;
+    }
+
+    private static Dictionary<TKey, TElement> BuildDictionary<TKey, TElement>(
+        object? items,
+        Delegate keySelector,
+        Delegate? elementSelector)
+        where TKey : notnull =>
+        Enumerate(items).ToDictionary(
+            item => (TKey)InvokeSelector(keySelector, item)!,
+            item => elementSelector is null
+                ? (TElement)item!
+                : (TElement)InvokeSelector(elementSelector, item)!);
+
+    private static ILookup<TKey, TElement> BuildLookup<TKey, TElement>(
+        object? items,
+        Delegate keySelector,
+        Delegate? elementSelector) =>
+        Enumerate(items).ToLookup(
+            item => (TKey)InvokeSelector(keySelector, item)!,
+            item => elementSelector is null
+                ? (TElement)item!
+                : (TElement)InvokeSelector(elementSelector, item)!);
+
+    private static IEnumerable<object?> Enumerate(object? items) =>
+        ((System.Collections.IEnumerable)(items ?? Array.Empty<object?>())).Cast<object?>();
+
+    private static object? InvokeMaterializer(MethodInfo materializer, params object?[] arguments)
+    {
+        try
+        {
+            return materializer.Invoke(null, arguments);
+        }
+        catch (TargetInvocationException exception) when (exception.InnerException is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
+            throw;
+        }
+    }
+
+    private static object? InvokeSelector(Delegate selector, object? item)
+    {
+        try
+        {
+            return selector.DynamicInvoke(item);
+        }
+        catch (TargetInvocationException exception) when (exception.InnerException is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
+            throw;
+        }
     }
 
     private static Expression StripQuotes(Expression expression) =>

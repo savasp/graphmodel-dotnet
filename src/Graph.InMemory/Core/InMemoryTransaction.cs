@@ -27,6 +27,9 @@ internal sealed class InMemoryTransaction : IGraphTransaction
     /// <summary>Gets whether the transaction can still accept work.</summary>
     public bool IsActive => !_committed && !_rolledBack && !_disposed;
 
+    /// <summary>Gets whether this transaction belongs to the given store.</summary>
+    public bool BelongsTo(InMemoryStore store) => ReferenceEquals(_store, store);
+
     /// <summary>
     /// Gets the snapshot this transaction reads from: the base snapshot taken at begin, plus the
     /// transaction's own buffered writes.

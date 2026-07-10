@@ -14,9 +14,11 @@ public sealed class InMemoryHarness : IGraphProviderTestHarness
 {
     public string ProviderName => "Cvoya.Graph.InMemory";
 
-    // The honest set: the LINQ-to-objects engine executes everything the suite exercises except
-    // server-side full-text search, which the provider deliberately does not implement.
-    public CapabilitySet Capabilities => CapabilitySet.All.Except(GraphCapability.FullTextSearch);
+    // Declare only the optional capabilities the provider implements. The core LINQ/query
+    // surface is not capability-gated; reserved features must not be advertised pre-emptively.
+    public CapabilitySet Capabilities => CapabilitySet.Of(
+        GraphCapability.Transactions,
+        GraphCapability.ComplexPropertyCascade);
 
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 

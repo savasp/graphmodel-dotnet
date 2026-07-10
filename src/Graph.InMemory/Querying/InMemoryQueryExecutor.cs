@@ -744,14 +744,43 @@ internal sealed class InMemoryQueryExecutor(
     private static IEnumerable<(Row Row, object? Value)> DistinctByValue(
         IEnumerable<(Row Row, object? Value)> pairs)
     {
-        var seen = new HashSet<object?>();
-        foreach (var pair in pairs)
+        var seen = new HashSet<object?>(GraphValueComparer.Instance);
+        return pairs.Where(pair => seen.Add(pair.Value));
+    }
+
+    private sealed class GraphValueComparer : IEqualityComparer<object?>
+    {
+        public static GraphValueComparer Instance { get; } = new();
+
+        public new bool Equals(object? x, object? y)
         {
-            if (seen.Add(pair.Value))
+            if (ReferenceEquals(x, y))
             {
-                yield return pair;
+                return true;
             }
+
+            return (x, y) switch
+            {
+                (INode left, INode right) =>
+                    string.Equals(left.Id, right.Id, StringComparison.Ordinal) &&
+                    string.Equals(PrimaryLabel(left), PrimaryLabel(right), StringComparison.Ordinal),
+                (IRelationship left, IRelationship right) =>
+                    string.Equals(left.Id, right.Id, StringComparison.Ordinal),
+                _ => EqualityComparer<object?>.Default.Equals(x, y),
+            };
         }
+
+        public int GetHashCode(object? value) => value switch
+        {
+            INode node => HashCode.Combine(
+                StringComparer.Ordinal.GetHashCode(node.Id),
+                StringComparer.Ordinal.GetHashCode(PrimaryLabel(node))),
+            IRelationship relationship => StringComparer.Ordinal.GetHashCode(relationship.Id),
+            null => 0,
+            _ => value.GetHashCode(),
+        };
+
+        private static string PrimaryLabel(INode node) => node.Labels.FirstOrDefault() ?? string.Empty;
     }
 
     private IEnumerable<(Row Row, object? Value)> ApplyOrdering(
@@ -766,20 +795,19 @@ internal sealed class InMemoryQueryExecutor(
         IOrderedEnumerable<(Row Row, object? Value)>? ordered = null;
         foreach (var key in ordering)
         {
-            var currentKey = key;
             object? KeyOf((Row Row, object? Value) pair)
             {
-                var parameterType = currentKey.KeySelector.Parameters[0].Type;
-                var input = ResolveInput(pair.Row, currentKey.Alias, parameterType);
+                var parameterType = key.KeySelector.Parameters[0].Type;
+                var input = ResolveInput(pair.Row, key.Alias, parameterType);
                 if (input is null && pair.Value is not null && parameterType.IsInstanceOfType(pair.Value))
                 {
                     input = pair.Value;
                 }
 
-                return Invoke(Compile(currentKey.KeySelector), input);
+                return Invoke(Compile(key.KeySelector), input);
             }
 
-            ordered = (ordered, currentKey.Descending) switch
+            ordered = (ordered, key.Descending) switch
             {
                 (null, false) => pairs.OrderBy(KeyOf, Comparer<object?>.Default),
                 (null, true) => pairs.OrderByDescending(KeyOf, Comparer<object?>.Default),

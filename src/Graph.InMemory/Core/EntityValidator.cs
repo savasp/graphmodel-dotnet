@@ -145,13 +145,10 @@ internal sealed class EntityValidator(SchemaRegistry schemaRegistry)
             }
         }
 
-        foreach (var propertyName in properties.Keys)
+        foreach (var propertyName in properties.Keys.Where(propertyName => !validated.Contains(propertyName)))
         {
-            if (!validated.Contains(propertyName))
-            {
-                throw new GraphException(
-                    $"Property '{propertyName}' on {label} is not defined in the schema and cannot be used.");
-            }
+            throw new GraphException(
+                $"Property '{propertyName}' on {label} is not defined in the schema and cannot be used.");
         }
     }
 
