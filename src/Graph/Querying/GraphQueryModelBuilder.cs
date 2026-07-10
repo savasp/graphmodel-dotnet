@@ -594,12 +594,8 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
 
         // Queryable.GroupBy overloads disambiguate by arity of the second lambda: an element
         // selector takes one parameter, a result selector takes the key and the group.
-        var (elementSelector, resultSelector) = second switch
-        {
-            null => ((LambdaExpression?)null, (LambdaExpression?)null),
-            { Parameters.Count: 1 } => (second, third),
-            _ => (null, second),
-        };
+        var elementSelector = second is { Parameters.Count: 1 } ? second : null;
+        var resultSelector = elementSelector is null ? second : third;
 
         _groupBy = new GroupByFragment(keySelector, elementSelector, resultSelector);
     }
