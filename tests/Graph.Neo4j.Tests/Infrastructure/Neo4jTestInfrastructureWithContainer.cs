@@ -12,10 +12,9 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
     private const string ContainerPassword = "password";
     private static Neo4jContainer? container;
 
-    private static Neo4jContainer Container => container ??= new Neo4jBuilder()
+    private static Neo4jContainer Container => container ??= new Neo4jBuilder("neo4j:5")
         .WithAutoRemove(true)
         .WithCleanUp(true)
-        .WithImage("neo4j:5")
         .WithEnvironment("NEO4J_AUTH", $"{ContainerUsername}/{ContainerPassword}")
         .WithEnvironment("NEO4J_PLUGINS", "[\"apoc\"]")
         .WithEnvironment("NEO4J_dbms_security_procedures_unrestricted", "apoc.*")
