@@ -16,9 +16,11 @@ public sealed class ComplianceInventoryTests
     /// The total is a snapshot of the suite at the time this test was written. It is expected to
     /// change as the suite grows - when it does, update this constant alongside the PR that adds
     /// or removes test methods, so this test keeps proving "the reflection count matches reality"
-    /// rather than silently drifting.
+    /// rather than silently drifting. Statically-skipped facts (<c>[Fact(Skip = ...)]</c>) are
+    /// excluded: they can never execute on any provider, so they play no part in the strict-mode
+    /// execution floor.
     /// </summary>
-    private const int ExpectedTotalTestMethods = 349;
+    private const int ExpectedTotalTestMethods = 340;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()
@@ -34,7 +36,7 @@ public sealed class ComplianceInventoryTests
         var expected = typeof(IGraphTest).Assembly.GetTypes()
             .Where(t => t.IsInterface && t.IsPublic && typeof(IGraphTest).IsAssignableFrom(t))
             .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-            .Count(m => m.GetCustomAttributes(inherit: false).Any(a => a is FactAttribute));
+            .Count(m => m.GetCustomAttributes(inherit: false).Any(a => a is FactAttribute { Skip: null }));
 
         Assert.Equal(expected, ComplianceInventory.TotalTestMethods);
     }
@@ -46,16 +48,26 @@ public sealed class ComplianceInventoryTests
     }
 
     [Fact]
-    public void MinimumExecuted_AllExceptFullTextSearch_ExcludesFullTextSearchMethods()
+    public void MinimumExecuted_AllExceptFullTextSearch_ExcludesFullTextSearchGatedMethods()
     {
-        var fullTextSearchMethodCount = typeof(IFullTextSearchTests)
-            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-            .Count(m => m.GetCustomAttributes(inherit: false).Any(a => a is FactAttribute));
+        // Ground truth derived independently: every runnable test method gated on FullTextSearch,
+        // whether by an interface-level attribute (IFullTextSearchTests) or a method-level one
+        // (full-text tests living in otherwise ungated interfaces).
+        var gatedMethodCount = typeof(IGraphTest).Assembly.GetTypes()
+            .Where(t => t.IsInterface && t.IsPublic && typeof(IGraphTest).IsAssignableFrom(t))
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(m => m.GetCustomAttributes(inherit: false).Any(a => a is FactAttribute { Skip: null }))
+                .Select(m => (Interface: t, Method: m)))
+            .Count(pair =>
+                pair.Method.GetCustomAttributes<RequiresCapabilityAttribute>(inherit: false)
+                    .Concat(pair.Interface.GetCustomAttributes<RequiresCapabilityAttribute>(inherit: false))
+                    .Any(a => a.Capability == GraphCapability.FullTextSearch));
 
         var declared = CapabilitySet.All.Except(GraphCapability.FullTextSearch);
 
+        Assert.True(gatedMethodCount > 0);
         Assert.Equal(
-            ComplianceInventory.TotalTestMethods - fullTextSearchMethodCount,
+            ComplianceInventory.TotalTestMethods - gatedMethodCount,
             ComplianceInventory.MinimumExecuted(declared));
     }
 

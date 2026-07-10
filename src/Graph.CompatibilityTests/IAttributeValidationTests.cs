@@ -383,7 +383,10 @@ public interface IAttributeValidationTests : IGraphTest
         await Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
     }
 
+    // Exercises real full-text search behavior (index inclusion/exclusion), not just attribute
+    // handling, so it is gated on the capability like the rest of the full-text surface.
     [Fact]
+    [RequiresCapability(GraphCapability.FullTextSearch)]
     public async Task PropertyWithIncludeInFullTextSearch_ConfiguresSearchIndex()
     {
         var person = new PersonWithFullTextSearchProperties

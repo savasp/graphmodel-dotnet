@@ -260,6 +260,11 @@ internal class Neo4jGraph : IGraph
         {
             _logger.LogDebug("Updating node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
 
+            // Ensure schema is created before any transaction (to avoid mixing schema and data
+            // operations). The update path validates properties against the schema registry, so
+            // this must not depend on a prior create having initialized it (#227).
+            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
+
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
                 transaction,
@@ -309,6 +314,11 @@ internal class Neo4jGraph : IGraph
         try
         {
             _logger.LogDebug("Updating relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
+
+            // Ensure schema is created before any transaction (to avoid mixing schema and data
+            // operations). The update path validates properties against the schema registry, so
+            // this must not depend on a prior create having initialized it (#227).
+            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,

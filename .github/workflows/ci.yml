@@ -538,6 +538,80 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  test-inmemory:
+    name: Test In-Memory Provider
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 15
+    permissions:
+      checks: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            global.json
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test In-Memory Provider (strict compliance)
+        env:
+          GRAPHMODEL_COMPLIANCE_STRICT: "1"
+        run: >
+          dotnet test
+          --project tests/Graph.InMemory.Tests/Graph.InMemory.Tests.csproj
+          --no-build
+          --configuration Release
+          --verbosity normal
+          --results-directory TestResults/test-inmemory
+          --coverage
+          --coverage-output test-inmemory.cobertura.xml
+          --coverage-output-format cobertura
+          --report-xunit-trx
+          --report-xunit-trx-filename test-inmemory.trx
+
+      - name: Upload Test In-Memory Provider results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-inmemory-results
+          path: TestResults/test-inmemory/
+          retention-days: 14
+
+      - name: Publish Test In-Memory Provider results
+        uses: dorny/test-reporter@v3
+        if: ${{ always() && hashFiles('TestResults/test-inmemory/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          name: Test In-Memory Provider
+          path: TestResults/test-inmemory/*.trx
+          reporter: dotnet-trx
+
+      - name: Upload Test In-Memory Provider coverage
+        uses: codecov/codecov-action@v7
+        if: success()
+        with:
+          files: TestResults/test-inmemory/test-inmemory.cobertura.xml
+          flags: test-inmemory
+          name: test-inmemory
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+
   required-checks:
     name: Required checks
     runs-on: ubuntu-latest
@@ -551,6 +625,7 @@ jobs:
       - test-translation
       - test-codegen
       - test-neo4j
+      - test-inmemory
     # Always runs - branch protection depends on a single "Required checks"
     # context, so this job must report a status regardless of which
     # individual jobs above passed, failed, were skipped, or were cancelled.
@@ -572,6 +647,7 @@ jobs:
           TEST_TRANSLATION_RESULT: ${{ needs.test-translation.result }}
           TEST_CODEGEN_RESULT: ${{ needs.test-codegen.result }}
           TEST_NEO4J_RESULT: ${{ needs.test-neo4j.result }}
+          TEST_INMEMORY_RESULT: ${{ needs.test-inmemory.result }}
         run: |
           echo "changes=$CHANGES_RESULT"
           echo "workflow-yaml=$WORKFLOW_YAML_RESULT"
@@ -582,6 +658,7 @@ jobs:
           echo "test-translation=$TEST_TRANSLATION_RESULT"
           echo "test-codegen=$TEST_CODEGEN_RESULT"
           echo "test-neo4j=$TEST_NEO4J_RESULT"
+          echo "test-inmemory=$TEST_INMEMORY_RESULT"
 
           if [[ "$CHANGES_RESULT" != "success" ]]; then
             echo "::error::changes detection job failed"
@@ -598,3 +675,4 @@ jobs:
           ok "$TEST_TRANSLATION_RESULT" || { echo "::error::test-translation failed"; exit 1; }
           ok "$TEST_CODEGEN_RESULT"     || { echo "::error::test-codegen failed"; exit 1; }
           ok "$TEST_NEO4J_RESULT"       || { echo "::error::test-neo4j failed"; exit 1; }
+          ok "$TEST_INMEMORY_RESULT"    || { echo "::error::test-inmemory failed"; exit 1; }
