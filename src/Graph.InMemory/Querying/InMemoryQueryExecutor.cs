@@ -796,7 +796,7 @@ internal sealed class InMemoryQueryExecutor(
         }
 
         IOrderedEnumerable<(Row Row, object? Value)>? ordered = null;
-        foreach (var currentKey in ordering.Select(key => key))
+        foreach (var key in ordering)
         {
             object? KeyOf((Row Row, object? Value) pair)
             {
