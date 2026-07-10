@@ -161,6 +161,22 @@ Each occurrence gets its own value node, preserving value-object rather than sha
 Declared properties round-trip transparently up to five nested levels; deeper graphs and cycles are
 rejected.
 
+Concurrent updates of the same owner in separate transactions serialize on the owner node's write
+lock: the final state is one writer's complete value subtree (last committed writer wins; under
+contention the provider may abort one transaction instead) — never an interleaved mix or orphaned
+value nodes.
+
+Because complex-property edges are ordinary edges, a user-declared domain relationship may legally
+share its type with a complex-property relationship type (for example a `PRIMARY_ADDRESS` domain
+relationship alongside a `[ComplexProperty(RelationshipType = "PRIMARY_ADDRESS")]` property).
+Provider-internal marker metadata on property edges keeps the two apart where it matters: update
+and delete cleanup removes only property value nodes (domain relationships and their targets are
+never deleted by property cleanup), and loading an entity materializes only genuine property
+values. LINQ predicates that navigate a complex property (such as
+`Where(o => o.Address.City == "…")`) match on relationship type and target label alone, so a
+colliding domain relationship whose target has the right shape also satisfies them. To avoid that
+surprise, prefer distinct relationship type names for domain relationships and complex properties.
+
 ##### Null semantics of complex-property navigation
 
 Navigating a complex property inside a query (`p.Address.City` in a `Where`, `Select`, or

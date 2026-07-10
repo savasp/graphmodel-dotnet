@@ -20,62 +20,171 @@ internal sealed class ComplexPropertyManager(GraphContext context)
     private readonly ILogger<ComplexPropertyManager> logger = context.LoggerFactory?.CreateLogger<ComplexPropertyManager>()
         ?? NullLogger<ComplexPropertyManager>.Instance;
 
+    /// <summary>
+    /// A value node awaiting creation: the serialized entity plus the relationship type and
+    /// parameter maps needed to create it under its parent.
+    /// </summary>
+    private sealed record PendingValueNode(
+        string ParentElementId,
+        string RelationshipType,
+        EntityInfo Entity,
+        Dictionary<string, object?> NodeProperties,
+        Dictionary<string, object> RelationshipProperties);
+
     public async Task CreateComplexPropertiesAsync(
         IAsyncTransaction transaction,
         string parentId,
         EntityInfo entity,
         CancellationToken cancellationToken = default)
     {
-        await CreateComplexPropertiesAsync(
-            transaction, parentId, entity, depth: 0, cancellationToken).ConfigureAwait(false);
+        // Breadth-first: create all value nodes of one nesting level with a single UNWIND
+        // statement per (relationship type, label) group, instead of one statement per node.
+        var currentLevel = new List<(string ParentElementId, EntityInfo Entity)> { (parentId, entity) };
+
+        for (var depth = 0; currentLevel.Count > 0; depth++)
+        {
+            var pending = CollectPendingValueNodes(currentLevel, depth);
+            currentLevel = await CreateLevelAsync(transaction, pending, cancellationToken).ConfigureAwait(false);
+        }
     }
 
-    private async Task CreateComplexPropertiesAsync(
-        IAsyncTransaction transaction,
-        string parentId,
-        EntityInfo entity,
-        int depth,
-        CancellationToken cancellationToken)
+    private List<PendingValueNode> CollectPendingValueNodes(
+        List<(string ParentElementId, EntityInfo Entity)> level,
+        int depth)
     {
-        if (entity.ComplexProperties.Count == 0)
-            return;
+        var pending = new List<PendingValueNode>();
 
-        if (depth >= GraphDataModel.DefaultDepthAllowed &&
-            entity.ComplexProperties.Values.Any(property => property.Value is not null))
+        foreach (var (parentElementId, entity) in level)
         {
-            throw new GraphException(
-                $"Complex properties cannot exceed {GraphDataModel.DefaultDepthAllowed} levels of depth.");
-        }
+            if (entity.ComplexProperties.Count == 0)
+                continue;
 
-        foreach (var (propertyName, complexProperty) in entity.ComplexProperties)
-        {
-            switch (complexProperty.Value)
+            if (depth >= GraphDataModel.DefaultDepthAllowed &&
+                entity.ComplexProperties.Values.Any(property => property.Value is not null))
             {
-                case EntityInfo childEntity:
-                    await CreateSingleComplexPropertyAsync(
-                        transaction, parentId, propertyName, complexProperty, childEntity, 0, depth, cancellationToken)
-                        .ConfigureAwait(false);
-                    break;
+                throw new GraphException(
+                    $"Complex properties cannot exceed {GraphDataModel.DefaultDepthAllowed} levels of depth.");
+            }
 
-                case EntityCollection collection:
-                    await CreateComplexPropertyCollectionAsync(
-                        transaction, parentId, propertyName, complexProperty, collection, depth, cancellationToken)
-                        .ConfigureAwait(false);
-                    break;
+            foreach (var (propertyName, complexProperty) in entity.ComplexProperties)
+            {
+                switch (complexProperty.Value)
+                {
+                    case EntityInfo childEntity:
+                        pending.Add(CreatePendingValueNode(
+                            parentElementId, propertyName, complexProperty, childEntity, sequenceNumber: 0));
+                        break;
 
-                case null:
-                    logger.LogDebug("Skipping null complex property {PropertyName}", propertyName);
-                    continue;
+                    case EntityCollection collection:
+                        var index = 0;
+                        foreach (var item in collection.Entities)
+                        {
+                            pending.Add(CreatePendingValueNode(
+                                parentElementId, propertyName, complexProperty, item, index++));
+                        }
+                        break;
 
-                default:
-                    logger.LogWarning(
-                        "Unsupported complex property type: {PropertyType} for property {PropertyName}",
-                        complexProperty.Value.GetType().Name,
-                        propertyName);
-                    throw new GraphException(
-                        $"Unsupported complex property type: {complexProperty.Value.GetType().Name} for property {propertyName}");
+                    case null:
+                        logger.LogDebug("Skipping null complex property {PropertyName}", propertyName);
+                        continue;
+
+                    default:
+                        logger.LogWarning(
+                            "Unsupported complex property type: {PropertyType} for property {PropertyName}",
+                            complexProperty.Value.GetType().Name,
+                            propertyName);
+                        throw new GraphException(
+                            $"Unsupported complex property type: {complexProperty.Value.GetType().Name} for property {propertyName}");
+                }
             }
         }
+
+        return pending;
+    }
+
+    private static PendingValueNode CreatePendingValueNode(
+        string parentElementId,
+        string propertyName,
+        Property property,
+        EntityInfo entity,
+        int sequenceNumber)
+    {
+        var relationshipType = property.RelationshipType ?? (property.PropertyInfo is null
+            ? GraphDataModel.PropertyNameToRelationshipTypeName(propertyName)
+            : GraphDataModel.GetComplexPropertyRelationshipType(property.PropertyInfo));
+
+        var nodeProps = SerializationHelpers.SerializeSimpleProperties(entity);
+        nodeProps[nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D");
+        nodeProps[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
+        var relProps = new Dictionary<string, object>
+        {
+            [nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D"),
+            ["SequenceNumber"] = sequenceNumber,
+            [ComplexPropertyStorage.RelationshipMarkerProperty] = true
+        };
+
+        return new PendingValueNode(parentElementId, relationshipType, entity, nodeProps, relProps);
+    }
+
+    /// <summary>
+    /// Creates every pending value node of one nesting level, one UNWIND statement per
+    /// (relationship type, label) group, and returns the created nodes paired with their entities
+    /// so the next level can be created under them.
+    /// </summary>
+    private async Task<List<(string ParentElementId, EntityInfo Entity)>> CreateLevelAsync(
+        IAsyncTransaction transaction,
+        List<PendingValueNode> pending,
+        CancellationToken cancellationToken)
+    {
+        var nextLevel = new List<(string ParentElementId, EntityInfo Entity)>(pending.Count);
+
+        // Relationship types and labels are Cypher identifiers, so they cannot be parameterized:
+        // rows can only share a statement when both match.
+        foreach (var group in pending.GroupBy(node => (node.RelationshipType, node.Entity.Label)))
+        {
+            var escapedRelationshipType = CypherIdentifier.Escape(
+                group.Key.RelationshipType, "complex-property relationship type");
+            var escapedLabel = CypherIdentifier.Escape(group.Key.Label, "complex-property node label");
+
+            var groupNodes = group.ToList();
+            var rows = groupNodes.Select((node, rowId) => new Dictionary<string, object>
+            {
+                ["rowId"] = rowId,
+                ["parentId"] = node.ParentElementId,
+                ["props"] = node.NodeProperties,
+                ["relProps"] = node.RelationshipProperties
+            }).ToList();
+
+            var cypher = @$"
+                UNWIND $rows AS row
+                MATCH (parent)
+                WHERE elementId(parent) = row.parentId
+                CREATE (parent)-[r:{escapedRelationshipType}]->(complex:{escapedLabel})
+                SET r = row.relProps, complex = row.props
+                RETURN row.rowId AS rowId, elementId(complex) AS nodeId";
+
+            var result = await transaction.RunAsync(cypher, new { rows }).ConfigureAwait(false);
+            var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+
+            if (records.Count != groupNodes.Count)
+            {
+                throw new GraphException("Failed to create complex property node");
+            }
+
+            foreach (var record in records)
+            {
+                var rowId = record["rowId"].As<int>();
+                var complexNodeId = record["nodeId"].As<string>()
+                    ?? throw new GraphException("Failed to create complex property node");
+                nextLevel.Add((complexNodeId, groupNodes[rowId].Entity));
+            }
+
+            logger.LogDebug(
+                "Created {Count} complex property node(s) of type {RelationshipType} to {Label}",
+                groupNodes.Count, group.Key.RelationshipType, group.Key.Label);
+        }
+
+        return nextLevel;
     }
 
     public async Task UpdateComplexPropertiesAsync(
@@ -89,76 +198,6 @@ internal sealed class ComplexPropertyManager(GraphContext context)
 
         // Then create the new ones
         await CreateComplexPropertiesAsync(transaction, parentId, entity, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task CreateSingleComplexPropertyAsync(
-        IAsyncTransaction transaction,
-        string parentId,
-        string propertyName,
-        Property property,
-        EntityInfo entity,
-        int sequenceNumber,
-        int depth,
-        CancellationToken cancellationToken)
-    {
-        var relationshipType = property.RelationshipType ?? (property.PropertyInfo is null
-            ? GraphDataModel.PropertyNameToRelationshipTypeName(propertyName)
-            : GraphDataModel.GetComplexPropertyRelationshipType(property.PropertyInfo));
-        var escapedRelationshipType = CypherIdentifier.Escape(relationshipType, "complex-property relationship type");
-        var escapedLabel = CypherIdentifier.Escape(entity.Label, "complex-property node label");
-
-        var cypher = @$"
-            MATCH (parent)
-            WHERE elementId(parent) = $parentId
-            CREATE (parent)-[r:{escapedRelationshipType} $relProps]->(complex:{escapedLabel} $props)
-            RETURN elementId(complex) as nodeId";
-
-        var nodeProps = SerializationHelpers.SerializeSimpleProperties(entity);
-        nodeProps[nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D");
-        nodeProps[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
-        var relProps = new Dictionary<string, object>
-        {
-            [nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D"),
-            ["SequenceNumber"] = sequenceNumber,
-            [ComplexPropertyStorage.RelationshipMarkerProperty] = true
-        };
-
-        var result = await transaction.RunAsync(cypher, new
-        {
-            parentId,
-            props = nodeProps,
-            relProps
-        }).ConfigureAwait(false);
-
-        var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
-        var complexNodeId = record["nodeId"].As<string>()
-            ?? throw new GraphException($"Failed to create complex property node");
-
-        logger.LogDebug(
-            "Created complex property node {NodeId} for property {PropertyName} on parent {ParentId}",
-            complexNodeId, propertyName, parentId);
-
-        // Recursively create nested complex properties
-        await CreateComplexPropertiesAsync(transaction, complexNodeId, entity, depth + 1, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    private async Task CreateComplexPropertyCollectionAsync(
-        IAsyncTransaction transaction,
-        string parentId,
-        string propertyName,
-        Property property,
-        EntityCollection collection,
-        int depth,
-        CancellationToken cancellationToken)
-    {
-        var index = 0;
-        foreach (var entity in collection.Entities)
-        {
-            await CreateSingleComplexPropertyAsync(
-                transaction, parentId, propertyName, property, entity, index++, depth, cancellationToken)
-                .ConfigureAwait(false);
-        }
     }
 
     private async Task DeleteExistingComplexPropertiesAsync(
@@ -182,11 +221,6 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         logger.LogDebug(
             "Deleted {DeletedCount} complex property relationships for parent {ParentId}",
             deletedCount, parentId);
-    }
-
-    private static async Task<IRecord> GetSingleRecordAsync(IResultCursor result, CancellationToken cancellationToken)
-    {
-        return await result.SingleAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<IRecord> GetFirstRecordAsync(IResultCursor result, CancellationToken cancellationToken)
