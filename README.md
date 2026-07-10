@@ -318,17 +318,6 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## Trademarks
-
-CVOYA&trade; and the CVOYA crescent logo are trademarks of CVOYA LLC. The `Cvoya.*` package names on
-NuGet identify software published by CVOYA LLC.
-
-The Apache 2.0 license below grants you rights to the source code. It does not grant rights to the
-CVOYA name or logo. You may use the mark nominatively — to state truthfully that your software uses,
-or is compatible with, CVOYA Graph. You may not use it in a way that suggests CVOYA endorses,
-sponsors, or maintains your work, nor as part of your own product, company, or domain name, nor on a
-modified distribution of this project without renaming that distribution. Questions: info@cvoya.com.
-
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
