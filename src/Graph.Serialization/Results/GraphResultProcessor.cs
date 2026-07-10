@@ -1,41 +1,43 @@
 // Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
 // See LICENSE in the project root for full license terms.
 
-namespace Cvoya.Graph.Neo4j.Querying.Cypher.Execution;
+namespace Cvoya.Graph.Serialization.Results;
 
 using System.Reflection;
-using Cvoya.Graph.Neo4j.Querying.Linq.Queryables;
-using Cvoya.Graph.Neo4j.Serialization;
 using Cvoya.Graph.Serialization;
-using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 
-internal sealed class CypherResultProcessor
+/// <summary>
+/// Reassembles provider-neutral graph records into serialization representations for CLR materialization.
+/// </summary>
+public sealed class GraphResultProcessor
 {
     private readonly EntityFactory _entityFactory;
-    private readonly ILogger<CypherResultProcessor> _logger;
+    private readonly ILogger<GraphResultProcessor> _logger;
 
     private record ComplexProperty(
-        INode ParentNode,
-        IRelationship Relationship,
+        GraphValue ParentNode,
+        GraphValue Relationship,
         int SequenceNumber,
-        INode Property);
-    private record NodeResult(INode Node, List<ComplexProperty> ComplexProperties);
+        GraphValue Property);
+    private record NodeResult(GraphValue Node, List<ComplexProperty> ComplexProperties);
     private record PathSegmentResult(
         NodeResult StartNode,
-        IRelationship Relationship,
+        GraphValue Relationship,
         NodeResult EndNode);
 
-    public CypherResultProcessor(EntityFactory entityFactory, ILoggerFactory? loggerFactory = null)
+    /// <summary>Initializes a shared graph-result processor.</summary>
+    public GraphResultProcessor(EntityFactory entityFactory, ILoggerFactory? loggerFactory = null)
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
-        _logger = loggerFactory?.CreateLogger<CypherResultProcessor>() ?? NullLogger<CypherResultProcessor>.Instance;
+        _logger = loggerFactory?.CreateLogger<GraphResultProcessor>() ?? NullLogger<GraphResultProcessor>.Instance;
     }
 
+    /// <summary>Processes result records for a requested CLR target type.</summary>
     public Task<List<EntityInfo>> ProcessAsync(
-        List<IRecord> records,
+        IReadOnlyList<GraphRecord> records,
         Type targetType,
         CancellationToken cancellationToken = default)
     {
@@ -83,7 +85,7 @@ internal sealed class CypherResultProcessor
 
         var startNode = DeserializeNode(startNodeObj.As<Dictionary<string, object>>())
                 ?? throw new GraphException("Failed to deserialize start node from path segment record.");
-        var relationship = relationshipObj.As<IRelationship>()
+        var relationship = relationshipObj.As<GraphValue>()
             ?? throw new GraphException("Failed to deserialize relationship from path segment record.");
         var endNode = DeserializeNode(endNodeObj.As<Dictionary<string, object>>())
             ?? throw new GraphException("Failed to deserialize end node from path segment record.");
@@ -100,15 +102,15 @@ internal sealed class CypherResultProcessor
             return null;
         }
 
-        var node = nodeObj.As<INode>();
+        var node = nodeObj.As<GraphValue>();
         var list = complexPropsObj as List<object> ?? [];
         var complexProperties = list
             .OfType<Dictionary<string, object>>()
             .Select(dict => new ComplexProperty(
-                ParentNode: dict["ParentNode"].As<INode>(),
-                Relationship: dict["Relationship"].As<IRelationship>(),
+                ParentNode: dict["ParentNode"].As<GraphValue>(),
+                Relationship: dict["Relationship"].As<GraphValue>(),
                 SequenceNumber: dict["SequenceNumber"].As<int>(),
-                Property: dict["Property"].As<INode>()
+                Property: dict["Property"].As<GraphValue>()
         ))
         .GroupBy(cp => cp.Relationship.ElementId, StringComparer.Ordinal)
         .Select(group => group.First())
@@ -118,7 +120,7 @@ internal sealed class CypherResultProcessor
         return new NodeResult(node, complexProperties);
     }
 
-    private List<EntityInfo> ProcessPathSegments(List<IRecord> records, Type pathSegmentType)
+    private List<EntityInfo> ProcessPathSegments(IReadOnlyList<GraphRecord> records, Type pathSegmentType)
     {
         var results = new List<EntityInfo>();
         var genericArgs = pathSegmentType.GetGenericArguments();
@@ -155,7 +157,7 @@ internal sealed class CypherResultProcessor
         return results;
     }
 
-    private List<EntityInfo> ProcessRelationships(List<IRecord> records, Type targetType)
+    private List<EntityInfo> ProcessRelationships(IReadOnlyList<GraphRecord> records, Type targetType)
     {
         var results = new List<EntityInfo>();
 
@@ -209,7 +211,7 @@ internal sealed class CypherResultProcessor
     /// Recursively reconstructs the object graph for a node and its complex properties.
     /// </summary>
     private EntityInfo DeserializeComplexPropertiesForTypedNode(
-        INode node,
+        GraphValue node,
         List<ComplexProperty> allComplexProperties,
         Type nodeType,
         int depth = 0,
@@ -222,7 +224,7 @@ internal sealed class CypherResultProcessor
         }
 
         visitedNodeIds ??= new HashSet<string>(StringComparer.Ordinal);
-        if (!visitedNodeIds.Add(node.ElementId))
+        if (!visitedNodeIds.Add(node.ElementId!))
             throw new GraphException("A cycle or shared node was detected in the persisted complex-property graph.");
 
         // Create the base entity info for this node
@@ -330,7 +332,7 @@ internal sealed class CypherResultProcessor
     /// Recursively reconstructs the object graph for a node and its complex properties.
     /// </summary>
     private EntityInfo DeserializeComplexPropertiesForDynamicNode(
-        INode node,
+        GraphValue node,
         List<ComplexProperty> allComplexProperties,
         Type nodeType,
         int depth = 0,
@@ -343,7 +345,7 @@ internal sealed class CypherResultProcessor
         }
 
         visitedNodeIds ??= new HashSet<string>(StringComparer.Ordinal);
-        if (!visitedNodeIds.Add(node.ElementId))
+        if (!visitedNodeIds.Add(node.ElementId!))
             throw new GraphException("A cycle or shared node was detected in the persisted complex-property graph.");
 
         // Create the base entity info for this node
@@ -391,10 +393,10 @@ internal sealed class CypherResultProcessor
     }
 
     private EntityInfo ProcessSingleRelationshipFromPathSegment(
-        IRelationship relationship,
+        GraphValue relationship,
         Type targetType,
-        INode startNode,
-        INode endNode)
+        GraphValue startNode,
+        GraphValue endNode)
     {
         return CreateEnhancedRelationshipEntityInfo(relationship, targetType, startNode, endNode);
     }
@@ -417,7 +419,7 @@ internal sealed class CypherResultProcessor
     /// like the single-hop path-segment projection - into per-hop <see cref="EntityInfo"/> triples,
     /// reusing the same node/relationship deserialization as the single-hop <c>PathSegments</c> path.
     /// </summary>
-    public List<GraphPathHop> ProcessGraphPathHops(List<IRecord> records, Type sourceType, Type relationshipType, Type targetType)
+    public List<GraphPathHop> ProcessGraphPathHops(IReadOnlyList<GraphRecord> records, Type sourceType, Type relationshipType, Type targetType)
     {
         var results = new List<GraphPathHop>(records.Count);
 
@@ -429,7 +431,8 @@ internal sealed class CypherResultProcessor
         return results;
     }
 
-    public GraphPathHop ProcessGraphPathHop(IRecord record, Type sourceType, Type relationshipType, Type targetType)
+    /// <summary>Processes one decomposed graph-path hop.</summary>
+    public GraphPathHop ProcessGraphPathHop(GraphRecord record, Type sourceType, Type relationshipType, Type targetType)
     {
         var pathIndex = record["pathIndex"].As<int>();
         var hopIndex = record["hopIndex"].As<int>();
@@ -453,7 +456,7 @@ internal sealed class CypherResultProcessor
         return new GraphPathHop(pathIndex, hopIndex, startNodeEntityInfo, relEntityInfo, endNodeEntityInfo);
     }
 
-    private List<EntityInfo> ProcessProjections(List<IRecord> records, Type targetType)
+    private List<EntityInfo> ProcessProjections(IReadOnlyList<GraphRecord> records, Type targetType)
     {
         var results = new List<EntityInfo>();
 
@@ -466,7 +469,7 @@ internal sealed class CypherResultProcessor
         return results;
     }
 
-    private EntityInfo CreateEntityInfoFromProjection(IRecord record, Type targetType)
+    private EntityInfo CreateEntityInfoFromProjection(GraphRecord record, Type targetType)
     {
         var simpleProperties = new Dictionary<string, Property>();
         var complexProperties = new Dictionary<string, Property>();
@@ -474,10 +477,10 @@ internal sealed class CypherResultProcessor
         // Extract all values from the record as simple or complex properties
         foreach (var key in record.Keys)
         {
-            var value = record[key];
+            var value = record[key].ToObject();
 
-            // Handle Neo4j nodes specially - convert them to EntityInfo
-            if (value is INode n)
+            // Handle node values specially - convert them to EntityInfo.
+            if (value is GraphValue { Kind: GraphValueKind.Node } n)
             {
                 // Create EntityInfo for the node and store as complex property
                 var nodeEntityInfo = CreateEntityInfoFromNode(n, typeof(Graph.INode));
@@ -490,8 +493,8 @@ internal sealed class CypherResultProcessor
                 continue;
             }
 
-            // Handle Neo4j relationships specially - convert them to EntityInfo
-            if (value is IRelationship)
+            // A bare relationship omits the endpoints needed for public endpoint IDs.
+            if (value is GraphValue { Kind: GraphValueKind.Relationship })
             {
                 throw new GraphException(
                     $"Relationship projection '{key}' did not include endpoint node data. " +
@@ -518,7 +521,7 @@ internal sealed class CypherResultProcessor
                 complexPropStructure.ContainsKey("ComplexProperties"))
             {
                 // This is a complex property structure - deserialize it properly
-                if (complexPropStructure["Node"] is INode node)
+                if (complexPropStructure["Node"] is GraphValue { Kind: GraphValueKind.Node } node)
                 {
                     if (_logger.IsEnabled(LogLevel.Debug))
                     {
@@ -542,10 +545,10 @@ internal sealed class CypherResultProcessor
                         var complexPropertyList = complexProps
                             .OfType<Dictionary<string, object>>()
                             .Select(dict => new ComplexProperty(
-                                ParentNode: dict["ParentNode"].As<INode>(),
-                                Relationship: dict["Relationship"].As<IRelationship>(),
+                                ParentNode: dict["ParentNode"].As<GraphValue>(),
+                                Relationship: dict["Relationship"].As<GraphValue>(),
                                 SequenceNumber: dict["SequenceNumber"].As<int>(),
-                                Property: dict["Property"].As<INode>()
+                                Property: dict["Property"].As<GraphValue>()
                             ))
                             .GroupBy(cp => cp.Relationship.ElementId, StringComparer.Ordinal)
                             .Select(group => group.First())
@@ -591,31 +594,33 @@ internal sealed class CypherResultProcessor
                 var endNodeObj = structuredObject["EndNode"];
 
                 // Handle complex property structures within path segments
-                INode? startNode = null;
-                IRelationship? relationship = null;
-                INode? endNode = null;
+                GraphValue? startNode = null;
+                GraphValue? relationship = null;
+                GraphValue? endNode = null;
 
                 // Extract start node (could be a complex structure or direct node)
                 if (startNodeObj is IReadOnlyDictionary<string, object> startNodeStruct &&
                     startNodeStruct.ContainsKey("Node"))
                 {
-                    startNode = startNodeStruct["Node"] as INode;
+                    startNode = startNodeStruct["Node"] as GraphValue;
                 }
-                else if (startNodeObj is INode directStartNode)
+                else if (startNodeObj is GraphValue { Kind: GraphValueKind.Node } directStartNode)
                 {
                     startNode = directStartNode;
                 }
 
                 // Extract relationship
-                relationship = relationshipObj as IRelationship;
+                relationship = relationshipObj is GraphValue { Kind: GraphValueKind.Relationship } relationshipValue
+                    ? relationshipValue
+                    : null;
 
                 // Extract end node (could be a complex structure or direct node)
                 if (endNodeObj is IReadOnlyDictionary<string, object> endNodeStruct &&
                     endNodeStruct.ContainsKey("Node"))
                 {
-                    endNode = endNodeStruct["Node"] as INode;
+                    endNode = endNodeStruct["Node"] as GraphValue;
                 }
-                else if (endNodeObj is INode directEndNode)
+                else if (endNodeObj is GraphValue { Kind: GraphValueKind.Node } directEndNode)
                 {
                     endNode = directEndNode;
                 }
@@ -646,7 +651,7 @@ internal sealed class CypherResultProcessor
             // Handle regular values
             try
             {
-                var convertedValue = SerializationBridge.FromNeo4jValue(value, typeof(object));
+                var convertedValue = GraphValueConverter.ConvertTo(value, typeof(object));
                 if (convertedValue is null && value is not null)
                 {
                     throw new InvalidOperationException($"Failed to convert value for property '{key}'");
@@ -676,10 +681,10 @@ internal sealed class CypherResultProcessor
     }
 
     private bool TryDeserializeRelationshipProjection(
-        object value,
+        object? value,
         Type targetType,
         string projectionName,
-        out (IRelationship Relationship, INode StartNode, INode EndNode, Type ProjectionType) result)
+        out (GraphValue Relationship, GraphValue StartNode, GraphValue EndNode, Type ProjectionType) result)
     {
         result = default;
 
@@ -698,7 +703,7 @@ internal sealed class CypherResultProcessor
         }
 
         var startNode = ExtractProjectedNode(startNodeValue);
-        var relationship = relationshipValue as IRelationship;
+        var relationship = relationshipValue as GraphValue;
         var endNode = ExtractProjectedNode(endNodeValue);
 
         if (startNode == null || relationship == null || endNode == null)
@@ -721,16 +726,16 @@ internal sealed class CypherResultProcessor
                 ?.ParameterType;
     }
 
-    private static INode? ExtractProjectedNode(object value)
+    private static GraphValue? ExtractProjectedNode(object value)
     {
-        if (value is INode node)
+        if (value is GraphValue { Kind: GraphValueKind.Node } node)
         {
             return node;
         }
 
         if (value is IReadOnlyDictionary<string, object> nodeStructure &&
             nodeStructure.TryGetValue("Node", out var nodeObject) &&
-            nodeObject is INode structuredNode)
+            nodeObject is GraphValue { Kind: GraphValueKind.Node } structuredNode)
         {
             return structuredNode;
         }
@@ -739,17 +744,17 @@ internal sealed class CypherResultProcessor
     }
 
     private EntityInfo CreateEnhancedRelationshipEntityInfo(
-        IRelationship relationship,
+        GraphValue relationship,
         Type targetType,
-        INode startNode,
-        INode endNode)
+        GraphValue startNode,
+        GraphValue endNode)
     {
         var entityInfo = CreateEntityInfoFromRelationship(relationship, targetType);
         EnhanceRelationshipEntityInfo(entityInfo, relationship, targetType, startNode, endNode);
         return entityInfo;
     }
 
-    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, IRelationship relationship, Type targetType, INode pathStartNode, INode pathEndNode)
+    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, GraphValue relationship, Type targetType, GraphValue pathStartNode, GraphValue pathEndNode)
     {
         var direction = GetRelationshipDirection(relationship);
         var (startNodeId, endNodeId) = GetLogicalRelationshipNodeIds(relationship, pathStartNode, pathEndNode, direction);
@@ -797,9 +802,9 @@ internal sealed class CypherResultProcessor
         }
     }
 
-    private static string GetNodeId(INode node)
+    private static string GetNodeId(GraphValue node)
     {
-        // TODO: Throughout this code, we use nameof(<interface>.Id) where <interface> is IEntity, IRelationship, INode.
+        // TODO: Throughout this code, we use nameof(<interface>.Id) where <interface> is IEntity, GraphValue, GraphValue.
         // This is wrong. We should be using the label instead.
 
         // Try to get the Id property from the node
@@ -809,13 +814,13 @@ internal sealed class CypherResultProcessor
         }
 
         // Fallback to ElementId if no Id property
-        return node.ElementId;
+        return node.ElementId!;
     }
 
     private static (string StartNodeId, string EndNodeId) GetLogicalRelationshipNodeIds(
-        IRelationship relationship,
-        INode pathStartNode,
-        INode pathEndNode,
+        GraphValue relationship,
+        GraphValue pathStartNode,
+        GraphValue pathEndNode,
         RelationshipDirection direction)
     {
         var pathStartNodeId = GetNodeId(pathStartNode);
@@ -850,7 +855,7 @@ internal sealed class CypherResultProcessor
         };
     }
 
-    private static RelationshipDirection GetRelationshipDirection(IRelationship relationship)
+    private static RelationshipDirection GetRelationshipDirection(GraphValue relationship)
     {
         // Try to get the direction from the relationship properties
         if (relationship.Properties.TryGetValue(nameof(Graph.IRelationship.Direction), out var directionValue))
@@ -903,14 +908,14 @@ internal sealed class CypherResultProcessor
 
         return new EntityInfo(
             ActualType: pathSegmentType,
-            Label: typeof(GraphPathSegment<,,>).Name,
+            Label: typeof(IGraphPathSegment<,,>).Name,
             ActualLabels: [],
             SimpleProperties: new Dictionary<string, Property>(),
             ComplexProperties: complexProperties
         );
     }
 
-    private List<EntityInfo> ProcessNodes(List<IRecord> records, Type targetType)
+    private List<EntityInfo> ProcessNodes(IReadOnlyList<GraphRecord> records, Type targetType)
     {
         var results = new List<EntityInfo>();
 
@@ -942,14 +947,14 @@ internal sealed class CypherResultProcessor
         var result = new Dictionary<string, Property>();
         foreach (var (key, value) in properties)
         {
-            if (key is SerializationBridge.MetadataPropertyName or SerializationBridge.EntityKindPropertyName)
+            if (key is GraphValueConverter.MetadataPropertyName or GraphValueConverter.EntityKindPropertyName)
                 continue;
-            // Use SerializationBridge to convert Neo4j values to .NET types
+            // Driver-specific values have already been normalized by the wire adapter.
             object? convertedValue = value is List<object> listValue
                 ? listValue.All(x => x is string || x == null)
                     ? listValue.Cast<string?>().ToList()
-                    : SerializationBridge.FromNeo4jValue(listValue, typeof(List<object>))
-                : SerializationBridge.FromNeo4jValue(value, value?.GetType() ?? typeof(object));
+                    : GraphValueConverter.ConvertTo(listValue, typeof(List<object>))
+                : GraphValueConverter.ConvertTo(value, value?.GetType() ?? typeof(object));
             result[key] = new Property(
                 PropertyInfo: null!,
                 Label: key,
@@ -961,7 +966,7 @@ internal sealed class CypherResultProcessor
     }
 
     // In CreateEntityInfoFromNode, use this for dynamic nodes
-    private EntityInfo CreateEntityInfoFromNode(INode node, Type targetType)
+    private EntityInfo CreateEntityInfoFromNode(GraphValue node, Type targetType)
     {
         // Discover the actual type from metadata, labels, or fall back to target type
         var actualType = DiscoverActualNodeType(node, targetType);
@@ -1014,7 +1019,7 @@ internal sealed class CypherResultProcessor
         );
     }
 
-    private EntityInfo CreateEntityInfoFromRelationship(IRelationship relationship, Type targetType)
+    private EntityInfo CreateEntityInfoFromRelationship(GraphValue relationship, Type targetType)
     {
         // Discover the actual type from metadata, type, or fall back to target type
         var actualType = DiscoverActualRelationshipType(relationship, targetType);
@@ -1033,7 +1038,7 @@ internal sealed class CypherResultProcessor
             foreach (var (key, value) in relationship.Properties)
             {
                 // Skip metadata properties
-                if (SerializationBridge.MetadataPropertyName == key)
+                if (GraphValueConverter.MetadataPropertyName == key)
                     continue;
                 // Store all properties as SimpleValue
                 simpleProperties[key] = new Property(
@@ -1094,7 +1099,7 @@ internal sealed class CypherResultProcessor
     /// <summary>
     /// Discovers the actual type of a node using metadata, labels, and compatibility checks.
     /// </summary>
-    private Type DiscoverActualNodeType(INode node, Type targetType)
+    private Type DiscoverActualNodeType(GraphValue node, Type targetType)
     {
         // Special handling for dynamic entities
         if (targetType == typeof(Graph.DynamicNode))
@@ -1105,7 +1110,7 @@ internal sealed class CypherResultProcessor
         }
 
         // Step 1: Try to get type from stored metadata
-        var metadataType = SerializationBridge.GetTypeFromMetadata(node.Properties);
+        var metadataType = GraphValueConverter.GetTypeFromMetadata(node.Properties);
         if (metadataType != null && IsCompatibleType(metadataType, targetType))
         {
             _logger.LogDebug("Using metadata type {MetadataType} for target type {TargetType}",
@@ -1134,7 +1139,7 @@ internal sealed class CypherResultProcessor
     /// <summary>
     /// Discovers the actual type of a relationship using metadata, type, and compatibility checks.
     /// </summary>
-    private Type DiscoverActualRelationshipType(IRelationship relationship, Type targetType)
+    private Type DiscoverActualRelationshipType(GraphValue relationship, Type targetType)
     {
         // Special handling for dynamic entities
         if (targetType == typeof(Graph.DynamicRelationship))
@@ -1145,7 +1150,7 @@ internal sealed class CypherResultProcessor
         }
 
         // Step 1: Try to get type from stored metadata
-        var metadataType = SerializationBridge.GetTypeFromMetadata(relationship.Properties);
+        var metadataType = GraphValueConverter.GetTypeFromMetadata(relationship.Properties);
         if (metadataType != null && IsCompatibleType(metadataType, targetType))
         {
             _logger.LogDebug("Using metadata type {MetadataType} for target type {TargetType}",
@@ -1187,8 +1192,8 @@ internal sealed class CypherResultProcessor
             return null;
 
         // Get all types that are assignable to the target type. This must NOT be scoped to
-        // INode types: targetType here can be a plain complex-property POCO (e.g. the element
-        // type of a List<T> complex property) that never implements INode, yet its concrete
+        // GraphValue types: targetType here can be a plain complex-property POCO (e.g. the element
+        // type of a List<T> complex property) that never implements GraphValue, yet its concrete
         // subtype is exactly what the stored label encodes and what we need to recover.
         var candidateTypes = GetKnownConcreteTypes()
             .Where(t => targetType.IsAssignableFrom(t))
@@ -1248,8 +1253,8 @@ internal sealed class CypherResultProcessor
 
     /// <summary>
     /// Gets all known concrete classes from loaded assemblies that could be the actual type
-    /// behind a node label: both real graph node types (INode) and the plain POCO types used
-    /// as complex-property values (which are never INode themselves - see
+    /// behind a node label: both real graph node types (GraphValue) and the plain POCO types used
+    /// as complex-property values (which are never GraphValue themselves - see
     /// <see cref="DiscoverTypeFromNodeLabels"/>). The caller narrows this down via an
     /// assignability check against the specific target type it is resolving.
     /// </summary>
@@ -1281,7 +1286,7 @@ internal sealed class CypherResultProcessor
     /// </summary>
     private IEnumerable<Type> GetKnownRelationshipTypes()
     {
-        // Get types from the current app domain that implement IRelationship
+        // Get types from the current app domain that implement GraphValue
         return AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(assembly =>
             {
@@ -1319,13 +1324,13 @@ internal sealed class CypherResultProcessor
         foreach (var (key, value) in properties)
         {
             // Skip metadata properties
-            if (key == SerializationBridge.MetadataPropertyName)
+            if (key == GraphValueConverter.MetadataPropertyName)
                 continue;
 
             // Check if this property is in the schema
             if (schema.SimpleProperties.TryGetValue(key, out var propertySchema))
             {
-                var convertedValue = SerializationBridge.FromNeo4jValue(value, propertySchema.PropertyInfo.PropertyType)
+                var convertedValue = GraphValueConverter.ConvertTo(value, propertySchema.PropertyInfo.PropertyType)
                     ?? throw new InvalidOperationException($"Failed to convert value for property '{key}' of type '{propertySchema.PropertyInfo.PropertyType}'");
 
                 Property property = new(
@@ -1357,16 +1362,17 @@ internal sealed class CypherResultProcessor
         return new SimpleCollection(items, elementType);
     }
 
-    private List<EntityInfo> ProcessMixedEntities(List<IRecord> records)
+    private List<EntityInfo> ProcessMixedEntities(IReadOnlyList<GraphRecord> records)
     {
         var results = new List<EntityInfo>();
 
         foreach (var record in records)
         {
             // Entity search returns records with 'entity' column that can be either nodes or PathSegment maps
-            if (record.TryGetValue("entity", out var entityValue))
+            if (record.Values.TryGetValue("entity", out var wireEntityValue))
             {
-                if (entityValue is INode node)
+                var entityValue = wireEntityValue.ToObject();
+                if (entityValue is GraphValue { Kind: GraphValueKind.Node } node)
                 {
                     // Process as a node
                     var nodeEntityInfo = CreateEntityInfoFromNode(node, typeof(Graph.INode));

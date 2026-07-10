@@ -2,7 +2,7 @@
 
 This guide documents the current provider contract. It describes what a provider must implement today and the storage/query conventions that must remain compatible across providers.
 
-Future provider work is tracked separately: the shared `GraphQueryModel` layer is #84 and dialect capabilities are #85. Reusable provider certification (#95) has landed - see [Certifying a provider](#certifying-a-provider).
+The shared `GraphQueryModel`, Cypher dialect SPI, neutral result wire model, and reusable provider certification suite have landed. See [Implementing a Cypher provider](#implementing-a-cypher-provider) and [Certifying a provider](#certifying-a-provider).
 
 ## Public SPI
 
@@ -113,7 +113,7 @@ the normal path-segment projection.
 
 ### Type Metadata
 
-The de facto metadata convention is a property named `__metadata__` containing a `type` key with the assembly-qualified CLR type name when runtime type recovery is needed. Today this is defined in the Neo4j provider's `SerializationBridge`; providers should preserve the same shape until serialization is moved into a provider-neutral contract.
+The metadata convention is a property named `__metadata__` containing a `type` key with the assembly-qualified CLR type name when runtime type recovery is needed. `GraphResultProcessor` reads this shape from neutral wire values before falling back to node labels or relationship type for polymorphic resolution. Providers must preserve the shape on writes and adapt the metadata map like any other result map.
 
 ## Behavioral Contracts
 
@@ -144,9 +144,9 @@ The Neo4j provider pattern is:
 
 A new provider test project follows the same three-piece shape (harness → intermediate base class → one-line interface bindings). `examples/CompatibilityTests.SampleHarness` is a compiling skeleton; `tests/Cvoya.Graph.Neo4j.Tests` is the full reference implementation.
 
-## Future Chapters
+## Shared Query Translation
 
-### Level-1 GraphQueryModel (#84)
+### Level-1 GraphQueryModel
 
 `Cvoya.Graph.Querying.GraphQueryModel` is the public, provider-neutral semantic query model. Its
 roots, predicates, traversal steps, projection, ordering, paging, and terminal operation describe what a
@@ -160,9 +160,66 @@ default). Funcletization evaluates parameter-free closure values and method call
 query parameter are not evaluated during translation. This is a structural allowlist, not a security sandbox
 for application code.
 
-### Dialect Capabilities (#85)
+## Implementing A Cypher Provider
 
-Stub. #85 will define dialect feature switches and the neutral result wire model. Until it lands, providers should document unsupported LINQ/search features and fail clearly.
+A minimal Cypher provider supplies three provider-specific pieces: an `ICypherDialect`, an executor, and a driver-to-wire adapter. It reuses `GraphQueryModel`, `CypherQueryPlanner`, `CypherRenderer`, `GraphResultMaterializer`, and the compatibility suite. Do not fork the planner, renderer, complex-property reassembly, polymorphic type resolution, or path stitching.
+
+### 1. Declare the dialect
+
+Implement `ICypherDialect` from `Cvoya.Graph.Cypher`. The interface owns every syntax choice that can vary by backend:
+
+- parameter references and property/ID access;
+- identifier escaping, node-label lists, relationship-type lists, and depth ranges;
+- provider-neutral function names such as `temporal.datetime` and `string.join`;
+- label predicates and the complex-property relationship marker;
+- full-text procedure and index names; and
+- a `CapabilitySet` using the same `GraphCapability` enum as the compatibility suite.
+
+`GetFunctionBehavior` distinguishes functions rendered by the backend, parameter-free functions evaluated on the client, and unsupported functions. Client evaluation binds a query parameter; it never inlines the value. A function marked `EvaluateOnClient` fails translation if its arguments depend on a server-side expression. AGE can therefore client-evaluate zero-argument temporal constructors without pretending to support temporal arithmetic over stored properties.
+
+Declare only supported capabilities. The planner rejects reachable unsupported constructs before execution with `GraphQueryTranslationException`; the message names the construct, the exact `GraphCapability` member, and the dialect. Current translation-time checks cover `FullTextSearch`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, `OrderByEntity`, and `OptionalTraversal`. Transaction capabilities remain execution/store concerns.
+
+For example, an initial AGE dialect should decline at least `FullTextSearch`, `NestedTransactions`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, and `OrderByEntity` unless its renderer strategy genuinely supports them. Do not emulate unsupported full-text search with a semantically weaker regular-expression query while still declaring `FullTextSearch`.
+
+Provider-specific dynamic-entity accessor methods must carry `[CypherDynamicEntityAccessor]`. The planner checks the attribute on the exact `MethodInfo`; a matching method or declaring-type name is not sufficient.
+
+### 2. Plan and render
+
+Build the shared semantic model, then pass the same dialect instance to planning and rendering:
+
+```csharp
+var model = GraphQueryModelBuilder.Build(expression);
+var statement = new CypherQueryPlanner(dialect).Plan(model);
+CypherRenderResult rendered = new CypherRenderer(dialect).Render(statement);
+```
+
+`CypherRenderResult` carries query text, the parameter map, and the exact ordered projection-column names. The column schema is part of the executor contract, not optional metadata: Apache AGE needs it to build the mandatory `AS ("alias" agtype, ...)` SQL column-definition list without reparsing `RETURN`. Preserve alias spelling and casing. Parameter transport remains executor-specific; for example, AGE may serialize the map into one `agtype` parameter even though in-query references use `$name`.
+
+### 3. Adapt driver values
+
+The executor sends `CypherRenderResult.Text` and parameters to the backend and adapts every returned row into `GraphRecord`. Build values only through the validated `GraphValue` factories:
+
+- `Scalar` for provider-neutral CLR scalars (`long`, `decimal`, `DateOnly`, `DateTimeOffset`, `Point`, and so on);
+- `Node` with an opaque provider element ID, adapter-populated labels, and recursively adapted properties;
+- `Relationship` with opaque element/end-point IDs, type, and properties;
+- `Path` for an alternating node/relationship sequence;
+- `List` and `Map` for recursive collection/projection values.
+
+Factories defensively copy collections and reject invalid path shapes or null entries (represent null as `GraphValue.Scalar(null)`). Adapters must not leak driver types. Preserve integer versus floating-point values and decimal precision; stringify neither IDs nor numerics merely to simplify conversion. For AGE, reconstruct inheritance labels from its stored `inheritance_labels` representation before calling `GraphValue.Node`.
+
+Pass buffered records to `GraphResultMaterializer.MaterializeAsync<T>` or individual records to `MaterializeRecordAsync<T>`. The shared materializer owns complex-property subtree assembly, label/`__metadata__` polymorphism, relationship endpoint reconstruction, scalar conversion, projections, and path stitching. An adapter translates values only; it must not choose CLR domain types or rebuild owned-property graphs.
+
+### Provider-facing shared types
+
+The implementation seam is intentionally small:
+
+- `ICypherDialect`;
+- `CypherRenderResult`;
+- `GraphRecord`;
+- `GraphValue`; and
+- `GraphResultProcessor.GraphPathHop` only when streaming decomposed `IGraphPath` rows.
+
+`CypherRenderer`, `GraphResultMaterializer`, and `GraphResultProcessor` are shared services, not provider implementations. The in-tree `Neo4jRecordAdapter` is the reference boundary: it is driver-only and contains no materialization policy.
 
 ## Certifying A Provider
 

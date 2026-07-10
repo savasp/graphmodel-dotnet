@@ -1,18 +1,27 @@
 // Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
 // See LICENSE in the project root for full license terms.
 
-namespace Cvoya.Graph.Neo4j.Querying.Cypher;
+namespace Cvoya.Graph.Cypher;
 
 using System.Globalization;
 using System.Text;
 using Cvoya.Graph.Cypher.Ast;
 using Cvoya.Graph.Cypher.Ast.Expressions;
 using Cvoya.Graph.Cypher.Validation;
-using Cvoya.Graph.Neo4j.Entities;
 
-internal sealed class Neo4jCypherRenderer
+/// <summary>Renders the shared Cypher AST using an <see cref="ICypherDialect"/>.</summary>
+public sealed class CypherRenderer
 {
-    public CypherQuery Render(CypherStatement statement)
+    private readonly ICypherDialect dialect;
+
+    /// <summary>Initializes a renderer for a specific dialect.</summary>
+    public CypherRenderer(ICypherDialect dialect)
+    {
+        this.dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
+    }
+
+    /// <summary>Renders a validated statement, its parameters, and its exact projection schema.</summary>
+    public CypherRenderResult Render(CypherStatement statement)
     {
         ArgumentNullException.ThrowIfNull(statement);
 
@@ -31,13 +40,13 @@ internal sealed class Neo4jCypherRenderer
             RenderClause(builder, clause);
         }
 
-        (Type Source, Type Relationship, Type Target)? pathTypes = statement.PathTypes is null
-            ? null
-            : (statement.PathTypes.Source, statement.PathTypes.Relationship, statement.PathTypes.Target);
-        return new CypherQuery(builder.ToString().Trim(), statement.Parameters, pathTypes);
+        return new CypherRenderResult(
+            builder.ToString().Trim(),
+            statement.Parameters,
+            GetProjectionColumns(statement));
     }
 
-    private static void RenderClause(StringBuilder builder, ICypherClause clause)
+    private void RenderClause(StringBuilder builder, ICypherClause clause)
     {
         switch (clause)
         {
@@ -71,14 +80,8 @@ internal sealed class Neo4jCypherRenderer
                 break;
 
             case CallClause call:
-                if (call.Procedure == "search.entities")
-                {
-                    RenderEntitySearch(builder, call);
-                    break;
-                }
-
                 builder.Append("CALL ")
-                    .Append(RenderProcedureName(call.Procedure))
+                    .Append(call.Procedure)
                     .Append('(')
                     .Append(string.Join(", ", call.Arguments.Select(argument => RenderExpression(argument))))
                     .Append(')');
@@ -89,6 +92,10 @@ internal sealed class Neo4jCypherRenderer
                             yield.Alias is null ? yield.Name : $"{yield.Name} AS {yield.Alias}")));
                 }
 
+                break;
+
+            case FullTextSearchClause search:
+                RenderFullTextSearch(builder, search);
                 break;
 
             case UnwindClause unwind:
@@ -121,7 +128,7 @@ internal sealed class Neo4jCypherRenderer
         }
     }
 
-    private static string RenderPattern(PathPattern pattern)
+    private string RenderPattern(PathPattern pattern)
     {
         var builder = new StringBuilder();
         if (pattern.Alias is not null)
@@ -142,9 +149,7 @@ internal sealed class Neo4jCypherRenderer
 
                     if (node.Labels.Count > 0)
                     {
-                        builder.Append(':').Append(string.Join(
-                            '|',
-                            node.Labels.Select(label => CypherIdentifier.EscapeIfNeeded(label, "node label"))));
+                        builder.Append(':').Append(dialect.RenderNodeLabels(node.Labels));
                     }
 
                     builder.Append(')');
@@ -159,7 +164,7 @@ internal sealed class Neo4jCypherRenderer
         return builder.ToString();
     }
 
-    private static void RenderRelationship(StringBuilder builder, RelationshipPattern relationship)
+    private void RenderRelationship(StringBuilder builder, RelationshipPattern relationship)
     {
         if (relationship.Direction == CypherDirection.Incoming)
         {
@@ -180,17 +185,12 @@ internal sealed class Neo4jCypherRenderer
         {
             // The AST carries type names individually; the alternation join happens here, so a
             // literal '|' inside a type name escapes as part of that name rather than splitting it.
-            builder.Append(':').Append(string.Join(
-                '|',
-                relationship.Types.Select(type => CypherIdentifier.EscapeIfNeeded(type, "relationship type"))));
+            builder.Append(':').Append(dialect.RenderRelationshipTypes(relationship.Types));
         }
 
         if (relationship.Depth is not null)
         {
-            builder.Append('*')
-                .Append(relationship.Depth.Min)
-                .Append("..")
-                .Append(relationship.Depth.Max);
+            builder.Append(dialect.RenderDepth(relationship.Depth));
         }
 
         builder.Append(']');
@@ -204,21 +204,22 @@ internal sealed class Neo4jCypherRenderer
         }
     }
 
-    private static string RenderReturnItem(ReturnItem item)
+    private string RenderReturnItem(ReturnItem item)
     {
         var expression = RenderExpression(item.Expression);
         return item.Alias is null ? expression : $"{expression} AS {item.Alias}";
     }
 
-    private static string RenderExpression(CypherExpression expression, CypherBinaryOperator? parentOperator = null)
+    private string RenderExpression(CypherExpression expression, CypherBinaryOperator? parentOperator = null)
     {
         return expression switch
         {
             VariableRef variable => variable.Alias,
-            PropertyAccess property => $"{RenderExpression(property.Target)}.{property.Property}",
-            EscapedPropertyAccess property =>
-                $"{RenderExpression(property.Target)}.{CypherIdentifier.Escape(property.Property, "property name")}",
-            QueryParameter parameter => $"${parameter.Name}",
+            PropertyAccess property => dialect.RenderPropertyAccess(
+                RenderExpression(property.Target), property.Property, escape: false),
+            EscapedPropertyAccess property => dialect.RenderPropertyAccess(
+                RenderExpression(property.Target), property.Property, escape: true),
+            QueryParameter parameter => dialect.RenderParameter(parameter.Name),
             Literal literal => RenderLiteral(literal.Value),
             FunctionCall function => RenderFunction(function),
             BinaryExpression binary => RenderBinary(binary, parentOperator),
@@ -236,7 +237,7 @@ internal sealed class Neo4jCypherRenderer
         };
     }
 
-    private static string RenderEntityProjectionExpression(EntityProjectionExpression expression)
+    private string RenderEntityProjectionExpression(EntityProjectionExpression expression)
     {
         if (!expression.LoadComplexProperties)
         {
@@ -246,7 +247,7 @@ internal sealed class Neo4jCypherRenderer
         var alias = expression.Alias;
         return $@"{{ Node: {alias}, ComplexProperties: reduce(flat = [], propertyPath IN [
             ({alias})-[propertyRelationships*1..{GraphDataModel.DefaultDepthAllowed}]->(propertyNode)
-            WHERE ALL(propertyRelationship IN propertyRelationships WHERE propertyRelationship.{ComplexPropertyStorage.RelationshipMarkerProperty} = true) |
+            WHERE ALL(propertyRelationship IN propertyRelationships WHERE propertyRelationship.{dialect.ComplexPropertyRelationshipMarker} = true) |
             [i IN range(0, size(propertyRelationships) - 1) | {{
                 ParentNode: startNode(propertyRelationships[i]),
                 Relationship: propertyRelationships[i],
@@ -256,33 +257,19 @@ internal sealed class Neo4jCypherRenderer
         ] | flat + propertyPath) }}";
     }
 
-    private static string RenderFunction(FunctionCall function)
+    private string RenderFunction(FunctionCall function)
     {
         if (function.Name == "math.power" && function.Arguments.Count == 2)
         {
             return $"({RenderExpression(function.Arguments[0])} ^ {RenderExpression(function.Arguments[1])})";
         }
 
-        var name = function.Name switch
-        {
-            "temporal.datetime" => "datetime",
-            "temporal.localDateTime" => "localdatetime",
-            "temporal.date" => "date",
-            "temporal.time" => "time",
-            "temporal.duration" => "duration",
-            "string.join" => "apoc.text.join",
-            "string.indexOf" => "apoc.text.indexOf",
-            "string.lastIndexOf" => "apoc.text.lastIndexOf",
-            "string.padLeft" => "apoc.text.lpad",
-            "string.padRight" => "apoc.text.rpad",
-            "string.compareTo" => "apoc.text.compareTo",
-            _ => function.Name,
-        };
+        var name = dialect.RenderFunctionName(function.Name);
 
         return $"{name}({string.Join(", ", function.Arguments.Select(argument => RenderExpression(argument)))})";
     }
 
-    private static string RenderBinary(BinaryExpression binary, CypherBinaryOperator? parentOperator)
+    private string RenderBinary(BinaryExpression binary, CypherBinaryOperator? parentOperator)
     {
         var op = binary.Op switch
         {
@@ -325,7 +312,7 @@ internal sealed class Neo4jCypherRenderer
         return text;
     }
 
-    private static string RenderUnary(UnaryExpression unary)
+    private string RenderUnary(UnaryExpression unary)
     {
         var operand = RenderExpression(unary.Operand);
         return unary.Op switch
@@ -339,14 +326,15 @@ internal sealed class Neo4jCypherRenderer
         };
     }
 
-    private static string RenderLabelTest(LabelTest label)
+    private string RenderLabelTest(LabelTest label)
     {
-        var target = RenderExpression(label.Target);
-        var conditions = label.Labels.Select(item => $"{RenderLiteral(item)} IN labels({target})").ToArray();
-        return conditions.Length == 1 ? conditions[0] : $"({string.Join(" OR ", conditions)})";
+        return dialect.RenderLabelTest(
+            RenderExpression(label.Target),
+            label.Labels,
+            item => RenderLiteral(item));
     }
 
-    private static string RenderCase(CaseExpression expression)
+    private string RenderCase(CaseExpression expression)
     {
         var builder = new StringBuilder()
             .Append("CASE WHEN ")
@@ -361,20 +349,20 @@ internal sealed class Neo4jCypherRenderer
         return builder.Append(" END").ToString();
     }
 
-    private static string RenderPatternSubquery(PatternSubqueryExpression expression)
+    private string RenderPatternSubquery(PatternSubqueryExpression expression)
     {
         var keyword = expression.Kind == PatternSubqueryKind.Exists ? "EXISTS" : "COUNT";
         var predicate = expression.Predicate is null ? string.Empty : $" WHERE {RenderExpression(expression.Predicate)}";
         return $"{keyword} {{ MATCH {RenderPattern(expression.Pattern)}{predicate} }}";
     }
 
-    private static string RenderPatternComprehension(PatternComprehensionExpression expression)
+    private string RenderPatternComprehension(PatternComprehensionExpression expression)
     {
         var predicate = expression.Predicate is null ? string.Empty : $" WHERE {RenderExpression(expression.Predicate)}";
         return $"[{RenderPattern(expression.Pattern)}{predicate} | {RenderExpression(expression.Projection)}]";
     }
 
-    private static string RenderLiteral(object? value)
+    private string RenderLiteral(object? value)
     {
         return value switch
         {
@@ -392,7 +380,7 @@ internal sealed class Neo4jCypherRenderer
         };
     }
 
-    private static string RenderStringLiteral(string text)
+    private string RenderStringLiteral(string text)
     {
         // Backslashes first: escaping quotes introduces backslashes that must not be re-escaped.
         var escaped = text
@@ -401,7 +389,7 @@ internal sealed class Neo4jCypherRenderer
         return $"'{escaped}'";
     }
 
-    private static string RenderFloating<T>(T number)
+    private string RenderFloating<T>(T number)
         where T : IFormattable
     {
         var text = number.ToString(null, CultureInfo.InvariantCulture);
@@ -422,31 +410,67 @@ internal sealed class Neo4jCypherRenderer
         throw new GraphException($"Cannot render '{text}' as a Cypher float literal.");
     }
 
-    private static string RenderProcedureName(string procedure) => procedure switch
+    private void RenderFullTextSearch(StringBuilder builder, FullTextSearchClause search)
     {
-        "search.nodes" => "db.index.fulltext.queryNodes",
-        "search.relationships" => "db.index.fulltext.queryRelationships",
-        _ => procedure,
-    };
+        if (search.Target == Cvoya.Graph.Querying.SearchRootTarget.Entities)
+        {
+            RenderEntitySearch(builder, search);
+            return;
+        }
 
-    private static void RenderEntitySearch(StringBuilder builder, CallClause call)
+        var (procedure, index, yieldedName) = search.Target switch
+        {
+            Cvoya.Graph.Querying.SearchRootTarget.Nodes =>
+                (dialect.FullTextNodeProcedure, dialect.FullTextNodeIndex, "node"),
+            Cvoya.Graph.Querying.SearchRootTarget.Relationships =>
+                (dialect.FullTextRelationshipProcedure, dialect.FullTextRelationshipIndex, "relationship"),
+            _ => throw new GraphException($"Unsupported full-text search target '{search.Target}'."),
+        };
+
+        builder.Append("CALL ")
+            .Append(procedure)
+            .Append('(')
+            .Append(RenderLiteral(index))
+            .Append(", ")
+            .Append(RenderExpression(search.Query))
+            .Append(") YIELD ")
+            .Append(yieldedName)
+            .Append(" AS ")
+            .Append(search.Alias);
+    }
+
+    private void RenderEntitySearch(StringBuilder builder, FullTextSearchClause search)
     {
         builder.Append("CALL {\n")
-            .Append("    CALL db.index.fulltext.queryNodes(")
-            .Append(RenderExpression(call.Arguments[0])).Append(", ")
-            .Append(RenderExpression(call.Arguments[2])).Append(") YIELD node\n")
+            .Append("    CALL ").Append(dialect.FullTextNodeProcedure).Append('(')
+            .Append(RenderLiteral(dialect.FullTextNodeIndex)).Append(", ")
+            .Append(RenderExpression(search.Query)).Append(") YIELD node\n")
             .Append("    RETURN node AS entity\n")
             .Append("    UNION ALL\n")
-            .Append("    CALL db.index.fulltext.queryRelationships(")
-            .Append(RenderExpression(call.Arguments[1])).Append(", ")
-            .Append(RenderExpression(call.Arguments[2])).Append(") YIELD relationship\n")
+            .Append("    CALL ").Append(dialect.FullTextRelationshipProcedure).Append('(')
+            .Append(RenderLiteral(dialect.FullTextRelationshipIndex)).Append(", ")
+            .Append(RenderExpression(search.Query)).Append(") YIELD relationship\n")
             .Append("    MATCH (src)-[relationship]->(tgt)\n")
             .Append("    RETURN { StartNode: { Node: src, ComplexProperties: [] }, ")
             .Append("Relationship: relationship, EndNode: { Node: tgt, ComplexProperties: [] } } AS entity\n")
             .Append('}');
     }
 
-    private static void RenderEntityProjection(StringBuilder builder, EntityProjectionClause projection)
+    private IReadOnlyList<string> GetProjectionColumns(CypherStatement statement)
+    {
+        return statement.Clauses.LastOrDefault() switch
+        {
+            ReturnClause @return => @return.Items
+                .Select(item => item.Alias ?? RenderExpression(item.Expression))
+                .ToArray(),
+            EntityProjectionClause { Shape: EntityProjectionShape.Node } => ["Node"],
+            EntityProjectionClause { IncludePathCoordinates: true } => ["pathIndex", "hopIndex", "PathSegment"],
+            EntityProjectionClause => ["PathSegment"],
+            _ => [],
+        };
+    }
+
+    private void RenderEntityProjection(StringBuilder builder, EntityProjectionClause projection)
     {
         if (projection.Shape == EntityProjectionShape.Node)
         {
@@ -485,7 +509,7 @@ internal sealed class Neo4jCypherRenderer
         RenderPathSegmentPropertyLoad(builder, projection);
     }
 
-    private static void RenderSimpleNodeProjection(StringBuilder builder, string alias)
+    private void RenderSimpleNodeProjection(StringBuilder builder, string alias)
     {
         builder.Append("RETURN {\n")
             .Append("                Node: ").Append(alias).Append(",\n")
@@ -493,11 +517,11 @@ internal sealed class Neo4jCypherRenderer
             .Append("            } AS Node");
     }
 
-    private static void RenderNodePropertyLoad(StringBuilder builder, string alias)
+    private void RenderNodePropertyLoad(StringBuilder builder, string alias)
     {
         builder.Append("OPTIONAL MATCH src_path = (").Append(alias)
             .Append(")-[rels*1..").Append(GraphDataModel.DefaultDepthAllowed).Append("]->(prop)\n")
-            .Append("WHERE ALL(rel IN rels WHERE rel.").Append(ComplexPropertyStorage.RelationshipMarkerProperty).Append(" = true)\n")
+            .Append("WHERE ALL(rel IN rels WHERE rel.").Append(dialect.ComplexPropertyRelationshipMarker).Append(" = true)\n")
             .Append("WITH ").Append(alias).Append(",\n")
             .Append("    CASE WHEN src_path IS NULL THEN [] ELSE [i IN range(0, size(rels) - 1) | {\n")
             .Append("        ParentNode: CASE WHEN i = 0 THEN ").Append(alias).Append(" ELSE nodes(src_path)[i] END,\n")
@@ -513,7 +537,7 @@ internal sealed class Neo4jCypherRenderer
             .Append("} AS Node");
     }
 
-    private static void RenderPathSegmentPropertyLoad(StringBuilder builder, EntityProjectionClause projection)
+    private void RenderPathSegmentPropertyLoad(StringBuilder builder, EntityProjectionClause projection)
     {
         var sourceAlias = projection.SourceAlias;
         var relationshipAlias = projection.RelationshipAlias!;
@@ -548,7 +572,7 @@ internal sealed class Neo4jCypherRenderer
             .Append("} AS PathSegment");
     }
 
-    private static void AppendPathPropertyLoad(
+    private void AppendPathPropertyLoad(
         StringBuilder builder,
         string sourceAlias,
         string relationshipAlias,
@@ -562,7 +586,7 @@ internal sealed class Neo4jCypherRenderer
             .Append(")-[").Append(relationshipsAlias).Append("*1..").Append(GraphDataModel.DefaultDepthAllowed)
             .Append("]->(").Append(propertyAlias).Append(")\n")
             .Append("WHERE ALL(rel IN ").Append(relationshipsAlias).Append(" WHERE rel.")
-            .Append(ComplexPropertyStorage.RelationshipMarkerProperty).Append(" = true)\n")
+            .Append(dialect.ComplexPropertyRelationshipMarker).Append(" = true)\n")
             .Append("WITH ").Append(sourceAlias).Append(", ").Append(relationshipAlias).Append(", ")
             .Append(targetAlias);
         if (prefix == "tgt")

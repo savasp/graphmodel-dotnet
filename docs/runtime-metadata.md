@@ -252,13 +252,13 @@ The serialization code generator (`Serialization.cs`) was updated to:
 2. For relationships: Populate `EntityInfo.Label` from `entity.Type`
 3. Handle cases where labels/type are not yet populated (fallback to attributes)
 
-### Neo4j Provider Updates
+### Shared Result Materializer
 
-The `CypherResultProcessor` was updated to:
+The provider-neutral `GraphResultProcessor`:
 
 1. Add `Labels` as a `SimpleCollection` property when creating `EntityInfo` from nodes
 2. Add `Type` as a `SimpleValue` property when creating `EntityInfo` from relationships
-3. Ensure these properties are populated during deserialization
+3. ensures these properties are populated during deserialization from any provider's `GraphValue` adapter
 
 ## Migration Guide
 

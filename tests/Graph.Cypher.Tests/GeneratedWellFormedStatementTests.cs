@@ -130,6 +130,7 @@ public class GeneratedWellFormedStatementTests
             WithClause with => with.Items.SelectMany(item => FindParameterNames(item.Expression)),
             UnwindClause unwind => FindParameterNames(unwind.Source),
             CallClause call => call.Arguments.SelectMany(FindParameterNames),
+            FullTextSearchClause search => [search.Query.Name],
             ReturnClause @return => @return.Items.SelectMany(item => FindParameterNames(item.Expression)),
             OrderByClause orderBy => orderBy.Items.SelectMany(item => FindParameterNames(item.Expression)),
             SkipClause skip => FindParameterNames(skip.Count),

@@ -54,6 +54,17 @@ public sealed class CypherAstValidator : ICypherPass
 
                     break;
 
+                case FullTextSearchClause search:
+                    ValidateParameter(search.Query.Name, input.Parameters);
+                    scope.Add(search.Alias);
+                    if (search.Target == Cvoya.Graph.Querying.SearchRootTarget.Relationships)
+                    {
+                        scope.Add("src");
+                        scope.Add("tgt");
+                    }
+
+                    break;
+
                 case EntityProjectionClause projection:
                     ValidateAlias(projection.SourceAlias, scope);
                     if (projection.RelationshipAlias is { } relationshipAlias)

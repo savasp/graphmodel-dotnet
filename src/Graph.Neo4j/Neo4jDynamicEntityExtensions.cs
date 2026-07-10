@@ -4,6 +4,7 @@
 namespace Cvoya.Graph.Neo4j;
 
 using Cvoya.Graph;
+using Cvoya.Graph.Cypher;
 using Cvoya.Graph.Neo4j.Serialization;
 
 /// <summary>
@@ -23,6 +24,7 @@ public static class Neo4jDynamicEntityExtensions
     /// <param name="node">The dynamic node.</param>
     /// <param name="propertyName">The name of the property.</param>
     /// <returns>The property value if found and of the correct type, otherwise default(T).</returns>
+    [CypherDynamicEntityAccessor]
     public static T? GetProperty<T>(this DynamicNode node, string propertyName)
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -188,6 +190,7 @@ public static class Neo4jDynamicEntityExtensions
     /// <param name="relationship">The dynamic relationship.</param>
     /// <param name="propertyName">The name of the property.</param>
     /// <returns>The property value if found and of the correct type, otherwise default(T).</returns>
+    [CypherDynamicEntityAccessor]
     public static T? GetProperty<T>(this DynamicRelationship relationship, string propertyName)
     {
         ArgumentNullException.ThrowIfNull(relationship);
@@ -224,6 +227,7 @@ public static class Neo4jDynamicEntityExtensions
     /// <param name="node">The dynamic node.</param>
     /// <param name="label">The label to check for.</param>
     /// <returns>True if the node has the specified label, otherwise false.</returns>
+    [CypherDynamicEntityAccessor]
     public static bool HasLabel(this DynamicNode node, string label)
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -238,6 +242,7 @@ public static class Neo4jDynamicEntityExtensions
     /// <param name="relationship">The dynamic relationship.</param>
     /// <param name="type">The type to check for.</param>
     /// <returns>True if the relationship has the specified type, otherwise false.</returns>
+    [CypherDynamicEntityAccessor]
     public static bool HasType(this DynamicRelationship relationship, string type)
     {
         ArgumentNullException.ThrowIfNull(relationship);
@@ -302,6 +307,7 @@ public static class Neo4jDynamicEntityExtensions
     /// <param name="node">The dynamic node.</param>
     /// <param name="propertyName">The name of the property to check for.</param>
     /// <returns>True if the node has the specified property, otherwise false.</returns>
+    [CypherDynamicEntityAccessor]
     public static bool HasProperty(this DynamicNode node, string propertyName)
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -316,6 +322,7 @@ public static class Neo4jDynamicEntityExtensions
     /// <param name="relationship">The dynamic relationship.</param>
     /// <param name="propertyName">The name of the property to check for.</param>
     /// <returns>True if the relationship has the specified property, otherwise false.</returns>
+    [CypherDynamicEntityAccessor]
     public static bool HasProperty(this DynamicRelationship relationship, string propertyName)
     {
         ArgumentNullException.ThrowIfNull(relationship);
