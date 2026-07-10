@@ -26,10 +26,11 @@ public sealed class ConcurrentComplexPropertyUpdateTests(Neo4jHarness harness) :
 
         var payloadA = new ComplexAddress { City = "Denver", Street = "Concurrent Writer A" };
         var payloadB = new ComplexAddress { City = "Austin", Street = "Concurrent Writer B" };
+        var updateBarrier = new AsyncBarrier(participantCount: 2);
 
         var failures = await Task.WhenAll(
-            UpdateInOwnTransactionAsync(node with { Address = payloadA }),
-            UpdateInOwnTransactionAsync(node with { Address = payloadB }));
+            UpdateInOwnTransactionAsync(node with { Address = payloadA }, updateBarrier),
+            UpdateInOwnTransactionAsync(node with { Address = payloadB }, updateBarrier));
 
         // Neo4j may abort one transaction on lock contention, but never both.
         var succeeded = failures.Count(failure => failure is null);
@@ -76,10 +77,11 @@ public sealed class ConcurrentComplexPropertyUpdateTests(Neo4jHarness harness) :
         {
             new() { City = "Austin", Street = "Collection Writer B1" }
         };
+        var updateBarrier = new AsyncBarrier(participantCount: 2);
 
         var failures = await Task.WhenAll(
-            UpdateInOwnTransactionAsync(node with { Addresses = payloadA }),
-            UpdateInOwnTransactionAsync(node with { Addresses = payloadB }));
+            UpdateInOwnTransactionAsync(node with { Addresses = payloadA }, updateBarrier),
+            UpdateInOwnTransactionAsync(node with { Addresses = payloadB }, updateBarrier));
 
         var succeeded = failures.Count(failure => failure is null);
         Assert.True(succeeded >= 1, $"Both concurrent updates failed: {failures[0]}; {failures[1]}");
@@ -98,12 +100,13 @@ public sealed class ConcurrentComplexPropertyUpdateTests(Neo4jHarness harness) :
             new { streets = allStreets }));
     }
 
-    private async Task<Exception?> UpdateInOwnTransactionAsync<TNode>(TNode node)
+    private async Task<Exception?> UpdateInOwnTransactionAsync<TNode>(TNode node, AsyncBarrier updateBarrier)
         where TNode : class, Cvoya.Graph.INode
     {
         try
         {
             await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
+            await updateBarrier.SignalAndWaitAsync(TestContext.Current.CancellationToken);
             await Graph.UpdateNodeAsync(node, transaction, TestContext.Current.CancellationToken);
             await transaction.CommitAsync();
             return null;
@@ -122,5 +125,22 @@ public sealed class ConcurrentComplexPropertyUpdateTests(Neo4jHarness harness) :
         var record = await result.SingleAsync(TestContext.Current.CancellationToken);
         await transaction.CommitAsync();
         return record["count"].As<int>();
+    }
+
+    private sealed class AsyncBarrier(int participantCount)
+    {
+        private readonly TaskCompletionSource<bool> allParticipantsReady =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int remainingParticipants = participantCount;
+
+        public async Task SignalAndWaitAsync(CancellationToken cancellationToken)
+        {
+            if (Interlocked.Decrement(ref remainingParticipants) == 0)
+            {
+                allParticipantsReady.TrySetResult(true);
+            }
+
+            await allParticipantsReady.Task.WaitAsync(cancellationToken);
+        }
     }
 }
