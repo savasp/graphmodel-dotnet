@@ -253,8 +253,12 @@ public interface IAttributeValidationTests : IGraphTest
     }
 
     [Fact]
-    public void PropertyWithIsKey_ImpliesOtherProperties()
+    public async Task PropertyWithIsKey_ImpliesOtherProperties()
     {
+        // The registry is lazily initialized on first use of the graph instance, so a test that
+        // only reads schema must initialize it rather than rely on another test having done so.
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
+
         // Test that IsKey = true implies IsUnique = true, IsRequired = true, and IsIndexed = true
         var schema = Graph.SchemaRegistry.GetNodeSchema("PersonWithKeyProperties");
         Assert.NotNull(schema);
@@ -610,8 +614,12 @@ public interface IAttributeValidationTests : IGraphTest
     }
 
     [Fact]
-    public void SchemaRegistry_ReflectsAllPropertyAttributes()
+    public async Task SchemaRegistry_ReflectsAllPropertyAttributes()
     {
+        // The registry is lazily initialized on first use of the graph instance, so a test that
+        // only reads schema must initialize it rather than rely on another test having done so.
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
+
         // Test that the schema registry correctly reflects all property attributes
         var nodeSchema = Graph.SchemaRegistry.GetNodeSchema("PersonWithMixedProperties");
         Assert.NotNull(nodeSchema);
@@ -685,8 +693,12 @@ public interface IAttributeValidationTests : IGraphTest
     }
 
     [Fact]
-    public void FullTextSearchDefaults_AreCorrect()
+    public async Task FullTextSearchDefaults_AreCorrect()
     {
+        // The registry is lazily initialized on first use of the graph instance, so a test that
+        // only reads schema must initialize it rather than rely on another test having done so.
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
+
         var nodeSchema = Graph.SchemaRegistry.GetNodeSchema("PersonWithFullTextSearchProperties");
         Assert.NotNull(nodeSchema);
 
