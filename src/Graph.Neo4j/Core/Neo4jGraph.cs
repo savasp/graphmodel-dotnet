@@ -364,6 +364,11 @@ internal class Neo4jGraph : IGraph
         {
             _logger.LogDebug("Deleting node {NodeId}", id);
 
+            // Delete-by-ID needs the complete registered-label set to recognize legacy nodes
+            // written before EntityKind was stored. Initialize before opening the data
+            // transaction so a cold registry cannot turn an existing node into not-found (#239).
+            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
+
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
                 transaction,

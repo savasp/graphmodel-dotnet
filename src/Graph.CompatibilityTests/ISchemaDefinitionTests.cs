@@ -141,7 +141,7 @@ public interface ISchemaDefinitionTests : IGraphTest
     }
 
     [Fact]
-    public async Task SchemaRegistryClear_WorksCorrectly()
+    public async Task SchemaRegistryClear_AllowsLazyReinitialization()
     {
         // Arrange
         await Registry.InitializeAsync(TestContext.Current.CancellationToken);
@@ -153,7 +153,8 @@ public interface ISchemaDefinitionTests : IGraphTest
         // Assert
         Assert.False(Registry.IsInitialized);
         var nodeLabels = await Registry.GetRegisteredNodeLabelsAsync(TestContext.Current.CancellationToken);
-        Assert.Empty(nodeLabels);
+        Assert.True(Registry.IsInitialized);
+        Assert.Contains("ConfigTestPerson", nodeLabels);
     }
 
     [Fact]

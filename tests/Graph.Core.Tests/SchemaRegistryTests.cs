@@ -123,6 +123,28 @@ public class SchemaRegistryTests
         Assert.Contains("CORE_REGISTRY_REL", relationshipTypes);
     }
 
+    [Fact]
+    public async Task SchemaRegistry_GetRegisteredNodeLabels_Uninitialized_InitializesAndReturns()
+    {
+        using var registry = new SchemaRegistry();
+
+        var nodeLabels = await registry.GetRegisteredNodeLabelsAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(registry.IsInitialized);
+        Assert.Contains("CoreRegistryNode", nodeLabels);
+    }
+
+    [Fact]
+    public async Task SchemaRegistry_GetRegisteredRelationshipTypes_Uninitialized_InitializesAndReturns()
+    {
+        using var registry = new SchemaRegistry();
+
+        var relationshipTypes = await registry.GetRegisteredRelationshipTypesAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(registry.IsInitialized);
+        Assert.Contains("CORE_REGISTRY_REL", relationshipTypes);
+    }
+
     [Theory]
     [MemberData(nameof(PropertySchemaCases))]
     public async Task PropertySchemas_MapAttributeFlagsAndDefaults(
@@ -173,7 +195,7 @@ public class SchemaRegistryTests
     }
 
     [Fact]
-    public async Task ClearAsync_RemovesSchemasAndResetsInitializationFlag()
+    public async Task ClearAsync_RemovesSchemasUntilNextAsyncLookup()
     {
         using var registry = new SchemaRegistry();
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -182,8 +204,11 @@ public class SchemaRegistryTests
         await registry.ClearAsync(cancellationToken);
 
         Assert.False(registry.IsInitialized);
-        Assert.Null(await registry.GetNodeSchemaAsync("CoreRegistryNode", cancellationToken));
-        Assert.Null(await registry.GetRelationshipSchemaAsync("CORE_REGISTRY_REL", cancellationToken));
+        Assert.Throws<InvalidOperationException>(() => registry.GetNodeSchema("CoreRegistryNode"));
+
+        Assert.NotNull(await registry.GetNodeSchemaAsync("CoreRegistryNode", cancellationToken));
+        Assert.NotNull(await registry.GetRelationshipSchemaAsync("CORE_REGISTRY_REL", cancellationToken));
+        Assert.True(registry.IsInitialized);
     }
 
     [Theory]
