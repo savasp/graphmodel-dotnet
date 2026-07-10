@@ -19,4 +19,4 @@ dotnet test  --configuration Debug   # full suite — Neo4j required; see AGENTS
 dotnet test tests/Graph.Model.Analyzers.Tests --configuration Debug   # fast lane, no Docker
 ```
 
-Test-project semantics (contract suite vs. integration vs. analyzers) are in AGENTS.md — do not assume `src/Graph.Model.CompatibilityTests` runs the unit tests; it is an abstract provider contract suite (packed as `Cvoya.Graph.Model.CompatibilityTests`).
+Test-project semantics (contract suite vs. integration vs. analyzers) are in AGENTS.md — do not assume `src/Graph.Model.CompatibilityTests` runs the unit tests; it is an abstract provider contract suite (packed as `Cvoya.Graph.CompatibilityTests`).

@@ -308,7 +308,7 @@ public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNo
 1. **Always use base classes**: Inherit from `Node` or `Relationship` instead of implementing interfaces directly
 2. **Never set Labels or Type manually**: These are managed by the graph provider
 3. **Use for queries, not mutations**: Read these properties for filtering, don't try to change them
-4. **Install analyzers**: The `Cvoya.Graph.Model.Analyzers` package helps catch incorrect usage
+4. **Install analyzers**: The `Cvoya.Graph.Analyzers` package helps catch incorrect usage
 5. **Use records**: C# records work well with the base classes for concise syntax
 
 ## Summary

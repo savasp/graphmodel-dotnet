@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <IsPackable>false</IsPackable>
+        <RootNamespace>Cvoya.Graph.Serialization.CodeGen.Tests</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Serialization.CodeGen.Tests</AssemblyName>
+
+        <!-- Use the new testing platform -->
+        <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
+
+        <!--
+          xunit.v3's own generated entry point already dispatches to Microsoft.Testing.Platform
+          when invoked in server mode, so the separately-generated Microsoft.Testing.Platform.MSBuild
+          entry point is redundant and triggers CS8892 (unused entry point because a synchronous
+          entry point was found).
+        -->
+        <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+
+        <!-- Enable live output -->
+        <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+        <TestingPlatformShowProgress>true</TestingPlatformShowProgress>
+        <TestingPlatformCaptureOutput>true</TestingPlatformCaptureOutput>
+    </PropertyGroup>
+
+    <!--
+        The generator is driven directly via CSharpGeneratorDriver (see GeneratorTestHelpers.cs)
+        rather than through Microsoft.CodeAnalysis.CSharp.SourceGenerators.Testing's
+        CSharpSourceGeneratorTest: that type's TestState.GeneratedSources requires hardcoding
+        the exact expected output per test, which is the opposite of snapshot testing. Verify
+        gives snapshot semantics directly against the driver's output.
+    -->
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+        <PackageReference Include="xunit.v3.mtp-v2" />
+        <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+        <PackageReference Include="Verify.XunitV3" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+        <Using Include="VerifyXunit" />
+    </ItemGroup>
+
+    <!--
+        Same workaround as tests/Graph.Model.Neo4j.Translation.Tests: Verify's own MSBuild
+        target that writes the `Verify.ProjectDirectory` assembly-metadata attribute does not
+        fire reliably in this project's build pipeline. Emit the attributes it needs directly.
+    -->
+    <ItemGroup>
+        <AssemblyMetadata Include="Verify.ProjectDirectory" Value="$(MSBuildProjectDirectory)\" />
+        <AssemblyMetadata Include="Verify.ProjectName" Value="$(MSBuildProjectName)" />
+        <AssemblyMetadata Include="Verify.TargetFrameworks" Value="$(TargetFramework)" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\Graph.Serialization.CodeGen\Graph.Serialization.CodeGen.csproj" />
+        <ProjectReference Include="..\..\src\Graph\Graph.csproj" />
+        <ProjectReference Include="..\..\src\Graph.Serialization\Graph.Serialization.csproj" />
+    </ItemGroup>
+
+</Project>

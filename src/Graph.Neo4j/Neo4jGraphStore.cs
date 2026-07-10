@@ -1,0 +1,192 @@
+// Copyright 2025 Savas Parastatidis
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+namespace Cvoya.Graph.Neo4j;
+
+using Cvoya.Graph.Neo4j.Core;
+using Cvoya.Graph.Neo4j.Querying.Cypher;
+using global::Neo4j.Driver;
+
+/// <summary>
+/// Represents a Neo4j graph.
+/// </summary>
+/// <remarks>
+/// The store owns provider resources for the graph it creates. When constructed from URI,
+/// username, and password, the store creates and disposes the Neo4j driver. When constructed with
+/// an external <see cref="IDriver"/>, the caller keeps ownership of that driver and must dispose it.
+/// </remarks>
+public sealed class Neo4jGraphStore : IAsyncDisposable
+{
+    private readonly IDriver _driver;
+    private readonly bool _ownsDriver;
+    private readonly string _databaseName;
+    private readonly SchemaRegistry _schemaRegistry;
+    private bool _disposed;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Neo4jGraphStore"/> class.
+    /// </summary>
+    /// <param name="uri">The URI of the Neo4j database.</param>
+    /// <param name="username">The username for authentication.</param>
+    /// <param name="password">The password for authentication.</param>
+    /// <param name="databaseName">The name of the database.</param>
+    /// <param name="schemaRegistry">Optional schema registry.</param>
+    /// <param name="loggerFactory">The logger factory instance.</param>
+    /// <remarks>
+    /// The environment variables used for configuration, if not provided, are:
+    /// - NEO4J_URI: The URI of the Neo4j database. Default: "bolt://localhost:7687".
+    /// - NEO4J_USER: The username for authentication. Default: "neo4j".
+    /// - NEO4J_PASSWORD: The password for authentication. Required when <paramref name="password"/> is not provided.
+    /// - NEO4J_DATABASE: The name of the database. Default: "neo4j".
+    ///
+    /// The store creates and owns the Neo4j driver for this graph. Dispose the store to close it.
+    /// </remarks>
+    public Neo4jGraphStore(
+        string? uri,
+        string? username,
+        string? password,
+        string? databaseName = "neo4j",
+        SchemaRegistry? schemaRegistry = null,
+        Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
+    {
+        uri ??= Environment.GetEnvironmentVariable("NEO4J_URI") ?? "bolt://localhost:7687";
+        username ??= Environment.GetEnvironmentVariable("NEO4J_USER") ?? "neo4j";
+        password ??= Environment.GetEnvironmentVariable("NEO4J_PASSWORD");
+        databaseName ??= Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
+
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            throw new InvalidOperationException(
+                "Neo4j password must be provided through the password argument or the NEO4J_PASSWORD environment variable.");
+        }
+
+        _databaseName = databaseName;
+        _schemaRegistry = schemaRegistry ?? new SchemaRegistry();
+        _ownsDriver = true; // This constructor creates its own driver
+
+        // Create the Neo4j driver
+        _driver = GraphDatabase.Driver(
+            uri,
+            AuthTokens.Basic(username, password),
+            cb => cb
+                .WithMaxConnectionPoolSize(50)
+                .WithMaxConnectionLifetime(TimeSpan.FromMinutes(5))
+                .WithConnectionAcquisitionTimeout(TimeSpan.FromSeconds(30))
+                .WithConnectionTimeout(TimeSpan.FromSeconds(30)));
+
+        Graph = new Neo4jGraph(this, _databaseName, _schemaRegistry, loggerFactory);
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Neo4jGraphStore"/> class with an existing Neo4j driver.
+    /// </summary>
+    /// <param name="driver">The Neo4j driver instance.</param>
+    /// <param name="databaseName">The name of the database.</param>
+    /// <param name="schemaRegistry">Optional schema registry.</param>
+    /// <param name="loggerFactory">The logger factory instance.</param>
+    /// <remarks>
+    /// The environment variable NEO4J_DATABASE can be used to specify the database name.
+    /// If not provided, it defaults to "neo4j".
+    ///
+    /// The supplied <paramref name="driver"/> remains owned by the caller and is not disposed by
+    /// this store.
+    /// </remarks>
+    public Neo4jGraphStore(
+        IDriver driver,
+        string databaseName = "neo4j",
+        SchemaRegistry? schemaRegistry = null,
+        Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
+        : this(driver, ownsDriver: false, databaseName, schemaRegistry, loggerFactory)
+    {
+    }
+
+    internal Neo4jGraphStore(
+        IDriver driver,
+        bool ownsDriver,
+        string databaseName = "neo4j",
+        SchemaRegistry? schemaRegistry = null,
+        Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
+    {
+        ArgumentNullException.ThrowIfNull(driver, nameof(driver));
+        _databaseName = databaseName ?? Environment.GetEnvironmentVariable("NEO4J_DATABASE") ?? "neo4j";
+        _driver = driver;
+        _ownsDriver = ownsDriver;
+        _schemaRegistry = schemaRegistry ?? new SchemaRegistry();
+        Graph = new Neo4jGraph(this, _databaseName, _schemaRegistry, loggerFactory);
+    }
+
+    /// <inheritdoc />
+    public IGraph Graph { get; }
+
+    /// <summary>
+    /// Creates a new database if it does not already exist.
+    /// </summary>
+    /// <param name="driver">The Neo4j driver instance.</param>
+    /// <param name="databaseName">The name of the database to create.</param>
+    /// <remarks>
+    /// This method uses the "system" database to execute the command to create a new database.
+    /// It checks if the database already exists and only creates it if it does not.
+    /// </remarks>
+    public static async Task CreateDatabaseIfNotExistsAsync(IDriver driver, string databaseName)
+    {
+        // The database name is a Cypher identifier, not a parameter value, and cannot be
+        // parameterized by the driver; validate and escape it before interpolation since it can
+        // originate from caller-supplied configuration.
+        var escapedDatabaseName = CypherIdentifier.Escape(databaseName, "database name");
+
+        var session = driver.AsyncSession(o => o.WithDatabase("system"));
+        await using var sessionLease = session.ConfigureAwait(false);
+        var result = await session.RunAsync($"CREATE DATABASE {escapedDatabaseName} IF NOT EXISTS").ConfigureAwait(false);
+        await result.ConsumeAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Creates the Neo4j database if it does not already exist.
+    /// </summary>
+    public Task CreateDatabaseIfNotExistsAsync()
+    {
+        return CreateDatabaseIfNotExistsAsync(Driver, _databaseName);
+    }
+
+    /// <summary>
+    /// Disposes the Neo4j graph store and any resources it owns asynchronously.
+    /// </summary>
+    /// <remarks>
+    /// Only disposes the driver if this instance created it. If an external driver was provided,
+    /// the caller is responsible for disposing it.
+    /// </remarks>
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
+        if (_ownsDriver)
+        {
+            await _driver.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    internal IDriver Driver
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _driver;
+        }
+    }
+}

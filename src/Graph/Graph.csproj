@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>library</OutputType>
+        <RootNamespace>Cvoya.Graph</RootNamespace>
+        <AssemblyName>Cvoya.Graph</AssemblyName>
+    </PropertyGroup>
+
+    <!-- Package Information -->
+    <PropertyGroup>
+        <!-- The rest of the package-related properties come from the Directory.Build.props file -->
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <PackageId>Cvoya.Graph</PackageId>
+        <Description>A graph abstraction library with support for LINQ expressions.</Description>
+        <PackageTags>graph;database;neo4j;linq</PackageTags>
+    </PropertyGroup>
+
+    <!--
+      Providers dispatch LINQ terminal operators (ToListAsync, FirstAsync, etc.) by MethodInfo
+      identity against the internal QueryTerminals table rather than by string name - see
+      QueryTerminals.cs. This grants the in-tree Neo4j provider (and its translation test project,
+      which builds expression trees directly against the internal surface) access to that table
+      without making it public.
+    -->
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Neo4j</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Neo4j.Translation.Tests</_Parameter1>
+        </AssemblyAttribute>
+        <!-- Lets core tests exercise narrow internal test seams without widening the public API. -->
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Core.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+</Project>

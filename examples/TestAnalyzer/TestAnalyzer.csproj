@@ -8,8 +8,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\Graph.Model\Graph.Model.csproj" />
-        <ProjectReference Include="..\..\src\Graph.Model.Analyzers\Graph.Model.Analyzers.csproj" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
+        <ProjectReference Include="..\..\src\Graph\Graph.csproj" />
+        <ProjectReference Include="..\..\src\Graph.Analyzers\Graph.Analyzers.csproj" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
     </ItemGroup>
 
 </Project>

@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>library</OutputType>
+        <RootNamespace>Cvoya.Graph.Serialization</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Serialization</AssemblyName>
+    </PropertyGroup>
+
+    <!-- Package Information -->
+    <PropertyGroup>
+        <PackageId>Cvoya.Graph.Serialization</PackageId>
+        <Description>A serialization abstraction for the Graph Data Model.</Description>
+        <PackageTags>graph;database;serialization;linq</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Using Include="Cvoya.Graph" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.Logging" />
+    </ItemGroup>
+
+    <!-- Use project references for development (default) -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
+        <ProjectReference Include="../Graph/Graph.csproj" />
+    </ItemGroup>
+
+    <!-- Use package references for releases -->
+    <ItemGroup Condition="'$(UseProjectReferences)' != 'true'">
+        <PackageReference Include="Cvoya.Graph" />
+    </ItemGroup>
+
+</Project>

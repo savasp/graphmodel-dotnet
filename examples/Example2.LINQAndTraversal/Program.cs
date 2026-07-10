@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using Cvoya.Graph.Model;
-using Cvoya.Graph.Model.Neo4j;
+using Cvoya.Graph;
+using Cvoya.Graph.Neo4j;
 using Microsoft.Extensions.Logging;
 using Neo4j.Driver;
 

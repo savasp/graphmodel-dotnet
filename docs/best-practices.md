@@ -3,13 +3,13 @@
 > **Note:** To use Graph Model, install the Neo4j provider package:
 
 > ```bash
-> dotnet add package Cvoya.Graph.Model.Neo4j
+> dotnet add package Cvoya.Graph.Neo4j
 > ```
 
 > The analyzers package is optional but recommended for extra compile-time validation:
 
 > ```bash
-> dotnet add package Cvoya.Graph.Model.Analyzers
+> dotnet add package Cvoya.Graph.Analyzers
 > ```
 
 This guide covers best practices for using Graph Model effectively in your applications.

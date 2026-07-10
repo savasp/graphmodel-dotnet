@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.CompatibilityTests.SampleHarness;
+namespace Cvoya.Graph.CompatibilityTests.SampleHarness;
 
-using Cvoya.Graph.Model.CompatibilityTests;
+using Cvoya.Graph.CompatibilityTests;
 
 /// <summary>
 /// Doc-shaped skeleton showing what a provider implements to certify against the GraphModel
@@ -26,7 +26,7 @@ using Cvoya.Graph.Model.CompatibilityTests;
 public sealed class SampleHarness : IGraphProviderTestHarness
 {
     /// <inheritdoc/>
-    public string ProviderName => "Cvoya.Graph.Model.SampleProvider";
+    public string ProviderName => "Cvoya.Graph.SampleProvider";
 
     /// <summary>
     /// A real provider declares exactly the capabilities its backing store supports. This sample

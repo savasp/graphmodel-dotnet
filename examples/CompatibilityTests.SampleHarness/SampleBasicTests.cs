@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-namespace Cvoya.Graph.Model.CompatibilityTests.SampleHarness;
+namespace Cvoya.Graph.CompatibilityTests.SampleHarness;
 
-using Cvoya.Graph.Model.CompatibilityTests;
+using Cvoya.Graph.CompatibilityTests;
 
 /// <summary>
 /// A single example binding: implementing one <c>I*Tests</c> interface is a one-line class. A

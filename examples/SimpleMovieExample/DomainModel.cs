@@ -1,6 +1,6 @@
 namespace SimpleMovieExample;
 
-using Cvoya.Graph.Model;
+using Cvoya.Graph;
 
 record Movie : Node
 {

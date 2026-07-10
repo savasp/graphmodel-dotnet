@@ -32,12 +32,12 @@ To get started, you only need to install the Neo4j provider package:
 
 | Package                                   | Description                                             | NuGet                                                                                |
 | ----------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `Cvoya.Graph.Model.Neo4j`                 | Neo4j provider implementation (**required**)            | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Neo4j.svg)                 |
-| `Cvoya.Graph.Model`                       | Core abstractions and interfaces                        | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.svg)                       |
-| `Cvoya.Graph.Model.Analyzers`             | Compile-time code analyzers (**optional, recommended**) | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Analyzers.svg)             |
-| `Cvoya.Graph.Model.Serialization.CodeGen` | Compile-time code generation                            | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Serialization.CodeGen.svg) |
-| `Cvoya.Graph.Model.Serialization`         | Serialization-related functionality                     | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.Serialization.svg)         |
-| `Cvoya.Graph.Model.CompatibilityTests`    | Provider compatibility test suite (**optional, provider authors**) | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Model.CompatibilityTests.svg) |
+| `Cvoya.Graph.Neo4j`                 | Neo4j provider implementation (**required**)            | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Neo4j.svg)                 |
+| `Cvoya.Graph`                       | Core abstractions and interfaces                        | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.svg)                       |
+| `Cvoya.Graph.Analyzers`             | Compile-time code analyzers (**optional, recommended**) | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Analyzers.svg)             |
+| `Cvoya.Graph.Serialization.CodeGen` | Compile-time code generation                            | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Serialization.CodeGen.svg) |
+| `Cvoya.Graph.Serialization`         | Serialization-related functionality                     | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Serialization.svg)         |
+| `Cvoya.Graph.CompatibilityTests`    | Provider compatibility test suite (**optional, provider authors**) | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.CompatibilityTests.svg) |
 
 Building your own provider? See [Certifying a provider](docs/provider-implementers-guide.md#certifying-a-provider) for how to run the shared compatibility suite against it.
 
@@ -47,16 +47,16 @@ Building your own provider? See [Certifying a provider](docs/provider-implemente
 
 ```bash
 # Install the Neo4j provider (required)
-dotnet add package Cvoya.Graph.Model.Neo4j
+dotnet add package Cvoya.Graph.Neo4j
 
 # Optionally, add code analyzers for extra compile-time validation (recommended)
-dotnet add package Cvoya.Graph.Model.Analyzers
+dotnet add package Cvoya.Graph.Analyzers
 ```
 
 ### 2. Define Your Domain Model
 
 ```csharp
-using Cvoya.Graph.Model;
+using Cvoya.Graph;
 
 [Node("Person")]
 public record Person : Node
@@ -90,7 +90,7 @@ public record Knows(string StartNodeId, string EndNodeId) : Relationship(StartNo
 }
 ```
 
-For your convenience, the `Cvoya.Graph.Model` package also offers `Node` and `Relationship` records so that you only have to focus on your domain-specific properties:
+For your convenience, the `Cvoya.Graph` package also offers `Node` and `Relationship` records so that you only have to focus on your domain-specific properties:
 
 Prefer these base records in application models; implementing `INode` or `IRelationship` directly triggers analyzer warning GM011 unless you need full control.
 
@@ -124,7 +124,7 @@ public record Knows : Relationship
 ### 3. Create Graph Instance
 
 ```csharp
-using Cvoya.Graph.Model.Neo4j;
+using Cvoya.Graph.Neo4j;
 
 // Neo4j provider
 var store = new Neo4jGraphStore(

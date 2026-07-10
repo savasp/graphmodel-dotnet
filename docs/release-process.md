@@ -47,9 +47,9 @@ version, and the workflow fails loudly if the pushed tag doesn't match it.
      the workflow never writes to `VERSION` itself).
    - Runs the full test suite, including the Neo4j provider tests against a
      Neo4j service container (the same pattern as `ci.yml`).
-   - Packs all five packages (`Cvoya.Graph.Model`,
-     `Cvoya.Graph.Model.Serialization`, `Cvoya.Graph.Model.Neo4j`,
-     `Cvoya.Graph.Model.Analyzers`, `Cvoya.Graph.Model.Serialization.CodeGen`).
+   - Packs all five packages (`Cvoya.Graph`,
+     `Cvoya.Graph.Serialization`, `Cvoya.Graph.Neo4j`,
+     `Cvoya.Graph.Analyzers`, `Cvoya.Graph.Serialization.CodeGen`).
    - Generates a build provenance attestation for every package
      (`actions/attest-build-provenance`), verifiable with
      `gh attestation verify <file> --repo cvoya-com/graphmodel-dotnet`.
@@ -71,7 +71,7 @@ publishing only ever happens from an actual `v*` tag push.
 Trusted Publishing exchanges a short-lived GitHub OIDC token for a temporary
 (~1 hour) nuget.org API key at publish time, so no NuGet API key is ever
 stored as a GitHub secret. This must be configured once on nuget.org by an
-owner of the `Cvoya.Graph.Model*` package IDs (or, before the first publish,
+owner of the `Cvoya.Graph*` package IDs (or, before the first publish,
 the account/org that will own them):
 
 1. Sign in to [nuget.org](https://www.nuget.org), open your username menu, and

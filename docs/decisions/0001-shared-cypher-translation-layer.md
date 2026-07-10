@@ -100,7 +100,7 @@ separate package would version in lockstep anyway (pure SemVer coupling with no 
 adding a second dependency for every provider and an `InternalsVisibleTo` seam for the semantic model's
 internals. Folding keeps `GraphQueryModel` internals internal and gives non-Cypher providers a
 single-package dependency. The level-2 package keeps PR #66's name, `Graph.Model.Cypher` (NuGet ID
-`Cvoya.Graph.Model.Cypher`, matching the existing ID convention): it is accurate — the package contains the
+`Cvoya.Graph.Cypher`, matching the existing ID convention): it is accurate — the package contains the
 Cypher AST, planner, dialect SPI, and renderer base — and reusing the contributed name minimizes friction
 with #66. Alternatives (`Graph.Model.OpenCypher`, `Graph.Model.Cypher.Core`) add no information. The shared
 wire-model/materialization code (#85) follows the same folding logic into `Graph.Model`, since a non-Cypher
@@ -112,9 +112,9 @@ Cypher-dialect provider (and eventually AGE, whether in-tree or out) needs the p
 package, and #95 already commits to shipping a provider-author-facing package — a provider SPI without the
 translation SPI is half a story. The stability concern is moot pre-1.0: the whole library is 0.x, breaking
 changes are accepted (#93 decision), and holding the package back buys no stability a `0.x` version number
-doesn't already disclaim. Document it as an SPI package that versions in lockstep with `Cvoya.Graph.Model`.
+doesn't already disclaim. Document it as an SPI package that versions in lockstep with `Cvoya.Graph`.
 
-**(c) Compatibility-suite package name: `Cvoya.Graph.Model.CompatibilityTests`.** As per the #95 working
+**(c) Compatibility-suite package name: `Cvoya.Graph.CompatibilityTests`.** As per the #95 working
 name. "CompatibilityTests" is self-describing on nuget.org where "TCK" is jargon, and the ID sorts with the
 package family it certifies.
 
@@ -154,7 +154,7 @@ means" checklist on #66/#53.
   capability gaps (nested transactions, full-text search — #53) become declared capabilities: translation
   fails informatively and suite tests skip-with-reason instead of failing. Security-issue triage from the
   PR's own docs happens during #86. Concrete checklist lands on #66/#53 per #86.
-- **New shipped packages:** `Cvoya.Graph.Model.Cypher` and `Cvoya.Graph.Model.CompatibilityTests` join the
+- **New shipped packages:** `Cvoya.Graph.Cypher` and `Cvoya.Graph.CompatibilityTests` join the
   release pipeline (#71). Both are 0.x and version in lockstep with the core.
 - **Cost per new operator drops to one binding:** surface + `GraphQueryModel` node + planner lowering +
   per-dialect rendering + capability entry + suite tests (#96) — instead of one full visitor-stack

@@ -288,9 +288,9 @@ dispatch).
 
 ## 10. Neo4j provider: `DynamicEntityExtensions` renamed to `Neo4jDynamicEntityExtensions`
 
-The Neo4j package's public `DynamicEntityExtensions` class (namespace `Cvoya.Graph.Model.Neo4j`)
+The Neo4j package's public `DynamicEntityExtensions` class (namespace `Cvoya.Graph.Neo4j`)
 is renamed to `Neo4jDynamicEntityExtensions` to resolve the name collision with the core
-package's `Cvoya.Graph.Model.DynamicEntityExtensions`. The class stays in the Neo4j package
+package's `Cvoya.Graph.DynamicEntityExtensions`. The class stays in the Neo4j package
 (its accessors are genuinely driver-coupled via the serialization bridge) and its extension
 methods (`GetProperty<T>`, `HasLabel`, `HasType`, `GetPropertyNames`, `HasProperty`,
 `HasAnyLabel`, `HasAllLabels`) are unchanged.

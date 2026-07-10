@@ -14,7 +14,7 @@
 
 namespace TestAnalyzer;
 
-using Cvoya.Graph.Model;
+using Cvoya.Graph;
 
 
 // Very simple test - should work
@@ -22,13 +22,13 @@ public record SimpleNode : Node
 {
 }
 
-// Test case similar to failing GM004 test
+// Test case similar to failing CG004 test
 public class CustomClass
 {
     public string Value { get; set; } = string.Empty;
 }
 
-// Test case with explicit constructor for GM005
+// Test case with explicit constructor for CG005
 public class ValidComplexType
 {
     public ValidComplexType() { }
@@ -37,7 +37,7 @@ public class ValidComplexType
 
 public record TestNode : Node
 {
-    public CustomClass Custom { get; set; } = new CustomClass(); // This should produce GM004
+    public CustomClass Custom { get; set; } = new CustomClass(); // This should produce CG004
     public ValidComplexType Valid { get; set; } = new ValidComplexType(); // This should be OK
 }
 

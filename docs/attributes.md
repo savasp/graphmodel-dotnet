@@ -3,13 +3,13 @@
 > **Note:** To use attribute-based configuration, you only need to install the Neo4j provider package:
 
 > ```bash
-> dotnet add package Cvoya.Graph.Model.Neo4j
+> dotnet add package Cvoya.Graph.Neo4j
 > ```
 
 > The analyzers package is optional but recommended for extra compile-time validation:
 
 > ```bash
-> dotnet add package Cvoya.Graph.Model.Analyzers
+> dotnet add package Cvoya.Graph.Analyzers
 > ```
 
 Graph Model uses attributes to provide declarative configuration for how your domain classes map to graph elements. This approach offers clean, type-safe configuration with support for indexing, custom labeling, and property control.
