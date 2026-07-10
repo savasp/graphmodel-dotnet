@@ -428,6 +428,21 @@ public class GraphQueryModelTests
         GraphQueryModelValidator.Validate(CreateModelWithUnion(new UnionFragment(second)));
     }
 
+    [Fact]
+    public void Validator_AcceptsPreSearchRootScopeAliasOnSearchRoot()
+    {
+        // Where(...) recognized before Search(...) replaced the root keeps the original root scope
+        // alias; planners remap it onto the search scope, so the model is valid.
+        var model = CreateValidModel(
+            root: new SearchRoot("neo4j", SearchRootTarget.Nodes, typeof(Person)),
+            predicates: [Predicate<Person>(person => person.Name.Length > 0, alias: "src")],
+            traversal: [],
+            projection: null,
+            ordering: []);
+
+        GraphQueryModelValidator.Validate(model);
+    }
+
     private static GraphQueryModel CreateModelWithTerminal(TerminalOperation terminal, object? terminalOperand)
     {
         return new GraphQueryModel(

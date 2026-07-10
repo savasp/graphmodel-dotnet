@@ -194,11 +194,16 @@ public static class GraphQueryModelValidator
                 aliases.Add("tgt");
                 break;
             case SearchRoot { Target: SearchRootTarget.Nodes }:
+                // Predicates recognized before a Search replaced the root keep the original root
+                // scope alias; planners remap it onto the search scope.
                 aliases.Add("n");
+                aliases.Add("src");
+                aliases.Add("src_1");
                 break;
             case SearchRoot:
                 aliases.Add("entity");
                 aliases.Add("n");
+                aliases.Add("src");
                 break;
             default:
                 aliases.Add("src");
