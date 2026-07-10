@@ -161,6 +161,24 @@ Each occurrence gets its own value node, preserving value-object rather than sha
 Declared properties round-trip transparently up to five nested levels; deeper graphs and cycles are
 rejected.
 
+##### Null semantics of complex-property navigation
+
+Navigating a complex property inside a query (`p.Address.City` in a `Where`, `Select`, or
+`OrderBy`) is **null-propagating**, like C#'s `?.` operator and Cypher's own null semantics:
+
+- A predicate branch that navigates a missing complex property is simply not satisfied — it does
+  not remove the row from the query. `Where(p => p.Address.City == "X" || p.Name == "Y")` still
+  matches people without an `Address` when the `Name` branch holds.
+- Projecting or ordering through a missing complex property yields `null` for that value rather
+  than dropping the row.
+- A leaf null-comparison through a navigation treats "the complex property is absent" and "the
+  leaf value is null" alike: `p.Address.City == null` matches people with no `Address` node **and**
+  people whose `Address.City` is stored as null. To distinguish the two, test the complex property
+  itself — `p.Address == null` is true exactly when no `Address` node exists.
+
+This decision is recorded on issue #221; a future revisit of the leaf-null conflation is tracked
+in issue #233.
+
 #### 3. Node Inheritance Hierarchy
 
 Implementations of the Graph Model must support polymorphic behavior.

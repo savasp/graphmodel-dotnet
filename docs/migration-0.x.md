@@ -408,6 +408,32 @@ types. Declared properties auto-load recursively to `GraphDataModel.DefaultDepth
 object graphs and cycles now fail before writing. Each property occurrence is stored as a distinct value
 node, even if multiple owners reference the same in-memory instance.
 
+## 17. Complex-property navigation is null-propagating
+
+Complex-property navigation in queries (`p.Address.City`) now lowers to `OPTIONAL MATCH`, so rows
+without the navigated complex property stay in the result set: OR-predicates keep them in play,
+and projections/orderings yield `null` for the missing value instead of silently dropping the row.
+Consequently `p.Address.City == null` matches both "no `Address` node" and "`City` is null" — use
+`p.Address == null` when you specifically mean "no `Address` node". Decision recorded on #221;
+revisit tracked in #233. If you relied on the old required-`MATCH` behavior (navigation implicitly
+filtering out rows without the complex property), add an explicit `p.Address != null` predicate.
+
+## 18. `TerminalOperation.Distinct` is removed from the query model
+
+`Distinct` was both a `TerminalOperation` member and the `GraphQueryModel.Distinct` flag; only the
+flag remains, so `Distinct().CountAsync()` can carry both semantics at once (#210). Hand-built
+models that used `TerminalOperation.Distinct` should set `distinct: true` and let the terminal
+describe the actual terminal operation. `ElementAt`/`ElementAtOrDefault` models now carry their
+index in `GraphQueryModel.TerminalOperand` instead of encoding it as `Paging`.
+
+## 19. `RelationshipPattern.Type` is now `Types`
+
+`Cvoya.Graph.Cypher.Ast.RelationshipPattern` carries relationship type names as
+`IReadOnlyList<string> Types` instead of a single pre-joined `Type` string (#214). Renderers join
+alternatives with `|` and escape each name, so a literal `|` or backtick in a type name is part of
+the name. Pass each type as its own list entry; the single-`string` constructor overload remains
+for one-type patterns.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

@@ -87,6 +87,19 @@ public record SpacedLabelVenue : Node
     public string Name { get; set; } = string.Empty;
 }
 
+// Complex property with a nullable leaf, for pinning the #221 null-vs-missing navigation
+// semantics: "no Profile node" and "Profile with null Motto" both satisfy Motto == null.
+public class OptionalProfileValue
+{
+    public string? Motto { get; set; }
+}
+
+public record PersonWithOptionalProfile : Node
+{
+    public string FirstName { get; set; } = string.Empty;
+    public OptionalProfileValue? Profile { get; set; }
+}
+
 [Relationship(Label = "FRIENDOF")]
 public record Friend : Relationship
 {

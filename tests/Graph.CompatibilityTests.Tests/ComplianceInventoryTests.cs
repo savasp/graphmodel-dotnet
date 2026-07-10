@@ -18,7 +18,7 @@ public sealed class ComplianceInventoryTests
     /// or removes test methods, so this test keeps proving "the reflection count matches reality"
     /// rather than silently drifting.
     /// </summary>
-    private const int ExpectedTotalTestMethods = 347;
+    private const int ExpectedTotalTestMethods = 349;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()
