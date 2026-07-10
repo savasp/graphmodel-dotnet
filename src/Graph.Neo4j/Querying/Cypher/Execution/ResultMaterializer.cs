@@ -109,9 +109,9 @@ internal sealed class ResultMaterializer
         var segments = new List<IGraphPathSegment>(orderedHops.Count);
         foreach (var hop in orderedHops.OrderBy(h => h.HopIndex))
         {
-            var startNode = (Model.INode)MaterializeSingleElement<object>(hop.StartNode, graphPathTypes.Source)!;
-            var relationship = (Model.IRelationship)MaterializeSingleElement<object>(hop.Relationship, graphPathTypes.Relationship)!;
-            var endNode = (Model.INode)MaterializeSingleElement<object>(hop.EndNode, graphPathTypes.Target)!;
+            var startNode = (Graph.INode)MaterializeSingleElement<object>(hop.StartNode, graphPathTypes.Source)!;
+            var relationship = (Graph.IRelationship)MaterializeSingleElement<object>(hop.Relationship, graphPathTypes.Relationship)!;
+            var endNode = (Graph.INode)MaterializeSingleElement<object>(hop.EndNode, graphPathTypes.Target)!;
             segments.Add(new GraphPathHopSegment(startNode, relationship, endNode));
         }
 

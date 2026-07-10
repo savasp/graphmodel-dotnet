@@ -85,7 +85,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
-        where N : class, Model.INode
+        where N : class, Graph.INode
     {
         _logger.LogDebug("Building nodes queryable for type {NodeType}", typeof(N).Name);
 
@@ -100,7 +100,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
-        where R : class, Model.IRelationship
+        where R : class, Graph.IRelationship
     {
         _logger.LogDebug("Building relationships queryable for type {RelationshipType}", typeof(R).Name);
 
@@ -111,7 +111,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : class, Model.INode
+        where N : class, Graph.INode
     {
         var query = Nodes<N>(transaction)
             .Where(n => n.Id == id);
@@ -122,7 +122,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, Model.IRelationship
+        where R : class, Graph.IRelationship
     {
         var query = Relationships<R>(transaction)
             .Where(r => r.Id == id);
@@ -146,7 +146,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : class, Model.INode
+        where N : class, Graph.INode
     {
         if (node is null)
             throw new ArgumentException("Node cannot be null.", nameof(node));
@@ -193,7 +193,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, Model.IRelationship
+        where R : class, Graph.IRelationship
     {
         if (relationship is null)
             throw new ArgumentException("Relationship cannot be null.", nameof(relationship));
@@ -244,7 +244,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : class, Model.INode
+        where N : class, Graph.INode
     {
         if (node is null)
             throw new ArgumentException("Node cannot be null.", nameof(node));
@@ -294,7 +294,7 @@ internal class Neo4jGraph : IGraph
 
     /// <inheritdoc />
     public async Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, Model.IRelationship
+        where R : class, Graph.IRelationship
     {
         if (relationship is null)
             throw new ArgumentException("Relationship cannot be null.", nameof(relationship));
@@ -473,7 +473,7 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public IGraphQueryable<Model.IEntity> Search(string query, IGraphTransaction? transaction = null)
+    public IGraphQueryable<Graph.IEntity> Search(string query, IGraphTransaction? transaction = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
@@ -481,11 +481,11 @@ internal class Neo4jGraph : IGraph
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return FullTextSearchQueryableFactory.CreateSearchQueryable<Model.IEntity>(provider, neo4jTx, _graphContext, query);
+        return FullTextSearchQueryableFactory.CreateSearchQueryable<Graph.IEntity>(provider, neo4jTx, _graphContext, query);
     }
 
     /// <inheritdoc />
-    public IGraphQueryable<Model.INode> SearchNodes(string query, IGraphTransaction? transaction = null)
+    public IGraphQueryable<Graph.INode> SearchNodes(string query, IGraphTransaction? transaction = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
@@ -493,11 +493,11 @@ internal class Neo4jGraph : IGraph
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<Model.INode>(provider, neo4jTx, _graphContext, query);
+        return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<Graph.INode>(provider, neo4jTx, _graphContext, query);
     }
 
     /// <inheritdoc />
-    public IGraphQueryable<Model.IRelationship> SearchRelationships(string query, IGraphTransaction? transaction = null)
+    public IGraphQueryable<Graph.IRelationship> SearchRelationships(string query, IGraphTransaction? transaction = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
@@ -505,11 +505,11 @@ internal class Neo4jGraph : IGraph
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<Model.IRelationship>(provider, neo4jTx, _graphContext, query);
+        return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<Graph.IRelationship>(provider, neo4jTx, _graphContext, query);
     }
 
     /// <inheritdoc />
-    public IGraphQueryable<T> SearchNodes<T>(string query, IGraphTransaction? transaction = null) where T : class, Model.INode
+    public IGraphQueryable<T> SearchNodes<T>(string query, IGraphTransaction? transaction = null) where T : class, Graph.INode
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
@@ -524,7 +524,7 @@ internal class Neo4jGraph : IGraph
     }
 
     /// <inheritdoc />
-    public IGraphQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : class, Model.IRelationship
+    public IGraphQueryable<T> SearchRelationships<T>(string query, IGraphTransaction? transaction = null) where T : class, Graph.IRelationship
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 

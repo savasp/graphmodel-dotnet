@@ -1,1 +1,1 @@
-Cvoya.Graph.Model.GraphException: Union operations are not yet fully implemented in the refactored architecture
+Cvoya.Graph.GraphException: Union operations are not yet fully implemented in the refactored architecture

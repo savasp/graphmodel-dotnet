@@ -119,7 +119,7 @@ public static class GraphDataModel
     }
 
     /// <summary>
-    /// Enforces representation constraints for an <see cref="Model.INode"/>.
+    /// Enforces representation constraints for an <see cref="INode"/>.
     /// </summary>
     /// <param name="node">The node to enforce constraints for</param>
     /// <typeparam name="T">The type of the node</typeparam>
@@ -141,7 +141,7 @@ public static class GraphDataModel
     }
 
     /// <summary>
-    /// Enforces representation constraints for an <see cref="Model.INode"/>.
+    /// Enforces representation constraints for an <see cref="INode"/>.
     /// </summary>
     /// <typeparam name="T">The type of the node</typeparam>
     /// <exception cref="GraphException">Thrown if the given node violates any of the constraints</exception>
@@ -153,7 +153,7 @@ public static class GraphDataModel
     }
 
     /// <summary>
-    /// Enforces representation constraints for an <see cref="Model.IEntity"/>.
+    /// Enforces representation constraints for an <see cref="IEntity"/>.
     /// </summary>
     public static void EnforceGraphConstraintsForEntity<T>(T entity)
         where T : IEntity
@@ -173,7 +173,7 @@ public static class GraphDataModel
     }
 
     /// <summary>
-    /// Enforces representation constraints for an <see cref="Model.IRelationship"/>.
+    /// Enforces representation constraints for an <see cref="IRelationship"/>.
     /// </summary>
     /// <typeparam name="T">The type of the relationship</typeparam>
     /// <param name="relationship">The relationship to enforce constraints for</param>
@@ -193,7 +193,7 @@ public static class GraphDataModel
     }
 
     /// <summary>
-    /// Enforces representation constraints for an <see cref="Model.IRelationship"/>.
+    /// Enforces representation constraints for an <see cref="IRelationship"/>.
     /// </summary>
     /// <typeparam name="T">The type of the relationship</typeparam>
     /// <exception cref="GraphException">Thrown if the given relationship violates any of the constraints</exception>

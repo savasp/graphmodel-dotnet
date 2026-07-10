@@ -50,19 +50,19 @@ internal sealed class CypherResultProcessor
         }
 
         // Handle nodes
-        if (typeof(Model.INode).IsAssignableFrom(targetType))
+        if (typeof(Graph.INode).IsAssignableFrom(targetType))
         {
             return Task.FromResult(ProcessNodes(records, targetType));
         }
 
         // Handle relationships
-        if (typeof(Model.IRelationship).IsAssignableFrom(targetType))
+        if (typeof(Graph.IRelationship).IsAssignableFrom(targetType))
         {
             return Task.FromResult(ProcessRelationships(records, targetType));
         }
 
         // Handle IEntity - polymorphic entity search results
-        if (targetType == typeof(Model.IEntity))
+        if (targetType == typeof(Graph.IEntity))
         {
             return Task.FromResult(ProcessMixedEntities(records));
         }
@@ -192,8 +192,8 @@ internal sealed class CypherResultProcessor
         bool preserveInterfaceShape = false)
     {
         // Use the new recursive deserializer for complex properties
-        if (typeof(Model.DynamicNode).IsAssignableFrom(targetType) ||
-            preserveInterfaceShape && targetType == typeof(Model.INode))
+        if (typeof(Graph.DynamicNode).IsAssignableFrom(targetType) ||
+            preserveInterfaceShape && targetType == typeof(Graph.INode))
         {
             // An interface-only read shape intentionally omits declared properties, so keep it
             // dynamic instead of rediscovering a concrete type whose required complex properties
@@ -231,14 +231,14 @@ internal sealed class CypherResultProcessor
         var label = node.Labels.FirstOrDefault() ?? actualType.Name;
 
         // Use dynamic extraction for dynamic nodes (including complex property nodes)
-        if (typeof(Model.DynamicNode).IsAssignableFrom(actualType))
+        if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))
         {
             simpleProperties = ExtractAllSimplePropertiesForDynamicNode(node.Properties);
-            if (!simpleProperties.ContainsKey(nameof(Model.IEntity.Id)) && node.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
+            if (!simpleProperties.ContainsKey(nameof(Graph.IEntity.Id)) && node.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
             {
-                simpleProperties[nameof(Model.IEntity.Id)] = new Property(
+                simpleProperties[nameof(Graph.IEntity.Id)] = new Property(
                     PropertyInfo: default!,
-                    Label: nameof(Model.IEntity.Id),
+                    Label: nameof(Graph.IEntity.Id),
                     IsNullable: false,
                     Value: new SimpleValue(idValue ?? string.Empty, typeof(string))
                 );
@@ -480,7 +480,7 @@ internal sealed class CypherResultProcessor
             if (value is INode n)
             {
                 // Create EntityInfo for the node and store as complex property
-                var nodeEntityInfo = CreateEntityInfoFromNode(n, typeof(Model.INode));
+                var nodeEntityInfo = CreateEntityInfoFromNode(n, typeof(Graph.INode));
                 complexProperties[key] = new Property(
                     PropertyInfo: null!, // We'll handle this differently for projections
                     Label: key,
@@ -531,7 +531,7 @@ internal sealed class CypherResultProcessor
                     EntityInfo nodeEntityInfo;
 
                     // Discover the actual node type from the node labels
-                    var actualNodeType = DiscoverActualNodeType(node, typeof(Model.INode));
+                    var actualNodeType = DiscoverActualNodeType(node, typeof(Graph.INode));
 
                     // Add complex properties if they exist
                     if (complexPropStructure["ComplexProperties"] is IList<object> complexProps && complexProps.Count > 0)
@@ -622,15 +622,15 @@ internal sealed class CypherResultProcessor
 
                 if (startNode != null && relationship != null && endNode != null)
                 {
-                    var startNodeEntityInfo = CreateEntityInfoFromNode(startNode, typeof(Model.INode));
-                    var relEntityInfo = CreateEnhancedRelationshipEntityInfo(relationship, typeof(Model.IRelationship), startNode, endNode);
-                    var endNodeEntityInfo = CreateEntityInfoFromNode(endNode, typeof(Model.INode));
+                    var startNodeEntityInfo = CreateEntityInfoFromNode(startNode, typeof(Graph.INode));
+                    var relEntityInfo = CreateEnhancedRelationshipEntityInfo(relationship, typeof(Graph.IRelationship), startNode, endNode);
+                    var endNodeEntityInfo = CreateEntityInfoFromNode(endNode, typeof(Graph.INode));
 
                     var pathSegmentEntityInfo = CreatePathSegmentEntityInfo(
                         startNodeEntityInfo,
                         relEntityInfo,
                         endNodeEntityInfo,
-                        typeof(IGraphPathSegment<Model.INode, Model.IRelationship, Model.INode>)
+                        typeof(IGraphPathSegment<Graph.INode, Graph.IRelationship, Graph.INode>)
                     );
 
                     complexProperties[key] = new Property(
@@ -692,7 +692,7 @@ internal sealed class CypherResultProcessor
         }
 
         var projectionType = GetProjectionMemberType(targetType, projectionName);
-        if (projectionType == null || !typeof(Model.IRelationship).IsAssignableFrom(projectionType))
+        if (projectionType == null || !typeof(Graph.IRelationship).IsAssignableFrom(projectionType))
         {
             return false;
         }
@@ -756,13 +756,13 @@ internal sealed class CypherResultProcessor
 
         // Add StartNodeId as a simple property
         var startNodeIdProperty = targetType.IsInterface
-            ? targetType.GetInterface(typeof(Model.IRelationship).Name)?.GetProperty(nameof(Model.IRelationship.StartNodeId))
-            : targetType.GetProperty(nameof(Model.IRelationship.StartNodeId));
+            ? targetType.GetInterface(typeof(Graph.IRelationship).Name)?.GetProperty(nameof(Graph.IRelationship.StartNodeId))
+            : targetType.GetProperty(nameof(Graph.IRelationship.StartNodeId));
         if (startNodeIdProperty != null)
         {
-            entityInfo.SimpleProperties[nameof(Model.IRelationship.StartNodeId)] = new Property(
+            entityInfo.SimpleProperties[nameof(Graph.IRelationship.StartNodeId)] = new Property(
                 PropertyInfo: startNodeIdProperty,
-                Label: nameof(Model.IRelationship.StartNodeId),
+                Label: nameof(Graph.IRelationship.StartNodeId),
                 IsNullable: false,
                 Value: new SimpleValue(startNodeId, typeof(string))
             );
@@ -770,13 +770,13 @@ internal sealed class CypherResultProcessor
 
         // Add EndNodeId as a simple property
         var endNodeIdProperty = targetType.IsInterface
-            ? targetType.GetInterface(typeof(Model.IRelationship).Name)?.GetProperty(nameof(Model.IRelationship.EndNodeId))
-            : targetType.GetProperty(nameof(Model.IRelationship.EndNodeId));
+            ? targetType.GetInterface(typeof(Graph.IRelationship).Name)?.GetProperty(nameof(Graph.IRelationship.EndNodeId))
+            : targetType.GetProperty(nameof(Graph.IRelationship.EndNodeId));
         if (endNodeIdProperty != null)
         {
-            entityInfo.SimpleProperties[nameof(Model.IRelationship.EndNodeId)] = new Property(
+            entityInfo.SimpleProperties[nameof(Graph.IRelationship.EndNodeId)] = new Property(
                 PropertyInfo: endNodeIdProperty,
-                Label: nameof(Model.IRelationship.EndNodeId),
+                Label: nameof(Graph.IRelationship.EndNodeId),
                 IsNullable: false,
                 Value: new SimpleValue(endNodeId, typeof(string))
             );
@@ -784,13 +784,13 @@ internal sealed class CypherResultProcessor
 
         // Add Direction
         var directionProperty = targetType.IsInterface
-            ? targetType.GetInterface(typeof(Model.IRelationship).Name)?.GetProperty(nameof(Model.IRelationship.Direction))
-            : targetType.GetProperty(nameof(Model.IRelationship.Direction));
+            ? targetType.GetInterface(typeof(Graph.IRelationship).Name)?.GetProperty(nameof(Graph.IRelationship.Direction))
+            : targetType.GetProperty(nameof(Graph.IRelationship.Direction));
         if (directionProperty != null)
         {
-            entityInfo.SimpleProperties[nameof(Model.IRelationship.Direction)] = new Property(
+            entityInfo.SimpleProperties[nameof(Graph.IRelationship.Direction)] = new Property(
                 PropertyInfo: directionProperty,
-                Label: nameof(Model.IRelationship.Direction),
+                Label: nameof(Graph.IRelationship.Direction),
                 IsNullable: false,
                 Value: new SimpleValue(direction, typeof(RelationshipDirection))
             );
@@ -803,7 +803,7 @@ internal sealed class CypherResultProcessor
         // This is wrong. We should be using the label instead.
 
         // Try to get the Id property from the node
-        if (node.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
+        if (node.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
         {
             return idValue.As<string>();
         }
@@ -853,7 +853,7 @@ internal sealed class CypherResultProcessor
     private static RelationshipDirection GetRelationshipDirection(IRelationship relationship)
     {
         // Try to get the direction from the relationship properties
-        if (relationship.Properties.TryGetValue(nameof(Model.IRelationship.Direction), out var directionValue))
+        if (relationship.Properties.TryGetValue(nameof(Graph.IRelationship.Direction), out var directionValue))
         {
             if (directionValue is RelationshipDirection direction && Enum.IsDefined(direction))
             {
@@ -985,15 +985,15 @@ internal sealed class CypherResultProcessor
         var label = node.Labels.FirstOrDefault() ?? actualType.Name;
 
         // Handle dynamic nodes differently
-        if (typeof(Model.DynamicNode).IsAssignableFrom(actualType))
+        if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))
         {
             simpleProperties = ExtractAllSimplePropertiesForDynamicNode(node.Properties);
             // Add Id property if not present
-            if (!simpleProperties.ContainsKey(nameof(Model.IEntity.Id)) && node.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
+            if (!simpleProperties.ContainsKey(nameof(Graph.IEntity.Id)) && node.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
             {
-                simpleProperties[nameof(Model.IEntity.Id)] = new Property(
+                simpleProperties[nameof(Graph.IEntity.Id)] = new Property(
                     PropertyInfo: default!, // null is expected for dynamic
-                    Label: nameof(Model.IEntity.Id),
+                    Label: nameof(Graph.IEntity.Id),
                     IsNullable: false,
                     Value: new SimpleValue(idValue ?? string.Empty, typeof(string))
                 );
@@ -1006,13 +1006,13 @@ internal sealed class CypherResultProcessor
 
         // Add Labels property for all nodes (both dynamic and typed)
         // This enables filtering by labels in LINQ queries
-        var labelsProperty = actualType.GetProperty(nameof(Model.INode.Labels));
+        var labelsProperty = actualType.GetProperty(nameof(Graph.INode.Labels));
         if (labelsProperty != null)
         {
             var labelsValue = node.Labels.ToList();
-            simpleProperties[nameof(Model.INode.Labels)] = new Property(
+            simpleProperties[nameof(Graph.INode.Labels)] = new Property(
                 PropertyInfo: labelsProperty,
-                Label: nameof(Model.INode.Labels),
+                Label: nameof(Graph.INode.Labels),
                 IsNullable: false,
                 Value: new SimpleCollection(
                     labelsValue.Select(l => new SimpleValue(l, typeof(string))).ToList(),
@@ -1042,7 +1042,7 @@ internal sealed class CypherResultProcessor
         Dictionary<string, Property> simpleProperties;
 
         // Handle dynamic relationships differently
-        if (typeof(Model.DynamicRelationship).IsAssignableFrom(actualType))
+        if (typeof(Graph.DynamicRelationship).IsAssignableFrom(actualType))
         {
             simpleProperties = new Dictionary<string, Property>();
             foreach (var (key, value) in relationship.Properties)
@@ -1059,11 +1059,11 @@ internal sealed class CypherResultProcessor
                 );
             }
             // Add Id property if not present
-            if (!simpleProperties.ContainsKey(nameof(Model.IEntity.Id)) && relationship.Properties.TryGetValue(nameof(Model.IEntity.Id), out var idValue))
+            if (!simpleProperties.ContainsKey(nameof(Graph.IEntity.Id)) && relationship.Properties.TryGetValue(nameof(Graph.IEntity.Id), out var idValue))
             {
-                simpleProperties[nameof(Model.IEntity.Id)] = new Property(
+                simpleProperties[nameof(Graph.IEntity.Id)] = new Property(
                     PropertyInfo: default!, // null is expected for dynamic
-                    Label: nameof(Model.IEntity.Id),
+                    Label: nameof(Graph.IEntity.Id),
                     IsNullable: false,
                     Value: new SimpleValue(idValue ?? string.Empty, typeof(string))
                 );
@@ -1073,25 +1073,25 @@ internal sealed class CypherResultProcessor
         {
             simpleProperties = ExtractSimpleProperties(relationship.Properties, actualType);
             // Add ElementId as the Id property
-            if (actualType.GetProperty(nameof(Model.IEntity.Id)) != null)
+            if (actualType.GetProperty(nameof(Graph.IEntity.Id)) != null)
             {
-                simpleProperties[nameof(Model.IEntity.Id)] = new Property(
-                    PropertyInfo: actualType.GetProperty(nameof(Model.IEntity.Id))!,
-                    Label: nameof(Model.IEntity.Id),
+                simpleProperties[nameof(Graph.IEntity.Id)] = new Property(
+                    PropertyInfo: actualType.GetProperty(nameof(Graph.IEntity.Id))!,
+                    Label: nameof(Graph.IEntity.Id),
                     IsNullable: false,
-                    Value: new SimpleValue(relationship.Properties[nameof(Model.IEntity.Id)], typeof(string))
+                    Value: new SimpleValue(relationship.Properties[nameof(Graph.IEntity.Id)], typeof(string))
                 );
             }
         }
 
         // Add Type property for all relationships (both dynamic and typed)
         // This enables filtering by type in LINQ queries
-        var typeProperty = actualType.GetProperty(nameof(Model.IRelationship.Type));
+        var typeProperty = actualType.GetProperty(nameof(Graph.IRelationship.Type));
         if (typeProperty != null)
         {
-            simpleProperties[nameof(Model.IRelationship.Type)] = new Property(
+            simpleProperties[nameof(Graph.IRelationship.Type)] = new Property(
                 PropertyInfo: typeProperty,
-                Label: nameof(Model.IRelationship.Type),
+                Label: nameof(Graph.IRelationship.Type),
                 IsNullable: false,
                 Value: new SimpleValue(label, typeof(string))
             );
@@ -1112,11 +1112,11 @@ internal sealed class CypherResultProcessor
     private Type DiscoverActualNodeType(INode node, Type targetType)
     {
         // Special handling for dynamic entities
-        if (targetType == typeof(Model.DynamicNode))
+        if (targetType == typeof(Graph.DynamicNode))
         {
             _logger.LogDebug("Using label-based type DynamicNode for target type {TargetType}",
                 targetType.Name);
-            return typeof(Model.DynamicNode);
+            return typeof(Graph.DynamicNode);
         }
 
         // Step 1: Try to get type from stored metadata
@@ -1152,11 +1152,11 @@ internal sealed class CypherResultProcessor
     private Type DiscoverActualRelationshipType(IRelationship relationship, Type targetType)
     {
         // Special handling for dynamic entities
-        if (targetType == typeof(Model.DynamicRelationship))
+        if (targetType == typeof(Graph.DynamicRelationship))
         {
             _logger.LogDebug("Using relationship type-based type DynamicRelationship for target type {TargetType}",
                 targetType.Name);
-            return typeof(Model.DynamicRelationship);
+            return typeof(Graph.DynamicRelationship);
         }
 
         // Step 1: Try to get type from stored metadata
@@ -1288,7 +1288,7 @@ internal sealed class CypherResultProcessor
                 }
             })
             .Where(t => t.IsClass && !t.IsAbstract)
-            .Where(t => t != typeof(Model.DynamicNode) && t != typeof(Model.DynamicRelationship)); // Exclude dynamic entities from schema discovery
+            .Where(t => t != typeof(Graph.DynamicNode) && t != typeof(Graph.DynamicRelationship)); // Exclude dynamic entities from schema discovery
     }
 
     /// <summary>
@@ -1314,8 +1314,8 @@ internal sealed class CypherResultProcessor
                     return Enumerable.Empty<Type>();
                 }
             })
-            .Where(t => t.IsClass && !t.IsAbstract && typeof(Model.IRelationship).IsAssignableFrom(t))
-            .Where(t => t != typeof(Model.DynamicRelationship)); // Exclude DynamicRelationship from schema discovery
+            .Where(t => t.IsClass && !t.IsAbstract && typeof(Graph.IRelationship).IsAssignableFrom(t))
+            .Where(t => t != typeof(Graph.DynamicRelationship)); // Exclude DynamicRelationship from schema discovery
     }
 
     private Dictionary<string, Property> ExtractSimpleProperties(
@@ -1384,7 +1384,7 @@ internal sealed class CypherResultProcessor
                 if (entityValue is INode node)
                 {
                     // Process as a node
-                    var nodeEntityInfo = CreateEntityInfoFromNode(node, typeof(Model.INode));
+                    var nodeEntityInfo = CreateEntityInfoFromNode(node, typeof(Graph.INode));
                     results.Add(nodeEntityInfo);
                 }
                 else if (entityValue is IReadOnlyDictionary<string, object> pathSegmentMap)
@@ -1395,7 +1395,7 @@ internal sealed class CypherResultProcessor
                     {
                         var relationshipEntityInfo = CreateEnhancedRelationshipEntityInfo(
                             pathSegment.Relationship,
-                            typeof(Model.IRelationship),
+                            typeof(Graph.IRelationship),
                             pathSegment.StartNode.Node,
                             pathSegment.EndNode.Node);
                         results.Add(relationshipEntityInfo);

@@ -47,7 +47,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         TNode node,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
-        where TNode : class, Model.INode
+        where TNode : class, Graph.INode
     {
         ArgumentNullException.ThrowIfNull(node);
 
@@ -91,7 +91,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         TNode node,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
-        where TNode : class, Model.INode
+        where TNode : class, Graph.INode
     {
         ArgumentNullException.ThrowIfNull(node);
 
@@ -265,7 +265,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         string cypher;
 
         // For dynamic nodes, use the actual labels from ActualLabels
-        if (entity.ActualType.IsAssignableTo(typeof(Model.DynamicNode)))
+        if (entity.ActualType.IsAssignableTo(typeof(Graph.DynamicNode)))
         {
             if (entity.ActualLabels != null && entity.ActualLabels.Count > 0)
             {
@@ -294,7 +294,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         simpleProperties[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
 
         // Add Labels property to be stored in Neo4j
-        simpleProperties[nameof(Model.INode.Labels)] =
+        simpleProperties[nameof(Graph.INode.Labels)] =
             entity.ActualLabels == null || entity.ActualLabels.Count == 0 ? [entity.Label] : entity.ActualLabels;
 
         var result = await transaction.RunAsync(cypher, new { props = simpleProperties }).ConfigureAwait(false);
@@ -316,11 +316,11 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         simpleProperties[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
 
         // Add Labels property to be stored in Neo4j
-        simpleProperties[nameof(Model.INode.Labels)] =
+        simpleProperties[nameof(Graph.INode.Labels)] =
             entity.ActualLabels == null || entity.ActualLabels.Count == 0 ? [entity.Label] : entity.ActualLabels;
 
         // For dynamic nodes, update both properties and labels
-        if (entity.ActualType == typeof(Model.DynamicNode) && entity.ActualLabels != null && entity.ActualLabels.Count > 0)
+        if (entity.ActualType == typeof(Graph.DynamicNode) && entity.ActualLabels != null && entity.ActualLabels.Count > 0)
         {
             // First, get the current labels to remove them
             var getLabelsCypher = "MATCH (n {Id: $nodeId}) RETURN labels(n) AS currentLabels";
@@ -357,7 +357,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         return records.Count > 0 ? records[0]["elementId"].As<string>() : null;
     }
 
-    private void ValidateNodeProperties<TNode>(TNode node) where TNode : class, Model.INode
+    private void ValidateNodeProperties<TNode>(TNode node) where TNode : class, Graph.INode
     {
         // For DynamicNode, validate against existing schemas if any
         if (node is DynamicNode dynamicNode)

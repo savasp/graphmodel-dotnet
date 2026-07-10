@@ -4,7 +4,7 @@
 namespace Cvoya.Graph.Serialization;
 
 /// <summary>
-/// Represents a serialized simple value. The predicate <see cref="Model.GraphDataModel.IsSimple(System.Type)"/>
+/// Represents a serialized simple value. The predicate <see cref="GraphDataModel.IsSimple(System.Type)"/>
 /// determines if a value is considered simple.
 /// </summary>
 /// <param name="Object">The object value.</param>

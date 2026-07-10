@@ -24,15 +24,15 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
     private static readonly string[] _ignoredProperties =
     [
-        nameof(Model.IRelationship.StartNodeId),
-        nameof(Model.IRelationship.EndNodeId)
+        nameof(Graph.IRelationship.StartNodeId),
+        nameof(Graph.IRelationship.EndNodeId)
     ];
 
     public async Task<TRelationship> CreateRelationshipAsync<TRelationship>(
         TRelationship relationship,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
-        where TRelationship : class, Model.IRelationship
+        where TRelationship : class, Graph.IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
@@ -90,7 +90,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         TRelationship relationship,
         GraphTransaction transaction,
         CancellationToken cancellationToken = default)
-        where TRelationship : class, Model.IRelationship
+        where TRelationship : class, Graph.IRelationship
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
@@ -217,7 +217,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             .Where(kv => !_ignoredProperties.Contains(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
 
-        properties[nameof(Model.IRelationship.Type)] = entity.Label;
+        properties[nameof(Graph.IRelationship.Type)] = entity.Label;
 
         var result = await transaction.RunAsync(cypher, new
         {
@@ -285,7 +285,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         };
     }
 
-    private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Model.IRelationship
+    private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Graph.IRelationship
     {
         // For DynamicRelationship, validate against existing schemas if any
         if (relationship is DynamicRelationship dynamicRelationship)

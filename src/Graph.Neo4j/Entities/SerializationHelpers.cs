@@ -22,7 +22,7 @@ internal static class SerializationHelpers
                     _ => throw new GraphException("Unexpected value type in simple properties")
                 });
 
-        properties[nameof(Model.INode.Labels)] = entity.ActualLabels.Count > 0 ? entity.ActualLabels : Labels.GetCompatibleLabels(entity.ActualType);
+        properties[nameof(Graph.INode.Labels)] = entity.ActualLabels.Count > 0 ? entity.ActualLabels : Labels.GetCompatibleLabels(entity.ActualType);
 
         return properties;
     }

@@ -22,7 +22,7 @@ public sealed class SkipReasonFormatTests
 
         var match = Regex.Match(
             reason,
-            "^Capability '(?<capability>[A-Za-z]+)' not declared by provider '(?<provider>.+)' \\(Cvoya\\.Graph\\.Model\\.CompatibilityTests (?<version>.+)\\)$",
+            "^Capability '(?<capability>[A-Za-z]+)' not declared by provider '(?<provider>.+)' \\(Cvoya\\.Graph\\.CompatibilityTests (?<version>.+)\\)$",
             RegexOptions.None,
             TimeSpan.FromSeconds(1));
 

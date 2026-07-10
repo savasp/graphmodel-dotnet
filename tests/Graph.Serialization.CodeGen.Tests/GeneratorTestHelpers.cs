@@ -6,7 +6,6 @@ namespace Cvoya.Graph.Serialization.CodeGen.Tests;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using Cvoya.Graph.Serialization;
-using Graph.Model.Serialization.CodeGen;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;

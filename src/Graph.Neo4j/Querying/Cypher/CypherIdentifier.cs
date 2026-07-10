@@ -12,7 +12,7 @@ namespace Cvoya.Graph.Neo4j.Querying.Cypher;
 /// Cypher parameters (<c>$param</c>) can only ever be substituted for literal <em>values</em> — the
 /// driver has no mechanism to parameterize identifiers such as labels, relationship types, property
 /// names, or database names. Any such identifier that originates from a caller (for example,
-/// <see cref="Model.DynamicNode.Labels"/> or <see cref="Model.DynamicRelationship.Type"/>) must
+/// <see cref="Graph.DynamicNode.Labels"/> or <see cref="Graph.DynamicRelationship.Type"/>) must
 /// therefore be validated and escaped before it is interpolated into Cypher text.
 /// </para>
 /// <para>

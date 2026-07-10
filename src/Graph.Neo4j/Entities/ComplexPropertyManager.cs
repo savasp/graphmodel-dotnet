@@ -114,11 +114,11 @@ internal sealed class ComplexPropertyManager(GraphContext context)
             RETURN elementId(complex) as nodeId";
 
         var nodeProps = SerializationHelpers.SerializeSimpleProperties(entity);
-        nodeProps[nameof(Model.IEntity.Id)] = Guid.NewGuid().ToString("D");
+        nodeProps[nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D");
         nodeProps[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
         var relProps = new Dictionary<string, object>
         {
-            [nameof(Model.IEntity.Id)] = Guid.NewGuid().ToString("D"),
+            [nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D"),
             ["SequenceNumber"] = sequenceNumber,
             [ComplexPropertyStorage.RelationshipMarkerProperty] = true
         };

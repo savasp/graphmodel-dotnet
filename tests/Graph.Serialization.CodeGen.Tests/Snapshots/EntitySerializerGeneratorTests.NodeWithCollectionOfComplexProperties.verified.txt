@@ -3,8 +3,8 @@
 #nullable enable
 
 using System;
-using Cvoya.Graph.Model;
-using Cvoya.Graph.Model.Serialization;
+using Cvoya.Graph;
+using Cvoya.Graph.Serialization;
 
 internal static class EntitySerializerRegistration
 {
@@ -24,8 +24,8 @@ internal static class EntitySerializerRegistration
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Cvoya.Graph.Model;
-using Cvoya.Graph.Model.Serialization;
+using Cvoya.Graph;
+using Cvoya.Graph.Serialization;
 
 namespace TestNamespace.Generated;
 
@@ -221,7 +221,7 @@ internal sealed class PersonSerializer : IEntitySerializer
 
         // Serialize property: Id
         {
-            var propInfo = typeof(Cvoya.Graph.Model.Node).GetProperty("Id")!;
+            var propInfo = typeof(Cvoya.Graph.Node).GetProperty("Id")!;
             var value = entity.Id;
             Serialized? serializedValue = null;
 
@@ -244,7 +244,7 @@ internal sealed class PersonSerializer : IEntitySerializer
 
         // Serialize property: Labels
         {
-            var propInfo = typeof(Cvoya.Graph.Model.Node).GetProperty("Labels")!;
+            var propInfo = typeof(Cvoya.Graph.Node).GetProperty("Labels")!;
             var value = entity.Labels;
             Serialized? serializedValue = null;
 
@@ -331,7 +331,7 @@ internal sealed class PersonSerializer : IEntitySerializer
         // Schema for property: Labels
         {
             var propInfo = typeof(TestNamespace.Person).GetProperty("Labels")
-                ?? typeof(Cvoya.Graph.Model.INode).GetProperty("Labels")!;
+                ?? typeof(Cvoya.Graph.INode).GetProperty("Labels")!;
             simpleProperties["Labels"] = new PropertySchema(
                 PropertyInfo: propInfo,
                 PropertyName: "Labels",
@@ -344,7 +344,7 @@ internal sealed class PersonSerializer : IEntitySerializer
         // Schema for property: Id
         {
             var propInfo = typeof(TestNamespace.Person).GetProperty("Id")
-                ?? typeof(Cvoya.Graph.Model.IEntity).GetProperty("Id")!;
+                ?? typeof(Cvoya.Graph.IEntity).GetProperty("Id")!;
             simpleProperties["Id"] = new PropertySchema(
                 PropertyInfo: propInfo,
                 PropertyName: "Id",
@@ -408,8 +408,8 @@ internal sealed class PersonSerializer : IEntitySerializer
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Cvoya.Graph.Model;
-using Cvoya.Graph.Model.Serialization;
+using Cvoya.Graph;
+using Cvoya.Graph.Serialization;
 
 namespace TestNamespace.Generated;
 

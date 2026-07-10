@@ -39,8 +39,8 @@ internal static class SerializationBridge
             // Convert enums to their string representation
             Enum enumValue => enumValue.ToString(),
 
-            // Graph.Model types
-            Point location => new global::Neo4j.Driver.Point(
+            // Cvoya.Graph types
+            Graph.Point location => new global::Neo4j.Driver.Point(
                 srId: 4979, // WGS84 for lat/lon
                 x: location.Longitude,
                 y: location.Latitude,
@@ -107,8 +107,8 @@ internal static class SerializationBridge
             _ when underlyingType == typeof(char) => Convert.ToChar(value),
             _ when underlyingType.IsEnum => ConvertToEnum(value, underlyingType),
 
-            // Graph.Model types
-            _ when underlyingType == typeof(Point) => ConvertToPoint(value),
+            // Cvoya.Graph types
+            _ when underlyingType == typeof(Graph.Point) => ConvertToPoint(value),
 
             // Numeric conversions
             _ when underlyingType == typeof(sbyte) => Convert.ToSByte(value),
@@ -154,11 +154,11 @@ internal static class SerializationBridge
         };
     }
 
-    private static Point ConvertToPoint(object value)
+    private static Graph.Point ConvertToPoint(object value)
     {
         return value switch
         {
-            global::Neo4j.Driver.Point neo4jPoint => new Point { Longitude = neo4jPoint.X, Latitude = neo4jPoint.Y, Height = neo4jPoint.Z }, // Note: Neo4j uses X=lon, Y=lat, Z=height
+            global::Neo4j.Driver.Point neo4jPoint => new Graph.Point { Longitude = neo4jPoint.X, Latitude = neo4jPoint.Y, Height = neo4jPoint.Z }, // Note: Neo4j uses X=lon, Y=lat, Z=height
             _ => throw new ArgumentException($"Cannot convert {value.GetType()} to Location")
         };
     }

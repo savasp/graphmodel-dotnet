@@ -19,7 +19,7 @@ public class QueryPipelineRegressionTests
         var queryableSource = File.ReadAllText(Path.Join(
             root,
             "src",
-            "Graph.Model.Neo4j",
+            "Graph.Neo4j",
             "Querying",
             "Linq",
             "Queryables",
@@ -35,7 +35,7 @@ public class QueryPipelineRegressionTests
         var executorSource = File.ReadAllText(Path.Join(
             root,
             "src",
-            "Graph.Model.Neo4j",
+            "Graph.Neo4j",
             "Querying",
             "Cypher",
             "Execution",

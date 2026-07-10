@@ -3,8 +3,8 @@
 #nullable enable
 
 using System;
-using Cvoya.Graph.Model;
-using Cvoya.Graph.Model.Serialization;
+using Cvoya.Graph;
+using Cvoya.Graph.Serialization;
 
 internal static class EntitySerializerRegistration
 {
@@ -23,8 +23,8 @@ internal static class EntitySerializerRegistration
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Cvoya.Graph.Model;
-using Cvoya.Graph.Model.Serialization;
+using Cvoya.Graph;
+using Cvoya.Graph.Serialization;
 
 namespace TestNamespace.Generated;
 
@@ -78,7 +78,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
             EndNodeId = string.Empty;
         }
         // Extracting init-only property 'Direction'
-        Cvoya.Graph.Model.RelationshipDirection directionValue;
+        Cvoya.Graph.RelationshipDirection directionValue;
         // Look for property 'Direction' in both simple and complex properties
         var directionPropRep = entity.SimpleProperties.TryGetValue("Direction", out var directionSimpleProp) ? directionSimpleProp
                     : entity.ComplexProperties.TryGetValue("Direction", out var directionComplexProp) ? directionComplexProp : null;
@@ -87,7 +87,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
             // Extract simple value - no conversion, just cast
             if (directionPropRep.Value is SimpleValue simpleValue)
             {
-                directionValue = (Cvoya.Graph.Model.RelationshipDirection)simpleValue.Object;
+                directionValue = (Cvoya.Graph.RelationshipDirection)simpleValue.Object;
             }
             else
             {
@@ -199,7 +199,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
 
         // Serialize property: StartNodeId
         {
-            var propInfo = typeof(Cvoya.Graph.Model.Relationship).GetProperty("StartNodeId")!;
+            var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("StartNodeId")!;
             var value = entity.StartNodeId;
             Serialized? serializedValue = null;
 
@@ -222,7 +222,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
 
         // Serialize property: EndNodeId
         {
-            var propInfo = typeof(Cvoya.Graph.Model.Relationship).GetProperty("EndNodeId")!;
+            var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("EndNodeId")!;
             var value = entity.EndNodeId;
             Serialized? serializedValue = null;
 
@@ -245,13 +245,13 @@ internal sealed class KnowsSerializer : IEntitySerializer
 
         // Serialize property: Direction
         {
-            var propInfo = typeof(Cvoya.Graph.Model.Relationship).GetProperty("Direction")!;
+            var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("Direction")!;
             var value = entity.Direction;
             Serialized? serializedValue = null;
 
             serializedValue = new SimpleValue(
                 Object: value!,
-                Type: typeof(Cvoya.Graph.Model.RelationshipDirection)
+                Type: typeof(Cvoya.Graph.RelationshipDirection)
             );
 
             var propertyRep = new Property(
@@ -265,7 +265,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
 
         // Serialize property: Id
         {
-            var propInfo = typeof(Cvoya.Graph.Model.Relationship).GetProperty("Id")!;
+            var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("Id")!;
             var value = entity.Id;
             Serialized? serializedValue = null;
 
@@ -288,7 +288,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
 
         // Serialize property: Type
         {
-            var propInfo = typeof(Cvoya.Graph.Model.Relationship).GetProperty("Type")!;
+            var propInfo = typeof(Cvoya.Graph.Relationship).GetProperty("Type")!;
             var value = entity.Type;
             Serialized? serializedValue = null;
 
@@ -366,7 +366,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
         // Schema for property: Type
         {
             var propInfo = typeof(TestNamespace.Knows).GetProperty("Type")
-                ?? typeof(Cvoya.Graph.Model.IRelationship).GetProperty("Type")!;
+                ?? typeof(Cvoya.Graph.IRelationship).GetProperty("Type")!;
             simpleProperties["Type"] = new PropertySchema(
                 PropertyInfo: propInfo,
                 PropertyName: "Type",
@@ -378,7 +378,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
         // Schema for property: Direction
         {
             var propInfo = typeof(TestNamespace.Knows).GetProperty("Direction")
-                ?? typeof(Cvoya.Graph.Model.IRelationship).GetProperty("Direction")!;
+                ?? typeof(Cvoya.Graph.IRelationship).GetProperty("Direction")!;
             simpleProperties["Direction"] = new PropertySchema(
                 PropertyInfo: propInfo,
                 PropertyName: "Direction",
@@ -390,7 +390,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
         // Schema for property: StartNodeId
         {
             var propInfo = typeof(TestNamespace.Knows).GetProperty("StartNodeId")
-                ?? typeof(Cvoya.Graph.Model.IRelationship).GetProperty("StartNodeId")!;
+                ?? typeof(Cvoya.Graph.IRelationship).GetProperty("StartNodeId")!;
             simpleProperties["StartNodeId"] = new PropertySchema(
                 PropertyInfo: propInfo,
                 PropertyName: "StartNodeId",
@@ -402,7 +402,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
         // Schema for property: EndNodeId
         {
             var propInfo = typeof(TestNamespace.Knows).GetProperty("EndNodeId")
-                ?? typeof(Cvoya.Graph.Model.IRelationship).GetProperty("EndNodeId")!;
+                ?? typeof(Cvoya.Graph.IRelationship).GetProperty("EndNodeId")!;
             simpleProperties["EndNodeId"] = new PropertySchema(
                 PropertyInfo: propInfo,
                 PropertyName: "EndNodeId",
@@ -414,7 +414,7 @@ internal sealed class KnowsSerializer : IEntitySerializer
         // Schema for property: Id
         {
             var propInfo = typeof(TestNamespace.Knows).GetProperty("Id")
-                ?? typeof(Cvoya.Graph.Model.IEntity).GetProperty("Id")!;
+                ?? typeof(Cvoya.Graph.IEntity).GetProperty("Id")!;
             simpleProperties["Id"] = new PropertySchema(
                 PropertyInfo: propInfo,
                 PropertyName: "Id",
