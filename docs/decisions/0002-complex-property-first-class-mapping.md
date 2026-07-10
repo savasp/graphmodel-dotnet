@@ -3,13 +3,13 @@
 - **Status:** Accepted (decided by @savasp on #199, 2026-07-09)
 - **Date:** 2026-07-09
 - **Related:** #84, #85, #199, ADR-0001
-- **Related code:** src/Graph.Model.Neo4j/Entities/ComplexPropertyManager.cs,
-  src/Graph.Model.Neo4j/Querying/, src/Graph.Model.Serialization/,
-  src/Graph.Model.Serialization.CodeGen/
+- **Related code:** src/Cvoya.Graph.Neo4j/Entities/ComplexPropertyManager.cs,
+  src/Cvoya.Graph.Neo4j/Querying/, src/Cvoya.Graph.Serialization/,
+  src/Cvoya.Graph.Serialization.CodeGen/
 
 ## Context
 
-GraphModel's data model goes beyond the native property-graph model: a .NET node/relationship property
+CVOYA graph's data model goes beyond the native property-graph model: a .NET node/relationship property
 can be a *complex object* — a nested POCO/value object, a collection of them, or a polymorphic hierarchy.
 Today those are stored as a **hidden, parallel mechanism**: each complex property is decomposed into
 provider-private related nodes joined by mangled `__PROPERTY__{name}__` relationships, reconstructed on

@@ -1,0 +1,515 @@
+// Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
+// See LICENSE in the project root for full license terms.
+
+namespace Cvoya.Graph;
+
+using System.Collections;
+using System.Reflection;
+
+
+/// <summary>
+/// Checks to enforce behavior expected by the graph model.
+/// </summary>
+public static class GraphDataModel
+{
+    /// <summary>
+    /// The default maximum depth allowed for traversing complex properties of an entity.
+    /// This is used to prevent infinite recursion when traversing complex properties that may reference other entities.
+    /// The default value is set to 5, which means that the traversal will stop after 5 levels of depth.
+    /// </summary>
+    public const int DefaultDepthAllowed = 5;
+
+    /// <summary>
+    /// Converts a property name to the conventional semantic relationship type used for a complex property.
+    /// </summary>
+    /// <param name="propertyName"> The name of the property to convert</param>
+    /// <returns>The relationship type name for the property.</returns>
+    public static string PropertyNameToRelationshipTypeName(string propertyName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+        return propertyName;
+    }
+
+    /// <summary>
+    /// Gets the semantic relationship type used to store a complex property.
+    /// </summary>
+    /// <param name="property">The complex property.</param>
+    /// <returns>The configured relationship type, or the property name by convention.</returns>
+    public static string GetComplexPropertyRelationshipType(PropertyInfo property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+
+        var configured = property.GetCustomAttribute<ComplexPropertyAttribute>(inherit: true)?.RelationshipType;
+        return string.IsNullOrWhiteSpace(configured) ? property.Name : configured;
+    }
+
+    /// <summary>
+    /// Converts a semantic complex-property relationship type back to its conventional property name.
+    /// </summary>
+    /// <remarks>
+    /// The reverse mapping is exact only for the convention-based case (relationship type equals the
+    /// property name). When <see cref="ComplexPropertyAttribute.RelationshipType"/> overrides the
+    /// type, the override is returned unchanged; the mapping is not invertible under overrides.
+    /// </remarks>
+    /// <param name="relationshipTypeName">The relationship type name to convert.</param>
+    /// <returns>The conventional property name.</returns>
+    public static string RelationshipTypeNameToPropertyName(string relationshipTypeName) => relationshipTypeName;
+
+    /// <summary>
+    /// Gets the simple properties of a type.
+    /// </summary>
+    /// <param name="type">The type to examine</param>
+    /// <returns>>An enumerable of simple properties</returns>
+    public static IEnumerable<PropertyInfo> GetSimpleProperties(Type type) =>
+        type.GetProperties()
+            .Where(p => IsSimple(p.PropertyType) || IsCollectionOfSimple(p.PropertyType));
+
+    /// <summary>
+    /// Gets the complex properties of a type.
+    /// </summary>
+    /// <param name="type">The type to examine</param>
+    /// <returns>An enumerable of complex properties</returns>
+    public static IEnumerable<PropertyInfo> GetComplexProperties(Type type) =>
+        type.GetProperties()
+            .Where(p => IsComplex(p.PropertyType) || IsCollectionOfComplex(p.PropertyType));
+
+    /// <summary>
+    /// Gets the simple and complex properties of an object.
+    /// </summary>
+    /// <param name="obj">The object to examine</param>
+    /// <returns>A tuple containing dictionaries of simple and complex properties</returns>
+    public static (IDictionary<PropertyInfo, object?>, IDictionary<PropertyInfo, object?>) GetSimpleAndComplexProperties(object obj)
+    {
+        var type = obj.GetType();
+        var simpleProperties = GetSimpleProperties(type).ToDictionary(p => p, p => p.GetValue(obj));
+        var complexProperties = GetComplexProperties(type).ToDictionary(p => p, p => p.GetValue(obj));
+
+        return (simpleProperties, complexProperties);
+    }
+
+    /// <summary>
+    /// Ensures that an entity has no reference cycles.
+    /// </summary>
+    /// <param name="entity">The entity to check</param>
+    /// <exception cref="GraphException">Thrown if a reference cycle is detected</exception>
+    public static void EnsureNoReferenceCycle(this IEntity entity)
+    {
+        if (HasReferenceCycle(entity))
+        {
+            throw new GraphException($"Reference cycle detected in the entity with ID '{entity.Id}'");
+        }
+    }
+
+    /// <summary>
+    /// Ensures that an entity's complex-property graph does not exceed the supported storage depth.
+    /// </summary>
+    /// <param name="entity">The entity to check.</param>
+    /// <param name="maximumDepth">The maximum number of complex-property relationships from the entity root.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maximumDepth"/> is less than one.</exception>
+    /// <exception cref="GraphException">The complex-property graph is deeper than <paramref name="maximumDepth"/>.</exception>
+    public static void EnsureComplexPropertyDepth(
+        this IEntity entity,
+        int maximumDepth = DefaultDepthAllowed)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumDepth, 1);
+
+        var currentPath = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        CheckComplexPropertyDepth(entity, depth: 0, maximumDepth, currentPath);
+    }
+
+    /// <summary>
+    /// Enforces representation constraints for an <see cref="INode"/>.
+    /// </summary>
+    /// <param name="node">The node to enforce constraints for</param>
+    /// <typeparam name="T">The type of the node</typeparam>
+    /// <exception cref="GraphException">Thrown if the given node violates any of the constraints</exception>
+    public static void EnforceGraphConstraintsForNode<T>(T node)
+        where T : class, INode
+    {
+        EnforceGraphConstraintsForEntity(node);
+
+        EnforceGraphConstraintsForNodeType<T>();
+        // Enforce additional graph constraints as needed
+        // TODO: Check the property types
+
+        // TODO: in case of an IEnumerable, it MUST be generic.
+        // Otherwise, we cannot determine the type of the elements in the collection
+        // when deserializing the node.
+
+        // TODO: Prevent the use of IDictionary.
+    }
+
+    /// <summary>
+    /// Enforces representation constraints for an <see cref="INode"/>.
+    /// </summary>
+    /// <typeparam name="T">The type of the node</typeparam>
+    /// <exception cref="GraphException">Thrown if the given node violates any of the constraints</exception>
+    public static void EnforceGraphConstraintsForNodeType<T>()
+        where T : class, INode
+    {
+        // Enforce additional graph constraints as needed
+        // TODO: Check the property types
+    }
+
+    /// <summary>
+    /// Enforces representation constraints for an <see cref="IEntity"/>.
+    /// </summary>
+    public static void EnforceGraphConstraintsForEntity<T>(T entity)
+        where T : IEntity
+    {
+        // Ensure the entity is not null
+        ArgumentNullException.ThrowIfNull(entity, nameof(entity));
+
+        if (string.IsNullOrEmpty(entity.Id))
+        {
+            var ex = new ArgumentException("Entity ID cannot be null or empty");
+            throw new GraphException(ex.Message, ex);
+        }
+
+        // Ensure the entity has no reference cycles
+        entity.EnsureNoReferenceCycle();
+        entity.EnsureComplexPropertyDepth();
+    }
+
+    /// <summary>
+    /// Enforces representation constraints for an <see cref="IRelationship"/>.
+    /// </summary>
+    /// <typeparam name="T">The type of the relationship</typeparam>
+    /// <param name="relationship">The relationship to enforce constraints for</param>
+    /// <exception cref="GraphException">Thrown if the given relationship violates any of the constraints</exception>
+    public static void EnforceGraphConstraintsForRelationship<T>(T relationship)
+        where T : class, IRelationship
+    {
+        EnforceGraphConstraintsForEntity(relationship);
+
+        if (string.IsNullOrEmpty(relationship.StartNodeId) || string.IsNullOrEmpty(relationship.EndNodeId))
+        {
+            var ex = new ArgumentException("Relationship source and target IDs cannot be null or empty");
+            throw new GraphException(ex.Message, ex);
+        }
+
+        EnforceGraphConstraintsForRelationshipType<T>();
+    }
+
+    /// <summary>
+    /// Enforces representation constraints for an <see cref="IRelationship"/>.
+    /// </summary>
+    /// <typeparam name="T">The type of the relationship</typeparam>
+    /// <exception cref="GraphException">Thrown if the given relationship violates any of the constraints</exception>
+    public static void EnforceGraphConstraintsForRelationshipType<T>()
+        where T : class, IRelationship
+    {
+        // Enforce additional graph constraints as needed
+        // TODO: Check the property types
+    }
+
+    /// <summary>
+    /// Checks if a type is considered to be a "simple" type in the context of the graph model.
+    /// A "simple" type is one that can be used as the type of the property of an <see cref="INode"/> .
+    /// The full list of simple types includes:
+    /// <list type="bullet">
+    /// <item>All .NET primitive types (e.g., <see cref="int"/>, <see cref="long"/>, <see cref="double"/>, etc.)</item>
+    /// <item>All .NET enum types</item>
+    /// <item><see cref="string"/></item>
+    /// <item><see cref="Point"/></item>
+    /// <item><see cref="DateTime"/></item>
+    /// <item><see cref="DateTimeOffset"/></item>
+    /// <item><see cref="TimeSpan"/></item>
+    /// <item><see cref="TimeOnly"/></item>
+    /// <item><see cref="DateOnly"/></item>
+    /// <item><see cref="Guid"/></item>
+    /// <item>Byte arrays</item>
+    /// <item><see cref="Uri"/></item>
+    /// </list>
+    /// </summary>
+    public static bool IsSimple(Type type)
+    {
+        // Handle nullable value types
+        type = Nullable.GetUnderlyingType(type) ?? type;
+
+        return type switch
+        {
+            _ when type.IsPrimitive => true,
+            _ when type.IsEnum => true,
+            _ when type == typeof(string) => true,
+            _ when type == typeof(Point) => true,
+            _ when type == typeof(DateTime) => true,
+            _ when type == typeof(DateTimeOffset) => true,
+            _ when type == typeof(TimeSpan) => true,
+            _ when type == typeof(TimeOnly) => true,
+            _ when type == typeof(DateOnly) => true,
+            _ when type == typeof(decimal) => true,
+            _ when type == typeof(Guid) => true,
+            _ when type == typeof(byte[]) => true,
+            _ when type == typeof(Uri) => true,
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Checks if a type is considered to be a "complex" type in the context of the graph model.
+    /// A "complex" type is one that is not a simple type and can be used as the type of the property of an <see cref="INode"/>.
+    /// Complex types are typically user-defined classes or structs that do not fall into the simple type categories.
+    /// Dictionaries are never considered complex; see <see cref="IsDictionary(Type)"/>.
+    /// </summary>
+    /// <param name="type"></param>
+    /// <returns></returns>
+    public static bool IsComplex(Type type)
+    {
+        var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+
+        if (underlyingType == typeof(object))
+            return false;
+
+        if (IsSimple(underlyingType) || IsCollectionOfSimple(underlyingType) || IsCollectionOfComplex(underlyingType))
+            return false;
+
+        if (IsDictionary(underlyingType))
+            return false;
+
+        // Must be a class or struct to be complex (e.g. excludes interfaces like IEnumerable).
+        return underlyingType.IsClass || (underlyingType.IsValueType && !underlyingType.IsEnum);
+    }
+
+    /// <summary>
+    /// Checks if a type is a dictionary shape (a concrete type implementing the non-generic <see cref="IDictionary"/>,
+    /// or any type that is or implements <see cref="IDictionary{TKey,TValue}"/> or <see cref="IReadOnlyDictionary{TKey,TValue}"/>).
+    /// Dictionaries are not supported as graph properties; see <see cref="IsComplex(Type)"/>, <see cref="IsCollectionOfSimple(Type)"/>,
+    /// and <see cref="IsCollectionOfComplex(Type)"/>, all of which exclude dictionary shapes.
+    /// </summary>
+    public static bool IsDictionary(Type type)
+    {
+        if (typeof(IDictionary).IsAssignableFrom(type))
+            return true;
+
+        if (type.IsGenericType && IsDictionaryGenericTypeDefinition(type.GetGenericTypeDefinition()))
+            return true;
+
+        return type.GetInterfaces().Any(i => i.IsGenericType && IsDictionaryGenericTypeDefinition(i.GetGenericTypeDefinition()));
+    }
+
+    private static bool IsDictionaryGenericTypeDefinition(Type genericTypeDefinition) =>
+        genericTypeDefinition == typeof(IDictionary<,>) || genericTypeDefinition == typeof(IReadOnlyDictionary<,>);
+
+    /// <summary>
+    /// Checks if a type is a collection of simple types. See <see cref="IsSimple(Type)"/> for what is considered a simple type.
+    /// Dictionaries are never considered a simple collection; see <see cref="IsDictionary(Type)"/>.
+    /// </summary>
+    public static bool IsCollectionOfSimple(Type type) =>
+        type != typeof(string)
+        && typeof(IEnumerable).IsAssignableFrom(type) is true
+        && IsDictionary(type) is false
+        && type switch
+        {
+            { IsArray: true } => IsSimple(type.GetElementType()!),
+            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } arg && IsSimple(arg),
+            _ => false
+        };
+
+    /// <summary>
+    /// Checks if a type is a collection of complex types. See <see cref="IsComplex(Type)"/> for what is considered a complex type.
+    /// Dictionaries are never considered a supported collection; see <see cref="IsDictionary(Type)"/>.
+    /// </summary>
+    public static bool IsCollectionOfComplex(Type type) =>
+        type != typeof(string)
+        && typeof(IEnumerable).IsAssignableFrom(type) is true
+        && IsDictionary(type) is false
+        && type switch
+        {
+            { IsArray: true } => IsComplex(type.GetElementType()!),
+            { IsGenericType: true } => type.GetGenericArguments().FirstOrDefault() is { } arg && IsComplex(arg),
+            _ => false
+        };
+
+    /// <summary>
+    /// Checks if an object has reference cycles (true cycles, not just shared references).
+    /// </summary>
+    /// <param name="obj">The object to check</param>
+    /// <returns>True if a reference cycle is detected, false otherwise</returns>
+    public static bool HasReferenceCycle(object obj)
+    {
+        var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var currentPath = new HashSet<object>(ReferenceEqualityComparer.Instance);
+
+        return CheckForCycle(obj, visited, currentPath);
+    }
+
+    private static bool CheckForCycle(object obj, HashSet<object> visited, HashSet<object> currentPath)
+    {
+        // Early exit for null
+        if (obj == null)
+            return false;
+
+        var type = obj.GetType();
+
+        // Skip value types and common immutable types
+        if (type.IsValueType || // This covers DateTime, int, bool, etc.
+            type == typeof(string) ||
+            type == typeof(Type) ||
+            type.IsEnum ||
+            type.IsPrimitive)
+        {
+            return false;
+        }
+
+        // Skip collections of simple types
+        if (IsCollectionOfSimple(type))
+        {
+            return false;
+        }
+
+        // Skip system types that we know don't have cycles
+        if (type.Namespace?.StartsWith("System") == true &&
+            !type.Namespace.StartsWith("System.Collections"))
+        {
+            return false;
+        }
+
+        // Now do the actual cycle detection for reference types
+        if (currentPath.Contains(obj))
+            return true;
+
+        if (visited.Contains(obj))
+            return false;
+
+        visited.Add(obj);
+        currentPath.Add(obj);
+
+        try
+        {
+            if (obj is IDictionary objDict)
+            {
+                // Handle IDictionary objects
+                foreach (var value in objDict.Values)
+                {
+                    if (value != null && CheckForCycle(value, visited, currentPath))
+                        return true;
+                }
+            }
+            else if (obj is IEnumerable enumerable && !(obj is string))
+            {
+                // Handle IEnumerable objects
+                foreach (var item in enumerable)
+                {
+                    if (item != null && CheckForCycle(item, visited, currentPath))
+                        return true;
+                }
+            }
+            else
+            {
+                // Check all properties recursively
+                foreach (var prop in type.GetProperties())
+                {
+                    if (prop.CanRead && !prop.GetIndexParameters().Any())
+                    {
+                        var value = prop.GetValue(obj);
+                        if (value != null && CheckForCycle(value, visited, currentPath))
+                            return true;
+                    }
+                }
+            }
+            return false;
+        }
+        finally
+        {
+            // CRITICAL: Remove from current path when backtracking!
+            currentPath.Remove(obj);
+        }
+    }
+
+    private static void CheckComplexPropertyDepth(
+        object value,
+        int depth,
+        int maximumDepth,
+        HashSet<object> currentPath)
+    {
+        if (depth > maximumDepth)
+        {
+            throw new GraphException($"Complex properties cannot exceed {maximumDepth} levels of depth.");
+        }
+
+        // Only simple values terminate the walk: IsComplex admits non-enum structs, and a complex
+        // struct can transitively hold deeply nested reference-type complex properties that must
+        // still be depth-validated. (Boxed structs are fresh references, so the cycle set is safe.)
+        var valueType = value.GetType();
+        if (value is string || (valueType.IsValueType && IsSimple(valueType)))
+            return;
+
+        if (!currentPath.Add(value))
+        {
+            throw new GraphException("Reference cycle detected while checking complex-property depth.");
+        }
+
+        try
+        {
+            if (value is IDictionary dictionary)
+            {
+                foreach (var item in dictionary.Values.Cast<object?>().Where(item => item is not null))
+                {
+                    var itemType = item!.GetType();
+                    if (IsComplex(itemType) || IsCollectionOfComplex(itemType) || IsDictionary(itemType))
+                        CheckComplexPropertyDepth(item, depth + 1, maximumDepth, currentPath);
+                }
+
+                return;
+            }
+
+            if (value is IEnumerable enumerable)
+            {
+                // A collection does not add a level of its own; its items sit at the collection's
+                // depth. Callers that hop from an owner to a collection already added the +1
+                // (dictionary values above, complex-collection properties below), so both paths
+                // count items exactly one level below the owner.
+                foreach (var item in enumerable.Cast<object?>().Where(item => item is not null))
+                    CheckComplexPropertyDepth(item!, depth, maximumDepth, currentPath);
+
+                return;
+            }
+
+            foreach (var property in value.GetType().GetProperties()
+                         .Where(property => property.CanRead && property.GetIndexParameters().Length == 0))
+            {
+                var propertyValue = property.GetValue(value);
+                if (propertyValue is null)
+                    continue;
+
+                if (IsComplex(property.PropertyType))
+                {
+                    CheckComplexPropertyDepth(propertyValue, depth + 1, maximumDepth, currentPath);
+                }
+                else if (IsCollectionOfComplex(property.PropertyType))
+                {
+                    foreach (var item in ((IEnumerable)propertyValue).Cast<object?>().Where(item => item is not null))
+                        CheckComplexPropertyDepth(item!, depth + 1, maximumDepth, currentPath);
+                }
+                else if (IsDictionary(property.PropertyType))
+                {
+                    CheckComplexPropertyDepth(propertyValue, depth, maximumDepth, currentPath);
+                }
+            }
+        }
+        finally
+        {
+            currentPath.Remove(value);
+        }
+    }
+
+    /// <summary>
+    /// An equality comparer that uses reference equality (<see cref="object.ReferenceEquals"/>) for comparisons.
+    /// Used internally for cycle detection in graph data models.
+    /// </summary>
+    public sealed class ReferenceEqualityComparer : IEqualityComparer<object>
+    {
+        /// <summary>
+        /// Gets the singleton instance of <see cref="ReferenceEqualityComparer"/>.
+        /// </summary>
+        public static ReferenceEqualityComparer Instance { get; } = new ReferenceEqualityComparer();
+
+        /// <inheritdoc />
+        bool IEqualityComparer<object>.Equals(object? x, object? y) => ReferenceEquals(x, y);
+
+        /// <inheritdoc />
+        public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+    }
+}

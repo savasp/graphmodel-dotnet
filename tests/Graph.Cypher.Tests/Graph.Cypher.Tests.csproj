@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <IsPackable>false</IsPackable>
+        <RootNamespace>Cvoya.Graph.Cypher.Tests</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Cypher.Tests</AssemblyName>
+
+        <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
+        <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+
+        <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+        <TestingPlatformShowProgress>true</TestingPlatformShowProgress>
+        <TestingPlatformCaptureOutput>true</TestingPlatformCaptureOutput>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="xunit.v3.mtp-v2" />
+        <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/Graph.Cypher/Graph.Cypher.csproj" />
+    </ItemGroup>
+
+</Project>

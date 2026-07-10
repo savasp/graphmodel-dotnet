@@ -1,6 +1,6 @@
-# 🚀 GraphModel Public Release Checklist
+# 🚀 CVOYA graph Public Release Checklist
 
-This checklist ensures GraphModel is ready for public release with proper quality, documentation, and stability.
+This checklist ensures CVOYA graph is ready for public release with proper quality, documentation, and stability.
 
 ## 🧪 Quality Assurance
 
@@ -9,10 +9,10 @@ This checklist ensures GraphModel is ready for public release with proper qualit
 - [ ] **Run full test suite**
 
   ```bash
-  dotnet test src/Graph.Model.CompatibilityTests
-  dotnet test tests/Graph.Model.CompatibilityTests.Tests
-  dotnet test tests/Graph.Model.Analyzers.Tests
-  dotnet test tests/Graph.Model.Neo4j.Tests
+  dotnet test src/Cvoya.Graph.CompatibilityTests
+  dotnet test tests/Cvoya.Graph.CompatibilityTests.Tests
+  dotnet test tests/Cvoya.Graph.Analyzers.Tests
+  dotnet test tests/Cvoya.Graph.Neo4j.Tests
   ```
 
 - [ ] **Test all examples**
@@ -165,7 +165,7 @@ Post-release tracking:
 
 ## 🎉 Recent Accomplishments
 
-The following tasks have been completed to prepare GraphModel for public release:
+The following tasks have been completed to prepare CVOYA graph for public release:
 
 ### ✅ **Comprehensive Documentation Update**
 
@@ -192,7 +192,7 @@ The following tasks have been completed to prepare GraphModel for public release
 
 ### ✅ **Performance Testing Infrastructure**
 
-- Created comprehensive benchmark project (`tests/Graph.Model.Performance.Tests`)
+- Created comprehensive benchmark project (`tests/Cvoya.Graph.Performance.Tests`)
 - CRUD operations benchmarks with realistic datasets
 - Relationship and graph traversal benchmarks
 - Automated performance regression detection

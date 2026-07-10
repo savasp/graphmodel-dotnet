@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <TargetFrameworks>netstandard2.0</TargetFrameworks>
+        <AssemblyName>Cvoya.Graph.Serialization.CodeGen</AssemblyName>
+        <RootNamespace>Cvoya.Graph.Serialization.CodeGen</RootNamespace>
+    </PropertyGroup>
+
+    <!-- Package Information -->
+    <PropertyGroup>
+        <PackageId>Cvoya.Graph.Serialization.CodeGen</PackageId>
+        <Description>Code generation for CVOYA graph serialization.</Description>
+        <PackageTags>graph;database;codegen;serialization</PackageTags>
+        <IsPackable Condition="'$(Configuration)' == 'LocalFeed'">true</IsPackable>
+        <IsPackable Condition="'$(Configuration)' != 'LocalFeed'">false</IsPackable>
+        <GeneratePackageOnBuild Condition="'$(Configuration)' == 'LocalFeed'">true</GeneratePackageOnBuild>
+        <GeneratePackageOnBuild Condition="'$(Configuration)' != 'LocalFeed'">false</GeneratePackageOnBuild>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="$(TargetPath)" Pack="true" PackagePath="analyzers/dotnet/cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="buildTransitive\Cvoya.Graph.Serialization.CodeGen.targets" Pack="true" PackagePath="buildTransitive/" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Serialization.CodeGen.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+</Project>

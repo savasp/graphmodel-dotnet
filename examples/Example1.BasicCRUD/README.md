@@ -1,6 +1,6 @@
 # Example 1: Basic CRUD Operations
 
-This example demonstrates the fundamental Create, Read, Update, Delete (CRUD) operations using the GraphModel library with Neo4j.
+This example demonstrates the fundamental Create, Read, Update, Delete (CRUD) operations using the CVOYA graph library with Neo4j.
 
 ## What You'll Learn
 
@@ -9,7 +9,7 @@ This example demonstrates the fundamental Create, Read, Update, Delete (CRUD) op
 - Querying data using LINQ-to-Cypher
 - Updating existing graph data
 - Deleting nodes and relationships
-- Using C# 13 record types with GraphModel
+- Using C# 13 record types with CVOYA graph
 
 ## Domain Model
 
@@ -83,4 +83,4 @@ The example will:
 5. Demonstrate deletion
 6. Show verification of all operations
 
-This example provides a foundation for understanding how to work with graph data using the GraphModel library.
+This example provides a foundation for understanding how to work with graph data using the CVOYA graph library.

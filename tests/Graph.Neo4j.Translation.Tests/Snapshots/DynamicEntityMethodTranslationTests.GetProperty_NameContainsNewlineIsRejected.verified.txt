@@ -1,0 +1,2 @@
+Cvoya.Graph.GraphException: The Cypher property name 'a
+MATCH (m) DETACH DELETE m' contains a control character (U+000A), which is not allowed.

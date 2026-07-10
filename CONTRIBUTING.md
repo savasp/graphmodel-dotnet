@@ -1,6 +1,6 @@
-# Contributing to GraphModel
+# Contributing to CVOYA graph
 
-Thank you for your interest in contributing to GraphModel! This document provides guidelines for contributing to this project.
+Thank you for your interest in contributing to CVOYA graph! This document provides guidelines for contributing to this project.
 
 ## 🚀 Getting Started
 
@@ -17,8 +17,8 @@ For AI coding agents and automation, see [AGENTS.md](AGENTS.md) at the repo root
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/cvoya-com/graphmodel-dotnet.git
-   cd graphmodel-dotnet
+   git clone https://github.com/cvoya-com/graph.git
+   cd graph
    ```
 
 2. **Restore dependencies**
@@ -37,7 +37,7 @@ For AI coding agents and automation, see [AGENTS.md](AGENTS.md) at the repo root
 
    ```bash
    # Fast provider-free tests
-   dotnet test tests/Graph.Model.Analyzers.Tests --configuration Debug
+   dotnet test tests/Cvoya.Graph.Analyzers.Tests --configuration Debug
 
    # Full suite; Neo4j integration tests need a running Neo4j instance.
    dotnet test --configuration Debug
@@ -133,15 +133,15 @@ We follow conventional commits:
 
 ```text
 src/
-├── Graph.Model/                 # Core abstractions
-├── Graph.Model.Neo4j/          # Neo4j provider
-├── Graph.Model.Serialization/  # Object serialization
-├── Graph.Model.Analyzers/      # Roslyn analyzers
-└── Graph.Model.CompatibilityTests/  # Provider contract suite (TCK)
+├── Graph/                 # Core abstractions
+├── Cvoya.Graph.Neo4j/          # Neo4j provider
+├── Cvoya.Graph.Serialization/  # Object serialization
+├── Cvoya.Graph.Analyzers/      # Roslyn analyzers
+└── Cvoya.Graph.CompatibilityTests/  # Provider contract suite (TCK)
 
 tests/
-├── Graph.Model.Neo4j.Tests/               # Integration tests (the contract suite bound to Neo4j)
-└── Graph.Model.CompatibilityTests.Tests/  # Meta-tests for the TCK itself
+├── Cvoya.Graph.Neo4j.Tests/               # Integration tests (the contract suite bound to Neo4j)
+└── Cvoya.Graph.CompatibilityTests.Tests/  # Meta-tests for the TCK itself
 
 examples/                       # Usage examples
 docs/                          # Documentation
@@ -212,4 +212,4 @@ By contributing, you agree that your contributions will be licensed under the Ap
 - Be specific about your use case
 - Provide context and examples
 
-Thank you for contributing to GraphModel! 🎉
+Thank you for contributing to CVOYA graph! 🎉

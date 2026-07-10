@@ -50,7 +50,7 @@ jobs:
               - '**/*.targets'
               - '**/*.resx'
               - '**/appsettings*.json'
-              - 'src/Graph.Model.Analyzers/AnalyzerReleases.*.md'
+              - 'src/Graph.Analyzers/AnalyzerReleases.*.md'
               - 'scripts/containers/start-neo4j.sh'
               - 'global.json'
               - '.config/dotnet-tools.json'
@@ -181,7 +181,7 @@ jobs:
       - name: Test Core
         run: >
           dotnet test
-          --project tests/Graph.Model.CompatibilityTests.Tests/Graph.Model.CompatibilityTests.Tests.csproj
+          --project tests/Graph.CompatibilityTests.Tests/Graph.CompatibilityTests.Tests.csproj
           --no-build
           --configuration Release
           --verbosity normal
@@ -219,7 +219,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Test Core Libraries
-        run: dotnet test --project tests/Graph.Model.Core.Tests/Graph.Model.Core.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: dotnet test --project tests/Graph.Core.Tests/Graph.Core.Tests.csproj --no-build --configuration Release --verbosity normal
 
   test-analyzers:
     name: Test Analyzers
@@ -255,7 +255,7 @@ jobs:
       - name: Test Analyzers
         run: >
           dotnet test
-          --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj
+          --project tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj
           --no-build
           --configuration Release
           --verbosity normal
@@ -326,7 +326,7 @@ jobs:
       - name: Test LINQ-to-Cypher translation (no Neo4j required)
         run: >
           dotnet test
-          --project tests/Graph.Model.Neo4j.Translation.Tests/Graph.Model.Neo4j.Translation.Tests.csproj
+          --project tests/Graph.Neo4j.Translation.Tests/Graph.Neo4j.Translation.Tests.csproj
           --no-build
           --configuration Release
           --verbosity normal
@@ -397,7 +397,7 @@ jobs:
       - name: Test serialization code generator (no Neo4j required)
         run: >
           dotnet test
-          --project tests/Graph.Model.Serialization.CodeGen.Tests/Graph.Model.Serialization.CodeGen.Tests.csproj
+          --project tests/Graph.Serialization.CodeGen.Tests/Graph.Serialization.CodeGen.Tests.csproj
           --no-build
           --configuration Release
           --verbosity normal
@@ -490,7 +490,7 @@ jobs:
       - name: Test Neo4j Provider
         run: >
           dotnet test
-          --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj
+          --project tests/Graph.Neo4j.Tests/Graph.Neo4j.Tests.csproj
           --no-build
           --configuration Release
           --verbosity normal

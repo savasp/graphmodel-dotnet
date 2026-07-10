@@ -42,7 +42,7 @@ This is not a supported product but we will do our best to provide:
 
 ### Query Security
 
-- GraphModel automatically parameterizes queries to prevent injection
+- CVOYA graph automatically parameterizes queries to prevent injection
 - Be cautious with dynamic query building
 - Validate user inputs before querying
 - Use strongly-typed queries when possible
@@ -135,9 +135,9 @@ Before deploying to production:
 For security-related questions or concerns:
 
 - **Security Email**: [savas@parastatidis.name]
-- **General Issues**: [GitHub Issues](https://github.com/cvoya-com/graphmodel-dotnet/issues)
-- **Documentation**: [GitHub Discussions](https://github.com/cvoya-com/graphmodel-dotnet/discussions/)
+- **General Issues**: [GitHub Issues](https://github.com/cvoya-com/graph/issues)
+- **Documentation**: [GitHub Discussions](https://github.com/cvoya-com/graph/discussions/)
 
 ---
 
-**Thank you for helping keep GraphModel secure!** 🙏
+**Thank you for helping keep CVOYA graph secure!** 🙏

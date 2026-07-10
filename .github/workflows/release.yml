@@ -120,10 +120,10 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test Core
-        run: dotnet test --project tests/Graph.Model.CompatibilityTests.Tests/Graph.Model.CompatibilityTests.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: dotnet test --project tests/Graph.CompatibilityTests.Tests/Graph.CompatibilityTests.Tests.csproj --no-build --configuration Release --verbosity normal
 
       - name: Test Core Libraries
-        run: dotnet test --project tests/Graph.Model.Core.Tests/Graph.Model.Core.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: dotnet test --project tests/Graph.Core.Tests/Graph.Core.Tests.csproj --no-build --configuration Release --verbosity normal
 
   test-analyzers:
     name: Test Analyzers
@@ -155,7 +155,7 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test Analyzers
-        run: dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: dotnet test --project tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj --no-build --configuration Release --verbosity normal
 
   test-translation:
     name: Test LINQ-to-Cypher translation
@@ -187,7 +187,7 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test LINQ-to-Cypher translation (no Neo4j required)
-        run: dotnet test --project tests/Graph.Model.Neo4j.Translation.Tests/Graph.Model.Neo4j.Translation.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: dotnet test --project tests/Graph.Neo4j.Translation.Tests/Graph.Neo4j.Translation.Tests.csproj --no-build --configuration Release --verbosity normal
 
   test-codegen:
     name: Test serialization code generator
@@ -219,7 +219,7 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test serialization code generator (no Neo4j required)
-        run: dotnet test --project tests/Graph.Model.Serialization.CodeGen.Tests/Graph.Model.Serialization.CodeGen.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: dotnet test --project tests/Graph.Serialization.CodeGen.Tests/Graph.Serialization.CodeGen.Tests.csproj --no-build --configuration Release --verbosity normal
 
   test-neo4j:
     name: Test Neo4j Provider
@@ -273,7 +273,7 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Test Neo4j Provider
-        run: dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: dotnet test --project tests/Graph.Neo4j.Tests/Graph.Neo4j.Tests.csproj --no-build --configuration Release --verbosity normal
         env:
           NEO4J_URI: bolt://localhost:7687
           NEO4J_USER: neo4j
@@ -314,21 +314,21 @@ jobs:
 
       - name: Build packages (Release)
         run: |
-          dotnet build --configuration Release --no-restore src/Graph.Model/Graph.Model.csproj
-          dotnet build --configuration Release --no-restore src/Graph.Model.Serialization/Graph.Model.Serialization.csproj
-          dotnet build --configuration Release --no-restore src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj
-          dotnet build --configuration Release --no-restore src/Graph.Model.CompatibilityTests/Graph.Model.CompatibilityTests.csproj
-          dotnet build --configuration Release --no-restore src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj
-          dotnet build --configuration Release --no-restore src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj
+          dotnet build --configuration Release --no-restore src/Graph/Graph.csproj
+          dotnet build --configuration Release --no-restore src/Graph.Serialization/Graph.Serialization.csproj
+          dotnet build --configuration Release --no-restore src/Graph.Neo4j/Graph.Neo4j.csproj
+          dotnet build --configuration Release --no-restore src/Graph.CompatibilityTests/Graph.CompatibilityTests.csproj
+          dotnet build --configuration Release --no-restore src/Graph.Analyzers/Graph.Analyzers.csproj
+          dotnet build --configuration Release --no-restore src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj
 
       - name: Pack
         run: |
-          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model/Graph.Model.csproj
-          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model.Serialization/Graph.Model.Serialization.csproj
-          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model.Neo4j/Graph.Model.Neo4j.csproj
-          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model.CompatibilityTests/Graph.Model.CompatibilityTests.csproj
-          dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj
-          dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph/Graph.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Serialization/Graph.Serialization.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Neo4j/Graph.Neo4j.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.CompatibilityTests/Graph.CompatibilityTests.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Analyzers/Graph.Analyzers.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj
 
       - name: Verify package versions
         shell: bash

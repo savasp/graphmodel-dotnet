@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# GraphModel CodeQL Runner
+# CVOYA graph CodeQL Runner
 # Runs local C# CodeQL analysis using the same query suite as the GitHub workflow.
 
 set -euo pipefail
@@ -41,7 +41,7 @@ print_database_create_failure_guidance() {
 
 usage() {
     cat <<'EOF'
-GraphModel CodeQL Runner
+CVOYA graph CodeQL Runner
 
 Usage: ./scripts/run-codeql.sh [options]
 

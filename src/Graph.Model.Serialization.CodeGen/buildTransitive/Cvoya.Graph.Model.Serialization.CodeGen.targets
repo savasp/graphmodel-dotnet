@@ -1,5 +1,0 @@
-<Project>
-  <ItemGroup>
-    <Analyzer Include="$(MSBuildThisPackagePath)analyzers/dotnet/cs/Graph.Model.Serialization.CodeGen.dll" />
-  </ItemGroup>
-</Project> 

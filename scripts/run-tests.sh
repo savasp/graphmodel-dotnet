@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# GraphModel Test Runner
+# CVOYA graph Test Runner
 # Runs all tests with proper configuration and reporting
 
 set -e
@@ -74,7 +74,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            echo "GraphModel Test Runner"
+            echo "CVOYA graph Test Runner"
             echo ""
             echo "Usage: ./scripts/run-tests.sh [options]"
             echo ""
@@ -104,7 +104,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-print_header "🧪 GraphModel Test Runner"
+print_header "🧪 CVOYA graph Test Runner"
 echo ""
 
 # Check prerequisites
@@ -175,7 +175,7 @@ echo ""
 # Run analyzer tests
 if [ "$RUN_ANALYZERS" = true ]; then
     print_header "Running Analyzer Tests..."
-    if dotnet test --project tests/Graph.Model.Analyzers.Tests/Graph.Model.Analyzers.Tests.csproj \
+    if dotnet test --project tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj \
         --configuration "$CONFIGURATION" \
         --no-build \
         --verbosity "$VERBOSITY"; then
@@ -191,7 +191,7 @@ fi
 if [ "$RUN_NEO4J" = true ]; then
     print_header "Running Neo4j Tests..."
 
-    if dotnet test --project tests/Graph.Model.Neo4j.Tests/Graph.Model.Neo4j.Tests.csproj \
+    if dotnet test --project tests/Graph.Neo4j.Tests/Graph.Neo4j.Tests.csproj \
         --configuration "$CONFIGURATION" \
         --no-build \
         --verbosity "$VERBOSITY"; then

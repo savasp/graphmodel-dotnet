@@ -1,0 +1,78 @@
+// Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
+// See LICENSE in the project root for full license terms.
+
+namespace Cvoya.Graph.Querying;
+
+using System.Linq.Expressions;
+
+internal sealed class ExpressionTreeBoundsValidator : ExpressionVisitor
+{
+    private readonly int _maxNodeCount;
+    private readonly int _maxDepth;
+    private int _nodeCount;
+    private int _depth;
+
+    private ExpressionTreeBoundsValidator(GraphQueryModelBuilderOptions options)
+    {
+        _maxNodeCount = options.MaxNodeCount;
+        _maxDepth = options.MaxDepth;
+    }
+
+    public static void Validate(Expression expression, GraphQueryModelBuilderOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        ArgumentNullException.ThrowIfNull(options);
+
+        new ExpressionTreeBoundsValidator(options).Visit(expression);
+    }
+
+    public override Expression? Visit(Expression? node)
+    {
+        if (node is null)
+        {
+            return null;
+        }
+
+        _nodeCount++;
+        if (_nodeCount > _maxNodeCount)
+        {
+            throw new GraphQueryTranslationException(
+                $"The graph query expression contains more than the configured maximum of {_maxNodeCount} nodes. " +
+                "Simplify the query or increase GraphQueryModelBuilderOptions.MaxNodeCount.");
+        }
+
+        _depth++;
+        if (_depth > _maxDepth)
+        {
+            throw new GraphQueryTranslationException(
+                $"The graph query expression is deeper than the configured maximum depth of {_maxDepth}. " +
+                "Simplify the query or increase GraphQueryModelBuilderOptions.MaxDepth.");
+        }
+
+        try
+        {
+            return base.Visit(node);
+        }
+        finally
+        {
+            _depth--;
+        }
+    }
+
+    protected override Expression VisitExtension(Expression node)
+    {
+        if (node.CanReduce)
+        {
+            return base.VisitExtension(node);
+        }
+
+        if (node is IGraphSearchRootExpression)
+        {
+            // A search root is a leaf: there are no children to count toward the bounds.
+            return node;
+        }
+
+        throw new GraphQueryTranslationException(
+            $"Expression '{node.GetType().Name}' is not a recognized graph query expression.");
+    }
+}

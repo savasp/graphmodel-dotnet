@@ -1,0 +1,110 @@
+// Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
+// See LICENSE in the project root for full license terms.
+
+namespace Cvoya.Graph.Neo4j.Translation.Tests;
+
+using Cvoya.Graph.Neo4j.Translation.Tests.Harness;
+using Cvoya.Graph.Neo4j.Translation.Tests.Model;
+
+public class WhereTranslationTests : TranslationTestBase
+{
+    [Fact]
+    public Task Where_SimplePredicate()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.Age > 30);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_MultipleConditions_AndOr()
+    {
+        var query = Root.Nodes<Person>().Where(p => (p.Age > 30 && p.FirstName == "Alice") || p.LastName == "Smith");
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ChainedWhere()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.Age > 18).Where(p => p.Age < 65);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_NullComparison()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.HomeAddress != null);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_EnumComparison()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.Status == EmploymentStatus.Active);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ClosureCapturedVariable()
+    {
+        var minAge = 21;
+        var query = Root.Nodes<Person>().Where(p => p.Age >= minAge);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_CapturedQueryableConstantContainsEntityId()
+    {
+        IQueryable<string> ids = new[] { "person-1", "person-2" }.AsQueryable();
+        var query = Root.Nodes<Person>().Where(p => ids.Contains(p.Id));
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ComplexPropertyNavigation()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.HomeAddress!.City == "Seattle");
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ComplexPropertyNavigation_ArbitraryDepth()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.HomeAddress!.Region!.Name == "Northwest");
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ComplexPropertyNavigation_UsesRelationshipOverride()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.MailingAddress!.City == "Seattle");
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ComplexCollectionAny()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.Offices.Any(office => office.City == "Seattle"));
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ComplexCollectionAll()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.Offices.All(office => office.City != "Closed"));
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_ComplexCollectionCount()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.Offices.Count > 1);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Where_OnRelationshipQueryable()
+    {
+        var query = Root.Relationships<Knows>().Where(k => k.Since > 2020);
+        return VerifyTranslation(query);
+    }
+}

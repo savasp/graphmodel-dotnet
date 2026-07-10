@@ -1,8 +1,8 @@
-# GraphModel Documentation Site Configuration
+# CVOYA graph Documentation Site Configuration
 
-title: GraphModel Documentation
+title: CVOYA graph Documentation
 description: A powerful, type-safe .NET library ecosystem for working with graph data structures and graph databases.
-baseurl: "/graphmodel-dotnet"
+baseurl: "/graph"
 url: "https://cvoya-com.github.io"
 
 # Build settings
@@ -11,7 +11,7 @@ highlighter: rouge
 theme: minima
 
 # GitHub Pages settings
-repository: cvoya-com/graphmodel-dotnet
+repository: cvoya-com/graph
 
 # Plugins
 plugins:

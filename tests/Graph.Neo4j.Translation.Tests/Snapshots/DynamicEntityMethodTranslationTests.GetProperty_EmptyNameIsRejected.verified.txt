@@ -1,0 +1,1 @@
+Cvoya.Graph.GraphException: A Cypher property name cannot be null, empty, or whitespace.

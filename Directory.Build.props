@@ -27,8 +27,8 @@
         <Authors>Cvoya</Authors>
         <Company>Cvoya</Company>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/cvoya-com/graphmodel-dotnet</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/cvoya-com/graphmodel-dotnet</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/cvoya-com/graph</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/cvoya-com/graph</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageOutputPath>$(MSBuildThisFileDirectory)artifacts</PackageOutputPath>
         <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -87,7 +87,7 @@
     </PropertyGroup>
 
     <!-- Analyzer project settings - allow packaging for LocalFeed configuration -->
-    <PropertyGroup Condition=" '$(MSBuildProjectName)' == 'Graph.Model.Analyzers' OR '$(MSBuildProjectName)' == 'Graph.Model.Serialization.CodeGen' ">
+    <PropertyGroup Condition=" '$(MSBuildProjectName)' == 'Graph.Analyzers' OR '$(MSBuildProjectName)' == 'Graph.Serialization.CodeGen' ">
         <GenerateDocumentationFile>false</GenerateDocumentationFile>
         <IsPackable Condition="'$(Configuration)' == 'LocalFeed'">true</IsPackable>
         <IsPackable Condition="'$(Configuration)' != 'LocalFeed'">false</IsPackable>
@@ -120,12 +120,12 @@
     <!-- Local NuGet Feed Management Targets -->
     <PropertyGroup>
         <LocalFeedPath>$(MSBuildThisFileDirectory)local-nuget-feed</LocalFeedPath>
-        <LocalFeedSourceName>GraphModel-LocalFeed</LocalFeedSourceName>
+        <LocalFeedSourceName>CvoyaGraph-LocalFeed</LocalFeedSourceName>
         <LocalFeedSentinelFile>$(LocalFeedPath)/.feed-setup-complete</LocalFeedSentinelFile>
     </PropertyGroup>
 
     <Target Name="SetupLocalFeed" BeforeTargets="Build" Condition="'$(Configuration)' == 'LocalFeed'">
-        <Message Text="🚀 Setting up local NuGet feed for GraphModel..." Importance="high" />
+        <Message Text="🚀 Setting up local NuGet feed for CVOYA graph..." Importance="high" />
 
         <!-- Create local feed directory -->
         <MakeDir Directories="$(LocalFeedPath)" />
@@ -155,15 +155,15 @@
 
     <!-- Explicitly pack analyzer and codegen projects for LocalFeed configuration -->
     <!-- Only run this target once at the solution level, not for each project -->
-    <Target Name="PackSpecialProjects" AfterTargets="Build" Condition="'$(Configuration)' == 'LocalFeed' AND '$(MSBuildProjectName)' == 'Graph.Model'">
+    <Target Name="PackSpecialProjects" AfterTargets="Build" Condition="'$(Configuration)' == 'LocalFeed' AND '$(MSBuildProjectName)' == 'Graph'">
         <Message Text="📦 Packing special projects (Analyzers and CodeGen)..." Importance="high" />
-        <MSBuild Projects="$(MSBuildThisFileDirectory)src/Graph.Model.Analyzers/Graph.Model.Analyzers.csproj" Targets="Pack" Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />
-        <MSBuild Projects="$(MSBuildThisFileDirectory)src/Graph.Model.Serialization.CodeGen/Graph.Model.Serialization.CodeGen.csproj" Targets="Pack" Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />
+        <MSBuild Projects="$(MSBuildThisFileDirectory)src/Graph.Analyzers/Graph.Analyzers.csproj" Targets="Pack" Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />
+        <MSBuild Projects="$(MSBuildThisFileDirectory)src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj" Targets="Pack" Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />
         <Message Text="✅ Special projects packed successfully!" Importance="high" />
     </Target>
 
     <Target Name="CleanLocalFeed">
-        <Message Text="🧹 Cleaning up GraphModel local NuGet feed..." Importance="high" />
+        <Message Text="🧹 Cleaning up CVOYA graph local NuGet feed..." Importance="high" />
 
         <!-- Remove NuGet source only if it exists -->
         <Exec Command="dotnet nuget list source | grep -q '$(LocalFeedSourceName)' &amp;&amp; dotnet nuget remove source '$(LocalFeedSourceName)'" ContinueOnError="true" />
@@ -182,12 +182,12 @@
         <Message Text="🧪 Testing local NuGet feed workflow..." Importance="high" />
 
         <!-- Build with LocalFeed configuration to generate packages -->
-        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" Properties="Configuration=LocalFeed" Targets="Build" />
+        <MSBuild Projects="$(MSBuildThisFileDirectory)cvoya-graph.sln" Properties="Configuration=LocalFeed" Targets="Build" />
 
         <!-- Test Release configuration with package references -->
         <Message Text="🔄 Testing Release build with package references..." Importance="high" />
         <Exec Command="dotnet restore --force" />
-        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" Properties="Configuration=Release" Targets="Build" />
+        <MSBuild Projects="$(MSBuildThisFileDirectory)cvoya-graph.sln" Properties="Configuration=Release" Targets="Build" />
 
         <Message Text="✅ Local feed test completed successfully!" Importance="high" />
     </Target>
@@ -197,12 +197,12 @@
         <Message Text="📦 Building with package references for distribution..." Importance="high" />
 
         <!-- First, build with LocalFeed to generate packages -->
-        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" Properties="Configuration=LocalFeed" Targets="Build" />
+        <MSBuild Projects="$(MSBuildThisFileDirectory)cvoya-graph.sln" Properties="Configuration=LocalFeed" Targets="Build" />
 
         <!-- Then build with package references -->
         <Message Text="🔄 Building with package references..." Importance="high" />
         <Exec Command="dotnet restore --force" />
-        <MSBuild Projects="$(MSBuildThisFileDirectory)graphmodel.sln" Properties="Configuration=Release;UsePackageReferences=true" Targets="Build" />
+        <MSBuild Projects="$(MSBuildThisFileDirectory)cvoya-graph.sln" Properties="Configuration=Release;UsePackageReferences=true" Targets="Build" />
 
         <Message Text="✅ Build with package references completed successfully!" Importance="high" />
     </Target>

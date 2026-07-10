@@ -1,0 +1,90 @@
+// Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
+// See LICENSE in the project root for full license terms.
+
+namespace Cvoya.Graph.Neo4j.Translation.Tests.Harness;
+
+using System.Linq.Expressions;
+using System.Reflection;
+
+/// <summary>
+/// A minimal <see cref="IGraphQueryProvider"/> whose only real job is
+/// <see cref="CreateQuery{TElement}"/>: it wraps whatever expression the caller built into a
+/// new <see cref="FakeGraphQueryable{T}"/>. This mirrors the shape of the real
+/// <c>GraphQueryProvider.CreateQuery&lt;TElement&gt;</c> (node vs. relationship vs. plain
+/// queryable) closely enough that the public LINQ extension methods on
+/// <c>IGraphQueryable&lt;T&gt;</c> can be used to build expression trees without ever touching
+/// a Neo4j driver, transaction, or graph context. Execution remains disabled by default, but
+/// tests can opt in to recording terminal expressions without a provider.
+/// </summary>
+internal sealed class FakeGraphQueryProvider(bool allowExecution = false) : IGraphQueryProvider
+{
+    public List<Expression> ExecutedExpressions { get; } = [];
+    public object? ExecutionResult { get; set; }
+
+    public IGraph Graph => throw new NotSupportedException("FakeGraphQueryProvider never executes.");
+
+    public IQueryable CreateQuery(Expression expression)
+    {
+        var elementType = GetElementType(expression.Type);
+        var method = GetType().GetMethod(nameof(CreateQuery), 1, [typeof(Expression)])!
+            .MakeGenericMethod(elementType);
+        return (IQueryable)method.Invoke(this, [expression])!;
+    }
+
+    public IGraphQueryable<TElement> CreateQuery<TElement>(Expression expression)
+    {
+        if (typeof(INode).IsAssignableFrom(typeof(TElement)))
+        {
+            var nodeQueryableType = typeof(FakeGraphNodeQueryable<>).MakeGenericType(typeof(TElement));
+            return (IGraphQueryable<TElement>)Activator.CreateInstance(nodeQueryableType, this, expression)!;
+        }
+
+        if (typeof(IRelationship).IsAssignableFrom(typeof(TElement)))
+        {
+            var relQueryableType = typeof(FakeGraphRelationshipQueryable<>).MakeGenericType(typeof(TElement));
+            return (IGraphQueryable<TElement>)Activator.CreateInstance(relQueryableType, this, expression)!;
+        }
+
+        return new FakeGraphQueryable<TElement>(this, expression);
+    }
+
+    IQueryable<TElement> IQueryProvider.CreateQuery<TElement>(Expression expression) => CreateQuery<TElement>(expression);
+
+    public object? Execute(Expression expression) =>
+        throw new NotSupportedException("FakeGraphQueryProvider never executes.");
+
+    public TResult Execute<TResult>(Expression expression) =>
+        throw new NotSupportedException("FakeGraphQueryProvider never executes.");
+
+    public Task<TResult> ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken = default)
+    {
+        if (!allowExecution)
+        {
+            throw new NotSupportedException("FakeGraphQueryProvider never executes.");
+        }
+
+        ExecutedExpressions.Add(expression);
+        return Task.FromResult((TResult)ExecutionResult!);
+    }
+
+    public Task<object?> ExecuteAsync(Expression expression, CancellationToken cancellationToken = default)
+    {
+        if (!allowExecution)
+        {
+            throw new NotSupportedException("FakeGraphQueryProvider never executes.");
+        }
+
+        ExecutedExpressions.Add(expression);
+        return Task.FromResult(ExecutionResult);
+    }
+
+    private static Type GetElementType(Type queryType)
+    {
+        var enumerableInterface = queryType.GetInterfaces()
+            .Prepend(queryType)
+            .FirstOrDefault(t => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IEnumerable<>));
+
+        return enumerableInterface?.GetGenericArguments()[0]
+            ?? throw new InvalidOperationException($"Could not determine element type for {queryType}.");
+    }
+}

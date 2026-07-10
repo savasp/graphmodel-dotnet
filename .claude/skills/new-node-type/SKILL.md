@@ -16,7 +16,7 @@ Scaffold a new node type with proper conventions.
 
 ## Steps
 
-1. **Read existing node types** in `src/Graph.Model/` and the examples in `examples/` to understand the conventions (the `Node` base record, `[Node]` / `[Property]` attributes, property patterns).
+1. **Read existing node types** in `src/Graph/` and the examples in `examples/` to understand the conventions (the `Node` base record, `[Node]` / `[Property]` attributes, property patterns).
 
 2. **Create the node class** following the existing pattern:
    - Inherit from the `Node` base record (or implement `INode` if the surrounding code does)
@@ -24,9 +24,9 @@ Scaffold a new node type with proper conventions.
    - Use C# records, matching the existing codebase
    - Add XML documentation and the Apache 2.0 header
 
-3. **Add tests** in `tests/Graph.Model.Tests/` (the provider-agnostic contract suite — tests there are inherited and executed by provider test projects) following existing test patterns.
+3. **Add tests** in `tests/Cvoya.Graph.Tests/` (the provider-agnostic contract suite — tests there are inherited and executed by provider test projects) following existing test patterns.
 
-4. **Serialization** is handled by the `Graph.Model.Serialization.CodeGen` source generator automatically for types visible to the compilation — verify the generated serializer appears by building.
+4. **Serialization** is handled by the `Cvoya.Graph.Serialization.CodeGen` source generator automatically for types visible to the compilation — verify the generated serializer appears by building.
 
 5. **Build and test** to verify everything compiles:
    ```bash

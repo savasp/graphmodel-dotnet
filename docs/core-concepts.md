@@ -8,10 +8,10 @@ To use Graph Model in your project, you only need to install the Neo4j provider 
 
 ```bash
 # Required
-dotnet add package Cvoya.Graph.Model.Neo4j
+dotnet add package Cvoya.Graph.Neo4j
 
 # Optional (recommended for extra compile-time validation)
-dotnet add package Cvoya.Graph.Model.Analyzers
+dotnet add package Cvoya.Graph.Analyzers
 ```
 
 The Neo4j provider package will automatically bring in all required dependencies and enable code generation. The analyzers package is optional but recommended for additional compile-time checks.
@@ -62,7 +62,7 @@ public interface IEntity
 ```csharp
 public class Person : INode
 {
-    // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
+    // CG011 warns on direct INode implementations; inherit from Node unless you need full control.
     // Good: Using init-only setter
     public string Id { get; init; } = Guid.NewGuid().ToString();
 

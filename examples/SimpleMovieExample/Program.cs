@@ -1,7 +1,10 @@
+// Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
+// See LICENSE in the project root for full license terms.
+
 ﻿namespace SimpleMovieExample;
 
-using Cvoya.Graph.Model;
-using Cvoya.Graph.Model.Neo4j;
+using Cvoya.Graph;
+using Cvoya.Graph.Neo4j;
 using Neo4j.Driver;
 
 static class Program

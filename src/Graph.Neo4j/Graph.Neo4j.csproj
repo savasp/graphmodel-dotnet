@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>library</OutputType>
+        <RootNamespace>Cvoya.Graph.Neo4j</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Neo4j</AssemblyName>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <PackageId>Cvoya.Graph.Neo4j</PackageId>
+        <Description>A graph provider for the Neo4j database with support for LINQ and the Cvoya.Graph abstraction.</Description>
+        <PackageTags>graph;database;neo4j;linq</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Using Include="Cvoya.Graph" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Neo4j.Tests</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Cvoya.Graph.Neo4j.Translation.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Neo4j.Driver" />
+    </ItemGroup>
+
+    <!-- Use project references for development (default) -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
+        <ProjectReference Include="../Graph/Graph.csproj" />
+        <ProjectReference Include="../Graph.Cypher/Graph.Cypher.csproj" />
+        <ProjectReference Include="../Graph.Serialization/Graph.Serialization.csproj" />
+        <!--
+          The CodeGen source generator is only wired in as a Roslyn analyzer for real compilations. DocFX's
+          metadata step (docs/apiref/docfx.json passes -p:BuildingForDocfx=true) loads this project without
+          compiling it, using a bundled compiler older than the one the generator DLL targets; loading the
+          generator as an analyzer there would only surface a harmless but noisy FailedToLoadAnalyzer warning
+          during API reference generation, with no effect on the generated docs.
+        -->
+        <ProjectReference Include="../Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" Condition="'$(BuildingForDocfx)' != 'true'" />
+        <ProjectReference Include="../Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj" ReferenceOutputAssembly="false" Condition="'$(BuildingForDocfx)' == 'true'" />
+    </ItemGroup>
+
+    <!-- Use package references for releases -->
+    <ItemGroup Condition="'$(UseProjectReferences)' == 'false'">
+        <PackageReference Include="Cvoya.Graph" />
+        <PackageReference Include="Cvoya.Graph.Cypher" />
+        <PackageReference Include="Cvoya.Graph.Serialization" />
+    </ItemGroup>
+
+    <!-- Include the CodeGen analyzer in the package when building packages -->
+    <ItemGroup Condition="'$(GeneratePackageOnBuild)' == 'true'">
+        <None Include="../Graph.Serialization.CodeGen/bin/$(Configuration)/netstandard2.0/Cvoya.Graph.Serialization.CodeGen.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
+    </ItemGroup>
+
+</Project>

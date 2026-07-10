@@ -3,28 +3,28 @@
 - **Status:** Accepted (all decisions ratified by @savasp on PR #97; contributor comments on the PR #66 landing path remain welcome via #86)
 - **Date:** 2026-07-02
 - **Related:** #53, #66, #67, #80, #81, #84, #85, #86, #90, #93, #94, #95, #96
-- **Related code:** src/Graph.Model/GraphQueryable/, src/Graph.Model.Neo4j/Querying/
+- **Related code:** src/Graph/GraphQueryable/, src/Cvoya.Graph.Neo4j/Querying/
 
 ## Context
 
-GraphModel has one LINQ-to-Cypher translation pipeline and, as of PR #66, two providers that need it.
+CVOYA graph has one LINQ-to-Cypher translation pipeline and, as of PR #66, two providers that need it.
 
 The in-tree Neo4j provider translates by string-building: `ExpressionToCypherVisitor`
-(src/Graph.Model.Neo4j/Querying/Cypher/Visitors/ExpressionToCypherVisitor.cs, 1,079 lines) returns Cypher
+(src/Cvoya.Graph.Neo4j/Querying/Cypher/Visitors/ExpressionToCypherVisitor.cs, 1,079 lines) returns Cypher
 fragments as `Expression.Constant(string)`, and `CypherQueryBuilder`
-(src/Graph.Model.Neo4j/Querying/Cypher/Builders/CypherQueryBuilder.cs, 1,216 lines) accumulates raw clause
+(src/Cvoya.Graph.Neo4j/Querying/Cypher/Builders/CypherQueryBuilder.cs, 1,216 lines) accumulates raw clause
 strings (`AddMatchPattern(string)`, `AddWhere(string)`). Dialect syntax — `datetime()`, `apoc.text.*`,
 `db.index.fulltext` calls — is welded inline into LINQ recognition. Terminal operations are dispatched by
 string method name in `CypherQueryVisitor`
-(src/Graph.Model.Neo4j/Querying/Cypher/Visitors/Core/CypherQueryVisitor.cs, 1,683 lines), matching ~60
-public `*AsyncMarker` stubs (src/Graph.Model/GraphQueryable/QueryableAsyncExtensionsMarkers.cs).
+(src/Cvoya.Graph.Neo4j/Querying/Cypher/Visitors/Core/CypherQueryVisitor.cs, 1,683 lines), matching ~60
+public `*AsyncMarker` stubs (src/Graph/GraphQueryable/QueryableAsyncExtensionsMarkers.cs).
 
 PR #66 (@paule96) contributes a complete Apache AGE provider for PostgreSQL (~23k added lines). Because
 nothing in the pipeline was reusable, it had to fork the stack (`AgeGraphQueryableBase`,
 `AgeGraphQueryProvider` — byte-similar to their Neo4j counterparts) — but its internals are *better* than
 what they fork: a typed fragment IR plus a renderer (`AgeQueryFragments`, `AgeFragmentRenderer` under
-src/Graph.Model.Age/Querying/Cypher/Visitors/Core/ in the PR) instead of string accumulation, and a thin
-shared `src/Graph.Model.Cypher` package that the Neo4j provider does not yet consume.
+src/Cvoya.Graph.Age/Querying/Cypher/Visitors/Core/ in the PR) instead of string accumulation, and a thin
+shared `src/Cvoya.Graph.Cypher` package that the Neo4j provider does not yet consume.
 
 Without a shared layer, every LINQ feature must be built twice and the two implementations will drift
 semantically. The public query surface compounds the cost: the node/relationship distinction is modeled as
@@ -75,11 +75,11 @@ convention (see [README.md](README.md)).
 
 5. **Neutral result wire model.** Provider-independent graph values (node/relationship/path/scalar/list/map
    records). The hard materialization logic of `CypherResultProcessor`
-   (src/Graph.Model.Neo4j/Querying/Cypher/Execution/CypherResultProcessor.cs, 1,173 lines — complex-property
+   (src/Cvoya.Graph.Neo4j/Querying/Cypher/Execution/CypherResultProcessor.cs, 1,173 lines — complex-property
    reassembly, polymorphic type resolution, path stitching) moves into shared code operating on the wire
    model; each provider shrinks to a driver→wire-model adapter (#85).
 
-6. **`tests/Graph.Model.Tests` ships as a provider compatibility suite** with a harness SPI
+6. **`tests/Cvoya.Graph.Tests` ships as a provider compatibility suite** with a harness SPI
    (create/tear down store, produce `IGraph`, per-test isolation) and a capability model aligned 1:1 with
    the `ICypherDialect` capability surface, so "dialect says unsupported" and "suite skips-with-reason" can
    never disagree. The in-tree Neo4j tests consume it exactly as an external provider would (#95).
@@ -91,30 +91,30 @@ convention (see [README.md](README.md)).
 
 ### Settled by this ADR (ratified by @savasp on PR #97)
 
-**(a) Package layout: fold the shared querying front-end into `Graph.Model`; the shared Cypher package is
-`Graph.Model.Cypher`.** The #93 §A decomposition left open whether the shared queryable implementations,
-provider base, and LINQ front-end live in core or a separate `Graph.Model.Querying`. Decision: fold
-into `Graph.Model`. The operator surface and the front-end that recognizes it are one release unit — the
+**(a) Package layout: fold the shared querying front-end into `Graph`; the shared Cypher package is
+`Cvoya.Graph.Cypher`.** The #93 §A decomposition left open whether the shared queryable implementations,
+provider base, and LINQ front-end live in core or a separate `Cvoya.Graph.Querying`. Decision: fold
+into `Graph`. The operator surface and the front-end that recognizes it are one release unit — the
 `MethodInfo` dispatch table binds directly to operator identities defined in the same assembly, so a
 separate package would version in lockstep anyway (pure SemVer coupling with no independent consumer) while
 adding a second dependency for every provider and an `InternalsVisibleTo` seam for the semantic model's
 internals. Folding keeps `GraphQueryModel` internals internal and gives non-Cypher providers a
-single-package dependency. The level-2 package keeps PR #66's name, `Graph.Model.Cypher` (NuGet ID
-`Cvoya.Graph.Model.Cypher`, matching the existing ID convention): it is accurate — the package contains the
+single-package dependency. The level-2 package keeps PR #66's name, `Cvoya.Graph.Cypher` (NuGet ID
+`Cvoya.Graph.Cypher`, matching the existing ID convention): it is accurate — the package contains the
 Cypher AST, planner, dialect SPI, and renderer base — and reusing the contributed name minimizes friction
-with #66. Alternatives (`Graph.Model.OpenCypher`, `Graph.Model.Cypher.Core`) add no information. The shared
-wire-model/materialization code (#85) follows the same folding logic into `Graph.Model`, since a non-Cypher
+with #66. Alternatives (`Cvoya.Graph.OpenCypher`, `Cvoya.Graph.Cypher.Core`) add no information. The shared
+wire-model/materialization code (#85) follows the same folding logic into `Graph`, since a non-Cypher
 provider needs it too; final placement is an #85 implementation detail.
 
-**(b) `Graph.Model.Cypher` ships as a public NuGet package.** Decision: public from the release in
+**(b) `Cvoya.Graph.Cypher` ships as a public NuGet package.** Decision: public from the release in
 which #84 lands, not internal shared source. The multi-provider story is the point of this ADR; an external
 Cypher-dialect provider (and eventually AGE, whether in-tree or out) needs the planner/dialect SPI as a
 package, and #95 already commits to shipping a provider-author-facing package — a provider SPI without the
 translation SPI is half a story. The stability concern is moot pre-1.0: the whole library is 0.x, breaking
 changes are accepted (#93 decision), and holding the package back buys no stability a `0.x` version number
-doesn't already disclaim. Document it as an SPI package that versions in lockstep with `Cvoya.Graph.Model`.
+doesn't already disclaim. Document it as an SPI package that versions in lockstep with `Cvoya.Graph`.
 
-**(c) Compatibility-suite package name: `Cvoya.Graph.Model.CompatibilityTests`.** As per the #95 working
+**(c) Compatibility-suite package name: `Cvoya.Graph.CompatibilityTests`.** As per the #95 working
 name. "CompatibilityTests" is self-describing on nuget.org where "TCK" is jargon, and the ID sorts with the
 package family it certifies.
 
@@ -126,7 +126,7 @@ buy. Merging the fork now (b) means merging ~40 classes that #94 breaks (surface
 delete (the pipeline it forks), maintaining a second CI lane through that churn, with 864 lines of
 self-reported security issues (docs/age/issues/security-issues.md in the PR) still to triage. Splitting (c)
 has lost its payload: the genuinely shareable pieces are being absorbed by design rather than by merge —
-the fragment/renderer approach becomes the #84 AST (decision 7), the PR's `Graph.Model.Cypher` seed is
+the fragment/renderer approach becomes the #84 AST (decision 7), the PR's `Cvoya.Graph.Cypher` seed is
 superseded by that package's two-level rebuild, and the AGE test fixture's natural home is as the second
 harness of the #95 suite once that SPI exists. Under the converged architecture the AGE provider becomes an
 `AgeDialect` + Npgsql/AGE wire-model adapter + store/transaction layer — a fraction of the current 23k
@@ -154,7 +154,7 @@ means" checklist on #66/#53.
   capability gaps (nested transactions, full-text search — #53) become declared capabilities: translation
   fails informatively and suite tests skip-with-reason instead of failing. Security-issue triage from the
   PR's own docs happens during #86. Concrete checklist lands on #66/#53 per #86.
-- **New shipped packages:** `Cvoya.Graph.Model.Cypher` and `Cvoya.Graph.Model.CompatibilityTests` join the
+- **New shipped packages:** `Cvoya.Graph.Cypher` and `Cvoya.Graph.CompatibilityTests` join the
   release pipeline (#71). Both are 0.x and version in lockstep with the core.
 - **Cost per new operator drops to one binding:** surface + `GraphQueryModel` node + planner lowering +
   per-dialect rendering + capability entry + suite tests (#96) — instead of one full visitor-stack
@@ -188,7 +188,7 @@ means" checklist on #66/#53.
 - **A fresh fragment-IR design, ignoring PR #66's.** Rejected: `AgeQueryFragments`/`AgeFragmentRenderer`
   already validate the fragments + per-dialect-renderer shape in a working provider; a third design would
   re-derive the same structure while discarding both the validation and the contribution.
-- **Separate `Graph.Model.Querying` package** — see decision (a); rejected
+- **Separate `Cvoya.Graph.Querying` package** — see decision (a); rejected
   (SemVer-coupled with no independent consumer).
-- **Hold `Graph.Model.Cypher` as internal shared source** — see decision (b); rejected
+- **Hold `Cvoya.Graph.Cypher` as internal shared source** — see decision (b); rejected
   (pre-1.0 versioning already disclaims the stability that internalizing would protect).

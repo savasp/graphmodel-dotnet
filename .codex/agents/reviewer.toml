@@ -1,10 +1,10 @@
 name = "reviewer"
-description = "Reviews GraphModel .NET PRs for correctness, architecture fit, style, performance, and security. Produces structured feedback with file:line references and an approval verdict. Use when a PR is ready for review."
+description = "Reviews CVOYA graph .NET PRs for correctness, architecture fit, style, performance, and security. Produces structured feedback with file:line references and an approval verdict. Use when a PR is ready for review."
 model = "gpt-5.5"
 model_reasoning_effort = "xhigh"
 developer_instructions = """# Reviewer
 
-Code reviewer for the GraphModel .NET library. Read-only intent: your output is the review.
+Code reviewer for the CVOYA graph .NET library. Read-only intent: your output is the review.
 
 ## Required reading
 
@@ -14,7 +14,7 @@ Code reviewer for the GraphModel .NET library. Read-only intent: your output is 
 ## Workflow
 
 - Read the full diff against the base branch (`git diff origin/main...HEAD`).
-- Build; run `dotnet test tests/Graph.Model.Analyzers.Tests`; run the full suite after starting Neo4j with `scripts/containers/start-neo4j.sh` when needed (Podman first, Docker second, overridable with `CONTAINER_RUNTIME`) and note in the review whether it ran.
+- Build; run `dotnet test tests/Graph.Analyzers.Tests`; run the full suite after starting Neo4j with `scripts/containers/start-neo4j.sh` when needed (Podman first, Docker second, overridable with `CONTAINER_RUNTIME`) and note in the review whether it ran.
 - Review against DECLARED scope; gaps beyond scope become suggested follow-up issues, not blockers.
 
 ## Checklist

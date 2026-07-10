@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+    
+    <!-- Enable XML documentation for performance tests but suppress missing doc warnings -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    
+    <!-- Suppress analyzer rules not applicable to benchmark projects -->
+    <NoWarn>$(NoWarn);RS1035;CS1591</NoWarn>
+    <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="BenchmarkDotNet.Diagnostics.Windows" />
+    <PackageReference Include="Bogus" />
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Use project references for development and benchmarking -->
+  <ItemGroup Condition="'$(UseProjectReferences)' == 'true'">
+    <ProjectReference Include="../../src/Graph/Graph.csproj" />
+    <ProjectReference Include="../../src/Graph.Neo4j/Graph.Neo4j.csproj" />
+    <ProjectReference Include="../../src/Graph.Analyzers/Graph.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Use package references for releases -->
+  <ItemGroup Condition="'$(UseProjectReferences)' != 'true'">
+    <PackageReference Include="Cvoya.Graph" />
+    <PackageReference Include="Cvoya.Graph.Neo4j" />
+    <PackageReference Include="Cvoya.Graph.Serialization" />
+    <PackageReference Include="Cvoya.Graph.Serialization.CodeGen" />
+  </ItemGroup>
+
+</Project> 

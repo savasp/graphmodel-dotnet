@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# GraphModel Performance Benchmarks Runner
+# CVOYA graph Performance Benchmarks Runner
 # Usage: ./scripts/run-benchmarks.sh [options]
 
 set -e
@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ "$SHOW_HELP" = true ]; then
-    echo "GraphModel Performance Benchmarks Runner"
+    echo "CVOYA graph Performance Benchmarks Runner"
     echo ""
     echo "Usage: ./scripts/run-benchmarks.sh [options]"
     echo ""
@@ -50,7 +50,7 @@ if [ "$SHOW_HELP" = true ]; then
 fi
 
 # Ensure we're in the right directory
-PROJECT_DIR="tests/Graph.Model.Performance.Tests"
+PROJECT_DIR="tests/Graph.Performance.Tests"
 if [ ! -d "$PROJECT_DIR" ]; then
     echo "Error: Performance test project not found. Make sure you're running from the repository root."
     exit 1

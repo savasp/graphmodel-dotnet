@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <IsPackable>false</IsPackable>
+        <RootNamespace>Cvoya.Graph.Analyzers.Tests</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Analyzers.Tests</AssemblyName>
+
+        <!-- Use the new testing platform -->
+        <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
+
+        <!--
+          xunit.v3's own generated entry point already dispatches to Microsoft.Testing.Platform
+          when invoked in server mode, so the separately-generated Microsoft.Testing.Platform.MSBuild
+          entry point is redundant and triggers CS8892 (unused entry point because a synchronous
+          entry point was found).
+        -->
+        <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+
+        <!-- Enable live output -->
+        <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+        <TestingPlatformShowProgress>true</TestingPlatformShowProgress>
+        <TestingPlatformCaptureOutput>true</TestingPlatformCaptureOutput>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.XUnit" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing.XUnit" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+        <PackageReference Include="xunit.v3.mtp-v2" />
+        <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\Graph.Analyzers\Graph.Analyzers.csproj" />
+        <ProjectReference Include="..\..\src\Graph\Graph.csproj" />
+    </ItemGroup>
+</Project>

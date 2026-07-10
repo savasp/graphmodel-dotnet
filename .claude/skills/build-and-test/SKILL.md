@@ -8,7 +8,7 @@ argument-hint: "[configuration]"
 
 # Build and Test
 
-Build and test the GraphModel solution. Configuration defaults to `Debug`; pass one as `$1` to override (e.g. `/build-and-test Release`).
+Build and test the CVOYA graph solution. Configuration defaults to `Debug`; pass one as `$1` to override (e.g. `/build-and-test Release`).
 
 ## Steps
 
@@ -19,7 +19,7 @@ Build and test the GraphModel solution. Configuration defaults to `Debug`; pass 
 
 2. Run the analyzer tests — these always run, no external dependencies:
    ```bash
-   dotnet test tests/Graph.Model.Analyzers.Tests --configuration $1 --no-build
+   dotnet test tests/Cvoya.Graph.Analyzers.Tests --configuration $1 --no-build
    ```
 
 3. Run the full suite, which includes the Neo4j-bound contract tests:
@@ -32,5 +32,5 @@ Build and test the GraphModel solution. Configuration defaults to `Debug`; pass 
 
 ## Notes
 
-- `tests/Graph.Model.Tests` is an abstract contract suite — running it directly executes ~no tests. The contract tests execute through `tests/Graph.Model.Neo4j.Tests`.
+- `tests/Cvoya.Graph.Tests` is an abstract contract suite — running it directly executes ~no tests. The contract tests execute through `tests/Cvoya.Graph.Neo4j.Tests`.
 - For package testing, use `LocalFeed` then `Release` configuration. See [docs/graph-model-developers.md](../../../docs/graph-model-developers.md).

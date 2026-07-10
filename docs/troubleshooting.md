@@ -1,6 +1,6 @@
 # 🔧 Troubleshooting Guide
 
-This guide helps you diagnose and resolve common issues when working with GraphModel.
+This guide helps you diagnose and resolve common issues when working with CVOYA graph.
 
 ## 🚨 Common Issues and Solutions
 
@@ -137,7 +137,7 @@ InvalidCastException: Unable to cast object of type 'System.String' to type 'Sys
    // If database has string IDs but your model expects int:
    public class User : INode
    {
-       // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
+       // CG011 warns on direct INode implementations; inherit from Node unless you need full control.
        public string Id { get; init; } = Guid.NewGuid().ToString();  // Use string if Neo4j stores as string
        public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
        // Not: public int Id { get; set; }
@@ -149,7 +149,7 @@ InvalidCastException: Unable to cast object of type 'System.String' to type 'Sys
    ```csharp
    public class User : INode
    {
-       // GM011 warns on direct INode implementations; inherit from Node unless you need full control.
+       // CG011 warns on direct INode implementations; inherit from Node unless you need full control.
        public string Id { get; init; } = Guid.NewGuid().ToString();
        public IReadOnlyList<string> Labels { get; } = Array.Empty<string>();
        public int? Age { get; set; }           // Nullable if not always present
@@ -311,23 +311,23 @@ TransientException: Deadlock detected
 
 | Rule ID | Description | Severity |
 | --- | --- | --- |
-| **GM001** | Missing parameterless constructor | Error |
-| **GM002** | Property must have public accessors | Error |
-| **GM003** | Property cannot be graph interface type | Error |
-| **GM004** | Invalid property type for node | Error |
-| **GM005** | Invalid property type for relationship | Error |
-| **GM006** | Complex type contains graph interface types | Error |
-| **GM007** | Duplicate property attribute label | Error |
-| **GM008** | Duplicate relationship attribute label | Error |
-| **GM009** | Duplicate node attribute label | Error |
-| **GM010** | Circular reference without nullable | Error |
-| **GM011** | Type should inherit from Node/Relationship instead of implementing directly | Warning |
-| **GM012** | [Node]/[Relationship] on a type that doesn't implement the matching interface | Warning |
-| **GM013** | Both [Node] and [Relationship] applied to the same type | Error |
-| **GM014** | Graph entity types (INode/IRelationship) must be reference types | Error |
+| **CG001** | Missing parameterless constructor | Error |
+| **CG002** | Property must have public accessors | Error |
+| **CG003** | Property cannot be graph interface type | Error |
+| **CG004** | Invalid property type for node | Error |
+| **CG005** | Invalid property type for relationship | Error |
+| **CG006** | Complex type contains graph interface types | Error |
+| **CG007** | Duplicate property attribute label | Error |
+| **CG008** | Duplicate relationship attribute label | Error |
+| **CG009** | Duplicate node attribute label | Error |
+| **CG010** | Circular reference without nullable | Error |
+| **CG011** | Type should inherit from Node/Relationship instead of implementing directly | Warning |
+| **CG012** | [Node]/[Relationship] on a type that doesn't implement the matching interface | Warning |
+| **CG013** | Both [Node] and [Relationship] applied to the same type | Error |
+| **CG014** | Graph entity types (INode/IRelationship) must be reference types | Error |
 
 **Solutions:**
-See the [Analyzers README](../src/Graph.Model.Analyzers/README.md) for detailed examples of each warning and how to fix them.
+See the [Analyzers README](../src/Cvoya.Graph.Analyzers/README.md) for detailed examples of each warning and how to fix them.
 
 ## 🔍 Debugging Techniques
 
@@ -391,7 +391,7 @@ public async Task<bool> TestConnection(string connectionString, string username,
 
 When reporting issues, include:
 
-- **GraphModel version**
+- **CVOYA graph version**
 - **.NET version**
 - **Neo4j version**
 - **Full error message and stack trace**
@@ -406,7 +406,7 @@ When reporting issues, include:
 
 ### 3. Search Existing Issues
 
-- Check [GitHub Issues](https://github.com/cvoya-com/graphmodel-dotnet/issues)
+- Check [GitHub Issues](https://github.com/cvoya-com/graph/issues)
 - Look for similar problems and solutions
 
 ### 4. Create Minimal Reproduction

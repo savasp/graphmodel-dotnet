@@ -10,10 +10,10 @@ A provider exposes a store type that owns database connectivity and returns an `
 
 The public interfaces to implement are:
 
-- `IGraph` in `src/Graph.Model/IGraph.cs`: CRUD, synchronous query roots, full-text search, schema/index provisioning, and transactions.
-- `IGraphTransaction` in `src/Graph.Model/IGraphTransaction.cs`: `CommitAsync()`, `RollbackAsync()`, and `IAsyncDisposable`.
-- `IGraphQueryProvider` in `src/Graph.Model/GraphQueryable/IGraphQueryProvider.cs`: expression execution, query creation, and async terminal execution.
-- `IGraphQueryable<T>` in `src/Graph.Model/GraphQueryable/`: the single LINQ root returned by `IGraph.Nodes<N>`/`Relationships<R>`/`DynamicNodes`/`DynamicRelationships`/search methods. Node-only and relationship-only operators (e.g. traversal) are gated by generic constraints on the operator itself (`where T : INode`), not by a separate receiver interface — `IGraphNodeQueryable<T>`/`IGraphRelationshipQueryable<T>` are `[Obsolete]` aliases kept for one release.
+- `IGraph` in `src/Graph/IGraph.cs`: CRUD, synchronous query roots, full-text search, schema/index provisioning, and transactions.
+- `IGraphTransaction` in `src/Graph/IGraphTransaction.cs`: `CommitAsync()`, `RollbackAsync()`, and `IAsyncDisposable`.
+- `IGraphQueryProvider` in `src/Graph/GraphQueryable/IGraphQueryProvider.cs`: expression execution, query creation, and async terminal execution.
+- `IGraphQueryable<T>` in `src/Graph/GraphQueryable/`: the single LINQ root returned by `IGraph.Nodes<N>`/`Relationships<R>`/`DynamicNodes`/`DynamicRelationships`/search methods. Node-only and relationship-only operators (e.g. traversal) are gated by generic constraints on the operator itself (`where T : INode`), not by a separate receiver interface — `IGraphNodeQueryable<T>`/`IGraphRelationshipQueryable<T>` are `[Obsolete]` aliases kept for one release.
 
 `IGraph` methods accept an optional `IGraphTransaction`. A null transaction means the provider creates a per-operation or per-query execution transaction and owns its lifecycle. A non-null transaction means the caller owns commit/rollback/disposal, and the provider must reject foreign transaction implementations with a clear graph exception.
 
@@ -21,7 +21,7 @@ The provider store owns database connectivity and releases provider resources. `
 
 ## Entities And Schema
 
-Domain node types satisfy `INode`; relationship types satisfy `IRelationship`. Application models should normally inherit from the base `Node` and `Relationship` records, because direct interface implementation triggers analyzer warning GM011 unless the model needs full control. The base records generate opaque string IDs with `Guid.NewGuid().ToString("N")`. Providers must treat IDs as caller-visible opaque strings, not database-native IDs.
+Domain node types satisfy `INode`; relationship types satisfy `IRelationship`. Application models should normally inherit from the base `Node` and `Relationship` records, because direct interface implementation triggers analyzer warning CG011 unless the model needs full control. The base records generate opaque string IDs with `Guid.NewGuid().ToString("N")`. Providers must treat IDs as caller-visible opaque strings, not database-native IDs.
 
 Labels and relationship types come from attributes first:
 
@@ -36,7 +36,7 @@ Runtime metadata properties are provider-populated. `INode.Labels` and `IRelatio
 
 ## Marker-Method Protocol
 
-Async terminal LINQ operators are represented in expression trees by internal marker methods in `src/Graph.Model/GraphQueryable/QueryTerminals.cs`. `QueryableAsyncExtensions` builds `MethodCallExpression` nodes for these marker methods, then calls `IGraphQueryProvider.ExecuteAsync`. `QueryTerminals` is `internal`, not public API — a provider needs `InternalsVisibleTo` from `Cvoya.Graph.Model` (already granted to `Cvoya.Graph.Model.Neo4j`) to reference its members directly.
+Async terminal LINQ operators are represented in expression trees by internal marker methods in `src/Graph/GraphQueryable/QueryTerminals.cs`. `QueryableAsyncExtensions` builds `MethodCallExpression` nodes for these marker methods, then calls `IGraphQueryProvider.ExecuteAsync`. `QueryTerminals` is `internal`, not public API — a provider needs `InternalsVisibleTo` from `Cvoya.Graph` (already granted to `Cvoya.Graph.Neo4j`) to reference its members directly.
 
 Providers recognize marker methods (and the rest of the LINQ surface) by `MethodInfo` identity — comparing a call's generic method definition (or the method itself, for non-generic methods) against a table built once via reflection — not by matching `MethodInfo.Name` as a string. The Neo4j provider's table lives in `CypherQueryVisitor`'s `LinqOperatorDispatch` helper; a new provider should build an equivalent table rather than switching on method names, since name-based dispatch cannot distinguish overloads and can silently mis-dispatch if an unrelated method happens to share a name.
 
@@ -69,7 +69,7 @@ Cross-provider compatibility depends on matching these conventions exactly.
 
 ### IDs
 
-Store the public `IEntity.Id` as a normal graph property named `Id`. Do not expose database-native IDs as GraphModel IDs. Relationship `StartNodeId` and `EndNodeId` refer to GraphModel node IDs.
+Store the public `IEntity.Id` as a normal graph property named `Id`. Do not expose database-native IDs as CVOYA graph IDs. Relationship `StartNodeId` and `EndNodeId` refer to CVOYA graph node IDs.
 
 ### Labels And Types
 
@@ -102,7 +102,7 @@ agree on the mapping.
 Collections of complex properties use one relationship per collection item and store a `SequenceNumber` relationship property. Deserialization orders collection items by `SequenceNumber`. Nested complex properties recurse with the same relationship-type convention.
 
 Every occurrence is a separate value node, even when two owners reference the same in-memory object.
-Nodes and relationships need stable GraphModel IDs and remain visible to ordinary graph queries.
+Nodes and relationships need stable CVOYA graph IDs and remain visible to ordinary graph queries.
 Providers may add an internal relationship marker for cascade cleanup, but must not infer
 complex-property edges from a reserved relationship-name prefix.
 
@@ -133,22 +133,22 @@ Exception behavior follows the public API contract: provider/backend failures ar
 
 ## Contract-Test Reuse
 
-The provider contract suite is the `Cvoya.Graph.Model.CompatibilityTests` package (`src/Graph.Model.CompatibilityTests`) - see [Certifying a provider](#certifying-a-provider) below for the full workflow. It mostly defines test interfaces with default xUnit test methods; running the package alone proves little because providers must bind those interfaces in a provider-specific test project.
+The provider contract suite is the `Cvoya.Graph.CompatibilityTests` package (`src/Cvoya.Graph.CompatibilityTests`) - see [Certifying a provider](#certifying-a-provider) below for the full workflow. It mostly defines test interfaces with default xUnit test methods; running the package alone proves little because providers must bind those interfaces in a provider-specific test project.
 
 The Neo4j provider pattern is:
 
-- `tests/Graph.Model.Neo4j.Tests/Infrastructure/Neo4jHarness.cs` implements the suite's `IGraphProviderTestHarness` SPI, wrapping the existing Testcontainers/database-pool setup.
-- `tests/Graph.Model.Neo4j.Tests/Neo4jTest.cs` derives from `CompatibilityTest`, adds correlation-scoped logging, and exposes `IGraph Graph`.
-- Concrete classes in `tests/Graph.Model.Neo4j.Tests/GraphModelTests/` inherit `Neo4jTest` and implement one or more `Cvoya.Graph.Model.CompatibilityTests.I...Tests` interfaces.
+- `tests/Cvoya.Graph.Neo4j.Tests/Infrastructure/Neo4jHarness.cs` implements the suite's `IGraphProviderTestHarness` SPI, wrapping the existing Testcontainers/database-pool setup.
+- `tests/Cvoya.Graph.Neo4j.Tests/Neo4jTest.cs` derives from `CompatibilityTest`, adds correlation-scoped logging, and exposes `IGraph Graph`.
+- Concrete classes in `tests/Cvoya.Graph.Neo4j.Tests/CVOYA graphTests/` inherit `Neo4jTest` and implement one or more `Cvoya.Graph.CompatibilityTests.I...Tests` interfaces.
 - Provider-specific tests live beside the inherited contract tests.
 
-A new provider test project follows the same three-piece shape (harness → intermediate base class → one-line interface bindings). `examples/CompatibilityTests.SampleHarness` is a compiling skeleton; `tests/Graph.Model.Neo4j.Tests` is the full reference implementation.
+A new provider test project follows the same three-piece shape (harness → intermediate base class → one-line interface bindings). `examples/CompatibilityTests.SampleHarness` is a compiling skeleton; `tests/Cvoya.Graph.Neo4j.Tests` is the full reference implementation.
 
 ## Future Chapters
 
 ### Level-1 GraphQueryModel (#84)
 
-`Cvoya.Graph.Model.Querying.GraphQueryModel` is the public, provider-neutral semantic query model. Its
+`Cvoya.Graph.Querying.GraphQueryModel` is the public, provider-neutral semantic query model. Its
 roots, predicates, traversal steps, projection, ordering, paging, and terminal operation describe what a
 query asks for without choosing a query language. Providers that do not target Cypher may consume this
 model directly; the expression-to-model builder remains internal so the public LINQ surface and its
@@ -166,17 +166,17 @@ Stub. #85 will define dialect feature switches and the neutral result wire model
 
 ## Certifying A Provider
 
-The `Cvoya.Graph.Model.CompatibilityTests` package is a shippable TCK: a harness SPI, a capability registry so backends that legitimately lack a feature (e.g. server-side full-text search) skip rather than fail, and a compliance guard that catches a mis-wired provider project (one that discovers/runs far fewer tests than it should) instead of letting it silently "pass" with almost nothing executed.
+The `Cvoya.Graph.CompatibilityTests` package is a shippable TCK: a harness SPI, a capability registry so backends that legitimately lack a feature (e.g. server-side full-text search) skip rather than fail, and a compliance guard that catches a mis-wired provider project (one that discovers/runs far fewer tests than it should) instead of letting it silently "pass" with almost nothing executed.
 
 ### 1. Implement the harness SPI
 
 ```csharp
 public sealed class MyProviderHarness : IGraphProviderTestHarness
 {
-    public string ProviderName => "MyCompany.GraphModel.MyProvider";
+    public string ProviderName => "MyCompany.CVOYA graph.MyProvider";
 
     // Declare only what your backing store actually supports. Unlisted capabilities' tests skip,
-    // never fail - see GraphCapability in src/Graph.Model for the full member list.
+    // never fail - see GraphCapability in src/Graph for the full member list.
     public CapabilitySet Capabilities => CapabilitySet.All.Except(GraphCapability.FullTextSearch);
 
     public ValueTask InitializeAsync() => /* start/connect infrastructure once per test class */;
@@ -202,7 +202,7 @@ public abstract class MyProviderTest(MyProviderHarness harness)
 
 ### 3. Bind the `I*Tests` interfaces
 
-One line per suite interface (see `src/Graph.Model.CompatibilityTests/I*.cs` for the full set):
+One line per suite interface (see `src/Cvoya.Graph.CompatibilityTests/I*.cs` for the full set):
 
 ```csharp
 public class BasicTests(MyProviderHarness h) : MyProviderTest(h), IBasicTests;
@@ -213,7 +213,7 @@ public class FullTextSearchTests(MyProviderHarness h) : MyProviderTest(h, StoreI
 ### 4. Arm the compliance guard
 
 ```csharp
-[assembly: AssemblyFixture(typeof(Cvoya.Graph.Model.CompatibilityTests.ComplianceGuard))]
+[assembly: AssemblyFixture(typeof(Cvoya.Graph.CompatibilityTests.ComplianceGuard))]
 ```
 
 The guard is unarmed by default (a local run with no reachable backing store stays a plain skip). Set `GRAPHMODEL_COMPLIANCE_STRICT=1` to arm it - CI compliance lanes should always run this way:
@@ -226,8 +226,8 @@ Under strict mode, the guard also promotes `GraphProviderUnavailableException` (
 
 ### 5. Read the results
 
-- **Capability skips** carry a fixed, parseable reason: `Capability '<Name>' not declared by provider '<ProviderName>' (Cvoya.Graph.Model.CompatibilityTests <version>)`. Any other skip or a nonzero failure count needs investigation.
-- **The compliance report**: fill in `COMPLIANCE.md` (template in `src/Graph.Model.CompatibilityTests/COMPLIANCE.md`) from your TRX results - N passed / M skipped-by-declared-capability / 0 failed, where N is at least `ComplianceInventory.MinimumExecuted(yourDeclaredCapabilities)`.
+- **Capability skips** carry a fixed, parseable reason: `Capability '<Name>' not declared by provider '<ProviderName>' (Cvoya.Graph.CompatibilityTests <version>)`. Any other skip or a nonzero failure count needs investigation.
+- **The compliance report**: fill in `COMPLIANCE.md` (template in `src/Cvoya.Graph.CompatibilityTests/COMPLIANCE.md`) from your TRX results - N passed / M skipped-by-declared-capability / 0 failed, where N is at least `ComplianceInventory.MinimumExecuted(yourDeclaredCapabilities)`.
 - **"Compatible"** means: 0 failed, every skip is a declared-capability skip, and the executed count meets the guard's floor for your declared capabilities.
 
-See `examples/CompatibilityTests.SampleHarness` for a minimal compiling skeleton of all three pieces, and `tests/Graph.Model.Neo4j.Tests` for the full in-tree reference implementation.
+See `examples/CompatibilityTests.SampleHarness` for a minimal compiling skeleton of all three pieces, and `tests/Cvoya.Graph.Neo4j.Tests` for the full in-tree reference implementation.

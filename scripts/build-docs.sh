@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# GraphModel Documentation Builder
+# CVOYA graph Documentation Builder
 # Builds all source projects and copies XML documentation to docs/api folder
 
 set -e
 
-echo "🔨 Building GraphModel documentation..."
+echo "🔨 Building CVOYA graph documentation..."
 
 # Configuration to use (default: Release for documentation)
 CONFIG=${1:-Debug}

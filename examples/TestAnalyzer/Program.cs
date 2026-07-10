@@ -1,20 +1,9 @@
-// Copyright 2025 Savas Parastatidis
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
+// See LICENSE in the project root for full license terms.
 
 namespace TestAnalyzer;
 
-using Cvoya.Graph.Model;
+using Cvoya.Graph;
 
 
 // Very simple test - should work
@@ -22,13 +11,13 @@ public record SimpleNode : Node
 {
 }
 
-// Test case similar to failing GM004 test
+// Test case similar to failing CG004 test
 public class CustomClass
 {
     public string Value { get; set; } = string.Empty;
 }
 
-// Test case with explicit constructor for GM005
+// Test case with explicit constructor for CG005
 public class ValidComplexType
 {
     public ValidComplexType() { }
@@ -37,7 +26,7 @@ public class ValidComplexType
 
 public record TestNode : Node
 {
-    public CustomClass Custom { get; set; } = new CustomClass(); // This should produce GM004
+    public CustomClass Custom { get; set; } = new CustomClass(); // This should produce CG004
     public ValidComplexType Valid { get; set; } = new ValidComplexType(); // This should be OK
 }
 

@@ -1,6 +1,6 @@
 # Example 3: Transaction Management
 
-This example demonstrates transaction support in the GraphModel library, including commit, rollback, and data consistency.
+This example demonstrates transaction support in the CVOYA graph library, including commit, rollback, and data consistency.
 
 ## What You'll Learn
 

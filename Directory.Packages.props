@@ -9,12 +9,12 @@
         <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
         <PackageVersion Include="Bogus" Version="35.6.5" />
         <PackageVersion Include="coverlet.collector" Version="10.0.1" />
-        <PackageVersion Include="Cvoya.Graph.Model" Version="$(Version)" />
-        <PackageVersion Include="Cvoya.Graph.Model.CompatibilityTests" Version="$(Version)" />
-        <PackageVersion Include="Cvoya.Graph.Model.Analyzers" Version="$(Version)" />
-        <PackageVersion Include="Cvoya.Graph.Model.Neo4j" Version="$(Version)" />
-        <PackageVersion Include="Cvoya.Graph.Model.Serialization" Version="$(Version)" />
-        <PackageVersion Include="Cvoya.Graph.Model.Serialization.CodeGen" Version="$(Version)" />
+        <PackageVersion Include="Cvoya.Graph" Version="$(Version)" />
+        <PackageVersion Include="Cvoya.Graph.CompatibilityTests" Version="$(Version)" />
+        <PackageVersion Include="Cvoya.Graph.Analyzers" Version="$(Version)" />
+        <PackageVersion Include="Cvoya.Graph.Neo4j" Version="$(Version)" />
+        <PackageVersion Include="Cvoya.Graph.Serialization" Version="$(Version)" />
+        <PackageVersion Include="Cvoya.Graph.Serialization.CodeGen" Version="$(Version)" />
         <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.6.0" />
         <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
         <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.XUnit" Version="1.1.2" />
