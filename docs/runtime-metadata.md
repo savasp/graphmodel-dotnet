@@ -190,7 +190,7 @@ The `CG011` analyzer rule warns when types directly implement `INode` or `IRelat
 ### Rule Details
 
 - **ID**: CG011
-- **Category**: Graph.Model
+- **Category**: Graph
 - **Severity**: Warning
 - **Message**: "Type '{TypeName}' should inherit from '{BaseClass}' instead of implementing '{Interface}' directly. The base class provides default implementations for runtime metadata properties"
 

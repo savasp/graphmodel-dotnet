@@ -16,7 +16,7 @@ Scaffold a new node type with proper conventions.
 
 ## Steps
 
-1. **Read existing node types** in `src/Graph.Model/` and the examples in `examples/` to understand the conventions (the `Node` base record, `[Node]` / `[Property]` attributes, property patterns).
+1. **Read existing node types** in `src/Graph/` and the examples in `examples/` to understand the conventions (the `Node` base record, `[Node]` / `[Property]` attributes, property patterns).
 
 2. **Create the node class** following the existing pattern:
    - Inherit from the `Node` base record (or implement `INode` if the surrounding code does)

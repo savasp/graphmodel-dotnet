@@ -7,7 +7,7 @@
 | What | Where |
 |------|-------|
 | Task agents (engineer, qa-engineer, reviewer) | `.claude/agents/` — the lead session prepares a worktree/branch and dispatches agents into it |
-| Skills | `.claude/skills/` — `/build-and-test [config]`, `/new-node-type <Name>`, `/new-analyzer <Id> <Title>`, `/graphmodel` (context) |
+| Skills | `.claude/skills/` — `/build-and-test [config]`, `/new-node-type <Name>`, `/new-analyzer <Id> <Title>`, `/cvoya-graph` (context) |
 | Hooks | `.claude/hooks/` — `protect-files.sh` (PreToolUse: blocks Edit/Write on `VERSION`, `.github/`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `.claude/`, `.codex/` — ask the user first; advisory, not a security boundary) and `verify-build.sh` (PostToolUse: builds the affected project after `.cs` edits and feeds compile errors back) |
 | Permissions | `.claude/settings.json` pre-approves `dotnet`/`git`/`gh` and common read-only commands |
 

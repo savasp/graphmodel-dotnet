@@ -8,7 +8,7 @@ using Microsoft.CodeAnalysis;
 
 
 /// <summary>
-/// Diagnostic descriptors for Graph.Model analyzer rules.
+/// Diagnostic descriptors for Cvoya.Graph analyzer rules.
 /// </summary>
 internal static class DiagnosticDescriptors
 {
@@ -17,7 +17,7 @@ internal static class DiagnosticDescriptors
         id: "CG001",
         title: Resources.CG001_Title,
         messageFormat: Resources.CG001_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG001_Description);
@@ -27,7 +27,7 @@ internal static class DiagnosticDescriptors
         id: "CG002",
         title: Resources.CG002_Title,
         messageFormat: Resources.CG002_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG002_Description);
@@ -37,7 +37,7 @@ internal static class DiagnosticDescriptors
         id: "CG003",
         title: Resources.CG003_Title,
         messageFormat: Resources.CG003_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG003_Description);
@@ -47,7 +47,7 @@ internal static class DiagnosticDescriptors
         id: "CG004",
         title: Resources.CG004_Title,
         messageFormat: Resources.CG004_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG004_Description);
@@ -57,7 +57,7 @@ internal static class DiagnosticDescriptors
         id: "CG005",
         title: Resources.CG005_Title,
         messageFormat: Resources.CG005_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG005_Description);
@@ -67,7 +67,7 @@ internal static class DiagnosticDescriptors
         id: "CG006",
         title: Resources.CG006_Title,
         messageFormat: Resources.CG006_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG006_Description);
@@ -77,7 +77,7 @@ internal static class DiagnosticDescriptors
         id: "CG007",
         title: Resources.CG007_Title,
         messageFormat: Resources.CG007_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG007_Description);
@@ -87,7 +87,7 @@ internal static class DiagnosticDescriptors
         id: "CG008",
         title: Resources.CG008_Title,
         messageFormat: Resources.CG008_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG008_Description);
@@ -97,7 +97,7 @@ internal static class DiagnosticDescriptors
         id: "CG009",
         title: Resources.CG009_Title,
         messageFormat: Resources.CG009_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG009_Description);
@@ -107,7 +107,7 @@ internal static class DiagnosticDescriptors
         id: "CG010",
         title: Resources.CG010_Title,
         messageFormat: Resources.CG010_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG010_Description);
@@ -117,7 +117,7 @@ internal static class DiagnosticDescriptors
         id: "CG011",
         title: Resources.CG011_Title,
         messageFormat: Resources.CG011_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         description: Resources.CG011_Description);
@@ -127,7 +127,7 @@ internal static class DiagnosticDescriptors
         id: "CG012",
         title: Resources.CG012_Title,
         messageFormat: Resources.CG012_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         description: Resources.CG012_Description);
@@ -137,7 +137,7 @@ internal static class DiagnosticDescriptors
         id: "CG013",
         title: Resources.CG013_Title,
         messageFormat: Resources.CG013_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG013_Description);
@@ -147,7 +147,7 @@ internal static class DiagnosticDescriptors
         id: "CG014",
         title: Resources.CG014_Title,
         messageFormat: Resources.CG014_MessageFormat,
-        category: "Graph.Model",
+        category: "Cvoya.Graph",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG014_Description);

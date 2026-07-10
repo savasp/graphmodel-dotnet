@@ -27,7 +27,7 @@ version, and the workflow fails loudly if the pushed tag doesn't match it.
    ```bash
    dotnet build --configuration Release
    dotnet test --configuration Release
-   dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Model/Cvoya.Graph.csproj
+   dotnet pack --configuration Release --no-build -o ./artifacts src/Graph/Cvoya.Graph.csproj
    ```
 
 3. **Commit and tag.** The tag must be `v` followed by the exact `VERSION`

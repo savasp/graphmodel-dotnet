@@ -3,7 +3,7 @@
 - **Status:** Accepted (all decisions ratified by @savasp on PR #97; contributor comments on the PR #66 landing path remain welcome via #86)
 - **Date:** 2026-07-02
 - **Related:** #53, #66, #67, #80, #81, #84, #85, #86, #90, #93, #94, #95, #96
-- **Related code:** src/Graph.Model/GraphQueryable/, src/Cvoya.Graph.Neo4j/Querying/
+- **Related code:** src/Graph/GraphQueryable/, src/Cvoya.Graph.Neo4j/Querying/
 
 ## Context
 
@@ -17,7 +17,7 @@ strings (`AddMatchPattern(string)`, `AddWhere(string)`). Dialect syntax — `dat
 `db.index.fulltext` calls — is welded inline into LINQ recognition. Terminal operations are dispatched by
 string method name in `CypherQueryVisitor`
 (src/Cvoya.Graph.Neo4j/Querying/Cypher/Visitors/Core/CypherQueryVisitor.cs, 1,683 lines), matching ~60
-public `*AsyncMarker` stubs (src/Graph.Model/GraphQueryable/QueryableAsyncExtensionsMarkers.cs).
+public `*AsyncMarker` stubs (src/Graph/GraphQueryable/QueryableAsyncExtensionsMarkers.cs).
 
 PR #66 (@paule96) contributes a complete Apache AGE provider for PostgreSQL (~23k added lines). Because
 nothing in the pipeline was reusable, it had to fork the stack (`AgeGraphQueryableBase`,
@@ -91,10 +91,10 @@ convention (see [README.md](README.md)).
 
 ### Settled by this ADR (ratified by @savasp on PR #97)
 
-**(a) Package layout: fold the shared querying front-end into `Graph.Model`; the shared Cypher package is
+**(a) Package layout: fold the shared querying front-end into `Graph`; the shared Cypher package is
 `Cvoya.Graph.Cypher`.** The #93 §A decomposition left open whether the shared queryable implementations,
 provider base, and LINQ front-end live in core or a separate `Cvoya.Graph.Querying`. Decision: fold
-into `Graph.Model`. The operator surface and the front-end that recognizes it are one release unit — the
+into `Graph`. The operator surface and the front-end that recognizes it are one release unit — the
 `MethodInfo` dispatch table binds directly to operator identities defined in the same assembly, so a
 separate package would version in lockstep anyway (pure SemVer coupling with no independent consumer) while
 adding a second dependency for every provider and an `InternalsVisibleTo` seam for the semantic model's
@@ -103,7 +103,7 @@ single-package dependency. The level-2 package keeps PR #66's name, `Cvoya.Graph
 `Cvoya.Graph.Cypher`, matching the existing ID convention): it is accurate — the package contains the
 Cypher AST, planner, dialect SPI, and renderer base — and reusing the contributed name minimizes friction
 with #66. Alternatives (`Cvoya.Graph.OpenCypher`, `Cvoya.Graph.Cypher.Core`) add no information. The shared
-wire-model/materialization code (#85) follows the same folding logic into `Graph.Model`, since a non-Cypher
+wire-model/materialization code (#85) follows the same folding logic into `Graph`, since a non-Cypher
 provider needs it too; final placement is an #85 implementation detail.
 
 **(b) `Cvoya.Graph.Cypher` ships as a public NuGet package.** Decision: public from the release in

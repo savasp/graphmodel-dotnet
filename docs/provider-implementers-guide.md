@@ -10,10 +10,10 @@ A provider exposes a store type that owns database connectivity and returns an `
 
 The public interfaces to implement are:
 
-- `IGraph` in `src/Graph.Model/IGraph.cs`: CRUD, synchronous query roots, full-text search, schema/index provisioning, and transactions.
-- `IGraphTransaction` in `src/Graph.Model/IGraphTransaction.cs`: `CommitAsync()`, `RollbackAsync()`, and `IAsyncDisposable`.
-- `IGraphQueryProvider` in `src/Graph.Model/GraphQueryable/IGraphQueryProvider.cs`: expression execution, query creation, and async terminal execution.
-- `IGraphQueryable<T>` in `src/Graph.Model/GraphQueryable/`: the single LINQ root returned by `IGraph.Nodes<N>`/`Relationships<R>`/`DynamicNodes`/`DynamicRelationships`/search methods. Node-only and relationship-only operators (e.g. traversal) are gated by generic constraints on the operator itself (`where T : INode`), not by a separate receiver interface — `IGraphNodeQueryable<T>`/`IGraphRelationshipQueryable<T>` are `[Obsolete]` aliases kept for one release.
+- `IGraph` in `src/Graph/IGraph.cs`: CRUD, synchronous query roots, full-text search, schema/index provisioning, and transactions.
+- `IGraphTransaction` in `src/Graph/IGraphTransaction.cs`: `CommitAsync()`, `RollbackAsync()`, and `IAsyncDisposable`.
+- `IGraphQueryProvider` in `src/Graph/GraphQueryable/IGraphQueryProvider.cs`: expression execution, query creation, and async terminal execution.
+- `IGraphQueryable<T>` in `src/Graph/GraphQueryable/`: the single LINQ root returned by `IGraph.Nodes<N>`/`Relationships<R>`/`DynamicNodes`/`DynamicRelationships`/search methods. Node-only and relationship-only operators (e.g. traversal) are gated by generic constraints on the operator itself (`where T : INode`), not by a separate receiver interface — `IGraphNodeQueryable<T>`/`IGraphRelationshipQueryable<T>` are `[Obsolete]` aliases kept for one release.
 
 `IGraph` methods accept an optional `IGraphTransaction`. A null transaction means the provider creates a per-operation or per-query execution transaction and owns its lifecycle. A non-null transaction means the caller owns commit/rollback/disposal, and the provider must reject foreign transaction implementations with a clear graph exception.
 
@@ -36,7 +36,7 @@ Runtime metadata properties are provider-populated. `INode.Labels` and `IRelatio
 
 ## Marker-Method Protocol
 
-Async terminal LINQ operators are represented in expression trees by internal marker methods in `src/Graph.Model/GraphQueryable/QueryTerminals.cs`. `QueryableAsyncExtensions` builds `MethodCallExpression` nodes for these marker methods, then calls `IGraphQueryProvider.ExecuteAsync`. `QueryTerminals` is `internal`, not public API — a provider needs `InternalsVisibleTo` from `Cvoya.Graph` (already granted to `Cvoya.Graph.Neo4j`) to reference its members directly.
+Async terminal LINQ operators are represented in expression trees by internal marker methods in `src/Graph/GraphQueryable/QueryTerminals.cs`. `QueryableAsyncExtensions` builds `MethodCallExpression` nodes for these marker methods, then calls `IGraphQueryProvider.ExecuteAsync`. `QueryTerminals` is `internal`, not public API — a provider needs `InternalsVisibleTo` from `Cvoya.Graph` (already granted to `Cvoya.Graph.Neo4j`) to reference its members directly.
 
 Providers recognize marker methods (and the rest of the LINQ surface) by `MethodInfo` identity — comparing a call's generic method definition (or the method itself, for non-generic methods) against a table built once via reflection — not by matching `MethodInfo.Name` as a string. The Neo4j provider's table lives in `CypherQueryVisitor`'s `LinqOperatorDispatch` helper; a new provider should build an equivalent table rather than switching on method names, since name-based dispatch cannot distinguish overloads and can silently mis-dispatch if an unrelated method happens to share a name.
 
@@ -176,7 +176,7 @@ public sealed class MyProviderHarness : IGraphProviderTestHarness
     public string ProviderName => "MyCompany.CVOYA graph.MyProvider";
 
     // Declare only what your backing store actually supports. Unlisted capabilities' tests skip,
-    // never fail - see GraphCapability in src/Graph.Model for the full member list.
+    // never fail - see GraphCapability in src/Graph for the full member list.
     public CapabilitySet Capabilities => CapabilitySet.All.Except(GraphCapability.FullTextSearch);
 
     public ValueTask InitializeAsync() => /* start/connect infrastructure once per test class */;

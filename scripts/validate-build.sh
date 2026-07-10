@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# GraphModel Build Validation Script
+# CVOYA graph Build Validation Script
 # Validates all build configurations and ensures the build system is working correctly
 
 set -e
@@ -34,7 +34,7 @@ RUN_CODEQL=false
 
 usage() {
     cat <<'EOF'
-GraphModel Build System Validation
+CVOYA graph Build System Validation
 
 Usage: ./scripts/validate-build.sh [options]
 
@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-print_header "🔍 GraphModel Build System Validation"
+print_header "🔍 CVOYA graph Build System Validation"
 echo ""
 
 # Check prerequisites
@@ -170,7 +170,7 @@ for project in src/*/; do
 done
 
 # Check for proper project structure
-if [ ! -f "graphmodel.sln" ]; then
+if [ ! -f "cvoya-graph.sln" ]; then
     print_error "❌ Solution file not found"
     exit 1
 fi

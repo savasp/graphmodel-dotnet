@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# GraphModel Local NuGet Feed Setup (MSBuild Integration)
+# CVOYA graph Local NuGet Feed Setup (MSBuild Integration)
 # Creates packages using LocalFeed configuration and sets up local feed
 
 set -e
 
-echo "🚀 Setting up GraphModel local NuGet feed using MSBuild integration..."
+echo "🚀 Setting up CVOYA graph local NuGet feed using MSBuild integration..."
 echo ""
 
 # Clean any existing setup

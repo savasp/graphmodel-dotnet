@@ -36,7 +36,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <!-- Lets Graph.Model.Analyzers.Tests exercise AnalyzerHelper's ITypeSymbol-based
+        <!-- Lets Graph.Analyzers.Tests exercise AnalyzerHelper's ITypeSymbol-based
              classification directly, so its truth-table tests can mirror
              GraphDataModelTypeClassificationTests without widening AnalyzerHelper's public surface. -->
         <InternalsVisibleTo Include="Cvoya.Graph.Analyzers.Tests" />

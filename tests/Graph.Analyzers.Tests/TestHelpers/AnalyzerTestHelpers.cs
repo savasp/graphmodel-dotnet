@@ -33,7 +33,7 @@ public static class AnalyzerTestHelpers
             },
         };
 
-        // Add reference to Graph.Model
+        // Add reference to Graph
         test.TestState.AdditionalReferences.Add(typeof(INode).Assembly);
 
         test.ExpectedDiagnostics.AddRange(expected);

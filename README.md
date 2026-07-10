@@ -268,7 +268,7 @@ CVOYA graph follows a clean, layered architecture:
 ┌─────────────────────────────────┐
 │          Your Application       │
 ├─────────────────────────────────┤
-│        Graph.Model (Core)       │  ← Abstractions & LINQ
+│        Graph (Core)       │  ← Abstractions & LINQ
 ├─────────────────────────────────┤
 │     Cvoya.Graph.Neo4j           │  ← Provider Implementation
 ├─────────────────────────────────┤

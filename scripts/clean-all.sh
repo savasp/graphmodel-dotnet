@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# GraphModel Comprehensive Cleanup Script
+# CVOYA graph Comprehensive Cleanup Script
 # Removes all build artifacts, containers, and temporary files
 
 set -e
@@ -49,7 +49,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            echo "GraphModel Comprehensive Cleanup Script"
+            echo "CVOYA graph Comprehensive Cleanup Script"
             echo ""
             echo "Usage: ./scripts/clean-all.sh [options]"
             echo ""
@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-print_header "🧹 GraphModel Comprehensive Cleanup"
+print_header "🧹 CVOYA graph Comprehensive Cleanup"
 echo ""
 
 # Check if we're in the right directory

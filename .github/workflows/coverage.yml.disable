@@ -61,21 +61,21 @@ jobs:
         mkdir -p coverage
         
         # Run core tests
-        dotnet test tests/Graph.Model.Tests \
+        dotnet test tests/Graph.Tests \
           --configuration Release --no-build \
           --collect:"XPlat Code Coverage" \
           --results-directory ./coverage/core \
           --verbosity normal
         
         # Run analyzer tests  
-        dotnet test tests/Graph.Model.Analyzers.Tests \
+        dotnet test tests/Graph.Analyzers.Tests \
           --configuration Release --no-build \
           --collect:"XPlat Code Coverage" \
           --results-directory ./coverage/analyzers \
           --verbosity normal
         
         # Run Neo4j integration tests
-        dotnet test tests/Graph.Model.Neo4j.Tests \
+        dotnet test tests/Graph.Neo4j.Tests \
           --configuration Release --no-build \
           --collect:"XPlat Code Coverage" \
           --results-directory ./coverage/neo4j \

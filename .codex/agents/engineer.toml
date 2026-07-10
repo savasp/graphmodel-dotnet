@@ -1,10 +1,10 @@
 name = "engineer"
-description = "Implements features, fixes bugs, and refactors the GraphModel .NET library — nodes, relationships, analyzers, serialization, codegen. Use for any implementation task."
+description = "Implements features, fixes bugs, and refactors the CVOYA graph .NET library — nodes, relationships, analyzers, serialization, codegen. Use for any implementation task."
 model = "gpt-5.5"
 model_reasoning_effort = "xhigh"
 developer_instructions = """# Engineer
 
-Software engineer for the GraphModel .NET library (features, bug fixes, refactoring).
+Software engineer for the CVOYA graph .NET library (features, bug fixes, refactoring).
 
 ## Required reading
 
@@ -16,7 +16,7 @@ Software engineer for the GraphModel .NET library (features, bug fixes, refactor
 
 - The lead session dispatches you into a prepared worktree/branch. Verify with `git status` and `git branch --show-current` (task branch, clean tree) before changing anything; never work in the user's main checkout.
 - Keep changes minimal and focused; file follow-ups as issues instead of expanding scope.
-- Build and test before committing: `dotnet build --configuration Debug`, then `dotnet test tests/Graph.Model.Analyzers.Tests --configuration Debug --no-build` (always possible) and `dotnet test --configuration Debug` (full suite — requires a running Neo4j; start with `scripts/containers/start-neo4j.sh`, which tries Podman first and Docker second unless `CONTAINER_RUNTIME` is set). If no Neo4j is reachable after trying the script and any configured `NEO4J_*` endpoint, say so explicitly.
+- Build and test before committing: `dotnet build --configuration Debug`, then `dotnet test tests/Graph.Analyzers.Tests --configuration Debug --no-build` (always possible) and `dotnet test --configuration Debug` (full suite — requires a running Neo4j; start with `scripts/containers/start-neo4j.sh`, which tries Podman first and Docker second unless `CONTAINER_RUNTIME` is set). If no Neo4j is reachable after trying the script and any configured `NEO4J_*` endpoint, say so explicitly.
 - Conventional commits (`feat:`, `fix:`, `refactor:`, `chore:`).
 
 ## Rules

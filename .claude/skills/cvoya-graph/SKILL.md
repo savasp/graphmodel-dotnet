@@ -1,5 +1,5 @@
 ---
-name: graphmodel
+name: cvoya-graph
 description: CVOYA graph .NET library context. Use when working on CVOYA graph, graph model, Neo4j provider, LINQ graph queries, node/relationship types, analyzers, or serialization codegen.
 ---
 
@@ -20,7 +20,7 @@ description: CVOYA graph .NET library context. Use when working on CVOYA graph, 
 
 ## Key locations
 
-- **Core:** `src/Graph.Model/` — `IGraph`, `INode`, `IRelationship`, LINQ, attributes.
+- **Core:** `src/Graph/` — `IGraph`, `INode`, `IRelationship`, LINQ, attributes.
 - **Neo4j:** `src/Cvoya.Graph.Neo4j/` — provider, LINQ-to-Cypher, transactions.
 - **Serialization:** `src/Cvoya.Graph.Serialization/`, `src/Cvoya.Graph.Serialization.CodeGen/`.
 - **Tests:** `tests/Cvoya.Graph.Tests/` (abstract provider contract suite — executes via provider test projects), `tests/Cvoya.Graph.Neo4j.Tests/` (the contract suite bound to Neo4j + provider tests; needs a running Neo4j — `scripts/containers/start-neo4j.sh`), `tests/Cvoya.Graph.Analyzers.Tests/` (no external deps). See [AGENTS.md](AGENTS.md).

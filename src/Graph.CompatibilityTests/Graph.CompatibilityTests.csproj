@@ -4,8 +4,8 @@
         <!--
           Deliberately no explicit TargetFramework here: this project inherits the root
           Directory.Build.props's TargetFrameworks (plural). Setting both TargetFramework and
-          TargetFrameworks - as every other packable src/ project (Graph.Model, Graph.Model.Neo4j,
-          Graph.Model.Serialization) also avoids - collapses the SDK's cross-targeting outer/inner
+          TargetFrameworks - as every other packable src/ project (Graph, Graph.Neo4j,
+          Graph.Serialization) also avoids - collapses the SDK's cross-targeting outer/inner
           build split into a single IsInnerBuild=true pass, which silently disables the
           GeneratePackageOnBuild pack-on-build hook (NuGet.Build.Tasks.Pack.targets'
           _PackAsBuildAfterTarget requires IsInnerBuild != 'true').
@@ -86,7 +86,7 @@
 
     <!-- Include the CodeGen analyzer in the package when building packages -->
     <ItemGroup Condition="'$(GeneratePackageOnBuild)' == 'true'">
-        <None Include="../Graph.Serialization.CodeGen/bin/$(Configuration)/netstandard2.0/Graph.Serialization.CodeGen.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
+        <None Include="../Graph.Serialization.CodeGen/bin/$(Configuration)/netstandard2.0/Cvoya.Graph.Serialization.CodeGen.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
     </ItemGroup>
 
 </Project>

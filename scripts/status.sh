@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# GraphModel Status Checker
+# CVOYA graph Status Checker
 # Shows the current state of the build system, containers, and project
 
 set -e
@@ -28,7 +28,7 @@ print_header() {
     echo -e "${BLUE}[HEADER]${NC} $1"
 }
 
-print_header "📊 GraphModel Project Status"
+print_header "📊 CVOYA graph Project Status"
 echo ""
 
 # Check if we're in the right directory
@@ -57,7 +57,7 @@ else
 fi
 
 # Check solution file
-if [ -f "graphmodel.sln" ]; then
+if [ -f "cvoya-graph.sln" ]; then
     print_status "✅ Solution file found"
 else
     print_error "❌ Solution file not found"

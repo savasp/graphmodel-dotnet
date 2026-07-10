@@ -133,7 +133,7 @@ We follow conventional commits:
 
 ```text
 src/
-├── Graph.Model/                 # Core abstractions
+├── Graph/                 # Core abstractions
 ├── Cvoya.Graph.Neo4j/          # Neo4j provider
 ├── Cvoya.Graph.Serialization/  # Object serialization
 ├── Cvoya.Graph.Analyzers/      # Roslyn analyzers

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# GraphModel Release Version Creator
+# CVOYA graph Release Version Creator
 #
 # Updates the VERSION file (and VERSION.ASSEMBLY) to a new release version.
 # Directory.Build.props reads both files at build time, so no other file
@@ -79,7 +79,7 @@ if ! [[ $SEMVER =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
   exit 1
 fi
 
-echo -e "${BLUE}GraphModel Release Creator${NC}"
+echo -e "${BLUE}CVOYA graph Release Creator${NC}"
 echo ""
 echo -e "${BLUE}Version to release:${NC} $SEMVER"
 

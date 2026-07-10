@@ -23,7 +23,7 @@ check "blocks .github workflow"               2 "{\"tool_input\":{\"file_path\":
 check "blocks Directory.Build.props"          2 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/Directory.Build.props\"}}" "$P"
 check "blocks .claude settings"               2 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/.claude/settings.json\"}}" "$P"
 check "blocks .codex config"                  2 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/.codex/config.toml\"}}" "$P"
-check "allows normal source file"             0 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/src/Graph.Model/IGraph.cs\"}}" "$P"
+check "allows normal source file"             0 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/src/Graph/IGraph.cs\"}}" "$P"
 check "allows file merely containing VERSION" 0 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/docs/VERSIONING.md\"}}" "$P"
 check "allows nested Directory.Build.props"   0 "{\"tool_input\":{\"file_path\":\"$CLAUDE_PROJECT_DIR/src/Directory.Build.props\"}}" "$P"
 check "allows empty input"                    0 "{}" "$P"

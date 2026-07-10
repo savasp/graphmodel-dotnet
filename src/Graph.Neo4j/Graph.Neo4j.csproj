@@ -8,7 +8,7 @@
 
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Neo4j</PackageId>
-        <Description>A graph provider for the Neo4j database with support for LINQ and the updated Graph.Model abstraction.</Description>
+        <Description>A graph provider for the Neo4j database with support for LINQ and the Cvoya.Graph abstraction.</Description>
         <PackageTags>graph;database;neo4j;linq</PackageTags>
     </PropertyGroup>
 
@@ -23,10 +23,6 @@
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Cvoya.Graph.Neo4j.Translation.Tests</_Parameter1>
         </AssemblyAttribute>
-    </ItemGroup>
-
-    <ItemGroup>
-        <Using Include="Cvoya.Graph" />
     </ItemGroup>
 
     <ItemGroup>
@@ -58,7 +54,7 @@
 
     <!-- Include the CodeGen analyzer in the package when building packages -->
     <ItemGroup Condition="'$(GeneratePackageOnBuild)' == 'true'">
-        <None Include="../Graph.Model.Serialization.CodeGen/bin/$(Configuration)/netstandard2.0/Graph.Serialization.CodeGen.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
+        <None Include="../Graph.Serialization.CodeGen/bin/$(Configuration)/netstandard2.0/Cvoya.Graph.Serialization.CodeGen.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
     </ItemGroup>
 
 </Project>

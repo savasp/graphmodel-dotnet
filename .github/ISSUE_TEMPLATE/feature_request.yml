@@ -67,12 +67,12 @@ body:
     id: package
     attributes:
       label: "📦 Package"
-      description: "Which GraphModel package would this feature affect?"
+      description: "Which CVOYA graph package would this feature affect?"
       options:
-        - Graph.Model (Core)
-        - Graph.Model.Neo4j (Neo4j Provider)
-        - Graph.Model.Analyzers (Code Analyzers)
-        - Graph.Model.Serialization (Serialization)
+        - Graph (Core)
+        - Graph.Neo4j (Neo4j Provider)
+        - Graph.Analyzers (Code Analyzers)
+        - Graph.Serialization (Serialization)
         - New package needed
         - Multiple packages
         - Not sure

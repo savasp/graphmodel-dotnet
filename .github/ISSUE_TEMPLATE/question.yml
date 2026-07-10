@@ -1,5 +1,5 @@
 name: ❓ Question / Support
-description: Ask a question or get help with GraphModel
+description: Ask a question or get help with CVOYA graph
 title: "[Question]: "
 type: task
 labels: 
@@ -11,7 +11,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Have a question about GraphModel? We're here to help! Please provide as much context as possible.
+        Have a question about CVOYA graph? We're here to help! Please provide as much context as possible.
 
   - type: checkboxes
     id: existing-resources
@@ -87,12 +87,12 @@ body:
     id: package
     attributes:
       label: "📦 Package"
-      description: "Which GraphModel package is your question about?"
+      description: "Which CVOYA graph package is your question about?"
       options:
-        - Graph.Model (Core)
-        - Graph.Model.Neo4j (Neo4j Provider)
-        - Graph.Model.Analyzers (Code Analyzers)
-        - Graph.Model.Serialization (Serialization)
+        - Graph (Core)
+        - Graph.Neo4j (Neo4j Provider)
+        - Graph.Analyzers (Code Analyzers)
+        - Graph.Serialization (Serialization)
         - General / Multiple packages
         - Not sure
     validations:
@@ -107,7 +107,7 @@ body:
         - **OS**: [e.g. Windows 11, macOS 14, Ubuntu 22.04]
         - **.NET Version**: [e.g. .NET 10.0]
         - **Neo4j Version**: [e.g. 5.15.0]
-        - **GraphModel Version**: [e.g. 1.0.0]
+        - **CVOYA graph Version**: [e.g. 1.0.0]
     validations:
       required: false
 

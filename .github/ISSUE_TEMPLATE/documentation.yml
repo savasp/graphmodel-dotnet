@@ -35,7 +35,7 @@ body:
       label: "📍 Documentation Location"
       description: "Where is the documentation issue located?"
       placeholder: |
-        - File: src/Graph.Model/README.md
+        - File: src/Graph/README.md
         - Section: "Getting Started"
         - URL: https://github.com/user/repo/blob/main/docs/...
     validations:

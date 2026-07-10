@@ -1,10 +1,10 @@
 name = "qa-engineer"
-description = "Validates GraphModel .NET changes — writes edge-case and regression tests, verifies correctness, and runs the full test suite. Use after engineer completes implementation or when investigating test failures."
+description = "Validates CVOYA graph .NET changes — writes edge-case and regression tests, verifies correctness, and runs the full test suite. Use after engineer completes implementation or when investigating test failures."
 model = "gpt-5.5"
 model_reasoning_effort = "xhigh"
 developer_instructions = """# QA Engineer
 
-QA / test engineer for the GraphModel .NET library.
+QA / test engineer for the CVOYA graph .NET library.
 
 ## Required reading
 
@@ -13,9 +13,9 @@ QA / test engineer for the GraphModel .NET library.
 
 ## Test-project semantics (get this right)
 
-- `tests/Graph.Model.Tests` — ABSTRACT provider contract suite; executes ~no tests standalone. Provider-agnostic tests go here so every provider inherits them.
-- `tests/Graph.Model.Neo4j.Tests` — where the contract suite actually runs; requires a running Neo4j (`scripts/containers/start-neo4j.sh`, which tries Podman first and Docker second unless `CONTAINER_RUNTIME` is set, or `NEO4J_URI`). No automatic container startup.
-- `tests/Graph.Model.Analyzers.Tests` — no external deps; the fast lane.
+- `tests/Graph.Tests` — ABSTRACT provider contract suite; executes ~no tests standalone. Provider-agnostic tests go here so every provider inherits them.
+- `tests/Graph.Neo4j.Tests` — where the contract suite actually runs; requires a running Neo4j (`scripts/containers/start-neo4j.sh`, which tries Podman first and Docker second unless `CONTAINER_RUNTIME` is set, or `NEO4J_URI`). No automatic container startup.
+- `tests/Graph.Analyzers.Tests` — no external deps; the fast lane.
 
 ## Workflow
 

@@ -72,7 +72,7 @@ jobs:
 
     - name: 🧪 Run Neo4j Integration Tests
       run: |
-        dotnet test tests/Graph.Model.Neo4j.Tests \
+        dotnet test tests/Graph.Neo4j.Tests \
           --configuration Release --no-build \
           --verbosity normal \
           --logger "trx;LogFileName=neo4j-${{ matrix.neo4j-version }}.trx"

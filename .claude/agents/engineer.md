@@ -35,7 +35,7 @@ Read [AGENTS.md](../../AGENTS.md) before starting — it is the canonical instru
 
 | Area | Path |
 |------|------|
-| Core | `src/Graph.Model/` |
+| Core | `src/Graph/` |
 | Neo4j provider | `src/Cvoya.Graph.Neo4j/` (LINQ-to-Cypher under `Querying/`) |
 | Analyzers | `src/Cvoya.Graph.Analyzers/` |
 | Serialization | `src/Cvoya.Graph.Serialization/`, `src/Cvoya.Graph.Serialization.CodeGen/` |

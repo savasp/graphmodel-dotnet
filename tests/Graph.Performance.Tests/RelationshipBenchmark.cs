@@ -1,7 +1,7 @@
 // Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
 // See LICENSE in the project root for full license terms.
 
-namespace Graph.Model.Performance.Tests;
+namespace Graph.Performance.Tests;
 
 #pragma warning disable RS1035 // Do not use APIs banned for analyzers
 

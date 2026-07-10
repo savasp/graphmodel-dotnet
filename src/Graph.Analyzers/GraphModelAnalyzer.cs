@@ -9,7 +9,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 
 /// <summary>
-/// Analyzer for enforcing Graph.Model implementation rules.
+/// Analyzer for enforcing Cvoya.Graph implementation rules.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class GraphModelAnalyzer : DiagnosticAnalyzer

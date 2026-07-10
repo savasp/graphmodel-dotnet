@@ -44,7 +44,7 @@
     </ItemGroup>
 
     <!--
-        Same workaround as tests/Graph.Model.Neo4j.Translation.Tests: Verify's own MSBuild
+        Same workaround as tests/Graph.Neo4j.Translation.Tests: Verify's own MSBuild
         target that writes the `Verify.ProjectDirectory` assembly-metadata attribute does not
         fire reliably in this project's build pipeline. Emit the attributes it needs directly.
     -->

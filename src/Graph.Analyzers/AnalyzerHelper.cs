@@ -210,7 +210,7 @@ internal class AnalyzerHelper
         if (type.TypeKind == TypeKind.Enum)
             return true;
 
-        // Check specific types by full name - matching Graph.Model logic exactly
+        // Check specific types by full name - matching Graph logic exactly
         var fullName = type.ToDisplayString();
         return fullName switch
         {

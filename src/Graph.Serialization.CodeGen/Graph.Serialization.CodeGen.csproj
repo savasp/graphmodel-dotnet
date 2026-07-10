@@ -2,8 +2,8 @@
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
         <TargetFrameworks>netstandard2.0</TargetFrameworks>
-        <AssemblyName>Graph.Model.Serialization.CodeGen</AssemblyName>
-        <RootNamespace>Graph.Model.Serialization.CodeGen</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Serialization.CodeGen</AssemblyName>
+        <RootNamespace>Cvoya.Graph.Serialization.CodeGen</RootNamespace>
     </PropertyGroup>
 
     <!-- Package Information -->

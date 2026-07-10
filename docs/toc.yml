@@ -16,11 +16,11 @@
 - name: Provider Implementers Guide
   href: provider-implementers-guide.md
 - name: Neo4j Provider
-  href: ../src/Graph.Model.Neo4j/README.md
+  href: ../src/Graph.Neo4j/README.md
 - name: Code Analyzers
-  href: ../src/Graph.Model.Analyzers/README.md
+  href: ../src/Graph.Analyzers/README.md
 - name: Code Generation
-  href: ../src/Graph.Model.Serialization.CodeGen/README.md
+  href: ../src/Graph.Serialization.CodeGen/README.md
 - name: Examples
   items:
   - name: Basic Serialization
