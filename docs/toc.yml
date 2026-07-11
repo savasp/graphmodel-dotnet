@@ -17,6 +17,8 @@
   href: provider-implementers-guide.md
 - name: Neo4j Provider
   href: ../src/Graph.Neo4j/README.md
+- name: Apache AGE Provider
+  href: ../src/Graph.Age/README.md
 - name: In-Memory Provider
   href: ../src/Graph.InMemory/README.md
 - name: Testing with the In-Memory Provider

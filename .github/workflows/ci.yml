@@ -54,6 +54,7 @@ jobs:
               - '**/appsettings*.json'
               - 'src/Graph.Analyzers/AnalyzerReleases.*.md'
               - 'scripts/containers/start-neo4j.sh'
+              - 'scripts/containers/start-age.sh'
               - 'global.json'
               - '.config/dotnet-tools.json'
               - 'VERSION'
@@ -640,6 +641,96 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  test-age:
+    name: Test Apache AGE Provider
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 20
+    permissions:
+      checks: write
+      contents: read
+
+    services:
+      age:
+        image: apache/age:release_PG18_1.7.0
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+            global.json
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test Apache AGE Provider (strict compliance)
+        env:
+          AGE_CONNECTION_STRING: Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres
+          GRAPHMODEL_COMPLIANCE_STRICT: "1"
+        run: >
+          dotnet test
+          --project tests/Graph.Age.Tests/Graph.Age.Tests.csproj
+          --no-build
+          --configuration Release
+          --verbosity normal
+          --results-directory TestResults/test-age
+          --coverage
+          --coverage-output test-age.cobertura.xml
+          --coverage-output-format cobertura
+          --report-xunit-trx
+          --report-xunit-trx-filename test-age.trx
+
+      - name: Upload Apache AGE Provider results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: test-age-results
+          path: TestResults/test-age/
+          retention-days: 14
+
+      - name: Publish Apache AGE Provider results
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
+        if: ${{ always() && hashFiles('TestResults/test-age/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          name: Test Apache AGE Provider
+          path: TestResults/test-age/*.trx
+          reporter: dotnet-trx
+
+      - name: Upload Apache AGE Provider coverage
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
+        if: success()
+        with:
+          files: TestResults/test-age/test-age.cobertura.xml
+          flags: test-age
+          name: test-age
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   required-checks:
     name: Required checks
@@ -655,6 +746,7 @@ jobs:
       - test-codegen
       - test-neo4j
       - test-inmemory
+      - test-age
     # Always runs - branch protection depends on a single "Required checks"
     # context, so this job must report a status regardless of which
     # individual jobs above passed, failed, were skipped, or were cancelled.
@@ -677,6 +769,7 @@ jobs:
           TEST_CODEGEN_RESULT: ${{ needs.test-codegen.result }}
           TEST_NEO4J_RESULT: ${{ needs.test-neo4j.result }}
           TEST_INMEMORY_RESULT: ${{ needs.test-inmemory.result }}
+          TEST_AGE_RESULT: ${{ needs.test-age.result }}
         run: |
           echo "changes=$CHANGES_RESULT"
           echo "workflow-yaml=$WORKFLOW_YAML_RESULT"
@@ -688,6 +781,7 @@ jobs:
           echo "test-codegen=$TEST_CODEGEN_RESULT"
           echo "test-neo4j=$TEST_NEO4J_RESULT"
           echo "test-inmemory=$TEST_INMEMORY_RESULT"
+          echo "test-age=$TEST_AGE_RESULT"
 
           if [[ "$CHANGES_RESULT" != "success" ]]; then
             echo "::error::changes detection job failed"
@@ -705,3 +799,4 @@ jobs:
           ok "$TEST_CODEGEN_RESULT"     || { echo "::error::test-codegen failed"; exit 1; }
           ok "$TEST_NEO4J_RESULT"       || { echo "::error::test-neo4j failed"; exit 1; }
           ok "$TEST_INMEMORY_RESULT"    || { echo "::error::test-inmemory failed"; exit 1; }
+          ok "$TEST_AGE_RESULT"         || { echo "::error::test-age failed"; exit 1; }

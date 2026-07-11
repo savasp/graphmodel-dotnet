@@ -1,0 +1,344 @@
+// Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
+// See LICENSE in the project root for full license terms.
+
+namespace Cvoya.Graph.Age;
+
+using Cvoya.Graph;
+using Cvoya.Graph.Age.Serialization;
+using Cvoya.Graph.Cypher;
+
+/// <summary>
+/// Age-specific property/label/type accessor extension methods for dynamic entities
+/// (<see cref="DynamicNode"/>/<see cref="DynamicRelationship"/>). Distinct from
+/// <see cref="Cvoya.Graph.DynamicEntityExtensions"/> in core, which provides the
+/// provider-neutral <c>ToDynamicNode</c>/<c>ToDynamic</c> conversion extensions; this type's
+/// value conversions depend on the Age driver's wire types (<c>SerializationBridge</c>), so it
+/// stays provider-specific rather than moving to core.
+/// </summary>
+public static class AgeDynamicEntityExtensions
+{
+    /// <summary>
+    /// Gets a property value from a dynamic node with type safety.
+    /// </summary>
+    /// <typeparam name="T">The expected type of the property value.</typeparam>
+    /// <param name="node">The dynamic node.</param>
+    /// <param name="propertyName">The name of the property.</param>
+    /// <returns>The property value if found and of the correct type, otherwise default(T).</returns>
+    [CypherDynamicEntityAccessor]
+    public static T? GetProperty<T>(this DynamicNode node, string propertyName)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+
+        if (!node.Properties.TryGetValue(propertyName, out var value) || value is null)
+        {
+            return default;
+        }
+
+        if (value is T typedValue)
+        {
+            return typedValue;
+        }
+
+        // Special handling for collections
+        if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(IList<>) && value is IList<object> objectList)
+        {
+            var elementType = typeof(T).GetGenericArguments()[0];
+            var resultList = new List<object?>();
+
+            foreach (var item in objectList)
+            {
+                if (item == null)
+                {
+                    resultList.Add(null);
+                }
+                else
+                {
+                    try
+                    {
+                        // Use SerializationBridge for proper conversion from Age types
+                        var converted = SerializationBridge.FromAgeValue(item, elementType);
+                        resultList.Add(converted);
+                    }
+                    catch (Exception exception) when (IsConversionFailure(exception))
+                    {
+                        // If conversion fails, try direct cast
+                        resultList.Add(item);
+                    }
+                }
+            }
+
+            // Create the appropriate collection type
+            if (typeof(T) == typeof(IList<string>))
+            {
+                return Cast<T>(resultList.Where(x => x != null).Cast<string>().ToList());
+            }
+            else if (typeof(T) == typeof(IList<int>))
+            {
+                return Cast<T>(resultList.Where(x => x != null).Cast<int>().ToList());
+            }
+            else if (typeof(T) == typeof(IList<double>))
+            {
+                return Cast<T>(resultList.Where(x => x != null).Cast<double>().ToList());
+            }
+            else if (typeof(T) == typeof(IList<bool>))
+            {
+                return Cast<T>(resultList.Where(x => x != null).Cast<bool>().ToList());
+            }
+            else
+            {
+                // Generic fallback
+                var genericListType = typeof(List<>).MakeGenericType(elementType);
+                var genericList = Activator.CreateInstance(genericListType);
+                var addMethod = genericListType.GetMethod("Add");
+
+                foreach (var item in resultList.Where(item => item != null))
+                {
+                    addMethod?.Invoke(genericList, new[] { item });
+                }
+
+                return (T?)genericList!;
+            }
+        }
+
+        // For value types, always use conversion logic
+        if (typeof(T).IsValueType)
+        {
+            var underlyingType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+            try
+            {
+                if (underlyingType == typeof(bool))
+                {
+                    if (value is bool b)
+                    {
+                        var result = (T)(object)b;
+                        return result;
+                    }
+                    if (value is string s)
+                    {
+                        var result = (T)(object)bool.Parse(s);
+                        return result;
+                    }
+                    if (value is long l)
+                    {
+                        var result = (T)(object)(l != 0);
+                        return result;
+                    }
+                    if (value is int i)
+                    {
+                        var result = (T)(object)(i != 0);
+                        return result;
+                    }
+                    if (value is double d)
+                    {
+                        var result = (T)(object)(Math.Abs(d) > 0.00001);
+                        return result;
+                    }
+                }
+                // Use SerializationBridge for proper conversion from Age types
+                var converted = SerializationBridge.FromAgeValue(value, underlyingType);
+                return (T?)converted;
+            }
+            catch (Exception exception) when (IsConversionFailure(exception))
+            {
+                try
+                {
+                    var direct = (T)value;
+                    return direct;
+                }
+                catch (InvalidCastException)
+                {
+                    return default;
+                }
+            }
+        }
+
+        // For reference types, use direct cast if possible
+        if (value is T typedValue2)
+        {
+            return typedValue2;
+        }
+
+        try
+        {
+            var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+            if (targetType == typeof(bool))
+            {
+                if (value is bool b) return (T)(object)b;
+                if (value is string s) return (T)(object)bool.Parse(s);
+                if (value is long l) return (T)(object)(l != 0);
+                if (value is int i) return (T)(object)(i != 0);
+                if (value is double d) return (T)(object)(Math.Abs(d) > 0.00001);
+            }
+            // Use SerializationBridge for proper conversion from Age types
+            var convertedValue = SerializationBridge.FromAgeValue(value, targetType);
+            return (T?)convertedValue;
+        }
+        catch (Exception exception) when (IsConversionFailure(exception))
+        {
+            return default;
+        }
+    }
+
+    /// <summary>
+    /// Gets a property value from a dynamic relationship with type safety.
+    /// </summary>
+    /// <typeparam name="T">The expected type of the property value.</typeparam>
+    /// <param name="relationship">The dynamic relationship.</param>
+    /// <param name="propertyName">The name of the property.</param>
+    /// <returns>The property value if found and of the correct type, otherwise default(T).</returns>
+    [CypherDynamicEntityAccessor]
+    public static T? GetProperty<T>(this DynamicRelationship relationship, string propertyName)
+    {
+        ArgumentNullException.ThrowIfNull(relationship);
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+
+        if (!relationship.Properties.TryGetValue(propertyName, out var value) || value is null)
+            return default;
+
+        if (value is T typedValue)
+            return typedValue;
+
+        try
+        {
+            var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+            if (targetType == typeof(bool))
+            {
+                if (value is bool b) return (T)(object)b;
+                if (value is string s) return (T)(object)bool.Parse(s);
+                if (value is long l) return (T)(object)(l != 0);
+                if (value is int i) return (T)(object)(i != 0);
+                if (value is double d) return (T)(object)(Math.Abs(d) > 0.00001);
+            }
+            return (T)Convert.ChangeType(value, targetType);
+        }
+        catch (Exception exception) when (IsConversionFailure(exception))
+        {
+            return default;
+        }
+    }
+
+    /// <summary>
+    /// Checks if a dynamic node has a specific label.
+    /// </summary>
+    /// <param name="node">The dynamic node.</param>
+    /// <param name="label">The label to check for.</param>
+    /// <returns>True if the node has the specified label, otherwise false.</returns>
+    [CypherDynamicEntityAccessor]
+    public static bool HasLabel(this DynamicNode node, string label)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+
+        return node.Labels.Contains(label);
+    }
+
+    /// <summary>
+    /// Checks if a dynamic relationship has a specific type.
+    /// </summary>
+    /// <param name="relationship">The dynamic relationship.</param>
+    /// <param name="type">The type to check for.</param>
+    /// <returns>True if the relationship has the specified type, otherwise false.</returns>
+    [CypherDynamicEntityAccessor]
+    public static bool HasType(this DynamicRelationship relationship, string type)
+    {
+        ArgumentNullException.ThrowIfNull(relationship);
+        ArgumentException.ThrowIfNullOrWhiteSpace(type);
+
+        return relationship.Type == type;
+    }
+
+    /// <summary>
+    /// Checks if a dynamic node has any of the specified labels.
+    /// </summary>
+    /// <param name="node">The dynamic node.</param>
+    /// <param name="labels">The labels to check for.</param>
+    /// <returns>True if the node has any of the specified labels, otherwise false.</returns>
+    public static bool HasAnyLabel(this DynamicNode node, params string[] labels)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(labels);
+
+        return node.Labels.Any(label => labels.Contains(label));
+    }
+
+    /// <summary>
+    /// Checks if a dynamic node has all of the specified labels.
+    /// </summary>
+    /// <param name="node">The dynamic node.</param>
+    /// <param name="labels">The labels to check for.</param>
+    /// <returns>True if the node has all of the specified labels, otherwise false.</returns>
+    public static bool HasAllLabels(this DynamicNode node, params string[] labels)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(labels);
+
+        return labels.All(label => node.Labels.Contains(label));
+    }
+
+    /// <summary>
+    /// Gets all property names from a dynamic node.
+    /// </summary>
+    /// <param name="node">The dynamic node.</param>
+    /// <returns>An enumerable of property names.</returns>
+    public static IEnumerable<string> GetPropertyNames(this DynamicNode node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return node.Properties.Keys;
+    }
+
+    /// <summary>
+    /// Gets all property names from a dynamic relationship.
+    /// </summary>
+    /// <param name="relationship">The dynamic relationship.</param>
+    /// <returns>An enumerable of property names.</returns>
+    public static IEnumerable<string> GetPropertyNames(this DynamicRelationship relationship)
+    {
+        ArgumentNullException.ThrowIfNull(relationship);
+        return relationship.Properties.Keys;
+    }
+
+    /// <summary>
+    /// Checks if a dynamic node has a specific property.
+    /// </summary>
+    /// <param name="node">The dynamic node.</param>
+    /// <param name="propertyName">The name of the property to check for.</param>
+    /// <returns>True if the node has the specified property, otherwise false.</returns>
+    [CypherDynamicEntityAccessor]
+    public static bool HasProperty(this DynamicNode node, string propertyName)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+
+        return node.Properties.ContainsKey(propertyName);
+    }
+
+    /// <summary>
+    /// Checks if a dynamic relationship has a specific property.
+    /// </summary>
+    /// <param name="relationship">The dynamic relationship.</param>
+    /// <param name="propertyName">The name of the property to check for.</param>
+    /// <returns>True if the relationship has the specified property, otherwise false.</returns>
+    [CypherDynamicEntityAccessor]
+    public static bool HasProperty(this DynamicRelationship relationship, string propertyName)
+    {
+        ArgumentNullException.ThrowIfNull(relationship);
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+
+        return relationship.Properties.ContainsKey(propertyName);
+    }
+
+    private static T Cast<T>(object value)
+    {
+        return (T)value;
+    }
+
+    /// <summary>
+    /// True for the exceptions <see cref="SerializationBridge.FromAgeValue"/>, <see cref="bool.Parse(string)"/>,
+    /// and <see cref="Convert.ChangeType(object?, Type)"/> raise on malformed or incompatible property
+    /// values - the failures these accessors are meant to fall back from. Anything else (e.g. a bug
+    /// elsewhere) should propagate rather than be silently swallowed.
+    /// </summary>
+    private static bool IsConversionFailure(Exception exception) =>
+        exception is InvalidCastException or FormatException or OverflowException or ArgumentException or NotSupportedException;
+}

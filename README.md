@@ -28,6 +28,7 @@ A powerful, type-safe .NET library ecosystem for working with graph data structu
 - **⚡ Transaction Management** - Full ACID transaction support with async/await patterns
 - **🎯 Provider Architecture** - Clean abstraction supporting multiple graph database backends
 - **📊 Neo4j Integration** - Complete Neo4j implementation with LINQ-to-Cypher translation
+- **🐘 Apache AGE Integration** - PostgreSQL provider built on the shared Cypher dialect SPI
 - **🛡️ Compile-Time Validation** - Code analyzers ensure that the data model requirements
 - **🏗️ Complex Object Serialization** - Automatic handling of complex properties and circular references
 - **📈 Build-time code generation** - Automatic code generation for efficient serialization/deserialization of domain data types
@@ -35,11 +36,12 @@ A powerful, type-safe .NET library ecosystem for working with graph data structu
 
 ## Packages
 
-To get started, you only need to install the Neo4j provider package:
+To get started, install the provider package for your graph database:
 
 | Package                                   | Description                                             | NuGet                                                                                |
 | ----------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `Cvoya.Graph.Neo4j`                 | Neo4j provider implementation (**required**)            | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Neo4j.svg)                 |
+| `Cvoya.Graph.Neo4j`                 | Neo4j provider implementation                           | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Neo4j.svg)                 |
+| `Cvoya.Graph.Age`                   | PostgreSQL + Apache AGE provider implementation         | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Age.svg)                   |
 | `Cvoya.Graph`                       | Core abstractions and interfaces                        | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.svg)                       |
 | `Cvoya.Graph.Analyzers`             | Compile-time code analyzers (**optional, recommended**) | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Analyzers.svg)             |
 | `Cvoya.Graph.Serialization.CodeGen` | Compile-time code generation                            | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Serialization.CodeGen.svg) |

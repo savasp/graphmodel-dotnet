@@ -138,14 +138,14 @@ Exception behavior follows the public API contract: provider/backend failures ar
 
 The provider contract suite is the `Cvoya.Graph.CompatibilityTests` package (`src/Cvoya.Graph.CompatibilityTests`) - see [Certifying a provider](#certifying-a-provider) below for the full workflow. It mostly defines test interfaces with default xUnit test methods; running the package alone proves little because providers must bind those interfaces in a provider-specific test project.
 
-The Neo4j provider pattern is:
+The in-memory provider is the worked harness example:
 
-- `tests/Cvoya.Graph.Neo4j.Tests/Infrastructure/Neo4jHarness.cs` implements the suite's `IGraphProviderTestHarness` SPI, wrapping the existing Testcontainers/database-pool setup.
-- `tests/Cvoya.Graph.Neo4j.Tests/Neo4jTest.cs` derives from `CompatibilityTest`, adds correlation-scoped logging, and exposes `IGraph Graph`.
-- Concrete classes in `tests/Cvoya.Graph.Neo4j.Tests/CVOYA graphTests/` inherit `Neo4jTest` and implement one or more `Cvoya.Graph.CompatibilityTests.I...Tests` interfaces.
+- `tests/Graph.InMemory.Tests/Infrastructure/InMemoryHarness.cs` implements `IGraphProviderTestHarness` with no external infrastructure.
+- `tests/Graph.InMemory.Tests/InMemoryTest.cs` derives from `CompatibilityTest` and exposes `IGraph Graph`.
+- Concrete classes in `tests/Graph.InMemory.Tests/GraphTests/` inherit `InMemoryTest` and implement one or more `Cvoya.Graph.CompatibilityTests.I...Tests` interfaces.
 - Provider-specific tests live beside the inherited contract tests.
 
-A new provider test project follows the same three-piece shape (harness → intermediate base class → one-line interface bindings). `examples/CompatibilityTests.SampleHarness` is a compiling skeleton; `tests/Cvoya.Graph.Neo4j.Tests` is the full reference implementation.
+A new provider test project follows the same three-piece shape (harness → intermediate base class → one-line interface bindings). `examples/CompatibilityTests.SampleHarness` is a compiling skeleton; `tests/Graph.InMemory.Tests` is the in-tree worked implementation, and `tests/Graph.Age.Tests` demonstrates the same SPI with an external database.
 
 ## Shared Query Translation
 
@@ -290,4 +290,4 @@ Under strict mode, the guard also promotes `GraphProviderUnavailableException` (
 - **The compliance report**: fill in `COMPLIANCE.md` (template in `src/Cvoya.Graph.CompatibilityTests/COMPLIANCE.md`) from your TRX results - N passed / M skipped-by-declared-capability / 0 failed, where N is at least `ComplianceInventory.MinimumExecuted(yourDeclaredCapabilities)`.
 - **"Compatible"** means: 0 failed, every skip is a declared-capability skip, and the executed count meets the guard's floor for your declared capabilities.
 
-See `examples/CompatibilityTests.SampleHarness` for a minimal compiling skeleton of all three pieces, and `tests/Cvoya.Graph.Neo4j.Tests` for the full in-tree reference implementation.
+See `examples/CompatibilityTests.SampleHarness` for a minimal compiling skeleton of all three pieces, and `tests/Graph.InMemory.Tests` for the full in-tree worked implementation.

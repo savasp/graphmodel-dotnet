@@ -339,6 +339,7 @@ jobs:
           dotnet build --configuration Release --no-restore src/Graph.Cypher/Graph.Cypher.csproj
           dotnet build --configuration Release --no-restore src/Graph.Serialization/Graph.Serialization.csproj
           dotnet build --configuration Release --no-restore src/Graph.Neo4j/Graph.Neo4j.csproj
+          dotnet build --configuration Release --no-restore src/Graph.Age/Graph.Age.csproj
           dotnet build --configuration Release --no-restore src/Graph.CompatibilityTests/Graph.CompatibilityTests.csproj
           dotnet build --configuration Release --no-restore src/Graph.Analyzers/Graph.Analyzers.csproj
           dotnet build --configuration Release --no-restore src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj
@@ -349,6 +350,7 @@ jobs:
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Cypher/Graph.Cypher.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Serialization/Graph.Serialization.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Neo4j/Graph.Neo4j.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Age/Graph.Age.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.CompatibilityTests/Graph.CompatibilityTests.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Analyzers/Graph.Analyzers.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj
