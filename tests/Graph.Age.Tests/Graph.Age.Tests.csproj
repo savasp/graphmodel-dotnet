@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <IsPackable>false</IsPackable>
+        <RootNamespace>Cvoya.Graph.Age.Tests</RootNamespace>
+        <AssemblyName>Cvoya.Graph.Age.Tests</AssemblyName>
+
+        <!-- Use the new testing platform -->
+        <UseMicrosoftTestingPlatform>true</UseMicrosoftTestingPlatform>
+
+        <!--
+          xunit.v3's own generated entry point already dispatches to Microsoft.Testing.Platform
+          when invoked in server mode, so the separately-generated Microsoft.Testing.Platform.MSBuild
+          entry point is redundant and triggers CS8892 (unused entry point because a synchronous
+          entry point was found).
+        -->
+        <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+
+        <!-- Enable live output -->
+        <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+        <TestingPlatformShowProgress>true</TestingPlatformShowProgress>
+        <TestingPlatformCaptureOutput>true</TestingPlatformCaptureOutput>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- xunit -->
+        <PackageReference Include="xunit.v3.mtp-v2" />
+
+        <!-- code coverage -->
+        <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/Graph.Age/Graph.Age.csproj" />
+        <ProjectReference Include="../../src/Graph.CompatibilityTests/Graph.CompatibilityTests.csproj" />
+        <ProjectReference Include="../../src/Graph.Analyzers/Graph.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+        <!-- CodeGen analyzer reference for development mode: generates serializers for the suite's domain types -->
+        <ProjectReference Include="../../src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" Condition="'$(UseProjectReferences)' == 'true'" />
+    </ItemGroup>
+
+</Project>

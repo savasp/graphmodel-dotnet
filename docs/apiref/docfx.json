@@ -7,6 +7,7 @@
           "files": [
             "Graph/Graph.csproj",
             "Graph.Neo4j/Graph.Neo4j.csproj",
+            "Graph.Age/Graph.Age.csproj",
             "Graph.Serialization/Graph.Serialization.csproj",
             "Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj",
             "Graph.Analyzers/Graph.Analyzers.csproj"

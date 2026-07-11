@@ -50,9 +50,9 @@ version, and the workflow fails loudly if the pushed tag doesn't match it.
      the workflow never writes to `VERSION` itself).
    - Runs the full test suite, including the Neo4j provider tests against a
      Neo4j service container (the same pattern as `ci.yml`).
-   - Packs all five packages (`Cvoya.Graph`,
-     `Cvoya.Graph.Serialization`, `Cvoya.Graph.Neo4j`,
-     `Cvoya.Graph.Analyzers`, `Cvoya.Graph.Serialization.CodeGen`).
+   - Packs the provider and shared packages, including `Cvoya.Graph.Neo4j`,
+     `Cvoya.Graph.Age`, `Cvoya.Graph`, `Cvoya.Graph.Cypher`, serialization,
+     analyzer, code-generation, and compatibility-test packages.
    - Generates a build provenance attestation for every package
      (`actions/attest-build-provenance`), verifiable with
      `gh attestation verify <file> --repo cvoya-com/graph`.
