@@ -693,7 +693,7 @@ public interface IQueryTraversalTests : IGraphTest
     }
 
     [Fact]
-    public async Task CanFilterTargetNodesByPropertyWithoutTraverseTwoHops()
+    public async Task TraversePaths_Where_FiltersByEndAndDepth()
     {
         // Setup:
         // Alice is 25, Bob is 30, Charlie is 40
@@ -715,19 +715,15 @@ public interface IQueryTraversalTests : IGraphTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = elen.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Find people Alice knows within up to two hops who are over 35, using the
-        // IGraphPath-returning TraversePaths operator (the #94/#126 resolution for variable-length
-        // traversal - a single IGraphPathSegment cannot represent more than one hop). Filtering on
-        // IGraphPath members (path.End, etc.) within the LINQ expression itself is not yet
-        // translated server-side (see follow-up note in the PR); filter client-side on the
-        // materialized paths instead - materialization itself is the behavior under test here.
-        // We should get Charlie (40) through Bob, and Elen directly (1 hop).
-
-        var allPaths = await Graph.Nodes<Person>()
+        // IGraphPath predicates are applied while the provider still has one row per matched path.
+        // This filters both by an end-node property and by path depth on the server.
+        var olderFriendPaths = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .TraversePaths<Knows, Person>(minDepth: 1, maxDepth: 2)
+            .Where(path => path.Start.Id == alice.Id &&
+                ((Person)path.End).Age > 35 &&
+                path.Segments.Count >= 1)
             .ToListAsync(TestContext.Current.CancellationToken);
-
-        var olderFriendPaths = allPaths.Where(path => ((Person)path.End).Age > 35).ToList();
 
         Assert.Equal(2, olderFriendPaths.Count);
         Assert.Contains(olderFriendPaths, path => ((Person)path.End).FirstName == "Charlie" && path.Segments.Count == 2);
@@ -1298,6 +1294,178 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Equal("Bob", ((Person)path.Segments[0].EndNode).FirstName);
         Assert.Equal("Charlie", ((Person)path.Segments[1].EndNode).FirstName);
         Assert.Equal("Dave", ((Person)path.Segments[2].EndNode).FirstName);
+    }
+
+    [Fact]
+    public async Task TraversePaths_Select_ProjectsStartEndAndDepth()
+    {
+        var alice = new Person { FirstName = $"SelectStart-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"SelectMiddle-{Guid.NewGuid():N}" };
+        var charlie = new Person { FirstName = $"SelectEnd-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
+
+        var source = Graph.Nodes<Person>().Where(person => person.Id == alice.Id);
+        var starts = await source.TraversePaths<Knows, Person>(2, 2)
+            .Select(path => path.Start)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var ends = await source.TraversePaths<Knows, Person>(2, 2)
+            .Select(path => path.End)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var depths = await source.TraversePaths<Knows, Person>(2, 2)
+            .Select(path => path.Segments.Count)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(alice.Id, Assert.Single(starts).Id);
+        Assert.Equal(charlie.Id, Assert.Single(ends).Id);
+        Assert.Equal(2, Assert.Single(depths));
+    }
+
+    [Fact]
+    public async Task TraversePaths_Take_LimitsPathsBeforeDecomposition()
+    {
+        var alice = new Person { FirstName = $"TakeStart-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"TakeEndA-{Guid.NewGuid():N}" };
+        var charlie = new Person { FirstName = $"TakeEndB-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+
+        var paths = await Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .TraversePaths<Knows, Person>(1, 1)
+            .Take(1)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(paths);
+        Assert.Single(paths[0].Segments);
+    }
+
+    [Fact]
+    public async Task TraversePaths_Skip_SkipsPathsBeforeDecomposition()
+    {
+        var alice = new Person { FirstName = $"SkipStart-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"SkipEndA-{Guid.NewGuid():N}" };
+        var charlie = new Person { FirstName = $"SkipEndB-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+
+        var paths = await Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .TraversePaths<Knows, Person>(1, 1)
+            .Skip(1)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(paths);
+        Assert.Single(paths[0].Segments);
+    }
+
+    [Fact]
+    public async Task TraversePaths_Count_CountsPathsAfterPagination()
+    {
+        var alice = new Person { FirstName = $"CountStart-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"CountEndA-{Guid.NewGuid():N}" };
+        var charlie = new Person { FirstName = $"CountEndB-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+
+        var query = Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .TraversePaths<Knows, Person>(1, 1);
+
+        Assert.Equal(2, await query.CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(1, await query.Take(1).CountAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task TraversePaths_Any_ChecksPathExistence()
+    {
+        var alice = new Person { FirstName = $"AnyStart-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"AnyEnd-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+
+        var query = Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .TraversePaths<Knows, Person>(1, 1);
+
+        Assert.True(await query.AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await query.Skip(1).AnyAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task TraversePaths_ComplexProperties_HydrateLikePathSegments()
+    {
+        var alice = new PersonWithComplexProperty
+        {
+            FirstName = $"HydrationStart-{Guid.NewGuid():N}",
+            Address = new AddressValue { Street = "1 Path Way", City = "Seattle" },
+        };
+        var bob = new PersonWithComplexProperty
+        {
+            FirstName = $"HydrationMiddle-{Guid.NewGuid():N}",
+            Address = new AddressValue { Street = "2 Path Way", City = "Portland" },
+        };
+        var charlie = new PersonWithComplexProperty
+        {
+            FirstName = $"HydrationEnd-{Guid.NewGuid():N}",
+            Address = new AddressValue { Street = "3 Path Way", City = "Vancouver" },
+        };
+        var firstRelationship = new Knows(alice, bob);
+        var secondRelationship = new Knows(bob, charlie);
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(firstRelationship, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(secondRelationship, null, TestContext.Current.CancellationToken);
+
+        var path = Assert.Single(await Graph.Nodes<PersonWithComplexProperty>()
+            .Where(person => person.Id == alice.Id)
+            .TraversePaths<Knows, PersonWithComplexProperty>(2, 2)
+            .ToListAsync(TestContext.Current.CancellationToken));
+        var firstHop = Assert.Single(await Graph.Nodes<PersonWithComplexProperty>()
+            .Where(person => person.Id == alice.Id)
+            .PathSegments<PersonWithComplexProperty, Knows, PersonWithComplexProperty>()
+            .ToListAsync(TestContext.Current.CancellationToken));
+        var secondHop = Assert.Single(await Graph.Nodes<PersonWithComplexProperty>()
+            .Where(person => person.Id == bob.Id)
+            .PathSegments<PersonWithComplexProperty, Knows, PersonWithComplexProperty>()
+            .ToListAsync(TestContext.Current.CancellationToken));
+
+        AssertNodeHydration(firstHop.StartNode, (PersonWithComplexProperty)path.Start);
+        AssertNodeHydration(firstHop.StartNode, (PersonWithComplexProperty)path.Segments[0].StartNode);
+        AssertNodeHydration(firstHop.EndNode, (PersonWithComplexProperty)path.Segments[0].EndNode);
+        AssertNodeHydration(secondHop.StartNode, (PersonWithComplexProperty)path.Segments[1].StartNode);
+        AssertNodeHydration(secondHop.EndNode, (PersonWithComplexProperty)path.Segments[1].EndNode);
+        AssertNodeHydration(secondHop.EndNode, (PersonWithComplexProperty)path.End);
+        Assert.Equal(firstHop.Relationship, path.Segments[0].Relationship);
+        Assert.Equal(secondHop.Relationship, path.Segments[1].Relationship);
+
+        static void AssertNodeHydration(PersonWithComplexProperty expected, PersonWithComplexProperty actual)
+        {
+            Assert.Equal(expected.Id, actual.Id);
+            Assert.Equal(expected.FirstName, actual.FirstName);
+            Assert.Equal(expected.Address.Street, actual.Address.Street);
+            Assert.Equal(expected.Address.City, actual.Address.City);
+        }
     }
 
     #endregion

@@ -20,7 +20,7 @@ public sealed class ComplianceInventoryTests
     /// excluded: they can never execute on any provider, so they play no part in the strict-mode
     /// execution floor.
     /// </summary>
-    private const int ExpectedTotalTestMethods = 342;
+    private const int ExpectedTotalTestMethods = 348;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

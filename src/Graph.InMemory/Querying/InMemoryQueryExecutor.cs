@@ -566,6 +566,11 @@ internal sealed class InMemoryQueryExecutor(
 
     private bool RowCanBind(Row row, string? alias, Type parameterType)
     {
+        if (parameterType == typeof(IGraphPath))
+        {
+            return row.PathHops is { Count: > 0 };
+        }
+
         if (typeof(IGraphPathSegment).IsAssignableFrom(parameterType))
         {
             return FindTrace(row, parameterType) is not null;
@@ -587,6 +592,11 @@ internal sealed class InMemoryQueryExecutor(
 
     private object? ResolveInput(Row row, string? alias, Type parameterType)
     {
+        if (parameterType == typeof(IGraphPath))
+        {
+            return row.PathHops is { Count: > 0 } ? BuildGraphPath(row) : null;
+        }
+
         if (typeof(IGraphPathSegment).IsAssignableFrom(parameterType))
         {
             return FindTrace(row, parameterType) is { } trace ? BuildTypedSegment(trace, parameterType) : null;
@@ -676,23 +686,23 @@ internal sealed class InMemoryQueryExecutor(
         }
     }
 
-    private object? ProjectRow(Row row, GraphQueryModel model)
+    private static IGraphPath BuildGraphPath(Row row)
     {
-        if (model.PathShape is not null)
+        var hops = row.PathHops ?? [];
+        if (hops.Count == 0)
         {
-            var hops = row.PathHops ?? [];
-            if (hops.Count == 0)
-            {
-                throw new GraphException("A traversal path must contain at least one segment.");
-            }
-
-            return new InMemoryGraphPath(row.PathStart ?? hops[0].StartNode, hops[^1].EndNode, hops);
+            throw new GraphException("A traversal path must contain at least one segment.");
         }
 
+        return new InMemoryGraphPath(row.PathStart ?? hops[0].StartNode, hops[^1].EndNode, hops);
+    }
+
+    private object? ProjectRow(Row row, GraphQueryModel model)
+    {
         var projection = model.Projection;
         if (projection?.Selector is not { } selector)
         {
-            return row.Current;
+            return model.PathShape is not null ? BuildGraphPath(row) : row.Current;
         }
 
         // A two-parameter selector is the Join result selector, already applied at the join.
@@ -706,7 +716,9 @@ internal sealed class InMemoryQueryExecutor(
             return ResolveInput(row, null, selector.Parameters[0].Type) ?? row.Current;
         }
 
-        var input = ResolveInput(row, null, selector.Parameters[0].Type);
+        var input = model.PathShape is not null && selector.Parameters[0].Type == typeof(IGraphPath)
+            ? BuildGraphPath(row)
+            : ResolveInput(row, null, selector.Parameters[0].Type);
 
         // A scalar projection of one simple member reads the stored value: an entity hydrated
         // from a record that never stored the member (e.g. created dynamically) must surface

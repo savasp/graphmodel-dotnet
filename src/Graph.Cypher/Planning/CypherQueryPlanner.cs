@@ -74,7 +74,9 @@ public sealed class CypherQueryPlanner
 
         var predicates = LowerPredicates(model, state, lowerer);
         var ordering = LowerOrdering(model, state, lowerer);
-        var projection = LowerProjection(model, state, lowerer);
+        var projection = model.PathShape is null
+            ? LowerProjection(model, state, lowerer)
+            : null;
 
         var clauses = new List<ICypherClause>();
         AddRootAndTraversalClauses(clauses, model, state);
@@ -96,14 +98,16 @@ public sealed class CypherQueryPlanner
 
         if (model.PathShape is not null)
         {
-            AddGraphPathProjection(clauses);
+            AddGraphPathTerminalAndProjection(clauses, model, lowerer);
         }
         else
         {
-            AddTerminalAndProjection(clauses, model, state, ordering, projection, parameters);
+            AddTerminalAndProjection(clauses, model, state, ordering, projection!, parameters);
         }
 
-        var pathTypes = model.PathShape is null
+        var pathTypes = model.PathShape is null ||
+            model.Projection is not null ||
+            model.Terminal != TerminalOperation.ToListOrArray
             ? null
             : new CypherPathTypes(
                 model.PathShape.SourceType,
@@ -1011,8 +1015,11 @@ public sealed class CypherQueryPlanner
             projection.LoadTargetProperties));
     }
 
-    private static void AddGraphPathProjection(List<ICypherClause> clauses)
+    private static void AddGraphPathProjection(
+        List<ICypherClause> clauses,
+        GraphQueryModel model)
     {
+        var pathShape = model.PathShape!;
         clauses.Add(new WithClause(
             [new ReturnItem(Function("collect", new VariableRef("p")), "__paths")],
             distinct: false));
@@ -1055,19 +1062,101 @@ public sealed class CypherQueryPlanner
                     new AstBinaryExpression(CypherBinaryOperator.Add, new VariableRef("hopIndex"), new Literal(1))),
                 "tgt")
         ], distinct: false));
-        clauses.Add(new EntityProjectionClause(
-            EntityProjectionShape.PathSegment,
-            "src",
-            "r",
-            "tgt",
-            loadSourceProperties: false,
-            loadTargetProperties: false,
-            includePathCoordinates: true));
+        // A variable-length pattern only label-constrains the path's first and last nodes; when
+        // more than one hop is possible, every hop column can also hold an unconstrained
+        // intermediate node, whose runtime type is unknowable at planning time — load complex
+        // properties rather than silently under-hydrating it. At exactly one hop the columns are
+        // the label-constrained endpoints, so their static types decide.
+        var intermediateNodesPossible =
+            model.Traversal.LastOrDefault(step => !step.IsComplexPropertyTraversal) is not { Depth.Max: <= 1 };
+        var loadSourceProperties = intermediateNodesPossible || HasComplexProperties(pathShape.SourceType);
+        var loadTargetProperties = intermediateNodesPossible || HasComplexProperties(pathShape.TargetType);
+        clauses.Add(new ReturnClause(
+        [
+            new ReturnItem(new VariableRef("pathIndex"), null),
+            new ReturnItem(new VariableRef("hopIndex"), null),
+            new ReturnItem(
+                new MapExpression(
+                [
+                    new MapEntry("StartNode", new EntityProjectionExpression("src", loadSourceProperties)),
+                    new MapEntry("Relationship", new VariableRef("r")),
+                    new MapEntry("EndNode", new EntityProjectionExpression("tgt", loadTargetProperties)),
+                ]),
+                "PathSegment"),
+        ], distinct: false));
         clauses.Add(new OrderByClause(
         [
             new OrderByItem(new VariableRef("pathIndex"), descending: false),
             new OrderByItem(new VariableRef("hopIndex"), descending: false)
         ]));
+    }
+
+    private static void AddGraphPathTerminalAndProjection(
+        List<ICypherClause> clauses,
+        GraphQueryModel model,
+        ExpressionToCypherAstLowerer lowerer)
+    {
+        if (model.Terminal is TerminalOperation.Count or TerminalOperation.Any)
+        {
+            if (model.Paging.Skip is not null || model.Paging.Take is not null)
+            {
+                clauses.Add(new WithClause([new ReturnItem(new VariableRef("p"), null)], distinct: false));
+            }
+
+            AddOrderingAndPaging(clauses, [], model.Paging, reverseOrdering: false);
+            var count = Function("count", new VariableRef("p"));
+            clauses.Add(new ReturnClause(
+                [new ReturnItem(
+                    model.Terminal == TerminalOperation.Any
+                        ? new AstBinaryExpression(CypherBinaryOperator.GreaterThan, count, new Literal(0))
+                        : count,
+                    model.Terminal == TerminalOperation.Any ? "exists" : null)],
+                distinct: false));
+            return;
+        }
+
+        if (model.Terminal != TerminalOperation.ToListOrArray)
+        {
+            throw new GraphQueryTranslationException(
+                $"Terminal '{model.Terminal}' after TraversePaths is not supported yet.");
+        }
+
+        AddOrderingAndPaging(clauses, [], model.Paging, reverseOrdering: false);
+
+        if (model.Projection?.Selector is not { } selector)
+        {
+            AddGraphPathProjection(clauses, model);
+            return;
+        }
+
+        var body = StripConvert(selector.Body);
+        if (body is MemberExpression
+            {
+                Expression: ParameterExpression parameter,
+                Member.Name: nameof(IGraphPath.Start) or nameof(IGraphPath.End),
+            } member && parameter.Type == typeof(IGraphPath))
+        {
+            var entity = lowerer.LowerLambda(selector, "p");
+            clauses.Add(new WithClause([new ReturnItem(entity, "__pathEntity")], distinct: false));
+            // Start/End are declared INode, but the pattern label-constrains them to the path
+            // shape's endpoint types — use those rather than the interface, which always reports
+            // complex properties.
+            var entityType = member.Member.Name == nameof(IGraphPath.Start)
+                ? model.PathShape!.SourceType
+                : model.PathShape!.TargetType;
+            clauses.Add(new EntityProjectionClause(
+                EntityProjectionShape.Node,
+                "__pathEntity",
+                relationshipAlias: null,
+                targetAlias: null,
+                loadSourceProperties: HasComplexProperties(entityType),
+                loadTargetProperties: false));
+            return;
+        }
+
+        clauses.Add(new ReturnClause(
+            [new ReturnItem(lowerer.LowerLambda(selector, "p"), null)],
+            distinct: false));
     }
 
     private static bool TryGetDirectPathSegmentMember(MemberExpression member, out string component)

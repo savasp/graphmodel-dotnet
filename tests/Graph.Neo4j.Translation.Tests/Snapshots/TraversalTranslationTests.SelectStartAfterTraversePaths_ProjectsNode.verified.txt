@@ -1,0 +1,20 @@
+== Cypher ==
+MATCH p = (src:Person|Manager)-[r:KNOWS*1..3]->(tgt:Person|Manager)
+WITH nodes(p)[0] AS __pathEntity
+OPTIONAL MATCH src_path = (__pathEntity)-[rels*1..5]->(prop)
+WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)
+WITH __pathEntity,
+    CASE WHEN src_path IS NULL THEN [] ELSE [i IN range(0, size(rels) - 1) | {
+        ParentNode: CASE WHEN i = 0 THEN __pathEntity ELSE nodes(src_path)[i] END,
+        Relationship: rels[i],
+        SequenceNumber: rels[i].SequenceNumber,
+        Property: nodes(src_path)[i + 1]
+    }] END AS src_property_path
+WITH __pathEntity, reduce(flat = [], path IN collect(src_property_path) | flat + path) AS src_properties
+RETURN {
+    Node: __pathEntity,
+    ComplexProperties: src_properties
+} AS Node
+
+== Parameters ==
+(none)

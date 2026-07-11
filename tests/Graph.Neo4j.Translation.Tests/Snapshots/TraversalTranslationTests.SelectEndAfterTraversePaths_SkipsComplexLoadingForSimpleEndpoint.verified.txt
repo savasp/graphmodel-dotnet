@@ -1,0 +1,10 @@
+== Cypher ==
+MATCH p = (src:Person|Manager)-[r:WORKS_AT*1..3]->(tgt:Company)
+WITH nodes(p)[length(p)] AS __pathEntity
+RETURN {
+                Node: __pathEntity,
+                ComplexProperties: []
+            } AS Node
+
+== Parameters ==
+(none)

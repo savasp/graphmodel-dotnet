@@ -14,6 +14,12 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         LinqOperator.ToListOrArray,
         LinqOperator.Direction,
         LinqOperator.WithDepth,
+        LinqOperator.Where,
+        LinqOperator.Select,
+        LinqOperator.Take,
+        LinqOperator.Skip,
+        LinqOperator.Count,
+        LinqOperator.Any,
     ];
 
     private readonly List<PredicateFragment> _predicates = [];
@@ -103,6 +109,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         switch (op.Value)
         {
             case LinqOperator.Where:
+                ThrowIfPathPredicateAfterProjectionOrPaging();
                 AddPredicate(node, "Where");
                 break;
             case LinqOperator.Select:
@@ -117,10 +124,10 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                 AddOrdering(node, descending: true);
                 break;
             case LinqOperator.Take:
-                _take = EvaluateArgument<int>(node, 1, "Take count");
+                ComposeTake(EvaluateArgument<int>(node, 1, "Take count"));
                 break;
             case LinqOperator.Skip:
-                _skip = EvaluateArgument<int>(node, 1, "Skip count");
+                ComposeSkip(EvaluateArgument<int>(node, 1, "Skip count"));
                 break;
             case LinqOperator.Distinct:
                 _distinct = true;
@@ -309,6 +316,16 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                 _ => ProjectionKind.Scalar,
             };
 
+        if (_isGraphPathResult && kind == ProjectionKind.Identity)
+        {
+            // Select(p => p) over TraversePaths is a no-op: storing it would make providers lower
+            // a bare path projection (e.g. RETURN p) instead of the decomposed materialization
+            // shape the IGraphPath wire contract requires.
+            _projection = null;
+            _currentType = selector.ReturnType;
+            return;
+        }
+
         _projection = new ProjectionShape(kind, selector);
 
         if (kind == ProjectionKind.PathSegment && body is MemberExpression member)
@@ -464,6 +481,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         _isGraphPathResult = true;
         _pathShape = new QueryPathShape(sourceType, relationshipType, targetType);
         _currentType = typeof(IGraphPath);
+        _currentAlias = "p";
         _projection = null;
     }
 
@@ -680,6 +698,51 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
             result.Parameters.IndexOf(parameter) == 1
                 ? "joined"
                 : _currentAlias;
+    }
+
+    /// <summary>
+    /// Folds a <c>Take</c> into the paging window. The window already reflects every earlier
+    /// paging operator, so a later Take can only tighten the remaining limit.
+    /// </summary>
+    private void ComposeTake(int take)
+    {
+        take = Math.Max(take, 0);
+        _take = _take is { } existing ? Math.Min(existing, take) : take;
+    }
+
+    /// <summary>
+    /// Folds a <c>Skip</c> into the paging window. Skipping after an earlier Take consumes part
+    /// of that bounded window, so the remaining limit shrinks accordingly — <c>Take(2).Skip(1)</c>
+    /// is SKIP 1 LIMIT 1, not SKIP 1 LIMIT 2.
+    /// </summary>
+    private void ComposeSkip(int skip)
+    {
+        skip = Math.Max(skip, 0);
+        _skip = (_skip ?? 0) + skip;
+        if (_take is { } bounded)
+        {
+            _take = Math.Max(bounded - skip, 0);
+        }
+    }
+
+    /// <summary>
+    /// The query model applies path predicates before projection and pagination, so a
+    /// <c>Where</c> that textually follows <c>Select</c>/<c>Take</c>/<c>Skip</c> on a
+    /// <c>TraversePaths</c> query would silently filter a different row set than LINQ semantics
+    /// require. Reject it instead of mistranslating.
+    /// </summary>
+    private void ThrowIfPathPredicateAfterProjectionOrPaging()
+    {
+        if (!_isGraphPathResult || (_projection is null && _take is null && _skip is null))
+        {
+            return;
+        }
+
+        throw new GraphQueryTranslationException(
+            "'.Where(...)' on a 'TraversePaths(...)' query must precede '.Select(...)', '.Take(...)', and " +
+            "'.Skip(...)': the query model applies path predicates before projection and pagination, so a " +
+            "predicate added after them would silently change which paths are returned. Reorder the operators, " +
+            "or materialize the paths first and filter client-side.");
     }
 
     private void ThrowIfUnsupportedAfterTraversePaths(LinqOperator op, string methodName)

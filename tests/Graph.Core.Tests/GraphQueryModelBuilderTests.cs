@@ -303,16 +303,106 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
-    public void UnsupportedOperatorAfterTraversePaths_ThrowsAtChokePoint()
+    public void WhereAfterTraversePaths_BindsPredicateToPathScope()
     {
         var query = Root<Person>()
             .TraversePaths<Knows, Company>(1, 3)
             .Where(path => path.Segments.Count > 0);
 
-        var exception = Assert.Throws<GraphQueryTranslationException>(() => GraphQueryModelBuilder.Build(query.Expression));
+        var model = GraphQueryModelBuilder.Build(query.Expression);
 
-        Assert.Contains("chained after 'TraversePaths", exception.Message);
+        var predicate = Assert.Single(model.Predicates);
+        Assert.Equal("p", predicate.Alias);
+        Assert.Equal(typeof(IGraphPath), Assert.Single(predicate.Predicate.Parameters).Type);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void UnsupportedOperatorAfterTraversePaths_ThrowsAtChokePoint()
+    {
+        var query = Root<Person>()
+            .TraversePaths<Knows, Company>(1, 3)
+            .OrderBy(path => path.Segments.Count);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(
+            () => GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("'.OrderBy(...)' chained after 'TraversePaths", exception.Message);
         Assert.Contains("Materialize the paths first", exception.Message);
+    }
+
+    [Fact]
+    public void WhereAfterTakeOnTraversePaths_ThrowsOrderingGuard()
+    {
+        var query = Root<Person>()
+            .TraversePaths<Knows, Company>(1, 3)
+            .Take(1)
+            .Where(path => path.Segments.Count > 0);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(
+            () => GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("must precede", exception.Message);
+    }
+
+    [Fact]
+    public void WhereAfterSelectOnTraversePaths_ThrowsOrderingGuard()
+    {
+        var query = Root<Person>()
+            .TraversePaths<Knows, Company>(1, 3)
+            .Select(path => path.End)
+            .Where(node => node.Id != "");
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(
+            () => GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("must precede", exception.Message);
+    }
+
+    [Fact]
+    public void IdentitySelectAfterTraversePaths_IsProjectionNoOp()
+    {
+        var query = Root<Person>()
+            .TraversePaths<Knows, Company>(1, 3)
+            .Select(path => path);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Null(model.Projection);
+        Assert.NotNull(model.PathShape);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void TakeThenSkip_FoldsPagingWindowExactly()
+    {
+        // LINQ: Take(2) bounds the window to 2 rows, then Skip(1) consumes one of them.
+        var query = Root<Person>().Take(2).Skip(1);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal(1, model.Paging.Skip);
+        Assert.Equal(1, model.Paging.Take);
+    }
+
+    [Fact]
+    public void RepeatedTake_KeepsTighterLimit()
+    {
+        var query = Root<Person>().Take(2).Take(5);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal(2, model.Paging.Take);
+    }
+
+    [Fact]
+    public void RepeatedSkip_Accumulates()
+    {
+        var query = Root<Person>().Skip(1).Skip(2);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal(3, model.Paging.Skip);
     }
 
     [Fact]

@@ -1,0 +1,1 @@
+Cvoya.Graph.GraphQueryTranslationException: '.Where(...)' on a 'TraversePaths(...)' query must precede '.Select(...)', '.Take(...)', and '.Skip(...)': the query model applies path predicates before projection and pagination, so a predicate added after them would silently change which paths are returned. Reorder the operators, or materialize the paths first and filter client-side.
