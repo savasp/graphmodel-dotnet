@@ -1,7 +1,10 @@
+---
+---
+
 # Release Process
 
 CVOYA graph releases are tag-triggered and fully automated by
-[`.github/workflows/release.yml`](../.github/workflows/release.yml). There is
+[`.github/workflows/release.yml`](https://github.com/cvoya-com/graph/blob/main/.github/workflows/release.yml). There is
 no manual publish step and no CI stamping of version numbers: the `VERSION`
 file at the repository root is the single source of truth for the package
 version, and the workflow fails loudly if the pushed tag doesn't match it.

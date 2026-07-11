@@ -3,7 +3,7 @@
 title: CVOYA graph Documentation
 description: A powerful, type-safe .NET library ecosystem for working with graph data structures and graph databases.
 baseurl: "/graph"
-url: "https://cvoya-com.github.io"
+url: "https://oss.cvoya.com"
 
 # Build settings
 markdown: kramdown
@@ -17,6 +17,15 @@ repository: cvoya-com/graph
 plugins:
   - jekyll-feed
   - jekyll-sitemap
+  # Rewrites relative .md links between rendered pages to their .html URLs.
+  - jekyll-relative-links
+
+# Render conceptual Markdown consistently without repeating layout metadata.
+defaults:
+  - scope:
+      path: "docs"
+    values:
+      layout: page
 
 # Exclude from processing
 exclude:
@@ -28,6 +37,7 @@ exclude:
   - bin/
   - local-nuget-feed/
   - artifacts/
+  - docs/apiref/
   - "*.sln"
   - "*.csproj"
   - "*.cs"
@@ -37,12 +47,8 @@ exclude:
   - SECURITY.md
   - CHANGELOG.md
   - CONTRIBUTING.md
-  - RELEASE_CHECKLIST.md
+  - developer/
   - codecov.yml
-
-# Include files that start with underscores
-include:
-  - _site
 
 # Kramdown settings
 kramdown:

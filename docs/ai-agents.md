@@ -1,15 +1,18 @@
+---
+---
+
 # AI agent documentation
 
 This repository is set up so AI coding agents can discover project context, build and test commands, and tool-specific configuration.
 
-**The single source of truth is [AGENTS.md](../AGENTS.md)** at the repo root: layout, build/test requirements (including which test projects need a live Neo4j), conventions, multi-agent workflow, and issue-tracking rules. Tool-specific files layer on top of it:
+**The single source of truth is [AGENTS.md](https://github.com/cvoya-com/graph/blob/main/AGENTS.md)** at the repo root: layout, build/test requirements (including which test projects need a live Neo4j), conventions, multi-agent workflow, and issue-tracking rules. Tool-specific files layer on top of it:
 
 | Tool | What to use |
 |------|-------------|
-| **Claude Code** | [CLAUDE.md](../CLAUDE.md) (thin entry point → AGENTS.md). Task agents in `.claude/agents/`, skills in `.claude/skills/`, hooks in `.claude/hooks/`, settings in `.claude/settings.json`. |
-| **Codex** | Reads [AGENTS.md](../AGENTS.md) natively. Agent role definitions in `.codex/agents/*.toml`, configuration in `.codex/config.toml`, hooks in `.codex/hooks.json`. |
-| **GitHub Copilot** | [.github/copilot-instructions.md](../.github/copilot-instructions.md) (thin pointer → AGENTS.md). |
-| **Other tools** (Zed, ChatGPT, etc.) | [AGENTS.md](../AGENTS.md) directly. |
+| **Claude Code** | [CLAUDE.md](https://github.com/cvoya-com/graph/blob/main/CLAUDE.md) (thin entry point → AGENTS.md). Task agents in `.claude/agents/`, skills in `.claude/skills/`, hooks in `.claude/hooks/`, settings in `.claude/settings.json`. |
+| **Codex** | Reads [AGENTS.md](https://github.com/cvoya-com/graph/blob/main/AGENTS.md) natively. Agent role definitions in `.codex/agents/*.toml`, configuration in `.codex/config.toml`, hooks in `.codex/hooks.json`. |
+| **GitHub Copilot** | [.github/copilot-instructions.md](https://github.com/cvoya-com/graph/blob/main/.github/copilot-instructions.md) (thin pointer → AGENTS.md). |
+| **Other tools** (Zed, ChatGPT, etc.) | [AGENTS.md](https://github.com/cvoya-com/graph/blob/main/AGENTS.md) directly. |
 
 ## Multi-agent setup
 

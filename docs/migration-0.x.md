@@ -1,3 +1,6 @@
+---
+---
+
 # Migration guide: Query surface v2 (issue #94)
 
 CVOYA graph is pre-1.0 alpha; breaking changes are expected between releases. This guide covers

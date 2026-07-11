@@ -8,6 +8,11 @@ trim_trailing_whitespace = true
 
 [*.{cs,csx}]
 indent_size = 4
+
+# File headers
+file_header_template = Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.\nSee LICENSE in the project root for full license terms.
+dotnet_diagnostic.IDE0073.severity = error
+
 dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
 csharp_style_namespace_declarations = file_scoped:silent
