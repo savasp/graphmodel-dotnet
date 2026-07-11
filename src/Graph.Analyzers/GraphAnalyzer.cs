@@ -310,13 +310,10 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static bool TryGetConfiguredComplexPropertyRelationshipType(AttributeData attribute, out string? value)
     {
-        foreach (var argument in attribute.NamedArguments)
+        foreach (var argument in attribute.NamedArguments.Where(argument => argument.Key == "RelationshipType"))
         {
-            if (argument.Key == "RelationshipType")
-            {
-                value = argument.Value.Value as string;
-                return true;
-            }
+            value = argument.Value.Value as string;
+            return true;
         }
 
         // Some analyzer-test compilations expose the referenced attribute without populated
