@@ -143,13 +143,11 @@ public sealed class CypherQueryPlanner
                         RequireCapability(GraphCapability.OptionalTraversal, "OptionalTraversal");
                     }
 
-                    foreach (var pattern in match.Patterns)
+                    if (match.Patterns.Any(pattern =>
+                            pattern.Elements.OfType<NodePattern>().Any(node => node.Labels.Count > 1) ||
+                            pattern.Elements.OfType<RelationshipPattern>().Any(relationship => relationship.Types.Count > 1)))
                     {
-                        if (pattern.Elements.OfType<NodePattern>().Any(node => node.Labels.Count > 1) ||
-                            pattern.Elements.OfType<RelationshipPattern>().Any(relationship => relationship.Types.Count > 1))
-                        {
-                            RequireCapability(GraphCapability.MultiLabelMatch, "MultiLabelMatch");
-                        }
+                        RequireCapability(GraphCapability.MultiLabelMatch, "MultiLabelMatch");
                     }
 
                     break;
