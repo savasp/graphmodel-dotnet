@@ -212,6 +212,15 @@ public class TraversalTranslationTests : TranslationTestBase
         return VerifyTranslation(query);
     }
 
+    [Fact]
+    public Task SkipAfterTraversePaths_SkipsPathsBeforeDecomposition()
+    {
+        var query = Root.Nodes<Person>()
+            .TraversePaths<Knows, Person>(1, 3)
+            .Skip(2);
+        return VerifyTranslation(query);
+    }
+
     /// <summary>
     /// Control case alongside the four "must throw" tests above: the bare <c>TraversePaths</c>
     /// query (no operator chained after it) must still translate successfully - proving the choke
