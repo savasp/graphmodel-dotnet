@@ -105,7 +105,9 @@ public sealed class CypherQueryPlanner
             AddTerminalAndProjection(clauses, model, state, ordering, projection!, parameters);
         }
 
-        var pathTypes = model.PathShape is null || model.Projection is not null
+        var pathTypes = model.PathShape is null ||
+            model.Projection is not null ||
+            model.Terminal != TerminalOperation.ToListOrArray
             ? null
             : new CypherPathTypes(
                 model.PathShape.SourceType,
@@ -1077,6 +1079,20 @@ public sealed class CypherQueryPlanner
         GraphQueryModel model,
         ExpressionToCypherAstLowerer lowerer)
     {
+        if (model.Terminal == TerminalOperation.Count)
+        {
+            if (model.Paging.Skip is not null || model.Paging.Take is not null)
+            {
+                clauses.Add(new WithClause([new ReturnItem(new VariableRef("p"), null)], distinct: false));
+            }
+
+            AddOrderingAndPaging(clauses, [], model.Paging, reverseOrdering: false);
+            clauses.Add(new ReturnClause(
+                [new ReturnItem(Function("count", new VariableRef("p")), null)],
+                distinct: false));
+            return;
+        }
+
         if (model.Terminal != TerminalOperation.ToListOrArray)
         {
             throw new GraphQueryTranslationException(

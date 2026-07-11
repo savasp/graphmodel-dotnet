@@ -18,6 +18,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         LinqOperator.Select,
         LinqOperator.Take,
         LinqOperator.Skip,
+        LinqOperator.Count,
     ];
 
     private readonly List<PredicateFragment> _predicates = [];

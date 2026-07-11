@@ -221,6 +221,24 @@ public class TraversalTranslationTests : TranslationTestBase
         return VerifyTranslation(query);
     }
 
+    [Fact]
+    public Task CountAfterTraversePaths_CountsPaths()
+    {
+        var source = Root.Nodes<Person>().TraversePaths<Knows, Person>(1, 3);
+        var expression = MarkerExpressions.Call<IGraphPath>("CountAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(Person), expression);
+    }
+
+    [Fact]
+    public Task TakeThenCountAfterTraversePaths_PaginatesPathsBeforeAggregate()
+    {
+        var source = Root.Nodes<Person>()
+            .TraversePaths<Knows, Person>(1, 3)
+            .Take(5);
+        var expression = MarkerExpressions.Call<IGraphPath>("CountAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(Person), expression);
+    }
+
     /// <summary>
     /// Control case alongside the four "must throw" tests above: the bare <c>TraversePaths</c>
     /// query (no operator chained after it) must still translate successfully - proving the choke

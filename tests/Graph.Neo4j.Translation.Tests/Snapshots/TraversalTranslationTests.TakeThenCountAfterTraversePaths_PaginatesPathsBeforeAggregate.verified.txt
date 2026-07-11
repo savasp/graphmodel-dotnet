@@ -1,0 +1,8 @@
+== Cypher ==
+MATCH p = (src:Person|Manager)-[r:KNOWS*1..3]->(tgt:Person|Manager)
+WITH p
+LIMIT 5
+RETURN count(p)
+
+== Parameters ==
+(none)

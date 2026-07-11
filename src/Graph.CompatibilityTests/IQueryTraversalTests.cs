@@ -1369,5 +1369,26 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Single(paths[0].Segments);
     }
 
+    [Fact]
+    public async Task TraversePaths_Count_CountsPathsAfterPagination()
+    {
+        var alice = new Person { FirstName = $"CountStart-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"CountEndA-{Guid.NewGuid():N}" };
+        var charlie = new Person { FirstName = $"CountEndB-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+
+        var query = Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .TraversePaths<Knows, Person>(1, 1);
+
+        Assert.Equal(2, await query.CountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(1, await query.Take(1).CountAsync(TestContext.Current.CancellationToken));
+    }
+
     #endregion
 }
