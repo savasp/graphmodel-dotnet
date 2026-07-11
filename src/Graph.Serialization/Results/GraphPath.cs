@@ -1,7 +1,7 @@
 // Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
 // See LICENSE in the project root for full license terms.
 
-namespace Cvoya.Graph.Neo4j.Querying.Linq.Queryables;
+namespace Cvoya.Graph.Serialization.Results;
 
 /// <summary>
 /// A non-generic single-hop segment used to compose a <see cref="GraphPath"/>. Unlike

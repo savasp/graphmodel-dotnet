@@ -438,6 +438,26 @@ the name. Pass each type as its own list entry to the multi-type constructor
 `(alias, direction, depth, types)`; the original single-`string` constructor overload remains for
 one-type and any-type patterns, including an uncast `null` type argument.
 
+## 20. Cypher planning and result materialization require explicit provider seams
+
+`CypherQueryPlanner` now requires an `ICypherDialect`; its public parameterless constructor is removed.
+Custom Cypher providers should pass the same dialect to the shared planner and renderer:
+
+```diff
+-var statement = new CypherQueryPlanner().Plan(model);
++var statement = new CypherQueryPlanner(dialect).Plan(model);
++var rendered = new CypherRenderer(dialect).Render(statement);
+```
+
+The renderer returns `CypherRenderResult` rather than a provider-local query record. Besides text and
+parameters, it exposes the exact projection columns required by SQL-wrapped Cypher engines such as Apache
+AGE.
+
+Provider result code should adapt driver records into `GraphRecord`/`GraphValue` and call
+`GraphResultMaterializer`. Driver node/relationship interfaces are no longer accepted by the shared
+materialization pipeline. This is an implementation-SPI change only; application LINQ queries and stored
+graph data require no migration, and Neo4j query text remains byte-for-byte unchanged.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

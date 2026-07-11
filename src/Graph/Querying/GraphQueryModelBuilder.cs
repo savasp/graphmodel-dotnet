@@ -6,7 +6,8 @@ namespace Cvoya.Graph.Querying;
 using System.Linq.Expressions;
 using System.Reflection;
 
-internal sealed class GraphQueryModelBuilder : ExpressionVisitor
+/// <summary>Builds the provider-neutral semantic query model from a graph LINQ expression.</summary>
+public sealed class GraphQueryModelBuilder : ExpressionVisitor
 {
     private static readonly HashSet<LinqOperator> SupportedAfterTraversePaths =
     [
@@ -42,9 +43,12 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
     {
     }
 
-    public static GraphQueryModel Build(
+    /// <summary>Builds a semantic query model using the default expression-tree safety bounds.</summary>
+    public static GraphQueryModel Build(Expression expression) => Build(expression, options: null);
+
+    internal static GraphQueryModel Build(
         Expression expression,
-        GraphQueryModelBuilderOptions? options = null)
+        GraphQueryModelBuilderOptions? options)
     {
         ArgumentNullException.ThrowIfNull(expression);
 
@@ -78,6 +82,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             builder._union);
     }
 
+    /// <inheritdoc/>
     protected override Expression VisitMethodCall(MethodCallExpression node)
     {
         var op = LinqOperatorDispatch.Resolve(node.Method);
@@ -197,6 +202,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
         return node;
     }
 
+    /// <inheritdoc/>
     protected override Expression VisitExtension(Expression node)
     {
         if (node is IGraphSearchRootExpression search)
@@ -217,6 +223,7 @@ internal sealed class GraphQueryModelBuilder : ExpressionVisitor
             $"Expression '{node.GetType().Name}' is not a recognized graph query expression.");
     }
 
+    /// <inheritdoc/>
     protected override Expression VisitConstant(ConstantExpression node)
     {
         if (_root is not null || node.Value is not IQueryable queryable)
