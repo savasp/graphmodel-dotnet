@@ -239,6 +239,14 @@ public class TraversalTranslationTests : TranslationTestBase
         return VerifyTranslation(typeof(Person), expression);
     }
 
+    [Fact]
+    public Task AnyAfterTraversePaths_ChecksPathExistence()
+    {
+        var source = Root.Nodes<Person>().TraversePaths<Knows, Person>(1, 3);
+        var expression = MarkerExpressions.Call<IGraphPath>("AnyAsyncMarker", source.Expression);
+        return VerifyTranslation(typeof(Person), expression);
+    }
+
     /// <summary>
     /// Control case alongside the four "must throw" tests above: the bare <c>TraversePaths</c>
     /// query (no operator chained after it) must still translate successfully - proving the choke

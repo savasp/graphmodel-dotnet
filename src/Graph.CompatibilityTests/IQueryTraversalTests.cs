@@ -1390,5 +1390,23 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Equal(1, await query.Take(1).CountAsync(TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task TraversePaths_Any_ChecksPathExistence()
+    {
+        var alice = new Person { FirstName = $"AnyStart-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"AnyEnd-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+
+        var query = Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .TraversePaths<Knows, Person>(1, 1);
+
+        Assert.True(await query.AnyAsync(TestContext.Current.CancellationToken));
+        Assert.False(await query.Skip(1).AnyAsync(TestContext.Current.CancellationToken));
+    }
+
     #endregion
 }

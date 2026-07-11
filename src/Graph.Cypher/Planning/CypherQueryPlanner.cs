@@ -1079,7 +1079,7 @@ public sealed class CypherQueryPlanner
         GraphQueryModel model,
         ExpressionToCypherAstLowerer lowerer)
     {
-        if (model.Terminal == TerminalOperation.Count)
+        if (model.Terminal is TerminalOperation.Count or TerminalOperation.Any)
         {
             if (model.Paging.Skip is not null || model.Paging.Take is not null)
             {
@@ -1087,8 +1087,13 @@ public sealed class CypherQueryPlanner
             }
 
             AddOrderingAndPaging(clauses, [], model.Paging, reverseOrdering: false);
+            var count = Function("count", new VariableRef("p"));
             clauses.Add(new ReturnClause(
-                [new ReturnItem(Function("count", new VariableRef("p")), null)],
+                [new ReturnItem(
+                    model.Terminal == TerminalOperation.Any
+                        ? new AstBinaryExpression(CypherBinaryOperator.GreaterThan, count, new Literal(0))
+                        : count,
+                    model.Terminal == TerminalOperation.Any ? "exists" : null)],
                 distinct: false));
             return;
         }
