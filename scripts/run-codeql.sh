@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # CVOYA graph CodeQL Runner
-# Runs local C# CodeQL analysis using the same query suite as the GitHub workflow.
+# Runs local CodeQL analysis for the same languages and query suite as the GitHub workflow.
 
 set -euo pipefail
 
@@ -29,7 +29,7 @@ print_header() {
 }
 
 print_database_create_failure_guidance() {
-    if [ "$BUILD_MODE" = "manual" ]; then
+    if [ "${LANGUAGE_BUILD_MODE:-$BUILD_MODE}" = "manual" ]; then
         print_warning "Manual build mode relies on CodeQL compiler tracing for the local platform and toolchain."
         print_warning "If the build completed but CodeQL reported that no C# source was processed, rerun './scripts/run-codeql.sh' without '--build-mode manual' for the portable local gate."
 
@@ -48,7 +48,7 @@ Usage: ./scripts/run-codeql.sh [options]
 Options:
   -o, --output-dir <dir>       SARIF output directory (default: artifacts/codeql)
   --build-mode <mode>          CodeQL build mode: none or manual (default: none; manual is optional and tracer-dependent)
-  --no-download                Do not download/update the CodeQL C# query pack
+  --no-download                Do not download/update the CodeQL query packs
   --fail-on-alerts             Exit non-zero on error/warning results (default)
   --allow-alerts               Report results without failing
   --threads <count>            Number of CodeQL evaluator threads
@@ -70,10 +70,17 @@ FAIL_ON_ALERTS=true
 BUILD_ONLY=false
 THREADS=""
 RAM=""
-QUERY_PACK="codeql/csharp-queries"
-QUERY_SUITE="codeql/csharp-queries:codeql-suites/csharp-security-and-quality.qls"
+LANGUAGES=(actions csharp ruby)
 TEMP_SOURCE_ROOT=""
 TEMP_DATABASE_ROOT=""
+
+query_pack_for() {
+    echo "codeql/$1-queries"
+}
+
+query_suite_for() {
+    echo "codeql/$1-queries:codeql-suites/$1-security-and-quality.qls"
+}
 
 cleanup() {
     if [ -n "$TEMP_SOURCE_ROOT" ]; then
@@ -158,11 +165,9 @@ case "$BUILD_MODE" in
         ;;
 esac
 
-DATABASE_DIR="$OUTPUT_DIR/db/csharp"
 RESULTS_DIR="$OUTPUT_DIR/results"
-RESULTS_FILE="$RESULTS_DIR/csharp.sarif"
 
-print_header "CodeQL C# Analysis"
+print_header "CodeQL Analysis"
 echo ""
 
 print_status "Checking prerequisites..."
@@ -212,10 +217,9 @@ fi
 if [ "$BUILD_MODE" = "none" ]; then
     TEMP_SOURCE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/graphmodel-codeql-source.XXXXXX")
     TEMP_DATABASE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/graphmodel-codeql-db.XXXXXX")
-    DATABASE_DIR="$TEMP_DATABASE_ROOT/csharp"
     print_header "Preparing disposable source copy..."
     print_status "Source copy: $TEMP_SOURCE_ROOT"
-    print_status "Database work directory: $DATABASE_DIR"
+    print_status "Database work directory: $TEMP_DATABASE_ROOT"
     rsync -a --delete \
         --exclude='.git/' \
         --exclude='artifacts/' \
@@ -228,11 +232,13 @@ if [ "$BUILD_MODE" = "none" ]; then
     echo ""
 fi
 
-mkdir -p "$(dirname "$DATABASE_DIR")" "$RESULTS_DIR"
+mkdir -p "$RESULTS_DIR"
 
 if [ "$DOWNLOAD_QUERIES" = true ]; then
-    print_header "Preparing CodeQL query pack..."
-    codeql pack download "$QUERY_PACK"
+    print_header "Preparing CodeQL query packs..."
+    for language in "${LANGUAGES[@]}"; do
+        codeql pack download "$(query_pack_for "$language")"
+    done
     echo ""
 fi
 
@@ -241,65 +247,6 @@ if [ "$BUILD_MODE" = "manual" ]; then
     dotnet restore
     echo ""
 fi
-
-BUILD_COMMAND="./scripts/run-codeql.sh --build-only"
-
-CREATE_ARGS=(
-    database create
-    "$DATABASE_DIR"
-    --language=csharp
-    --source-root="$SCAN_ROOT"
-    --overwrite
-)
-
-case "$BUILD_MODE" in
-    none)
-        CREATE_ARGS+=(--build-mode=none)
-        ;;
-    manual)
-        CREATE_ARGS+=(--command="$BUILD_COMMAND")
-        ;;
-esac
-
-ANALYZE_ARGS=(
-    database analyze
-    "$DATABASE_DIR"
-    "$QUERY_SUITE"
-    --format=sarif-latest
-    --output="$RESULTS_FILE"
-    --sarif-category=/language:csharp
-)
-
-if [ "$DOWNLOAD_QUERIES" = true ]; then
-    ANALYZE_ARGS+=(--download)
-fi
-
-if [ -n "$THREADS" ]; then
-    CREATE_ARGS+=(--threads="$THREADS")
-    ANALYZE_ARGS+=(--threads="$THREADS")
-fi
-
-if [ -n "$RAM" ]; then
-    CREATE_ARGS+=(--ram="$RAM")
-    ANALYZE_ARGS+=(--ram="$RAM")
-fi
-
-print_header "Creating CodeQL database..."
-print_status "Database: $DATABASE_DIR"
-print_status "Build mode: $BUILD_MODE"
-CREATE_EXIT=0
-codeql "${CREATE_ARGS[@]}" || CREATE_EXIT=$?
-
-if [ "$CREATE_EXIT" -ne 0 ]; then
-    print_database_create_failure_guidance
-    exit "$CREATE_EXIT"
-fi
-echo ""
-
-print_header "Analyzing CodeQL database..."
-print_status "Results: $RESULTS_FILE"
-codeql "${ANALYZE_ARGS[@]}"
-echo ""
 
 RESULT_LEVELS_JQ='[
     .runs[] as $run
@@ -314,20 +261,92 @@ RESULT_LEVELS_JQ='[
         // "warning")
 ]'
 
-RESULT_COUNT=$(jq '[.runs[].results[]?] | length' "$RESULTS_FILE")
-RESULT_SUMMARY=$(jq -r "$RESULT_LEVELS_JQ | sort | group_by(.) | map(\"\(.[0])=\(length)\") | join(\", \")" "$RESULTS_FILE")
-GATING_RESULT_COUNT=$(jq "$RESULT_LEVELS_JQ | map(select(. == \"error\" or . == \"warning\")) | length" "$RESULTS_FILE")
+TOTAL_GATING_RESULT_COUNT=0
+BUILD_COMMAND="./scripts/run-codeql.sh --build-only"
 
-if [ -z "$RESULT_SUMMARY" ]; then
-    RESULT_SUMMARY="none"
-fi
+for language in "${LANGUAGES[@]}"; do
+    if [ "$BUILD_MODE" = "none" ]; then
+        DATABASE_DIR="$TEMP_DATABASE_ROOT/$language"
+    else
+        DATABASE_DIR="$OUTPUT_DIR/db/$language"
+    fi
+    mkdir -p "$(dirname "$DATABASE_DIR")"
+    RESULTS_FILE="$RESULTS_DIR/$language.sarif"
+    LANGUAGE_BUILD_MODE="none"
+    if [ "$language" = "csharp" ]; then
+        LANGUAGE_BUILD_MODE="$BUILD_MODE"
+    fi
 
-print_status "CodeQL SARIF results: $RESULT_COUNT ($RESULT_SUMMARY)"
+    CREATE_ARGS=(
+        database create
+        "$DATABASE_DIR"
+        --language="$language"
+        --source-root="$SCAN_ROOT"
+        --overwrite
+    )
 
-if [ "$FAIL_ON_ALERTS" = true ] && [ "$GATING_RESULT_COUNT" -gt 0 ]; then
-    print_error "CodeQL produced $GATING_RESULT_COUNT error/warning result(s). See $RESULTS_FILE."
+    if [ "$LANGUAGE_BUILD_MODE" = "manual" ]; then
+        CREATE_ARGS+=(--command="$BUILD_COMMAND")
+    else
+        CREATE_ARGS+=(--build-mode=none)
+    fi
+
+    ANALYZE_ARGS=(
+        database analyze
+        "$DATABASE_DIR"
+        "$(query_suite_for "$language")"
+        --format=sarif-latest
+        --output="$RESULTS_FILE"
+        --sarif-category="/language:$language"
+    )
+
+    if [ "$DOWNLOAD_QUERIES" = true ]; then
+        ANALYZE_ARGS+=(--download)
+    fi
+
+    if [ -n "$THREADS" ]; then
+        CREATE_ARGS+=(--threads="$THREADS")
+        ANALYZE_ARGS+=(--threads="$THREADS")
+    fi
+
+    if [ -n "$RAM" ]; then
+        CREATE_ARGS+=(--ram="$RAM")
+        ANALYZE_ARGS+=(--ram="$RAM")
+    fi
+
+    print_header "Creating CodeQL $language database..."
+    print_status "Database: $DATABASE_DIR"
+    print_status "Build mode: $LANGUAGE_BUILD_MODE"
+    CREATE_EXIT=0
+    codeql "${CREATE_ARGS[@]}" || CREATE_EXIT=$?
+
+    if [ "$CREATE_EXIT" -ne 0 ]; then
+        print_database_create_failure_guidance
+        exit "$CREATE_EXIT"
+    fi
+    echo ""
+
+    print_header "Analyzing $language database..."
+    print_status "Results: $RESULTS_FILE"
+    codeql "${ANALYZE_ARGS[@]}"
+    echo ""
+
+    RESULT_COUNT=$(jq '[.runs[].results[]?] | length' "$RESULTS_FILE")
+    RESULT_SUMMARY=$(jq -r "$RESULT_LEVELS_JQ | sort | group_by(.) | map(\"\(.[0])=\(length)\") | join(\", \")" "$RESULTS_FILE")
+    GATING_RESULT_COUNT=$(jq "$RESULT_LEVELS_JQ | map(select(. == \"error\" or . == \"warning\")) | length" "$RESULTS_FILE")
+
+    if [ -z "$RESULT_SUMMARY" ]; then
+        RESULT_SUMMARY="none"
+    fi
+
+    print_status "$language SARIF results: $RESULT_COUNT ($RESULT_SUMMARY)"
+    TOTAL_GATING_RESULT_COUNT=$((TOTAL_GATING_RESULT_COUNT + GATING_RESULT_COUNT))
+done
+
+if [ "$FAIL_ON_ALERTS" = true ] && [ "$TOTAL_GATING_RESULT_COUNT" -gt 0 ]; then
+    print_error "CodeQL produced $TOTAL_GATING_RESULT_COUNT error/warning result(s). See $RESULTS_DIR."
     exit 2
 fi
 
 print_status "CodeQL analysis completed successfully."
-print_status "SARIF: $RESULTS_FILE"
+print_status "SARIF directory: $RESULTS_DIR"
