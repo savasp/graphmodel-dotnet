@@ -34,7 +34,9 @@ jobs:
       is_prerelease: ${{ steps.check.outputs.is_prerelease }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Compare tag to VERSION file
         id: check
@@ -70,13 +72,15 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
-          cache: true
+          cache: false
           cache-dependency-path: |
             **/*.csproj
             global.json
@@ -99,13 +103,15 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
-          cache: true
+          cache: false
           cache-dependency-path: |
             **/*.csproj
             global.json
@@ -139,13 +145,15 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
-          cache: true
+          cache: false
           cache-dependency-path: |
             **/*.csproj
             global.json
@@ -171,13 +179,15 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
-          cache: true
+          cache: false
           cache-dependency-path: |
             **/*.csproj
             global.json
@@ -203,13 +213,15 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
-          cache: true
+          cache: false
           cache-dependency-path: |
             **/*.csproj
             global.json
@@ -252,13 +264,15 @@ jobs:
           --health-retries 30
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
-          cache: true
+          cache: false
           cache-dependency-path: |
             **/*.csproj
             global.json
@@ -303,13 +317,15 @@ jobs:
       attestations: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
-          cache: true
+          cache: false
           cache-dependency-path: |
             **/*.csproj
             global.json
@@ -340,7 +356,7 @@ jobs:
       - name: Verify package versions
         shell: bash
         run: |
-          EXPECTED="${{ needs.verify-version.outputs.version }}"
+          EXPECTED="${NEEDS_VERIFY_VERSION_OUTPUTS_VERSION}"
           for pkg in ./artifacts/*.nupkg; do
             name=$(basename "$pkg")
             if [[ "$name" != *"$EXPECTED"* ]]; then
@@ -349,17 +365,21 @@ jobs:
             fi
           done
           ls -la ./artifacts
+        env:
+          NEEDS_VERIFY_VERSION_OUTPUTS_VERSION: ${{ needs.verify-version.outputs.version }}
 
       - name: Verify release package set
-        run: ./scripts/verify-package-set.sh ./artifacts "${{ needs.verify-version.outputs.version }}"
+        run: ./scripts/verify-package-set.sh ./artifacts "${NEEDS_VERIFY_VERSION_OUTPUTS_VERSION}"
+        env:
+          NEEDS_VERIFY_VERSION_OUTPUTS_VERSION: ${{ needs.verify-version.outputs.version }}
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: "artifacts/*.nupkg"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: packages-${{ needs.verify-version.outputs.version }}
           path: ./artifacts/
@@ -383,13 +403,13 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: packages-${{ needs.verify-version.outputs.version }}
           path: ./artifacts
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
 
@@ -411,10 +431,12 @@ jobs:
           for pkg in ./artifacts/*.nupkg; do
             echo "Publishing $(basename "$pkg")..."
             dotnet nuget push "$pkg" \
-              --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+              --api-key "${STEPS_NUGET_LOGIN_OUTPUTS_NUGET_API_KEY}" \
               --source https://api.nuget.org/v3/index.json \
               --skip-duplicate
           done
+        env:
+          STEPS_NUGET_LOGIN_OUTPUTS_NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
 
   github-release:
     name: Create GitHub Release
@@ -429,25 +451,39 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
       - name: Download artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: packages-${{ needs.verify-version.outputs.version }}
           path: ./artifacts
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          generate_release_notes: true
-          prerelease: ${{ needs.verify-version.outputs.is_prerelease == 'true' }}
-          files: |
-            ./artifacts/*.nupkg
-            ./artifacts/*.snupkg
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          IS_PRERELEASE: ${{ needs.verify-version.outputs.is_prerelease }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(./artifacts/*.nupkg ./artifacts/*.snupkg)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "::error::No release packages were downloaded."
+            exit 1
+          fi
+
+          # Keep job re-runs green: if the release already exists (e.g. a
+          # retried run), refresh its assets instead of failing on create.
+          if gh release view "$GITHUB_REF_NAME" --json name >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; re-uploading assets."
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            args=(release create "$GITHUB_REF_NAME" "${files[@]}" --title "$GITHUB_REF_NAME" --generate-notes)
+            if [[ "$IS_PRERELEASE" == "true" ]]; then
+              args+=(--prerelease)
+            fi
+            gh "${args[@]}"
+          fi
