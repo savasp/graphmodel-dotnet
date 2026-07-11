@@ -64,7 +64,7 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
                 await transaction!.RollbackAsync().ConfigureAwait(false);
                 rolledBack = true;
             }
-            catch (Exception exception)
+            catch (NpgsqlException exception)
             {
                 rollbackError = exception;
                 logger.LogWarning(exception, "Failed to roll back an uncommitted AGE transaction during disposal");
@@ -122,7 +122,7 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
                 {
                     await transaction.DisposeAsync().ConfigureAwait(false);
                 }
-                catch (Exception disposeException)
+                catch (NpgsqlException disposeException)
                 {
                     logger.LogWarning(disposeException, "Failed to dispose an AGE transaction after a failed begin");
                 }

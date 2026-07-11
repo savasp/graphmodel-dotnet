@@ -11,13 +11,12 @@ using System.Threading.Tasks;
 using Cvoya.Graph.Age.Core;
 using Cvoya.Graph.Age.Querying.Linq.Providers;
 
-
 internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGraphQueryable<T>, IGraphQueryableKindProvider
 {
     protected readonly GraphQueryProvider Provider;
     protected readonly AgeGraphContext Context;
     protected readonly Expression Expression;
-    protected AgeGraphTransaction? _transaction;
+    protected readonly AgeGraphTransaction? _transaction;
 
     protected GraphQueryableBase(
         Type elementType,

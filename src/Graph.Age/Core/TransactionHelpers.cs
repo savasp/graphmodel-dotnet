@@ -4,7 +4,7 @@
 namespace Cvoya.Graph.Age.Core;
 
 using Microsoft.Extensions.Logging;
-
+using Npgsql;
 
 internal static class TransactionHelpers
 {
@@ -57,6 +57,10 @@ internal static class TransactionHelpers
                 {
                     logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
                 }
+                catch (NpgsqlException ex)
+                {
+                    logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
+                }
             }
 
             throw;
@@ -67,13 +71,22 @@ internal static class TransactionHelpers
             failed = true;
             if (transaction == null)
             {
-                // A failed operation often leaves the connection unusable; a throwing rollback
-                // must not replace the original exception as the reported cause.
+                // A failed operation often leaves the connection unusable, which is exactly when
+                // rollback is most likely to throw NpgsqlException; a throwing rollback must not
+                // replace the original exception as the reported cause.
                 try
                 {
                     await tx.RollbackAsync().ConfigureAwait(false);
                 }
-                catch (Exception rollbackException)
+                catch (GraphException rollbackException)
+                {
+                    logger?.LogWarning(rollbackException, "Failed to roll back failed transaction");
+                }
+                catch (InvalidOperationException rollbackException)
+                {
+                    logger?.LogWarning(rollbackException, "Failed to roll back failed transaction");
+                }
+                catch (NpgsqlException rollbackException)
                 {
                     logger?.LogWarning(rollbackException, "Failed to roll back failed transaction");
                 }

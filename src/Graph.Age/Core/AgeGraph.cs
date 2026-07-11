@@ -8,7 +8,7 @@ using Cvoya.Graph.Age.Querying.Linq.Queryables;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-
+using Npgsql;
 
 /// <summary>
 /// Age implementation of the IGraph interface using a modular design with IGraphQueryable support.
@@ -74,7 +74,7 @@ internal class AgeGraph : IGraph
         {
             throw;
         }
-        catch (Exception ex)
+        catch (NpgsqlException ex)
         {
             const string message = "Failed to begin transaction";
             _logger.LogError(ex, message);

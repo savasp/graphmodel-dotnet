@@ -60,7 +60,7 @@ public static class AgeDynamicEntityExtensions
                         var converted = SerializationBridge.FromAgeValue(item, elementType);
                         resultList.Add(converted);
                     }
-                    catch
+                    catch (Exception exception) when (IsConversionFailure(exception))
                     {
                         // If conversion fails, try direct cast
                         resultList.Add(item);
@@ -139,14 +139,14 @@ public static class AgeDynamicEntityExtensions
                 var converted = SerializationBridge.FromAgeValue(value, underlyingType);
                 return (T?)converted;
             }
-            catch
+            catch (Exception exception) when (IsConversionFailure(exception))
             {
                 try
                 {
                     var direct = (T)value;
                     return direct;
                 }
-                catch
+                catch (InvalidCastException)
                 {
                     return default;
                 }
@@ -174,7 +174,7 @@ public static class AgeDynamicEntityExtensions
             var convertedValue = SerializationBridge.FromAgeValue(value, targetType);
             return (T?)convertedValue;
         }
-        catch
+        catch (Exception exception) when (IsConversionFailure(exception))
         {
             return default;
         }
@@ -212,7 +212,7 @@ public static class AgeDynamicEntityExtensions
             }
             return (T)Convert.ChangeType(value, targetType);
         }
-        catch
+        catch (Exception exception) when (IsConversionFailure(exception))
         {
             return default;
         }
@@ -332,4 +332,13 @@ public static class AgeDynamicEntityExtensions
     {
         return (T)value;
     }
+
+    /// <summary>
+    /// True for the exceptions <see cref="SerializationBridge.FromAgeValue"/>, <see cref="bool.Parse(string)"/>,
+    /// and <see cref="Convert.ChangeType(object?, Type)"/> raise on malformed or incompatible property
+    /// values - the failures these accessors are meant to fall back from. Anything else (e.g. a bug
+    /// elsewhere) should propagate rather than be silently swallowed.
+    /// </summary>
+    private static bool IsConversionFailure(Exception exception) =>
+        exception is InvalidCastException or FormatException or OverflowException or ArgumentException or NotSupportedException;
 }
