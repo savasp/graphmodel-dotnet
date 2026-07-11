@@ -1083,6 +1083,8 @@ public sealed class CypherQueryPlanner
                 $"Terminal '{model.Terminal}' after TraversePaths is not supported yet.");
         }
 
+        AddOrderingAndPaging(clauses, [], model.Paging, reverseOrdering: false);
+
         if (model.Projection?.Selector is not { } selector)
         {
             AddGraphPathProjection(clauses);

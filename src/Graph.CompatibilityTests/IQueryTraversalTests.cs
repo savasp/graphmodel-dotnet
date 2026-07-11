@@ -1323,5 +1323,28 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Equal(2, Assert.Single(depths));
     }
 
+    [Fact]
+    public async Task TraversePaths_Take_LimitsPathsBeforeDecomposition()
+    {
+        var alice = new Person { FirstName = $"TakeStart-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"TakeEndA-{Guid.NewGuid():N}" };
+        var charlie = new Person { FirstName = $"TakeEndB-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+
+        var paths = await Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .TraversePaths<Knows, Person>(1, 1)
+            .Take(1)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(paths);
+        Assert.Single(paths[0].Segments);
+    }
+
     #endregion
 }

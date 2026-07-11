@@ -204,12 +204,12 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
-    public Task TakeAfterTraversePaths_ThrowsNotSupported()
+    public Task TakeAfterTraversePaths_LimitsPathsBeforeDecomposition()
     {
         var query = Root.Nodes<Person>()
             .TraversePaths<Knows, Person>(1, 3)
             .Take(5);
-        return VerifyTranslationThrows(query);
+        return VerifyTranslation(query);
     }
 
     /// <summary>
