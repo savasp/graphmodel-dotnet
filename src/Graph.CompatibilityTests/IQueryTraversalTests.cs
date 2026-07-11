@@ -720,7 +720,9 @@ public interface IQueryTraversalTests : IGraphTest
         var olderFriendPaths = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .TraversePaths<Knows, Person>(minDepth: 1, maxDepth: 2)
-            .Where(path => ((Person)path.End).Age > 35 && path.Segments.Count >= 1)
+            .Where(path => path.Start.Id == alice.Id &&
+                ((Person)path.End).Age > 35 &&
+                path.Segments.Count >= 1)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, olderFriendPaths.Count);

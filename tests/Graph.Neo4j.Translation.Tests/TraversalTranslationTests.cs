@@ -155,7 +155,7 @@ public class TraversalTranslationTests : TranslationTestBase
     {
         var query = Root.Nodes<Person>()
             .TraversePaths<Knows, Person>(1, 3)
-            .Where(p => ((Person)p.End).Age > 21 && p.Segments.Count > 1);
+            .Where(p => p.Start.Id != "" && ((Person)p.End).Age > 21 && p.Segments.Count > 1);
         return VerifyTranslation(query);
     }
 
