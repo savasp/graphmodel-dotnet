@@ -47,7 +47,7 @@ exclude:
   - SECURITY.md
   - CHANGELOG.md
   - CONTRIBUTING.md
-  - RELEASE_CHECKLIST.md
+  - developer/
   - codecov.yml
 
 # Kramdown settings
