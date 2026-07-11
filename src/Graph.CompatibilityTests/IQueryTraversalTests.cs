@@ -1408,5 +1408,63 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.False(await query.Skip(1).AnyAsync(TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task TraversePaths_ComplexProperties_HydrateLikePathSegments()
+    {
+        var alice = new PersonWithComplexProperty
+        {
+            FirstName = $"HydrationStart-{Guid.NewGuid():N}",
+            Address = new AddressValue { Street = "1 Path Way", City = "Seattle" },
+        };
+        var bob = new PersonWithComplexProperty
+        {
+            FirstName = $"HydrationMiddle-{Guid.NewGuid():N}",
+            Address = new AddressValue { Street = "2 Path Way", City = "Portland" },
+        };
+        var charlie = new PersonWithComplexProperty
+        {
+            FirstName = $"HydrationEnd-{Guid.NewGuid():N}",
+            Address = new AddressValue { Street = "3 Path Way", City = "Vancouver" },
+        };
+        var firstRelationship = new Knows(alice, bob);
+        var secondRelationship = new Knows(bob, charlie);
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(firstRelationship, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(secondRelationship, null, TestContext.Current.CancellationToken);
+
+        var path = Assert.Single(await Graph.Nodes<PersonWithComplexProperty>()
+            .Where(person => person.Id == alice.Id)
+            .TraversePaths<Knows, PersonWithComplexProperty>(2, 2)
+            .ToListAsync(TestContext.Current.CancellationToken));
+        var firstHop = Assert.Single(await Graph.Nodes<PersonWithComplexProperty>()
+            .Where(person => person.Id == alice.Id)
+            .PathSegments<PersonWithComplexProperty, Knows, PersonWithComplexProperty>()
+            .ToListAsync(TestContext.Current.CancellationToken));
+        var secondHop = Assert.Single(await Graph.Nodes<PersonWithComplexProperty>()
+            .Where(person => person.Id == bob.Id)
+            .PathSegments<PersonWithComplexProperty, Knows, PersonWithComplexProperty>()
+            .ToListAsync(TestContext.Current.CancellationToken));
+
+        AssertNodeHydration(firstHop.StartNode, (PersonWithComplexProperty)path.Start);
+        AssertNodeHydration(firstHop.StartNode, (PersonWithComplexProperty)path.Segments[0].StartNode);
+        AssertNodeHydration(firstHop.EndNode, (PersonWithComplexProperty)path.Segments[0].EndNode);
+        AssertNodeHydration(secondHop.StartNode, (PersonWithComplexProperty)path.Segments[1].StartNode);
+        AssertNodeHydration(secondHop.EndNode, (PersonWithComplexProperty)path.Segments[1].EndNode);
+        AssertNodeHydration(secondHop.EndNode, (PersonWithComplexProperty)path.End);
+        Assert.Equal(firstHop.Relationship, path.Segments[0].Relationship);
+        Assert.Equal(secondHop.Relationship, path.Segments[1].Relationship);
+
+        static void AssertNodeHydration(PersonWithComplexProperty expected, PersonWithComplexProperty actual)
+        {
+            Assert.Equal(expected.Id, actual.Id);
+            Assert.Equal(expected.FirstName, actual.FirstName);
+            Assert.Equal(expected.Address.Street, actual.Address.Street);
+            Assert.Equal(expected.Address.City, actual.Address.City);
+        }
+    }
+
     #endregion
 }

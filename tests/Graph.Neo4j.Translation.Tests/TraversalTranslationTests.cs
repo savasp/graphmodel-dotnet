@@ -145,18 +145,10 @@ public class TraversalTranslationTests : TranslationTestBase
         return VerifyTranslation(query);
     }
 
-    // ---- The known gap, generalized (issue #94 testing requirement 5 / the coordinator's
-    // follow-up): TraversePaths builds its own per-hop RETURN shape rather than a single row per
-    // IGraphPath, so no operator this visitor doesn't already know how to keep supporting
-    // (ToListOrArray, Direction, WithDepth - see CypherQueryVisitor.SupportedAfterTraversePaths)
-    // has a well-defined row/alias to translate against. A single choke point
-    // (CypherQueryVisitor.ThrowIfUnsupportedAfterTraversePaths, called from HandleLinqMethod right
-    // after the source is visited) rejects EVERY other operator chained after TraversePaths with a
-    // NotSupportedException naming the operator - not just Where - so a new operator added later
-    // can't silently regress into mistranslating against the wrong row shape (the #100
-    // throw-over-silent-wrong precedent). Callers should materialize the paths first and continue
-    // client-side (see the contract-suite equivalent,
-    // IQueryTraversalTests.CanFilterTargetNodesByPropertyWithoutTraverseTwoHops).
+    // ---- Operators composed after TraversePaths stay at one row per captured path until a
+    // path-valued result is decomposed for materialization. The shared builder's whitelist is the
+    // choke point: the supported shapes below translate over p, while OrderBy remains the negative
+    // control proving an operator without a path lowering still throws instead of binding to a hop.
 
     [Fact]
     public Task WhereAfterTraversePaths_FiltersByEndPropertyAndDepth()
@@ -248,12 +240,8 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     /// <summary>
-    /// Control case alongside the four "must throw" tests above: the bare <c>TraversePaths</c>
-    /// query (no operator chained after it) must still translate successfully - proving the choke
-    /// point (<see cref="CypherQueryVisitor.ThrowIfUnsupportedAfterTraversePaths"/>) only rejects
-    /// operators chained <em>after</em> <c>TraversePaths</c>, not <c>TraversePaths</c> itself. This
-    /// is exactly <see cref="TraversePaths_MinAndMaxDepth"/> above, referenced here (rather than
-    /// duplicated) so the two snapshot files stay a single source of truth.
+    /// Control case: a bare <c>TraversePaths</c> query still translates and decomposes only after
+    /// all path-level composition is complete.
     /// </summary>
     [Fact]
     public Task BareTraversePaths_StillTranslatesSuccessfully_SeeTraversePathsMinAndMaxDepth() =>

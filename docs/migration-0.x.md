@@ -137,44 +137,24 @@ An options-lambda overload is also available: `TraversePaths<TRel, TEnd>(o => o.
 If you only need the end nodes of a variable-length traversal (not the full path), continue using
 `Traverse<TRel, TEnd>(minDepth, maxDepth)` (see §7 below for its new two-arg shape).
 
-**Scope note:** intermediate/path nodes materialized by `TraversePaths` currently populate only
-their declared properties, not dynamic complex (navigation) properties — unlike `PathSegments`'
-single-hop `StartNode`/`EndNode`, which do load complex properties. Extending `TraversePaths` to
-match is a candidate follow-up.
+**Settled behavior:** entities exposed through `Start`, `End`, and every entry in `Segments` now
+hydrate complex properties with the same read shape as `PathSegments`. The provider keeps one row
+per matched path while composing `.Where(...)`, `.Select(...)`, `.Take(...)`, `.Skip(...)`,
+`.CountAsync()`, and `.AnyAsync()`, then decomposes only path-valued results into materialization
+rows. Path predicates can inspect `Start`/`End` members and depth through `Segments.Count`:
 
-**Known gap:** chaining most LINQ/graph operators directly after `TraversePaths(...)` throws
-`NotSupportedException` at translation time — `TraversePaths` builds its own per-hop RETURN shape
-(one row per hop, decomposed from a captured variable-length path), not a single row per
-`IGraphPath`, so an operator over `IGraphPath` members (or over the sequence of paths itself) has no
-column/row to translate against. This is enforced by a single choke point
-(`CypherQueryVisitor.ThrowIfUnsupportedAfterTraversePaths`) covering **every** operator except the
-few that are actually safe to compose today — not just `.Where(...)`:
-
-- Materializing the result (`.ToListAsync()`/`.ToArrayAsync()`) always works — it just returns the
-  already-correct `IGraphPath` rows.
-- `.Direction(...)`/`.WithDepth(...)` compose when they're the sanctioned wrapper the
-  `TraversePaths(configure)` options-lambda overload itself builds — they mutate the traversal that
-  produces the paths, not the shape of a result row.
-- Everything else — `.Where(...)`, `.Select(...)`, `.OrderBy(...)`, `.Take(...)`, `.Skip(...)`,
-  and so on — throws, naming the operator in the exception message.
-
-Materialize the paths first and continue client-side instead:
-
-```diff
--var results = await graph.Nodes<Person>()
--    .TraversePaths<Knows, Person>(1, 2)
--    .Where(path => ((Person)path.End).Age > 35)
--    .ToListAsync();
-+var allPaths = await graph.Nodes<Person>()
-+    .TraversePaths<Knows, Person>(1, 2)
-+    .ToListAsync();
-+var results = allPaths.Where(path => ((Person)path.End).Age > 35).ToList();
+```csharp
+var results = await graph.Nodes<Person>()
+    .TraversePaths<Knows, Person>(1, 2)
+    .Where(path => ((Person)path.End).Age > 35 && path.Segments.Count == 2)
+    .Take(10)
+    .ToListAsync();
 ```
 
-Full translation support for operators chained after `TraversePaths` remains a follow-up; the throw
-is intentional (fail loudly rather than silently mistranslate) — this was tightened from an initial
-`Where`-only guard specifically so `.Select`/`.OrderBy`/`.Take`/etc. don't fall into the same
-silent-wrong-results trap in the same release that introduces `TraversePaths`.
+The single translation guard remains in place for operators without a path-row lowering, such as
+`.OrderBy(...)`: those still throw a `NotSupportedException` naming the operator instead of
+silently translating against a hop row. Materialize first and continue with LINQ-to-Objects when
+using an unsupported composition.
 
 ## 7. `Traverse`/`TraverseRelationships`/`TraversePaths`/`ReverseTraverse` drop `TStartNode` — two type arguments, not three
 

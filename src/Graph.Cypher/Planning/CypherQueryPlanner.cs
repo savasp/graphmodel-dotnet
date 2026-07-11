@@ -1015,7 +1015,9 @@ public sealed class CypherQueryPlanner
             projection.LoadTargetProperties));
     }
 
-    private static void AddGraphPathProjection(List<ICypherClause> clauses)
+    private static void AddGraphPathProjection(
+        List<ICypherClause> clauses,
+        QueryPathShape pathShape)
     {
         clauses.Add(new WithClause(
             [new ReturnItem(Function("collect", new VariableRef("p")), "__paths")],
@@ -1059,14 +1061,22 @@ public sealed class CypherQueryPlanner
                     new AstBinaryExpression(CypherBinaryOperator.Add, new VariableRef("hopIndex"), new Literal(1))),
                 "tgt")
         ], distinct: false));
-        clauses.Add(new EntityProjectionClause(
-            EntityProjectionShape.PathSegment,
-            "src",
-            "r",
-            "tgt",
-            loadSourceProperties: false,
-            loadTargetProperties: false,
-            includePathCoordinates: true));
+        var loadSourceProperties = HasComplexProperties(pathShape.SourceType) ||
+            HasComplexProperties(pathShape.TargetType);
+        var loadTargetProperties = HasComplexProperties(pathShape.TargetType);
+        clauses.Add(new ReturnClause(
+        [
+            new ReturnItem(new VariableRef("pathIndex"), null),
+            new ReturnItem(new VariableRef("hopIndex"), null),
+            new ReturnItem(
+                new MapExpression(
+                [
+                    new MapEntry("StartNode", new EntityProjectionExpression("src", loadSourceProperties)),
+                    new MapEntry("Relationship", new VariableRef("r")),
+                    new MapEntry("EndNode", new EntityProjectionExpression("tgt", loadTargetProperties)),
+                ]),
+                "PathSegment"),
+        ], distinct: false));
         clauses.Add(new OrderByClause(
         [
             new OrderByItem(new VariableRef("pathIndex"), descending: false),
@@ -1108,7 +1118,7 @@ public sealed class CypherQueryPlanner
 
         if (model.Projection?.Selector is not { } selector)
         {
-            AddGraphPathProjection(clauses);
+            AddGraphPathProjection(clauses, model.PathShape!);
             return;
         }
 
