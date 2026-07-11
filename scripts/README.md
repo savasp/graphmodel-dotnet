@@ -281,7 +281,7 @@ Validates the entire build system and ensures all configurations work correctly.
 
 **Options:**
 
-- `--codeql`: Run local CodeQL C# analysis after build validation
+- `--codeql`: Run local CodeQL analysis after build validation
 - `-h, --help`: Show help message
 
 **What it does:**
@@ -293,11 +293,11 @@ Validates the entire build system and ensures all configurations work correctly.
 
 ### `run-codeql.sh`
 
-Runs local C# CodeQL analysis using the same `security-and-quality` query suite as
-`.github/workflows/codeql.yml`. By default it uses CodeQL's C# `none` build mode,
-which is the required portable local gate. In that mode, the script analyzes a
-disposable source copy and temporary database outside the checkout so CodeQL
-dependency probing cannot rewrite repository files.
+Runs local CodeQL analysis for GitHub Actions, C#, and Ruby using the same
+`security-and-quality` query suite as `.github/workflows/codeql.yml`. By default
+it uses CodeQL's `none` build mode, which is the required portable local gate. In
+that mode, the script analyzes a disposable source copy and temporary databases
+outside the checkout so CodeQL dependency probing cannot rewrite repository files.
 
 Use `--build-mode manual` to trace the same LocalFeed and Release builds used by
 the GitHub workflow when the local platform supports CodeQL compiler tracing.
@@ -316,7 +316,7 @@ default command for the local gate and include the CodeQL version plus
 
 - `-o, --output-dir <dir>`: SARIF output directory (default: `artifacts/codeql`)
 - `--build-mode <mode>`: CodeQL build mode, `none` or optional tracer-dependent `manual` (default: `none`)
-- `--no-download`: Do not download/update the CodeQL C# query pack
+- `--no-download`: Do not download/update the CodeQL query packs
 - `--fail-on-alerts`: Exit non-zero if the SARIF file contains results
 - `--threads <count>`: Number of CodeQL evaluator threads
 - `--ram <mb>`: Maximum RAM for CodeQL, in MB

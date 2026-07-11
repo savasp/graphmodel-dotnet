@@ -19,6 +19,9 @@ on:
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   # Validates the DocFX API reference build on every push/PR. This does not deploy anything; it only
   # proves the site still generates cleanly with zero warnings (DocFX surfaces malformed/missing XML
@@ -96,7 +99,7 @@ jobs:
       run: dotnet docfx docs/apiref/docfx.json --warningsAsErrors
 
     - name: 🏗️ Setup Ruby (for Jekyll)
-      uses: ruby/setup-ruby@v1
+      uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1
       with:
         ruby-version: '3.2'
         bundler-cache: true

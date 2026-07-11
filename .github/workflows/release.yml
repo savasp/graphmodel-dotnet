@@ -400,7 +400,7 @@ jobs:
       # account/org name is stored as the NUGET_TRUSTED_PUBLISHING_USER
       # repository variable (not a secret — it's just a username).
       - name: NuGet login (OIDC to temporary API key)
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
         id: nuget-login
         with:
           user: ${{ vars.NUGET_TRUSTED_PUBLISHING_USER }}
@@ -440,7 +440,7 @@ jobs:
           path: ./artifacts
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
