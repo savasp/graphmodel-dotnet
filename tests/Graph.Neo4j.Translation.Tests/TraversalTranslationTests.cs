@@ -159,12 +159,12 @@ public class TraversalTranslationTests : TranslationTestBase
     // IQueryTraversalTests.CanFilterTargetNodesByPropertyWithoutTraverseTwoHops).
 
     [Fact]
-    public Task WhereAfterTraversePaths_ThrowsNotSupported()
+    public Task WhereAfterTraversePaths_FiltersByEndPropertyAndDepth()
     {
         var query = Root.Nodes<Person>()
             .TraversePaths<Knows, Person>(1, 3)
-            .Where(p => p.Segments.Count > 1);
-        return VerifyTranslationThrows(query);
+            .Where(p => ((Person)p.End).Age > 21 && p.Segments.Count > 1);
+        return VerifyTranslation(query);
     }
 
     [Fact]

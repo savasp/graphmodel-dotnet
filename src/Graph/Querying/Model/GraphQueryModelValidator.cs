@@ -47,6 +47,11 @@ public static class GraphQueryModelValidator
             }
         }
 
+        if (model.PathShape is not null)
+        {
+            possibleScopeTypes.Add(typeof(IGraphPath));
+        }
+
         for (var i = 0; i < model.Predicates.Count; i++)
         {
             var predicate = model.Predicates[i];
@@ -178,6 +183,11 @@ public static class GraphQueryModelValidator
             bound.Add(explicitIndex == 0 ? "r" : $"r_{explicitIndex + 1}");
             bound.Add(step.TargetAlias ?? (explicitIndex == 0 ? "tgt" : $"tgt_{explicitIndex + 1}"));
             explicitIndex++;
+        }
+
+        if (model.PathShape is not null)
+        {
+            bound.Add("p");
         }
 
         for (var i = 0; i < model.Predicates.Count; i++)

@@ -303,16 +303,18 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
-    public void UnsupportedOperatorAfterTraversePaths_ThrowsAtChokePoint()
+    public void WhereAfterTraversePaths_BindsPredicateToPathScope()
     {
         var query = Root<Person>()
             .TraversePaths<Knows, Company>(1, 3)
             .Where(path => path.Segments.Count > 0);
 
-        var exception = Assert.Throws<GraphQueryTranslationException>(() => GraphQueryModelBuilder.Build(query.Expression));
+        var model = GraphQueryModelBuilder.Build(query.Expression);
 
-        Assert.Contains("chained after 'TraversePaths", exception.Message);
-        Assert.Contains("Materialize the paths first", exception.Message);
+        var predicate = Assert.Single(model.Predicates);
+        Assert.Equal("p", predicate.Alias);
+        Assert.Equal(typeof(IGraphPath), Assert.Single(predicate.Predicate.Parameters).Type);
+        GraphQueryModelValidator.Validate(model);
     }
 
     [Fact]

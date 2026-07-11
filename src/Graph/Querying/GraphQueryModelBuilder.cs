@@ -14,6 +14,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         LinqOperator.ToListOrArray,
         LinqOperator.Direction,
         LinqOperator.WithDepth,
+        LinqOperator.Where,
     ];
 
     private readonly List<PredicateFragment> _predicates = [];
@@ -464,6 +465,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         _isGraphPathResult = true;
         _pathShape = new QueryPathShape(sourceType, relationshipType, targetType);
         _currentType = typeof(IGraphPath);
+        _currentAlias = "p";
         _projection = null;
     }
 

@@ -1,0 +1,14 @@
+== Cypher ==
+MATCH p = (src:Person|Manager)-[r:KNOWS*1..3]->(tgt:Person|Manager)
+WHERE (nodes(p)[length(p)].Age > $p0 AND length(p) > $p1)
+WITH collect(p) AS __paths
+UNWIND range(0, size(__paths) - 1) AS pathIndex
+WITH __paths[pathIndex] AS p, pathIndex
+UNWIND range(0, length(p) - 1) AS hopIndex
+WITH pathIndex, hopIndex, nodes(p)[hopIndex] AS src, relationships(p)[hopIndex] AS r, nodes(p)[hopIndex + 1] AS tgt
+RETURN pathIndex, hopIndex, { StartNode: { Node: src, ComplexProperties: [] }, Relationship: r, EndNode: { Node: tgt, ComplexProperties: [] } } AS PathSegment
+ORDER BY pathIndex, hopIndex
+
+== Parameters ==
+p0 = 21
+p1 = 1

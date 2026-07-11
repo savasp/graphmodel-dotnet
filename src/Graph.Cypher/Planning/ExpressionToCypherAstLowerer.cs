@@ -8,6 +8,7 @@ using Cvoya.Graph.Cypher.Ast;
 using Cvoya.Graph.Cypher.Ast.Expressions;
 using Cvoya.Graph.Querying;
 using AstBinaryExpression = Cvoya.Graph.Cypher.Ast.Expressions.BinaryExpression;
+using AstIndexExpression = Cvoya.Graph.Cypher.Ast.Expressions.IndexExpression;
 using AstUnaryExpression = Cvoya.Graph.Cypher.Ast.Expressions.UnaryExpression;
 using LinqBinaryExpression = System.Linq.Expressions.BinaryExpression;
 using LinqUnaryExpression = System.Linq.Expressions.UnaryExpression;
@@ -89,6 +90,11 @@ internal sealed class ExpressionToCypherAstLowerer(
         if (CanEvaluate(node))
         {
             return parameters.Add(Evaluate(node));
+        }
+
+        if (TryMapGraphPathMember(node, aliases, out var graphPathMember))
+        {
+            return graphPathMember;
         }
 
         if (TryLowerComplexCollectionCount(node, aliases, out var collectionCount))
@@ -832,6 +838,45 @@ internal sealed class ExpressionToCypherAstLowerer(
             nameof(IGraphPathSegment.Relationship) => new VariableRef("r"),
             nameof(IGraphPathSegment.EndNode) => new VariableRef("tgt"),
             _ => new PropertyAccess(new VariableRef(ResolveAlias(parameter, aliases)), node.Member.Name),
+        };
+        return true;
+    }
+
+    private bool TryMapGraphPathMember(
+        MemberExpression node,
+        IReadOnlyDictionary<ParameterExpression, string> aliases,
+        out CypherExpression expression)
+    {
+        expression = null!;
+
+        if (node.Expression is MemberExpression
+            {
+                Member.Name: nameof(IGraphPath.Segments),
+                Expression: ParameterExpression pathParameter,
+            } &&
+            pathParameter.Type == typeof(IGraphPath) &&
+            node.Member.Name == nameof(IReadOnlyCollection<IGraphPathSegment>.Count))
+        {
+            expression = Function("length", new VariableRef(ResolveAlias(pathParameter, aliases)));
+            return true;
+        }
+
+        if (node.Expression is not ParameterExpression parameter || parameter.Type != typeof(IGraphPath))
+        {
+            return false;
+        }
+
+        var path = new VariableRef(ResolveAlias(parameter, aliases));
+        expression = node.Member.Name switch
+        {
+            nameof(IGraphPath.Start) =>
+                new AstIndexExpression(Function("nodes", path), new Literal(0)),
+            nameof(IGraphPath.End) =>
+                new AstIndexExpression(Function("nodes", path), Function("length", path)),
+            nameof(IGraphPath.Segments) => throw Unsupported(
+                node,
+                "The Segments collection can only be translated through its Count member."),
+            _ => throw Unsupported(node, $"Graph-path member '{node.Member.Name}' is not supported."),
         };
         return true;
     }

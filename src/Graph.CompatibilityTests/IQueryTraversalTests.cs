@@ -715,19 +715,13 @@ public interface IQueryTraversalTests : IGraphTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = alice.Id, EndNodeId = elen.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Find people Alice knows within up to two hops who are over 35, using the
-        // IGraphPath-returning TraversePaths operator (the #94/#126 resolution for variable-length
-        // traversal - a single IGraphPathSegment cannot represent more than one hop). Filtering on
-        // IGraphPath members (path.End, etc.) within the LINQ expression itself is not yet
-        // translated server-side (see follow-up note in the PR); filter client-side on the
-        // materialized paths instead - materialization itself is the behavior under test here.
-        // We should get Charlie (40) through Bob, and Elen directly (1 hop).
-
-        var allPaths = await Graph.Nodes<Person>()
+        // IGraphPath predicates are applied while the provider still has one row per matched path.
+        // This filters both by an end-node property and by path depth on the server.
+        var olderFriendPaths = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .TraversePaths<Knows, Person>(minDepth: 1, maxDepth: 2)
+            .Where(path => ((Person)path.End).Age > 35 && path.Segments.Count >= 1)
             .ToListAsync(TestContext.Current.CancellationToken);
-
-        var olderFriendPaths = allPaths.Where(path => ((Person)path.End).Age > 35).ToList();
 
         Assert.Equal(2, olderFriendPaths.Count);
         Assert.Contains(olderFriendPaths, path => ((Person)path.End).FirstName == "Charlie" && path.Segments.Count == 2);
