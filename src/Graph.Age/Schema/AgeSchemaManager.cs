@@ -38,11 +38,8 @@ internal sealed class AgeSchemaManager
         await initializationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (initialized)
-            {
-                return;
-            }
-
+            // No recheck of `initialized` here: the registry's own IsInitialized guard makes a
+            // second pass through this block a no-op.
             if (!schemaRegistry.IsInitialized)
             {
                 await schemaRegistry.InitializeAsync(cancellationToken).ConfigureAwait(false);

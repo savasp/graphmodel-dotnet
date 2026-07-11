@@ -361,12 +361,10 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             var value = property.GetValue(node);
 
             // Validate required fields
-            if (propertySchema.IsRequired)
+            if (propertySchema.IsRequired &&
+                (value == null || (value is string stringValue && string.IsNullOrWhiteSpace(stringValue))))
             {
-                if (value == null || (value is string stringValue && string.IsNullOrWhiteSpace(stringValue)))
-                {
-                    throw new GraphException($"Property '{propertyName}' on {label} is required and cannot be null or empty.");
-                }
+                throw new GraphException($"Property '{propertyName}' on {label} is required and cannot be null or empty.");
             }
 
             // Validate custom validation rules
@@ -477,12 +475,10 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
                 validatedProperties.Add(mappedPropertyName);
 
                 // Validate required fields
-                if (propertySchema.IsRequired)
+                if (propertySchema.IsRequired &&
+                    (value == null || (value is string stringValue && string.IsNullOrWhiteSpace(stringValue))))
                 {
-                    if (value == null || (value is string stringValue && string.IsNullOrWhiteSpace(stringValue)))
-                    {
-                        throw new GraphException($"Property '{mappedPropertyName}' on {label} is required and cannot be null or empty.");
-                    }
+                    throw new GraphException($"Property '{mappedPropertyName}' on {label} is required and cannot be null or empty.");
                 }
 
                 // Validate custom validation rules
@@ -499,12 +495,10 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             }
 
             // Check for extra properties that don't exist in the schema
-            foreach (var propertyName in node.Properties.Keys)
+            var extraProperty = node.Properties.Keys.FirstOrDefault(propertyName => !validatedProperties.Contains(propertyName));
+            if (extraProperty is not null)
             {
-                if (!validatedProperties.Contains(propertyName))
-                {
-                    throw new GraphException($"Property '{propertyName}' on {label} is not defined in the schema and cannot be used.");
-                }
+                throw new GraphException($"Property '{extraProperty}' on {label} is not defined in the schema and cannot be used.");
             }
         }
     }
@@ -512,63 +506,43 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
     private void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
     {
         // MinValue validation
-        if (validation.MinValue is not null)
+        if (validation.MinValue is not null &&
+            value is IComparable minComparable &&
+            minComparable.CompareTo(validation.MinValue) < 0)
         {
-            if (value is IComparable comparable)
-            {
-                if (comparable.CompareTo(validation.MinValue) < 0)
-                {
-                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must be greater than or equal to {validation.MinValue}. Current value: {value}");
-                }
-            }
+            throw new GraphException($"Property '{propertyName}' on {entityLabel} must be greater than or equal to {validation.MinValue}. Current value: {value}");
         }
 
         // MaxValue validation
-        if (validation.MaxValue is not null)
+        if (validation.MaxValue is not null &&
+            value is IComparable maxComparable &&
+            maxComparable.CompareTo(validation.MaxValue) > 0)
         {
-            if (value is IComparable comparable)
-            {
-                if (comparable.CompareTo(validation.MaxValue) > 0)
-                {
-                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must be less than or equal to {validation.MaxValue}. Current value: {value}");
-                }
-            }
+            throw new GraphException($"Property '{propertyName}' on {entityLabel} must be less than or equal to {validation.MaxValue}. Current value: {value}");
         }
 
         // MinLength validation
-        if (validation.MinLength is not null)
+        if (validation.MinLength is not null &&
+            value is string minLengthValue &&
+            minLengthValue.Length < validation.MinLength)
         {
-            if (value is string stringValue)
-            {
-                if (stringValue.Length < validation.MinLength)
-                {
-                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must have a minimum length of {validation.MinLength}. Current length: {stringValue.Length}");
-                }
-            }
+            throw new GraphException($"Property '{propertyName}' on {entityLabel} must have a minimum length of {validation.MinLength}. Current length: {minLengthValue.Length}");
         }
 
         // MaxLength validation
-        if (validation.MaxLength is not null)
+        if (validation.MaxLength is not null &&
+            value is string maxLengthValue &&
+            maxLengthValue.Length > validation.MaxLength)
         {
-            if (value is string stringValue)
-            {
-                if (stringValue.Length > validation.MaxLength)
-                {
-                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must have a maximum length of {validation.MaxLength}. Current length: {stringValue.Length}");
-                }
-            }
+            throw new GraphException($"Property '{propertyName}' on {entityLabel} must have a maximum length of {validation.MaxLength}. Current length: {maxLengthValue.Length}");
         }
 
         // Pattern validation
-        if (!string.IsNullOrEmpty(validation.Pattern))
+        if (!string.IsNullOrEmpty(validation.Pattern) &&
+            value is string patternValue &&
+            !System.Text.RegularExpressions.Regex.IsMatch(patternValue, validation.Pattern))
         {
-            if (value is string stringValue)
-            {
-                if (!System.Text.RegularExpressions.Regex.IsMatch(stringValue, validation.Pattern))
-                {
-                    throw new GraphException($"Property '{propertyName}' on {entityLabel} must match the pattern '{validation.Pattern}'. Current value: {stringValue}");
-                }
-            }
+            throw new GraphException($"Property '{propertyName}' on {entityLabel} must match the pattern '{validation.Pattern}'. Current value: {patternValue}");
         }
     }
 

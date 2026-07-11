@@ -380,7 +380,6 @@ internal sealed partial class AgeQueryRunner
 
         // pathIndex/hopIndex are the planner's TraversePaths decomposition variables; they must
         // survive the generated WITH pipes or the final RETURN/ORDER BY loses them from scope.
-        var carry = new List<string>();
         var candidateAliases = new List<string> { "pathIndex", "hopIndex", "src", "r", "tgt" };
         for (var suffix = 2; suffix <= GraphDataModel.DefaultDepthAllowed; suffix++)
         {
@@ -388,13 +387,9 @@ internal sealed partial class AgeQueryRunner
             candidateAliases.Add($"tgt_{suffix}");
         }
 
-        foreach (var candidate in candidateAliases)
-        {
-            if (Regex.IsMatch(cypher, $@"\b{candidate}\b", RegexOptions.CultureInvariant))
-            {
-                carry.Add(candidate);
-            }
-        }
+        var carry = candidateAliases
+            .Where(candidate => Regex.IsMatch(cypher, $@"\b{candidate}\b", RegexOptions.CultureInvariant))
+            .ToList();
 
         var clauses = new StringBuilder();
         foreach (var alias in aliases)

@@ -92,12 +92,9 @@ public static class AgeDynamicEntityExtensions
                 var genericList = Activator.CreateInstance(genericListType);
                 var addMethod = genericListType.GetMethod("Add");
 
-                foreach (var item in resultList)
+                foreach (var item in resultList.Where(item => item != null))
                 {
-                    if (item != null)
-                    {
-                        addMethod?.Invoke(genericList, new[] { item });
-                    }
+                    addMethod?.Invoke(genericList, new[] { item });
                 }
 
                 return (T?)genericList!;

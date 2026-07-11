@@ -340,11 +340,10 @@ internal sealed class CypherEngine
             }
 
             // Check the arguments
-            foreach (var arg in methodCall.Arguments)
-            {
-                var argType = ExtractElementTypeFromExpression(arg);
-                if (argType != null) return argType;
-            }
+            var argumentType = methodCall.Arguments
+                .Select(ExtractElementTypeFromExpression)
+                .FirstOrDefault(type => type != null);
+            if (argumentType != null) return argumentType;
         }
 
         if (expression is UnaryExpression unary)
