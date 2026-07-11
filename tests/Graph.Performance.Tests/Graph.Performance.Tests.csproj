@@ -11,9 +11,9 @@
     <!-- Enable XML documentation for performance tests but suppress missing doc warnings -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     
-    <!-- Suppress analyzer rules not applicable to benchmark projects -->
-    <NoWarn>$(NoWarn);RS1035;CS1591</NoWarn>
-    <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+    <!-- Benchmark inputs use deterministic, non-security-sensitive pseudo-random
+         data so runs remain comparable; CA5394 is not applicable here. -->
+    <NoWarn>$(NoWarn);RS1035;CS1591;CA5394</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -42,4 +42,4 @@
     <PackageReference Include="Cvoya.Graph.Serialization.CodeGen" />
   </ItemGroup>
 
-</Project> 
+</Project>

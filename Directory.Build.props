@@ -10,6 +10,9 @@
         <TargetFrameworks>net10.0</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <EnableNETAnalyzers>true</EnableNETAnalyzers>
+        <AnalysisMode>Default</AnalysisMode>
+        <AnalysisModeSecurity>All</AnalysisModeSecurity>
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
         <LangVersion>14.0</LangVersion>

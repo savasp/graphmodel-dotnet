@@ -331,6 +331,17 @@ default command for the local gate and include the CodeQL version plus
 ./scripts/run-codeql.sh --threads 4 --ram 8192
 ```
 
+### `run-zizmor.sh`
+
+Runs the same pinned `zizmor` GitHub Actions security audit enforced by the CI
+workflow, exiting non-zero if zizmor reports any finding. Requires `uv` (for
+`uvx`). If the `gh` CLI is logged in, its token is reused so zizmor's online
+audits (impostor commits, ref confusion) run exactly as they do in CI.
+
+```bash
+./scripts/run-zizmor.sh
+```
+
 ### `run-tests.sh` ⭐ **New**
 
 Comprehensive test runner with support for different test types and configurations.
