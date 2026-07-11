@@ -5,6 +5,7 @@ namespace Cvoya.Graph.Neo4j.Tests;
 
 using Cvoya.Graph.CompatibilityTests;
 using Cvoya.Graph.Neo4j.Core;
+using Cvoya.Graph.Neo4j.Querying.Cypher;
 using global::Neo4j.Driver;
 
 public sealed class SchemaInitializationTests(Neo4jHarness harness) :
@@ -53,7 +54,6 @@ public sealed class SchemaInitializationTests(Neo4jHarness harness) :
 
         var recreatedIndexes = await GetManagedIndexNamesAsync();
         Assert.DoesNotContain(staleIndexName, recreatedIndexes);
-        Assert.Equal(configuredIndexes.Length, recreatedIndexes.Length);
         Assert.Equal(configuredIndexes, recreatedIndexes);
     }
 
@@ -111,8 +111,8 @@ public sealed class SchemaInitializationTests(Neo4jHarness harness) :
     {
         foreach (var indexName in await GetManagedIndexNamesAsync())
         {
-            var escapedIndexName = indexName.Replace("`", "``", StringComparison.Ordinal);
-            await ExecuteSchemaCommandAsync($"DROP INDEX `{escapedIndexName}` IF EXISTS");
+            var escapedIndexName = CypherIdentifier.Escape(indexName, "index name");
+            await ExecuteSchemaCommandAsync($"DROP INDEX {escapedIndexName} IF EXISTS");
         }
     }
 }
