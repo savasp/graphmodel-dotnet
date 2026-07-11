@@ -136,7 +136,7 @@ public static class DynamicEntityExtensions
             try
             {
                 var value = propertyInfo.GetValue(entity);
-                properties[propertyInfo.Name] = value;
+                properties[Labels.GetLabelFromProperty(propertyInfo)] = value;
             }
             catch
             {

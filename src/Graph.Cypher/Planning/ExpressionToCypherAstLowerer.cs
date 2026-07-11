@@ -137,9 +137,10 @@ internal sealed class ExpressionToCypherAstLowerer(
         }
 
         var target = Lower(node.Expression, aliases);
-        // The current storage contract keys simple values by CLR property name. PropertyAttribute.Label
-        // remains schema metadata; changing physical keys belongs to a separately versioned migration.
-        return new PropertyAccess(target, node.Member.Name);
+        var propertyName = node.Member is PropertyInfo property
+            ? Labels.GetLabelFromProperty(property)
+            : node.Member.Name;
+        return new PropertyAccess(target, propertyName);
     }
 
     private CypherExpression LowerStaticMember(MemberExpression node)

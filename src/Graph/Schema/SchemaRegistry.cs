@@ -444,7 +444,9 @@ public class SchemaRegistry : IDisposable
         return new PropertySchemaInfo
         {
             PropertyInfo = property,
-            Name = GetPropertyName(property, attribute),
+            // Resolve through the shared rule without populating the narrow runtime collision
+            // cache: this registry aggregates every collision across the full inheritance chain.
+            Name = Labels.ResolveLabelFromProperty(property),
             IsIndexed = isKey || (attribute?.IsIndexed ?? false),
             IsKey = isKey,
             IsUnique = isKey || (attribute?.IsUnique ?? false),
@@ -477,17 +479,6 @@ public class SchemaRegistry : IDisposable
 
         // Fall back to Labels utility
         return Labels.GetLabelFromType(type);
-    }
-
-    private string GetPropertyName(PropertyInfo property, PropertyAttribute? attribute)
-    {
-        // Priority: PropertyAttribute.Label → Labels.GetLabelFromProperty
-        if (attribute?.Label is { Length: > 0 })
-        {
-            return attribute.Label;
-        }
-
-        return Labels.GetLabelFromProperty(property);
     }
 
     /// <remarks>

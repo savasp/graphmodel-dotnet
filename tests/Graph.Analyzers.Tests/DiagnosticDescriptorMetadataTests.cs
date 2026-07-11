@@ -29,7 +29,7 @@ using Xunit;
 /// </remarks>
 public class DiagnosticDescriptorMetadataTests
 {
-    private const int ExpectedRuleCount = 14;
+    private const int ExpectedRuleCount = 15;
 
     private static IReadOnlyList<(string FieldName, DiagnosticDescriptor Descriptor)> AllDescriptors() =>
     [

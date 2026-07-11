@@ -34,7 +34,7 @@ public interface IAttributeValidationTests : IGraphTest
         [Property(Label = "first_name")]
         public string FirstName { get; set; } = string.Empty;
 
-        [Property(Label = "last_name")]
+        [Property(Label = "last_name", IsIndexed = true)]
         public string LastName { get; set; } = string.Empty;
 
         [Property(Label = "email")]
@@ -42,6 +42,30 @@ public interface IAttributeValidationTests : IGraphTest
 
         [Property]
         public int Age { get; set; }
+    }
+
+    public abstract record CustomPropertyLabelBase : Node
+    {
+        [Property(Label = "inherited_name")]
+        public string InheritedName { get; set; } = string.Empty;
+    }
+
+    [Node("InheritedCustomPropertyLabelNode")]
+    public record InheritedCustomPropertyLabelNode : CustomPropertyLabelBase
+    {
+        public int Rank { get; set; }
+    }
+
+    public record CustomLabeledDetails
+    {
+        [Property(Label = "display_name")]
+        public string DisplayName { get; set; } = string.Empty;
+    }
+
+    [Node("CustomLabelComplexOwner")]
+    public record CustomLabelComplexOwner : Node
+    {
+        public CustomLabeledDetails Details { get; set; } = new();
     }
 
     [Node("PersonWithIgnoredProps")]
@@ -806,6 +830,63 @@ public interface IAttributeValidationTests : IGraphTest
 
         Assert.NotNull(alice);
         Assert.Equal("Alice", alice.FirstName);
+
+        var raw = await Graph.GetDynamicNodeAsync(
+            people[0].Id, null, TestContext.Current.CancellationToken);
+        Assert.Equal("Alice", raw.Properties["first_name"]);
+        Assert.Equal("Brown", raw.Properties["last_name"]);
+        Assert.False(raw.Properties.ContainsKey(nameof(PersonWithCustomPropertyLabels.FirstName)));
+        Assert.False(raw.Properties.ContainsKey(nameof(PersonWithCustomPropertyLabels.LastName)));
+    }
+
+    [Fact]
+    public async Task CustomPropertyLabels_WorkForInheritedAndComplexProperties()
+    {
+        var inherited = new InheritedCustomPropertyLabelNode
+        {
+            InheritedName = "base value",
+            Rank = 7
+        };
+        var owner = new CustomLabelComplexOwner
+        {
+            Details = new CustomLabeledDetails { DisplayName = "nested value" }
+        };
+
+        await Graph.CreateNodeAsync(inherited, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(owner, null, TestContext.Current.CancellationToken);
+
+        var inheritedRaw = await Graph.GetDynamicNodeAsync(
+            inherited.Id, null, TestContext.Current.CancellationToken);
+        Assert.Equal("base value", inheritedRaw.Properties["inherited_name"]);
+        Assert.False(inheritedRaw.Properties.ContainsKey(nameof(CustomPropertyLabelBase.InheritedName)));
+
+        var ownerRaw = await Graph.GetDynamicNodeAsync(
+            owner.Id, null, TestContext.Current.CancellationToken);
+        var details = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(
+            ownerRaw.Properties[nameof(CustomLabelComplexOwner.Details)]);
+        Assert.Equal("nested value", details["display_name"]);
+        Assert.False(details.ContainsKey(nameof(CustomLabeledDetails.DisplayName)));
+
+        var inheritedRoundTrip = await Graph.GetNodeAsync<InheritedCustomPropertyLabelNode>(
+            inherited.Id, null, TestContext.Current.CancellationToken);
+        var ownerRoundTrip = await Graph.GetNodeAsync<CustomLabelComplexOwner>(
+            owner.Id, null, TestContext.Current.CancellationToken);
+        Assert.Equal(inherited.InheritedName, inheritedRoundTrip.InheritedName);
+        Assert.Equal(inherited.Rank, inheritedRoundTrip.Rank);
+        Assert.Equal(owner.Details, ownerRoundTrip.Details);
+    }
+
+    [Fact]
+    public async Task SchemaRegistry_UsesPhysicalPropertyLabelsForIndexes()
+    {
+        await Graph.SchemaRegistry.InitializeAsync(TestContext.Current.CancellationToken);
+
+        var schema = Graph.SchemaRegistry.GetNodeSchema("IndexedPerson");
+        Assert.NotNull(schema);
+
+        var lastName = schema.Properties[nameof(PersonWithCustomPropertyLabels.LastName)];
+        Assert.Equal("last_name", lastName.Name);
+        Assert.True(lastName.IsIndexed);
     }
 
     [Fact]
@@ -854,6 +935,13 @@ public interface IAttributeValidationTests : IGraphTest
         Assert.Equal(person1.Id, retrieved.StartNodeId);
         Assert.Equal(person2.Id, retrieved.EndNodeId);
         Assert.Equal("Project Alpha", retrieved.ProjectName);
+
+        var raw = await Graph.GetDynamicRelationshipAsync(
+            relationship.Id, null, TestContext.Current.CancellationToken);
+        Assert.NotNull(raw.Properties["start_date"]);
+        Assert.Equal("Project Alpha", raw.Properties["project_name"]);
+        Assert.False(raw.Properties.ContainsKey(nameof(CustomWorksWith.StartDate)));
+        Assert.False(raw.Properties.ContainsKey(nameof(CustomWorksWith.ProjectName)));
     }
 
     [Fact]

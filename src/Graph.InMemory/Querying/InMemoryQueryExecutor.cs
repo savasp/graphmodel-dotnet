@@ -714,10 +714,11 @@ internal sealed class InMemoryQueryExecutor(
         // deserializer filled in.
         if (StripConvert(selector.Body) is MemberExpression { } member &&
             member.Expression == selector.Parameters[0] &&
+            member.Member is PropertyInfo property &&
             input is not null &&
             row.Sources.TryGetValue(input, out var source) &&
             (GraphDataModel.IsSimple(member.Type) || GraphDataModel.IsCollectionOfSimple(member.Type)) &&
-            (!source.TryGetValue(member.Member.Name, out var stored) || stored.Value is null))
+            (!source.TryGetValue(Labels.GetLabelFromProperty(property), out var stored) || stored.Value is null))
         {
             if (member.Type.IsValueType && Nullable.GetUnderlyingType(member.Type) is null)
             {

@@ -166,4 +166,15 @@
   <data name="CG014_Description" xml:space="preserve">
     <value>Types implementing INode or IRelationship must be reference types. Struct value semantics (copy on assignment/parameter-pass) turn load-mutate-update patterns into silent lost-update bugs, and the covariant graph query surface relies on reference-type variance conversions that do not apply to value types.</value>
   </data>
+
+  <!-- CG015: ComplexPropertyAttribute has no effect -->
+  <data name="CG015_Title" xml:space="preserve">
+    <value>ComplexPropertyAttribute has no effect</value>
+  </data>
+  <data name="CG015_MessageFormat" xml:space="preserve">
+    <value>[ComplexProperty] on property '{0}' has no effect: {1}</value>
+  </data>
+  <data name="CG015_Description" xml:space="preserve">
+    <value>ComplexPropertyAttribute only configures graph-backed complex properties. It has no effect on simple values or simple collections, and a null, empty, or whitespace RelationshipType override silently falls back to the property name.</value>
+  </data>
 </root>

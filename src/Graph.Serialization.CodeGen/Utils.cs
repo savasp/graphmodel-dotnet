@@ -82,22 +82,15 @@ internal static class Utils
     internal static string GetPropertyName(IPropertySymbol property)
     {
         var propertyAttribute = property.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute");
+            .FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute" &&
+                                 a.AttributeClass.ContainingNamespace?.ToString() == "Cvoya.Graph");
 
-        if (propertyAttribute is { ConstructorArguments.Length: > 0 })
+        var labelArgument = propertyAttribute?.NamedArguments
+            .FirstOrDefault(argument => argument.Key == "Label");
+
+        if (labelArgument is { Value.Value: string { Length: > 0 } label })
         {
-            var arg = propertyAttribute.ConstructorArguments[0];
-            // Handle TypedConstant properly - check if it's an array
-            if (arg.Kind == TypedConstantKind.Array)
-            {
-                // For arrays, take the first value
-                var firstValue = arg.Values.FirstOrDefault();
-                return firstValue.Value?.ToString() ?? property.Name;
-            }
-            else
-            {
-                return arg.Value?.ToString() ?? property.Name;
-            }
+            return label;
         }
 
         return property.Name;

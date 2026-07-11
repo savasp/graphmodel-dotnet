@@ -5,6 +5,7 @@ namespace Cvoya.Graph.Analyzers;
 
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
 
@@ -34,7 +35,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         DiagnosticDescriptors.ShouldInheritFromBaseClass,
         DiagnosticDescriptors.MisappliedNodeOrRelationshipAttribute,
         DiagnosticDescriptors.ConflictingNodeAndRelationshipAttributes,
-        DiagnosticDescriptors.EntityTypeMustBeReferenceType);
+        DiagnosticDescriptors.EntityTypeMustBeReferenceType,
+        DiagnosticDescriptors.IneffectiveComplexPropertyAttribute);
 
     /// <summary>
     /// Initializes the analyzer and registers the symbol action for named types.
@@ -75,6 +77,11 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         // method (it can't be a valid entity type regardless), but it is exactly the case CG014
         // exists to flag.
         AnalyzeEntityTypeIsReferenceType(context, namedTypeSymbol, helper);
+
+        // CG015: Check for ComplexPropertyAttribute configurations that are silent no-ops. Must run
+        // before the early-return below: the attribute is equally consumed - and equally inert when
+        // misconfigured - on complex property types that are not themselves graph entities.
+        AnalyzeComplexPropertyAttributes(context, namedTypeSymbol, helper);
 
         // Skip if it doesn't implement INode or IRelationship
         if (!implementsINode && !implementsIRelationship)
@@ -253,7 +260,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         context.ReportDiagnostic(diagnostic);
     }
 
-    private static Location? GetAttributeLocation(AttributeData attribute, INamedTypeSymbol fallbackType)
+    private static Location? GetAttributeLocation(AttributeData attribute, ISymbol fallbackSymbol)
     {
         var syntaxReference = attribute.ApplicationSyntaxReference;
         if (syntaxReference != null)
@@ -261,7 +268,69 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             return Location.Create(syntaxReference.SyntaxTree, syntaxReference.Span);
         }
 
-        return fallbackType.Locations.FirstOrDefault();
+        return fallbackSymbol.Locations.FirstOrDefault();
+    }
+
+    private static void AnalyzeComplexPropertyAttributes(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol namedType,
+        AnalyzerHelper helper)
+    {
+        foreach (var property in namedType.GetMembers().OfType<IPropertySymbol>())
+        {
+            var attribute = property.GetAttributes().FirstOrDefault(candidate =>
+                candidate.AttributeClass?.Name == "ComplexPropertyAttribute" &&
+                candidate.AttributeClass.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph");
+            if (attribute is null)
+            {
+                continue;
+            }
+
+            string? reason = null;
+            if (helper.IsSimpleType(property.Type) || helper.IsCollectionOfSimpleTypes(property.Type))
+            {
+                reason = $"property type '{GetShortTypeName(property.Type)}' is simple or a simple collection";
+            }
+            else if (TryGetConfiguredComplexPropertyRelationshipType(attribute, out var configured) &&
+                string.IsNullOrWhiteSpace(configured))
+            {
+                reason = "RelationshipType is null, empty, or whitespace, so convention-based naming is used";
+            }
+
+            if (reason is not null)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    DiagnosticDescriptors.IneffectiveComplexPropertyAttribute,
+                    GetAttributeLocation(attribute, property),
+                    property.Name,
+                    reason));
+            }
+        }
+    }
+
+    private static bool TryGetConfiguredComplexPropertyRelationshipType(AttributeData attribute, out string? value)
+    {
+        foreach (var argument in attribute.NamedArguments.Where(argument => argument.Key == "RelationshipType"))
+        {
+            value = argument.Value.Value as string;
+            return true;
+        }
+
+        // Some analyzer-test compilations expose the referenced attribute without populated
+        // NamedArguments. The application syntax remains authoritative for an explicit literal.
+        if (attribute.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax syntax)
+        {
+            var argument = syntax.ArgumentList?.Arguments.FirstOrDefault(candidate =>
+                candidate.NameEquals?.Name.Identifier.ValueText == "RelationshipType");
+            if (argument?.Expression is LiteralExpressionSyntax literal)
+            {
+                value = literal.Token.Value as string;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
     }
 
     private static void AnalyzeParameterlessConstructor(SymbolAnalysisContext context, INamedTypeSymbol namedType, bool implementsINode, bool implementsIRelationship)

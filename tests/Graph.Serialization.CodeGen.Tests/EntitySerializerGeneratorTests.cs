@@ -32,6 +32,26 @@ public class EntitySerializerGeneratorTests
     }
 
     [Fact]
+    public Task NodeWithCustomPropertyLabels()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            namespace TestNamespace;
+
+            [Node("Person")]
+            public record Person(
+                [property: Property(Label = "last_name")] string LastName) : Node
+            {
+                [Property(Label = "first_name")]
+                public string FirstName { get; init; } = string.Empty;
+            }
+            """;
+
+        return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
+    }
+
+    [Fact]
     public Task NodeWithGuidSimpleValues()
     {
         const string source = """

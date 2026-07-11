@@ -458,6 +458,28 @@ Provider result code should adapt driver records into `GraphRecord`/`GraphValue`
 materialization pipeline. This is an implementation-SPI change only; application LINQ queries and stored
 graph data require no migration, and Neo4j query text remains byte-for-byte unchanged.
 
+## 21. `PropertyAttribute.Label` is the physical storage key
+
+`[Property(Label = "last_name")]` now stores, indexes, queries, dynamically exposes, and
+materializes the property as `last_name`. Earlier versions generated serializers that stored the
+same property under its CLR name (`LastName`) even though schema and LINQ metadata resolved the
+configured label. Data written under the old key is not found by label-keyed queries and is not
+automatically migrated.
+
+Migrate each renamed property before upgrading, substituting the affected node label and property
+names in this Cypher template:
+
+```cypher
+MATCH (n:`NodeLabel`)
+WHERE n.`ClrPropertyName` IS NOT NULL
+SET n.`physical_property_label` = n.`ClrPropertyName`
+REMOVE n.`ClrPropertyName`;
+```
+
+Use the equivalent relationship pattern (`MATCH ()-[r:`RELATIONSHIP_TYPE`]->()`) and replace `n`
+with `r` for renamed relationship properties. Rebuild indexes after migrating so their property
+keys also use the configured labels.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

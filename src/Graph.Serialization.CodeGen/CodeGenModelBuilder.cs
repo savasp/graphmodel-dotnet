@@ -73,7 +73,9 @@ internal sealed class CodeGenModelBuilder
         var needsConstructor = constructorOnlyProperties.Count > 0 || type.IsRecord;
         var constructor = constructors.Count == 0
             ? null
-            : BuildConstructor(FindBestConstructor(constructors, deserializationProperties) ?? constructors[0]);
+            : BuildConstructor(
+                FindBestConstructor(constructors, deserializationProperties) ?? constructors[0],
+                deserializationProperties);
 
         var complexPropertyTypes = DiscoverComplexPropertyTypes(type).ToList();
 
@@ -145,13 +147,15 @@ internal sealed class CodeGenModelBuilder
             elementType is null ? null : BuildTypeReference(elementType));
     }
 
-    private static ConstructorModel BuildConstructor(IMethodSymbol constructor)
+    private static ConstructorModel BuildConstructor(
+        IMethodSymbol constructor,
+        IReadOnlyCollection<SerializablePropertyModel> properties)
     {
         return new ConstructorModel(EquatableArray<ParameterModel>.From(
             constructor.Parameters.Select(parameter => new ParameterModel(
                 parameter.Name,
                 BuildTypeReference(parameter.Type),
-                FindPropertyNameForParameter(parameter),
+                FindPropertyLabelForParameter(parameter, properties),
                 parameter.HasExplicitDefaultValue,
                 parameter.HasExplicitDefaultValue
                     ? FormatDefaultValue(parameter.ExplicitDefaultValue, parameter.Type)
@@ -357,6 +361,16 @@ internal sealed class CodeGenModelBuilder
             "direction" => "Direction",
             _ => Utils.GetPropertyNameFromParameter(parameter)
         };
+    }
+
+    private static string FindPropertyLabelForParameter(
+        IParameterSymbol parameter,
+        IReadOnlyCollection<SerializablePropertyModel> properties)
+    {
+        var propertyName = FindPropertyNameForParameter(parameter);
+        return properties.FirstOrDefault(property =>
+                string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            ?.Label ?? propertyName;
     }
 
     private static string FormatDefaultValue(object? defaultValue, ITypeSymbol type)

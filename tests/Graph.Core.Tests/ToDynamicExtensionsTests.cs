@@ -30,6 +30,12 @@ public class ToDynamicExtensionsTests
         public bool IsActive { get; init; }
     }
 
+    private sealed record CustomLabelNode : Node
+    {
+        [Property(Label = "display_name")]
+        public string DisplayName { get; init; } = string.Empty;
+    }
+
     [Fact]
     public void ToDynamicNode_ConvertsStronglyTypedNodeToDynamicNode()
     {
@@ -51,6 +57,17 @@ public class ToDynamicExtensionsTests
         Assert.Equal("John Doe", dynamicNode.Properties["Name"]);
         Assert.Equal(30, dynamicNode.Properties["Age"]);
         Assert.Equal("john@example.com", dynamicNode.Properties["Email"]);
+    }
+
+    [Fact]
+    public void ToDynamicNode_UsesPhysicalPropertyLabels()
+    {
+        var node = new CustomLabelNode { DisplayName = "Ada" };
+
+        var dynamicNode = node.ToDynamicNode();
+
+        Assert.Equal("Ada", dynamicNode.Properties["display_name"]);
+        Assert.False(dynamicNode.Properties.ContainsKey(nameof(CustomLabelNode.DisplayName)));
     }
 
     [Fact]
