@@ -151,4 +151,14 @@ internal static class DiagnosticDescriptors
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: Resources.CG014_Description);
+
+    // CG015: ComplexPropertyAttribute has no effect
+    public static readonly DiagnosticDescriptor IneffectiveComplexPropertyAttribute = new(
+        id: "CG015",
+        title: Resources.CG015_Title,
+        messageFormat: Resources.CG015_MessageFormat,
+        category: "Cvoya.Graph",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: Resources.CG015_Description);
 }

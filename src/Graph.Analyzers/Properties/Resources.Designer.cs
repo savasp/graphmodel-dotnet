@@ -261,4 +261,19 @@ internal class Resources
     ///   Looks up a localized string similar to Graph entity types must be reference types.
     /// </summary>
     internal static string CG014_Title => ResourceManager.GetString("CG014_Title", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to ComplexPropertyAttribute only configures graph-backed complex properties. It has no effect on simple values or simple collections, and an empty RelationshipType override silently falls back to the property name..
+    /// </summary>
+    internal static string CG015_Description => ResourceManager.GetString("CG015_Description", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to [ComplexProperty] on property '{0}' has no effect: {1}.
+    /// </summary>
+    internal static string CG015_MessageFormat => ResourceManager.GetString("CG015_MessageFormat", resourceCulture)!;
+
+    /// <summary>
+    ///   Looks up a localized string similar to ComplexPropertyAttribute has no effect.
+    /// </summary>
+    internal static string CG015_Title => ResourceManager.GetString("CG015_Title", resourceCulture)!;
 }
