@@ -17,3 +17,4 @@ changed decision gets a new ADR that supersedes the old one.
 | ADR | Title | Status |
 |-----|-------|--------|
 | [0001](0001-shared-cypher-translation-layer.md) | Shared Cypher translation layer and multi-provider architecture | Accepted |
+| [0002](0002-complex-property-first-class-mapping.md) | Complex (nested-object) properties as first-class graph structure | Accepted |

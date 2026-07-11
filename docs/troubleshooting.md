@@ -330,7 +330,7 @@ TransientException: Deadlock detected
 | **CG014** | Graph entity types (INode/IRelationship) must be reference types | Error |
 
 **Solutions:**
-See the [Analyzers README](../src/Cvoya.Graph.Analyzers/README.md) for detailed examples of each warning and how to fix them.
+See the [Analyzers README](https://github.com/cvoya-com/graph/blob/main/src/Graph.Analyzers/README.md) for detailed examples of each warning and how to fix them.
 
 ## 🔍 Debugging Techniques
 
@@ -403,7 +403,7 @@ When reporting issues, include:
 
 ### 2. Check Documentation
 
-- [Getting Started Guide](../README.md)
+- [Getting Started Guide](https://github.com/cvoya-com/graph/blob/main/README.md)
 - [Core Concepts](./core-concepts.md)
 - [Performance Guide](./performance.md)
 

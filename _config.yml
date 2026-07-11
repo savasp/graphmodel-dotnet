@@ -17,6 +17,8 @@ repository: cvoya-com/graph
 plugins:
   - jekyll-feed
   - jekyll-sitemap
+  # Rewrites relative .md links between rendered pages to their .html URLs.
+  - jekyll-relative-links
 
 # Render conceptual Markdown consistently without repeating layout metadata.
 defaults:
