@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Reviews CVOYA graph .NET PRs for correctness, architecture fit, style, performance, and security. Produces structured feedback with file:line references and an approval verdict. Use when a PR is ready for review.
-model: opus
+model: inherit
 tools: Bash, Read, Glob, Grep, WebFetch
 ---
 

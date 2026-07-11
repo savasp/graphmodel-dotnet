@@ -1,7 +1,7 @@
 ---
 name: qa-engineer
 description: Validates CVOYA graph .NET changes — writes edge-case and regression tests, verifies correctness, and runs the full test suite. Use after engineer completes implementation or when investigating test failures.
-model: sonnet
+model: inherit
 tools: Bash, Read, Write, Edit, Glob, Grep
 ---
 

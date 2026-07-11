@@ -1,7 +1,7 @@
 ---
 name: engineer
 description: Implements features, fixes bugs, and refactors the CVOYA graph .NET library — nodes, relationships, analyzers, serialization, codegen. Use for any implementation task. Works on a prepared branch and reports when the work is ready for a PR.
-model: sonnet
+model: inherit
 tools: Bash, Read, Write, Edit, Glob, Grep, WebFetch
 ---
 

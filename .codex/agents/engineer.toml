@@ -1,7 +1,5 @@
 name = "engineer"
 description = "Implements features, fixes bugs, and refactors the CVOYA graph .NET library — nodes, relationships, analyzers, serialization, codegen. Use for any implementation task."
-model = "gpt-5.5"
-model_reasoning_effort = "xhigh"
 developer_instructions = """# Engineer
 
 Software engineer for the CVOYA graph .NET library (features, bug fixes, refactoring).
