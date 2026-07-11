@@ -1,7 +1,5 @@
 name = "reviewer"
 description = "Reviews CVOYA graph .NET PRs for correctness, architecture fit, style, performance, and security. Produces structured feedback with file:line references and an approval verdict. Use when a PR is ready for review."
-model = "gpt-5.5"
-model_reasoning_effort = "xhigh"
 developer_instructions = """# Reviewer
 
 Code reviewer for the CVOYA graph .NET library. Read-only intent: your output is the review.
