@@ -45,13 +45,13 @@ jobs:
         include:
           - language: actions
             build-mode: none
-            query-suite: codeql/actions-queries:codeql-suites/actions-security-and-quality.qls
+            query-suite: codeql/actions-queries:codeql-suites/actions-security-extended.qls
           - language: csharp
             build-mode: manual
-            query-suite: codeql/csharp-queries:codeql-suites/csharp-security-and-quality.qls
+            query-suite: codeql/csharp-queries:codeql-suites/csharp-security-extended.qls
           - language: ruby
             build-mode: none
-            query-suite: codeql/ruby-queries:codeql-suites/ruby-security-and-quality.qls
+            query-suite: codeql/ruby-queries:codeql-suites/ruby-security-extended.qls
 
     steps:
       - name: Checkout
