@@ -4,6 +4,7 @@
 namespace Cvoya.Graph.Neo4j.Tests;
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     // -- Singleton instance of the DatabasePoolManager --
     private static Task<DatabasePoolManager>? instanceTask;
     private static readonly Lock initLock = new();
+    private static readonly string runId = CreateRunId();
 
     public static Task<DatabasePoolManager> GetInstanceAsync(string connectionString, string username, string password, ILoggerFactory loggerFactory, int maxPoolSize = 10)
     {
@@ -24,6 +26,31 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         }
 
         return instanceTask;
+    }
+
+    internal static async ValueTask DisposeInstanceAsync()
+    {
+        Task<DatabasePoolManager>? currentInstanceTask;
+        lock (initLock)
+        {
+            currentInstanceTask = instanceTask;
+            instanceTask = null;
+        }
+
+        if (currentInstanceTask is null)
+        {
+            return;
+        }
+
+        // Wait for a still-running setup without rethrowing its failure: a faulted setup
+        // already surfaced through the tests and leaves nothing to dispose.
+        await Task.WhenAny(currentInstanceTask);
+        if (!currentInstanceTask.IsCompletedSuccessfully)
+        {
+            return;
+        }
+
+        await (await currentInstanceTask).DisposeAsync();
     }
 
     private static async Task<DatabasePoolManager> CreateAsync(string connectionString, string username, string password, ILoggerFactory loggerFactory, int databaseCount)
@@ -46,6 +73,10 @@ public sealed class DatabasePoolManager : IAsyncDisposable
 
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromMinutes(2);
     private const int MaxSetupConcurrency = 4;
+    private const int MaxDatabaseNameLength = 63;
+    private const int MaxDatabaseIndex = 999;
+    private const string DatabaseNamePrefix = "graphtests";
+    private const string Base36Characters = "0123456789abcdefghijklmnopqrstuvwxyz";
 
     private DatabasePoolManager(string connectionString, string username, string password, ILoggerFactory loggerFactory, int maxPoolSize)
     {
@@ -81,10 +112,10 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             return;
         }
 
-        // Drop all databases
+        // Drop only databases in this process run's namespace.
         for (int i = 0; i < maxPoolSize; i++)
         {
-            var databaseName = GenerateDatabaseName(i);
+            var databaseName = GetDatabaseName(i);
             await DropDatabaseAsync(databaseName);
         }
 
@@ -127,6 +158,11 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     public async Task CleanDatabaseAsync(string databaseName)
     {
         ArgumentNullException.ThrowIfNull(databaseName, nameof(databaseName));
+        if (!IsOwnedDatabase(databaseName))
+        {
+            throw new InvalidOperationException($"Database '{databaseName}' is not owned by this test process.");
+        }
+
         logger.LogDebug("Cleaning database {DatabaseName}", databaseName);
         await using var session = driver.AsyncSession(builder => builder.WithDatabase(databaseName));
         var result = await session.RunAsync("MATCH (n) DETACH DELETE n");
@@ -147,7 +183,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
 
         var tasks = Enumerable.Range(0, maxPoolSize).Select(async i =>
         {
-            var databaseName = GenerateDatabaseName(i);
+            var databaseName = GetDatabaseName(i);
             await concurrencyLimiter.WaitAsync();
             try
             {
@@ -194,7 +230,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
     {
         logger.LogDebug("Creating database {DatabaseName} if it does not exist", databaseName);
         await using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
-        var result = await session.RunAsync($"CREATE DATABASE {databaseName} IF NOT EXISTS");
+        var result = await session.RunAsync($"CREATE DATABASE {EscapeDatabaseName(databaseName)} IF NOT EXISTS");
         await result.ConsumeAsync();
         await WaitForDatabaseOnlineAsync(databaseName);
         logger.LogDebug("Database {DatabaseName} is now ready", databaseName);
@@ -222,7 +258,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         {
             logger.LogDebug("Dropping database {DatabaseName}", databaseName);
             await using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
-            var result = await session.RunAsync($"DROP DATABASE {databaseName}");
+            var result = await session.RunAsync($"DROP DATABASE {EscapeDatabaseName(databaseName)}");
             await result.ConsumeAsync();
             logger.LogDebug("Database {DatabaseName} dropped successfully", databaseName);
         }
@@ -264,9 +300,85 @@ public sealed class DatabasePoolManager : IAsyncDisposable
         throw new Exception($"Database '{databaseName}' did not become available for driver connections in time.");
     }
 
-    private string GenerateDatabaseName(int i)
+    internal static string GetDatabaseName(int index)
     {
-        return "GraphTests" + i.ToString("D3");
+        return GetDatabaseName(index, runId);
+    }
+
+    internal static string GetDatabaseName(int index, string databaseRunId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(databaseRunId);
+        if (index is < 0 or > MaxDatabaseIndex)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index), index, $"Database pool indexes must be between 0 and {MaxDatabaseIndex}.");
+        }
+
+        if (databaseRunId.Any(character => !char.IsAsciiLetterLower(character) && !char.IsAsciiDigit(character) && character is not '-'))
+        {
+            throw new ArgumentException("Database run IDs must contain only lowercase ASCII letters, digits, or dashes.", nameof(databaseRunId));
+        }
+
+        var databaseName = $"{DatabaseNamePrefix}-{databaseRunId}-{index:D3}";
+        if (databaseName.Length > MaxDatabaseNameLength)
+        {
+            throw new ArgumentException($"The resulting Neo4j database name must not exceed {MaxDatabaseNameLength} characters.", nameof(databaseRunId));
+        }
+
+        return databaseName;
+    }
+
+    private bool IsOwnedDatabase(string databaseName)
+    {
+        if (usesSharedDefaultDatabase)
+        {
+            // Community Neo4j and CI keep the existing single-database fallback.
+            return string.Equals(databaseName, defaultDatabaseName, StringComparison.Ordinal);
+        }
+
+        return databaseName.StartsWith($"{DatabaseNamePrefix}-{runId}-", StringComparison.Ordinal);
+    }
+
+    private static string CreateRunId()
+    {
+        ulong startMarker;
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            startMarker = (ulong)process.StartTime.ToUniversalTime().Ticks;
+        }
+        catch (Exception exception) when (exception
+            is InvalidOperationException
+            or NotSupportedException
+            or System.ComponentModel.Win32Exception)
+        {
+            // Process start-time introspection can be restricted on some hosts; a random
+            // marker still disambiguates PID reuse, which is all the start time is for.
+            startMarker = BitConverter.ToUInt64(Guid.NewGuid().ToByteArray(), 0);
+        }
+
+        var processId = ConvertToBase36((ulong)Environment.ProcessId);
+        return $"p{processId}t{ConvertToBase36(startMarker)}";
+    }
+
+    private static string EscapeDatabaseName(string databaseName)
+    {
+        Debug.Assert(!databaseName.Contains('`'), "Generated database names must not contain backticks.");
+        return $"`{databaseName}`";
+    }
+
+    private static string ConvertToBase36(ulong value)
+    {
+        Span<char> characters = stackalloc char[13];
+        var position = characters.Length;
+
+        do
+        {
+            characters[--position] = Base36Characters[(int)(value % 36)];
+            value /= 36;
+        }
+        while (value > 0);
+
+        return new string(characters[position..]);
     }
 
     private static bool IsMultiDatabaseUnsupported(Exception exception)
