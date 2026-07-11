@@ -667,10 +667,12 @@ jobs:
           --health-retries 30
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
           cache: true
@@ -705,7 +707,7 @@ jobs:
           --report-xunit-trx-filename test-age.trx
 
       - name: Upload Apache AGE Provider results
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: test-age-results
@@ -729,7 +731,6 @@ jobs:
           name: test-age
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
-
 
   required-checks:
     name: Required checks
