@@ -1294,5 +1294,34 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Equal("Dave", ((Person)path.Segments[2].EndNode).FirstName);
     }
 
+    [Fact]
+    public async Task TraversePaths_Select_ProjectsStartEndAndDepth()
+    {
+        var alice = new Person { FirstName = $"SelectStart-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"SelectMiddle-{Guid.NewGuid():N}" };
+        var charlie = new Person { FirstName = $"SelectEnd-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
+
+        var source = Graph.Nodes<Person>().Where(person => person.Id == alice.Id);
+        var starts = await source.TraversePaths<Knows, Person>(2, 2)
+            .Select(path => path.Start)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var ends = await source.TraversePaths<Knows, Person>(2, 2)
+            .Select(path => path.End)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var depths = await source.TraversePaths<Knows, Person>(2, 2)
+            .Select(path => path.Segments.Count)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(alice.Id, Assert.Single(starts).Id);
+        Assert.Equal(charlie.Id, Assert.Single(ends).Id);
+        Assert.Equal(2, Assert.Single(depths));
+    }
+
     #endregion
 }

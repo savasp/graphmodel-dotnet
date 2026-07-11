@@ -74,7 +74,9 @@ public sealed class CypherQueryPlanner
 
         var predicates = LowerPredicates(model, state, lowerer);
         var ordering = LowerOrdering(model, state, lowerer);
-        var projection = LowerProjection(model, state, lowerer);
+        var projection = model.PathShape is null
+            ? LowerProjection(model, state, lowerer)
+            : null;
 
         var clauses = new List<ICypherClause>();
         AddRootAndTraversalClauses(clauses, model, state);
@@ -96,14 +98,14 @@ public sealed class CypherQueryPlanner
 
         if (model.PathShape is not null)
         {
-            AddGraphPathProjection(clauses);
+            AddGraphPathTerminalAndProjection(clauses, model, lowerer);
         }
         else
         {
-            AddTerminalAndProjection(clauses, model, state, ordering, projection, parameters);
+            AddTerminalAndProjection(clauses, model, state, ordering, projection!, parameters);
         }
 
-        var pathTypes = model.PathShape is null
+        var pathTypes = model.PathShape is null || model.Projection is not null
             ? null
             : new CypherPathTypes(
                 model.PathShape.SourceType,
@@ -1068,6 +1070,47 @@ public sealed class CypherQueryPlanner
             new OrderByItem(new VariableRef("pathIndex"), descending: false),
             new OrderByItem(new VariableRef("hopIndex"), descending: false)
         ]));
+    }
+
+    private static void AddGraphPathTerminalAndProjection(
+        List<ICypherClause> clauses,
+        GraphQueryModel model,
+        ExpressionToCypherAstLowerer lowerer)
+    {
+        if (model.Terminal != TerminalOperation.ToListOrArray)
+        {
+            throw new GraphQueryTranslationException(
+                $"Terminal '{model.Terminal}' after TraversePaths is not supported yet.");
+        }
+
+        if (model.Projection?.Selector is not { } selector)
+        {
+            AddGraphPathProjection(clauses);
+            return;
+        }
+
+        var body = StripConvert(selector.Body);
+        if (body is MemberExpression
+            {
+                Expression: ParameterExpression parameter,
+                Member.Name: nameof(IGraphPath.Start) or nameof(IGraphPath.End),
+            } member && parameter.Type == typeof(IGraphPath))
+        {
+            var entity = lowerer.LowerLambda(selector, "p");
+            clauses.Add(new WithClause([new ReturnItem(entity, "__pathEntity")], distinct: false));
+            clauses.Add(new EntityProjectionClause(
+                EntityProjectionShape.Node,
+                "__pathEntity",
+                relationshipAlias: null,
+                targetAlias: null,
+                loadSourceProperties: HasComplexProperties(member.Type),
+                loadTargetProperties: false));
+            return;
+        }
+
+        clauses.Add(new ReturnClause(
+            [new ReturnItem(lowerer.LowerLambda(selector, "p"), null)],
+            distinct: false));
     }
 
     private static bool TryGetDirectPathSegmentMember(MemberExpression member, out string component)

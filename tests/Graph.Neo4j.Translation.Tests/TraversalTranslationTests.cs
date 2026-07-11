@@ -168,12 +168,30 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
-    public Task SelectAfterTraversePaths_ThrowsNotSupported()
+    public Task SelectScalarAfterTraversePaths_ProjectsDepth()
     {
         var query = Root.Nodes<Person>()
             .TraversePaths<Knows, Person>(1, 3)
             .Select(p => p.Segments.Count);
-        return VerifyTranslationThrows(query);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task SelectStartAfterTraversePaths_ProjectsNode()
+    {
+        var query = Root.Nodes<Person>()
+            .TraversePaths<Knows, Person>(1, 3)
+            .Select(p => p.Start);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task SelectEndAfterTraversePaths_ProjectsNode()
+    {
+        var query = Root.Nodes<Person>()
+            .TraversePaths<Knows, Person>(1, 3)
+            .Select(p => p.End);
+        return VerifyTranslation(query);
     }
 
     [Fact]

@@ -699,15 +699,10 @@ internal sealed class InMemoryQueryExecutor(
 
     private object? ProjectRow(Row row, GraphQueryModel model)
     {
-        if (model.PathShape is not null)
-        {
-            return BuildGraphPath(row);
-        }
-
         var projection = model.Projection;
         if (projection?.Selector is not { } selector)
         {
-            return row.Current;
+            return model.PathShape is not null ? BuildGraphPath(row) : row.Current;
         }
 
         // A two-parameter selector is the Join result selector, already applied at the join.
@@ -721,7 +716,9 @@ internal sealed class InMemoryQueryExecutor(
             return ResolveInput(row, null, selector.Parameters[0].Type) ?? row.Current;
         }
 
-        var input = ResolveInput(row, null, selector.Parameters[0].Type);
+        var input = model.PathShape is not null && selector.Parameters[0].Type == typeof(IGraphPath)
+            ? BuildGraphPath(row)
+            : ResolveInput(row, null, selector.Parameters[0].Type);
 
         // A scalar projection of one simple member reads the stored value: an entity hydrated
         // from a record that never stored the member (e.g. created dynamically) must surface
