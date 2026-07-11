@@ -1017,8 +1017,9 @@ public sealed class CypherQueryPlanner
 
     private static void AddGraphPathProjection(
         List<ICypherClause> clauses,
-        QueryPathShape pathShape)
+        GraphQueryModel model)
     {
+        var pathShape = model.PathShape!;
         clauses.Add(new WithClause(
             [new ReturnItem(Function("collect", new VariableRef("p")), "__paths")],
             distinct: false));
@@ -1061,9 +1062,15 @@ public sealed class CypherQueryPlanner
                     new AstBinaryExpression(CypherBinaryOperator.Add, new VariableRef("hopIndex"), new Literal(1))),
                 "tgt")
         ], distinct: false));
-        var loadSourceProperties = HasComplexProperties(pathShape.SourceType) ||
-            HasComplexProperties(pathShape.TargetType);
-        var loadTargetProperties = HasComplexProperties(pathShape.TargetType);
+        // A variable-length pattern only label-constrains the path's first and last nodes; when
+        // more than one hop is possible, every hop column can also hold an unconstrained
+        // intermediate node, whose runtime type is unknowable at planning time — load complex
+        // properties rather than silently under-hydrating it. At exactly one hop the columns are
+        // the label-constrained endpoints, so their static types decide.
+        var intermediateNodesPossible =
+            model.Traversal.LastOrDefault(step => !step.IsComplexPropertyTraversal) is not { Depth.Max: <= 1 };
+        var loadSourceProperties = intermediateNodesPossible || HasComplexProperties(pathShape.SourceType);
+        var loadTargetProperties = intermediateNodesPossible || HasComplexProperties(pathShape.TargetType);
         clauses.Add(new ReturnClause(
         [
             new ReturnItem(new VariableRef("pathIndex"), null),
@@ -1118,7 +1125,7 @@ public sealed class CypherQueryPlanner
 
         if (model.Projection?.Selector is not { } selector)
         {
-            AddGraphPathProjection(clauses, model.PathShape!);
+            AddGraphPathProjection(clauses, model);
             return;
         }
 
@@ -1131,12 +1138,18 @@ public sealed class CypherQueryPlanner
         {
             var entity = lowerer.LowerLambda(selector, "p");
             clauses.Add(new WithClause([new ReturnItem(entity, "__pathEntity")], distinct: false));
+            // Start/End are declared INode, but the pattern label-constrains them to the path
+            // shape's endpoint types — use those rather than the interface, which always reports
+            // complex properties.
+            var entityType = member.Member.Name == nameof(IGraphPath.Start)
+                ? model.PathShape!.SourceType
+                : model.PathShape!.TargetType;
             clauses.Add(new EntityProjectionClause(
                 EntityProjectionShape.Node,
                 "__pathEntity",
                 relationshipAlias: null,
                 targetAlias: null,
-                loadSourceProperties: HasComplexProperties(member.Type),
+                loadSourceProperties: HasComplexProperties(entityType),
                 loadTargetProperties: false));
             return;
         }

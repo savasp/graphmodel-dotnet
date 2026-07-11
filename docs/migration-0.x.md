@@ -151,6 +151,11 @@ var results = await graph.Nodes<Person>()
     .ToListAsync();
 ```
 
+Operator order matters: the query model applies path predicates before projection and pagination,
+so a `.Where(...)` placed after `.Select(...)`, `.Take(...)`, or `.Skip(...)` throws at translation
+time rather than silently filtering a different row set than LINQ semantics require — put filters
+first. `.Select(path => path)` is a projection no-op.
+
 The single translation guard remains in place for operators without a path-row lowering, such as
 `.OrderBy(...)`: those still throw a `NotSupportedException` naming the operator instead of
 silently translating against a hop row. Materialize first and continue with LINQ-to-Objects when
