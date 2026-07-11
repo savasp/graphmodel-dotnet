@@ -10,8 +10,12 @@ up automatically because another process may still own them. When no Neo4j tests
 the orphan candidates in the `system` database:
 
 ```cypher
-SHOW DATABASES YIELD name WHERE name STARTS WITH 'graphtests-' RETURN name;
+SHOW DATABASES YIELD name WHERE name STARTS WITH 'graphtests' RETURN name;
 ```
+
+This query also matches `graphtests000`-style databases left behind by the retired fixed-name
+scheme (Neo4j lowercases the old `GraphTests000` names). Those are safe to drop once no
+pre-upgrade test runs remain.
 
 Review the results, then remove each orphan, escaping the hyphenated name:
 

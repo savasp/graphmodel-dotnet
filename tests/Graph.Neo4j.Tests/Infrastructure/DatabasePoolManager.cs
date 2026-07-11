@@ -37,10 +37,23 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             instanceTask = null;
         }
 
-        if (currentInstanceTask is not null)
+        if (currentInstanceTask is null)
         {
-            await (await currentInstanceTask).DisposeAsync();
+            return;
         }
+
+        DatabasePoolManager manager;
+        try
+        {
+            manager = await currentInstanceTask;
+        }
+        catch
+        {
+            // Pool setup failed and already surfaced through the tests; there is nothing to dispose.
+            return;
+        }
+
+        await manager.DisposeAsync();
     }
 
     private static async Task<DatabasePoolManager> CreateAsync(string connectionString, string username, string password, ILoggerFactory loggerFactory, int databaseCount)
@@ -303,14 +316,9 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(index), index, $"Database pool indexes must be between 0 and {MaxDatabaseIndex}.");
         }
 
-        if (databaseRunId.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not '-' and not '.'))
+        if (databaseRunId.Any(character => !char.IsAsciiLetterLower(character) && !char.IsAsciiDigit(character) && character is not '-'))
         {
-            throw new ArgumentException("Database run IDs must contain only lowercase ASCII letters, digits, dots, or dashes.", nameof(databaseRunId));
-        }
-
-        if (databaseRunId.Any(char.IsAsciiLetterUpper))
-        {
-            throw new ArgumentException("Database run IDs must be lowercase.", nameof(databaseRunId));
+            throw new ArgumentException("Database run IDs must contain only lowercase ASCII letters, digits, or dashes.", nameof(databaseRunId));
         }
 
         var databaseName = $"{DatabaseNamePrefix}-{databaseRunId}-{index:D3}";
@@ -319,7 +327,6 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             throw new ArgumentException($"The resulting Neo4j database name must not exceed {MaxDatabaseNameLength} characters.", nameof(databaseRunId));
         }
 
-        Debug.Assert(databaseName.Length <= MaxDatabaseNameLength, "Neo4j database names must not exceed 63 characters.");
         return databaseName;
     }
 
@@ -336,10 +343,21 @@ public sealed class DatabasePoolManager : IAsyncDisposable
 
     private static string CreateRunId()
     {
-        using var process = Process.GetCurrentProcess();
+        ulong startMarker;
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            startMarker = (ulong)process.StartTime.ToUniversalTime().Ticks;
+        }
+        catch (Exception)
+        {
+            // Process start-time introspection can be restricted on some hosts; a random
+            // marker still disambiguates PID reuse, which is all the start time is for.
+            startMarker = BitConverter.ToUInt64(Guid.NewGuid().ToByteArray(), 0);
+        }
+
         var processId = ConvertToBase36((ulong)Environment.ProcessId);
-        var startTicks = ConvertToBase36((ulong)process.StartTime.ToUniversalTime().Ticks);
-        return $"p{processId}t{startTicks}";
+        return $"p{processId}t{ConvertToBase36(startMarker)}";
     }
 
     private static string EscapeDatabaseName(string databaseName)

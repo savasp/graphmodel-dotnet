@@ -20,8 +20,18 @@ public sealed class DatabasePoolManagerTests
             firstRunNames.Concat(secondRunNames),
             databaseName =>
             {
-                Assert.InRange(databaseName.Length, 1, 63);
-                Assert.Matches("^[a-z][a-z0-9.-]*$", databaseName);
+                // Neo4j database names must be 3-63 characters and start with an ASCII letter.
+                Assert.InRange(databaseName.Length, 3, 63);
+                Assert.Matches("^[a-z][a-z0-9-]*$", databaseName);
             });
+    }
+
+    [Fact]
+    public void DatabasePoolManager_ProcessRunIdProducesNeo4jSafeNames()
+    {
+        var databaseName = DatabasePoolManager.GetDatabaseName(0);
+
+        Assert.InRange(databaseName.Length, 3, 63);
+        Assert.Matches("^graphtests-[a-z0-9]+-000$", databaseName);
     }
 }
