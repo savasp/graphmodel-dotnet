@@ -170,7 +170,7 @@ public static class Labels
     private static bool AreSameProperty(PropertyInfo left, PropertyInfo right)
         => left == right || (left.DeclaringType == right.DeclaringType && left.Name == right.Name);
 
-    private static string ResolveLabelFromProperty(PropertyInfo propertyInfo)
+    internal static string ResolveLabelFromProperty(PropertyInfo propertyInfo)
     {
         var propertyAttr = propertyInfo.GetCustomAttribute<PropertyAttribute>(inherit: false);
         return ResolveLabelFromProperty(propertyInfo, propertyAttr);

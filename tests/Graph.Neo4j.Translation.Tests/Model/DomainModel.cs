@@ -57,6 +57,13 @@ public record Company : Node
     public string Industry { get; set; } = string.Empty;
 }
 
+[Node("CustomPropertyLabelNode")]
+public abstract record CustomPropertyLabelNode : Node
+{
+    [Property(Label = "last_name")]
+    public string LastName { get; set; } = string.Empty;
+}
+
 /// <summary>
 /// A complex (non-entity) property type embedded on <see cref="Person"/>.
 /// </summary>

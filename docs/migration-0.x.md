@@ -435,6 +435,28 @@ the name. Pass each type as its own list entry to the multi-type constructor
 `(alias, direction, depth, types)`; the original single-`string` constructor overload remains for
 one-type and any-type patterns, including an uncast `null` type argument.
 
+## 20. `PropertyAttribute.Label` is the physical storage key
+
+`[Property(Label = "last_name")]` now stores, indexes, queries, dynamically exposes, and
+materializes the property as `last_name`. Earlier versions generated serializers that stored the
+same property under its CLR name (`LastName`) even though schema and LINQ metadata resolved the
+configured label. Data written under the old key is not found by label-keyed queries and is not
+automatically migrated.
+
+Migrate each renamed property before upgrading, substituting the affected node label and property
+names in this Cypher template:
+
+```cypher
+MATCH (n:`NodeLabel`)
+WHERE n.`ClrPropertyName` IS NOT NULL
+SET n.`physical_property_label` = n.`ClrPropertyName`
+REMOVE n.`ClrPropertyName`;
+```
+
+Use the equivalent relationship pattern (`MATCH ()-[r:`RELATIONSHIP_TYPE`]->()`) and replace `n`
+with `r` for renamed relationship properties. Rebuild indexes after migrating so their property
+keys also use the configured labels.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

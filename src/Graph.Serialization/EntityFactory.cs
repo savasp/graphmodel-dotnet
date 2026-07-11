@@ -722,7 +722,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
                 if (propertyInfo.GetIndexParameters().Length > 0)
                     continue;
 
-                var propertyName = propertyInfo.Name;
+                var propertyName = Labels.GetLabelFromProperty(propertyInfo);
                 var propertyValue = propertyInfo.GetValue(obj);
                 var propertyType = propertyInfo.PropertyType;
 

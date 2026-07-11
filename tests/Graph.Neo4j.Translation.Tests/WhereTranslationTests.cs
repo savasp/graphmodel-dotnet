@@ -16,6 +16,13 @@ public class WhereTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task Where_CustomPropertyLabel_UsesPhysicalKey()
+    {
+        var query = Root.Nodes<CustomPropertyLabelNode>().Where(p => p.LastName == "Smith");
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task Where_MultipleConditions_AndOr()
     {
         var query = Root.Nodes<Person>().Where(p => (p.Age > 30 && p.FirstName == "Alice") || p.LastName == "Smith");
