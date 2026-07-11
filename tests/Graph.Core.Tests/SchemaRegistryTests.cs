@@ -205,6 +205,7 @@ public class SchemaRegistryTests
 
         Assert.False(registry.IsInitialized);
         Assert.Throws<InvalidOperationException>(() => registry.GetNodeSchema("CoreRegistryNode"));
+        Assert.Throws<InvalidOperationException>(() => registry.GetRelationshipSchema("CORE_REGISTRY_REL"));
 
         Assert.NotNull(await registry.GetNodeSchemaAsync("CoreRegistryNode", cancellationToken));
         Assert.NotNull(await registry.GetRelationshipSchemaAsync("CORE_REGISTRY_REL", cancellationToken));

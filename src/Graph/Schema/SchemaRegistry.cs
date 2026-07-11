@@ -61,6 +61,11 @@ public class SchemaRegistry : IDisposable
     /// <summary>
     /// Gets the schema information for a node label.
     /// </summary>
+    /// <remarks>
+    /// Initializes the registry on first use, so callers never need a prior
+    /// <see cref="InitializeAsync"/> call; a miss on an already-initialized registry rescans
+    /// <see cref="AppDomain.CurrentDomain"/> for late-loaded assemblies.
+    /// </remarks>
     /// <param name="label">The node label.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>The schema information for the node label, or null if not found.</returns>
@@ -100,6 +105,10 @@ public class SchemaRegistry : IDisposable
     /// <summary>
     /// Gets the schema information for a relationship type.
     /// </summary>
+    /// <remarks>
+    /// Initializes the registry on first use - see the remarks on <see cref="GetNodeSchemaAsync"/>,
+    /// which apply here identically.
+    /// </remarks>
     /// <param name="type">The relationship type.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>The schema information for the relationship type, or null if not found.</returns>
@@ -236,7 +245,7 @@ public class SchemaRegistry : IDisposable
                 InitializeCore();
             }
 
-            return _nodeSchemas.Keys.ToList();
+            return [.. _nodeSchemas.Keys];
         }
         finally
         {
@@ -269,7 +278,7 @@ public class SchemaRegistry : IDisposable
                 InitializeCore();
             }
 
-            return _relationshipSchemas.Keys.ToList();
+            return [.. _relationshipSchemas.Keys];
         }
         finally
         {
@@ -280,6 +289,10 @@ public class SchemaRegistry : IDisposable
     /// <summary>
     /// Asynchronously clears all schema information and resets the initialization state.
     /// </summary>
+    /// <remarks>
+    /// After clearing, the next asynchronous lookup lazily re-initializes the registry, while
+    /// the synchronous getters throw until that (or <see cref="InitializeAsync"/>) has happened.
+    /// </remarks>
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
