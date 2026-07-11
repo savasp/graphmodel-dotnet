@@ -4,6 +4,17 @@ on:
   push:
     branches: [ "main" ]
     paths:
+      - '_config.yml'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - 'CODE_OF_CONDUCT.md'
+      - 'Directory.Packages.props'
+      - 'Gemfile'
+      - 'Gemfile.lock'
+      - 'README.md'
+      - 'VERSION.ASSEMBLY'
+      - 'global.json'
+      - 'index.md'
       - 'src/**'
       - 'docs/**'
       - 'scripts/build-docs.*'
@@ -12,6 +23,17 @@ on:
   pull_request:
     branches: [ "main" ]
     paths:
+      - '_config.yml'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - 'CODE_OF_CONDUCT.md'
+      - 'Directory.Packages.props'
+      - 'Gemfile'
+      - 'Gemfile.lock'
+      - 'README.md'
+      - 'VERSION.ASSEMBLY'
+      - 'global.json'
+      - 'index.md'
       - 'src/**'
       - 'docs/**'
       - 'scripts/build-docs.*'
