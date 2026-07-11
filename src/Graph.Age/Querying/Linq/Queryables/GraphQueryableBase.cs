@@ -9,7 +9,6 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
 using Cvoya.Graph.Age.Core;
-using Cvoya.Graph.Age.Querying.Linq.Helpers;
 using Cvoya.Graph.Age.Querying.Linq.Providers;
 
 

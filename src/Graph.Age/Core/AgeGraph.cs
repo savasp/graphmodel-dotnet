@@ -167,6 +167,7 @@ internal class AgeGraph : IGraph
                 transaction: transaction,
                 tx => _graphContext.NodeManager.CreateNodeAsync(node, tx, cancellationToken),
                 $"Failed to create node of type {typeof(N).Name}",
+                _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully created node {NodeId}", node.Id);
@@ -218,6 +219,7 @@ internal class AgeGraph : IGraph
                     return true;
                 },
                 $"Failed to create relationship of type {typeof(R).Name}",
+                _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully created relationship {RelationshipId}", relationship.Id);
@@ -273,6 +275,7 @@ internal class AgeGraph : IGraph
                     return true;
                 },
                 $"Failed to update node {node.Id} of type {typeof(N).Name}",
+                _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully updated node {NodeId}", node.Id);
@@ -328,6 +331,7 @@ internal class AgeGraph : IGraph
                     return true;
                 },
                 $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}",
+                _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully updated relationship {RelationshipId}", relationship.Id);
@@ -377,6 +381,7 @@ internal class AgeGraph : IGraph
                     return true;
                 },
                 $"Failed to delete node {id}",
+                _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             _logger.LogDebug("Successfully deleted node {NodeId}", id);

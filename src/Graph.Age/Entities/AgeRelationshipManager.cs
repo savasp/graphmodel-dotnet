@@ -53,9 +53,9 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             var entity = _serializer.Serialize(relationship);
 
             await ValidateRelationshipUniquenessAsync(
-                relationship, transaction.Transaction, excludeId: null, cancellationToken).ConfigureAwait(false);
+                relationship, transaction.Runner, excludeId: null, cancellationToken).ConfigureAwait(false);
 
-            if (await RelationshipExistsAsync(relationship.Id, transaction.Transaction, cancellationToken).ConfigureAwait(false))
+            if (await RelationshipExistsAsync(relationship.Id, transaction.Runner, cancellationToken).ConfigureAwait(false))
             {
                 throw new GraphException($"Relationship with ID '{relationship.Id}' already exists.");
             }
@@ -73,7 +73,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 relationship.StartNodeId,
                 relationship.EndNodeId,
                 relationship.Direction,
-                transaction.Transaction,
+                transaction.Runner,
                 cancellationToken).ConfigureAwait(false);
 
             if (!created)
@@ -116,7 +116,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             var entity = _serializer.Serialize(relationship);
 
             await ValidateRelationshipUniquenessAsync(
-                relationship, transaction.Transaction, relationship.Id, cancellationToken).ConfigureAwait(false);
+                relationship, transaction.Runner, relationship.Id, cancellationToken).ConfigureAwait(false);
 
             // Validate that relationships don't have complex properties
             if (entity.ComplexProperties.Count > 0)
@@ -130,7 +130,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 relationship.Id,
                 entity,
                 relationship.Direction,
-                transaction.Transaction,
+                transaction.Runner,
                 cancellationToken).ConfigureAwait(false);
 
             if (!updated.Exists)
@@ -176,9 +176,9 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         {
             var cypher = "MATCH ()-[r {Id: $relId}]-() DELETE r RETURN COUNT(r) AS deletedCount";
 
-            var result = await transaction.Transaction.RunAsync(
+            var result = await transaction.Runner.RunAsync(
                 cypher,
-                new { relId = relationshipId }).ConfigureAwait(false);
+                new { relId = relationshipId }, cancellationToken).ConfigureAwait(false);
 
             var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
             var deletedCount = record["deletedCount"].As<int>();
@@ -233,7 +233,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             {setClause}
             RETURN r IS NOT NULL AS created";
 
-        var result = await transaction.RunAsync(cypher, parameters).ConfigureAwait(false);
+        var result = await transaction.RunAsync(cypher, parameters, cancellationToken).ConfigureAwait(false);
 
         var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
         return record["created"].As<bool>();
@@ -246,7 +246,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
     {
         var result = await transaction.RunAsync(
             "MATCH ()-[r {Id: $relationshipId}]-() RETURN count(r) AS existingCount",
-            new { relationshipId = id }).ConfigureAwait(false);
+            new { relationshipId = id }, cancellationToken).ConfigureAwait(false);
         return (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["existingCount"].As<long>() > 0;
     }
 
@@ -265,7 +265,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         properties["inheritance_labels"] = GetInheritanceLabels(entity.ActualType);
         var lookup = await transaction.RunAsync(
             "MATCH ()-[r {Id: $relId}]->() RETURN r.Direction AS storedDirection",
-            new { relId = relationshipId }).ConfigureAwait(false);
+            new { relId = relationshipId }, cancellationToken).ConfigureAwait(false);
         var lookupRecords = await lookup.ToListAsync(cancellationToken).ConfigureAwait(false);
         if (lookupRecords.Count == 0)
         {
@@ -290,7 +290,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             {setClause}
             RETURN true AS updated";
 
-        var result = await transaction.RunAsync(cypher, parameters).ConfigureAwait(false);
+        var result = await transaction.RunAsync(cypher, parameters, cancellationToken).ConfigureAwait(false);
         _ = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
         return (true, true, storedDirection);
     }
@@ -426,7 +426,8 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
 
             var result = await transaction.RunAsync(
                 $"MATCH ()-[r]->() WHERE {string.Join(" AND ", predicates)} RETURN count(r) AS duplicateCount",
-                parameters).ConfigureAwait(false);
+                parameters,
+                cancellationToken).ConfigureAwait(false);
             var count = (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["duplicateCount"].As<long>();
             if (count > 0)
             {

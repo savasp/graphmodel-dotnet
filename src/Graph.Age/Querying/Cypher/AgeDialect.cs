@@ -33,6 +33,12 @@ public sealed class AgeDialect : ICypherDialect
     public string Name => "Apache AGE";
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The planning instance claims capabilities the runner lowers to AGE-compatible rewrites
+    /// (multi-label matches, entity ordering, optional traversal), so the shared planner emits
+    /// those constructs; the public instance declares only natively verified capabilities and is
+    /// what the compatibility suite reads. See src/Graph.Age/COMPLIANCE.md for the rationale.
+    /// </remarks>
     public CapabilitySet Capabilities => planning
         ? CapabilitySet.Of(
             GraphCapability.Transactions,

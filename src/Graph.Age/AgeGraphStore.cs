@@ -21,6 +21,7 @@ public sealed class AgeGraphStore : IAsyncDisposable
     private readonly NpgsqlDataSource dataSource;
     private readonly bool ownsDataSource;
     private bool disposed;
+    private volatile bool provisioned;
 
     /// <summary>Initializes a store from a PostgreSQL connection string.</summary>
     /// <param name="connectionString">The connection string, or <see langword="null"/> to use <c>AGE_CONNECTION_STRING</c>.</param>
@@ -125,6 +126,7 @@ public sealed class AgeGraphStore : IAsyncDisposable
         if (await exists.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is true)
         {
             await EnsurePhysicalLabelsAsync(connection, cancellationToken).ConfigureAwait(false);
+            provisioned = true;
             return;
         }
 
@@ -134,8 +136,29 @@ public sealed class AgeGraphStore : IAsyncDisposable
         create.Parameters.AddWithValue("name", GraphName);
         await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         await EnsurePhysicalLabelsAsync(connection, cancellationToken).ConfigureAwait(false);
+        provisioned = true;
     }
 
+    /// <summary>
+    /// Provisions the graph on first use only. The existence probe and physical-label round-trips
+    /// would otherwise run (and write) on every transaction begin, including read-only ones.
+    /// </summary>
+    internal async Task EnsureGraphProvisionedAsync(
+        NpgsqlConnection connection,
+        CancellationToken cancellationToken)
+    {
+        if (provisioned)
+        {
+            return;
+        }
+
+        await CreateGraphIfNotExistsAsync(connection, cancellationToken).ConfigureAwait(false);
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Security",
+        "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "GraphName is validated by AgeSqlIdentifier.Validate at construction; the labels are compile-time constants.")]
     private async Task EnsurePhysicalLabelsAsync(
         NpgsqlConnection connection,
         CancellationToken cancellationToken)

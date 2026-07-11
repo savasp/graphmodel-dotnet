@@ -6,7 +6,7 @@ namespace Cvoya.Graph.Age.Querying.Linq.Providers;
 using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using Cvoya.Graph.Age.Core;
-using Cvoya.Graph.Age.Linq.Helpers;
+using Cvoya.Graph.Age.Querying.Linq.Helpers;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.Age.Querying.Linq.Queryables;
 using Microsoft.Extensions.Logging;

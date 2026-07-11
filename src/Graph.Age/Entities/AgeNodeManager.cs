@@ -55,20 +55,20 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             // Serialize the node
             var entity = _serializer.Serialize(node);
 
-            await ValidateNodeUniquenessAsync(node, transaction.Transaction, excludeId: null, cancellationToken)
+            await ValidateNodeUniquenessAsync(node, transaction.Runner, excludeId: null, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (await NodeExistsAsync(node.Id, entity.Label, transaction.Transaction, cancellationToken).ConfigureAwait(false))
+            if (await NodeExistsAsync(node.Id, entity.Label, transaction.Runner, cancellationToken).ConfigureAwait(false))
             {
                 throw new GraphException($"Node with ID '{node.Id}' already exists.");
             }
 
             // Create the main node
-            var nodeId = await CreateMainNodeAsync(entity, transaction.Transaction, cancellationToken).ConfigureAwait(false);
+            var nodeId = await CreateMainNodeAsync(entity, transaction.Runner, cancellationToken).ConfigureAwait(false);
 
             // Create complex properties (throws on failure)
             await _complexPropertyManager.CreateComplexPropertiesAsync(
-                transaction.Transaction, nodeId, entity, cancellationToken).ConfigureAwait(false);
+                transaction.Runner, nodeId, entity, cancellationToken).ConfigureAwait(false);
 
             _logger.LogInformation("Created node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
 
@@ -100,7 +100,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             // Validate property constraints at application level
             ValidateNodeProperties(node);
 
-            await ValidateNodeUniquenessAsync(node, transaction.Transaction, node.Id, cancellationToken)
+            await ValidateNodeUniquenessAsync(node, transaction.Runner, node.Id, cancellationToken)
                 .ConfigureAwait(false);
 
             // Serialize the node
@@ -108,7 +108,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
 
             // Update the node properties. ComplexPropertyManager matches parents by Age's
             // elementId, not the domain Id, so capture it from the same MATCH.
-            var parentElementId = await UpdateMainNodeAsync(node.Id, entity, transaction.Transaction, cancellationToken).ConfigureAwait(false);
+            var parentElementId = await UpdateMainNodeAsync(node.Id, entity, transaction.Runner, cancellationToken).ConfigureAwait(false);
 
             if (parentElementId is null)
             {
@@ -118,7 +118,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
 
             // Update complex properties (throws on failure)
             await _complexPropertyManager.UpdateComplexPropertiesAsync(
-                transaction.Transaction, parentElementId, entity, cancellationToken).ConfigureAwait(false);
+                transaction.Runner, parentElementId, entity, cancellationToken).ConfigureAwait(false);
 
             _logger.LogInformation("Updated node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
             return true;
@@ -142,11 +142,9 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
 
         try
         {
-            var registeredNodeLabels = await GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
             var rootCount = await GetRootCountAsync(
                 nodeId,
-                registeredNodeLabels,
-                transaction.Transaction,
+                transaction.Runner,
                 cancellationToken).ConfigureAwait(false);
             if (rootCount == 0)
             {
@@ -170,12 +168,11 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
                     WHERE coalesce(r.{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = false
                     RETURN COUNT(r) AS businessRelationshipCount";
 
-                var checkResult = await transaction.Transaction.RunAsync(checkCypher, new
+                var checkResult = await transaction.Runner.RunAsync(checkCypher, new
                 {
                     nodeId,
                     nodeEntityKind = SerializationBridge.NodeEntityKind,
-                    registeredNodeLabels
-                }).ConfigureAwait(false);
+                }, cancellationToken).ConfigureAwait(false);
 
                 var checkRecord = await GetSingleRecordAsync(checkResult, cancellationToken).ConfigureAwait(false);
                 var businessRelationshipCount = checkRecord["businessRelationshipCount"].As<int>();
@@ -188,23 +185,24 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
                 }
             }
 
+            // AGE 1.7 lacks ALL(...); the index-based comprehension keeps Neo4j's semantics: every
+            // relationship in the path must be a complex-property relationship.
             var findPropertyNodes = $@"
                 {RootMatchPrelude}
                 MATCH (n)-[propertyRels*1..{GraphDataModel.DefaultDepthAllowed}]->(propertyNode)
-                WHERE coalesce(propertyRels[toInteger(0)].{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = true
+                WHERE size([age_hop IN range(0, size(propertyRels) - 1) WHERE propertyRels[toInteger(age_hop)].{ComplexPropertyStorage.RelationshipMarkerProperty} = true]) = size(propertyRels)
                 RETURN DISTINCT id(propertyNode) AS propertyNodeId";
-            var propertyResult = await transaction.Transaction.RunAsync(findPropertyNodes, new
+            var propertyResult = await transaction.Runner.RunAsync(findPropertyNodes, new
             {
                 nodeId,
                 nodeEntityKind = SerializationBridge.NodeEntityKind,
-                registeredNodeLabels
-            }).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
             var propertyNodes = await propertyResult.ToListAsync(cancellationToken).ConfigureAwait(false);
             foreach (var propertyNode in propertyNodes)
             {
-                await transaction.Transaction.RunAsync(
+                await transaction.Runner.RunAsync(
                     "MATCH (propertyNode) WHERE id(propertyNode) = toInteger($propertyNodeId) DETACH DELETE propertyNode RETURN true AS deleted",
-                    new { propertyNodeId = propertyNode["propertyNodeId"].As<string>() }).ConfigureAwait(false);
+                    new { propertyNodeId = propertyNode["propertyNodeId"].As<string>() }, cancellationToken).ConfigureAwait(false);
             }
 
             var cypher = $@"
@@ -212,12 +210,11 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
                 DETACH DELETE n
                 RETURN true AS wasDeleted";
 
-            var result = await transaction.Transaction.RunAsync(cypher, new
+            var result = await transaction.Runner.RunAsync(cypher, new
             {
                 nodeId,
                 nodeEntityKind = SerializationBridge.NodeEntityKind,
-                registeredNodeLabels
-            }).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
 
             var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
             var wasDeleted = record["wasDeleted"].As<bool>();
@@ -240,7 +237,6 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
 
     private async Task<int> GetRootCountAsync(
         string nodeId,
-        string[] registeredNodeLabels,
         AgeQueryRunner transaction,
         CancellationToken cancellationToken)
     {
@@ -252,20 +248,10 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         {
             nodeId,
             nodeEntityKind = SerializationBridge.NodeEntityKind,
-            registeredNodeLabels
-        }).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
 
         var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
         return record["rootCount"].As<int>();
-    }
-
-    private async Task<string[]> GetRegisteredNodeLabelsAsync(CancellationToken cancellationToken)
-    {
-        var labels = await context.SchemaManager
-            .GetSchemaRegistry()
-            .GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
-
-        return labels.ToArray();
     }
 
     private async Task<string> CreateMainNodeAsync(
@@ -280,7 +266,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         var setClause = AgeCypherProperties.BuildSetClause("n", simpleProperties, parameters, "nodeProperty");
         var cypher = $"CREATE (n:{SerializationBridge.PhysicalNodeLabel}) {setClause} RETURN id(n) AS nodeId";
 
-        var result = await transaction.RunAsync(cypher, parameters).ConfigureAwait(false);
+        var result = await transaction.RunAsync(cypher, parameters, cancellationToken).ConfigureAwait(false);
         var record = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
 
         return record["nodeId"].As<string>()
@@ -295,7 +281,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
     {
         var result = await transaction.RunAsync(
             "MATCH (n {Id: $nodeId}) WHERE $nodeLabel IN coalesce(n.inheritance_labels, []) RETURN count(n) AS existingCount",
-            new { nodeId = id, nodeLabel = label }).ConfigureAwait(false);
+            new { nodeId = id, nodeLabel = label }, cancellationToken).ConfigureAwait(false);
         return (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["existingCount"].As<long>() > 0;
     }
 
@@ -313,8 +299,15 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         var setClause = AgeCypherProperties.BuildSetClause("n", simpleProperties, parameters, "nodeProperty");
         var cypher = $"MATCH (n {{Id: $nodeId}}) {setClause} RETURN id(n) AS elementId";
 
-        var result = await transaction.RunAsync(cypher, parameters).ConfigureAwait(false);
+        var result = await transaction.RunAsync(cypher, parameters, cancellationToken).ConfigureAwait(false);
         var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (records.Count > 1)
+        {
+            throw new GraphException(
+                $"Cannot update node {nodeId} because the ID matches {records.Count} graph nodes. " +
+                "UpdateNodeAsync requires the ID to identify exactly one node.");
+        }
+
         return records.Count > 0 ? records[0]["elementId"].As<string>() : null;
     }
 
@@ -443,7 +436,8 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
 
             var result = await transaction.RunAsync(
                 $"MATCH (n) WHERE {string.Join(" AND ", predicates)} RETURN count(n) AS duplicateCount",
-                parameters).ConfigureAwait(false);
+                parameters,
+                cancellationToken).ConfigureAwait(false);
             var count = (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["duplicateCount"].As<long>();
             if (count > 0)
             {
@@ -604,11 +598,5 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
     private static async Task<AgeRecord> GetSingleRecordAsync(AgeResultCursor result, CancellationToken cancellationToken)
     {
         return await result.SingleAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async Task<int> GetCountAsync(AgeResultCursor result, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return result.Count;
     }
 }

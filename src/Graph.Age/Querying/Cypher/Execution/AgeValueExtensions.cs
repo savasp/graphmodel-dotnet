@@ -112,7 +112,13 @@ internal static class AgeValueExtensions
             return JsonSerializer.Deserialize<string>(text);
         }
 
-        if (bool.TryParse(text, out var boolean)) return boolean;
+        // agtype booleans are exactly "true"/"false"; a lenient parse would misread a genuine
+        // string value such as "True". Keep the token matching strict, like AgeRecordAdapter.
+        if (text is "true") return true;
+        if (text is "false") return false;
+        if (text is "NaN") return double.NaN;
+        if (text is "Infinity") return double.PositiveInfinity;
+        if (text is "-Infinity") return double.NegativeInfinity;
         if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer)) return integer;
         if (decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)) return number;
         return text;

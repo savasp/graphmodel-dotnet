@@ -33,10 +33,13 @@ internal sealed partial class AgeQueryRunner
         logger = loggerFactory?.CreateLogger<AgeQueryRunner>() ?? NullLogger<AgeQueryRunner>.Instance;
     }
 
-    public Task<AgeResultCursor> RunAsync(string cypher, object? parameters = null)
+    public Task<AgeResultCursor> RunAsync(
+        string cypher,
+        object? parameters = null,
+        CancellationToken cancellationToken = default)
     {
         var dictionary = ToParameterDictionary(parameters);
-        return RunAsync(cypher, dictionary, InferProjectionColumns(cypher), CancellationToken.None);
+        return RunAsync(cypher, dictionary, InferProjectionColumns(cypher), cancellationToken);
     }
 
     public async Task<AgeResultCursor> RunAsync(
@@ -92,10 +95,13 @@ internal sealed partial class AgeQueryRunner
 
             if (distinct)
             {
+                // The key embeds the value's runtime type so 1 (integer) and "1" (string) stay
+                // distinct rows.
                 records = records
                     .DistinctBy(record => string.Join(
                         '\u001f',
-                        record.Values.Select(pair => $"{pair.Key}\u001e{pair.Value}")), StringComparer.Ordinal)
+                        record.Values.Select(pair =>
+                            $"{pair.Key}\u001e{pair.Value?.GetType().Name}\u001e{pair.Value}")), StringComparer.Ordinal)
                     .ToList();
             }
 
@@ -114,6 +120,10 @@ internal sealed partial class AgeQueryRunner
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Security",
+        "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "graphName and projection columns are validated by AgeSqlIdentifier, the dollar-quote tag is collision-proof, and values travel in the agtype parameter.")]
     private NpgsqlCommand CreateCommand(
         string cypher,
         IReadOnlyDictionary<string, object?> parameters,
@@ -196,15 +206,39 @@ internal sealed partial class AgeQueryRunner
         // its entity-projection expansion. AGE requires WITH between MATCH and
         // LIMIT/SKIP. Moving paging after the final projection preserves the result semantics and
         // keeps the executor adaptation local to the dialect that needs it.
+        //
+        // The exception is the TraversePaths decomposition shape ("WITH collect(p) AS __paths"):
+        // there paging must stay ahead of the decomposition — it pages whole paths, and moving it
+        // after the final projection would page the exploded per-hop rows instead. Those clauses
+        // are folded into a "WITH p" pipe in place, which AGE accepts.
+        var pathCollectIndex = cypher.IndexOf(" AS __paths", StringComparison.Ordinal);
         var trailing = new List<string>();
         var retained = new List<string>();
+        var offset = 0;
         foreach (var line in cypher.Split('\n'))
         {
+            var beforePathCollect = pathCollectIndex >= 0 && offset < pathCollectIndex;
+            offset += line.Length + 1;
             var trimmed = line.TrimStart();
             if (trimmed.StartsWith("LIMIT ", StringComparison.OrdinalIgnoreCase) ||
                 trimmed.StartsWith("SKIP ", StringComparison.OrdinalIgnoreCase))
             {
-                trailing.Add(trimmed);
+                if (beforePathCollect)
+                {
+                    if (retained.Count > 0 &&
+                        retained[^1].TrimStart().StartsWith("WITH ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        retained[^1] = $"{retained[^1]} {trimmed}";
+                    }
+                    else
+                    {
+                        retained.Add($"WITH p {trimmed}");
+                    }
+                }
+                else
+                {
+                    trailing.Add(trimmed);
+                }
             }
             else if (trimmed.StartsWith("ORDER BY ", StringComparison.OrdinalIgnoreCase))
             {
@@ -287,6 +321,14 @@ internal sealed partial class AgeQueryRunner
                 StringComparison.Ordinal);
         }
 
+        // AGE 1.7 supports neither ALL(...) nor reduce(), and a list comprehension inside an
+        // OPTIONAL MATCH WHERE drops the unmatched row instead of yielding NULL bindings, so the
+        // shared every-hop marker predicate cannot be expressed here — these hydration paths check
+        // the first hop only. That is safe in the storage model: value nodes are reachable only
+        // through marker relationships and never own business relationships, so a marker first hop
+        // implies marker hops throughout. The delete paths, which would over-delete on that
+        // assumption, run in plain MATCH and enforce every hop (see AgeNodeManager and
+        // ComplexPropertyManager).
         cypher = ComplexRelationshipAllPredicateRegex().Replace(
             cypher,
             "WHERE coalesce(${relationships}[toInteger(0)].${marker}, false) = true");
@@ -336,8 +378,10 @@ internal sealed partial class AgeQueryRunner
             return cypher;
         }
 
+        // pathIndex/hopIndex are the planner's TraversePaths decomposition variables; they must
+        // survive the generated WITH pipes or the final RETURN/ORDER BY loses them from scope.
         var carry = new List<string>();
-        var candidateAliases = new List<string> { "src", "r", "tgt" };
+        var candidateAliases = new List<string> { "pathIndex", "hopIndex", "src", "r", "tgt" };
         for (var suffix = 2; suffix <= GraphDataModel.DefaultDepthAllowed; suffix++)
         {
             candidateAliases.Add($"r_{suffix}");
@@ -359,6 +403,9 @@ internal sealed partial class AgeQueryRunner
             var property = $"{alias}_inline_property";
             var path = $"{alias}_inline_path";
             var properties = $"{alias}_inline_properties";
+            // First-hop-only marker check: comprehensions in an OPTIONAL MATCH WHERE drop the
+            // unmatched row in AGE 1.7, and the storage model guarantees marker-first-hop paths
+            // stay inside the complex-property subtree (see NormalizeEntityProjection).
             clauses.Append("OPTIONAL MATCH (").Append(alias).Append(")-[")
                 .Append(relationships).Append("*1..").Append(GraphDataModel.DefaultDepthAllowed)
                 .Append("]->(").Append(property).AppendLine(")")
@@ -390,8 +437,9 @@ internal sealed partial class AgeQueryRunner
             var line = originalLine;
             var predicates = new List<string>();
             var trimmedOriginal = originalLine.TrimStart();
-            var isMatchLine = trimmedOriginal.StartsWith("MATCH ", StringComparison.OrdinalIgnoreCase) ||
-                trimmedOriginal.StartsWith("OPTIONAL MATCH ", StringComparison.OrdinalIgnoreCase);
+            var isOptionalMatchLine = trimmedOriginal.StartsWith("OPTIONAL MATCH ", StringComparison.OrdinalIgnoreCase);
+            var isMatchLine = isOptionalMatchLine ||
+                trimmedOriginal.StartsWith("MATCH ", StringComparison.OrdinalIgnoreCase);
             if (!isMatchLine)
             {
                 if (line.TrimStart().StartsWith("WHERE ", StringComparison.OrdinalIgnoreCase) &&
@@ -422,10 +470,31 @@ internal sealed partial class AgeQueryRunner
                     ? match.Groups["alias"].Value
                     : $"age_relationship_{generatedRelationshipAlias++}";
                 var depth = match.Groups["depth"].Value;
-                var propertyTarget = depth.Length == 0 ? alias : $"{alias}[toInteger(0)]";
                 var types = SplitRenderedIdentifiers(match.Groups["identifiers"].Value);
-                predicates.Add($"({string.Join(" OR ", types.Select(type =>
-                    $"{RenderCypherString(type)} IN coalesce({propertyTarget}.inheritance_labels, [])"))})");
+                if (depth.Length == 0)
+                {
+                    predicates.Add($"({string.Join(" OR ", types.Select(type =>
+                        $"{RenderCypherString(type)} IN coalesce({alias}.inheritance_labels, [])"))})");
+                }
+                else if (isOptionalMatchLine)
+                {
+                    // A comprehension in an OPTIONAL MATCH WHERE drops the unmatched row in
+                    // AGE 1.7, so an optional variable-length pattern can only type-check its
+                    // first hop.
+                    var propertyTarget = $"{alias}[toInteger(0)]";
+                    predicates.Add($"({string.Join(" OR ", types.Select(type =>
+                        $"{RenderCypherString(type)} IN coalesce({propertyTarget}.inheritance_labels, [])"))})");
+                }
+                else
+                {
+                    // A variable-length pattern type-constrains every hop; AGE lacks ALL(...), so
+                    // the equivalent index-based comprehension checks each relationship in the list.
+                    var perHop = string.Join(" OR ", types.Select(type =>
+                        $"{RenderCypherString(type)} IN coalesce({alias}[toInteger(age_hop)].inheritance_labels, [])"));
+                    predicates.Add(
+                        $"(size([age_hop IN range(0, size({alias}) - 1) WHERE {perHop}]) = size({alias}))");
+                }
+
                 return $"[{alias}{depth}]";
             });
 

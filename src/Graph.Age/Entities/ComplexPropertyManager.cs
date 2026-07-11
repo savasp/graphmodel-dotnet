@@ -29,7 +29,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         string RelationshipType,
         EntityInfo Entity,
         Dictionary<string, object?> NodeProperties,
-        Dictionary<string, object> RelationshipProperties);
+        Dictionary<string, object?> RelationshipProperties);
 
     public async Task CreateComplexPropertiesAsync(
         AgeQueryRunner transaction,
@@ -37,8 +37,9 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         EntityInfo entity,
         CancellationToken cancellationToken = default)
     {
-        // Breadth-first: create all value nodes of one nesting level with a single UNWIND
-        // statement per (relationship type, label) group, instead of one statement per node.
+        // Breadth-first: collect all value nodes of one nesting level, then create them level by
+        // level so each child is created under the element id its parent received at the previous
+        // level. Creation is currently one statement per node (UNWIND batching is #266).
         var currentLevel = new List<(string ParentElementId, EntityInfo Entity)> { (parentId, entity) };
 
         for (var depth = 0; currentLevel.Count > 0; depth++)
@@ -119,7 +120,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         nodeProps["inheritance_labels"] = entity.ActualLabels.Count > 0
             ? entity.ActualLabels
             : [entity.Label];
-        var relProps = new Dictionary<string, object>
+        var relProps = new Dictionary<string, object?>
         {
             [nameof(Graph.IEntity.Id)] = Guid.NewGuid().ToString("D"),
             ["SequenceNumber"] = sequenceNumber,
@@ -131,9 +132,8 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
     }
 
     /// <summary>
-    /// Creates every pending value node of one nesting level, one UNWIND statement per
-    /// (relationship type, label) group, and returns the created nodes paired with their entities
-    /// so the next level can be created under them.
+    /// Creates every pending value node of one nesting level, one statement per node, and returns
+    /// the created nodes paired with their entities so the next level can be created under them.
     /// </summary>
     private async Task<List<(string ParentElementId, EntityInfo Entity)>> CreateLevelAsync(
         AgeQueryRunner transaction,
@@ -151,7 +151,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             var nodeSet = AgeCypherProperties.BuildSetClause("complex", node.NodeProperties, parameters, "nodeProperty");
             var relationshipSet = AgeCypherProperties.BuildSetClause(
                 "r",
-                node.RelationshipProperties.ToDictionary(pair => pair.Key, pair => (object?)pair.Value, StringComparer.Ordinal),
+                node.RelationshipProperties,
                 parameters,
                 "relationshipProperty");
 
@@ -163,7 +163,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
                 {nodeSet}
                 RETURN id(complex) AS nodeId";
 
-            var result = await transaction.RunAsync(cypher, parameters).ConfigureAwait(false);
+            var result = await transaction.RunAsync(cypher, parameters, cancellationToken).ConfigureAwait(false);
             var record = await result.SingleAsync(cancellationToken).ConfigureAwait(false);
             var complexNodeId = record["nodeId"].As<string>()
                 ?? throw new GraphException("Failed to create complex property node");
@@ -195,20 +195,22 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         string parentId,
         CancellationToken cancellationToken)
     {
+        // AGE 1.7 lacks ALL(...); the index-based comprehension keeps Neo4j's semantics: every
+        // relationship in the path must be a complex-property relationship.
         var findCypher = $@"
             MATCH (parent)
             WHERE id(parent) = toInteger($parentId)
             MATCH (parent)-[propertyRels*1..{GraphDataModel.DefaultDepthAllowed}]->(propertyNode)
-            WHERE coalesce(propertyRels[toInteger(0)].{ComplexPropertyStorage.RelationshipMarkerProperty}, false) = true
+            WHERE size([age_hop IN range(0, size(propertyRels) - 1) WHERE propertyRels[toInteger(age_hop)].{ComplexPropertyStorage.RelationshipMarkerProperty} = true]) = size(propertyRels)
             RETURN DISTINCT id(propertyNode) AS propertyNodeId";
 
-        var result = await transaction.RunAsync(findCypher, new { parentId }).ConfigureAwait(false);
+        var result = await transaction.RunAsync(findCypher, new { parentId }, cancellationToken).ConfigureAwait(false);
         var propertyNodes = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
         foreach (var propertyNode in propertyNodes)
         {
             await transaction.RunAsync(
                 "MATCH (propertyNode) WHERE id(propertyNode) = toInteger($propertyNodeId) DETACH DELETE propertyNode RETURN true AS deleted",
-                new { propertyNodeId = propertyNode["propertyNodeId"].As<string>() }).ConfigureAwait(false);
+                new { propertyNodeId = propertyNode["propertyNodeId"].As<string>() }, cancellationToken).ConfigureAwait(false);
         }
 
         logger.LogDebug(
@@ -216,8 +218,4 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             propertyNodes.Count, parentId);
     }
 
-    private static async Task<AgeRecord> GetFirstRecordAsync(AgeResultCursor result, CancellationToken cancellationToken)
-    {
-        return await result.FirstAsync(cancellationToken).ConfigureAwait(false);
-    }
 }

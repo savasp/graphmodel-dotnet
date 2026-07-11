@@ -19,7 +19,7 @@ internal sealed class AgeSchemaManager
     private readonly SchemaRegistry schemaRegistry;
     private readonly ILogger<AgeSchemaManager> logger;
     private readonly SemaphoreSlim initializationGate = new(1, 1);
-    private bool initialized;
+    private volatile bool initialized;
 
     public AgeSchemaManager(AgeGraphContext context, SchemaRegistry schemaRegistry)
     {

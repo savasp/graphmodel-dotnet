@@ -25,6 +25,7 @@ internal static class TransactionHelpers
             isReadOnly,
             cancellationToken).ConfigureAwait(false);
 
+        var failed = false;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -41,6 +42,7 @@ internal static class TransactionHelpers
         }
         catch (OperationCanceledException)
         {
+            failed = true;
             if (transaction == null)
             {
                 try
@@ -62,9 +64,19 @@ internal static class TransactionHelpers
         catch (Exception ex)
         {
             logger?.LogError(ex, errorMessage);
+            failed = true;
             if (transaction == null)
             {
-                await tx.RollbackAsync().ConfigureAwait(false);
+                // A failed operation often leaves the connection unusable; a throwing rollback
+                // must not replace the original exception as the reported cause.
+                try
+                {
+                    await tx.RollbackAsync().ConfigureAwait(false);
+                }
+                catch (Exception rollbackException)
+                {
+                    logger?.LogWarning(rollbackException, "Failed to roll back failed transaction");
+                }
             }
 
             throw;
@@ -73,7 +85,14 @@ internal static class TransactionHelpers
         {
             if (transaction == null)
             {
-                await tx.DisposeAsync().ConfigureAwait(false);
+                try
+                {
+                    await tx.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception disposeException) when (failed)
+                {
+                    logger?.LogWarning(disposeException, "Failed to dispose transaction after a failed operation");
+                }
             }
         }
     }

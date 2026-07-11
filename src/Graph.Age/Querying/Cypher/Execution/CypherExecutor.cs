@@ -25,7 +25,7 @@ internal sealed class CypherExecutor
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var cursor = await transaction.Transaction.RunAsync(
+        var cursor = await transaction.Runner.RunAsync(
             cypher,
             parameters,
             projectionColumns,
@@ -43,7 +43,7 @@ internal sealed class CypherExecutor
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var cursor = await transaction.Transaction.RunAsync(
+        var cursor = await transaction.Runner.RunAsync(
             cypher,
             parameters,
             projectionColumns,

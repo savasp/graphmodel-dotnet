@@ -26,10 +26,10 @@
 
 | Executed cases | Passed | Skipped (declared capability) | Failed |
 |---|---|---|---|
-| 344 | 320 | 24 | 0 |
+| 361 | 337 | 24 | 0 |
 
-The compatibility inventory contains 342 runnable test methods. For this capability set,
-`ComplianceInventory.MinimumExecuted(declared)` is 318 methods and the strict compliance guard
+The compatibility inventory contains 348 runnable test methods. For this capability set,
+`ComplianceInventory.MinimumExecuted(declared)` is 324 methods and the strict compliance guard
 passes. Theory data rows make the runtime case count slightly larger than the method inventory.
 The suite also contains nine statically skipped, issue-tracked tests; the inventory deliberately
 excludes them, so they are not counted as capability skips above. The provider-specific adapter,

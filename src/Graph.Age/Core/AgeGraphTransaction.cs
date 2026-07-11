@@ -37,7 +37,7 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
     internal NpgsqlTransaction DbTransaction => transaction
         ?? throw new GraphException($"The transaction has not started yet. Call {nameof(BeginTransactionAsync)} first.");
 
-    internal AgeQueryRunner Transaction => runner
+    internal AgeQueryRunner Runner => runner
         ?? throw new GraphException($"The transaction has not started yet. Call {nameof(BeginTransactionAsync)} first.");
 
     public async Task CommitAsync()
@@ -100,7 +100,7 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
         connection = await context.Store.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await context.Store.CreateGraphIfNotExistsAsync(connection, cancellationToken).ConfigureAwait(false);
+            await context.Store.EnsureGraphProvisionedAsync(connection, cancellationToken).ConfigureAwait(false);
             transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             if (IsReadOnly)
             {
@@ -115,6 +115,21 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
         }
         catch
         {
+            runner = null;
+            if (transaction is not null)
+            {
+                try
+                {
+                    await transaction.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception disposeException)
+                {
+                    logger.LogWarning(disposeException, "Failed to dispose an AGE transaction after a failed begin");
+                }
+
+                transaction = null;
+            }
+
             await connection.DisposeAsync().ConfigureAwait(false);
             connection = null;
             throw;
