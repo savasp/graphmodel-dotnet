@@ -1,8 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   merge_group:
@@ -23,15 +21,14 @@ env:
 
 jobs:
   changes:
-    name: Detect changed paths
+    name: Resolve validation scope
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
     outputs:
       dotnet: ${{ steps.filter.outputs.dotnet }}
-      ci_workflow: ${{ steps.filter.outputs.ci_workflow }}
       workflow_files: ${{ steps.filter.outputs.workflow_files }}
 
     steps:
@@ -59,29 +56,12 @@ jobs:
               - '.config/dotnet-tools.json'
               - 'VERSION'
               - 'VERSION.ASSEMBLY'
-            ci_workflow:
-              # Editing ci.yml can alter any required job below, so fan out
-              # the full CI suite on CI workflow changes.
               - '.github/workflows/ci.yml'
             workflow_files:
-              # Non-CI workflow edits only need the lightweight YAML guard.
               - '.github/workflows/**'
 
-  workflow-yaml:
-    name: Workflow YAML syntax
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.workflow_files == 'true' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 2
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          persist-credentials: false
-
       - name: Parse workflow YAML files
+        if: steps.filter.outputs.workflow_files == 'true' || github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           ruby -e '
@@ -98,6 +78,7 @@ jobs:
           '
 
       - name: Audit workflow security
+        if: steps.filter.outputs.workflow_files == 'true' || github.event_name == 'workflow_dispatch'
         uses: zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa # v0.5.7
         with:
           version: 1.26.1
@@ -106,372 +87,12 @@ jobs:
           advanced-security: false
           annotations: true
 
-  build:
-    name: Build
+  validation:
+    name: Build, format, and test
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 15
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          persist-credentials: false
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
-        with:
-          dotnet-version: "10.0.x"
-          cache: true
-          cache-dependency-path: |
-            **/*.csproj
-            global.json
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Set up local feed
-        run: dotnet build --configuration LocalFeed --no-restore
-
-      - name: Verify local feed package set
-        run: ./scripts/verify-package-set.sh ./local-nuget-feed
-
-      - name: Build consumer example against local feed
-        run: dotnet build examples/SimpleMovieExample/SimpleMovieExample.csproj --configuration Release
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-  format:
-    name: Format
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 15
-
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
-        with:
-          dotnet-version: "10.0.x"
-          cache: true
-          cache-dependency-path: |
-            **/*.csproj
-            Directory.Packages.props
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Verify formatting
-        run: dotnet format --verify-no-changes --no-restore --verbosity normal
-
-  test-core:
-    name: Test Core
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 15
-    permissions:
-      checks: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          persist-credentials: false
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
-        with:
-          dotnet-version: "10.0.x"
-          cache: true
-          cache-dependency-path: |
-            **/*.csproj
-            global.json
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Set up local feed
-        run: dotnet build --configuration LocalFeed --no-restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test Core
-        run: >
-          dotnet test
-          --project tests/Graph.CompatibilityTests.Tests/Graph.CompatibilityTests.Tests.csproj
-          --no-build
-          --configuration Release
-          --verbosity normal
-          --results-directory TestResults/test-core
-          --coverage
-          --coverage-output test-core.cobertura.xml
-          --coverage-output-format cobertura
-          --report-xunit-trx
-          --report-xunit-trx-filename test-core.trx
-
-      - name: Upload Test Core results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: test-core-results
-          path: TestResults/test-core/
-          retention-days: 14
-
-      - name: Publish Test Core results
-        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
-        if: ${{ always() && hashFiles('TestResults/test-core/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        with:
-          name: Test Core
-          path: TestResults/test-core/*.trx
-          reporter: dotnet-trx
-
-      - name: Upload Test Core coverage
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
-        if: success()
-        with:
-          files: TestResults/test-core/test-core.cobertura.xml
-          flags: test-core
-          name: test-core
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-
-      - name: Test Core Libraries
-        run: dotnet test --project tests/Graph.Core.Tests/Graph.Core.Tests.csproj --no-build --configuration Release --verbosity normal
-
-  test-analyzers:
-    name: Test Analyzers
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 15
-    permissions:
-      checks: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          persist-credentials: false
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
-        with:
-          dotnet-version: "10.0.x"
-          cache: true
-          cache-dependency-path: |
-            **/*.csproj
-            global.json
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Set up local feed
-        run: dotnet build --configuration LocalFeed --no-restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test Analyzers
-        run: >
-          dotnet test
-          --project tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj
-          --no-build
-          --configuration Release
-          --verbosity normal
-          --results-directory TestResults/test-analyzers
-          --coverage
-          --coverage-output test-analyzers.cobertura.xml
-          --coverage-output-format cobertura
-          --report-xunit-trx
-          --report-xunit-trx-filename test-analyzers.trx
-
-      - name: Upload Test Analyzers results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: test-analyzers-results
-          path: TestResults/test-analyzers/
-          retention-days: 14
-
-      - name: Publish Test Analyzers results
-        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
-        if: ${{ always() && hashFiles('TestResults/test-analyzers/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        with:
-          name: Test Analyzers
-          path: TestResults/test-analyzers/*.trx
-          reporter: dotnet-trx
-
-      - name: Upload Test Analyzers coverage
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
-        if: success()
-        with:
-          files: TestResults/test-analyzers/test-analyzers.cobertura.xml
-          flags: test-analyzers
-          name: test-analyzers
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-
-  test-translation:
-    name: Test LINQ-to-Cypher translation
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 15
-    permissions:
-      checks: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          persist-credentials: false
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
-        with:
-          dotnet-version: "10.0.x"
-          cache: true
-          cache-dependency-path: |
-            **/*.csproj
-            global.json
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Set up local feed
-        run: dotnet build --configuration LocalFeed --no-restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test LINQ-to-Cypher translation (no Neo4j required)
-        run: >
-          dotnet test
-          --project tests/Graph.Neo4j.Translation.Tests/Graph.Neo4j.Translation.Tests.csproj
-          --no-build
-          --configuration Release
-          --verbosity normal
-          --results-directory TestResults/test-translation
-          --coverage
-          --coverage-output test-translation.cobertura.xml
-          --coverage-output-format cobertura
-          --report-xunit-trx
-          --report-xunit-trx-filename test-translation.trx
-
-      - name: Upload LINQ-to-Cypher translation results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: test-translation-results
-          path: TestResults/test-translation/
-          retention-days: 14
-
-      - name: Publish LINQ-to-Cypher translation results
-        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
-        if: ${{ always() && hashFiles('TestResults/test-translation/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        with:
-          name: Test LINQ-to-Cypher translation
-          path: TestResults/test-translation/*.trx
-          reporter: dotnet-trx
-
-      - name: Upload LINQ-to-Cypher translation coverage
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
-        if: success()
-        with:
-          files: TestResults/test-translation/test-translation.cobertura.xml
-          flags: test-translation
-          name: test-translation
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-
-  test-codegen:
-    name: Test serialization code generator
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 15
-    permissions:
-      checks: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          persist-credentials: false
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
-        with:
-          dotnet-version: "10.0.x"
-          cache: true
-          cache-dependency-path: |
-            **/*.csproj
-            global.json
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Set up local feed
-        run: dotnet build --configuration LocalFeed --no-restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test serialization code generator (no Neo4j required)
-        run: >
-          dotnet test
-          --project tests/Graph.Serialization.CodeGen.Tests/Graph.Serialization.CodeGen.Tests.csproj
-          --no-build
-          --configuration Release
-          --verbosity normal
-          --results-directory TestResults/test-codegen
-          --coverage
-          --coverage-output test-codegen.cobertura.xml
-          --coverage-output-format cobertura
-          --report-xunit-trx
-          --report-xunit-trx-filename test-codegen.trx
-
-      - name: Upload serialization code generator results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: test-codegen-results
-          path: TestResults/test-codegen/
-          retention-days: 14
-
-      - name: Publish serialization code generator results
-        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
-        if: ${{ always() && hashFiles('TestResults/test-codegen/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        with:
-          name: Test serialization code generator
-          path: TestResults/test-codegen/*.trx
-          reporter: dotnet-trx
-
-      - name: Upload serialization code generator coverage
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
-        if: success()
-        with:
-          files: TestResults/test-codegen/test-codegen.cobertura.xml
-          flags: test-codegen
-          name: test-codegen
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-
-  test-neo4j:
-    name: Test Neo4j Provider
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 20
+    if: needs.changes.outputs.dotnet == 'true' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
     permissions:
       checks: write
       contents: read
@@ -492,166 +113,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
-
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          persist-credentials: false
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
-        with:
-          dotnet-version: "10.0.x"
-          cache: true
-          cache-dependency-path: |
-            **/*.csproj
-            global.json
-
-      - name: Wait for Neo4j
-        shell: bash
-        run: |
-          timeout 300 bash -c 'until curl --fail --silent http://localhost:7474 >/dev/null; do sleep 5; done'
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Set up local feed
-        run: dotnet build --configuration LocalFeed --no-restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test Neo4j Provider
-        run: >
-          dotnet test
-          --project tests/Graph.Neo4j.Tests/Graph.Neo4j.Tests.csproj
-          --no-build
-          --configuration Release
-          --verbosity normal
-          --results-directory TestResults/test-neo4j
-          --coverage
-          --coverage-output test-neo4j.cobertura.xml
-          --coverage-output-format cobertura
-          --report-xunit-trx
-          --report-xunit-trx-filename test-neo4j.trx
-        env:
-          NEO4J_URI: bolt://localhost:7687
-          NEO4J_USER: neo4j
-          NEO4J_PASSWORD: password
-          USE_NEO4J_CONTAINERS: false
-
-      - name: Upload Neo4j Provider results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: test-neo4j-results
-          path: TestResults/test-neo4j/
-          retention-days: 14
-
-      - name: Publish Neo4j Provider results
-        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
-        if: ${{ always() && hashFiles('TestResults/test-neo4j/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        with:
-          name: Test Neo4j Provider
-          path: TestResults/test-neo4j/*.trx
-          reporter: dotnet-trx
-
-      - name: Upload Neo4j Provider coverage
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
-        if: success()
-        with:
-          files: TestResults/test-neo4j/test-neo4j.cobertura.xml
-          flags: test-neo4j
-          name: test-neo4j
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-
-  test-inmemory:
-    name: Test In-Memory Provider
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 15
-    permissions:
-      checks: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          persist-credentials: false
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
-        with:
-          dotnet-version: "10.0.x"
-          cache: true
-          cache-dependency-path: |
-            **/*.csproj
-            global.json
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Set up local feed
-        run: dotnet build --configuration LocalFeed --no-restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Test In-Memory Provider (strict compliance)
-        env:
-          GRAPHMODEL_COMPLIANCE_STRICT: "1"
-        run: >
-          dotnet test
-          --project tests/Graph.InMemory.Tests/Graph.InMemory.Tests.csproj
-          --no-build
-          --configuration Release
-          --verbosity normal
-          --results-directory TestResults/test-inmemory
-          --coverage
-          --coverage-output test-inmemory.cobertura.xml
-          --coverage-output-format cobertura
-          --report-xunit-trx
-          --report-xunit-trx-filename test-inmemory.trx
-
-      - name: Upload Test In-Memory Provider results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: test-inmemory-results
-          path: TestResults/test-inmemory/
-          retention-days: 14
-
-      - name: Publish Test In-Memory Provider results
-        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
-        if: ${{ always() && hashFiles('TestResults/test-inmemory/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        with:
-          name: Test In-Memory Provider
-          path: TestResults/test-inmemory/*.trx
-          reporter: dotnet-trx
-
-      - name: Upload Test In-Memory Provider coverage
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
-        if: success()
-        with:
-          files: TestResults/test-inmemory/test-inmemory.cobertura.xml
-          flags: test-inmemory
-          name: test-inmemory
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-
-  test-age:
-    name: Test Apache AGE Provider
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.dotnet == 'true' || needs.changes.outputs.ci_workflow == 'true' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 20
-    permissions:
-      checks: write
-      contents: read
-
-    services:
       age:
         image: apache/age:release_PG18_1.7.0
         ports:
@@ -683,120 +144,110 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
-        run: dotnet build --configuration LocalFeed --no-restore
+      - name: Set up and verify the local package feed
+        run: |
+          dotnet build --configuration LocalFeed --no-restore
+          ./scripts/verify-package-set.sh ./local-nuget-feed
+          dotnet build examples/SimpleMovieExample/SimpleMovieExample.csproj --configuration Release
 
-      - name: Build
+      - name: Build once for every test suite
         run: dotnet build --no-restore --configuration Release
 
-      - name: Test Apache AGE Provider (strict compliance)
+      - name: Verify formatting
+        run: dotnet format --verify-no-changes --no-restore --verbosity normal
+
+      - name: Run every test suite
+        id: tests
+        shell: bash
         env:
           AGE_CONNECTION_STRING: Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres
-          GRAPHMODEL_COMPLIANCE_STRICT: "1"
-        run: >
-          dotnet test
-          --project tests/Graph.Age.Tests/Graph.Age.Tests.csproj
-          --no-build
-          --configuration Release
-          --verbosity normal
-          --results-directory TestResults/test-age
-          --coverage
-          --coverage-output test-age.cobertura.xml
-          --coverage-output-format cobertura
-          --report-xunit-trx
-          --report-xunit-trx-filename test-age.trx
+          NEO4J_PASSWORD: password
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          USE_NEO4J_CONTAINERS: "false"
+        run: |
+          set +e
+          status=0
 
-      - name: Upload Apache AGE Provider results
+          run_covered() {
+            local slug="$1"
+            local project="$2"
+            echo "=== test: $slug ==="
+            dotnet test \
+              --project "$project" \
+              --no-build \
+              --configuration Release \
+              --verbosity normal \
+              --results-directory "TestResults/$slug" \
+              --coverage \
+              --coverage-output "$slug.cobertura.xml" \
+              --coverage-output-format cobertura \
+              --report-xunit-trx \
+              --report-xunit-trx-filename "$slug.trx" || status=1
+          }
+
+          run_covered test-core tests/Graph.CompatibilityTests.Tests/Graph.CompatibilityTests.Tests.csproj
+          dotnet test --project tests/Graph.Core.Tests/Graph.Core.Tests.csproj \
+            --no-build --configuration Release --verbosity normal || status=1
+          run_covered test-analyzers tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj
+          run_covered test-translation tests/Graph.Neo4j.Translation.Tests/Graph.Neo4j.Translation.Tests.csproj
+          run_covered test-codegen tests/Graph.Serialization.CodeGen.Tests/Graph.Serialization.CodeGen.Tests.csproj
+          export GRAPHMODEL_COMPLIANCE_STRICT=1
+          run_covered test-neo4j tests/Graph.Neo4j.Tests/Graph.Neo4j.Tests.csproj
+          run_covered test-inmemory tests/Graph.InMemory.Tests/Graph.InMemory.Tests.csproj
+          run_covered test-age tests/Graph.Age.Tests/Graph.Age.Tests.csproj
+
+          exit "$status"
+
+      - name: Upload test results and coverage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
-          name: test-age-results
-          path: TestResults/test-age/
+          name: test-results
+          path: TestResults/
           retention-days: 14
 
-      - name: Publish Apache AGE Provider results
+      - name: Publish test results
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
-        if: ${{ always() && hashFiles('TestResults/test-age/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        if: ${{ always() && hashFiles('TestResults/**/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
-          name: Test Apache AGE Provider
-          path: TestResults/test-age/*.trx
+          name: Graph tests
+          path: TestResults/**/*.trx
           reporter: dotnet-trx
 
-      - name: Upload Apache AGE Provider coverage
+      - name: Upload coverage
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
-        if: success()
+        if: steps.tests.outcome == 'success'
         with:
-          files: TestResults/test-age/test-age.cobertura.xml
-          flags: test-age
-          name: test-age
+          directory: TestResults
+          flags: tests
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
   required-checks:
     name: Required checks
     runs-on: ubuntu-latest
-    needs:
-      - changes
-      - workflow-yaml
-      - build
-      - format
-      - test-core
-      - test-analyzers
-      - test-translation
-      - test-codegen
-      - test-neo4j
-      - test-inmemory
-      - test-age
-    # Always runs - branch protection depends on a single "Required checks"
-    # context, so this job must report a status regardless of which
-    # individual jobs above passed, failed, were skipped, or were cancelled.
+    needs: [changes, validation]
     if: ${{ always() }}
     timeout-minutes: 5
     permissions:
       contents: read
 
     steps:
-      - name: Verify all required jobs passed or were skipped
+      - name: Verify required jobs passed or were intentionally skipped
         shell: bash
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
-          WORKFLOW_YAML_RESULT: ${{ needs.workflow-yaml.result }}
-          BUILD_RESULT: ${{ needs.build.result }}
-          FORMAT_RESULT: ${{ needs.format.result }}
-          TEST_CORE_RESULT: ${{ needs.test-core.result }}
-          TEST_ANALYZERS_RESULT: ${{ needs.test-analyzers.result }}
-          TEST_TRANSLATION_RESULT: ${{ needs.test-translation.result }}
-          TEST_CODEGEN_RESULT: ${{ needs.test-codegen.result }}
-          TEST_NEO4J_RESULT: ${{ needs.test-neo4j.result }}
-          TEST_INMEMORY_RESULT: ${{ needs.test-inmemory.result }}
-          TEST_AGE_RESULT: ${{ needs.test-age.result }}
+          VALIDATION_RESULT: ${{ needs.validation.result }}
         run: |
           echo "changes=$CHANGES_RESULT"
-          echo "workflow-yaml=$WORKFLOW_YAML_RESULT"
-          echo "build=$BUILD_RESULT"
-          echo "format=$FORMAT_RESULT"
-          echo "test-core=$TEST_CORE_RESULT"
-          echo "test-analyzers=$TEST_ANALYZERS_RESULT"
-          echo "test-translation=$TEST_TRANSLATION_RESULT"
-          echo "test-codegen=$TEST_CODEGEN_RESULT"
-          echo "test-neo4j=$TEST_NEO4J_RESULT"
-          echo "test-inmemory=$TEST_INMEMORY_RESULT"
-          echo "test-age=$TEST_AGE_RESULT"
+          echo "validation=$VALIDATION_RESULT"
 
-          if [[ "$CHANGES_RESULT" != "success" ]]; then
-            echo "::error::changes detection job failed"
+          [[ "$CHANGES_RESULT" == "success" ]] || {
+            echo "::error::validation scope or workflow audit failed"
             exit 1
-          fi
-
-          ok() { [[ "$1" == "success" || "$1" == "skipped" ]]; }
-
-          ok "$WORKFLOW_YAML_RESULT"    || { echo "::error::workflow-yaml failed"; exit 1; }
-          ok "$BUILD_RESULT"            || { echo "::error::build failed"; exit 1; }
-          ok "$FORMAT_RESULT"           || { echo "::error::format failed"; exit 1; }
-          ok "$TEST_CORE_RESULT"        || { echo "::error::test-core failed"; exit 1; }
-          ok "$TEST_ANALYZERS_RESULT"   || { echo "::error::test-analyzers failed"; exit 1; }
-          ok "$TEST_TRANSLATION_RESULT" || { echo "::error::test-translation failed"; exit 1; }
-          ok "$TEST_CODEGEN_RESULT"     || { echo "::error::test-codegen failed"; exit 1; }
-          ok "$TEST_NEO4J_RESULT"       || { echo "::error::test-neo4j failed"; exit 1; }
-          ok "$TEST_INMEMORY_RESULT"    || { echo "::error::test-inmemory failed"; exit 1; }
-          ok "$TEST_AGE_RESULT"         || { echo "::error::test-age failed"; exit 1; }
+          }
+          [[ "$VALIDATION_RESULT" == "success" || "$VALIDATION_RESULT" == "skipped" ]] || {
+            echo "::error::build, format, or tests failed"
+            exit 1
+          }
