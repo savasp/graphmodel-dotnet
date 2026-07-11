@@ -42,18 +42,15 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             return;
         }
 
-        DatabasePoolManager manager;
-        try
+        // Wait for a still-running setup without rethrowing its failure: a faulted setup
+        // already surfaced through the tests and leaves nothing to dispose.
+        await Task.WhenAny(currentInstanceTask);
+        if (!currentInstanceTask.IsCompletedSuccessfully)
         {
-            manager = await currentInstanceTask;
-        }
-        catch
-        {
-            // Pool setup failed and already surfaced through the tests; there is nothing to dispose.
             return;
         }
 
-        await manager.DisposeAsync();
+        await (await currentInstanceTask).DisposeAsync();
     }
 
     private static async Task<DatabasePoolManager> CreateAsync(string connectionString, string username, string password, ILoggerFactory loggerFactory, int databaseCount)
@@ -349,7 +346,10 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             using var process = Process.GetCurrentProcess();
             startMarker = (ulong)process.StartTime.ToUniversalTime().Ticks;
         }
-        catch (Exception)
+        catch (Exception exception) when (exception
+            is InvalidOperationException
+            or NotSupportedException
+            or System.ComponentModel.Win32Exception)
         {
             // Process start-time introspection can be restricted on some hosts; a random
             // marker still disambiguates PID reuse, which is all the start time is for.
