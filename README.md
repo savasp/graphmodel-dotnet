@@ -296,7 +296,7 @@ CVOYA Graph follows a clean, layered architecture:
 ## Requirements
 
 - **.NET 10.0** or later
-- **Neo4j 4.0+** (5.x recommended for Neo4j provider)
+- **Neo4j 5.x** (for the Neo4j provider)
 - **C# 14** language features
 
 ## Related Resources
