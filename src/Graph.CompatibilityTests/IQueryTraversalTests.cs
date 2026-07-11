@@ -693,7 +693,7 @@ public interface IQueryTraversalTests : IGraphTest
     }
 
     [Fact]
-    public async Task CanFilterTargetNodesByPropertyWithoutTraverseTwoHops()
+    public async Task TraversePaths_Where_FiltersByEndAndDepth()
     {
         // Setup:
         // Alice is 25, Bob is 30, Charlie is 40

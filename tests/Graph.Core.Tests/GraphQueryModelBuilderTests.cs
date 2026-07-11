@@ -318,6 +318,20 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
+    public void UnsupportedOperatorAfterTraversePaths_ThrowsAtChokePoint()
+    {
+        var query = Root<Person>()
+            .TraversePaths<Knows, Company>(1, 3)
+            .OrderBy(path => path.Segments.Count);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(
+            () => GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("'.OrderBy(...)' chained after 'TraversePaths", exception.Message);
+        Assert.Contains("Materialize the paths first", exception.Message);
+    }
+
+    [Fact]
     public void SelectMany_ProducesFlatteningFragment()
     {
         var query = Root<Person>().SelectMany(person => person.Nicknames);
