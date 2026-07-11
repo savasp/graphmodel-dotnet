@@ -4,6 +4,7 @@
 namespace Cvoya.Graph.Age.Querying.Linq.Providers;
 
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Cvoya.Graph.Age.Core;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
@@ -49,7 +50,13 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
                 .MakeGenericMethod(elementType)
                 .Invoke(this, [expression])!;
         }
-        catch (Exception ex)
+        catch (TargetInvocationException ex) when (ex.InnerException is not null)
+        {
+            // Unwrap so the underlying failure from the invoked generic CreateQuery<TElement> is
+            // reported directly, instead of nested inside a reflection-invocation wrapper.
+            throw new InvalidOperationException($"Failed to create query for type {elementType}", ex.InnerException);
+        }
+        catch (Exception ex) when (ex is AmbiguousMatchException or MethodAccessException or ArgumentException)
         {
             throw new InvalidOperationException($"Failed to create query for type {elementType}", ex);
         }

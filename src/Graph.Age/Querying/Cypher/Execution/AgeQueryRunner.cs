@@ -112,13 +112,22 @@ internal sealed partial class AgeQueryRunner
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception exception) when (IsQueryExecutionFailure(exception))
         {
             var correlationId = Guid.NewGuid().ToString("N");
             logger.LogError(exception, "AGE query execution failed; correlation ID {CorrelationId}", correlationId);
             throw new GraphException($"AGE query execution failed. Correlation ID: {correlationId}.", exception);
         }
     }
+
+    /// <summary>
+    /// True for the exceptions the reader/command execution and <see cref="ParseTextAgtype"/> raise
+    /// on a broken connection, a malformed server response, or an unexpected column shape - the
+    /// failures this correlation-id boundary is meant to catch. Anything else (e.g. a bug
+    /// elsewhere) should propagate rather than be silently wrapped.
+    /// </summary>
+    private static bool IsQueryExecutionFailure(Exception exception) =>
+        exception is NpgsqlException or JsonException or FormatException or InvalidCastException;
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage(
         "Security",

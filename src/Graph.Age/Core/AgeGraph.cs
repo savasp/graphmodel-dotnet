@@ -544,8 +544,10 @@ internal class AgeGraph : IGraph
         {
             throw;
         }
-        catch (Exception ex)
+        catch (GraphException ex)
         {
+            // Schema initialization is pure in-memory reflection scanning (no Npgsql call in
+            // this path); the only failure it raises is a label-collision GraphException.
             _logger.LogError(ex, "Failed to recreate indexes");
             throw new GraphException("Failed to recreate indexes", ex);
         }

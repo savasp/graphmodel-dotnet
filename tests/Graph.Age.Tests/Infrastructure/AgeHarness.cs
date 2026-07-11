@@ -30,7 +30,7 @@ public sealed class AgeHarness : IGraphProviderTestHarness
             await using var store = new AgeGraphStore(dataSource, NewGraphName());
             await store.CreateGraphIfNotExistsAsync(TestContext.Current.CancellationToken);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             throw new GraphProviderUnavailableException(
                 "Apache AGE is unavailable. Set AGE_CONNECTION_STRING or run the repository AGE container.",
@@ -63,18 +63,29 @@ public sealed class AgeHarness : IGraphProviderTestHarness
         var store = new AgeGraphStore(
             dataSource ?? throw new GraphProviderUnavailableException("The AGE test data source was not initialized."),
             graphName);
+        var registered = false;
         try
         {
             await store.CreateGraphIfNotExistsAsync(cancellationToken);
             stores.Add(store);
+            registered = true;
             return store.Graph;
         }
-        catch (Exception exception)
+        catch (NpgsqlException exception)
         {
-            await store.DisposeAsync();
             throw new GraphProviderUnavailableException(
                 "Apache AGE is unavailable. Set AGE_CONNECTION_STRING or run the repository AGE container.",
                 exception);
+        }
+        finally
+        {
+            // Dispose on every failure path (including cancellation, which the narrowed catch
+            // above deliberately doesn't wrap); a successfully registered store is cleaned up by
+            // DisposeAsync instead.
+            if (!registered)
+            {
+                await store.DisposeAsync();
+            }
         }
     }
 
