@@ -50,9 +50,7 @@ public class SchemaRegistry : IDisposable
             if (_isInitialized)
                 return;
 
-            RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
-
-            _isInitialized = true;
+            InitializeCore();
         }
         finally
         {
@@ -63,6 +61,11 @@ public class SchemaRegistry : IDisposable
     /// <summary>
     /// Gets the schema information for a node label.
     /// </summary>
+    /// <remarks>
+    /// Initializes the registry on first use, so callers never need a prior
+    /// <see cref="InitializeAsync"/> call; a miss on an already-initialized registry rescans
+    /// <see cref="AppDomain.CurrentDomain"/> for late-loaded assemblies.
+    /// </remarks>
     /// <param name="label">The node label.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>The schema information for the node label, or null if not found.</returns>
@@ -74,7 +77,7 @@ public class SchemaRegistry : IDisposable
         // than via ClearAsync, so a hit here is always correct without taking the semaphore.
         // ConcurrentDictionary.TryGetValue is safe to call concurrently with a writer holding
         // the semaphore below.
-        if (_nodeSchemas.TryGetValue(label, out var cached))
+        if (_isInitialized && _nodeSchemas.TryGetValue(label, out var cached))
         {
             return cached;
         }
@@ -82,7 +85,11 @@ public class SchemaRegistry : IDisposable
         await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_isInitialized && !_nodeSchemas.ContainsKey(label))
+            if (!_isInitialized)
+            {
+                InitializeCore();
+            }
+            else if (!_nodeSchemas.ContainsKey(label))
             {
                 RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
             }
@@ -98,6 +105,10 @@ public class SchemaRegistry : IDisposable
     /// <summary>
     /// Gets the schema information for a relationship type.
     /// </summary>
+    /// <remarks>
+    /// Initializes the registry on first use - see the remarks on <see cref="GetNodeSchemaAsync"/>,
+    /// which apply here identically.
+    /// </remarks>
     /// <param name="type">The relationship type.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>The schema information for the relationship type, or null if not found.</returns>
@@ -106,7 +117,7 @@ public class SchemaRegistry : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
 
         // See the fast-path comment in GetNodeSchemaAsync.
-        if (_relationshipSchemas.TryGetValue(type, out var cached))
+        if (_isInitialized && _relationshipSchemas.TryGetValue(type, out var cached))
         {
             return cached;
         }
@@ -114,7 +125,11 @@ public class SchemaRegistry : IDisposable
         await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_isInitialized && !_relationshipSchemas.ContainsKey(type))
+            if (!_isInitialized)
+            {
+                InitializeCore();
+            }
+            else if (!_relationshipSchemas.ContainsKey(type))
             {
                 RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
             }
@@ -137,21 +152,20 @@ public class SchemaRegistry : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
 
-        // See the fast-path comment in GetNodeSchemaAsync. The initialization check below still
-        // applies to misses, so a hit here doesn't skip the "must be initialized" contract - it's
-        // only reachable once something has actually been registered, which only ever happens
-        // after (or during) InitializeAsync.
+        if (!_isInitialized)
+            throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
+
         if (_nodeSchemas.TryGetValue(label, out var cached))
         {
             return cached;
         }
 
-        if (!_isInitialized)
-            throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
-
         _semaphore.Wait();
         try
         {
+            if (!_isInitialized)
+                throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
+
             if (!_nodeSchemas.ContainsKey(label))
             {
                 RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
@@ -175,18 +189,20 @@ public class SchemaRegistry : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
 
-        // See the fast-path comment in GetNodeSchema.
+        if (!_isInitialized)
+            throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
+
         if (_relationshipSchemas.TryGetValue(type, out var cached))
         {
             return cached;
         }
 
-        if (!_isInitialized)
-            throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
-
         _semaphore.Wait();
         try
         {
+            if (!_isInitialized)
+                throw new InvalidOperationException("Schema registry must be initialized before accessing schema information synchronously.");
+
             if (!_relationshipSchemas.ContainsKey(type))
             {
                 RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
@@ -204,13 +220,13 @@ public class SchemaRegistry : IDisposable
     /// Gets all registered node labels.
     /// </summary>
     /// <remarks>
-    /// This is a point-in-time snapshot of the labels registered so far. If the registry is
-    /// already initialized, it is returned lock-free without forcing a rescan of
+    /// Initializes the registry on first use, then returns a point-in-time snapshot of the
+    /// labels registered so far. If the registry is already initialized, the snapshot is
+    /// returned lock-free without forcing a rescan of
     /// <see cref="AppDomain.CurrentDomain"/> for late-loaded assemblies - unlike
     /// <see cref="GetNodeSchemaAsync"/>/<see cref="GetNodeSchema"/>, a miss on a specific label
-    /// has no bearing here, so there is no natural rescan trigger. Call
-    /// <see cref="InitializeAsync"/> again (or look up a specific label/type, which does rescan
-    /// on miss) if a late-loaded assembly's types must be reflected here.
+    /// has no bearing here, so there is no natural rescan trigger. Look up a specific label or
+    /// type, which does rescan on miss, if a late-loaded assembly's types must be reflected here.
     /// </remarks>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>An enumerable of registered node labels.</returns>
@@ -224,12 +240,12 @@ public class SchemaRegistry : IDisposable
         await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_isInitialized)
+            if (!_isInitialized)
             {
-                RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
+                InitializeCore();
             }
 
-            return _nodeSchemas.Keys.ToList();
+            return [.. _nodeSchemas.Keys];
         }
         finally
         {
@@ -241,8 +257,9 @@ public class SchemaRegistry : IDisposable
     /// Gets all registered relationship types.
     /// </summary>
     /// <remarks>
-    /// This is a point-in-time snapshot of the types registered so far - see the rescan-boundary
-    /// remarks on <see cref="GetRegisteredNodeLabelsAsync"/>, which apply here identically.
+    /// Initializes the registry on first use, then returns a point-in-time snapshot of the types
+    /// registered so far. See the rescan-boundary remarks on
+    /// <see cref="GetRegisteredNodeLabelsAsync"/>, which apply here identically.
     /// </remarks>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <returns>An enumerable of registered relationship types.</returns>
@@ -256,12 +273,12 @@ public class SchemaRegistry : IDisposable
         await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_isInitialized)
+            if (!_isInitialized)
             {
-                RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
+                InitializeCore();
             }
 
-            return _relationshipSchemas.Keys.ToList();
+            return [.. _relationshipSchemas.Keys];
         }
         finally
         {
@@ -272,6 +289,10 @@ public class SchemaRegistry : IDisposable
     /// <summary>
     /// Asynchronously clears all schema information and resets the initialization state.
     /// </summary>
+    /// <remarks>
+    /// After clearing, the next asynchronous lookup lazily re-initializes the registry, while
+    /// the synchronous getters throw until that (or <see cref="InitializeAsync"/>) has happened.
+    /// </remarks>
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -286,6 +307,13 @@ public class SchemaRegistry : IDisposable
         {
             _semaphore.Release();
         }
+    }
+
+    private void InitializeCore()
+    {
+        // All callers hold _semaphore so discovery and the initialized flag publish atomically.
+        RegisterGraphEntityTypes(AppDomain.CurrentDomain.GetAssemblies());
+        _isInitialized = true;
     }
 
     private void RegisterNodeType(Type nodeType, List<string> collisions)
