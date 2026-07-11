@@ -175,6 +175,6 @@
     <value>[ComplexProperty] on property '{0}' has no effect: {1}</value>
   </data>
   <data name="CG015_Description" xml:space="preserve">
-    <value>ComplexPropertyAttribute only configures graph-backed complex properties. It has no effect on simple values or simple collections, and an empty RelationshipType override silently falls back to the property name.</value>
+    <value>ComplexPropertyAttribute only configures graph-backed complex properties. It has no effect on simple values or simple collections, and a null, empty, or whitespace RelationshipType override silently falls back to the property name.</value>
   </data>
 </root>

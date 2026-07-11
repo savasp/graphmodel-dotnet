@@ -78,6 +78,11 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         // exists to flag.
         AnalyzeEntityTypeIsReferenceType(context, namedTypeSymbol, helper);
 
+        // CG015: Check for ComplexPropertyAttribute configurations that are silent no-ops. Must run
+        // before the early-return below: the attribute is equally consumed - and equally inert when
+        // misconfigured - on complex property types that are not themselves graph entities.
+        AnalyzeComplexPropertyAttributes(context, namedTypeSymbol, helper);
+
         // Skip if it doesn't implement INode or IRelationship
         if (!implementsINode && !implementsIRelationship)
             return;
@@ -96,9 +101,6 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
         // CG006: Check complex types for graph interface types (run before CG004/CG005)
         AnalyzeComplexTypeProperties(context, namedTypeSymbol, helper);
-
-        // CG015: Check for ComplexPropertyAttribute configurations that are silent no-ops.
-        AnalyzeComplexPropertyAttributes(context, namedTypeSymbol, helper);
 
         // CG004: Check property types for INode
         if (implementsINode)
@@ -289,13 +291,10 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             {
                 reason = $"property type '{GetShortTypeName(property.Type)}' is simple or a simple collection";
             }
-            else
+            else if (TryGetConfiguredComplexPropertyRelationshipType(attribute, out var configured) &&
+                string.IsNullOrWhiteSpace(configured))
             {
-                var configured = GetConfiguredComplexPropertyRelationshipType(attribute);
-                if (configured is not null && string.IsNullOrWhiteSpace(configured))
-                {
-                    reason = "RelationshipType is empty or whitespace, so convention-based naming is used";
-                }
+                reason = "RelationshipType is null, empty, or whitespace, so convention-based naming is used";
             }
 
             if (reason is not null)
@@ -309,13 +308,14 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    private static string? GetConfiguredComplexPropertyRelationshipType(AttributeData attribute)
+    private static bool TryGetConfiguredComplexPropertyRelationshipType(AttributeData attribute, out string? value)
     {
         foreach (var argument in attribute.NamedArguments)
         {
             if (argument.Key == "RelationshipType")
             {
-                return argument.Value.Value as string;
+                value = argument.Value.Value as string;
+                return true;
             }
         }
 
@@ -327,11 +327,13 @@ public class GraphAnalyzer : DiagnosticAnalyzer
                 candidate.NameEquals?.Name.Identifier.ValueText == "RelationshipType");
             if (argument?.Expression is LiteralExpressionSyntax literal)
             {
-                return literal.Token.Value as string;
+                value = literal.Token.Value as string;
+                return true;
             }
         }
 
-        return null;
+        value = null;
+        return false;
     }
 
     private static void AnalyzeParameterlessConstructor(SymbolAnalysisContext context, INamedTypeSymbol namedType, bool implementsINode, bool implementsIRelationship)

@@ -232,6 +232,29 @@ public class EntityFactoryTests
     }
 
     [Fact]
+    public void DynamicRelationship_RoundTripsPocoComplexPropertyWithCustomLabels()
+    {
+        var factory = new EntityFactory();
+        var relationship = new DynamicRelationship(
+            "source",
+            "target",
+            "KNOWS",
+            new Dictionary<string, object?> { ["contact"] = new LabeledContact { DisplayName = "Ada" } });
+
+        var entityInfo = factory.Serialize(relationship);
+        var roundTripped = factory.Deserialize<DynamicRelationship>(entityInfo);
+
+        // The serialized representation is keyed by the physical property label...
+        var contactInfo = Assert.IsType<EntityInfo>(entityInfo.ComplexProperties["contact"].Value);
+        Assert.True(contactInfo.SimpleProperties.ContainsKey("display_name"));
+        Assert.False(contactInfo.SimpleProperties.ContainsKey(nameof(LabeledContact.DisplayName)));
+
+        // ...and rehydration resolves that same label back to the CLR property.
+        var contact = Assert.IsType<LabeledContact>(roundTripped.Properties["contact"]);
+        Assert.Equal("Ada", contact.DisplayName);
+    }
+
+    [Fact]
     public void DynamicNode_RoundTripPreservesId()
     {
         var factory = new EntityFactory();
@@ -272,6 +295,12 @@ public class EntityFactoryTests
     private sealed record UnregisteredNode : Node;
 
     private sealed record FactoryAddress(string Street, string City);
+
+    private sealed record LabeledContact
+    {
+        [Property(Label = "display_name")]
+        public string DisplayName { get; set; } = string.Empty;
+    }
 
     private enum FactoryKind
     {

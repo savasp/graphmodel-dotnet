@@ -263,7 +263,7 @@ internal class Resources
     internal static string CG014_Title => ResourceManager.GetString("CG014_Title", resourceCulture)!;
 
     /// <summary>
-    ///   Looks up a localized string similar to ComplexPropertyAttribute only configures graph-backed complex properties. It has no effect on simple values or simple collections, and an empty RelationshipType override silently falls back to the property name..
+    ///   Looks up a localized string similar to ComplexPropertyAttribute only configures graph-backed complex properties. It has no effect on simple values or simple collections, and a null, empty, or whitespace RelationshipType override silently falls back to the property name..
     /// </summary>
     internal static string CG015_Description => ResourceManager.GetString("CG015_Description", resourceCulture)!;
 

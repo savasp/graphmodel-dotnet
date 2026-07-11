@@ -457,7 +457,13 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
     private static void SetPropertyValue(object instance, string propertyName, object? value)
     {
-        var propertyInfo = instance.GetType().GetProperty(propertyName);
+        // Keys are physical property labels (mirroring SerializeComplexObject); the CLR-name
+        // fallback keeps pre-label data readable until it is migrated.
+        var type = instance.GetType();
+        var propertyInfo = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .FirstOrDefault(property => property.GetIndexParameters().Length == 0 &&
+                    Labels.GetLabelFromProperty(property) == propertyName)
+            ?? type.GetProperty(propertyName);
         if (propertyInfo?.CanWrite == true)
         {
             // Try to convert the value to the target type if needed
