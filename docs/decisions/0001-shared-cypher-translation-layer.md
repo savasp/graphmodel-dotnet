@@ -1,3 +1,6 @@
+---
+---
+
 # 0001 — Shared Cypher translation layer and multi-provider architecture
 
 - **Status:** Accepted (all decisions ratified by @savasp on PR #97; contributor comments on the PR #66 landing path remain welcome via #86)

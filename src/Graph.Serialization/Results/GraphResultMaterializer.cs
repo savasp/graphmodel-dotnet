@@ -1,38 +1,38 @@
 // Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
 // See LICENSE in the project root for full license terms.
 
-namespace Cvoya.Graph.Neo4j.Querying.Cypher.Execution;
+namespace Cvoya.Graph.Serialization.Results;
 
 using System.Collections;
 using System.Reflection;
-using Cvoya.Graph.Neo4j.Querying.Linq.Queryables;
-using Cvoya.Graph.Neo4j.Serialization;
 using Cvoya.Graph.Serialization;
-using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 
-internal sealed class ResultMaterializer
+/// <summary>Materializes provider-neutral graph records into requested CLR result shapes.</summary>
+public sealed class GraphResultMaterializer
 {
     private readonly EntityFactory _entityFactory;
-    private readonly CypherResultProcessor _resultProcessor;
-    private readonly ILogger<ResultMaterializer> _logger;
+    private readonly GraphResultProcessor _resultProcessor;
+    private readonly ILogger<GraphResultMaterializer> _logger;
 
-    public ResultMaterializer(EntityFactory entityFactory, ILoggerFactory? loggerFactory)
+    /// <summary>Initializes a shared result materializer.</summary>
+    public GraphResultMaterializer(EntityFactory entityFactory, ILoggerFactory? loggerFactory)
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
-        _logger = loggerFactory?.CreateLogger<ResultMaterializer>() ?? NullLogger<ResultMaterializer>.Instance;
-        _resultProcessor = new CypherResultProcessor(_entityFactory, loggerFactory);
+        _logger = loggerFactory?.CreateLogger<GraphResultMaterializer>() ?? NullLogger<GraphResultMaterializer>.Instance;
+        _resultProcessor = new GraphResultProcessor(_entityFactory, loggerFactory);
     }
 
+    /// <summary>Materializes a buffered result set.</summary>
     public async Task<T?> MaterializeAsync<T>(
-        List<IRecord> records,
+        IReadOnlyList<GraphRecord> records,
         (Type Source, Type Relationship, Type Target)? graphPathTypes = null,
         CancellationToken cancellationToken = default)
     {
         var targetType = typeof(T);
-        var elementType = Helpers.GetTargetTypeIfCollection(targetType);
+        var elementType = GraphResultTypeHelpers.GetTargetTypeIfCollection(targetType);
         var isCollectionType = targetType != elementType;
 
         _logger.LogDebug("MaterializeAsync: TargetType={TargetType}, ElementType={ElementType}, IsCollectionType={IsCollectionType}, RecordCount={RecordCount}",
@@ -58,7 +58,10 @@ internal sealed class ResultMaterializer
         }
 
         // Process records to EntityInfo objects
-        var entityInfos = await _resultProcessor.ProcessAsync(records, elementType, cancellationToken).ConfigureAwait(false);
+        var entityInfos = await _resultProcessor.ProcessAsync(
+            records,
+            elementType,
+            cancellationToken).ConfigureAwait(false);
         _logger.LogDebug("MaterializeAsync: ProcessAsync returned {EntityInfoCount} entity infos", entityInfos.Count);
 
         var result = isCollectionType
@@ -75,21 +78,26 @@ internal sealed class ResultMaterializer
         return result;
     }
 
+    /// <summary>Materializes one result record for streaming execution.</summary>
     public async Task<T?> MaterializeRecordAsync<T>(
-        IRecord record,
+        GraphRecord record,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         var targetType = typeof(T);
-        var entityInfos = await _resultProcessor.ProcessAsync([record], targetType, cancellationToken).ConfigureAwait(false);
+        var entityInfos = await _resultProcessor.ProcessAsync(
+            [record],
+            targetType,
+            cancellationToken).ConfigureAwait(false);
         _logger.LogDebug("MaterializeRecordAsync: ProcessAsync returned {EntityInfoCount} entity infos", entityInfos.Count);
 
         return MaterializeSingleElement<T>(entityInfos.FirstOrDefault(), targetType);
     }
 
-    public CypherResultProcessor.GraphPathHop ProcessGraphPathHop(
-        IRecord record,
+    /// <summary>Processes one decomposed graph-path hop.</summary>
+    public GraphResultProcessor.GraphPathHop ProcessGraphPathHop(
+        GraphRecord record,
         (Type Source, Type Relationship, Type Target) graphPathTypes,
         CancellationToken cancellationToken = default)
     {
@@ -102,8 +110,9 @@ internal sealed class ResultMaterializer
             graphPathTypes.Target);
     }
 
+    /// <summary>Materializes an ordered set of decomposed hops as one graph path.</summary>
     public IGraphPath MaterializeGraphPath(
-        IReadOnlyList<CypherResultProcessor.GraphPathHop> orderedHops,
+        IReadOnlyList<GraphResultProcessor.GraphPathHop> orderedHops,
         (Type Source, Type Relationship, Type Target) graphPathTypes)
     {
         var segments = new List<IGraphPathSegment>(orderedHops.Count);
@@ -121,9 +130,13 @@ internal sealed class ResultMaterializer
         return new GraphPath(segments[0].StartNode, segments[^1].EndNode, segments);
     }
 
-    private List<IGraphPath> MaterializeGraphPaths(List<IRecord> records, (Type Source, Type Relationship, Type Target) types)
+    private List<IGraphPath> MaterializeGraphPaths(IReadOnlyList<GraphRecord> records, (Type Source, Type Relationship, Type Target) types)
     {
-        var hops = _resultProcessor.ProcessGraphPathHops(records, types.Source, types.Relationship, types.Target);
+        var hops = _resultProcessor.ProcessGraphPathHops(
+            records,
+            types.Source,
+            types.Relationship,
+            types.Target);
 
         var paths = new List<IGraphPath>();
         var orderedHopsByPath = hops
@@ -252,8 +265,8 @@ internal sealed class ResultMaterializer
 
     private static object? ConvertValueToTargetType(object? value, Type targetType)
     {
-        // Delegate all conversions to SerializationBridge for consistency
-        return SerializationBridge.FromNeo4jValue(value, targetType);
+        // Convert provider-neutral scalar values to the requested CLR type.
+        return GraphValueConverter.ConvertTo(value, targetType);
     }
 
     private object? CreateComplexObject(EntityInfo entityInfo, Type targetType)
@@ -352,8 +365,8 @@ internal sealed class ResultMaterializer
 
     private static object? ConvertToParameterType(object? value, Type targetType)
     {
-        // Delegate all conversions to SerializationBridge for consistency
-        return SerializationBridge.FromNeo4jValue(value, targetType);
+        // Convert provider-neutral scalar values to the requested CLR type.
+        return GraphValueConverter.ConvertTo(value, targetType);
     }
 
     private static bool IsPathSegmentType(Type type) =>

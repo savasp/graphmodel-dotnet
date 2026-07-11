@@ -1,3 +1,6 @@
+---
+---
+
 # Attributes and Configuration
 
 > **Note:** To use attribute-based configuration, you only need to install the Neo4j provider package:

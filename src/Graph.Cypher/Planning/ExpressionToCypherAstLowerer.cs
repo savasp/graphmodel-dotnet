@@ -14,7 +14,9 @@ using LinqUnaryExpression = System.Linq.Expressions.UnaryExpression;
 
 namespace Cvoya.Graph.Cypher.Planning;
 
-internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry parameters)
+internal sealed class ExpressionToCypherAstLowerer(
+    CypherParameterRegistry parameters,
+    ICypherDialect dialect)
 {
     private const string NeutralDateTime = "temporal.datetime";
     private const string NeutralLocalDateTime = "temporal.localDateTime";
@@ -474,7 +476,8 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
         out CypherExpression expression)
     {
         expression = null!;
-        if (node.Method.DeclaringType?.Name != "Neo4jDynamicEntityExtensions" || node.Arguments.Count < 1)
+        if (node.Method.GetCustomAttribute<CypherDynamicEntityAccessorAttribute>() is null ||
+            node.Arguments.Count < 1)
         {
             return false;
         }
@@ -833,7 +836,7 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
         return true;
     }
 
-    private static bool TryLowerTemporalMember(
+    private bool TryLowerTemporalMember(
         Type? declaringType,
         string memberName,
         CypherExpression target,
@@ -915,7 +918,7 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
         return false;
     }
 
-    private static CypherExpression AddDuration(CypherExpression target, string unit, CypherExpression value)
+    private CypherExpression AddDuration(CypherExpression target, string unit, CypherExpression value)
     {
         return new AstBinaryExpression(
             CypherBinaryOperator.Add,
@@ -923,7 +926,7 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
             Function("temporal.duration", new MapExpression([new MapEntry(unit, value)])));
     }
 
-    private static CypherExpression WrapTemporal(CypherExpression target, string function)
+    private CypherExpression WrapTemporal(CypherExpression target, string function)
     {
         return target is FunctionCall call && call.Name.StartsWith("temporal.", StringComparison.Ordinal)
             ? target
@@ -1107,7 +1110,35 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
         }
     }
 
-    private static FunctionCall Function(string name, params CypherExpression[] arguments) => new(name, arguments);
+    private CypherExpression Function(string name, params CypherExpression[] arguments)
+    {
+        return dialect.GetFunctionBehavior(name) switch
+        {
+            CypherFunctionBehavior.Render => new FunctionCall(name, arguments),
+            CypherFunctionBehavior.EvaluateOnClient when arguments.Length == 0 =>
+                parameters.Add(EvaluateParameterFreeFunction(name)),
+            CypherFunctionBehavior.EvaluateOnClient => throw new GraphQueryTranslationException(
+                $"Function '{name}' cannot be evaluated on the client for dialect '{dialect.Name}' " +
+                "because it depends on a server-side expression."),
+            CypherFunctionBehavior.Unsupported => throw new GraphQueryTranslationException(
+                $"Function '{name}' is not supported by dialect '{dialect.Name}'."),
+            _ => throw new GraphQueryTranslationException(
+                $"Dialect '{dialect.Name}' returned an invalid function behavior for '{name}'."),
+        };
+    }
+
+    private static object EvaluateParameterFreeFunction(string name)
+    {
+        return name switch
+        {
+            NeutralDateTime => DateTime.UtcNow,
+            NeutralLocalDateTime => DateTime.Now,
+            NeutralDate => DateTime.Today,
+            NeutralTime => TimeOnly.FromDateTime(DateTime.Now),
+            _ => throw new GraphQueryTranslationException(
+                $"Function '{name}' does not define a parameter-free client evaluation."),
+        };
+    }
 
     private static PropertyAccess Property(string alias, string property) => new(new VariableRef(alias), property);
 
@@ -1117,7 +1148,7 @@ internal sealed class ExpressionToCypherAstLowerer(CypherParameterRegistry param
     private static CypherExpression Modulo(CypherExpression left, object right) =>
         new AstBinaryExpression(CypherBinaryOperator.Modulo, left, new Literal(right));
 
-    private static CypherExpression ToInteger(CypherExpression value) => Function("toInteger", value);
+    private CypherExpression ToInteger(CypherExpression value) => Function("toInteger", value);
 
     private static GraphQueryTranslationException Unsupported(Expression expression, string message) =>
         new($"Cannot lower expression '{expression}': {message}");

@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
         id: filter
         with:
           filters: |
@@ -207,7 +207,7 @@ jobs:
           retention-days: 14
 
       - name: Publish Test Core results
-        uses: dorny/test-reporter@v3
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
         if: ${{ always() && hashFiles('TestResults/test-core/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
           name: Test Core
@@ -215,7 +215,7 @@ jobs:
           reporter: dotnet-trx
 
       - name: Upload Test Core coverage
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         if: success()
         with:
           files: TestResults/test-core/test-core.cobertura.xml
@@ -281,7 +281,7 @@ jobs:
           retention-days: 14
 
       - name: Publish Test Analyzers results
-        uses: dorny/test-reporter@v3
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
         if: ${{ always() && hashFiles('TestResults/test-analyzers/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
           name: Test Analyzers
@@ -289,7 +289,7 @@ jobs:
           reporter: dotnet-trx
 
       - name: Upload Test Analyzers coverage
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         if: success()
         with:
           files: TestResults/test-analyzers/test-analyzers.cobertura.xml
@@ -352,7 +352,7 @@ jobs:
           retention-days: 14
 
       - name: Publish LINQ-to-Cypher translation results
-        uses: dorny/test-reporter@v3
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
         if: ${{ always() && hashFiles('TestResults/test-translation/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
           name: Test LINQ-to-Cypher translation
@@ -360,7 +360,7 @@ jobs:
           reporter: dotnet-trx
 
       - name: Upload LINQ-to-Cypher translation coverage
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         if: success()
         with:
           files: TestResults/test-translation/test-translation.cobertura.xml
@@ -423,7 +423,7 @@ jobs:
           retention-days: 14
 
       - name: Publish serialization code generator results
-        uses: dorny/test-reporter@v3
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
         if: ${{ always() && hashFiles('TestResults/test-codegen/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
           name: Test serialization code generator
@@ -431,7 +431,7 @@ jobs:
           reporter: dotnet-trx
 
       - name: Upload serialization code generator coverage
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         if: success()
         with:
           files: TestResults/test-codegen/test-codegen.cobertura.xml
@@ -521,7 +521,7 @@ jobs:
           retention-days: 14
 
       - name: Publish Neo4j Provider results
-        uses: dorny/test-reporter@v3
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
         if: ${{ always() && hashFiles('TestResults/test-neo4j/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
           name: Test Neo4j Provider
@@ -529,7 +529,7 @@ jobs:
           reporter: dotnet-trx
 
       - name: Upload Neo4j Provider coverage
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         if: success()
         with:
           files: TestResults/test-neo4j/test-neo4j.cobertura.xml
@@ -594,7 +594,7 @@ jobs:
           retention-days: 14
 
       - name: Publish Test In-Memory Provider results
-        uses: dorny/test-reporter@v3
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
         if: ${{ always() && hashFiles('TestResults/test-inmemory/*.trx') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         with:
           name: Test In-Memory Provider
@@ -602,7 +602,7 @@ jobs:
           reporter: dotnet-trx
 
       - name: Upload Test In-Memory Provider coverage
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         if: success()
         with:
           files: TestResults/test-inmemory/test-inmemory.cobertura.xml

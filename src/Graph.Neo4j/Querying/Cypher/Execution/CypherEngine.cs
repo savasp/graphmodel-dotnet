@@ -10,6 +10,7 @@ using Cvoya.Graph.Neo4j.Core;
 using Cvoya.Graph.Neo4j.Querying.Cypher.Builders;
 using Cvoya.Graph.Neo4j.Querying.Cypher.Visitors.Core;
 using Cvoya.Graph.Serialization;
+using Cvoya.Graph.Serialization.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -33,7 +34,8 @@ internal sealed class CypherEngine
     private readonly EntityFactory _entityFactory;
     private readonly ILogger<CypherEngine> _logger;
     private readonly CypherExecutor _executor;
-    private readonly ResultMaterializer _materializer;
+    private readonly GraphResultMaterializer _materializer;
+    private readonly Neo4jRecordAdapter _recordAdapter = new();
     private readonly ILoggerFactory? _loggerFactory;
 
     public CypherEngine(EntityFactory entityFactory, ILoggerFactory? loggerFactory)
@@ -43,7 +45,7 @@ internal sealed class CypherEngine
 
         // Create our internal components
         _executor = new CypherExecutor(loggerFactory);
-        _materializer = new ResultMaterializer(entityFactory, loggerFactory);
+        _materializer = new GraphResultMaterializer(entityFactory, loggerFactory);
         _loggerFactory = loggerFactory;
 
     }
@@ -73,7 +75,10 @@ internal sealed class CypherEngine
             ValidateMinMaxTerminalValue<T>(expression, records);
 
             // Let the materializer handle everything - no need to duplicate logic here
-            var result = await _materializer.MaterializeAsync<T>(records, cypherQuery.GraphPathTypes, cancellationToken).ConfigureAwait(false);
+            var result = await _materializer.MaterializeAsync<T>(
+                _recordAdapter.Adapt(records),
+                cypherQuery.GraphPathTypes,
+                cancellationToken).ConfigureAwait(false);
             return result;
         }
         catch (OperationCanceledException)
@@ -122,7 +127,7 @@ internal sealed class CypherEngine
             cancellationToken.ThrowIfCancellationRequested();
 
             var item = await _materializer.MaterializeRecordAsync<T>(
-                record,
+                _recordAdapter.Adapt(record),
                 cancellationToken).ConfigureAwait(false);
 
             if (item is not null)
@@ -137,7 +142,7 @@ internal sealed class CypherEngine
         (Type Source, Type Relationship, Type Target) graphPathTypes,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        List<CypherResultProcessor.GraphPathHop>? currentHops = null;
+        List<GraphResultProcessor.GraphPathHop>? currentHops = null;
         int? currentPathIndex = null;
 
         await foreach (var record in records.WithCancellation(cancellationToken).ConfigureAwait(false))
@@ -145,7 +150,10 @@ internal sealed class CypherEngine
             cancellationToken.ThrowIfCancellationRequested();
 
             // TraversePaths orders rows by pathIndex, then hopIndex, so a path can be emitted once its index changes.
-            var hop = _materializer.ProcessGraphPathHop(record, graphPathTypes, cancellationToken);
+            var hop = _materializer.ProcessGraphPathHop(
+                _recordAdapter.Adapt(record),
+                graphPathTypes,
+                cancellationToken);
             if (currentPathIndex is int pathIndex && hop.PathIndex != pathIndex)
             {
                 yield return _materializer.MaterializeGraphPath(currentHops!, graphPathTypes);

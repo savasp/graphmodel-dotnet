@@ -5,6 +5,8 @@
 
 **Object serialization framework** for CVOYA graph - provides efficient serialization and deserialization of complex objects to graph database storage formats.
 
+The package also owns provider-neutral result materialization. Providers adapt driver records into immutable `GraphRecord`/`GraphValue` instances and pass them to `GraphResultMaterializer`; complex-property reassembly, polymorphic type resolution, scalar conversion, and path stitching stay shared.
+
 ## 🚀 Quick Start
 
 In the future, this package will be used to support the serialization/deserialization needs of Graph Model provider implementers. It uses an intermediate representation for in-memory object graphs.

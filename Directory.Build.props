@@ -11,6 +11,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
         <LangVersion>14.0</LangVersion>
         <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
         <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>

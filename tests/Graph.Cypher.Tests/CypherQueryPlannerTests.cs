@@ -14,7 +14,117 @@ using AstUnaryExpression = Cvoya.Graph.Cypher.Ast.Expressions.UnaryExpression;
 
 public class CypherQueryPlannerTests
 {
-    private readonly CypherQueryPlanner planner = new();
+    private readonly CypherQueryPlanner planner = new(TestCypherDialect.Full);
+
+    [Fact]
+    public void Plan_UnsupportedCapabilityNamesConstructCapabilityAndDialect()
+    {
+        var limited = new CypherQueryPlanner(new TestCypherDialect(CapabilitySet.Of(), "LimitedCypher"));
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            limited.Plan(Model(root: new SearchRoot("Ada", SearchRootTarget.Nodes, typeof(Person)))));
+
+        Assert.Contains("FullTextSearch", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(GraphCapability.FullTextSearch), exception.Message, StringComparison.Ordinal);
+        Assert.Contains("LimitedCypher", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Plan_DialectCanEvaluateParameterFreeTemporalFunctionOnClient()
+    {
+        Expression<Func<Person, DateTime>> selector = _ => DateTime.UtcNow;
+        var dialect = new TestCypherDialect(
+            CapabilitySet.All,
+            "ClientTemporal",
+            new HashSet<string>(StringComparer.Ordinal) { "temporal.datetime" });
+
+        var statement = new CypherQueryPlanner(dialect).Plan(Model(
+            projection: new ProjectionShape(ProjectionKind.Scalar, selector)));
+
+        var parameter = Assert.IsType<QueryParameter>(
+            Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items).Expression);
+        var value = Assert.IsType<DateTime>(statement.Parameters[parameter.Name]);
+        Assert.Equal(DateTimeKind.Utc, value.Kind);
+    }
+
+    [Fact]
+    public void Plan_UnsupportedFunctionNamesFunctionAndDialect()
+    {
+        Expression<Func<Person, DateTime>> selector = _ => DateTime.UtcNow;
+        var dialect = new TestCypherDialect(
+            CapabilitySet.All,
+            "NoTemporal",
+            unsupportedFunctions: new HashSet<string>(StringComparer.Ordinal) { "temporal.datetime" });
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            new CypherQueryPlanner(dialect).Plan(Model(
+                projection: new ProjectionShape(ProjectionKind.Scalar, selector))));
+
+        Assert.Contains("temporal.datetime", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("NoTemporal", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Plan_MissingPatternSizeCapabilityFailsAtTranslation()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Offices.Count > 1;
+
+        AssertMissingCapability(
+            GraphCapability.PatternSizeProjection,
+            Model(predicates: [new PredicateFragment(predicate, "src")]));
+    }
+
+    [Fact]
+    public void Plan_MissingOptionalTraversalCapabilityFailsAtTranslation()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Home!.Region.Name == "Northwest";
+
+        AssertMissingCapability(
+            GraphCapability.OptionalTraversal,
+            Model(predicates: [new PredicateFragment(predicate, "src")]));
+    }
+
+    [Fact]
+    public void Plan_MissingMultiLabelCapabilityFailsAtTranslation()
+    {
+        AssertMissingCapability(
+            GraphCapability.MultiLabelMatch,
+            Model(root: new NodeRoot(typeof(Animal))));
+    }
+
+    [Fact]
+    public void Plan_MissingOrderByEntityCapabilityFailsAtTranslation()
+    {
+        Expression<Func<Person, Person>> ordering = person => person;
+
+        AssertMissingCapability(
+            GraphCapability.OrderByEntity,
+            Model(ordering: [new OrderingKey(ordering, descending: false)]));
+    }
+
+    [Fact]
+    public void Plan_MissingCallSubqueriesCapabilityFailsAtTranslation()
+    {
+        Expression<Func<Person, int>> key = person => person.Age;
+
+        AssertMissingCapability(
+            GraphCapability.CallSubqueries,
+            Model(groupBy: new GroupByFragment(key, null, null)));
+    }
+
+    [Fact]
+    public void Plan_SameNamedUnmarkedDynamicAccessorIsRejected()
+    {
+        Expression<Func<DynamicNode, bool>> predicate = node =>
+            Neo4jDynamicEntityExtensions.HasProperty(node, "name");
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            planner.Plan(Model(
+                root: new DynamicRoot(typeof(DynamicNode)),
+                predicates: [new PredicateFragment(predicate, "src")])));
+
+        Assert.Contains("Neo4jDynamicEntityExtensions.HasProperty", exception.Message, StringComparison.Ordinal);
+    }
 
     [Fact]
     public void Plan_LowersPredicateOrderingPagingAndProjection()
@@ -127,9 +237,10 @@ public class CypherQueryPlannerTests
 
         var statement = planner.Plan(model);
 
-        var call = Assert.IsType<CallClause>(statement.Clauses[0]);
-        Assert.Equal("search.nodes", call.Procedure);
-        Assert.Equal("n", Assert.Single(call.Yields).Alias);
+        var search = Assert.IsType<FullTextSearchClause>(statement.Clauses[0]);
+        Assert.Equal(SearchRootTarget.Nodes, search.Target);
+        Assert.Equal("p0", search.Query.Name);
+        Assert.Equal("n", search.Alias);
         Assert.IsType<WhereClause>(statement.Clauses[1]);
         Assert.Equal("Ada", statement.Parameters["p0"]);
         new CypherAstValidator().Run(statement);
@@ -255,9 +366,10 @@ public class CypherQueryPlannerTests
 
         var statement = planner.Plan(model);
 
-        var call = Assert.Single(statement.Clauses.OfType<CallClause>());
-        Assert.Equal("search.nodes", call.Procedure);
-        Assert.Equal("searchedNode", Assert.Single(call.Yields).Alias);
+        var search = Assert.Single(statement.Clauses.OfType<FullTextSearchClause>());
+        Assert.Equal(SearchRootTarget.Nodes, search.Target);
+        Assert.Equal("p0", search.Query.Name);
+        Assert.Equal("searchedNode", search.Alias);
         Assert.Equal("Ada", statement.Parameters["p0"]);
         var where = Assert.Single(statement.Clauses.OfType<WhereClause>());
         Assert.Contains(
@@ -563,6 +675,17 @@ public class CypherQueryPlannerTests
             selectMany,
             union);
 
+    private static void AssertMissingCapability(GraphCapability capability, GraphQueryModel model)
+    {
+        var dialect = new TestCypherDialect(CapabilitySet.All.Except(capability), "LimitedCypher");
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            new CypherQueryPlanner(dialect).Plan(model));
+
+        Assert.Contains(capability.ToString(), exception.Message, StringComparison.Ordinal);
+        Assert.Contains("LimitedCypher", exception.Message, StringComparison.Ordinal);
+    }
+
     private enum PersonStatus
     {
         Inactive = 0,
@@ -608,4 +731,16 @@ public class CypherQueryPlannerTests
 
     [Relationship(Label = "KNOWS")]
     private sealed record Knows(string Start, string End) : Relationship(Start, End);
+
+    private abstract record Animal : Node;
+
+    private sealed record Cat : Animal;
+
+    private sealed record Dog : Animal;
+}
+
+internal static class Neo4jDynamicEntityExtensions
+{
+    public static bool HasProperty(DynamicNode node, string propertyName) =>
+        node.Properties.ContainsKey(propertyName);
 }

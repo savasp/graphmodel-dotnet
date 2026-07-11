@@ -1,3 +1,6 @@
+---
+---
+
 # CVOYA graph Build System Guide
 
 This document explains the CVOYA graph build configurations, version management, and development workflows.
@@ -166,19 +169,20 @@ dotnet build --configuration Benchmark
 
 ### Local CodeQL Analysis
 
-CVOYA graph's GitHub workflow runs CodeQL for C# with the `security-and-quality`
-query suite. To catch those findings before pushing, install the CodeQL CLI and run:
+CVOYA graph's GitHub workflow runs CodeQL for GitHub Actions, C#, and Ruby with
+the `security-and-quality` query suite. To catch those findings before pushing,
+install the CodeQL CLI and run:
 
 ```bash
 ./scripts/run-codeql.sh
 ```
 
-The script writes SARIF output to `artifacts/codeql/results/csharp.sarif`. It
-downloads the `codeql/csharp-queries` pack by default so local scans use the same
-query suite as `.github/workflows/codeql.yml`. The default CodeQL build mode is
-`none`, which is the required portable local gate for C#. In that mode, the script
-analyzes a disposable source copy and temporary database outside the checkout so
-CodeQL dependency probing cannot rewrite repository files.
+The script writes one SARIF file per language under `artifacts/codeql/results/`.
+It downloads the Actions, C#, and Ruby query packs by default so local scans use
+the same query suite as `.github/workflows/codeql.yml`. The default CodeQL build
+mode is `none`, which is the required portable local gate. In that mode, the
+script analyzes a disposable source copy and temporary databases outside the
+checkout so CodeQL dependency probing cannot rewrite repository files.
 
 To trace the same `LocalFeed` and `Release` builds used by the GitHub workflow,
 use manual build mode:

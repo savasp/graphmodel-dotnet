@@ -18,6 +18,16 @@ namespace Cvoya.Graph.Cypher.Planning;
 /// </summary>
 public sealed class CypherQueryPlanner
 {
+    private readonly ICypherDialect dialect;
+
+    /// <summary>Initializes a planner for a specific Cypher dialect.</summary>
+    /// <param name="dialect">The dialect whose capabilities constrain translation.</param>
+    public CypherQueryPlanner(ICypherDialect dialect)
+    {
+        this.dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
+        ArgumentException.ThrowIfNullOrWhiteSpace(dialect.Name);
+    }
+
     /// <summary>
     /// Plans a graph query model as a typed Cypher statement.
     /// </summary>
@@ -26,6 +36,11 @@ public sealed class CypherQueryPlanner
     public CypherStatement Plan(GraphQueryModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
+
+        if (model.Root is SearchRoot || model.SearchFilter is not null)
+        {
+            RequireCapability(GraphCapability.FullTextSearch, "FullTextSearch");
+        }
 
         // Representation and support are distinct: the model can carry these operations, but this
         // planner cannot lower them yet. Reject before validation so the error is stable.
@@ -37,6 +52,7 @@ public sealed class CypherQueryPlanner
 
         if (model.GroupBy is not null)
         {
+            RequireCapability(GraphCapability.CallSubqueries, "GroupBy");
             throw new GraphQueryTranslationException(
                 "Cannot plan the query: GroupBy is not supported by graph query translation yet; see #100.");
         }
@@ -53,7 +69,7 @@ public sealed class CypherQueryPlanner
         GraphQueryModelValidator.Validate(model);
 
         var parameters = new CypherParameterRegistry();
-        var lowerer = new ExpressionToCypherAstLowerer(parameters);
+        var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
         var state = CreateState(model, parameters);
 
         var predicates = LowerPredicates(model, state, lowerer);
@@ -62,7 +78,7 @@ public sealed class CypherQueryPlanner
 
         var clauses = new List<ICypherClause>();
         AddRootAndTraversalClauses(clauses, model, state);
-        AddSearchFilterClause(clauses, model.SearchFilter);
+        AddSearchFilterClause(clauses, model.SearchFilter, state.SearchParameter);
         clauses.AddRange(lowerer.NavigationMatches);
 
         if (predicates.Count > 0)
@@ -94,12 +110,118 @@ public sealed class CypherQueryPlanner
                 model.PathShape.RelationshipType,
                 model.PathShape.TargetType);
         var statement = new CypherStatement(clauses, parameters.Parameters, pathTypes);
+        ValidateCapabilities(statement);
 
 #if DEBUG
         new CypherAstValidator().Run(statement);
 #endif
 
         return statement;
+    }
+
+    private void RequireCapability(GraphCapability capability, string construct)
+    {
+        if (dialect.Capabilities.Has(capability))
+        {
+            return;
+        }
+
+        throw new GraphQueryTranslationException(
+            $"Cypher construct '{construct}' requires capability '{capability}', " +
+            $"which dialect '{dialect.Name}' does not declare.");
+    }
+
+    private void ValidateCapabilities(CypherStatement statement)
+    {
+        foreach (var clause in statement.Clauses)
+        {
+            switch (clause)
+            {
+                case MatchClause match:
+                    if (match.Optional)
+                    {
+                        RequireCapability(GraphCapability.OptionalTraversal, "OptionalTraversal");
+                    }
+
+                    if (match.Patterns.Any(pattern =>
+                            pattern.Elements.OfType<NodePattern>().Any(node => node.Labels.Count > 1) ||
+                            pattern.Elements.OfType<RelationshipPattern>().Any(relationship => relationship.Types.Count > 1)))
+                    {
+                        RequireCapability(GraphCapability.MultiLabelMatch, "MultiLabelMatch");
+                    }
+
+                    break;
+                case OrderByClause orderBy when orderBy.Items.Any(item => item.Expression is VariableRef):
+                    RequireCapability(GraphCapability.OrderByEntity, "OrderByEntity");
+                    break;
+            }
+
+            foreach (var expression in ClauseExpressions(clause))
+            {
+                ValidateExpressionCapabilities(expression);
+            }
+        }
+    }
+
+    private void ValidateExpressionCapabilities(CypherExpression expression)
+    {
+        if (expression is LabelTest { Labels.Count: > 1 })
+        {
+            RequireCapability(GraphCapability.MultiLabelMatch, "MultiLabelMatch");
+        }
+
+        if (expression is PatternSubqueryExpression { Kind: PatternSubqueryKind.Count })
+        {
+            RequireCapability(GraphCapability.PatternSizeProjection, "PatternSizeProjection");
+        }
+
+        foreach (var child in ChildExpressions(expression))
+        {
+            ValidateExpressionCapabilities(child);
+        }
+    }
+
+    private static IEnumerable<CypherExpression> ClauseExpressions(ICypherClause clause)
+    {
+        return clause switch
+        {
+            WhereClause where => [where.Predicate],
+            WithClause with => with.Items.Select(item => item.Expression),
+            ReturnClause @return => @return.Items.Select(item => item.Expression),
+            CallClause call => call.Arguments,
+            FullTextSearchClause search => [search.Query],
+            UnwindClause unwind => [unwind.Source],
+            OrderByClause orderBy => orderBy.Items.Select(item => item.Expression),
+            SkipClause skip => [skip.Count],
+            LimitClause limit => [limit.Count],
+            _ => [],
+        };
+    }
+
+    private static IEnumerable<CypherExpression> ChildExpressions(CypherExpression expression)
+    {
+        return expression switch
+        {
+            PropertyAccess property => [property.Target],
+            EscapedPropertyAccess property => [property.Target],
+            FunctionCall function => function.Arguments,
+            AstBinaryExpression binary => [binary.Left, binary.Right],
+            AstUnaryExpression unary => [unary.Operand],
+            LabelTest label => [label.Target],
+            ListExpression list => list.Items,
+            MapExpression map => map.Entries.Select(entry => entry.Value),
+            EntityProjectionExpression => [],
+            AstIndexExpression index => [index.Target, index.Index],
+            CaseExpression @case => @case.WhenFalse is null
+                ? [@case.Condition, @case.WhenTrue]
+                : [@case.Condition, @case.WhenTrue, @case.WhenFalse],
+            ConjunctionExpression conjunction => conjunction.Predicates,
+            PatternSubqueryExpression subquery => subquery.Predicate is null ? [] : [subquery.Predicate],
+            PatternComprehensionExpression comprehension => comprehension.Predicate is null
+                ? [comprehension.Projection]
+                : [comprehension.Predicate, comprehension.Projection],
+            _ => [],
+        };
     }
 
     private static PlanningState CreateState(GraphQueryModel model, CypherParameterRegistry parameters)
@@ -127,16 +249,13 @@ public sealed class CypherQueryPlanner
         };
         var targetType = explicitTraversal.LastOrDefault()?.TargetType ?? rootType;
 
-        if (model.Root is SearchRoot search)
-        {
-            parameters.Add(search.Query);
-        }
-        else if (model.SearchFilter is { } searchFilter)
-        {
-            parameters.Add(searchFilter.Query);
-        }
+        var searchParameter = model.Root is SearchRoot search
+            ? parameters.Add(search.Query)
+            : model.SearchFilter is { } searchFilter
+                ? parameters.Add(searchFilter.Query)
+                : null;
 
-        return new PlanningState(rootAlias, rootType, targetAlias, targetType, explicitTraversal);
+        return new PlanningState(rootAlias, rootType, targetAlias, targetType, explicitTraversal, searchParameter);
     }
 
     private static List<CypherExpression> LowerPredicates(
@@ -476,19 +595,19 @@ public sealed class CypherQueryPlanner
 
         if (model.Root is SearchRoot { Target: SearchRootTarget.Nodes })
         {
-            clauses.Add(CallClause.WithAliasedYields(
-                "search.nodes",
-                [new Literal("node_fulltext_index"), new QueryParameter("p0")],
-                [new CallYield("node", "n")]));
+            clauses.Add(new FullTextSearchClause(
+                SearchRootTarget.Nodes,
+                state.SearchParameter ?? throw MissingSearchParameter(),
+                "n"));
             return;
         }
 
         if (model.Root is SearchRoot { Target: SearchRootTarget.Relationships } searchRelationship)
         {
-            clauses.Add(CallClause.WithAliasedYields(
-                "search.relationships",
-                [new Literal("rel_fulltext_index"), new QueryParameter("p0")],
-                [new CallYield("relationship", "r")]));
+            clauses.Add(new FullTextSearchClause(
+                SearchRootTarget.Relationships,
+                state.SearchParameter ?? throw MissingSearchParameter(),
+                "r"));
             var elementType = searchRelationship.ElementType ?? typeof(IRelationship);
             QueryRoot root = elementType == typeof(IRelationship) || elementType == typeof(DynamicRelationship)
                 ? new DynamicRoot(elementType)
@@ -499,14 +618,10 @@ public sealed class CypherQueryPlanner
 
         if (model.Root is SearchRoot { Target: SearchRootTarget.Entities })
         {
-            clauses.Add(new CallClause(
-                "search.entities",
-                [
-                    new Literal("node_fulltext_index"),
-                    new Literal("rel_fulltext_index"),
-                    new QueryParameter("p0")
-                ],
-                ["entity"]));
+            clauses.Add(new FullTextSearchClause(
+                SearchRootTarget.Entities,
+                state.SearchParameter ?? throw MissingSearchParameter(),
+                "entity"));
             return;
         }
 
@@ -519,25 +634,30 @@ public sealed class CypherQueryPlanner
         clauses.Add(BuildRootMatch(model.Root, state.RootAlias));
     }
 
-    private static void AddSearchFilterClause(List<ICypherClause> clauses, SearchRoot? search)
+    private static void AddSearchFilterClause(
+        List<ICypherClause> clauses,
+        SearchRoot? search,
+        QueryParameter? searchParameter)
     {
         if (search is null)
             return;
 
-        var (procedure, index, yieldedName, alias) = search.Target switch
+        var alias = search.Target switch
         {
-            SearchRootTarget.Nodes => ("search.nodes", "node_fulltext_index", "node", "searchedNode"),
-            SearchRootTarget.Relationships =>
-                ("search.relationships", "rel_fulltext_index", "relationship", "searchedRelationship"),
+            SearchRootTarget.Nodes => "searchedNode",
+            SearchRootTarget.Relationships => "searchedRelationship",
             _ => throw new GraphQueryTranslationException(
                 "Full-text search over mixed entities cannot be applied after a traversal."),
         };
 
-        clauses.Add(CallClause.WithAliasedYields(
-            procedure,
-            [new Literal(index), new QueryParameter("p0")],
-            [new CallYield(yieldedName, alias)]));
+        clauses.Add(new FullTextSearchClause(
+            search.Target,
+            searchParameter ?? throw MissingSearchParameter(),
+            alias));
     }
+
+    private static GraphQueryTranslationException MissingSearchParameter() => new(
+        "The full-text search query parameter was not registered during planning.");
 
     private static MatchClause BuildRootMatch(QueryRoot root, string alias, bool compatibleLabels = true)
     {
@@ -1019,7 +1139,8 @@ public sealed class CypherQueryPlanner
         Type? RootType,
         string TargetAlias,
         Type? CurrentType,
-        IReadOnlyList<TraversalStep> ExplicitTraversal)
+        IReadOnlyList<TraversalStep> ExplicitTraversal,
+        QueryParameter? SearchParameter)
     {
         public string CurrentAlias => ExplicitTraversal.Count == 0 ? RootAlias : TargetAlias;
 

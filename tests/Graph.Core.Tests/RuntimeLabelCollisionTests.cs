@@ -347,6 +347,7 @@ public class RuntimeLabelCollisionTests : IDisposable
 
                 InvokeRegisterNode(registry, types[0], nodeCollisions);
                 InvokeRegisterRelationship(registry, types[1], relationshipCollisions);
+                MarkInitialized(registry);
 
                 Assert.Empty(nodeCollisions);
                 Assert.Empty(relationshipCollisions);
@@ -602,6 +603,14 @@ public class RuntimeLabelCollisionTests : IDisposable
             ?? throw new InvalidOperationException("SchemaRegistry.RegisterRelationshipType was not found.");
 
         InvokeUnwrapped(method, registry, [relationshipType, collisions]);
+    }
+
+    private static void MarkInitialized(SchemaRegistry registry)
+    {
+        var field = typeof(SchemaRegistry).GetField("_isInitialized", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("SchemaRegistry._isInitialized field was not found.");
+
+        field.SetValue(registry, true);
     }
 
     /// <summary>
