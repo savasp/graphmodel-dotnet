@@ -671,7 +671,9 @@ internal class Neo4jSchemaManager
         try
         {
             // Drop all indexes except constraints
-            var dropIndexes = "SHOW INDEXES WHERE type = 'BTREE' OR type = 'FULLTEXT' YIELD name";
+            var dropIndexes = "SHOW INDEXES YIELD name, type, owningConstraint " +
+                "WHERE (type = 'RANGE' OR type = 'FULLTEXT') AND owningConstraint IS NULL " +
+                "RETURN name";
             var result = await tx.RunAsync(dropIndexes).ConfigureAwait(false);
             var records = await result.ToListAsync().ConfigureAwait(false);
 
