@@ -93,6 +93,20 @@ internal sealed class Neo4jRecordAdapter
         return GraphValue.Map(entries);
     }
 
+    private static DateTimeOffset ToDateTimeOffset(ZonedDateTime dateTime)
+    {
+        try
+        {
+            return dateTime.ToDateTimeOffset();
+        }
+        catch (ValueTruncationException)
+        {
+            // Sub-tick nanosecond precision (written by another client) cannot convert directly;
+            // parse the textual form instead, truncating to DateTimeOffset resolution.
+            return DateTimeOffset.Parse(dateTime.ToString(), System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+
     private static object AdaptScalar(object value)
     {
         return value switch
@@ -114,7 +128,7 @@ internal sealed class Neo4jRecordAdapter
                 time.Minute,
                 time.Second,
                 TimeSpan.FromSeconds(time.OffsetSeconds)).AddTicks(time.Nanosecond / 100),
-            ZonedDateTime dateTime => dateTime.ToDateTimeOffset(),
+            ZonedDateTime dateTime => ToDateTimeOffset(dateTime),
             Duration { Months: 0 } duration =>
                 TimeSpan.FromDays(duration.Days) +
                 TimeSpan.FromSeconds(duration.Seconds) +

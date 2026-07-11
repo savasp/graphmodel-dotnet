@@ -22,14 +22,16 @@ public sealed record GraphRecord
                 nameof(values)));
         }
 
-        Values = new ReadOnlyDictionary<string, GraphValue>(copy);
+        this.values = new ReadOnlyDictionary<string, GraphValue>(copy);
     }
 
+    private readonly ReadOnlyDictionary<string, GraphValue> values;
+
     /// <summary>Gets the record's named wire values.</summary>
-    public IReadOnlyDictionary<string, GraphValue> Values { get; }
+    public IReadOnlyDictionary<string, GraphValue> Values => values;
 
     /// <summary>Gets the record's column names.</summary>
-    public IReadOnlyCollection<string> Keys => Values.Keys.ToArray();
+    public IReadOnlyCollection<string> Keys => values.Keys;
 
     /// <summary>Gets a wire value by column name.</summary>
     public GraphValue this[string key] => Values[key];

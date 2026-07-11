@@ -804,7 +804,7 @@ public sealed class GraphResultProcessor
 
     private static string GetNodeId(GraphValue node)
     {
-        // TODO: Throughout this code, we use nameof(<interface>.Id) where <interface> is IEntity, GraphValue, GraphValue.
+        // TODO: Throughout this code, we use nameof(<interface>.Id) where <interface> is IEntity, INode, IRelationship.
         // This is wrong. We should be using the label instead.
 
         // Try to get the Id property from the node
@@ -1192,8 +1192,8 @@ public sealed class GraphResultProcessor
             return null;
 
         // Get all types that are assignable to the target type. This must NOT be scoped to
-        // GraphValue types: targetType here can be a plain complex-property POCO (e.g. the element
-        // type of a List<T> complex property) that never implements GraphValue, yet its concrete
+        // INode types: targetType here can be a plain complex-property POCO (e.g. the element
+        // type of a List<T> complex property) that never implements INode, yet its concrete
         // subtype is exactly what the stored label encodes and what we need to recover.
         var candidateTypes = GetKnownConcreteTypes()
             .Where(t => targetType.IsAssignableFrom(t))
@@ -1253,8 +1253,8 @@ public sealed class GraphResultProcessor
 
     /// <summary>
     /// Gets all known concrete classes from loaded assemblies that could be the actual type
-    /// behind a node label: both real graph node types (GraphValue) and the plain POCO types used
-    /// as complex-property values (which are never GraphValue themselves - see
+    /// behind a node label: both real graph node types (INode) and the plain POCO types used
+    /// as complex-property values (which are never INode themselves - see
     /// <see cref="DiscoverTypeFromNodeLabels"/>). The caller narrows this down via an
     /// assignability check against the specific target type it is resolving.
     /// </summary>
@@ -1286,7 +1286,7 @@ public sealed class GraphResultProcessor
     /// </summary>
     private IEnumerable<Type> GetKnownRelationshipTypes()
     {
-        // Get types from the current app domain that implement GraphValue
+        // Get types from the current app domain that implement IRelationship
         return AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(assembly =>
             {

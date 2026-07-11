@@ -256,9 +256,9 @@ The serialization code generator (`Serialization.cs`) was updated to:
 
 The provider-neutral `GraphResultProcessor`:
 
-1. Add `Labels` as a `SimpleCollection` property when creating `EntityInfo` from nodes
-2. Add `Type` as a `SimpleValue` property when creating `EntityInfo` from relationships
-3. ensures these properties are populated during deserialization from any provider's `GraphValue` adapter
+1. Adds `Labels` as a `SimpleCollection` property when creating `EntityInfo` from nodes
+2. Adds `Type` as a `SimpleValue` property when creating `EntityInfo` from relationships
+3. Ensures these properties are populated during deserialization from any provider's `GraphValue` adapter
 
 ## Migration Guide
 

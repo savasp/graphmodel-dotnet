@@ -137,10 +137,12 @@ public sealed class CypherQueryPlanner
         {
             switch (clause)
             {
-                case MatchClause { Optional: true }:
-                    RequireCapability(GraphCapability.OptionalTraversal, "OptionalTraversal");
-                    break;
                 case MatchClause match:
+                    if (match.Optional)
+                    {
+                        RequireCapability(GraphCapability.OptionalTraversal, "OptionalTraversal");
+                    }
+
                     foreach (var pattern in match.Patterns)
                     {
                         if (pattern.Elements.OfType<NodePattern>().Any(node => node.Labels.Count > 1) ||
