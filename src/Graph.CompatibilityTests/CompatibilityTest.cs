@@ -76,6 +76,8 @@ public abstract class CompatibilityTest(
                 disposable.Dispose();
                 break;
         }
+
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
