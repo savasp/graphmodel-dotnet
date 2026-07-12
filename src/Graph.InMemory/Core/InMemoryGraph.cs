@@ -66,7 +66,7 @@ internal sealed class InMemoryGraph : IGraph
             {
                 var record = FindNodeRecord(tx.View, id, typeof(DynamicNode))
                     ?? throw new EntityNotFoundException($"Node with ID {id} not found");
-                return (DynamicNode)_reader.MaterializeNode(record, tx.View, typeof(DynamicNode));
+                return _reader.MaterializeNode<DynamicNode>(record, tx.View);
             },
             $"Failed to get dynamic node {id}",
             cancellationToken).ConfigureAwait(false);

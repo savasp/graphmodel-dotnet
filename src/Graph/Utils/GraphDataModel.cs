@@ -401,7 +401,7 @@ public static class GraphDataModel
                 // Check all properties recursively
                 foreach (var prop in type.GetProperties())
                 {
-                    if (prop.CanRead && !prop.GetIndexParameters().Any())
+                    if (prop.CanRead && prop.GetIndexParameters().Length == 0)
                     {
                         var value = prop.GetValue(obj);
                         if (value != null && CheckForCycle(value, visited, currentPath))

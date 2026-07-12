@@ -404,7 +404,7 @@ internal sealed class InMemoryQueryExecutor(
         INode current = start;
         foreach (var hop in path)
         {
-            var end = (INode)_reader.MaterializeNode(hop.Target, _state, typeof(INode));
+            var end = _reader.MaterializeNode<INode>(hop.Target, _state);
             var relationship = (IRelationship)_reader.MaterializeRelationship(
                 hop.Relationship,
                 step.RelationshipClrType ?? typeof(IRelationship));
@@ -798,7 +798,7 @@ internal sealed class InMemoryQueryExecutor(
             _ => value.GetHashCode(),
         };
 
-        private static string PrimaryLabel(INode node) => node.Labels.FirstOrDefault() ?? string.Empty;
+        private static string PrimaryLabel(INode node) => node.Labels.Count == 0 ? string.Empty : node.Labels[0];
     }
 
     private IEnumerable<(Row Row, object? Value)> ApplyOrdering(

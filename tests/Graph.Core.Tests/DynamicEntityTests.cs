@@ -7,6 +7,8 @@ namespace Cvoya.Graph.Core.Tests;
 [Trait("Area", "DynamicEntities")]
 public class DynamicEntityTests
 {
+    private static readonly string[] ExpectedLabels = ["Person", "Employee"];
+
     [Fact]
     public void DynamicNode_ConstructorCopiesLabelsAndProperties()
     {
@@ -18,7 +20,7 @@ public class DynamicEntityTests
         properties["name"] = "Changed";
 
         Assert.Equal("node-1", node.Id);
-        Assert.Equal(new[] { "Person", "Employee" }, node.Labels);
+        Assert.Equal(ExpectedLabels, node.Labels);
         Assert.Equal("Ada", node.Properties["name"]);
         Assert.Equal(37, node.Properties["age"]);
     }
@@ -87,7 +89,7 @@ public class DynamicEntityTests
         var dynamic = node.ToDynamicNode();
 
         Assert.Equal("node-1", dynamic.Id);
-        Assert.Equal(new[] { "Person", "Employee" }, dynamic.Labels);
+        Assert.Equal(ExpectedLabels, dynamic.Labels);
         Assert.Equal("Ada", dynamic.Properties[nameof(StrongNode.Name)]);
         Assert.Same(address, dynamic.Properties[nameof(StrongNode.Address)]);
         Assert.Same(tags, dynamic.Properties[nameof(StrongNode.Tags)]);

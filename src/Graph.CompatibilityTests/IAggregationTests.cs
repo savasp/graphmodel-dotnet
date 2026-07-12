@@ -286,6 +286,8 @@ public interface IAggregationTests : IGraphTest
         Assert.Equal(unorderedCount, orderedCount);
     }
 
+    private static readonly int[] ExpectedAges = [10, 20];
+
     [Fact]
     public async Task CanCountOrderedLimitedQuery()
     {
@@ -311,7 +313,7 @@ public interface IAggregationTests : IGraphTest
         var limitedPeople = await query.ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, limitedCount);
-        Assert.Equal(new[] { 10, 20 }, limitedPeople.Select(p => p.Age).ToArray());
+        Assert.Equal(ExpectedAges, limitedPeople.Select(p => p.Age).ToArray());
     }
 
     [Fact]

@@ -11,6 +11,7 @@ using Cvoya.Graph.Cypher.Validation;
 public class CypherAstValidatorTests
 {
     private readonly CypherAstValidator validator = new();
+    private static readonly int[] UnwindValues = [1, 2, 3];
 
     [Fact]
     public void Run_ReturnsInput_WhenStatementIsValid()
@@ -123,7 +124,7 @@ public class CypherAstValidatorTests
     {
         var statement = new CypherStatement(
         [
-            new UnwindClause(new Literal(new[] { 1, 2, 3 }), "item"),
+            new UnwindClause(new Literal(UnwindValues), "item"),
             new ReturnClause([new ReturnItem(new VariableRef("item"), null)], distinct: false)
         ], new Dictionary<string, object?>());
 

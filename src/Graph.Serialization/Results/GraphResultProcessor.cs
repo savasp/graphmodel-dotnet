@@ -230,7 +230,7 @@ public sealed class GraphResultProcessor
         // Create the base entity info for this node
         var actualType = DiscoverActualNodeType(node, nodeType);
         Dictionary<string, Property> simpleProperties;
-        var label = node.Labels.FirstOrDefault() ?? actualType.Name;
+        var label = node.Labels.Count == 0 ? actualType.Name : node.Labels[0];
 
         // Use dynamic extraction for dynamic nodes (including complex property nodes)
         if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))
@@ -355,7 +355,7 @@ public sealed class GraphResultProcessor
 
         var entityInfo = new EntityInfo(
             ActualType: nodeType,
-            Label: node.Labels.FirstOrDefault() ?? "",
+            Label: node.Labels.Count == 0 ? "" : node.Labels[0],
             ActualLabels: node.Labels.ToList(),
             SimpleProperties: simpleProperties,
             ComplexProperties: new Dictionary<string, Property>()
@@ -972,7 +972,7 @@ public sealed class GraphResultProcessor
         var actualType = DiscoverActualNodeType(node, targetType);
 
         Dictionary<string, Property> simpleProperties;
-        var label = node.Labels.FirstOrDefault() ?? actualType.Name;
+        var label = node.Labels.Count == 0 ? actualType.Name : node.Labels[0];
 
         // Handle dynamic nodes differently
         if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))

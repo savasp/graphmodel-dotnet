@@ -1234,7 +1234,7 @@ public sealed class CypherQueryPlanner
         public string CurrentAlias => ExplicitTraversal.Count == 0 ? RootAlias : TargetAlias;
 
         public string CurrentTraversalSourceAlias =>
-            ExplicitTraversal.LastOrDefault()?.SourceAlias switch
+            (ExplicitTraversal.Count == 0 ? null : ExplicitTraversal[^1].SourceAlias) switch
             {
                 "src" when RootAlias == "src_1" => RootAlias,
                 { } sourceAlias => sourceAlias,

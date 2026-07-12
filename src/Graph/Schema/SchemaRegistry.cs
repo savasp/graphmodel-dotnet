@@ -25,7 +25,7 @@ public class SchemaRegistry : IDisposable
     private readonly ConcurrentDictionary<string, EntitySchemaInfo> _relationshipSchemas = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Assembly> _scannedAssemblies = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
-    private volatile bool _isInitialized = false;
+    private volatile bool _isInitialized;
 
     /// <summary>
     /// Gets whether the schema registry has been initialized.

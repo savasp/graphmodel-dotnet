@@ -12,7 +12,7 @@ public class GraphDataModelCycleDetectionTests
     {
         { "null", () => null, false },
         { "simple string", () => "value", false },
-        { "simple array", () => new[] { 1, 2, 3 }, false },
+        { "simple array", () => SimpleArray, false },
         { "acyclic node", CreateAcyclicNode, false },
         { "shared diamond", CreateSharedDiamond, false },
         { "deep acyclic chain", () => CreateDeepChain(12), false },
@@ -23,6 +23,8 @@ public class GraphDataModelCycleDetectionTests
         { "cycle through dictionary", CreateDictionaryCycle, true },
         { "list with shared reference", CreateListWithSharedReference, false },
     };
+
+    private static readonly int[] SimpleArray = [1, 2, 3];
 
     [Theory]
     [MemberData(nameof(CycleCases))]

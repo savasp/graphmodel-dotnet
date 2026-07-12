@@ -17,7 +17,7 @@ public record Person : Node
 public record Manager : Person
 {
     public string Department { get; set; } = string.Empty;
-    public int TeamSize { get; set; } = 0;
+    public int TeamSize { get; set; }
 }
 
 // 3-level polymorphic node hierarchy for base/derived deserialization scenarios (see #136).
@@ -51,7 +51,7 @@ public class DogDescription : AnimalDescription
 public class PoliceDogDescription : DogDescription
 {
     public string Badge { get; set; } = string.Empty;
-    public HandlerDescription? Handler { get; set; } = null;
+    public HandlerDescription? Handler { get; set; }
 }
 
 // Nested complex property used to verify that complex properties on a *derived* collection
@@ -162,8 +162,8 @@ public record Class1 : Node
 {
     public string Property1 { get; set; } = string.Empty;
     public string Property2 { get; set; } = string.Empty;
-    public ComplexClassA? A { get; set; } = null;
-    public ComplexClassB? B { get; set; } = null;
+    public ComplexClassA? A { get; set; }
+    public ComplexClassB? B { get; set; }
 }
 
 public record Class2 : Node
@@ -177,20 +177,20 @@ public class ComplexClassA
 {
     public string Property1 { get; set; } = string.Empty;
     public string Property2 { get; set; } = string.Empty;
-    public ComplexClassB? B { get; set; } = null;
-    public ComplexClassC? C { get; set; } = null;
+    public ComplexClassB? B { get; set; }
+    public ComplexClassC? C { get; set; }
 }
 
 public class ComplexClassB
 {
     public string Property1 { get; set; } = string.Empty;
-    public ComplexClassA? A { get; set; } = null;
+    public ComplexClassA? A { get; set; }
 }
 
 public class ComplexClassC
 {
     public string Property1 { get; set; } = string.Empty;
-    public ComplexClassB? B { get; set; } = null;
+    public ComplexClassB? B { get; set; }
 }
 
 public class ComplexClassD

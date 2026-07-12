@@ -56,10 +56,10 @@ public record PersonWithComplex : Node
     public int Age { get; set; }
     public string? Department { get; set; }
     public Address HomeAddress { get; set; } = new Address();
-    public Address? WorkAddress { get; set; } = null;
+    public Address? WorkAddress { get; set; }
     public List<Address> PreviousAddresses { get; set; } = new List<Address>();
     public Foo Foo { get; set; } = new Foo();
-    public Bar? Bar { get; set; } = null;
+    public Bar? Bar { get; set; }
 }
 
 public class Program

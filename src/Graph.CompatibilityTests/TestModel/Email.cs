@@ -23,8 +23,8 @@ public record Email : Memory
     public string Body { get; init; } = string.Empty;
 
     public string? BodyHtml { get; init; }
-    public bool IsRead { get; init; } = false;
-    public bool IsImportant { get; init; } = false;
+    public bool IsRead { get; init; }
+    public bool IsImportant { get; init; }
     public DateTime SentAt { get; init; }
     public DateTime? ReceivedAt { get; init; }
     public string? ExternalId { get; init; } // Original ID from the service

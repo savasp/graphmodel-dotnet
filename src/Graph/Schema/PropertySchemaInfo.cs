@@ -23,27 +23,27 @@ public class PropertySchemaInfo
     /// <summary>
     /// Gets whether this property should be indexed for query performance.
     /// </summary>
-    public bool IsIndexed { get; set; } = false;
+    public bool IsIndexed { get; set; }
 
     /// <summary>
     /// Gets whether this property should be used as a key for the entity.
     /// </summary>
-    public bool IsKey { get; set; } = false;
+    public bool IsKey { get; set; }
 
     /// <summary>
     /// Gets whether this property should have unique values across entities with the same label/type.
     /// </summary>
-    public bool IsUnique { get; set; } = false;
+    public bool IsUnique { get; set; }
 
     /// <summary>
     /// Gets whether this property is required (cannot be null).
     /// </summary>
-    public bool IsRequired { get; set; } = false;
+    public bool IsRequired { get; set; }
 
     /// <summary>
     /// Gets whether this property should be ignored when serializing to the graph.
     /// </summary>
-    public bool Ignore { get; set; } = false;
+    public bool Ignore { get; set; }
 
     /// <summary>
     /// Gets whether this property should be included in full text search indexes.

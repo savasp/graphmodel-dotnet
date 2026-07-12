@@ -458,7 +458,7 @@ public sealed class CypherRenderer
 
     private string[] GetProjectionColumns(CypherStatement statement)
     {
-        return statement.Clauses.LastOrDefault() switch
+        return (statement.Clauses.Count == 0 ? null : statement.Clauses[^1]) switch
         {
             ReturnClause @return => @return.Items
                 .Select(item => item.Alias ?? RenderExpression(item.Expression))

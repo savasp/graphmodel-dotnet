@@ -168,7 +168,7 @@ try
                 .Where(p1k => person2Knows.Any(p2k => p2k.Id == p1k.Id))
                 .ToList();
 
-            if (mutual.Any())
+            if (mutual.Count > 0)
             {
                 mutualConnections.Add((person1, person2, mutual));
             }
@@ -202,7 +202,7 @@ try
         .Where(p => aliceConnections.Contains(p.Id))
         .ToListAsync();
 
-    if (mutualBetweenAliceAndBob.Any())
+    if (mutualBetweenAliceAndBob.Count > 0)
     {
         Console.WriteLine($"  - Alice and Bob both know: {string.Join(", ", mutualBetweenAliceAndBob.Select(m => m.Name))}");
     }

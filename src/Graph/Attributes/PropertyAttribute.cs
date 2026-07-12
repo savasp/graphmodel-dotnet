@@ -35,13 +35,13 @@ public class PropertyAttribute() : Attribute
     /// Gets or sets the label to use for the property in the graph. If null, the property name is used as-is.
     /// </summary>
     /// <value>The custom property name used for graph storage, or null to use the actual property name.</value>
-    public string? Label { get; set; } = null;
+    public string? Label { get; set; }
 
     /// <summary>
     /// Gets or sets whether to ignore this property when serializing to the graph.
     /// </summary>
     /// <value>True if the property should be ignored, otherwise false.</value>
-    public bool Ignore { get; set; } = false;
+    public bool Ignore { get; set; }
 
     /// <summary>
     /// Gets or sets whether this property is a key for the entity.
@@ -50,25 +50,25 @@ public class PropertyAttribute() : Attribute
     /// <remarks>
     /// This implies that the property is indexed and unique.
     /// </remarks>
-    public bool IsKey { get; set; } = false;
+    public bool IsKey { get; set; }
 
     /// <summary>
     /// Gets or sets whether this property should be indexed for query performance.
     /// </summary>
     /// <value>True if the property should be indexed, otherwise false.</value>
-    public bool IsIndexed { get; set; } = false;
+    public bool IsIndexed { get; set; }
 
     /// <summary>
     /// Gets or sets whether this property should have unique values across entities with the same label/type.
     /// </summary>
     /// <value>True if the property should have unique values, otherwise false.</value>
-    public bool IsUnique { get; set; } = false;
+    public bool IsUnique { get; set; }
 
     /// <summary>
     /// Gets or sets whether this property is required (cannot be null).
     /// </summary>
     /// <value>True if the property is required, otherwise false.</value>
-    public bool IsRequired { get; set; } = false;
+    public bool IsRequired { get; set; }
 
     /// <summary>
     /// Gets or sets whether this property should be included in full text search indexes.

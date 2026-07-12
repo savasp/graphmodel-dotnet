@@ -138,7 +138,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
 
                 return new EntityInfo(
                     typeof(DynamicNode),
-                    node.Labels.FirstOrDefault() ?? "",
+                    node.Labels.Count == 0 ? "" : node.Labels[0],
                     node.Labels.ToList().AsReadOnly(),
                     simpleProperties,
                     complexProperties);

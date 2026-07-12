@@ -377,6 +377,8 @@ public interface ITakeOperatorTests : IGraphTest
         Assert.Equal("Memory 4", results[1].Text);
     }
 
+    private static readonly string[] ExpectedMemoryTexts = ["First memory", "Second memory", "Third memory"];
+
     [Fact]
     public async Task TakeOperator_WithPathSegmentsAndProjection_WorksCorrectly()
     {
@@ -441,7 +443,7 @@ public interface ITakeOperatorTests : IGraphTest
         // Assert
         Assert.Equal(2, results.Count);
         // All returned items should be from the original set
-        Assert.All(results, r => Assert.Contains(r, new[] { "First memory", "Second memory", "Third memory" }));
+        Assert.All(results, r => Assert.Contains(r, ExpectedMemoryTexts));
     }
 
     [Fact]
