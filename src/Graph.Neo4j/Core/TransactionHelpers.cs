@@ -66,7 +66,7 @@ internal static class TransactionHelpers
         }
         catch (Exception ex)
         {
-            logger?.LogError(ex, errorMessage);
+            logger?.LogError(ex, "{ErrorMessage}", errorMessage);
             if (transaction == null)
             {
                 await tx.RollbackAsync().ConfigureAwait(false);

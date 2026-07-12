@@ -297,7 +297,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             await Task.Delay(delayMs);
         }
 
-        throw new Exception($"Database '{databaseName}' did not become available for driver connections in time.");
+        throw new TimeoutException($"Database '{databaseName}' did not become available for driver connections in time.");
     }
 
     internal static string GetDatabaseName(int index)

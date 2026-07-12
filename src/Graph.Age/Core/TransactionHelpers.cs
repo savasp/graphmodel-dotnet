@@ -67,7 +67,7 @@ internal static class TransactionHelpers
         }
         catch (Exception ex)
         {
-            logger?.LogError(ex, errorMessage);
+            logger?.LogError(ex, "{ErrorMessage}", errorMessage);
             failed = true;
             if (transaction == null)
             {

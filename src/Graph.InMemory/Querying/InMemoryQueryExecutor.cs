@@ -127,9 +127,11 @@ internal sealed class InMemoryQueryExecutor(
 
                 return values[0];
             case TerminalOperation.ElementAt:
+#pragma warning disable CA2208 // "index" is the public ElementAt parameter encoded in the query model.
                 return values.Count > 0
                     ? values[0]
                     : throw new ArgumentOutOfRangeException("index", "Index was out of range.");
+#pragma warning restore CA2208
             case TerminalOperation.ElementAtOrDefault:
                 return values.Count > 0 ? values[0] : DefaultResult.Instance;
             case TerminalOperation.Any:
