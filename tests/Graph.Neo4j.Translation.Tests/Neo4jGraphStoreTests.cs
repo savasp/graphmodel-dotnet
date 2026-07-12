@@ -95,7 +95,11 @@ public class Neo4jGraphStoreTests
             };
         }
 
-        private ValueTask RecordDisposeAsync()
+        [System.Diagnostics.CodeAnalysis.SuppressMessage(
+            "Performance",
+            "CA1859:Use concrete types when possible",
+            Justification = "DispatchProxy.Invoke requires the ValueTask to be returned through its object contract.")]
+        private object RecordDisposeAsync()
         {
             DisposeAsyncCallCount++;
             return ValueTask.CompletedTask;

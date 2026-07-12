@@ -50,7 +50,7 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
     [Fact]
     public Task StringContains_OrdinalIgnoreCase_ThrowsNotSupported()
     {
-        var query = Root.Nodes<Person>().Where(p => p.FirstName.Contains("ς", StringComparison.OrdinalIgnoreCase));
+        var query = Root.Nodes<Person>().Where(p => p.FirstName.Contains('ς', StringComparison.OrdinalIgnoreCase));
         return VerifyTranslationThrows(query);
     }
 
