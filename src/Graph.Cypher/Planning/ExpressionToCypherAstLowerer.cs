@@ -285,7 +285,7 @@ internal sealed class ExpressionToCypherAstLowerer(
         };
     }
 
-    private CypherExpression LowerMathMethod(
+    private FunctionCall LowerMathMethod(
         MethodCallExpression node,
         IReadOnlyDictionary<ParameterExpression, string> aliases)
     {
@@ -603,7 +603,7 @@ internal sealed class ExpressionToCypherAstLowerer(
         return true;
     }
 
-    private bool TryLowerComplexCollectionCount(
+    private static bool TryLowerComplexCollectionCount(
         MemberExpression node,
         IReadOnlyDictionary<ParameterExpression, string> aliases,
         out CypherExpression expression)
@@ -659,7 +659,7 @@ internal sealed class ExpressionToCypherAstLowerer(
         return true;
     }
 
-    private bool TryLowerComplexNullComparison(
+    private static bool TryLowerComplexNullComparison(
         LinqBinaryExpression node,
         IReadOnlyDictionary<ParameterExpression, string> aliases,
         out CypherExpression expression)
@@ -746,7 +746,7 @@ internal sealed class ExpressionToCypherAstLowerer(
         return traversed;
     }
 
-    private ComplexPattern BuildComplexPattern(
+    private static ComplexPattern BuildComplexPattern(
         MemberExpression node,
         IReadOnlyDictionary<ParameterExpression, string> aliases)
     {
@@ -963,7 +963,7 @@ internal sealed class ExpressionToCypherAstLowerer(
         return false;
     }
 
-    private CypherExpression AddDuration(CypherExpression target, string unit, CypherExpression value)
+    private AstBinaryExpression AddDuration(CypherExpression target, string unit, CypherExpression value)
     {
         return new AstBinaryExpression(
             CypherBinaryOperator.Add,
@@ -1187,10 +1187,10 @@ internal sealed class ExpressionToCypherAstLowerer(
 
     private static PropertyAccess Property(string alias, string property) => new(new VariableRef(alias), property);
 
-    private static CypherExpression Divide(CypherExpression left, object right) =>
+    private static AstBinaryExpression Divide(CypherExpression left, object right) =>
         new AstBinaryExpression(CypherBinaryOperator.Divide, left, new Literal(right));
 
-    private static CypherExpression Modulo(CypherExpression left, object right) =>
+    private static AstBinaryExpression Modulo(CypherExpression left, object right) =>
         new AstBinaryExpression(CypherBinaryOperator.Modulo, left, new Literal(right));
 
     private CypherExpression ToInteger(CypherExpression value) => Function("toInteger", value);

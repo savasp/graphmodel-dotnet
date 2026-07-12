@@ -826,7 +826,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     {
         private readonly List<ComplexPropertyNavigation> _navigations = [];
 
-        public static IReadOnlyList<ComplexPropertyNavigation> Collect(Expression expression)
+        public static List<ComplexPropertyNavigation> Collect(Expression expression)
         {
             var collector = new ComplexPropertyNavigationCollector();
             collector.Visit(expression);

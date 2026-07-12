@@ -274,7 +274,7 @@ internal static class SerializationBridge
         }
     }
 
-    private static object? ConvertDictionary(IDictionary dict)
+    private static Dictionary<string, object?> ConvertDictionary(IDictionary dict)
     {
         var result = new Dictionary<string, object?>();
         foreach (DictionaryEntry entry in dict)
@@ -285,7 +285,7 @@ internal static class SerializationBridge
         return result;
     }
 
-    private static object? ConvertCollection(IEnumerable enumerable)
+    private static List<object?> ConvertCollection(IEnumerable enumerable)
     {
         var list = new List<object?>();
         foreach (var item in enumerable)

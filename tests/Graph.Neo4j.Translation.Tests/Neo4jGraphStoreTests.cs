@@ -91,7 +91,7 @@ public class Neo4jGraphStoreTests
             };
         }
 
-        private object RecordDisposeAsync()
+        private ValueTask RecordDisposeAsync()
         {
             DisposeAsyncCallCount++;
             return ValueTask.CompletedTask;

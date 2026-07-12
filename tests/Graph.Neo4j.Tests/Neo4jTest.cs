@@ -14,7 +14,7 @@ using Serilog.Context;
 public abstract class Neo4jTest(Neo4jHarness harness, StoreIsolation isolation = StoreIsolation.CleanSharedStore)
     : CompatibilityTest(harness, isolation), IClassFixture<Neo4jHarness>
 {
-    private readonly ILogger<Neo4jTest> logger = harness.LoggerFactory.CreateLogger<Neo4jTest>();
+    private readonly ILogger<Neo4jTest> logger = Neo4jHarness.LoggerFactory.CreateLogger<Neo4jTest>();
     protected IDisposable? CorrelationScope { get; private set; }
 
     public static class TestContextCorrelation

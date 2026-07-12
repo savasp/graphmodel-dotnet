@@ -53,7 +53,7 @@ public class TestInfrastructureFixture : IAsyncLifetime
             : new Neo4jTestInfrastructureWithContainer();
     }
 
-    public ILoggerFactory LoggerFactory => loggerFactory;
+    public static ILoggerFactory LoggerFactory => loggerFactory;
 
     public async ValueTask InitializeAsync()
     {

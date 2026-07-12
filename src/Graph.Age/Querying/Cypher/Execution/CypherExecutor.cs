@@ -36,7 +36,7 @@ internal sealed class CypherExecutor
         return records;
     }
 
-    public async IAsyncEnumerable<AgeRecord> StreamAsync(
+    public static async IAsyncEnumerable<AgeRecord> StreamAsync(
         string cypher,
         IReadOnlyDictionary<string, object?> parameters,
         IReadOnlyList<string> projectionColumns,

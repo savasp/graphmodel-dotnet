@@ -757,7 +757,10 @@ public class GraphQueryModelBuilderTests
         Assert.Contains("parameter-free closure values", exception.Message);
     }
 
+    // The abstraction is intentional: callers reassign composed IGraphQueryable<T> results.
+#pragma warning disable CA1859
     private static IGraphQueryable<T> Root<T>() => new TestGraphQueryable<T>();
+#pragma warning restore CA1859
 
     private static MethodCallExpression MarkerCall(
         string markerName,

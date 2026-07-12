@@ -25,12 +25,12 @@ internal sealed class GraphNodeQueryable<TNode> :
     }
 
     // For the root queryable, we'll create a placeholder that gets replaced during LINQ processing.
-    private static Expression CreateRootExpression()
+    private static ConstantExpression CreateRootExpression()
     {
         return Expression.Constant(CreatePlaceholderQueryable(), typeof(IGraphQueryable<TNode>));
     }
 
-    private static IGraphQueryable<TNode> CreatePlaceholderQueryable()
+    private static PlaceholderNodeQueryable<TNode> CreatePlaceholderQueryable()
     {
         // This is a minimal placeholder that provides the element type information
         return new PlaceholderNodeQueryable<TNode>();

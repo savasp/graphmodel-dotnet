@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.Neo4j.Tests;
 
-internal class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
+internal sealed class Neo4jTestInfrastructureWithDbInstance : ITestInfrastructure
 {
     private const string Endpoint = "bolt://localhost:7687";
 

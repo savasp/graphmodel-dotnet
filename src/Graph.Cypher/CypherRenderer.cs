@@ -362,7 +362,7 @@ public sealed class CypherRenderer
         return $"[{RenderPattern(expression.Pattern)}{predicate} | {RenderExpression(expression.Projection)}]";
     }
 
-    private string RenderLiteral(object? value)
+    private static string RenderLiteral(object? value)
     {
         return value switch
         {
@@ -380,7 +380,7 @@ public sealed class CypherRenderer
         };
     }
 
-    private string RenderStringLiteral(string text)
+    private static string RenderStringLiteral(string text)
     {
         // Backslashes first: escaping quotes introduces backslashes that must not be re-escaped.
         var escaped = text
@@ -389,7 +389,7 @@ public sealed class CypherRenderer
         return $"'{escaped}'";
     }
 
-    private string RenderFloating<T>(T number)
+    private static string RenderFloating<T>(T number)
         where T : IFormattable
     {
         var text = number.ToString(null, CultureInfo.InvariantCulture);
@@ -456,7 +456,7 @@ public sealed class CypherRenderer
             .Append('}');
     }
 
-    private IReadOnlyList<string> GetProjectionColumns(CypherStatement statement)
+    private string[] GetProjectionColumns(CypherStatement statement)
     {
         return statement.Clauses.LastOrDefault() switch
         {
@@ -509,7 +509,7 @@ public sealed class CypherRenderer
         RenderPathSegmentPropertyLoad(builder, projection);
     }
 
-    private void RenderSimpleNodeProjection(StringBuilder builder, string alias)
+    private static void RenderSimpleNodeProjection(StringBuilder builder, string alias)
     {
         builder.Append("RETURN {\n")
             .Append("                Node: ").Append(alias).Append(",\n")

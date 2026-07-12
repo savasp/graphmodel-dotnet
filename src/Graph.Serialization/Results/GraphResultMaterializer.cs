@@ -234,7 +234,7 @@ public sealed class GraphResultMaterializer
         return constructor.Invoke([startNode, relationship, endNode]);
     }
 
-    private EntityInfo? GetComplexProperty(EntityInfo entityInfo, string propertyName)
+    private static EntityInfo? GetComplexProperty(EntityInfo entityInfo, string propertyName)
     {
         return entityInfo.ComplexProperties.TryGetValue(propertyName, out var property)
             && property.Value is EntityInfo nestedEntityInfo
@@ -242,7 +242,7 @@ public sealed class GraphResultMaterializer
             : null;
     }
 
-    private object? CreateSimpleValue(EntityInfo entityInfo, Type targetType)
+    private static object? CreateSimpleValue(EntityInfo entityInfo, Type targetType)
     {
         if (entityInfo.SimpleProperties.Count == 1)
         {

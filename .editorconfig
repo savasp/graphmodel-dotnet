@@ -76,5 +76,18 @@ dotnet_diagnostic.CA1001.severity = none
 [tests/Graph.CompatibilityTests.Tests/ComplianceLedgerCollection.cs]
 dotnet_diagnostic.CA1711.severity = none
 
+# DispatchProxy generates runtime subclasses of these proxy types, so sealing them would make
+# proxy creation fail even though no source-declared subtype exists.
+[tests/Graph.Core.Tests/GraphQueryProviderBaseTests.cs]
+dotnet_diagnostic.CA1852.severity = none
+
+[tests/Graph.Neo4j.Translation.Tests/Neo4jGraphStoreTests.cs]
+dotnet_diagnostic.CA1852.severity = none
+
+# This no-op member is the required IAsyncDisposable implementation. Making it static would
+# remove the interface implementation and change the fake queryable contract.
+[tests/Graph.Neo4j.Translation.Tests/Harness/FakeGraphQueryable.cs]
+dotnet_diagnostic.CA1822.severity = none
+
 [*.{csproj,props,targets,xml,yml,yaml,json,md}]
 indent_size = 2

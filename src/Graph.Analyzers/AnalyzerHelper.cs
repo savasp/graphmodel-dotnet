@@ -18,17 +18,17 @@ internal class AnalyzerHelper
         _compilation = compilation;
     }
 
-    public bool ImplementsINode(INamedTypeSymbol type)
+    public static bool ImplementsINode(INamedTypeSymbol type)
     {
         return ImplementsInterface(type, "Cvoya.Graph.INode");
     }
 
-    public bool ImplementsIRelationship(INamedTypeSymbol type)
+    public static bool ImplementsIRelationship(INamedTypeSymbol type)
     {
         return ImplementsInterface(type, "Cvoya.Graph.IRelationship");
     }
 
-    private bool ImplementsInterface(INamedTypeSymbol type, string interfaceName)
+    private static bool ImplementsInterface(INamedTypeSymbol type, string interfaceName)
     {
         return type.AllInterfaces.Any(i => i.ToDisplayString() == interfaceName);
     }
@@ -119,7 +119,7 @@ internal class AnalyzerHelper
         return false;
     }
 
-    private bool IsUnsupportedFrameworkType(ITypeSymbol type)
+    private static bool IsUnsupportedFrameworkType(ITypeSymbol type)
     {
         // Check specific unsupported framework types by name and namespace
         var fullName = type.ToDisplayString();
@@ -177,7 +177,7 @@ internal class AnalyzerHelper
         return false;
     }
 
-    public bool IsSimpleType(ITypeSymbol type)
+    public static bool IsSimpleType(ITypeSymbol type)
     {
         // Handle nullable types first
         if (type is INamedTypeSymbol { IsGenericType: true } namedType &&
@@ -268,7 +268,7 @@ internal class AnalyzerHelper
     /// <see cref="System.Collections.Generic.IReadOnlyDictionary{TKey,TValue}"/>.
     /// Dictionaries are not supported as graph properties.
     /// </summary>
-    public bool IsDictionaryType(ITypeSymbol type)
+    public static bool IsDictionaryType(ITypeSymbol type)
     {
         if (type is not INamedTypeSymbol namedType)
             return false;
@@ -294,7 +294,7 @@ internal class AnalyzerHelper
         return ns == "System.Collections.Generic" && (name == "IDictionary" || name == "IReadOnlyDictionary");
     }
 
-    public bool IsCollectionOfSimpleTypes(ITypeSymbol type)
+    public static bool IsCollectionOfSimpleTypes(ITypeSymbol type)
     {
         // Exclude string (even though it implements IEnumerable)
         if (type.SpecialType == SpecialType.System_String)
@@ -354,7 +354,7 @@ internal class AnalyzerHelper
         return false;
     }
 
-    private bool ImplementsIEnumerable(ITypeSymbol type)
+    private static bool ImplementsIEnumerable(ITypeSymbol type)
     {
         // Arrays implement IEnumerable
         if (type is IArrayTypeSymbol)
@@ -383,7 +383,7 @@ internal class AnalyzerHelper
         return false;
     }
 
-    public ITypeSymbol? GetCollectionElementType(ITypeSymbol type)
+    public static ITypeSymbol? GetCollectionElementType(ITypeSymbol type)
     {
         // Handle arrays
         if (type is IArrayTypeSymbol arrayType)
@@ -460,7 +460,7 @@ internal class AnalyzerHelper
         return new ComplexTypeValidationResult(true, null);
     }
 
-    public bool IsNullableType(ITypeSymbol type)
+    public static bool IsNullableType(ITypeSymbol type)
     {
         return type is INamedTypeSymbol { IsGenericType: true } namedType &&
                namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T;

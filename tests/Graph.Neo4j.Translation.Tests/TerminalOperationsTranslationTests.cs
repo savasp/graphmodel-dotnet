@@ -386,7 +386,7 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
         Assert.DoesNotContain(provider.ExecutedExpressions.OfType<MethodCallExpression>(), call => call.Method.Name == "AnyAsyncMarker");
     }
 
-    private static IGraphQueryable<Person> CreateExecutableRoot(FakeGraphQueryProvider provider)
+    private static FakeGraphNodeQueryable<Person> CreateExecutableRoot(FakeGraphQueryProvider provider)
     {
         var placeholder = new FakeGraphNodeQueryable<Person>(provider, Expression.Constant(null, typeof(Expression)));
         var expression = Expression.Constant(placeholder, typeof(IGraphQueryable<Person>));

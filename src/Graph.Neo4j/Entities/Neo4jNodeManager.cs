@@ -227,7 +227,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         }
     }
 
-    private async Task<int> GetRootCountAsync(
+    private static async Task<int> GetRootCountAsync(
         string nodeId,
         string[] registeredNodeLabels,
         IAsyncTransaction transaction,
@@ -257,7 +257,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         return labels.ToArray();
     }
 
-    private async Task<string> CreateMainNodeAsync(
+    private static async Task<string> CreateMainNodeAsync(
         EntityInfo entity,
         IAsyncTransaction transaction,
         CancellationToken cancellationToken)
@@ -305,7 +305,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     }
 
     /// <returns>The updated node's Neo4j elementId, or <see langword="null"/> when no node matched.</returns>
-    private async Task<string?> UpdateMainNodeAsync(
+    private static async Task<string?> UpdateMainNodeAsync(
         string nodeId,
         EntityInfo entity,
         IAsyncTransaction transaction,
@@ -465,7 +465,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         }
     }
 
-    private void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
+    private static void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
     {
         // MinValue validation
         if (validation.MinValue is not null)
@@ -528,7 +528,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         }
     }
 
-    private void ValidateEnumValue(string propertyName, object value, Type propertyType, string entityLabel)
+    private static void ValidateEnumValue(string propertyName, object value, Type propertyType, string entityLabel)
     {
         // Check if the property type is an enum
         if (propertyType.IsEnum)

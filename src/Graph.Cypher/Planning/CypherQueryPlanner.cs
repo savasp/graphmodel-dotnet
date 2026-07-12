@@ -315,7 +315,7 @@ public sealed class CypherQueryPlanner
             : alias;
     }
 
-    private static IReadOnlyList<CypherExpression> BuildSearchFilterPredicates(
+    private static List<CypherExpression> BuildSearchFilterPredicates(
         SearchRoot search,
         PlanningState state)
     {
@@ -360,7 +360,7 @@ public sealed class CypherQueryPlanner
         return [];
     }
 
-    private static CypherExpression LowerJoinCondition(
+    private static AstBinaryExpression LowerJoinCondition(
         JoinFragment join,
         ExpressionToCypherAstLowerer lowerer)
     {
@@ -381,7 +381,7 @@ public sealed class CypherQueryPlanner
             lowerer.Lower(join.InnerKeySelector.Body, innerAliases));
     }
 
-    private static IReadOnlyList<OrderByItem> LowerOrdering(
+    private static OrderByItem[] LowerOrdering(
         GraphQueryModel model,
         PlanningState state,
         ExpressionToCypherAstLowerer lowerer)
@@ -747,7 +747,7 @@ public sealed class CypherQueryPlanner
         List<ICypherClause> clauses,
         GraphQueryModel model,
         PlanningState state,
-        IReadOnlyList<OrderByItem> ordering,
+        OrderByItem[] ordering,
         ProjectionPlan projection,
         CypherParameterRegistry parameters)
     {
@@ -794,8 +794,8 @@ public sealed class CypherQueryPlanner
         }
 
         var distinctApplied = false;
-        var effectiveOrdering = ordering;
-        if (ShouldPipeDistinct(model, projection, aggregate, hasPaging, ordering.Count > 0))
+        IReadOnlyList<OrderByItem> effectiveOrdering = ordering;
+        if (ShouldPipeDistinct(model, projection, aggregate, hasPaging, ordering.Length > 0))
         {
             (projection, effectiveOrdering) = AddDistinctProjection(
                 clauses,

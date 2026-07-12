@@ -6,7 +6,7 @@ namespace Cvoya.Graph.Neo4j.Tests;
 using DotNet.Testcontainers.Containers;
 using Testcontainers.Neo4j;
 
-internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
+internal sealed class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
 {
     private const string ContainerUsername = "neo4j";
     private const string ContainerPassword = "password";
@@ -57,10 +57,10 @@ internal class Neo4jTestInfrastructureWithContainer : ITestInfrastructure
         }
     }
 
-    private bool Active => (container?.State ?? throw new InvalidOperationException("Container hasn't been initialized. You must call InitializeAsync() first."))
+    private static bool Active => (container?.State ?? throw new InvalidOperationException("Container hasn't been initialized. You must call InitializeAsync() first."))
         == TestcontainersStates.Running;
 
-    private async Task EnsureReady()
+    private static async Task EnsureReady()
     {
         if (Container.State != TestcontainersStates.Running)
         {

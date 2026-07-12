@@ -52,7 +52,7 @@ public sealed record CypherStatement
     /// <summary>Gets path materialization metadata, when present.</summary>
     public CypherPathTypes? PathTypes { get; }
 
-    private static IReadOnlyDictionary<string, object?> CopyParameters(IReadOnlyDictionary<string, object?> parameters)
+    private static ReadOnlyDictionary<string, object?> CopyParameters(IReadOnlyDictionary<string, object?> parameters)
     {
         var copy = new Dictionary<string, object?>(StringComparer.Ordinal);
 

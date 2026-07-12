@@ -242,6 +242,8 @@ internal static class GeneratorTestHelpers
         return sb.ToString();
     }
 
+    // GeneratorDriver update methods return the base type, and callers repeatedly reassign them.
+#pragma warning disable CA1859
     private static GeneratorDriver CreateTrackingDriver()
     {
         var generator = new EntitySerializerGenerator();
@@ -255,8 +257,9 @@ internal static class GeneratorTestHelpers
                 trackIncrementalGeneratorSteps: true,
                 baseDirectory: null));
     }
+#pragma warning restore CA1859
 
-    private static IReadOnlyCollection<IncrementalStepRunReason> GetStepReasons(
+    private static IncrementalStepRunReason[] GetStepReasons(
         GeneratorDriver driver,
         string trackingName)
     {
@@ -267,7 +270,7 @@ internal static class GeneratorTestHelpers
             : [];
     }
 
-    private static IReadOnlyDictionary<string, IReadOnlyCollection<IncrementalStepRunReason>> GetAllStepReasons(
+    private static Dictionary<string, IReadOnlyCollection<IncrementalStepRunReason>> GetAllStepReasons(
         GeneratorDriver driver)
     {
         var generatorResult = driver.GetRunResult().Results.Single();

@@ -25,7 +25,7 @@ public sealed class Neo4jHarness : IGraphProviderTestHarness
     /// Gets the logger factory shared with the underlying <see cref="TestInfrastructureFixture"/>,
     /// so <c>Neo4jTest</c> can keep logging/correlation behavior consistent with test infrastructure.
     /// </summary>
-    public ILoggerFactory LoggerFactory => fixture.LoggerFactory;
+    public static ILoggerFactory LoggerFactory => TestInfrastructureFixture.LoggerFactory;
 
     /// <inheritdoc/>
     public ValueTask InitializeAsync() => fixture.InitializeAsync();

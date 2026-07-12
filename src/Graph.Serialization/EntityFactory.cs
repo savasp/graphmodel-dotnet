@@ -194,7 +194,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         }
     }
 
-    private object DeserializeDynamicEntity(EntityInfo entity)
+    private static object DeserializeDynamicEntity(EntityInfo entity)
     {
         var actualType = entity.ActualType;
 
@@ -211,7 +211,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         throw new GraphException($"Unsupported dynamic entity type: {actualType.Name}");
     }
 
-    private DynamicNode DeserializeDynamicNode(EntityInfo entity)
+    private static DynamicNode DeserializeDynamicNode(EntityInfo entity)
     {
         var properties = new Dictionary<string, object?>();
 
@@ -290,7 +290,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         };
     }
 
-    private DynamicRelationship DeserializeDynamicRelationship(EntityInfo entity)
+    private static DynamicRelationship DeserializeDynamicRelationship(EntityInfo entity)
     {
         var properties = new Dictionary<string, object?>();
 
@@ -365,7 +365,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         };
     }
 
-    private void ProcessComplexProperties(
+    private static void ProcessComplexProperties(
         IDictionary<string, Property> complexProperties,
         Dictionary<string, object?> properties)
     {
@@ -400,7 +400,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         }
     }
 
-    private object DeserializeComplexObject(EntityInfo entityInfo)
+    private static object DeserializeComplexObject(EntityInfo entityInfo)
     {
         // Create an instance of the target type
         var targetType = entityInfo.ActualType;
@@ -689,14 +689,14 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         }
     }
 
-    private EntityInfo SerializeComplexObject(object obj, Type objectType)
+    private static EntityInfo SerializeComplexObject(object obj, Type objectType)
     {
         // Use a thread-safe approach with cycle detection during serialization
         var visited = new HashSet<object>(Cvoya.Graph.GraphDataModel.ReferenceEqualityComparer.Instance);
         return SerializeComplexObject(obj, objectType, visited);
     }
 
-    private EntityInfo SerializeComplexObject(object obj, Type objectType, HashSet<object> visited)
+    private static EntityInfo SerializeComplexObject(object obj, Type objectType, HashSet<object> visited)
     {
         // Check for circular references during serialization to prevent stack overflow
         if (visited.Contains(obj))

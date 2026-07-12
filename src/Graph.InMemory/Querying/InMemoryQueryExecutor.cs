@@ -566,7 +566,7 @@ internal sealed class InMemoryQueryExecutor(
         });
     }
 
-    private bool RowCanBind(Row row, string? alias, Type parameterType)
+    private static bool RowCanBind(Row row, string? alias, Type parameterType)
     {
         if (parameterType == typeof(IGraphPath))
         {
@@ -592,7 +592,7 @@ internal sealed class InMemoryQueryExecutor(
         return row.Bindings.Values.Any(v => v is not null && parameterType.IsInstanceOfType(v));
     }
 
-    private object? ResolveInput(Row row, string? alias, Type parameterType)
+    private static object? ResolveInput(Row row, string? alias, Type parameterType)
     {
         if (parameterType == typeof(IGraphPath))
         {
@@ -688,7 +688,7 @@ internal sealed class InMemoryQueryExecutor(
         }
     }
 
-    private static IGraphPath BuildGraphPath(Row row)
+    private static InMemoryGraphPath BuildGraphPath(Row row)
     {
         var hops = row.PathHops ?? [];
         if (hops.Count == 0)

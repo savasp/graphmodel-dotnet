@@ -571,7 +571,7 @@ internal sealed partial class AgeQueryRunner
         return string.Join('\n', output);
     }
 
-    private static IReadOnlyList<string> SplitRenderedIdentifiers(string rendered) => rendered
+    private static string[] SplitRenderedIdentifiers(string rendered) => rendered
         .Split('|', StringSplitOptions.RemoveEmptyEntries)
         .Select(identifier => identifier.StartsWith('`')
             ? identifier[1..^1].Replace("``", "`", StringComparison.Ordinal)
@@ -643,7 +643,7 @@ internal sealed partial class AgeQueryRunner
         return trimmed;
     }
 
-    private static IReadOnlyDictionary<string, object?> NormalizeDictionary(IDictionary dictionary)
+    private static Dictionary<string, object?> NormalizeDictionary(IDictionary dictionary)
     {
         var result = new Dictionary<string, object?>(StringComparer.Ordinal);
         var enumerator = dictionary.GetEnumerator();
@@ -747,7 +747,7 @@ internal sealed partial class AgeQueryRunner
             .ToDictionary(property => property.Name, property => property.GetValue(parameters), StringComparer.Ordinal);
     }
 
-    private static IReadOnlyList<string> InferProjectionColumns(string cypher)
+    private static string[] InferProjectionColumns(string cypher)
     {
         var matches = ReturnRegex().Matches(cypher);
         if (matches.Count == 0)

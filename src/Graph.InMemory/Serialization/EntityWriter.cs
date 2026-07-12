@@ -150,7 +150,7 @@ internal static class EntityWriter
         DecomposeComplexProperties(entity, valueNode, valueNodes, edges, depth + 1);
     }
 
-    private static IReadOnlyDictionary<string, StoredProperty> SnapshotSimpleProperties(
+    private static Dictionary<string, StoredProperty> SnapshotSimpleProperties(
         EntityInfo entity,
         IReadOnlyList<string>? labels)
     {
