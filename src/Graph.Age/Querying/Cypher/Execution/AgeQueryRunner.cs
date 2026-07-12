@@ -54,25 +54,8 @@ internal sealed partial class AgeQueryRunner
         ArgumentNullException.ThrowIfNull(projectionColumns);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var temporalParameters = NormalizeTemporalParameterArithmetic(cypher, parameters);
-        cypher = temporalParameters.Cypher;
-        parameters = temporalParameters.Parameters;
-        if (projectionColumns.Count == 0)
-        {
-            projectionColumns = InferProjectionColumns(cypher);
-        }
-        var distinct = ReturnDistinctRegex().IsMatch(cypher);
-        cypher = ReturnDistinctRegex().Replace(cypher, "RETURN");
-        var normalizedProjection = NormalizeProjectionAliases(cypher, projectionColumns);
-        cypher = normalizedProjection.Cypher;
-        var effectiveColumns = normalizedProjection.Columns.Count == 0 ? ["result"] : normalizedProjection.Columns;
-        var command = CreateCommand(cypher, parameters, effectiveColumns);
+        var (command, distinct) = PrepareCommand(cypher, parameters, projectionColumns, streaming: false);
         await using var commandLease = command.ConfigureAwait(false);
-        logger.LogDebug(
-            "Executing AGE Cypher query with {ParameterCount} parameters and {ColumnCount} projected columns: {Query}",
-            parameters.Count,
-            effectiveColumns.Count,
-            cypher);
 
         try
         {
@@ -125,25 +108,7 @@ internal sealed partial class AgeQueryRunner
         ArgumentNullException.ThrowIfNull(projectionColumns);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var temporalParameters = NormalizeTemporalParameterArithmetic(cypher, parameters);
-        cypher = temporalParameters.Cypher;
-        parameters = temporalParameters.Parameters;
-        if (projectionColumns.Count == 0)
-        {
-            projectionColumns = InferProjectionColumns(cypher);
-        }
-
-        var distinct = ReturnDistinctRegex().IsMatch(cypher);
-        cypher = ReturnDistinctRegex().Replace(cypher, "RETURN");
-        var normalizedProjection = NormalizeProjectionAliases(cypher, projectionColumns);
-        cypher = normalizedProjection.Cypher;
-        var effectiveColumns = normalizedProjection.Columns.Count == 0 ? ["result"] : normalizedProjection.Columns;
-        var command = CreateCommand(cypher, parameters, effectiveColumns);
-        logger.LogDebug(
-            "Streaming AGE Cypher query with {ParameterCount} parameters and {ColumnCount} projected columns: {Query}",
-            parameters.Count,
-            effectiveColumns.Count,
-            cypher);
+        var (command, distinct) = PrepareCommand(cypher, parameters, projectionColumns, streaming: true);
 
         try
         {
@@ -167,6 +132,36 @@ internal sealed partial class AgeQueryRunner
             await command.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+    }
+
+    private (NpgsqlCommand Command, bool Distinct) PrepareCommand(
+        string cypher,
+        IReadOnlyDictionary<string, object?> parameters,
+        IReadOnlyList<string> projectionColumns,
+        bool streaming)
+    {
+        var temporalParameters = NormalizeTemporalParameterArithmetic(cypher, parameters);
+        cypher = temporalParameters.Cypher;
+        parameters = temporalParameters.Parameters;
+        if (projectionColumns.Count == 0)
+        {
+            projectionColumns = InferProjectionColumns(cypher);
+        }
+
+        var distinct = ReturnDistinctRegex().IsMatch(cypher);
+        cypher = ReturnDistinctRegex().Replace(cypher, "RETURN");
+        var normalizedProjection = NormalizeProjectionAliases(cypher, projectionColumns);
+        cypher = normalizedProjection.Cypher;
+        var effectiveColumns = normalizedProjection.Columns.Count == 0 ? ["result"] : normalizedProjection.Columns;
+        var command = CreateCommand(cypher, parameters, effectiveColumns);
+        logger.LogDebug(
+            streaming
+                ? "Streaming AGE Cypher query with {ParameterCount} parameters and {ColumnCount} projected columns: {Query}"
+                : "Executing AGE Cypher query with {ParameterCount} parameters and {ColumnCount} projected columns: {Query}",
+            parameters.Count,
+            effectiveColumns.Count,
+            cypher);
+        return (command, distinct);
     }
 
     /// <summary>
@@ -958,7 +953,7 @@ internal sealed class AgeResultCursor : IAsyncDisposable
         {
             while (await FetchAsync(cancellationToken).ConfigureAwait(false))
             {
-                _ = Current;
+                // Drain the remaining records so the source is fully consumed.
             }
         }
         finally

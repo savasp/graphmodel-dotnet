@@ -5,6 +5,7 @@ namespace Cvoya.Graph.Querying.Linq;
 
 using System.Collections;
 using System.Linq.Expressions;
+
 internal sealed class GraphNodeQueryable<TNode> :
     GraphQueryableBase<TNode>,
     IGraphQueryable<TNode>,

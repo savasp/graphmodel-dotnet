@@ -4,6 +4,7 @@
 namespace Cvoya.Graph.Querying.Linq;
 
 using System.Linq.Expressions;
+
 internal sealed class GraphQueryable<T> : GraphQueryableBase<T>, IGraphQueryable<T>, IOrderedGraphQueryable<T>
 {
     public GraphQueryable(IStreamingGraphQueryProvider provider, Expression expression)
