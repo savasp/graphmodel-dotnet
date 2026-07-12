@@ -951,8 +951,6 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeDuplicateRelationshipAttributeLabels(SymbolAnalysisContext context, INamedTypeSymbol namedType)
     {
-        var helper = new AnalyzerHelper(context.Compilation);
-
         // Collect all types in the compilation that implement IRelationship
         var allRelationshipTypes = context.Compilation.GetSymbolsWithName(_ => true, SymbolFilter.Type)
             .OfType<INamedTypeSymbol>()
@@ -1139,8 +1137,6 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeDuplicateNodeAttributeLabels(SymbolAnalysisContext context, INamedTypeSymbol namedType)
     {
-        var helper = new AnalyzerHelper(context.Compilation);
-
         // Collect all types in the compilation that implement INode
         var allNodeTypes = context.Compilation.GetSymbolsWithName(_ => true, SymbolFilter.Type)
             .OfType<INamedTypeSymbol>()
