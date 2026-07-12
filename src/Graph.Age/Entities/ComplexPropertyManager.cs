@@ -37,9 +37,8 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         EntityInfo entity,
         CancellationToken cancellationToken = default)
     {
-        // Breadth-first: collect all value nodes of one nesting level, then create them level by
-        // level so each child is created under the element id its parent received at the previous
-        // level. Creation is currently one statement per node (UNWIND batching is #266).
+        // Breadth-first: create all value nodes of one nesting level with a single UNWIND
+        // statement, instead of one statement per node.
         var currentLevel = new List<(string ParentElementId, EntityInfo Entity)> { (parentId, entity) };
 
         for (var depth = 0; currentLevel.Count > 0; depth++)
@@ -132,7 +131,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
     }
 
     /// <summary>
-    /// Creates every pending value node of one nesting level, one statement per node, and returns
+    /// Creates every pending value node of one nesting level with one UNWIND statement and returns
     /// the created nodes paired with their entities so the next level can be created under them.
     /// </summary>
     private async Task<List<(string ParentElementId, EntityInfo Entity)>> CreateLevelAsync(
@@ -142,39 +141,94 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
     {
         var nextLevel = new List<(string ParentElementId, EntityInfo Entity)>(pending.Count);
 
-        foreach (var node in pending)
+        if (pending.Count == 0)
         {
-            var parameters = new Dictionary<string, object?>
-            {
-                ["parentId"] = node.ParentElementId,
-            };
-            var nodeSet = AgeCypherProperties.BuildSetClause("complex", node.NodeProperties, parameters, "nodeProperty");
-            var relationshipSet = AgeCypherProperties.BuildSetClause(
-                "r",
-                node.RelationshipProperties,
-                parameters,
-                "relationshipProperty");
-
-            var cypher = @$"
-                MATCH (parent)
-                WHERE id(parent) = toInteger($parentId)
-                CREATE (parent)-[r:{SerializationBridge.PhysicalRelationshipType}]->(complex:{SerializationBridge.PhysicalNodeLabel})
-                {relationshipSet}
-                {nodeSet}
-                RETURN id(complex) AS nodeId";
-
-            var result = await transaction.RunAsync(cypher, parameters, cancellationToken).ConfigureAwait(false);
-            var record = await result.SingleAsync(cancellationToken).ConfigureAwait(false);
-            var complexNodeId = record["nodeId"].As<string>()
-                ?? throw new GraphException("Failed to create complex property node");
-            nextLevel.Add((complexNodeId, node.Entity));
-
-            logger.LogDebug(
-                "Created complex property node of type {RelationshipType} to {Label}",
-                node.RelationshipType, node.Entity.Label);
+            return nextLevel;
         }
 
+        var nodePropertyNames = pending
+            .SelectMany(node => node.NodeProperties.Keys)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var relationshipPropertyNames = pending
+            .SelectMany(node => node.RelationshipProperties.Keys)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var rows = pending.Select((node, rowId) => new Dictionary<string, object?>
+        {
+            ["rowId"] = rowId,
+            ["parentId"] = node.ParentElementId,
+            ["nodeProperties"] = ExpandProperties(node.NodeProperties, nodePropertyNames),
+            ["relationshipProperties"] = ExpandProperties(
+                node.RelationshipProperties,
+                relationshipPropertyNames),
+        }).ToList();
+
+        var nodeSet = BuildSetClauseFromRowMap("complex", "row.nodeProperties", nodePropertyNames);
+        var relationshipSet = BuildSetClauseFromRowMap(
+            "r",
+            "row.relationshipProperties",
+            relationshipPropertyNames);
+
+        var cypher = @$"
+            UNWIND $rows AS row
+            MATCH (parent)
+            WHERE id(parent) = toInteger(row.parentId)
+            CREATE (parent)-[r:{SerializationBridge.PhysicalRelationshipType}]->(complex:{SerializationBridge.PhysicalNodeLabel})
+            {relationshipSet}
+            {nodeSet}
+            RETURN row.rowId AS rowId, id(complex) AS nodeId";
+
+        var result = await transaction.RunAsync(
+            cypher,
+            new Dictionary<string, object?> { ["rows"] = rows },
+            cancellationToken).ConfigureAwait(false);
+        var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        if (records.Count != pending.Count)
+        {
+            throw new GraphException("Failed to create complex property node");
+        }
+
+        foreach (var record in records)
+        {
+            var rowId = record["rowId"].As<int>();
+            var complexNodeId = record["nodeId"].As<string>()
+                ?? throw new GraphException("Failed to create complex property node");
+            nextLevel.Add((complexNodeId, pending[rowId].Entity));
+        }
+
+        logger.LogDebug(
+            "Created {Count} complex property node(s) across {RelationshipTypeCount} semantic relationship type(s)",
+            pending.Count,
+            pending.Select(node => node.RelationshipType).Distinct(StringComparer.Ordinal).Count());
+
         return nextLevel;
+    }
+
+    private static Dictionary<string, object?> ExpandProperties(
+        IReadOnlyDictionary<string, object?> properties,
+        IReadOnlyList<string> propertyNames)
+    {
+        return propertyNames.ToDictionary(
+            propertyName => propertyName,
+            propertyName => properties.TryGetValue(propertyName, out var value) ? value : null,
+            StringComparer.Ordinal);
+    }
+
+    private static string BuildSetClauseFromRowMap(
+        string alias,
+        string rowMap,
+        IReadOnlyList<string> propertyNames)
+    {
+        var assignments = propertyNames.Select(propertyName =>
+        {
+            var escapedPropertyName = CypherIdentifier.Escape(propertyName, "property name");
+            return $"{alias}.{escapedPropertyName} = {rowMap}.{escapedPropertyName}";
+        });
+
+        return $"SET {string.Join(", ", assignments)}";
     }
 
     public async Task UpdateComplexPropertiesAsync(
