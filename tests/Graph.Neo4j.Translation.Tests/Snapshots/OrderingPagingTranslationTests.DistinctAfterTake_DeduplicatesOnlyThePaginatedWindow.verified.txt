@@ -1,0 +1,9 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WITH *
+LIMIT 5
+WITH DISTINCT src.LastName AS __value0
+RETURN __value0
+
+== Parameters ==
+(none)

@@ -34,7 +34,8 @@ public class GraphQueryModelBuilderTests
             ordering => Assert.True(ordering.Descending));
         Assert.Equal(2, model.Paging.Skip);
         Assert.Equal(5, model.Paging.Take);
-        Assert.True(model.Distinct);
+        Assert.False(model.Distinct);
+        Assert.True(Assert.IsType<PostPagingStage>(model.PostPaging).Distinct);
         Assert.Equal(TerminalOperation.ToListOrArray, model.Terminal);
 
         GraphQueryModelValidator.Validate(model);
@@ -403,6 +404,49 @@ public class GraphQueryModelBuilderTests
         var model = GraphQueryModelBuilder.Build(query.Expression);
 
         Assert.Equal(3, model.Paging.Skip);
+    }
+
+    [Fact]
+    public void WhereAfterTake_ProducesPostPagingStage()
+    {
+        var query = Root<Person>().Take(2).Where(person => person.Age > 21);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Empty(model.Predicates);
+        Assert.Equal(2, model.Paging.Take);
+        Assert.Single(Assert.IsType<PostPagingStage>(model.PostPaging).Predicates);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void OrderByAndDistinctAfterTake_StayInPostPagingStage()
+    {
+        var query = Root<Person>().Take(2).Distinct().OrderBy(person => person.Age);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var postPaging = Assert.IsType<PostPagingStage>(model.PostPaging);
+        Assert.True(postPaging.Distinct);
+        Assert.Single(postPaging.Ordering);
+        Assert.False(model.Distinct);
+        Assert.Empty(model.Ordering);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void ThirdSequenceStage_ThrowsInsteadOfFlattening()
+    {
+        var query = Root<Person>()
+            .Take(5)
+            .Where(person => person.Age > 21)
+            .Skip(1)
+            .Where(person => person.Age < 65);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(
+            () => GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("third sequence stage", exception.Message);
     }
 
     [Fact]

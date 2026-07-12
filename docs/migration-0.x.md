@@ -465,6 +465,22 @@ Use the equivalent relationship pattern (`MATCH ()-[r:`RELATIONSHIP_TYPE`]->()`)
 with `r` for renamed relationship properties. Rebuild indexes after migrating so their property
 keys also use the configured labels.
 
+## 22. Paged filters and string overload arguments are no longer silently reordered or ignored
+
+LINQ sequence operators that follow `Skip` or `Take` now run against that paged window. For
+example, `query.Take(5).Where(predicate)` first selects five rows and then filters those rows;
+earlier versions moved the predicate before `Take` and could return a different result set.
+`OrderBy` and `Distinct` after paging preserve the same boundary. Custom providers consuming
+`GraphQueryModel` should apply its optional `PostPaging` stage after the primary `Paging` window.
+
+String-method overload arguments are also preserved. `Contains`, `StartsWith`, and `EndsWith`
+support `StringComparison.Ordinal` and `StringComparison.OrdinalIgnoreCase`; ordinal `Replace`
+remains supported. Culture-sensitive comparisons and casing, non-ordinal comparison-aware
+`Replace`, and custom-character `Trim`/`TrimStart`/`TrimEnd` overloads now throw
+`GraphQueryTranslationException` because Cypher cannot represent their .NET semantics faithfully.
+Queries that appeared to use those overloads previously had their extra arguments silently
+discarded and should be rewritten to a supported ordinal comparison or evaluated client-side.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

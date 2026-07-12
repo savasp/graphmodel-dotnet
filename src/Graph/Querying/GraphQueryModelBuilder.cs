@@ -23,8 +23,10 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     ];
 
     private readonly List<PredicateFragment> _predicates = [];
+    private readonly List<PredicateFragment> _postPagingPredicates = [];
     private readonly List<TraversalStep> _traversal = [];
     private readonly List<OrderingKey> _ordering = [];
+    private readonly List<OrderingKey> _postPagingOrdering = [];
     private readonly HashSet<string> _complexNavigationPaths = new(StringComparer.Ordinal);
     private QueryRoot? _root;
     private ProjectionShape? _projection;
@@ -41,6 +43,10 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     private string? _currentAlias;
     private int? _skip;
     private int? _take;
+    private int? _postPagingSkip;
+    private int? _postPagingTake;
+    private bool _postPagingDistinct;
+    private bool _hasPostPagingStage;
     private bool _isGraphPathResult;
     private int _explicitTraversalCount;
     private int _lastExplicitTraversalIndex = -1;
@@ -85,7 +91,14 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
             builder._searchFilter,
             builder._groupBy,
             builder._selectMany,
-            builder._union);
+            builder._union,
+            builder._hasPostPagingStage
+                ? new PostPagingStage(
+                    builder._postPagingPredicates,
+                    builder._postPagingOrdering,
+                    new Paging(builder._postPagingSkip, builder._postPagingTake),
+                    builder._postPagingDistinct)
+                : null);
     }
 
     /// <inheritdoc/>
@@ -110,6 +123,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         {
             case LinqOperator.Where:
                 ThrowIfPathPredicateAfterProjectionOrPaging();
+                BeginPostPagingStageIfNeeded(node.Method.Name);
                 AddPredicate(node, "Where");
                 break;
             case LinqOperator.Select:
@@ -117,10 +131,12 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                 break;
             case LinqOperator.OrderBy:
             case LinqOperator.ThenBy:
+                BeginPostPagingStageIfNeeded(node.Method.Name);
                 AddOrdering(node, descending: false);
                 break;
             case LinqOperator.OrderByDescending:
             case LinqOperator.ThenByDescending:
+                BeginPostPagingStageIfNeeded(node.Method.Name);
                 AddOrdering(node, descending: true);
                 break;
             case LinqOperator.Take:
@@ -130,7 +146,15 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                 ComposeSkip(EvaluateArgument<int>(node, 1, "Skip count"));
                 break;
             case LinqOperator.Distinct:
-                _distinct = true;
+                BeginPostPagingStageIfNeeded(node.Method.Name);
+                if (_hasPostPagingStage)
+                {
+                    _postPagingDistinct = true;
+                }
+                else
+                {
+                    _distinct = true;
+                }
                 break;
             case LinqOperator.ToListOrArray:
                 _terminal = TerminalOperation.ToListOrArray;
@@ -281,7 +305,15 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         RejectIndexedLambda(node, lambda, operatorName);
         WidenRootScope(lambda);
         AddComplexPropertyTraversals(lambda);
-        _predicates.Add(new PredicateFragment(lambda, _currentAlias));
+        var predicate = new PredicateFragment(lambda, _currentAlias);
+        if (_hasPostPagingStage)
+        {
+            _postPagingPredicates.Add(predicate);
+        }
+        else
+        {
+            _predicates.Add(predicate);
+        }
     }
 
     private void WidenRootScope(LambdaExpression lambda)
@@ -371,7 +403,15 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     {
         var selector = RequireLambda(node, 1, "ordering");
         AddComplexPropertyTraversals(selector);
-        _ordering.Add(new OrderingKey(selector, descending, _currentAlias));
+        var ordering = new OrderingKey(selector, descending, _currentAlias);
+        if (_hasPostPagingStage)
+        {
+            _postPagingOrdering.Add(ordering);
+        }
+        else
+        {
+            _ordering.Add(ordering);
+        }
     }
 
     private sealed class ParameterReplacementVisitor(
@@ -677,7 +717,8 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
             inner.Projection is not null || inner.Paging.Skip is not null || inner.Paging.Take is not null ||
             inner.Distinct || inner.Join is not null || inner.SearchFilter is not null ||
             inner.PathShape is not null || inner.GroupBy is not null || inner.SelectMany is not null ||
-            inner.Union is not null || inner.Terminal != TerminalOperation.ToListOrArray)
+            inner.Union is not null || inner.PostPaging is not null ||
+            inner.Terminal != TerminalOperation.ToListOrArray)
         {
             throw Unsupported(
                 node,
@@ -707,7 +748,14 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     private void ComposeTake(int take)
     {
         take = Math.Max(take, 0);
-        _take = _take is { } existing ? Math.Min(existing, take) : take;
+        if (_hasPostPagingStage)
+        {
+            _postPagingTake = _postPagingTake is { } existing ? Math.Min(existing, take) : take;
+        }
+        else
+        {
+            _take = _take is { } existing ? Math.Min(existing, take) : take;
+        }
     }
 
     /// <summary>
@@ -718,11 +766,44 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     private void ComposeSkip(int skip)
     {
         skip = Math.Max(skip, 0);
+        if (_hasPostPagingStage)
+        {
+            _postPagingSkip = (_postPagingSkip ?? 0) + skip;
+            if (_postPagingTake is { } postPagingBounded)
+            {
+                _postPagingTake = Math.Max(postPagingBounded - skip, 0);
+            }
+
+            return;
+        }
+
         _skip = (_skip ?? 0) + skip;
         if (_take is { } bounded)
         {
             _take = Math.Max(bounded - skip, 0);
         }
+    }
+
+    /// <summary>
+    /// Starts the continuation stage when a sequence operator follows primary paging. A second
+    /// paging boundary followed by more operators would require another continuation stage; reject
+    /// that uncommon shape clearly instead of flattening it into the wrong order.
+    /// </summary>
+    private void BeginPostPagingStageIfNeeded(string operatorName)
+    {
+        if (_hasPostPagingStage)
+        {
+            if (_postPagingSkip is not null || _postPagingTake is not null)
+            {
+                throw new GraphQueryTranslationException(
+                    $"'.{operatorName}(...)' follows a second paging window. Materialize the query after that " +
+                    "Skip/Take and continue with LINQ-to-Objects; flattening a third sequence stage would change operator order.");
+            }
+
+            return;
+        }
+
+        _hasPostPagingStage = _skip is not null || _take is not null;
     }
 
     /// <summary>

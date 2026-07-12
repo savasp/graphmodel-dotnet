@@ -23,6 +23,48 @@ public interface IAdvancedQueryTests : IGraphTest
     }
 
     [Fact]
+    public async Task CanQueryWithOrdinalIgnoreCaseStringComparisons()
+    {
+        await this.Graph.CreateNodeAsync(
+            new Person { FirstName = "AlphaBeta", LastName = "StringComparison" },
+            null,
+            TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(
+            new Person { FirstName = "Gamma", LastName = "StringComparison" },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var matches = await this.Graph.Nodes<Person>()
+            .Where(person =>
+                person.LastName == "StringComparison" &&
+                person.FirstName.Contains("HAB", StringComparison.OrdinalIgnoreCase) &&
+                person.FirstName.StartsWith("alpha", StringComparison.OrdinalIgnoreCase) &&
+                person.FirstName.EndsWith("BETA", StringComparison.OrdinalIgnoreCase))
+            .Select(person => person.FirstName)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(matches);
+        Assert.Equal("AlphaBeta", matches[0]);
+    }
+
+    [Fact]
+    public async Task CanProjectWithOrdinalStringComparisonReplace()
+    {
+        await this.Graph.CreateNodeAsync(
+            new Person { FirstName = "AlphaALPHA", LastName = "OrdinalReplace" },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var values = await this.Graph.Nodes<Person>()
+            .Where(person => person.LastName == "OrdinalReplace")
+            .Select(person => person.FirstName.Replace("Alpha", "x", StringComparison.Ordinal))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(values);
+        Assert.Equal("xALPHA", values[0]);
+    }
+
+    [Fact]
     public async Task CanQueryWithOrderByAndTake()
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Zed", LastName = "Alpha" }, null, TestContext.Current.CancellationToken);
