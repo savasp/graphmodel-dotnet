@@ -38,14 +38,14 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
     [Fact]
     public Task StringToLower()
     {
-        var query = Root.Nodes<Person>().Where(p => p.FirstName.ToLower() == "alice");
+        var query = Root.Nodes<Person>().Where(p => p.FirstName.ToLowerInvariant() == "alice");
         return VerifyTranslation(query);
     }
 
     [Fact]
     public Task StringToUpper()
     {
-        var query = Root.Nodes<Person>().Where(p => p.FirstName.ToUpper() == "ALICE");
+        var query = Root.Nodes<Person>().Where(p => p.FirstName.ToUpperInvariant() == "ALICE");
         return VerifyTranslation(query);
     }
 

@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Analyzers.Tests;
 
+using System.Globalization;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
@@ -61,9 +62,9 @@ public class DiagnosticDescriptorMetadataTests
 
         foreach (var (fieldName, descriptor) in AllDescriptors())
         {
-            Check(failures, fieldName, descriptor, "Title", descriptor.Title.ToString());
-            Check(failures, fieldName, descriptor, "MessageFormat", descriptor.MessageFormat.ToString());
-            Check(failures, fieldName, descriptor, "Description", descriptor.Description.ToString());
+            Check(failures, fieldName, descriptor, "Title", descriptor.Title.ToString(CultureInfo.InvariantCulture));
+            Check(failures, fieldName, descriptor, "MessageFormat", descriptor.MessageFormat.ToString(CultureInfo.InvariantCulture));
+            Check(failures, fieldName, descriptor, "Description", descriptor.Description.ToString(CultureInfo.InvariantCulture));
         }
 
         if (failures.Count > 0)

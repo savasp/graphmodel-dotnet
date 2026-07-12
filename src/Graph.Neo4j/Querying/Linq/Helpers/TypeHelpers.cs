@@ -57,7 +57,7 @@ internal static class TypeHelpers
         return type.IsClass
             && type.IsSealed
             && type.IsNotPublic
-            && (string.IsNullOrEmpty(type.Namespace) || type.Namespace.StartsWith("<>"))
+            && (string.IsNullOrEmpty(type.Namespace) || type.Namespace.StartsWith("<>", StringComparison.Ordinal))
             && type.GetCustomAttributes(typeof(CompilerGeneratedAttribute), false).Length > 0
             && type.Name.Contains("AnonymousType");
     }

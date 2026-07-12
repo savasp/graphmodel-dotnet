@@ -6,6 +6,7 @@ namespace Cvoya.Graph.Serialization;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -484,13 +485,13 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         var underlyingType = Nullable.GetUnderlyingType(targetType);
         if (underlyingType != null)
         {
-            return Convert.ChangeType(value, underlyingType);
+            return Convert.ChangeType(value, underlyingType, CultureInfo.InvariantCulture);
         }
 
         // Handle basic type conversions
         try
         {
-            return Convert.ChangeType(value, targetType);
+            return Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture);
         }
         catch
         {

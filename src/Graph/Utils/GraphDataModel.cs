@@ -360,8 +360,8 @@ public static class GraphDataModel
         }
 
         // Skip system types that we know don't have cycles
-        if (type.Namespace?.StartsWith("System") == true &&
-            !type.Namespace.StartsWith("System.Collections"))
+        if (type.Namespace?.StartsWith("System", StringComparison.Ordinal) == true &&
+            !type.Namespace.StartsWith("System.Collections", StringComparison.Ordinal))
         {
             return false;
         }

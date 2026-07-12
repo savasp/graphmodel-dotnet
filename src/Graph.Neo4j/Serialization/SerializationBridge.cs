@@ -104,30 +104,30 @@ internal static class SerializationBridge
         return underlyingType switch
         {
             _ when underlyingType == typeof(string) => value.ToString(),
-            _ when underlyingType == typeof(char) => Convert.ToChar(value),
+            _ when underlyingType == typeof(char) => Convert.ToChar(value, CultureInfo.InvariantCulture),
             _ when underlyingType.IsEnum => ConvertToEnum(value, underlyingType),
 
             // Cvoya.Graph types
             _ when underlyingType == typeof(Graph.Point) => ConvertToPoint(value),
 
             // Numeric conversions
-            _ when underlyingType == typeof(sbyte) => Convert.ToSByte(value),
-            _ when underlyingType == typeof(byte) => Convert.ToByte(value),
-            _ when underlyingType == typeof(short) => Convert.ToInt16(value),
-            _ when underlyingType == typeof(ushort) => Convert.ToUInt16(value),
-            _ when underlyingType == typeof(int) => Convert.ToInt32(value),
-            _ when underlyingType == typeof(uint) => Convert.ToUInt32(value),
-            _ when underlyingType == typeof(long) => Convert.ToInt64(value),
-            _ when underlyingType == typeof(ulong) => Convert.ToUInt64(value),
-            _ when underlyingType == typeof(float) => Convert.ToSingle(value),
-            _ when underlyingType == typeof(double) => Convert.ToDouble(value),
-            _ when underlyingType == typeof(decimal) => Convert.ToDecimal(value),
+            _ when underlyingType == typeof(sbyte) => Convert.ToSByte(value, CultureInfo.InvariantCulture),
+            _ when underlyingType == typeof(byte) => Convert.ToByte(value, CultureInfo.InvariantCulture),
+            _ when underlyingType == typeof(short) => Convert.ToInt16(value, CultureInfo.InvariantCulture),
+            _ when underlyingType == typeof(ushort) => Convert.ToUInt16(value, CultureInfo.InvariantCulture),
+            _ when underlyingType == typeof(int) => Convert.ToInt32(value, CultureInfo.InvariantCulture),
+            _ when underlyingType == typeof(uint) => Convert.ToUInt32(value, CultureInfo.InvariantCulture),
+            _ when underlyingType == typeof(long) => Convert.ToInt64(value, CultureInfo.InvariantCulture),
+            _ when underlyingType == typeof(ulong) => Convert.ToUInt64(value, CultureInfo.InvariantCulture),
+            _ when underlyingType == typeof(float) => Convert.ToSingle(value, CultureInfo.InvariantCulture),
+            _ when underlyingType == typeof(double) => Convert.ToDouble(value, CultureInfo.InvariantCulture),
+            _ when underlyingType == typeof(decimal) => Convert.ToDecimal(value, CultureInfo.InvariantCulture),
 
             // Temporal conversions
             _ when underlyingType == typeof(DateTime) => ConvertToDateTime(value),
             _ when underlyingType == typeof(DateTimeOffset) => ConvertToDateTimeOffset(value),
             _ when underlyingType == typeof(DateOnly) => DateOnly.FromDateTime(ConvertToDateTime(value)),
-            _ when underlyingType == typeof(TimeOnly) => new TimeOnly(Convert.ToInt64(value)),
+            _ when underlyingType == typeof(TimeOnly) => new TimeOnly(Convert.ToInt64(value, CultureInfo.InvariantCulture)),
             _ when underlyingType == typeof(TimeSpan) => ConvertToTimeSpan(value),
 
             // Other conversions
@@ -216,7 +216,7 @@ internal static class SerializationBridge
             ZonedDateTime zdt => ConvertZonedDateTimeToDateTime(zdt),
             LocalDateTime ldt => ldt.ToDateTime(),
             string s => DateTime.Parse(s, CultureInfo.InvariantCulture),
-            _ => Convert.ToDateTime(value)
+            _ => Convert.ToDateTime(value, CultureInfo.InvariantCulture)
         };
     }
 
@@ -228,7 +228,7 @@ internal static class SerializationBridge
             DateTime dt => new DateTimeOffset(dt),
             ZonedDateTime zdt => ConvertZonedDateTimeToDateTimeOffset(zdt),
             string s => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture),
-            _ => new DateTimeOffset(Convert.ToDateTime(value))
+            _ => new DateTimeOffset(Convert.ToDateTime(value, CultureInfo.InvariantCulture))
         };
     }
 
@@ -240,7 +240,7 @@ internal static class SerializationBridge
             double ms => TimeSpan.FromMilliseconds(ms),
             long ms => TimeSpan.FromMilliseconds(ms),
             string s => TimeSpan.Parse(s, CultureInfo.InvariantCulture),
-            _ => TimeSpan.FromMilliseconds(Convert.ToDouble(value))
+            _ => TimeSpan.FromMilliseconds(Convert.ToDouble(value, CultureInfo.InvariantCulture))
         };
     }
 
@@ -321,7 +321,7 @@ internal static class SerializationBridge
 
         foreach (DictionaryEntry entry in sourceDict)
         {
-            var key = Convert.ChangeType(entry.Key, keyType);
+            var key = Convert.ChangeType(entry.Key, keyType, CultureInfo.InvariantCulture);
             var val = FromNeo4jValue(entry.Value, valueType);
             dict.Add(key, val);
         }

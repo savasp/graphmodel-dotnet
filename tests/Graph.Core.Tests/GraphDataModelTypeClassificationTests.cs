@@ -5,6 +5,7 @@ namespace Cvoya.Graph.Core.Tests;
 
 using System.Collections;
 using System.Collections.ObjectModel;
+using System.Globalization;
 
 
 [Trait("Area", "GraphDataModel")]
@@ -237,7 +238,7 @@ public class GraphDataModelTypeClassificationTests
         allowed.EnsureComplexPropertyDepth();
         var exception = Assert.Throws<GraphException>(() => tooDeep.EnsureComplexPropertyDepth());
 
-        Assert.Contains(GraphDataModel.DefaultDepthAllowed.ToString(), exception.Message, StringComparison.Ordinal);
+        Assert.Contains(GraphDataModel.DefaultDepthAllowed.ToString(CultureInfo.InvariantCulture), exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -249,7 +250,7 @@ public class GraphDataModelTypeClassificationTests
         allowed.EnsureComplexPropertyDepth();
         var exception = Assert.Throws<GraphException>(() => tooDeep.EnsureComplexPropertyDepth());
 
-        Assert.Contains(GraphDataModel.DefaultDepthAllowed.ToString(), exception.Message, StringComparison.Ordinal);
+        Assert.Contains(GraphDataModel.DefaultDepthAllowed.ToString(CultureInfo.InvariantCulture), exception.Message, StringComparison.Ordinal);
     }
 
     private static DepthValue CreateChain(int depth)

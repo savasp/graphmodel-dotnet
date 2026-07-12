@@ -149,7 +149,7 @@ try
 
     foreach (var person1 in allPeople)
     {
-        foreach (var person2 in allPeople.Where(p => p.Id != person1.Id && string.Compare(p.Id, person1.Id) > 0))
+        foreach (var person2 in allPeople.Where(p => p.Id != person1.Id && string.Compare(p.Id, person1.Id, StringComparison.Ordinal) > 0))
         {
             // Get people that person1 knows
             var person1Knows = await graph.Nodes<Person>()
@@ -232,7 +232,7 @@ try
 
     foreach (var person1 in allPeople)
     {
-        foreach (var person2 in allPeople.Where(p => string.Compare(p.Id, person1.Id) > 0))
+        foreach (var person2 in allPeople.Where(p => string.Compare(p.Id, person1.Id, StringComparison.Ordinal) > 0))
         {
             if (connectionsByPerson.TryGetValue(person1.Id, out var p1Connections) &&
                 connectionsByPerson.TryGetValue(person2.Id, out var p2Connections))

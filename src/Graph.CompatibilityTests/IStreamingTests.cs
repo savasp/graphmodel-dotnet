@@ -3,6 +3,8 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
+using System.Globalization;
+
 public interface IStreamingTests : IGraphTest
 {
     [Fact]
@@ -13,7 +15,7 @@ public interface IStreamingTests : IGraphTest
         for (var i = 0; i < 5; i++)
         {
             await Graph.CreateNodeAsync(
-                new Person { FirstName = marker, LastName = i.ToString() },
+                new Person { FirstName = marker, LastName = i.ToString(CultureInfo.InvariantCulture) },
                 null,
                 TestContext.Current.CancellationToken);
         }
@@ -46,7 +48,7 @@ public interface IStreamingTests : IGraphTest
         for (var i = 0; i < 5; i++)
         {
             await Graph.CreateNodeAsync(
-                new Person { FirstName = marker, LastName = i.ToString() },
+                new Person { FirstName = marker, LastName = i.ToString(CultureInfo.InvariantCulture) },
                 null,
                 TestContext.Current.CancellationToken);
         }
