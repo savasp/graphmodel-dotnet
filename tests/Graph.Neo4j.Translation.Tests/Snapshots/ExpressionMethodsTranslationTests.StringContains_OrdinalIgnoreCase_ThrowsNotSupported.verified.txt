@@ -1,0 +1,1 @@
+Cvoya.Graph.GraphQueryTranslationException: Cannot lower expression 'p.FirstName.Contains("ς", OrdinalIgnoreCase)': StringComparison.OrdinalIgnoreCase cannot be represented faithfully in Cypher; only StringComparison.Ordinal is supported.

@@ -23,6 +23,23 @@ public interface IAdvancedQueryTests : IGraphTest
     }
 
     [Fact]
+    public async Task CanProjectWithOrdinalStringComparisonReplace()
+    {
+        await this.Graph.CreateNodeAsync(
+            new Person { FirstName = "AlphaALPHA", LastName = "OrdinalReplace" },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var values = await this.Graph.Nodes<Person>()
+            .Where(person => person.LastName == "OrdinalReplace")
+            .Select(person => person.FirstName.Replace("Alpha", "x", StringComparison.Ordinal))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(values);
+        Assert.Equal("xALPHA", values[0]);
+    }
+
+    [Fact]
     public async Task CanQueryWithOrderByAndTake()
     {
         await this.Graph.CreateNodeAsync(new Person { FirstName = "Zed", LastName = "Alpha" }, null, TestContext.Current.CancellationToken);

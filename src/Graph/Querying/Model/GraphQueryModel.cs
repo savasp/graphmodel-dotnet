@@ -157,6 +157,62 @@ public sealed record GraphQueryModel
         GroupByFragment? groupBy,
         SelectManyFragment? selectMany,
         UnionFragment? union)
+        : this(
+            root,
+            predicates,
+            traversal,
+            projection,
+            ordering,
+            paging,
+            terminal,
+            distinct,
+            terminalOperand,
+            pathShape,
+            join,
+            searchFilter,
+            groupBy,
+            selectMany,
+            union,
+            postPaging: null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a complete provider-independent query model with an optional post-paging stage.
+    /// </summary>
+    /// <param name="root">The query root.</param>
+    /// <param name="predicates">Predicates applied to the root scope.</param>
+    /// <param name="traversal">Traversal steps applied after root predicates.</param>
+    /// <param name="projection">The projection shape, or <see langword="null"/> for the current element.</param>
+    /// <param name="ordering">Ordering keys applied before primary paging.</param>
+    /// <param name="paging">The primary skip/take paging information.</param>
+    /// <param name="terminal">The terminal operation for the query.</param>
+    /// <param name="distinct">Whether the result is distinct before primary paging.</param>
+    /// <param name="terminalOperand">The operand carried by a terminal operation such as Contains or ElementAt.</param>
+    /// <param name="pathShape">Graph-path materialization metadata, when the query returns paths.</param>
+    /// <param name="join">The equijoin description, when present.</param>
+    /// <param name="searchFilter">A full-text search applied to the current query scope after traversal.</param>
+    /// <param name="groupBy">The grouping description, when present.</param>
+    /// <param name="selectMany">The flattening-projection description, when present.</param>
+    /// <param name="union">The set-union description, when present.</param>
+    /// <param name="postPaging">Sequence operations applied after primary paging, when present.</param>
+    public GraphQueryModel(
+        QueryRoot root,
+        IReadOnlyList<PredicateFragment> predicates,
+        IReadOnlyList<TraversalStep> traversal,
+        ProjectionShape? projection,
+        IReadOnlyList<OrderingKey> ordering,
+        Paging paging,
+        TerminalOperation terminal,
+        bool distinct,
+        object? terminalOperand,
+        QueryPathShape? pathShape,
+        JoinFragment? join,
+        SearchRoot? searchFilter,
+        GroupByFragment? groupBy,
+        SelectManyFragment? selectMany,
+        UnionFragment? union,
+        PostPagingStage? postPaging)
     {
         Root = root ?? throw new ArgumentNullException(nameof(root));
         Predicates = QueryModelGuard.CopyRequiredList(predicates, nameof(predicates));
@@ -174,6 +230,7 @@ public sealed record GraphQueryModel
         GroupBy = groupBy;
         SelectMany = selectMany;
         Union = union;
+        PostPaging = postPaging;
     }
 
     /// <summary>
@@ -197,12 +254,12 @@ public sealed record GraphQueryModel
     public ProjectionShape? Projection { get; }
 
     /// <summary>
-    /// Gets ordering keys applied to the current element.
+    /// Gets ordering keys applied before the primary paging window.
     /// </summary>
     public IReadOnlyList<OrderingKey> Ordering { get; }
 
     /// <summary>
-    /// Gets skip/take paging information.
+    /// Gets primary skip/take paging information.
     /// </summary>
     public Paging Paging { get; }
 
@@ -211,7 +268,7 @@ public sealed record GraphQueryModel
     /// </summary>
     public TerminalOperation Terminal { get; }
 
-    /// <summary>Gets a value indicating whether the result projection is distinct.</summary>
+    /// <summary>Gets a value indicating whether the result is distinct before primary paging.</summary>
     public bool Distinct { get; }
 
     /// <summary>Gets the operand carried by a terminal operation such as Contains.</summary>
@@ -234,4 +291,7 @@ public sealed record GraphQueryModel
 
     /// <summary>Gets the set-union description, when present.</summary>
     public UnionFragment? Union { get; }
+
+    /// <summary>Gets sequence operations applied after the primary paging window, when present.</summary>
+    public PostPagingStage? PostPaging { get; }
 }

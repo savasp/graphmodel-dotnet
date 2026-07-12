@@ -1,0 +1,1 @@
+Cvoya.Graph.GraphQueryTranslationException: Cannot lower expression 'p.FirstName.TrimEnd(A)': String method overload 'System.String TrimEnd(Char)' is not supported; its arguments cannot be represented faithfully in Cypher.

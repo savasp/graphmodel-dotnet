@@ -1,0 +1,23 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WITH *
+LIMIT 5
+WITH *
+ORDER BY src.Age
+OPTIONAL MATCH src_path = (src)-[rels*1..5]->(prop)
+WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)
+WITH src,
+    CASE WHEN src_path IS NULL THEN [] ELSE [i IN range(0, size(rels) - 1) | {
+        ParentNode: CASE WHEN i = 0 THEN src ELSE nodes(src_path)[i] END,
+        Relationship: rels[i],
+        SequenceNumber: rels[i].SequenceNumber,
+        Property: nodes(src_path)[i + 1]
+    }] END AS src_property_path
+WITH src, reduce(flat = [], path IN collect(src_property_path) | flat + path) AS src_properties
+RETURN {
+    Node: src,
+    ComplexProperties: src_properties
+} AS Node
+
+== Parameters ==
+(none)

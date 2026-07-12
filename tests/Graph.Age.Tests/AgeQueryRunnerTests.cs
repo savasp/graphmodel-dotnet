@@ -80,6 +80,60 @@ public sealed class AgeQueryRunnerTests
         Assert.Equal(timestamp.AddDays(-2), ((DateTimeOffset)result.Parameters["age_temporal_0"]!).UtcDateTime);
     }
 
+    [Fact]
+    public void NormalizeClauseOrder_PreservesPrimaryPagingAndMovesContinuationOrdering()
+    {
+        const string cypher = """
+            MATCH (src)
+            WITH *
+            ORDER BY src.Age
+            LIMIT 3
+            WITH *
+            WHERE src.Age >= 2
+            WITH *
+            ORDER BY src.Age DESC
+            RETURN src
+            """;
+
+        var normalized = AgeQueryRunner.NormalizeClauseOrder(cypher);
+
+        Assert.Equal(
+            """
+            MATCH (src)
+            WITH *
+            ORDER BY src.Age
+            LIMIT 3
+            WITH *
+            WHERE src.Age >= 2
+            WITH *
+            RETURN src
+            ORDER BY src.Age DESC
+            """,
+            normalized);
+    }
+
+    [Fact]
+    public void NormalizeClauseOrder_MovesOnlyUnscopedOrderingAndPaging()
+    {
+        const string cypher = """
+            MATCH (src)
+            ORDER BY src.Age
+            LIMIT 3
+            RETURN src
+            """;
+
+        var normalized = AgeQueryRunner.NormalizeClauseOrder(cypher);
+
+        Assert.Equal(
+            """
+            MATCH (src)
+            RETURN src
+            ORDER BY src.Age
+            LIMIT 3
+            """,
+            normalized);
+    }
+
     private static AgeRecord Record(params (string Key, object? Value)[] values) =>
         new(values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
 

@@ -264,12 +264,14 @@ internal sealed partial class AgeQueryRunner
         return value.Skip(1).All(character => char.IsAsciiLetterOrDigit(character) || character == '_');
     }
 
-    private static string NormalizeClauseOrder(string cypher)
+    internal static string NormalizeClauseOrder(string cypher)
     {
-        // The shared planner places paging immediately after the root MATCH to reduce work before
-        // its entity-projection expansion. AGE requires WITH between MATCH and
-        // LIMIT/SKIP. Moving paging after the final projection preserves the result semantics and
-        // keeps the executor adaptation local to the dialect that needs it.
+        // The shared planner ordinarily places paging immediately after the root MATCH to reduce
+        // work before its entity-projection expansion. AGE requires WITH between MATCH and
+        // LIMIT/SKIP, so unscoped paging moves after the final projection. The first paging window
+        // already attached to an explicit WITH must stay in place: that WITH is a semantic
+        // sequence-stage boundary. Ordering/paging on a later continuation stage can move to the
+        // end, after AGE's entity-projection expansion, without crossing that primary boundary.
         //
         // The exception is the TraversePaths decomposition shape ("WITH collect(p) AS __paths"):
         // there paging must stay ahead of the decomposition — it pages whole paths, and moving it
@@ -279,6 +281,9 @@ internal sealed partial class AgeQueryRunner
         var trailing = new List<string>();
         var retained = new List<string>();
         var offset = 0;
+        var hasActiveWith = false;
+        var currentWithStage = 0;
+        int? primaryPagingWithStage = null;
         foreach (var line in cypher.Split('\n'))
         {
             var beforePathCollect = pathCollectIndex >= 0 && offset < pathCollectIndex;
@@ -299,6 +304,18 @@ internal sealed partial class AgeQueryRunner
                         retained.Add($"WITH p {trimmed}");
                     }
                 }
+                else if (hasActiveWith)
+                {
+                    primaryPagingWithStage ??= currentWithStage;
+                    if (primaryPagingWithStage == currentWithStage)
+                    {
+                        retained.Add(line);
+                    }
+                    else
+                    {
+                        trailing.Add(trimmed);
+                    }
+                }
                 else
                 {
                     trailing.Add(trimmed);
@@ -306,11 +323,28 @@ internal sealed partial class AgeQueryRunner
             }
             else if (trimmed.StartsWith("ORDER BY ", StringComparison.OrdinalIgnoreCase))
             {
-                trailing.Add(RewriteEntityOrdering(trimmed));
+                if (hasActiveWith &&
+                    (primaryPagingWithStage is null || primaryPagingWithStage == currentWithStage))
+                {
+                    retained.Add(RewriteEntityOrdering(trimmed));
+                }
+                else
+                {
+                    trailing.Add(RewriteEntityOrdering(trimmed));
+                }
             }
             else
             {
                 retained.Add(line);
+                if (trimmed.StartsWith("WITH ", StringComparison.OrdinalIgnoreCase))
+                {
+                    hasActiveWith = true;
+                    currentWithStage++;
+                }
+                else if (StartsCypherClause(trimmed))
+                {
+                    hasActiveWith = false;
+                }
             }
         }
 
@@ -335,6 +369,14 @@ internal sealed partial class AgeQueryRunner
         }
         return NormalizeEntityProjection(reordered);
     }
+
+    private static bool StartsCypherClause(string value) =>
+        value.StartsWith("MATCH ", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("OPTIONAL MATCH ", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("WHERE ", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("RETURN ", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("UNWIND ", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("CALL ", StringComparison.OrdinalIgnoreCase);
 
     private static string RewriteEntityOrdering(string orderBy)
     {

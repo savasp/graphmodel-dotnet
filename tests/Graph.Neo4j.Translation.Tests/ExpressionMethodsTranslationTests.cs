@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Neo4j.Translation.Tests;
 
+using System.Globalization;
 using Cvoya.Graph.Neo4j.Translation.Tests.Harness;
 using Cvoya.Graph.Neo4j.Translation.Tests.Model;
 
@@ -37,6 +38,34 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
         var query = Root.Nodes<Person>().Where(p => p.FirstName.EndsWith("e"));
 #pragma warning restore CA1866
         return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task StringContains_Ordinal()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.FirstName.Contains("li", StringComparison.Ordinal));
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task StringContains_OrdinalIgnoreCase_ThrowsNotSupported()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.FirstName.Contains("ς", StringComparison.OrdinalIgnoreCase));
+        return VerifyTranslationThrows(query);
+    }
+
+    [Fact]
+    public Task StringStartsWith_OrdinalIgnoreCase_ThrowsNotSupported()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.FirstName.StartsWith("a", StringComparison.OrdinalIgnoreCase));
+        return VerifyTranslationThrows(query);
+    }
+
+    [Fact]
+    public Task StringEndsWith_OrdinalIgnoreCase_ThrowsNotSupported()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.FirstName.EndsWith("E", StringComparison.OrdinalIgnoreCase));
+        return VerifyTranslationThrows(query);
     }
 
     // The culture-sensitive ToLower()/ToUpper() calls below deliberately exercise the
@@ -77,6 +106,26 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task StringToLower_WithCulture_ThrowsNotSupported()
+    {
+#pragma warning disable CA1862 // Preserve the unsupported normalization overload under test.
+        var query = Root.Nodes<Person>().Where(
+            p => p.FirstName.ToLower(CultureInfo.GetCultureInfo("tr-TR")) == "alice");
+#pragma warning restore CA1862
+        return VerifyTranslationThrows(query);
+    }
+
+    [Fact]
+    public Task StringToUpper_WithCulture_ThrowsNotSupported()
+    {
+#pragma warning disable CA1862 // Preserve the unsupported normalization overload under test.
+        var query = Root.Nodes<Person>().Where(
+            p => p.FirstName.ToUpper(CultureInfo.GetCultureInfo("tr-TR")) == "ALICE");
+#pragma warning restore CA1862
+        return VerifyTranslationThrows(query);
+    }
+
+    [Fact]
     public Task StringSubstring_StartOnly()
     {
         var query = Root.Nodes<Person>().Select(p => p.FirstName.Substring(1));
@@ -95,6 +144,41 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
     {
         var query = Root.Nodes<Person>().Select(p => p.FirstName.Replace("a", "e"));
         return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task StringReplace_Ordinal()
+    {
+        var query = Root.Nodes<Person>().Select(p => p.FirstName.Replace("a", "e", StringComparison.Ordinal));
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task StringReplace_OrdinalIgnoreCase_ThrowsNotSupported()
+    {
+        var query = Root.Nodes<Person>().Select(p => p.FirstName.Replace("a", "e", StringComparison.OrdinalIgnoreCase));
+        return VerifyTranslationThrows(query);
+    }
+
+    [Fact]
+    public Task StringTrim_WithCharacters_ThrowsNotSupported()
+    {
+        var query = Root.Nodes<Person>().Select(p => p.FirstName.Trim('A'));
+        return VerifyTranslationThrows(query);
+    }
+
+    [Fact]
+    public Task StringTrimStart_WithCharacters_ThrowsNotSupported()
+    {
+        var query = Root.Nodes<Person>().Select(p => p.FirstName.TrimStart('A'));
+        return VerifyTranslationThrows(query);
+    }
+
+    [Fact]
+    public Task StringTrimEnd_WithCharacters_ThrowsNotSupported()
+    {
+        var query = Root.Nodes<Person>().Select(p => p.FirstName.TrimEnd('A'));
+        return VerifyTranslationThrows(query);
     }
 
     [Fact]

@@ -234,6 +234,15 @@ public class TerminalOperationsTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task TakeThenCount_WithPredicate_ThrowsInsteadOfReordering()
+    {
+        var source = Root.Nodes<Person>().OrderBy(p => p.Age).Take(3);
+        Expression<Func<Person, bool>> predicate = p => p.Age >= 3;
+        var expr = MarkerExpressions.Call<Person>("CountAsyncMarker", source.Expression, predicate);
+        return VerifyTranslationThrows(typeof(Person), expr);
+    }
+
+    [Fact]
     public Task LongCount_NoPredicate()
     {
         var source = Root.Nodes<Person>();

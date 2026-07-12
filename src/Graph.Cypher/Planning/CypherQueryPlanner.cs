@@ -77,6 +77,31 @@ public sealed class CypherQueryPlanner
         var projection = model.PathShape is null
             ? LowerProjection(model, state, lowerer)
             : null;
+        var postPagingLowerer = model.PostPaging is not null
+            ? new ExpressionToCypherAstLowerer(parameters, dialect)
+            : null;
+        var postPagingPredicates = model.PostPaging is { } postPaging
+            ? postPaging.Predicates
+                .Select(predicate => postPagingLowerer!.LowerLambda(
+                    RewriteLambdaAfterProjection(
+                        model.Projection?.Selector,
+                        predicate.Predicate,
+                        "post-paging predicate"),
+                    ResolveLambdaAlias(model, state, predicate.Alias)))
+                .ToArray()
+            : [];
+        var postPagingOrdering = model.PostPaging is { } postPagingOrderingStage
+            ? postPagingOrderingStage.Ordering
+                .Select(key => new OrderByItem(
+                    postPagingLowerer!.LowerLambda(
+                        RewriteLambdaAfterProjection(
+                            model.Projection?.Selector,
+                            key.KeySelector,
+                            "post-paging ordering key"),
+                        ResolveLambdaAlias(model, state, key.Alias)),
+                    key.Descending))
+                .ToArray()
+            : [];
 
         var clauses = new List<ICypherClause>();
         AddRootAndTraversalClauses(clauses, model, state);
@@ -102,7 +127,16 @@ public sealed class CypherQueryPlanner
         }
         else
         {
-            AddTerminalAndProjection(clauses, model, state, ordering, projection!, parameters);
+            AddTerminalAndProjection(
+                clauses,
+                model,
+                state,
+                ordering,
+                projection!,
+                parameters,
+                postPagingLowerer,
+                postPagingPredicates,
+                postPagingOrdering);
         }
 
         var pathTypes = model.PathShape is null ||
@@ -397,22 +431,28 @@ public sealed class CypherQueryPlanner
 
     private static LambdaExpression RewriteOrderingAfterProjection(
         LambdaExpression? projection,
-        LambdaExpression ordering)
+        LambdaExpression ordering) =>
+        RewriteLambdaAfterProjection(projection, ordering, "ordering key");
+
+    private static LambdaExpression RewriteLambdaAfterProjection(
+        LambdaExpression? projection,
+        LambdaExpression lambda,
+        string description)
     {
-        if (projection is null || ordering.Parameters.Count != 1 ||
-            ordering.Parameters[0].Type != projection.ReturnType)
+        if (projection is null || lambda.Parameters.Count != 1 ||
+            lambda.Parameters[0].Type != projection.ReturnType)
         {
-            return ordering;
+            return lambda;
         }
 
-        var orderingParameter = ordering.Parameters[0];
-        var body = new ProjectedValueRewriter(orderingParameter, projection.Body).Visit(ordering.Body)
-            ?? ordering.Body;
-        if (ReferencesParameter(body, orderingParameter))
+        var parameter = lambda.Parameters[0];
+        var body = new ProjectedValueRewriter(parameter, projection.Body).Visit(lambda.Body)
+            ?? lambda.Body;
+        if (ReferencesParameter(body, parameter))
         {
             throw new GraphQueryTranslationException(
-                "The ordering key cannot be mapped through the preceding Select projection; order before " +
-                "projecting, or project the ordering key explicitly.");
+                $"The {description} cannot be mapped through the preceding Select projection; apply it before " +
+                "projecting, or project every referenced value explicitly.");
         }
 
         return Expression.Lambda(body, projection.Parameters);
@@ -749,8 +789,24 @@ public sealed class CypherQueryPlanner
         PlanningState state,
         OrderByItem[] ordering,
         ProjectionPlan projection,
-        CypherParameterRegistry parameters)
+        CypherParameterRegistry parameters,
+        ExpressionToCypherAstLowerer? postPagingLowerer,
+        IReadOnlyList<CypherExpression> postPagingPredicates,
+        IReadOnlyList<OrderByItem> postPagingOrdering)
     {
+        if (model.PostPaging is not null)
+        {
+            AddPostPagingStageAndProjection(
+                clauses,
+                model,
+                ordering,
+                projection,
+                postPagingLowerer!,
+                postPagingPredicates,
+                postPagingOrdering);
+            return;
+        }
+
         var aggregate = model.Terminal is TerminalOperation.Count or TerminalOperation.Sum or
             TerminalOperation.Average or TerminalOperation.Min or TerminalOperation.Max;
         var paging = EffectivePaging(model);
@@ -829,6 +885,103 @@ public sealed class CypherQueryPlanner
         AddOrderingAndPaging(clauses, effectiveOrdering, paging, reverseOrdering);
         AddTerminalLimit(clauses, model, paging);
 
+        AddProjectionClause(clauses, model, projection, distinctApplied);
+    }
+
+    private static void AddPostPagingStageAndProjection(
+        List<ICypherClause> clauses,
+        GraphQueryModel model,
+        IReadOnlyList<OrderByItem> ordering,
+        ProjectionPlan projection,
+        ExpressionToCypherAstLowerer postPagingLowerer,
+        IReadOnlyList<CypherExpression> postPagingPredicates,
+        IReadOnlyList<OrderByItem> postPagingOrdering)
+    {
+        if (model.Terminal != TerminalOperation.ToListOrArray)
+        {
+            throw new GraphQueryTranslationException(
+                $"Terminal operation '{model.Terminal}' after a post-paging sequence stage is not supported yet; " +
+                "materialize the paged and filtered query before applying the terminal operation.");
+        }
+
+        if (model.Distinct && projection.Items is not null &&
+            (postPagingPredicates.Count > 0 || postPagingOrdering.Count > 0 ||
+             postPagingLowerer.NavigationMatches.Count > 0))
+        {
+            throw new GraphQueryTranslationException(
+                "Filtering or ordering after Distinct and paging a scalar projection is not supported yet; " +
+                "materialize the paged distinct values before continuing.");
+        }
+
+        var distinctApplied = false;
+        var effectiveOrdering = ordering;
+        if (model.Distinct)
+        {
+            (projection, effectiveOrdering) = AddDistinctProjection(
+                clauses,
+                projection,
+                ordering,
+                rejectMultiValueProjection: false);
+            distinctApplied = true;
+        }
+        else
+        {
+            // Primary paging must belong to a WITH pipeline so the following WHERE filters the
+            // paged rows instead of attaching to the root MATCH.
+            clauses.Add(WithClause.All);
+        }
+
+        AddOrderingAndPaging(clauses, effectiveOrdering, model.Paging, reverseOrdering: false);
+        var postPaging = model.PostPaging!;
+        if (!postPaging.Distinct || postPagingPredicates.Count > 0 ||
+            postPagingLowerer.NavigationMatches.Count > 0)
+        {
+            // A separate WITH makes the continuation a real row-pipeline stage for every Cypher
+            // dialect. Keeping WHERE on the primary WITH lets some implementations evaluate it
+            // before that WITH's ORDER BY/SKIP/LIMIT even though it renders textually afterward.
+            clauses.Add(WithClause.All);
+        }
+
+        if (postPagingLowerer.NavigationMatches.Count > 0)
+        {
+            clauses.AddRange(postPagingLowerer.NavigationMatches);
+        }
+
+        if (postPagingPredicates.Count > 0)
+        {
+            if (postPagingLowerer.NavigationMatches.Count > 0)
+            {
+                clauses.Add(WithClause.All);
+            }
+
+            clauses.Add(new WhereClause(postPagingPredicates.Count == 1
+                ? postPagingPredicates[0]
+                : new ConjunctionExpression(postPagingPredicates)));
+        }
+
+        var effectivePostPagingOrdering = postPagingOrdering;
+        if (postPaging.Distinct)
+        {
+            (projection, effectivePostPagingOrdering) = AddDistinctProjection(
+                clauses,
+                projection,
+                postPagingOrdering,
+                rejectMultiValueProjection: false);
+            distinctApplied = true;
+        }
+        else if ((postPagingPredicates.Count > 0 || postPagingLowerer.NavigationMatches.Count > 0) &&
+            (postPagingOrdering.Count > 0 ||
+             postPaging.Paging.Skip is not null || postPaging.Paging.Take is not null))
+        {
+            // ORDER BY/SKIP/LIMIT after a WITH ... WHERE stage require a new WITH boundary.
+            clauses.Add(WithClause.All);
+        }
+
+        AddOrderingAndPaging(
+            clauses,
+            effectivePostPagingOrdering,
+            postPaging.Paging,
+            reverseOrdering: false);
         AddProjectionClause(clauses, model, projection, distinctApplied);
     }
 
