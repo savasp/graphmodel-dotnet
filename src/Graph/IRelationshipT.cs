@@ -6,15 +6,15 @@ namespace Cvoya.Graph;
 /// <summary>
 /// Defines a strongly-typed relationship between two specific node types.
 /// </summary>
-/// <typeparam name="S">The type of the source node in the relationship.</typeparam>
-/// <typeparam name="T">The type of the target node in the relationship.</typeparam>
+/// <typeparam name="TSource">The type of the source node in the relationship.</typeparam>
+/// <typeparam name="TTarget">The type of the target node in the relationship.</typeparam>
 /// <remarks>
 /// This interface extends <see cref="IRelationship"/> by adding strongly-typed references
 /// to the actual source and target node objects, facilitating more type-safe graph traversal.
 /// </remarks>
-public interface IRelationship<S, T> : IRelationship
-    where S : class, INode, new()
-    where T : class, INode, new()
+public interface IRelationship<TSource, TTarget> : IRelationship
+    where TSource : class, INode, new()
+    where TTarget : class, INode, new()
 {
     /// <summary>
     /// Gets or sets the source node of the relationship.
@@ -23,7 +23,7 @@ public interface IRelationship<S, T> : IRelationship
     /// When set, this also updates the <see cref="IRelationship.StartNodeId"/> property.
     /// May be null if the relationship is not fully loaded.
     /// </remarks>
-    S Source { get; set; }
+    TSource Source { get; set; }
 
     /// <summary>
     /// Gets or sets the target node of the relationship.
@@ -32,5 +32,5 @@ public interface IRelationship<S, T> : IRelationship
     /// When set, this also updates the <see cref="IRelationship.EndNodeId"/> property.
     /// May be null if the relationship is not fully loaded.
     /// </remarks>
-    T Target { get; set; }
+    TTarget Target { get; set; }
 }

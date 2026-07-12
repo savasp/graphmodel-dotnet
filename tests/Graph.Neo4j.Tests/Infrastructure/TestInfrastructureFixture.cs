@@ -75,6 +75,8 @@ public class TestInfrastructureFixture : IAsyncLifetime
             await databasePool.ReleaseDatabaseAsync(cachedDatabaseName);
             cachedDatabaseName = null;
         }
+
+        GC.SuppressFinalize(this);
     }
 
     public async Task<IGraph> GetGraph(bool getNewDatabase)

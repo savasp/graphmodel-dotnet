@@ -23,7 +23,10 @@ using System.Reflection;
 public class RuntimeLabelCollisionTests : IDisposable
 {
     public void Dispose()
-        => Labels.ClearCachesForTesting();
+    {
+        Labels.ClearCachesForTesting();
+        GC.SuppressFinalize(this);
+    }
 
     // ===== SchemaRegistry: CG009 mirror (duplicate node labels) =====
 

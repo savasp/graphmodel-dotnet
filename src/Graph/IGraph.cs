@@ -76,10 +76,10 @@ public interface IGraph
     /// </summary>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used at execution time.</param>
-    /// <typeparam name="N">The type of the nodes to query</typeparam>
+    /// <typeparam name="TNode">The type of the nodes to query</typeparam>
     /// <returns>A queryable interface to the nodes</returns>
-    IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
-        where N : class, INode;
+    IGraphQueryable<TNode> Nodes<TNode>(IGraphTransaction? transaction = null)
+        where TNode : class, INode;
 
     /// <summary>
     /// Gets a queryable interface to relationships in the graph. Building the queryable performs
@@ -87,10 +87,10 @@ public interface IGraph
     /// </summary>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used at execution time.</param>
-    /// <typeparam name="R">The type of the relationships to query</typeparam>
+    /// <typeparam name="TRelationship">The type of the relationships to query</typeparam>
     /// <returns>A queryable interface to the relationships</returns>
-    IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
-        where R : class, IRelationship;
+    IGraphQueryable<TRelationship> Relationships<TRelationship>(IGraphTransaction? transaction = null)
+        where TRelationship : class, IRelationship;
 
     /// <summary>
     /// Gets a node by ID with options for relationship loading
@@ -99,12 +99,12 @@ public interface IGraph
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
-    /// <typeparam name="N">The type of the node</typeparam>
+    /// <typeparam name="TNode">The type of the node</typeparam>
     /// <returns>The node with the specified ID</returns>
     /// <exception cref="EntityNotFoundException">Thrown when the node is not found</exception>
     /// <exception cref="GraphException">Thrown when the node cannot be retrieved or there is another issue</exception>
-    Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : class, INode;
+    Task<TNode> GetNodeAsync<TNode>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where TNode : class, INode;
 
     /// <summary>
     /// Gets a relationship by ID with options for node loading
@@ -113,12 +113,12 @@ public interface IGraph
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
-    /// <typeparam name="R">The type of the relationship</typeparam>
+    /// <typeparam name="TRelationship">The type of the relationship</typeparam>
     /// <returns>The relationship with the specified ID</returns>
     /// <exception cref="EntityNotFoundException">Thrown when the relationship is not found</exception>
     /// <exception cref="GraphException">Thrown when the relationship cannot be retrieved or there is another issue</exception>
-    Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, IRelationship;
+    Task<TRelationship> GetRelationshipAsync<TRelationship>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where TRelationship : class, IRelationship;
 
     /// <summary>
     /// Creates a new node in the graph with options for relationship handling
@@ -127,48 +127,48 @@ public interface IGraph
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
-    /// <typeparam name="N">The type of the node</typeparam>
+    /// <typeparam name="TNode">The type of the node</typeparam>
     /// <exception cref="GraphException">Thrown when the node cannot be created or there is another issue</exception>
-    Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : class, INode;
+    Task CreateNodeAsync<TNode>(TNode node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where TNode : class, INode;
 
     /// <summary>
     /// Creates a new relationship in the graph with options for node handling
     /// </summary>
-    /// <typeparam name="R">The type of the relationship</typeparam>
+    /// <typeparam name="TRelationship">The type of the relationship</typeparam>
     /// <param name="relationship">The relationship to create</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <exception cref="GraphException">Thrown when the relationship cannot be created or there is another issue</exception>
-    Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, IRelationship;
+    Task CreateRelationshipAsync<TRelationship>(TRelationship relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where TRelationship : class, IRelationship;
 
     /// <summary>
     /// Updates an existing node in the graph with options for relationship handling
     /// </summary>
-    /// <typeparam name="N">The type of the node</typeparam>
+    /// <typeparam name="TNode">The type of the node</typeparam>
     /// <param name="node">The node to update</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <exception cref="EntityNotFoundException">Thrown when the node is not found.</exception>
     /// <exception cref="GraphException">Thrown when the update cannot be performed or there is another issue</exception>
-    Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where N : class, INode;
+    Task UpdateNodeAsync<TNode>(TNode node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where TNode : class, INode;
 
     /// <summary>
     /// Updates an existing relationship in the graph with options for node handling
     /// </summary>
-    /// <typeparam name="R">The type of the relationship</typeparam>
+    /// <typeparam name="TRelationship">The type of the relationship</typeparam>
     /// <param name="relationship">The relationship to update</param>
     /// <param name="transaction">The transaction to use.
     /// If null, a new transaction will be automatically created and used.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <exception cref="EntityNotFoundException">Thrown when the relationship is not found.</exception>
     /// <exception cref="GraphException">Thrown when the relationship cannot be updated or there is another issue</exception>
-    Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
-        where R : class, IRelationship;
+    Task UpdateRelationshipAsync<TRelationship>(TRelationship relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where TRelationship : class, IRelationship;
 
     /// <summary>
     /// Deletes a node from the graph by ID.

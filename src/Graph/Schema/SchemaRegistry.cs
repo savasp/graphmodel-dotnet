@@ -559,5 +559,6 @@ public class SchemaRegistry : IDisposable
     public void Dispose()
     {
         _semaphore?.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

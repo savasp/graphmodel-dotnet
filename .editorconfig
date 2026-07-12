@@ -27,5 +27,54 @@ dotnet_style_qualification_for_field = false:silent
 dotnet_style_qualification_for_method = false:silent
 dotnet_style_qualification_for_property = false:silent
 
+# Tutorial domain models intentionally stay in the global namespace beside top-level programs so
+# each example can focus on graph concepts without namespace ceremony. Friend is also part of the
+# model vocabulary in those self-contained samples.
+[examples/**/DomainModel.cs]
+dotnet_diagnostic.CA1050.severity = none
+dotnet_diagnostic.CA1716.severity = none
+
+# The non-generic graph-queryable interfaces are marker bases for runtime type inspection. Their
+# generic counterparts provide the strongly typed enumeration surface.
+[src/Graph/GraphQueryable/IGraph*Queryable.cs]
+dotnet_diagnostic.CA1010.severity = none
+
+# These established public names are serialized or consumer-facing contracts; renaming them would
+# be a source-breaking remediation for naming-only diagnostics.
+[src/Graph/IGraphPath.cs]
+dotnet_diagnostic.CA1716.severity = none
+
+[src/Graph/Querying/Model/TerminalOperation.cs]
+dotnet_diagnostic.CA1720.severity = none
+
+[src/Graph.Serialization/RuntimeRepresentation/{EntityCollection,SimpleCollection}.cs]
+dotnet_diagnostic.CA1711.severity = none
+
+[src/Graph.Serialization/RuntimeRepresentation/Property.cs]
+dotnet_diagnostic.CA1716.severity = none
+
+[src/Graph.Serialization/RuntimeRepresentation/SimpleValue.cs]
+dotnet_diagnostic.CA1720.severity = none
+
+[src/Graph.Cypher/ICypherDialect.cs]
+dotnet_diagnostic.CA1716.severity = none
+
+[src/Graph.CompatibilityTests/DomainModel.cs]
+dotnet_diagnostic.CA1716.severity = none
+
+# Provider schema managers own process-lifetime coordination semaphores. Neither accesses the
+# optional wait handle, and their lifetime is bounded by the owning graph store.
+[src/Graph.{Age,Neo4j}/Schema/*SchemaManager.cs]
+dotnet_diagnostic.CA1001.severity = none
+
+# BenchmarkDotNet invokes GlobalCleanup, which asynchronously disposes each benchmark's graph
+# store; implementing IDisposable would create a second, unused cleanup path.
+[tests/Graph.Performance.Tests/*Benchmark.cs]
+dotnet_diagnostic.CA1001.severity = none
+
+# This xUnit collection type follows the framework's discovery naming convention.
+[tests/Graph.CompatibilityTests.Tests/ComplianceLedgerCollection.cs]
+dotnet_diagnostic.CA1711.severity = none
+
 [*.{csproj,props,targets,xml,yml,yaml,json,md}]
 indent_size = 2

@@ -15,7 +15,7 @@ public abstract class Neo4jTest(Neo4jHarness harness, StoreIsolation isolation =
     : CompatibilityTest(harness, isolation), IClassFixture<Neo4jHarness>
 {
     private readonly ILogger<Neo4jTest> logger = harness.LoggerFactory.CreateLogger<Neo4jTest>();
-    protected IDisposable? correlationScope;
+    protected IDisposable? CorrelationScope { get; private set; }
 
     public static class TestContextCorrelation
     {
@@ -30,7 +30,7 @@ public abstract class Neo4jTest(Neo4jHarness harness, StoreIsolation isolation =
 
         var testId = TestContext.Current?.Test?.UniqueID ?? Guid.NewGuid().ToString("N");
         TestContextCorrelation.CorrelationId.Value = testId;
-        correlationScope = LogContext.PushProperty("CorrelationId", testId);
+        CorrelationScope = LogContext.PushProperty("CorrelationId", testId);
 
         await base.InitializeAsync();
 
@@ -39,7 +39,8 @@ public abstract class Neo4jTest(Neo4jHarness harness, StoreIsolation isolation =
 
     public override async ValueTask DisposeAsync()
     {
-        correlationScope?.Dispose();
+        CorrelationScope?.Dispose();
         await base.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
 }
