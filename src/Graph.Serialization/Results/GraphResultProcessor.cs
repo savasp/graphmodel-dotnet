@@ -41,7 +41,7 @@ public sealed class GraphResultProcessor
         Type targetType,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Processing records for target type: {TargetType}", targetType.Name);
+        _logger.LogDebugGraphResultProcessor44(targetType.Name);
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -277,7 +277,7 @@ public sealed class GraphResultProcessor
         var schema = _entityFactory.GetSchema(actualType);
         if (schema == null)
         {
-            _logger.LogWarning("No schema found for node type {NodeType}. Cannot deserialize complex properties.", actualType.Name);
+            _logger.LogWarningGraphResultProcessor280(actualType.Name);
             return entityInfo;
         }
 
@@ -525,9 +525,7 @@ public sealed class GraphResultProcessor
                 {
                     if (_logger.IsEnabled(LogLevel.Debug))
                     {
-                        _logger.LogDebug("Complex property structure node has {PropertyCount} properties: [{Properties}]",
-                            node.Properties.Count,
-                            string.Join(", ", node.Properties.Keys));
+                        _logger.LogDebugGraphResultProcessor528(node.Properties.Count, string.Join(", ", node.Properties.Keys));
                     }
 
                     // Create the base EntityInfo from the node
@@ -539,7 +537,7 @@ public sealed class GraphResultProcessor
                     // Add complex properties if they exist
                     if (complexPropStructure["ComplexProperties"] is IList<object> complexProps && complexProps.Count > 0)
                     {
-                        _logger.LogDebug("Complex properties found: {Count} items", complexProps.Count);
+                        _logger.LogDebugGraphResultProcessor542(complexProps.Count);
 
                         // Convert the complex properties list to ComplexProperty objects
                         var complexPropertyList = complexProps
@@ -566,10 +564,7 @@ public sealed class GraphResultProcessor
 
                     if (_logger.IsEnabled(LogLevel.Debug))
                     {
-                        _logger.LogDebug("Created EntityInfo with {SimpleCount} simple properties: [{SimpleProps}], {ComplexCount} complex properties",
-                            nodeEntityInfo.SimpleProperties.Count,
-                            string.Join(", ", nodeEntityInfo.SimpleProperties.Keys),
-                            nodeEntityInfo.ComplexProperties.Count);
+                        _logger.LogDebugGraphResultProcessor569(nodeEntityInfo.SimpleProperties.Count, string.Join(", ", nodeEntityInfo.SimpleProperties.Keys), nodeEntityInfo.ComplexProperties.Count);
                     }
 
                     complexProperties[key] = new Property(
@@ -1104,8 +1099,7 @@ public sealed class GraphResultProcessor
         // Special handling for dynamic entities
         if (targetType == typeof(Graph.DynamicNode))
         {
-            _logger.LogDebug("Using label-based type DynamicNode for target type {TargetType}",
-                targetType.Name);
+            _logger.LogDebugGraphResultProcessor1107(targetType.Name);
             return typeof(Graph.DynamicNode);
         }
 
@@ -1113,8 +1107,7 @@ public sealed class GraphResultProcessor
         var metadataType = GraphValueConverter.GetTypeFromMetadata(node.Properties);
         if (metadataType != null && IsCompatibleType(metadataType, targetType))
         {
-            _logger.LogDebug("Using metadata type {MetadataType} for target type {TargetType}",
-                metadataType.Name, targetType.Name);
+            _logger.LogDebugGraphResultProcessor1116(metadataType.Name, targetType.Name);
             return metadataType;
         }
 
@@ -1122,16 +1115,14 @@ public sealed class GraphResultProcessor
         var labelType = DiscoverTypeFromNodeLabels(node.Labels, targetType);
         if (labelType != null)
         {
-            _logger.LogDebug("Using label-based type {LabelType} for target type {TargetType}",
-                labelType.Name, targetType.Name);
+            _logger.LogDebugGraphResultProcessor1125(labelType.Name, targetType.Name);
             return labelType;
         }
 
         // Step 3: Fall back to target type
         if (_logger.IsEnabled(LogLevel.Debug))
         {
-            _logger.LogDebug("Falling back to target type {TargetType} for node with labels [{Labels}]",
-                targetType.Name, string.Join(", ", node.Labels));
+            _logger.LogDebugGraphResultProcessor1133(targetType.Name, string.Join(", ", node.Labels));
         }
         return targetType;
     }
@@ -1144,8 +1135,7 @@ public sealed class GraphResultProcessor
         // Special handling for dynamic entities
         if (targetType == typeof(Graph.DynamicRelationship))
         {
-            _logger.LogDebug("Using relationship type-based type DynamicRelationship for target type {TargetType}",
-                targetType.Name);
+            _logger.LogDebugGraphResultProcessor1147(targetType.Name);
             return typeof(Graph.DynamicRelationship);
         }
 
@@ -1153,8 +1143,7 @@ public sealed class GraphResultProcessor
         var metadataType = GraphValueConverter.GetTypeFromMetadata(relationship.Properties);
         if (metadataType != null && IsCompatibleType(metadataType, targetType))
         {
-            _logger.LogDebug("Using metadata type {MetadataType} for target type {TargetType}",
-                metadataType.Name, targetType.Name);
+            _logger.LogDebugGraphResultProcessor1156(metadataType.Name, targetType.Name);
             return metadataType;
         }
 
@@ -1162,14 +1151,12 @@ public sealed class GraphResultProcessor
         var labelType = DiscoverTypeFromRelationshipType(relationship.Type, targetType);
         if (labelType != null)
         {
-            _logger.LogDebug("Using relationship type-based type {LabelType} for target type {TargetType}",
-                labelType.Name, targetType.Name);
+            _logger.LogDebugGraphResultProcessor1165(labelType.Name, targetType.Name);
             return labelType;
         }
 
         // Step 3: Fall back to target type
-        _logger.LogDebug("Falling back to target type {TargetType} for relationship with type {RelType}",
-            targetType.Name, relationship.Type ?? "null");
+        _logger.LogDebugGraphResultProcessor1171(targetType.Name, relationship.Type ?? "null");
         return targetType;
     }
 

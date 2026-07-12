@@ -67,7 +67,7 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
             catch (NpgsqlException exception)
             {
                 rollbackError = exception;
-                logger.LogWarning(exception, "Failed to roll back an uncommitted AGE transaction during disposal");
+                logger.LogWarningAgeGraphTransaction70(exception);
             }
         }
 
@@ -124,7 +124,7 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
                 }
                 catch (NpgsqlException disposeException)
                 {
-                    logger.LogWarning(disposeException, "Failed to dispose an AGE transaction after a failed begin");
+                    logger.LogWarningAgeGraphTransaction127(disposeException);
                 }
 
                 transaction = null;

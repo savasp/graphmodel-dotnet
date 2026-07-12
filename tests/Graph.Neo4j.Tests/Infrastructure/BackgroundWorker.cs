@@ -27,7 +27,7 @@ internal sealed class BackgroundWorker : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error executing scheduled task");
+                logger.LogErrorBackgroundWorker30(ex);
                 tcs.SetException(ex);
             }
         });
@@ -48,7 +48,7 @@ internal sealed class BackgroundWorker : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error executing scheduled task");
+                logger.LogErrorBackgroundWorker51(ex);
                 tcs.SetException(ex);
             }
         });

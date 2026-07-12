@@ -28,12 +28,12 @@ internal sealed class CypherExecutor
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        _logger.LogDebug("Executing Cypher query: {Query}", cypher);
+        _logger.LogDebugCypherExecutor31(cypher);
 
         var cursor = await transaction.Transaction.RunAsync(cypher, parameters).WaitAsync(cancellationToken).ConfigureAwait(false);
         var records = await cursor.ToListAsync(cancellationToken).ConfigureAwait(false);
 
-        _logger.LogDebug("Query returned {Count} records", records.Count);
+        _logger.LogDebugCypherExecutor36(records.Count);
 
         return records;
     }
@@ -46,7 +46,7 @@ internal sealed class CypherExecutor
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        _logger.LogDebug("Streaming Cypher query: {Query}", cypher);
+        _logger.LogDebugCypherExecutor49(cypher);
 
         var cursor = await transaction.Transaction.RunAsync(cypher, parameters).WaitAsync(cancellationToken).ConfigureAwait(false);
         var count = 0;
@@ -58,6 +58,6 @@ internal sealed class CypherExecutor
             yield return cursor.Current;
         }
 
-        _logger.LogDebug("Query streamed {Count} records", count);
+        _logger.LogDebugCypherExecutor61(count);
     }
 }

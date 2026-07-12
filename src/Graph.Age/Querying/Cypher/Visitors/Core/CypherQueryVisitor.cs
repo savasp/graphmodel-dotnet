@@ -33,7 +33,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
             return null;
         }
 
-        _logger?.LogDebug("Planning graph query rooted at {RootType}", _rootType);
+        _logger?.LogDebugCypherQueryVisitor36(_rootType);
         CypherStatement statement;
         try
         {
@@ -50,10 +50,10 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
             ? null
             : (statement.PathTypes.Source, statement.PathTypes.Relationship, statement.PathTypes.Target);
         Query = new CypherQuery(rendered.Text, rendered.Parameters, pathTypes, rendered.ProjectionColumns);
-        _logger?.LogDebug(
-            "Added Cypher parameter names: {ParameterNames}; count: {ParameterCount}",
-            Query.Parameters.Keys.ToArray(),
-            Query.Parameters.Count);
+        if (_logger?.IsEnabled(LogLevel.Debug) == true)
+        {
+            _logger.LogDebugCypherQueryVisitor53(Query.Parameters.Keys.ToArray(), Query.Parameters.Count);
+        }
         return node;
     }
 

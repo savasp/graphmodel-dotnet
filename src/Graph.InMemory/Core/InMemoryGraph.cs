@@ -175,7 +175,7 @@ internal sealed class InMemoryGraph : IGraph
             cancellationToken).ConfigureAwait(false);
 
         RuntimeMetadata.PopulateNodeLabels(node, decomposed.Node.Labels);
-        _logger.LogDebug("Created node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
+        _logger.LogDebugInMemoryGraph178(node.Id, typeof(N).Name);
     }
 
     public async Task CreateRelationshipAsync<R>(
@@ -222,7 +222,7 @@ internal sealed class InMemoryGraph : IGraph
             cancellationToken).ConfigureAwait(false);
 
         RuntimeMetadata.PopulateRelationshipType(relationship, record.Type);
-        _logger.LogDebug("Created relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
+        _logger.LogDebugInMemoryGraph225(relationship.Id, typeof(R).Name);
     }
 
     public async Task UpdateNodeAsync<N>(

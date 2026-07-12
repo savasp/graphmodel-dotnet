@@ -108,11 +108,11 @@ internal class GraphTransaction : IGraphTransaction
         }
         catch (OperationCanceledException)
         {
-            _logger.LogWarning("Closing session timed out. The session may not have been closed properly.");
+            _logger.LogWarningGraphTransaction111();
         }
         catch (Exception ex)
         {
-            _logger.LogError("An error occurred while closing the session: {Message}", ex.Message);
+            _logger.LogErrorGraphTransaction115(ex.Message);
         }
     }
 
@@ -120,8 +120,8 @@ internal class GraphTransaction : IGraphTransaction
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        _logger.LogDebug("Beginning new transaction");
+        _logger.LogDebugGraphTransaction123();
         _transaction = await _session.BeginTransactionAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
-        _logger.LogDebug("Successfully began transaction");
+        _logger.LogDebugGraphTransaction125();
     }
 }

@@ -84,7 +84,7 @@ internal sealed partial class AgeQueryRunner
                 records = records.DistinctBy(GetDistinctKey, StringComparer.Ordinal).ToList();
             }
 
-            logger.LogDebug("AGE query returned {RecordCount} records", records.Count);
+            logger.LogDebugAgeQueryRunner87(records.Count);
             return new AgeResultCursor(records);
         }
         catch (OperationCanceledException)
@@ -154,13 +154,14 @@ internal sealed partial class AgeQueryRunner
         cypher = normalizedProjection.Cypher;
         var effectiveColumns = normalizedProjection.Columns.Count == 0 ? ["result"] : normalizedProjection.Columns;
         var command = CreateCommand(cypher, parameters, effectiveColumns);
-        logger.LogDebug(
-            streaming
-                ? "Streaming AGE Cypher query with {ParameterCount} parameters and {ColumnCount} projected columns: {Query}"
-                : "Executing AGE Cypher query with {ParameterCount} parameters and {ColumnCount} projected columns: {Query}",
-            parameters.Count,
-            effectiveColumns.Count,
-            cypher);
+        if (streaming)
+        {
+            logger.LogDebugAgeQueryRunner159(parameters.Count, effectiveColumns.Count, cypher);
+        }
+        else
+        {
+            logger.LogDebugAgeQueryRunner167(parameters.Count, effectiveColumns.Count, cypher);
+        }
         return (command, distinct);
     }
 
@@ -180,7 +181,7 @@ internal sealed partial class AgeQueryRunner
     private GraphException WrapQueryExecutionFailure(Exception exception)
     {
         var correlationId = Guid.NewGuid().ToString("N");
-        logger.LogError(exception, "AGE query execution failed; correlation ID {CorrelationId}", correlationId);
+        logger.LogErrorAgeQueryRunner192(exception, correlationId);
         return new GraphException($"AGE query execution failed. Correlation ID: {correlationId}.", exception);
     }
 

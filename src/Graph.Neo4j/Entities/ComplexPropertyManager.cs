@@ -85,14 +85,11 @@ internal sealed class ComplexPropertyManager(GraphContext context)
                         break;
 
                     case null:
-                        logger.LogDebug("Skipping null complex property {PropertyName}", propertyName);
+                        logger.LogDebugComplexPropertyManager88(propertyName);
                         continue;
 
                     default:
-                        logger.LogWarning(
-                            "Unsupported complex property type: {PropertyType} for property {PropertyName}",
-                            complexProperty.Value.GetType().Name,
-                            propertyName);
+                        logger.LogWarningComplexPropertyManager92(complexProperty.Value.GetType().Name, propertyName);
                         throw new GraphException(
                             $"Unsupported complex property type: {complexProperty.Value.GetType().Name} for property {propertyName}");
                 }
@@ -179,9 +176,7 @@ internal sealed class ComplexPropertyManager(GraphContext context)
                 nextLevel.Add((complexNodeId, groupNodes[rowId].Entity));
             }
 
-            logger.LogDebug(
-                "Created {Count} complex property node(s) of type {RelationshipType} to {Label}",
-                groupNodes.Count, group.Key.RelationshipType, group.Key.Label);
+            logger.LogDebugComplexPropertyManager182(groupNodes.Count, group.Key.RelationshipType, group.Key.Label);
         }
 
         return nextLevel;
@@ -218,9 +213,7 @@ internal sealed class ComplexPropertyManager(GraphContext context)
 
         var deletedCount = (await GetFirstRecordAsync(result, cancellationToken).ConfigureAwait(false))["deletedCount"].As<int>();
 
-        logger.LogDebug(
-            "Deleted {DeletedCount} complex property relationships for parent {ParentId}",
-            deletedCount, parentId);
+        logger.LogDebugComplexPropertyManager221(deletedCount, parentId);
     }
 
     private static async Task<IRecord> GetFirstRecordAsync(IResultCursor result, CancellationToken cancellationToken)

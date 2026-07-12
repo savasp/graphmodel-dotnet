@@ -46,7 +46,7 @@ internal class AgeGraph : IGraph
 
         // Don't initialize schema registry here - let it be initialized lazily on first use
         // This avoids double initialization and concurrency issues
-        _logger.LogInformation("Graph initialized for AGE graph '{GraphName}'", graphName);
+        _logger.LogInformationAgeGraph49(graphName);
     }
 
     public SchemaRegistry SchemaRegistry => _schemaRegistry;
@@ -58,12 +58,12 @@ internal class AgeGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Beginning new transaction");
+            _logger.LogDebugAgeGraph61();
 
             var graphTransaction = new AgeGraphTransaction(_graphContext);
             await graphTransaction.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully began transaction");
+            _logger.LogDebugAgeGraph66();
             return graphTransaction;
         }
         catch (OperationCanceledException)
@@ -77,7 +77,7 @@ internal class AgeGraph : IGraph
         catch (NpgsqlException ex)
         {
             const string message = "Failed to begin transaction";
-            _logger.LogError(ex, message);
+            _logger.LogErrorAgeGraph80(ex);
             throw new GraphException(message, ex);
         }
     }
@@ -86,7 +86,7 @@ internal class AgeGraph : IGraph
     public IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
         where N : class, Graph.INode
     {
-        _logger.LogDebug("Building nodes queryable for type {NodeType}", typeof(N).Name);
+        _logger.LogDebugAgeGraph89(typeof(N).Name);
 
         // Building a queryable performs no I/O. When no transaction is provided, execution time
         // (GraphQueryProvider.ExecuteAsync -> TransactionHelpers.ExecuteInTransactionAsync)
@@ -101,7 +101,7 @@ internal class AgeGraph : IGraph
     public IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
         where R : class, Graph.IRelationship
     {
-        _logger.LogDebug("Building relationships queryable for type {RelationshipType}", typeof(R).Name);
+        _logger.LogDebugAgeGraph104(typeof(R).Name);
 
         var ageTransaction = ToAgeTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, ageTransaction, isReadOnly: true);
@@ -157,7 +157,7 @@ internal class AgeGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Creating node of type {NodeType}", typeof(N).Name);
+            _logger.LogDebugAgeGraph160(typeof(N).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
             await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
@@ -170,7 +170,7 @@ internal class AgeGraph : IGraph
                 _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully created node {NodeId}", node.Id);
+            _logger.LogDebugAgeGraph173(node.Id);
         }
         catch (OperationCanceledException)
         {
@@ -179,7 +179,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to create node of type {typeof(N).Name}";
-            _logger.LogError(ex, "Failed to create node of type {NodeType}", typeof(N).Name);
+            _logger.LogErrorAgeGraph182(ex, typeof(N).Name);
 
             if (ex is GraphException)
             {
@@ -205,7 +205,7 @@ internal class AgeGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Creating relationship of type {RelationshipType}", typeof(R).Name);
+            _logger.LogDebugAgeGraph208(typeof(R).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
             await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
@@ -222,7 +222,7 @@ internal class AgeGraph : IGraph
                 _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully created relationship {RelationshipId}", relationship.Id);
+            _logger.LogDebugAgeGraph225(relationship.Id);
         }
         catch (OperationCanceledException)
         {
@@ -231,7 +231,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to create relationship of type {typeof(R).Name}";
-            _logger.LogError(ex, "Failed to create relationship of type {RelationshipType}", typeof(R).Name);
+            _logger.LogErrorAgeGraph234(ex, typeof(R).Name);
 
             if (ex is GraphException)
             {
@@ -259,7 +259,7 @@ internal class AgeGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Updating node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
+            _logger.LogDebugAgeGraph262(node.Id, typeof(N).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data
             // operations). The update path validates properties against the schema registry, so
@@ -278,7 +278,7 @@ internal class AgeGraph : IGraph
                 _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully updated node {NodeId}", node.Id);
+            _logger.LogDebugAgeGraph281(node.Id);
         }
         catch (OperationCanceledException)
         {
@@ -287,7 +287,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to update node {node.Id} of type {typeof(N).Name}";
-            _logger.LogError(ex, "Failed to update node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
+            _logger.LogErrorAgeGraph290(ex, node.Id, typeof(N).Name);
 
             if (ex is GraphException)
             {
@@ -315,7 +315,7 @@ internal class AgeGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Updating relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
+            _logger.LogDebugAgeGraph318(relationship.Id, typeof(R).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data
             // operations). The update path validates properties against the schema registry, so
@@ -334,7 +334,7 @@ internal class AgeGraph : IGraph
                 _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully updated relationship {RelationshipId}", relationship.Id);
+            _logger.LogDebugAgeGraph337(relationship.Id);
         }
         catch (OperationCanceledException)
         {
@@ -343,7 +343,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}";
-            _logger.LogError(ex, "Failed to update relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
+            _logger.LogErrorAgeGraph346(ex, relationship.Id, typeof(R).Name);
 
             if (ex is GraphException)
             {
@@ -365,7 +365,7 @@ internal class AgeGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Deleting node {NodeId}", id);
+            _logger.LogDebugAgeGraph368(id);
 
             // Delete-by-ID needs the complete registered-label set to recognize legacy nodes
             // written before EntityKind was stored. Initialize before opening the data
@@ -384,7 +384,7 @@ internal class AgeGraph : IGraph
                 _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully deleted node {NodeId}", id);
+            _logger.LogDebugAgeGraph387(id);
 
         }
         catch (OperationCanceledException)
@@ -394,7 +394,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to delete node {id}";
-            _logger.LogError(ex, "Failed to delete node {NodeId}", id);
+            _logger.LogErrorAgeGraph397(ex, id);
 
             if (ex is GraphException)
             {
@@ -415,7 +415,7 @@ internal class AgeGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Deleting relationship {RelationshipId}", id);
+            _logger.LogDebugAgeGraph418(id);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
@@ -429,7 +429,7 @@ internal class AgeGraph : IGraph
                 _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully deleted relationship {RelationshipId}", id);
+            _logger.LogDebugAgeGraph432(id);
         }
         catch (OperationCanceledException)
         {
@@ -438,7 +438,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to delete relationship {id}";
-            _logger.LogError(ex, "Failed to delete relationship {RelationshipId}", id);
+            _logger.LogErrorAgeGraph441(ex, id);
 
             if (ex is GraphException)
             {
@@ -454,7 +454,7 @@ internal class AgeGraph : IGraph
     /// <inheritdoc />
     public IGraphQueryable<DynamicNode> DynamicNodes(IGraphTransaction? transaction = null)
     {
-        _logger.LogDebug("Building dynamic nodes queryable");
+        _logger.LogDebugAgeGraph457();
 
         var ageTransaction = ToAgeTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, ageTransaction, isReadOnly: true);
@@ -464,7 +464,7 @@ internal class AgeGraph : IGraph
     /// <inheritdoc />
     public IGraphQueryable<DynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null)
     {
-        _logger.LogDebug("Building dynamic relationships queryable");
+        _logger.LogDebugAgeGraph467();
 
         var ageTransaction = ToAgeTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, ageTransaction, isReadOnly: true);
@@ -536,9 +536,9 @@ internal class AgeGraph : IGraph
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            _logger.LogInformation("Recreating indexes for Age graph");
+            _logger.LogInformationAgeGraph539();
             await _graphContext.SchemaManager.RecreateIndexesAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogInformation("Index recreation completed successfully");
+            _logger.LogInformationAgeGraph541();
         }
         catch (OperationCanceledException)
         {
@@ -548,7 +548,7 @@ internal class AgeGraph : IGraph
         {
             // Schema initialization is pure in-memory reflection scanning (no Npgsql call in
             // this path); the only failure it raises is a label-collision GraphException.
-            _logger.LogError(ex, "Failed to recreate indexes");
+            _logger.LogErrorAgeGraph551(ex);
             throw new GraphException("Failed to recreate indexes", ex);
         }
     }
