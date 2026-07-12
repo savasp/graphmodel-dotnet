@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Neo4j.Tests;
 
+using System.Globalization;
 using System.Threading.Tasks;
 using Serilog.Core;
 using Serilog.Events;
@@ -11,7 +12,7 @@ public class WithCustomInfoEnricher : ILogEventEnricher
 {
     public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)
     {
-        var taskId = Task.CurrentId?.ToString() ?? "none";
+        var taskId = Task.CurrentId?.ToString(CultureInfo.InvariantCulture) ?? "none";
         logEvent.AddOrUpdateProperty(propertyFactory.CreateProperty("TaskId", taskId));
     }
 }

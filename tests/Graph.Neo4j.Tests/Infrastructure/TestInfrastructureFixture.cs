@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Neo4j.Tests;
 
+using System.Globalization;
 using System.Net.Sockets;
 using DotNet.Testcontainers.Builders;
 using Microsoft.Extensions.Configuration;
@@ -30,7 +31,7 @@ public class TestInfrastructureFixture : IAsyncLifetime
             options.Endpoint = "http://localhost:5341/ingest/otlp/v1/logs";
             options.Protocol = OtlpProtocol.HttpProtobuf;
         })
-        .WriteTo.Console()
+        .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
         .CreateLogger();
 
     private static readonly ILoggerFactory loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>

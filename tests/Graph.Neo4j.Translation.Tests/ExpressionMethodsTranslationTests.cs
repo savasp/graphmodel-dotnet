@@ -35,6 +35,10 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
         return VerifyTranslation(query);
     }
 
+    // The culture-sensitive ToLower()/ToUpper() calls below deliberately exercise the
+    // lowerer's mapping of those overloads to Cypher toLower()/toUpper(); they never
+    // execute in-process, so no culture applies.
+#pragma warning disable CA1304, CA1311
     [Fact]
     public Task StringToLower()
     {
@@ -46,6 +50,21 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
     public Task StringToUpper()
     {
         var query = Root.Nodes<Person>().Where(p => p.FirstName.ToUpper() == "ALICE");
+        return VerifyTranslation(query);
+    }
+#pragma warning restore CA1304, CA1311
+
+    [Fact]
+    public Task StringToLowerInvariant()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.FirstName.ToLowerInvariant() == "alice");
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task StringToUpperInvariant()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.FirstName.ToUpperInvariant() == "ALICE");
         return VerifyTranslation(query);
     }
 

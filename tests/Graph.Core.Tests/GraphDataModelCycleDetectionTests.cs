@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Core.Tests;
 
+using System.Globalization;
 
 [Trait("Area", "GraphDataModel")]
 public class GraphDataModelCycleDetectionTests
@@ -100,7 +101,7 @@ public class GraphDataModelCycleDetectionTests
 
         for (var i = 1; i < depth; i++)
         {
-            current.Next = new CycleNode { Name = i.ToString() };
+            current.Next = new CycleNode { Name = i.ToString(CultureInfo.InvariantCulture) };
             current = current.Next;
         }
 

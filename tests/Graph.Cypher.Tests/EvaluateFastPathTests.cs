@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Cypher.Tests;
 
+using System.Globalization;
 using System.Linq.Expressions;
 using Cvoya.Graph.Cypher.Planning;
 
@@ -94,7 +95,7 @@ public class EvaluateFastPathTests
     [Fact]
     public void MethodCall_FallsBackToCompilation()
     {
-        Expression<Func<int>> lambda = () => int.Parse("29");
+        Expression<Func<int>> lambda = () => int.Parse("29", CultureInfo.InvariantCulture);
 
         Assert.False(ExpressionToCypherAstLowerer.TryEvaluateDirect(lambda.Body, out _));
         Assert.Equal(29, Compile(lambda.Body));

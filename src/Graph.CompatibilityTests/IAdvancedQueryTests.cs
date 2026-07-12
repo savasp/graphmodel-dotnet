@@ -107,8 +107,8 @@ public interface IAdvancedQueryTests : IGraphTest
             .Select(p => new
             {
                 // String functions
-                Upper = p.FirstName.ToUpper(),
-                Lower = p.LastName.ToLower(),
+                Upper = p.FirstName.ToUpperInvariant(),
+                Lower = p.LastName.ToLowerInvariant(),
                 Trimmed = p.Bio.Trim(),
                 Substring = p.Bio.Substring(0, 8),
                 Replaced = p.FirstName.Replace("o", "0"),
@@ -234,8 +234,8 @@ public interface IAdvancedQueryTests : IGraphTest
             .Where(p => p.LastName == "Smith")
             .Select(p => new
             {
-                Upper = p.FirstName.ToUpper(),
-                Lower = p.LastName.ToLower(),
+                Upper = p.FirstName.ToUpperInvariant(),
+                Lower = p.LastName.ToLowerInvariant(),
                 Trimmed = ("  " + p.FirstName + "  ").Trim(),
                 Sub = p.FirstName.Substring(0, 1),
                 Replaced = p.LastName.Replace("Smith", "S.")
@@ -276,13 +276,13 @@ public interface IAdvancedQueryTests : IGraphTest
             .Where(p => p.LastName == "Smith")
             .Select(p => new
             {
-                Complex = p.FirstName.ToUpper() + "-" + p.LastName.ToLower() + "-" + (p.Age + 1),
+                Complex = p.FirstName.ToUpperInvariant() + "-" + p.LastName.ToLowerInvariant() + "-" + (p.Age + 1),
                 Logic = p.Age > 35 ? "Senior" : "Junior"
             })
             .ToListAsync(TestContext.Current.CancellationToken);
         Assert.Equal(2, projected.Count);
-        Assert.Contains(projected, p => p.Complex.StartsWith("ALICE-smith-") && p.Logic == "Junior");
-        Assert.Contains(projected, p => p.Complex.StartsWith("BOB-smith-") && p.Logic == "Senior");
+        Assert.Contains(projected, p => p.Complex.StartsWith("ALICE-smith-", StringComparison.Ordinal) && p.Logic == "Junior");
+        Assert.Contains(projected, p => p.Complex.StartsWith("BOB-smith-", StringComparison.Ordinal) && p.Logic == "Senior");
     }
 
     // --- EXTENSIVE LINQ TESTS FOR NODES AND RELATIONSHIPS ---
@@ -823,7 +823,7 @@ public interface IAdvancedQueryTests : IGraphTest
 
         // Case-insensitive search
         var aiResults = await this.Graph.Nodes<Person>()
-            .Where(p => p.Bio.ToLower().Contains("artificial intelligence"))
+            .Where(p => p.Bio.ToLowerInvariant().Contains("artificial intelligence"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(aiResults);
@@ -846,7 +846,7 @@ public interface IAdvancedQueryTests : IGraphTest
 
         // Multiple word search with AND logic
         var techResults = await this.Graph.Nodes<Person>()
-            .Where(p => p.Bio.ToLower().Contains("data") && p.Bio.ToLower().Contains("scientist"))
+            .Where(p => p.Bio.ToLowerInvariant().Contains("data") && p.Bio.ToLowerInvariant().Contains("scientist"))
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(techResults);
@@ -938,23 +938,23 @@ public interface IAdvancedQueryTests : IGraphTest
 
         // Project results with text matching
         var projectedResults = await this.Graph.Nodes<Person>()
-            .Where(p => p.Bio.ToLower().Contains("data") || p.Bio.ToLower().Contains("user"))
+            .Where(p => p.Bio.ToLowerInvariant().Contains("data") || p.Bio.ToLowerInvariant().Contains("user"))
             .Select(p => new
             {
                 Name = p.FirstName + " " + p.LastName,
-                HasDataKeyword = p.Bio.ToLower().Contains("data"),
-                HasUserKeyword = p.Bio.ToLower().Contains("user"),
+                HasDataKeyword = p.Bio.ToLowerInvariant().Contains("data"),
+                HasUserKeyword = p.Bio.ToLowerInvariant().Contains("user"),
                 BioLength = p.Bio.Length
             })
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, projectedResults.Count);
 
-        var bobResult = projectedResults.First(r => r.Name.StartsWith("Bob"));
+        var bobResult = projectedResults.First(r => r.Name.StartsWith("Bob", StringComparison.Ordinal));
         Assert.True(bobResult.HasDataKeyword);
         Assert.False(bobResult.HasUserKeyword);
 
-        var charlieResult = projectedResults.First(r => r.Name.StartsWith("Charlie"));
+        var charlieResult = projectedResults.First(r => r.Name.StartsWith("Charlie", StringComparison.Ordinal));
         Assert.False(charlieResult.HasDataKeyword);
         Assert.True(charlieResult.HasUserKeyword);
     }

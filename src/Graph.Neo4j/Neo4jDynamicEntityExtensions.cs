@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Neo4j;
 
+using System.Globalization;
 using Cvoya.Graph;
 using Cvoya.Graph.Cypher;
 using Cvoya.Graph.Neo4j.Serialization;
@@ -213,7 +214,7 @@ public static class Neo4jDynamicEntityExtensions
                 if (value is int i) return (T)(object)(i != 0);
                 if (value is double d) return (T)(object)(Math.Abs(d) > 0.00001);
             }
-            return (T)Convert.ChangeType(value, targetType);
+            return (T)Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture);
         }
         catch
         {

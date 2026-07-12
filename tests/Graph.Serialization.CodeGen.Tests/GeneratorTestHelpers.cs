@@ -4,6 +4,7 @@
 namespace Cvoya.Graph.Serialization.CodeGen.Tests;
 
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using Cvoya.Graph.Serialization;
 using Microsoft.CodeAnalysis;
@@ -233,7 +234,7 @@ internal static class GeneratorTestHelpers
 
         foreach (var generated in generatedTrees)
         {
-            sb.AppendLine($"== {generated.HintName} ==");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"== {generated.HintName} ==");
             sb.AppendLine(generated.SourceText.ToString().TrimEnd());
             sb.AppendLine();
         }
@@ -313,7 +314,7 @@ internal static class GeneratorTestHelpers
 
         foreach (var generated in generatedTrees)
         {
-            sb.AppendLine($"== {generated.HintName} ==");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"== {generated.HintName} ==");
             sb.AppendLine(generated.SourceText.ToString().TrimEnd());
             sb.AppendLine();
         }

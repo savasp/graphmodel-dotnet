@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Age;
 
+using System.Globalization;
 using Cvoya.Graph;
 using Cvoya.Graph.Age.Serialization;
 using Cvoya.Graph.Cypher;
@@ -210,7 +211,7 @@ public static class AgeDynamicEntityExtensions
                 if (value is int i) return (T)(object)(i != 0);
                 if (value is double d) return (T)(object)(Math.Abs(d) > 0.00001);
             }
-            return (T)Convert.ChangeType(value, targetType);
+            return (T)Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture);
         }
         catch (Exception exception) when (IsConversionFailure(exception))
         {
