@@ -327,14 +327,10 @@ internal sealed class ExpressionToCypherAstLowerer(
         return EvaluateStringComparison(node, argumentIndex: 1) switch
         {
             StringComparison.Ordinal => StringPredicate(@operator, target, value),
-            StringComparison.OrdinalIgnoreCase => StringPredicate(
-                @operator,
-                Function("toLower", target),
-                Function("toLower", value)),
             var comparison => throw Unsupported(
                 node,
                 $"StringComparison.{comparison} cannot be represented faithfully in Cypher; " +
-                "use StringComparison.Ordinal or StringComparison.OrdinalIgnoreCase."),
+                "only StringComparison.Ordinal is supported."),
         };
     }
 

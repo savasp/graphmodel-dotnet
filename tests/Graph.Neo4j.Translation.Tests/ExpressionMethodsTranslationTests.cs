@@ -44,24 +44,24 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
     }
 
     [Fact]
-    public Task StringContains_OrdinalIgnoreCase()
+    public Task StringContains_OrdinalIgnoreCase_ThrowsNotSupported()
     {
-        var query = Root.Nodes<Person>().Where(p => p.FirstName.Contains("LI", StringComparison.OrdinalIgnoreCase));
-        return VerifyTranslation(query);
+        var query = Root.Nodes<Person>().Where(p => p.FirstName.Contains("ς", StringComparison.OrdinalIgnoreCase));
+        return VerifyTranslationThrows(query);
     }
 
     [Fact]
-    public Task StringStartsWith_OrdinalIgnoreCase()
+    public Task StringStartsWith_OrdinalIgnoreCase_ThrowsNotSupported()
     {
         var query = Root.Nodes<Person>().Where(p => p.FirstName.StartsWith("a", StringComparison.OrdinalIgnoreCase));
-        return VerifyTranslation(query);
+        return VerifyTranslationThrows(query);
     }
 
     [Fact]
-    public Task StringEndsWith_OrdinalIgnoreCase()
+    public Task StringEndsWith_OrdinalIgnoreCase_ThrowsNotSupported()
     {
         var query = Root.Nodes<Person>().Where(p => p.FirstName.EndsWith("E", StringComparison.OrdinalIgnoreCase));
-        return VerifyTranslation(query);
+        return VerifyTranslationThrows(query);
     }
 
     // The culture-sensitive ToLower()/ToUpper() calls below deliberately exercise the

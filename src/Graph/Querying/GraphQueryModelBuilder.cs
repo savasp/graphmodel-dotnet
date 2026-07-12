@@ -426,6 +426,13 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     {
         if (TryGetLambda(node, 1) is { } predicate)
         {
+            if (_skip is not null || _take is not null || _hasPostPagingStage)
+            {
+                throw new GraphQueryTranslationException(
+                    $"Predicate terminal operation '{terminal}' follows Skip/Take and cannot be represented " +
+                    "without changing LINQ operator order. Materialize the paged query before applying it.");
+            }
+
             AddComplexPropertyTraversals(predicate);
             _predicates.Add(new PredicateFragment(predicate, _currentAlias));
         }

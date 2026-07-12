@@ -450,6 +450,24 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
+    public void PredicateTerminalAfterTake_ThrowsInsteadOfReordering()
+    {
+        var source = Root<Person>().OrderBy(person => person.Age).Take(3);
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 3;
+        var expression = MarkerCall(
+            "CountAsyncMarker",
+            [typeof(Person)],
+            source.Expression,
+            [predicate]);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(
+            () => GraphQueryModelBuilder.Build(expression));
+
+        Assert.Contains("follows Skip/Take", exception.Message);
+        Assert.Contains("Materialize", exception.Message);
+    }
+
+    [Fact]
     public void SelectMany_ProducesFlatteningFragment()
     {
         var query = Root<Person>().SelectMany(person => person.Nicknames);
