@@ -76,39 +76,5 @@ dotnet_diagnostic.CA1001.severity = none
 [tests/Graph.CompatibilityTests.Tests/ComplianceLedgerCollection.cs]
 dotnet_diagnostic.CA1711.severity = none
 
-# DispatchProxy generates runtime subclasses of these proxy types, so sealing them would make
-# proxy creation fail even though no source-declared subtype exists.
-[tests/Graph.Core.Tests/GraphQueryProviderBaseTests.cs]
-dotnet_diagnostic.CA1852.severity = none
-
-[tests/Graph.Neo4j.Translation.Tests/Neo4jGraphStoreTests.cs]
-dotnet_diagnostic.CA1852.severity = none
-
-# This no-op member is the required IAsyncDisposable implementation. Making it static would
-# remove the interface implementation and change the fake queryable contract.
-[tests/Graph.Neo4j.Translation.Tests/Harness/FakeGraphQueryable.cs]
-dotnet_diagnostic.CA1822.severity = none
-
-# These expression trees exercise the provider-translatable string API surface. Replacing their
-# casing or one-character string calls with different overloads would change the query contract
-# under test rather than optimize an in-process string operation.
-[src/Graph.CompatibilityTests/{IAdvancedQueryTests,IFullTextSearchTests,IQueryTests}.cs]
-dotnet_diagnostic.CA1862.severity = none
-dotnet_diagnostic.CA1866.severity = none
-
-[tests/Graph.Neo4j.Translation.Tests/ExpressionMethodsTranslationTests.cs]
-dotnet_diagnostic.CA1862.severity = none
-dotnet_diagnostic.CA1866.severity = none
-
-# The length expression deliberately divides by zero to exercise provider error propagation;
-# removing it as a redundant Substring length would remove the behavior under test.
-[src/Graph.CompatibilityTests/IErrorHandlingTests.cs]
-dotnet_diagnostic.CA1514.severity = none
-
-# These benchmark predicates are provider-translated expression trees; changing the string
-# overload would benchmark a different query surface rather than optimize local string work.
-[tests/Graph.Performance.Tests/{CrudOperationsBenchmark,RelationshipBenchmark}.cs]
-dotnet_diagnostic.CA1866.severity = none
-
 [*.{csproj,props,targets,xml,yml,yaml,json,md}]
 indent_size = 2

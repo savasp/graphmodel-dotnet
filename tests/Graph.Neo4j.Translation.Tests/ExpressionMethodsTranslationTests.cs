@@ -24,21 +24,25 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
     [Fact]
     public Task StringStartsWith()
     {
+#pragma warning disable CA1866 // Preserve the string overload whose translation is snapshotted.
         var query = Root.Nodes<Person>().Where(p => p.FirstName.StartsWith("A"));
+#pragma warning restore CA1866
         return VerifyTranslation(query);
     }
 
     [Fact]
     public Task StringEndsWith()
     {
+#pragma warning disable CA1866 // Preserve the string overload whose translation is snapshotted.
         var query = Root.Nodes<Person>().Where(p => p.FirstName.EndsWith("e"));
+#pragma warning restore CA1866
         return VerifyTranslation(query);
     }
 
     // The culture-sensitive ToLower()/ToUpper() calls below deliberately exercise the
     // lowerer's mapping of those overloads to Cypher toLower()/toUpper(); they never
     // execute in-process, so no culture applies.
-#pragma warning disable CA1304, CA1311
+#pragma warning disable CA1304, CA1311, CA1862
     [Fact]
     public Task StringToLower()
     {
@@ -52,19 +56,23 @@ public class ExpressionMethodsTranslationTests : TranslationTestBase
         var query = Root.Nodes<Person>().Where(p => p.FirstName.ToUpper() == "ALICE");
         return VerifyTranslation(query);
     }
-#pragma warning restore CA1304, CA1311
+#pragma warning restore CA1304, CA1311, CA1862
 
     [Fact]
     public Task StringToLowerInvariant()
     {
+#pragma warning disable CA1862 // Preserve the normalization expression whose translation is snapshotted.
         var query = Root.Nodes<Person>().Where(p => p.FirstName.ToLowerInvariant() == "alice");
+#pragma warning restore CA1862
         return VerifyTranslation(query);
     }
 
     [Fact]
     public Task StringToUpperInvariant()
     {
+#pragma warning disable CA1862 // Preserve the normalization expression whose translation is snapshotted.
         var query = Root.Nodes<Person>().Where(p => p.FirstName.ToUpperInvariant() == "ALICE");
+#pragma warning restore CA1862
         return VerifyTranslation(query);
     }
 

@@ -134,10 +134,12 @@ public class CrudOperationsBenchmark
     {
         // Discarded on purpose: this benchmark measures query execution cost, not the result -
         // the assignment would otherwise be a useless-local (CodeQL cs/useless-assignment-to-local).
+#pragma warning disable CA1866 // Benchmark the provider-translated string overload.
         _ = await _graph.Nodes<Person>()
             .Where(p => p.FirstName.StartsWith("A"))
             .Take(10)
             .ToListAsync();
+#pragma warning restore CA1866
     }
 
     [Benchmark]

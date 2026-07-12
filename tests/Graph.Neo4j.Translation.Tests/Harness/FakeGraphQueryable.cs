@@ -49,6 +49,10 @@ internal class FakeGraphQueryable<T> : IGraphQueryable<T>, IOrderedGraphQueryabl
     public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("FakeGraphQueryable never executes.");
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = "This member implements IAsyncDisposable.DisposeAsync.")]
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 

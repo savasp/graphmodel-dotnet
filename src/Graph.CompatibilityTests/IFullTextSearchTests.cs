@@ -321,11 +321,13 @@ public interface IFullTextSearchTests : IGraphTest
         await this.Graph.CreateNodeAsync(person3, null, TestContext.Current.CancellationToken);
 
         // Search with multiple conditions
+#pragma warning disable CA1866 // Preserve the provider-translated string overload under test.
         var results = await this.Graph.Nodes<Person>()
             .Where(p => p.Age > 25)
             .Search("engineer")
             .Where(p => p.FirstName.StartsWith("A"))
             .ToListAsync(TestContext.Current.CancellationToken);
+#pragma warning restore CA1866
 
         Assert.Single(results);
         Assert.Equal("Alice", results[0].FirstName);
