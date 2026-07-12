@@ -8,6 +8,16 @@ using Cvoya.Graph.CompatibilityTests;
 public class DynamicEntityTests(Neo4jHarness harness) :
     Neo4jTest(harness)
 {
+    private static readonly string[] TestLabels = ["Test"];
+    private static readonly string[] DeveloperManagerTags = ["developer", "manager"];
+    private static readonly string[] DeveloperDesignerTags = ["developer", "designer"];
+    private static readonly string[] PersonEmployeeLabels = ["Neo4jPerson", "Neo4jEmployee"];
+    private static readonly string[] PersonLabels = ["Neo4jPerson"];
+    private static readonly string[] ManagerLabels = ["Neo4jPerson", "Neo4jManager"];
+    private static readonly string[] CompanyLabels = ["Neo4jCompany"];
+    private static readonly string[] TestNodeLabels = ["Neo4jTestNode"];
+    private static readonly string[] EventLabels = ["Neo4jEvent"];
+
     [Fact]
     public async Task CanCreateAndGetDynamicNodeWithPrimitiveProperties()
     {
@@ -32,7 +42,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
 
         // Test the extension method in isolation
         var testDict = new Dictionary<string, object?> { ["test"] = true };
-        var testNode = new DynamicNode(labels: new[] { "Test" }, properties: testDict);
+        var testNode = new DynamicNode(labels: TestLabels, properties: testDict);
         var testResult = testNode.GetProperty<bool>("test");
         Assert.True(testResult);
 
@@ -61,7 +71,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
             {
                 ["name"] = "Jane Smith",
                 ["address"] = address,
-                ["tags"] = new[] { "developer", "manager" }
+                ["tags"] = DeveloperManagerTags
             }
         );
 
@@ -255,15 +265,15 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         var nodes = new[]
         {
             new DynamicNode(
-                labels: new[] { "Neo4jPerson", "Neo4jEmployee" },
+                labels: PersonEmployeeLabels,
                 properties: new Dictionary<string, object?> { ["name"] = "Alice", ["age"] = 30 }
             ),
             new DynamicNode(
-                labels: new[] { "Neo4jPerson", "Neo4jManager" },
+                labels: ManagerLabels,
                 properties: new Dictionary<string, object?> { ["name"] = "Bob", ["age"] = 35 }
             ),
             new DynamicNode(
-                labels: new[] { "Neo4jCompany" },
+                labels: CompanyLabels,
                 properties: new Dictionary<string, object?> { ["name"] = "Tech Corp" }
             )
         };
@@ -303,15 +313,15 @@ public class DynamicEntityTests(Neo4jHarness harness) :
     {
         // Create nodes and relationships
         var person1 = new DynamicNode(
-            labels: new[] { "Neo4jPerson" },
+            labels: PersonLabels,
             properties: new Dictionary<string, object?> { ["name"] = "Alice" }
         );
         var person2 = new DynamicNode(
-            labels: new[] { "Neo4jPerson" },
+            labels: PersonLabels,
             properties: new Dictionary<string, object?> { ["name"] = "Bob" }
         );
         var person3 = new DynamicNode(
-            labels: new[] { "Neo4jPerson" },
+            labels: PersonLabels,
             properties: new Dictionary<string, object?> { ["name"] = "Charlie" }
         );
 
@@ -383,7 +393,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         var nodes = new[]
         {
             new DynamicNode(
-                labels: new[] { "Neo4jPerson" },
+                labels: PersonLabels,
                 properties: new Dictionary<string, object?>
                 {
                     ["name"] = "Alice",
@@ -391,7 +401,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
                 }
             ),
             new DynamicNode(
-                labels: new[] { "Neo4jPerson" },
+                labels: PersonLabels,
                 properties: new Dictionary<string, object?>
                 {
                     ["name"] = "Bob",
@@ -429,19 +439,19 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         var nodes = new[]
         {
             new DynamicNode(
-                labels: new[] { "Neo4jPerson" },
+                labels: PersonLabels,
                 properties: new Dictionary<string, object?>
                 {
                     ["name"] = "Alice",
-                    ["tags"] = new[] { "developer", "manager" }
+                    ["tags"] = DeveloperManagerTags
                 }
             ),
             new DynamicNode(
-                labels: new[] { "Neo4jPerson" },
+                labels: PersonLabels,
                 properties: new Dictionary<string, object?>
                 {
                     ["name"] = "Bob",
-                    ["tags"] = new[] { "developer", "designer" }
+                    ["tags"] = DeveloperDesignerTags
                 }
             )
         };
@@ -472,7 +482,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
     public async Task CanProjectDynamicNodeProperties()
     {
         var node = new DynamicNode(
-            labels: new[] { "Neo4jPerson", "Neo4jEmployee" },
+            labels: PersonEmployeeLabels,
             properties: new Dictionary<string, object?>
             {
                 ["name"] = "Alice",
@@ -508,7 +518,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
     public async Task CanUseDynamicEntityExtensions()
     {
         var node = new DynamicNode(
-            labels: new[] { "Neo4jPerson", "Neo4jEmployee" },
+            labels: PersonEmployeeLabels,
             properties: new Dictionary<string, object?>
             {
                 ["name"] = "Alice",
@@ -544,7 +554,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
     public async Task CanHandleNullProperties()
     {
         var node = new DynamicNode(
-            labels: new[] { "Neo4jPerson" },
+            labels: PersonLabels,
             properties: new Dictionary<string, object?>
             {
                 ["name"] = "Alice",
@@ -582,7 +592,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
     public async Task CanHandleEmptyProperties()
     {
         var node = new DynamicNode(
-            labels: new[] { "Neo4jPerson" },
+            labels: PersonLabels,
             properties: new Dictionary<string, object?>()
         );
 
@@ -604,7 +614,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         }
 
         var node = new DynamicNode(
-            labels: new[] { "Neo4jTestNode" },
+            labels: TestNodeLabels,
             properties: properties
         );
 
@@ -620,7 +630,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
     public async Task CanHandleSpecialCharactersInPropertyNames()
     {
         var node = new DynamicNode(
-            labels: new[] { "Neo4jPerson" },
+            labels: PersonLabels,
             properties: new Dictionary<string, object?>
             {
                 ["name"] = "Alice",
@@ -643,7 +653,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
     public async Task CanHandleNumericTypes()
     {
         var node = new DynamicNode(
-            labels: new[] { "Neo4jPerson" },
+            labels: PersonLabels,
             properties: new Dictionary<string, object?>
             {
                 ["intValue"] = 42,
@@ -672,7 +682,7 @@ public class DynamicEntityTests(Neo4jHarness harness) :
         var timeOnly = TimeOnly.FromDateTime(now);
 
         var node = new DynamicNode(
-            labels: new[] { "Neo4jEvent" },
+            labels: EventLabels,
             properties: new Dictionary<string, object?>
             {
                 ["createdAt"] = now,

@@ -79,7 +79,7 @@ internal static class Deserialization
         // Generate constructor call with object initializer for init-only properties
         sb.AppendLine();
 
-        if (initOnlyProperties.Any())
+        if (initOnlyProperties.Count > 0)
         {
             sb.AppendLine($"        var result = new {type.Type.TypeOfName}(");
 
@@ -120,7 +120,7 @@ internal static class Deserialization
         sb.AppendLine();
 
         // Set remaining properties with regular setters
-        if (settableProperties.Any())
+        if (settableProperties.Count > 0)
         {
             sb.AppendLine("        // Set remaining properties with setters");
             GeneratePropertySetters(sb, settableProperties, "result", "entity");

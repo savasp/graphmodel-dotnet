@@ -365,7 +365,7 @@ public static class GraphQueryModelValidator
         private readonly HashSet<ParameterExpression> _parameters = [];
         private readonly Stack<IReadOnlyList<ParameterExpression>> _nestedLambdaScopes = new();
 
-        public static IReadOnlyCollection<ParameterExpression> Collect(Expression expression)
+        public static HashSet<ParameterExpression> Collect(Expression expression)
         {
             var collector = new ParameterReferenceCollector();
             collector.Visit(expression);

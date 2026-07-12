@@ -349,7 +349,7 @@ public sealed class CypherQueryPlanner
             : alias;
     }
 
-    private static IReadOnlyList<CypherExpression> BuildSearchFilterPredicates(
+    private static List<CypherExpression> BuildSearchFilterPredicates(
         SearchRoot search,
         PlanningState state)
     {
@@ -394,7 +394,7 @@ public sealed class CypherQueryPlanner
         return [];
     }
 
-    private static CypherExpression LowerJoinCondition(
+    private static AstBinaryExpression LowerJoinCondition(
         JoinFragment join,
         ExpressionToCypherAstLowerer lowerer)
     {
@@ -415,7 +415,7 @@ public sealed class CypherQueryPlanner
             lowerer.Lower(join.InnerKeySelector.Body, innerAliases));
     }
 
-    private static IReadOnlyList<OrderByItem> LowerOrdering(
+    private static OrderByItem[] LowerOrdering(
         GraphQueryModel model,
         PlanningState state,
         ExpressionToCypherAstLowerer lowerer)
@@ -787,7 +787,7 @@ public sealed class CypherQueryPlanner
         List<ICypherClause> clauses,
         GraphQueryModel model,
         PlanningState state,
-        IReadOnlyList<OrderByItem> ordering,
+        OrderByItem[] ordering,
         ProjectionPlan projection,
         CypherParameterRegistry parameters,
         ExpressionToCypherAstLowerer? postPagingLowerer,
@@ -850,8 +850,8 @@ public sealed class CypherQueryPlanner
         }
 
         var distinctApplied = false;
-        var effectiveOrdering = ordering;
-        if (ShouldPipeDistinct(model, projection, aggregate, hasPaging, ordering.Count > 0))
+        IReadOnlyList<OrderByItem> effectiveOrdering = ordering;
+        if (ShouldPipeDistinct(model, projection, aggregate, hasPaging, ordering.Length > 0))
         {
             (projection, effectiveOrdering) = AddDistinctProjection(
                 clauses,
@@ -1387,7 +1387,7 @@ public sealed class CypherQueryPlanner
         public string CurrentAlias => ExplicitTraversal.Count == 0 ? RootAlias : TargetAlias;
 
         public string CurrentTraversalSourceAlias =>
-            ExplicitTraversal.LastOrDefault()?.SourceAlias switch
+            (ExplicitTraversal.Count == 0 ? null : ExplicitTraversal[^1].SourceAlias) switch
             {
                 "src" when RootAlias == "src_1" => RootAlias,
                 { } sourceAlias => sourceAlias,

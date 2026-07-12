@@ -58,10 +58,12 @@ public class WhereTranslationTests : TranslationTestBase
         return VerifyTranslation(query);
     }
 
+    private static readonly string[] PersonIds = ["person-1", "person-2"];
+
     [Fact]
     public Task Where_CapturedQueryableConstantContainsEntityId()
     {
-        IQueryable<string> ids = new[] { "person-1", "person-2" }.AsQueryable();
+        IQueryable<string> ids = PersonIds.AsQueryable();
         var query = Root.Nodes<Person>().Where(p => ids.Contains(p.Id));
         return VerifyTranslation(query);
     }

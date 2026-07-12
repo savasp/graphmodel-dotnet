@@ -25,6 +25,10 @@ public class EntityFactoryTests
         { typeof(FactoryAddress), false },
     };
 
+    private static readonly string[] ExpectedLabels = ["FactoryNode", "RuntimeLabel"];
+    private static readonly string[] DynamicLabels = ["Person", "Employee"];
+    private static readonly string[] DynamicTags = ["engineer", "mathematician"];
+
     static EntityFactoryTests()
     {
         EntitySerializerRegistry.Instance.Register<FactoryNode>(new FactoryNodeSerializer());
@@ -55,7 +59,7 @@ public class EntityFactoryTests
 
         Assert.Equal(typeof(FactoryNode), entityInfo.ActualType);
         Assert.Equal("FactoryNode", entityInfo.Label);
-        Assert.Equal(new[] { "FactoryNode", "RuntimeLabel" }, entityInfo.ActualLabels);
+        Assert.Equal(ExpectedLabels, entityInfo.ActualLabels);
         Assert.Equal(node.Id, roundTripped.Id);
         Assert.Equal(node.Labels, roundTripped.Labels);
         Assert.Equal(node.Name, roundTripped.Name);
@@ -131,7 +135,7 @@ public class EntityFactoryTests
                 ["workDate"] = FixedDate,
                 ["workTime"] = FixedTime,
                 ["location"] = FixedPoint,
-                ["tags"] = new[] { "engineer", "mathematician" },
+                ["tags"] = DynamicTags,
                 ["optional"] = null,
             });
 
@@ -139,7 +143,7 @@ public class EntityFactoryTests
         var roundTripped = factory.Deserialize<DynamicNode>(entityInfo);
 
         Assert.Equal("Person", entityInfo.Label);
-        Assert.Equal(new[] { "Person", "Employee" }, entityInfo.ActualLabels);
+        Assert.Equal(DynamicLabels, entityInfo.ActualLabels);
         Assert.Equal("dynamic-1", roundTripped.Id);
         Assert.Equal(node.Labels, roundTripped.Labels);
         Assert.Equal("Ada", roundTripped.Properties["name"]);

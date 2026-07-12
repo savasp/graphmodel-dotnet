@@ -406,7 +406,7 @@ public interface IBasicTests : IGraphTest
 
     public record Foo
     {
-        public Foo? Bar { get; set; } = null;
+        public Foo? Bar { get; set; }
     }
 
     [Fact]

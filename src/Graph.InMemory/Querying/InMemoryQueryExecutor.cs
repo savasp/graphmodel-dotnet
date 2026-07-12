@@ -429,7 +429,7 @@ internal sealed class InMemoryQueryExecutor(
         INode current = start;
         foreach (var hop in path)
         {
-            var end = (INode)_reader.MaterializeNode(hop.Target, _state, typeof(INode));
+            var end = _reader.MaterializeNode<INode>(hop.Target, _state);
             var relationship = (IRelationship)_reader.MaterializeRelationship(
                 hop.Relationship,
                 step.RelationshipClrType ?? typeof(IRelationship));
@@ -591,7 +591,7 @@ internal sealed class InMemoryQueryExecutor(
         });
     }
 
-    private bool RowCanBind(Row row, string? alias, Type parameterType)
+    private static bool RowCanBind(Row row, string? alias, Type parameterType)
     {
         if (parameterType == typeof(IGraphPath))
         {
@@ -617,7 +617,7 @@ internal sealed class InMemoryQueryExecutor(
         return row.Bindings.Values.Any(v => v is not null && parameterType.IsInstanceOfType(v));
     }
 
-    private object? ResolveInput(Row row, string? alias, Type parameterType)
+    private static object? ResolveInput(Row row, string? alias, Type parameterType)
     {
         if (parameterType == typeof(IGraphPath))
         {
@@ -727,7 +727,7 @@ internal sealed class InMemoryQueryExecutor(
         }
     }
 
-    private static IGraphPath BuildGraphPath(Row row)
+    private static InMemoryGraphPath BuildGraphPath(Row row)
     {
         var hops = row.PathHops ?? [];
         if (hops.Count == 0)
@@ -837,7 +837,7 @@ internal sealed class InMemoryQueryExecutor(
             _ => value.GetHashCode(),
         };
 
-        private static string PrimaryLabel(INode node) => node.Labels.FirstOrDefault() ?? string.Empty;
+        private static string PrimaryLabel(INode node) => node.Labels.Count == 0 ? string.Empty : node.Labels[0];
     }
 
     private IEnumerable<(Row Row, object? Value)> ApplyOrdering(

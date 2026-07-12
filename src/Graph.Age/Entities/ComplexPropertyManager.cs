@@ -208,7 +208,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
     }
 
     private static Dictionary<string, object?> ExpandProperties(
-        IReadOnlyDictionary<string, object?> properties,
+        Dictionary<string, object?> properties,
         IReadOnlyList<string> propertyNames)
     {
         return propertyNames.ToDictionary(

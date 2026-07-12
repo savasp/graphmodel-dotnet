@@ -199,7 +199,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         }
     }
 
-    private async Task<bool> CreateRelationshipInGraphAsync(
+    private static async Task<bool> CreateRelationshipInGraphAsync(
         EntityInfo entity,
         string startNodeId,
         string endNodeId,
@@ -251,7 +251,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
     }
 
 
-    private async Task<(bool Exists, bool DirectionMatches, RelationshipDirection StoredDirection)> UpdateRelationshipPropertiesAsync(
+    private static async Task<(bool Exists, bool DirectionMatches, RelationshipDirection StoredDirection)> UpdateRelationshipPropertiesAsync(
         string relationshipId,
         EntityInfo entity,
         RelationshipDirection incomingDirection,
@@ -309,7 +309,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 : RelationshipDirection.Outgoing;
     }
 
-    private static IReadOnlyList<string> GetInheritanceLabels(Type actualType)
+    private static string[] GetInheritanceLabels(Type actualType)
     {
         var labels = new List<string>();
         for (var type = actualType; type is not null && typeof(Graph.IRelationship).IsAssignableFrom(type); type = type.BaseType)
@@ -489,7 +489,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         }
     }
 
-    private void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
+    private static void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
     {
         // MinValue validation
         if (validation.MinValue is not null &&
@@ -532,7 +532,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         }
     }
 
-    private void ValidateEnumValue(string propertyName, object value, Type propertyType, string entityLabel)
+    private static void ValidateEnumValue(string propertyName, object value, Type propertyType, string entityLabel)
     {
         // Check if the property type is an enum
         if (propertyType.IsEnum)

@@ -268,7 +268,7 @@ internal sealed class AgeRecordAdapter
         : value.GetRawText();
 
     private static bool TryAdaptPoint(
-        IReadOnlyDictionary<string, object> values,
+        Dictionary<string, object> values,
         out Point point)
     {
         point = default!;

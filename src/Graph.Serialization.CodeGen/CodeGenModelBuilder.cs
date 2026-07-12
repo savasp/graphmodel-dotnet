@@ -162,7 +162,7 @@ internal sealed class CodeGenModelBuilder
                     : string.Empty))));
     }
 
-    private static IEnumerable<IPropertySymbol> GetAllPropertiesIncludingInterfacesForDeserialization(INamedTypeSymbol type)
+    private static List<IPropertySymbol> GetAllPropertiesIncludingInterfacesForDeserialization(INamedTypeSymbol type)
     {
         var properties = new List<IPropertySymbol>();
         var seenProperties = new HashSet<string>();
@@ -195,7 +195,7 @@ internal sealed class CodeGenModelBuilder
         return properties;
     }
 
-    private static IEnumerable<IPropertySymbol> GetAllPropertiesIncludingInterfacesForSchema(INamedTypeSymbol type)
+    private static List<IPropertySymbol> GetAllPropertiesIncludingInterfacesForSchema(INamedTypeSymbol type)
     {
         var properties = new List<IPropertySymbol>();
         var seenProperties = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

@@ -23,7 +23,7 @@ internal class Neo4jSchemaManager
     private readonly HashSet<string> _processedSchemas = new();
     private readonly SemaphoreSlim _initializationSemaphore = new(1, 1);
     private Task<bool>? _supportsPropertyExistenceConstraintsTask;
-    private volatile bool _isSchemaInitialized = false;
+    private volatile bool _isSchemaInitialized;
 
     public Neo4jSchemaManager(GraphContext context, SchemaRegistry schemaRegistry)
     {

@@ -544,7 +544,7 @@ public class GraphQueryModelTests
         return new OrderingKey(keySelector, descending);
     }
 
-    private static LambdaExpression Selector<T, TResult>(Expression<Func<T, TResult>> selector)
+    private static Expression<Func<T, TResult>> Selector<T, TResult>(Expression<Func<T, TResult>> selector)
     {
         return selector;
     }

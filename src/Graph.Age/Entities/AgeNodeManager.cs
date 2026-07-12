@@ -235,7 +235,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         }
     }
 
-    private async Task<int> GetRootCountAsync(
+    private static async Task<int> GetRootCountAsync(
         string nodeId,
         AgeQueryRunner transaction,
         CancellationToken cancellationToken)
@@ -254,7 +254,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         return record["rootCount"].As<int>();
     }
 
-    private async Task<string> CreateMainNodeAsync(
+    private static async Task<string> CreateMainNodeAsync(
         EntityInfo entity,
         AgeQueryRunner transaction,
         CancellationToken cancellationToken)
@@ -286,7 +286,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
     }
 
     /// <returns>The updated node's Age elementId, or <see langword="null"/> when no node matched.</returns>
-    private async Task<string?> UpdateMainNodeAsync(
+    private static async Task<string?> UpdateMainNodeAsync(
         string nodeId,
         EntityInfo entity,
         AgeQueryRunner transaction,
@@ -503,7 +503,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         }
     }
 
-    private void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
+    private static void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
     {
         // MinValue validation
         if (validation.MinValue is not null &&
@@ -546,7 +546,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         }
     }
 
-    private void ValidateEnumValue(string propertyName, object value, Type propertyType, string entityLabel)
+    private static void ValidateEnumValue(string propertyName, object value, Type propertyType, string entityLabel)
     {
         // Check if the property type is an enum
         if (propertyType.IsEnum)

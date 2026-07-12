@@ -3,7 +3,7 @@
 
 namespace Cvoya.Graph.Serialization.Results;
 
-internal record GraphPathSegment<TSource, TRel, TTarget>(
+internal sealed record GraphPathSegment<TSource, TRel, TTarget>(
     TSource StartNode,
     TRel Relationship,
     TTarget EndNode) : IGraphPathSegment<TSource, TRel, TTarget>

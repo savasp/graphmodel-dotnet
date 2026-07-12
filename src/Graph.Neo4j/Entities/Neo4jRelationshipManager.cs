@@ -187,7 +187,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         }
     }
 
-    private async Task<bool> CreateRelationshipInGraphAsync(
+    private static async Task<bool> CreateRelationshipInGraphAsync(
         EntityInfo entity,
         string startNodeId,
         string endNodeId,
@@ -231,7 +231,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     }
 
 
-    private async Task<(bool Exists, bool DirectionMatches, RelationshipDirection StoredDirection)> UpdateRelationshipPropertiesAsync(
+    private static async Task<(bool Exists, bool DirectionMatches, RelationshipDirection StoredDirection)> UpdateRelationshipPropertiesAsync(
         string relationshipId,
         EntityInfo entity,
         RelationshipDirection incomingDirection,
@@ -385,7 +385,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         }
     }
 
-    private void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
+    private static void ValidatePropertyValue(string propertyName, object value, PropertyValidation validation, string entityLabel)
     {
         // MinValue validation
         if (validation.MinValue is not null)
@@ -448,7 +448,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         }
     }
 
-    private void ValidateEnumValue(string propertyName, object value, Type propertyType, string entityLabel)
+    private static void ValidateEnumValue(string propertyName, object value, Type propertyType, string entityLabel)
     {
         // Check if the property type is an enum
         if (propertyType.IsEnum)

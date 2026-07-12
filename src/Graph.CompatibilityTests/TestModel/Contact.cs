@@ -33,14 +33,14 @@ public record ContactEmail
 {
     public required string Address { get; init; }
     public string Type { get; init; } = "other"; // work, home, other
-    public bool IsPrimary { get; init; } = false;
+    public bool IsPrimary { get; init; }
 }
 
 public record ContactPhone
 {
     public required string Number { get; init; }
     public string Type { get; init; } = "other"; // work, home, mobile, fax, other
-    public bool IsPrimary { get; init; } = false;
+    public bool IsPrimary { get; init; }
 }
 
 public record ContactAddress
@@ -51,7 +51,7 @@ public record ContactAddress
     public string? PostalCode { get; init; }
     public string? Country { get; init; }
     public string Type { get; init; } = "other"; // work, home, other
-    public bool IsPrimary { get; init; } = false;
+    public bool IsPrimary { get; init; }
 }
 
 public record ContactSocialProfile

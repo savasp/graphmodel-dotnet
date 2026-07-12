@@ -152,6 +152,10 @@ public sealed class GraphQueryProviderBaseTests
 
     private static IGraph CreateGraph() => DispatchProxy.Create<IGraph, GraphProxy>();
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1852:Seal internal types",
+        Justification = "DispatchProxy generates a runtime subclass of this type.")]
     private class GraphProxy : DispatchProxy
     {
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>

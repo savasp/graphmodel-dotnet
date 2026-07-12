@@ -44,5 +44,5 @@ public class RelationshipAttribute() : Attribute
     /// Gets or sets the label to apply to the relationship. If null, the name of the class is used.
     /// </summary>
     /// <value>The relationship label used for graph storage.</value>
-    public string? Label { get; set; } = null;
+    public string? Label { get; set; }
 }

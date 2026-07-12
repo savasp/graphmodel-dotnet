@@ -18,7 +18,7 @@ public record Calendar : Memory
     public required DateTime EndTime { get; init; }
 
     public string? Description { get; init; }
-    public bool IsAllDay { get; init; } = false;
+    public bool IsAllDay { get; init; }
     public CalendarStatus Status { get; init; } = CalendarStatus.Confirmed;
     public string? Organizer { get; init; }
     public string? MeetingUrl { get; init; }

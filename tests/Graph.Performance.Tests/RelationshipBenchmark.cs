@@ -199,11 +199,13 @@ public class RelationshipBenchmark
     {
         // Find all people who work at companies in "Technology" industry.
         // Discarded on purpose - see TraverseFromPersonToCompany above.
+#pragma warning disable CA1866 // Benchmark the provider-translated string overload.
         _ = await _graph.Nodes<Person>()
             .Where(p => p.FirstName.StartsWith("A"))
             .Traverse<WorksAt, Company>()
             .Where(c => c.Industry.Contains("Technology"))
             .ToListAsync();
+#pragma warning restore CA1866
     }
 }
 

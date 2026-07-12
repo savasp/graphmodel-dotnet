@@ -27,9 +27,9 @@ internal sealed class CypherEngine
         SingleOrDefault,
     }
 
-    private static readonly IReadOnlyDictionary<MethodInfo, ElementTerminal> ElementTerminalMethods = CreateElementTerminalMethods();
+    private static readonly Dictionary<MethodInfo, ElementTerminal> ElementTerminalMethods = CreateElementTerminalMethods();
 
-    private static readonly IReadOnlySet<MethodInfo> MinMaxTerminalMethods = CreateMinMaxTerminalMethods();
+    private static readonly HashSet<MethodInfo> MinMaxTerminalMethods = CreateMinMaxTerminalMethods();
 
     private readonly EntityFactory _entityFactory;
     private readonly ILogger<CypherEngine> _logger;
@@ -105,7 +105,7 @@ internal sealed class CypherEngine
         var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
         LogCypherQuery(cypherQuery);
 
-        var records = _executor.StreamAsync(
+        var records = CypherExecutor.StreamAsync(
             cypherQuery.Text,
             cypherQuery.Parameters,
             cypherQuery.ProjectionColumns ?? [],
@@ -173,7 +173,7 @@ internal sealed class CypherEngine
         }
     }
 
-    private static IReadOnlyDictionary<MethodInfo, ElementTerminal> CreateElementTerminalMethods()
+    private static Dictionary<MethodInfo, ElementTerminal> CreateElementTerminalMethods()
     {
         var methods = new Dictionary<MethodInfo, ElementTerminal>();
 
@@ -195,7 +195,7 @@ internal sealed class CypherEngine
         }
     }
 
-    private static IReadOnlySet<MethodInfo> CreateMinMaxTerminalMethods()
+    private static HashSet<MethodInfo> CreateMinMaxTerminalMethods()
     {
         return typeof(QueryTerminals)
             .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)

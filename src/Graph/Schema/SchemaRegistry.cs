@@ -25,7 +25,7 @@ public class SchemaRegistry : IDisposable
     private readonly ConcurrentDictionary<string, EntitySchemaInfo> _relationshipSchemas = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<Assembly> _scannedAssemblies = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
-    private volatile bool _isInitialized = false;
+    private volatile bool _isInitialized;
 
     /// <summary>
     /// Gets whether the schema registry has been initialized.
@@ -397,7 +397,7 @@ public class SchemaRegistry : IDisposable
         return type;
     }
 
-    private EntitySchemaInfo CreateEntitySchemaInfo(Type entityType, string label, List<string> collisions)
+    private static EntitySchemaInfo CreateEntitySchemaInfo(Type entityType, string label, List<string> collisions)
     {
         var properties = new Dictionary<string, PropertySchemaInfo>();
         var allProperties = entityType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
@@ -433,7 +433,7 @@ public class SchemaRegistry : IDisposable
         };
     }
 
-    private PropertySchemaInfo CreatePropertySchemaInfo(PropertyInfo property)
+    private static PropertySchemaInfo CreatePropertySchemaInfo(PropertyInfo property)
     {
         var attribute = property.GetCustomAttribute<PropertyAttribute>();
         var isKey = attribute?.IsKey ?? false;
@@ -462,7 +462,7 @@ public class SchemaRegistry : IDisposable
         };
     }
 
-    private string GetLabelFromType(Type type)
+    private static string GetLabelFromType(Type type)
     {
         // Priority: NodeAttribute/RelationshipAttribute → Labels.GetLabelFromType
         var nodeAttr = type.GetCustomAttribute<NodeAttribute>();
@@ -521,7 +521,7 @@ public class SchemaRegistry : IDisposable
         }
     }
 
-    private (List<Type> nodeTypes, List<Type> relationshipTypes) DiscoverGraphEntityTypes(Assembly assembly)
+    private static (List<Type> nodeTypes, List<Type> relationshipTypes) DiscoverGraphEntityTypes(Assembly assembly)
     {
         var nodeTypes = new List<Type>();
         var relationshipTypes = new List<Type>();

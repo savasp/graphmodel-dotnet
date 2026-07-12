@@ -59,8 +59,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
         var helper = new AnalyzerHelper(context.Compilation);
 
-        bool implementsINode = helper.ImplementsINode(namedTypeSymbol);
-        bool implementsIRelationship = helper.ImplementsIRelationship(namedTypeSymbol);
+        bool implementsINode = AnalyzerHelper.ImplementsINode(namedTypeSymbol);
+        bool implementsIRelationship = AnalyzerHelper.ImplementsIRelationship(namedTypeSymbol);
 
         // CG012: Check for [Node]/[Relationship] applied to a type that doesn't implement the
         // matching interface. Must run before the early-return below, since its whole point is to
@@ -239,9 +239,9 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         // Pick the first interface found (INode before IRelationship) purely for a stable, single
         // diagnostic - a struct implementing both is vanishingly unlikely, and CG013 separately
         // flags a type carrying both [Node] and [Relationship] attributes.
-        string? interfaceName = helper.ImplementsINode(namedType)
+        string? interfaceName = AnalyzerHelper.ImplementsINode(namedType)
             ? "INode"
-            : helper.ImplementsIRelationship(namedType)
+            : AnalyzerHelper.ImplementsIRelationship(namedType)
                 ? "IRelationship"
                 : null;
 
@@ -287,7 +287,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             }
 
             string? reason = null;
-            if (helper.IsSimpleType(property.Type) || helper.IsCollectionOfSimpleTypes(property.Type))
+            if (AnalyzerHelper.IsSimpleType(property.Type) || AnalyzerHelper.IsCollectionOfSimpleTypes(property.Type))
             {
                 reason = $"property type '{GetShortTypeName(property.Type)}' is simple or a simple collection";
             }
@@ -451,7 +451,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             // Check collections of graph interface types (separate from direct types)
             else if (IsAnyCollectionType(property.Type, helper))
             {
-                var elementType = helper.GetCollectionElementType(property.Type);
+                var elementType = AnalyzerHelper.GetCollectionElementType(property.Type);
                 if (elementType != null && helper.IsGraphInterfaceType(elementType))
                 {
                     var diagnostic = Diagnostic.Create(
@@ -557,7 +557,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
             // Also check if CG003 would handle collections of graph interface types
             // This includes arrays and any generic collection containing graph interfaces
-            var elementType = helper.GetCollectionElementType(property.Type);
+            var elementType = AnalyzerHelper.GetCollectionElementType(property.Type);
             if (elementType != null && helper.IsGraphInterfaceType(elementType))
             {
                 // CG003 will handle this collection of graph interfaces, so skip it here
@@ -579,7 +579,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             // Also check if it's a collection of complex types that contain graph interfaces
             if (helper.IsCollectionOfComplexTypes(property.Type))
             {
-                var complexElementType = helper.GetCollectionElementType(property.Type);
+                var complexElementType = AnalyzerHelper.GetCollectionElementType(property.Type);
                 if (complexElementType != null && helper.IsComplexType(complexElementType))
                 {
                     var result = helper.ValidateComplexType(complexElementType);
@@ -594,8 +594,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             // Also check collections where element type contains graph interfaces (even if not "complex")
             if (helper.IsCollectionType(property.Type))
             {
-                var collectionElementType = helper.GetCollectionElementType(property.Type);
-                if (collectionElementType != null && !helper.IsSimpleType(collectionElementType))
+                var collectionElementType = AnalyzerHelper.GetCollectionElementType(property.Type);
+                if (collectionElementType != null && !AnalyzerHelper.IsSimpleType(collectionElementType))
                 {
                     var result = helper.ValidateComplexType(collectionElementType);
                     if (!result.IsValid)
@@ -650,7 +650,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
             // Also check if CG003 would handle collections of graph interface types
             // This includes arrays and any generic collection containing graph interfaces
-            var elementType = helper.GetCollectionElementType(property.Type);
+            var elementType = AnalyzerHelper.GetCollectionElementType(property.Type);
             if (elementType != null && helper.IsGraphInterfaceType(elementType))
             {
                 // CG003 will handle this collection of graph interfaces, so skip it here
@@ -672,7 +672,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             // Also check if it's a collection of complex types that contain graph interfaces
             if (helper.IsCollectionOfComplexTypes(property.Type))
             {
-                var complexElementType = helper.GetCollectionElementType(property.Type);
+                var complexElementType = AnalyzerHelper.GetCollectionElementType(property.Type);
                 if (complexElementType != null && helper.IsComplexType(complexElementType))
                 {
                     var result = helper.ValidateComplexType(complexElementType);
@@ -687,8 +687,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             // Also check collections where element type contains graph interfaces (even if not "complex")
             if (helper.IsCollectionType(property.Type))
             {
-                var collectionElementType = helper.GetCollectionElementType(property.Type);
-                if (collectionElementType != null && !helper.IsSimpleType(collectionElementType))
+                var collectionElementType = AnalyzerHelper.GetCollectionElementType(property.Type);
+                if (collectionElementType != null && !AnalyzerHelper.IsSimpleType(collectionElementType))
                 {
                     var result = helper.ValidateComplexType(collectionElementType);
                     if (!result.IsValid)
@@ -742,7 +742,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             }
 
             // Also check if CG003 would handle collections of graph interface types
-            var elementType = helper.GetCollectionElementType(property.Type);
+            var elementType = AnalyzerHelper.GetCollectionElementType(property.Type);
             if (elementType != null && helper.IsGraphInterfaceType(elementType))
             {
                 // CG003 will handle this collection of graph interfaces, so skip it here
@@ -768,8 +768,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             // Check collections (both of complex types and of types that contain graph interfaces)
             else if (helper.IsCollectionType(property.Type))
             {
-                var collectionElementType = helper.GetCollectionElementType(property.Type);
-                if (collectionElementType != null && !helper.IsSimpleType(collectionElementType))
+                var collectionElementType = AnalyzerHelper.GetCollectionElementType(property.Type);
+                if (collectionElementType != null && !AnalyzerHelper.IsSimpleType(collectionElementType))
                 {
                     // Check if this element type contains graph interfaces
                     var result = helper.ValidateComplexType(collectionElementType);
@@ -789,7 +789,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             // Explicit check for arrays in case IsCollectionType doesn't catch them
             else if (property.Type is IArrayTypeSymbol arrayType)
             {
-                if (!helper.IsSimpleType(arrayType.ElementType))
+                if (!AnalyzerHelper.IsSimpleType(arrayType.ElementType))
                 {
                     var result = helper.ValidateComplexType(arrayType.ElementType);
                     if (!result.IsValid)
@@ -951,12 +951,10 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeDuplicateRelationshipAttributeLabels(SymbolAnalysisContext context, INamedTypeSymbol namedType)
     {
-        var helper = new AnalyzerHelper(context.Compilation);
-
         // Collect all types in the compilation that implement IRelationship
         var allRelationshipTypes = context.Compilation.GetSymbolsWithName(_ => true, SymbolFilter.Type)
             .OfType<INamedTypeSymbol>()
-            .Where(t => helper.ImplementsIRelationship(t))
+            .Where(t => AnalyzerHelper.ImplementsIRelationship(t))
             .ToList();
 
         // Extract labels from all relationship types
@@ -1139,12 +1137,10 @@ public class GraphAnalyzer : DiagnosticAnalyzer
 
     private static void AnalyzeDuplicateNodeAttributeLabels(SymbolAnalysisContext context, INamedTypeSymbol namedType)
     {
-        var helper = new AnalyzerHelper(context.Compilation);
-
         // Collect all types in the compilation that implement INode
         var allNodeTypes = context.Compilation.GetSymbolsWithName(_ => true, SymbolFilter.Type)
             .OfType<INamedTypeSymbol>()
-            .Where(t => helper.ImplementsINode(t))
+            .Where(t => AnalyzerHelper.ImplementsINode(t))
             .ToList();
 
         // Extract labels from all node types
@@ -1328,7 +1324,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeCircularReferences(SymbolAnalysisContext context, INamedTypeSymbol namedType, AnalyzerHelper helper)
     {
         // Only analyze graph types (nodes/relationships) for circular references
-        if (!helper.ImplementsINode(namedType) && !helper.ImplementsIRelationship(namedType))
+        if (!AnalyzerHelper.ImplementsINode(namedType) && !AnalyzerHelper.ImplementsIRelationship(namedType))
             return;
 
         var properties = GetAllProperties(namedType);
@@ -1338,8 +1334,8 @@ public class GraphAnalyzer : DiagnosticAnalyzer
             if (IsCompilerGeneratedProperty(property))
                 continue;
             // Skip properties that would be handled by CG004/CG005 (invalid property types)
-            bool isNode = helper.ImplementsINode(namedType);
-            bool isRelationship = helper.ImplementsIRelationship(namedType);
+            bool isNode = AnalyzerHelper.ImplementsINode(namedType);
+            bool isRelationship = AnalyzerHelper.ImplementsIRelationship(namedType);
 
             if (isNode && !helper.IsValidNodePropertyType(property.Type))
             {
@@ -1486,7 +1482,7 @@ public class GraphAnalyzer : DiagnosticAnalyzer
         return null;
     }
 
-    private static IEnumerable<IPropertySymbol> GetAllProperties(INamedTypeSymbol namedType)
+    private static List<IPropertySymbol> GetAllProperties(INamedTypeSymbol namedType)
     {
         var properties = new List<IPropertySymbol>();
         var currentType = namedType;

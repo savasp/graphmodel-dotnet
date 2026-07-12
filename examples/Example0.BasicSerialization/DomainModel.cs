@@ -21,7 +21,7 @@ public record Address
     public State State { get; set; } = State.Unknown;
     public string ZipCode { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
-    public string? Note { get; set; } = null;
+    public string? Note { get; set; }
     public List<string> Aliases { get; set; } = new List<string>();
 }
 
@@ -64,15 +64,15 @@ public class Bar
 {
     public string Description { get; set; } = string.Empty;
     public List<int> Numbers { get; set; } = new List<int>();
-    public Foo? Foo { get; set; } = null;
-    public Baz? Baz { get; set; } = null;
+    public Foo? Foo { get; set; }
+    public Baz? Baz { get; set; }
 }
 
 public class Baz
 {
     public string Title { get; set; } = string.Empty;
     public List<string> Tags { get; set; } = new List<string>();
-    public Bar? Bar { get; set; } = null;
+    public Bar? Bar { get; set; }
 }
 
 [Node(Label = "PersonWithAddress")]
@@ -83,10 +83,10 @@ public record PersonWithComplex : Node
     public int Age { get; set; }
     public string? Department { get; set; }
     public Address HomeAddress { get; set; } = new Address();
-    public Address? WorkAddress { get; set; } = null;
+    public Address? WorkAddress { get; set; }
     public List<Address> PreviousAddresses { get; set; } = new List<Address>();
     public Foo Foo { get; set; } = new Foo();
-    public Bar? Bar { get; set; } = null;
+    public Bar? Bar { get; set; }
 }
 
 public class City

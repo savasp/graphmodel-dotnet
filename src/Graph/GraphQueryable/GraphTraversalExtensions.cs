@@ -89,7 +89,7 @@ public static class GraphTraversalExtensions
     /// <typeparamref name="TRel"/>/<typeparamref name="TEnd"/>.
     /// </summary>
     /// <remarks>
-    /// Returns the plain <see cref="Expression"/> call node (typed
+    /// Returns the plain <see cref="MethodCallExpression"/> call node (typed
     /// <c>IGraphQueryable&lt;IGraphPathSegment&lt;startType,TRel,TEnd&gt;&gt;</c>) rather than a
     /// materialized <c>IGraphQueryable&lt;T&gt;</c>: everything downstream (<c>WithDepth</c>,
     /// <c>Direction</c>, the final <c>Select</c>) is likewise built as a raw expression node via
@@ -99,7 +99,7 @@ public static class GraphTraversalExtensions
     /// <c>Direction&lt;TSource&gt;</c> would then close over <c>object</c> instead of the real
     /// path-segment type when called through that C#-typed intermediate).
     /// </remarks>
-    private static Expression BuildPathSegmentsCall<TRel, TEnd>(IGraphQueryable<INode> source, out Type startType)
+    private static MethodCallExpression BuildPathSegmentsCall<TRel, TEnd>(IGraphQueryable<INode> source, out Type startType)
         where TRel : class, IRelationship
         where TEnd : class, INode
     {

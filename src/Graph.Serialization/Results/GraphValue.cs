@@ -188,13 +188,13 @@ public sealed record GraphValue
         return value;
     }
 
-    private static IReadOnlyList<string> CopyStrings(IReadOnlyList<string> values, string parameterName)
+    private static ReadOnlyCollection<string> CopyStrings(IReadOnlyList<string> values, string parameterName)
     {
         ArgumentNullException.ThrowIfNull(values, parameterName);
         return Array.AsReadOnly(values.Select(value => Required(value, parameterName)).ToArray());
     }
 
-    private static IReadOnlyList<GraphValue> CopyItems(IReadOnlyList<GraphValue> values, string parameterName)
+    private static ReadOnlyCollection<GraphValue> CopyItems(IReadOnlyList<GraphValue> values, string parameterName)
     {
         ArgumentNullException.ThrowIfNull(values, parameterName);
         if (values.Any(value => value is null))
@@ -205,7 +205,7 @@ public sealed record GraphValue
         return Array.AsReadOnly(values.ToArray());
     }
 
-    private static IReadOnlyDictionary<string, GraphValue> CopyEntries(
+    private static ReadOnlyDictionary<string, GraphValue> CopyEntries(
         IReadOnlyDictionary<string, GraphValue> values,
         string parameterName)
     {

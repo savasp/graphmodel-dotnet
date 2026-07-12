@@ -229,9 +229,11 @@ public interface IErrorHandlingTests : IGraphTest
             // Discarded on purpose: this test only cares whether the query throws or not (see the
             // catch clauses below), not the result - an unused assignment here would otherwise be
             // a useless-local (CodeQL cs/useless-assignment-to-local).
+#pragma warning disable CA1514 // The redundant-looking length deliberately divides by zero.
             _ = await Graph.Nodes<TestNode>()
                 .Where(n => n.Name.Substring(0, n.Name.Length / 0) == "test") // Division by zero
                 .ToListAsync(TestContext.Current.CancellationToken);
+#pragma warning restore CA1514
 
             // If it doesn't throw, that's fine too
         }

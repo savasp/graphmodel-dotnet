@@ -65,7 +65,7 @@ public static class ComplianceInventory
             .ToArray();
     }
 
-    private static IReadOnlyList<MethodInfo> DiscoverTestMethods()
+    private static List<MethodInfo> DiscoverTestMethods()
     {
         var methods = new List<MethodInfo>();
 

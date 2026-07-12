@@ -119,6 +119,7 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
 
         // Act - test all supported functions in a single projection
+#pragma warning disable CA1866 // Preserve the provider-translated string overload under test.
         var projected = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "John")
             .Select(p => new
@@ -151,6 +152,7 @@ public interface IAdvancedQueryTests : IGraphTest
                 Day = DateTime.Now.Day
             })
             .ToListAsync(TestContext.Current.CancellationToken);
+#pragma warning restore CA1866
 
         // Assert
         Assert.Single(projected);
@@ -839,9 +841,11 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
         // Case-insensitive search
+#pragma warning disable CA1862 // Preserve the provider-translated normalization expression.
         var aiResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLowerInvariant().Contains("artificial intelligence"))
             .ToListAsync(TestContext.Current.CancellationToken);
+#pragma warning restore CA1862
 
         Assert.Single(aiResults);
         Assert.Equal("Alice", aiResults[0].FirstName);
@@ -862,9 +866,11 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
         // Multiple word search with AND logic
+#pragma warning disable CA1862 // Preserve the provider-translated normalization expression.
         var techResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLowerInvariant().Contains("data") && p.Bio.ToLowerInvariant().Contains("scientist"))
             .ToListAsync(TestContext.Current.CancellationToken);
+#pragma warning restore CA1862
 
         Assert.Single(techResults);
         Assert.Equal("Bob", techResults[0].FirstName);
@@ -931,9 +937,11 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
         // Combine text search with other filters
+#pragma warning disable CA1866 // Preserve the provider-translated string overload under test.
         var filteredResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.Contains("engineer") && p.FirstName.StartsWith("A"))
             .ToListAsync(TestContext.Current.CancellationToken);
+#pragma warning restore CA1866
 
         Assert.Single(filteredResults);
         Assert.Equal("Alice", filteredResults[0].FirstName);
@@ -954,6 +962,7 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(person4, null, TestContext.Current.CancellationToken);
 
         // Project results with text matching
+#pragma warning disable CA1862 // Preserve the provider-translated normalization expressions.
         var projectedResults = await this.Graph.Nodes<Person>()
             .Where(p => p.Bio.ToLowerInvariant().Contains("data") || p.Bio.ToLowerInvariant().Contains("user"))
             .Select(p => new
@@ -964,6 +973,7 @@ public interface IAdvancedQueryTests : IGraphTest
                 BioLength = p.Bio.Length
             })
             .ToListAsync(TestContext.Current.CancellationToken);
+#pragma warning restore CA1862
 
         Assert.Equal(2, projectedResults.Count);
 

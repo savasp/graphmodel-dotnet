@@ -714,7 +714,7 @@ public interface IDynamicEntitySchemaValidationTests : IGraphTest
             () => Graph.CreateNodeAsync(node, null, TestContext.Current.CancellationToken));
     }
 
-    private IDictionary<string, object?> GetMemoryProperties()
+    private static IDictionary<string, object?> GetMemoryProperties()
     {
         return new Dictionary<string, object?>
         {

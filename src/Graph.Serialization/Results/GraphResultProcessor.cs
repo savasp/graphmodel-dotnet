@@ -17,13 +17,13 @@ public sealed class GraphResultProcessor
     private readonly EntityFactory _entityFactory;
     private readonly ILogger<GraphResultProcessor> _logger;
 
-    private record ComplexProperty(
+    private sealed record ComplexProperty(
         GraphValue ParentNode,
         GraphValue Relationship,
         int SequenceNumber,
         GraphValue Property);
-    private record NodeResult(GraphValue Node, List<ComplexProperty> ComplexProperties);
-    private record PathSegmentResult(
+    private sealed record NodeResult(GraphValue Node, List<ComplexProperty> ComplexProperties);
+    private sealed record PathSegmentResult(
         NodeResult StartNode,
         GraphValue Relationship,
         NodeResult EndNode);
@@ -73,7 +73,7 @@ public sealed class GraphResultProcessor
         return Task.FromResult(ProcessProjections(records, targetType));
     }
 
-    private PathSegmentResult? DeserializePathSegment(IReadOnlyDictionary<string, object> pathSegmentRecord)
+    private static PathSegmentResult? DeserializePathSegment(IReadOnlyDictionary<string, object> pathSegmentRecord)
     {
         // Extract the relevant properties from the dictionary
         if (!pathSegmentRecord.TryGetValue("StartNode", out var startNodeObj) ||
@@ -93,7 +93,7 @@ public sealed class GraphResultProcessor
         return new PathSegmentResult(startNode, relationship, endNode);
     }
 
-    private static NodeResult? DeserializeNode(IReadOnlyDictionary<string, object> nodeRecord)
+    private static NodeResult? DeserializeNode(Dictionary<string, object> nodeRecord)
     {
         // Extract the relevant properties from the dictionary
         if (!nodeRecord.TryGetValue("Node", out var nodeObj) ||
@@ -230,7 +230,7 @@ public sealed class GraphResultProcessor
         // Create the base entity info for this node
         var actualType = DiscoverActualNodeType(node, nodeType);
         Dictionary<string, Property> simpleProperties;
-        var label = node.Labels.FirstOrDefault() ?? actualType.Name;
+        var label = node.Labels.Count == 0 ? actualType.Name : node.Labels[0];
 
         // Use dynamic extraction for dynamic nodes (including complex property nodes)
         if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))
@@ -331,7 +331,7 @@ public sealed class GraphResultProcessor
     /// <summary>
     /// Recursively reconstructs the object graph for a node and its complex properties.
     /// </summary>
-    private EntityInfo DeserializeComplexPropertiesForDynamicNode(
+    private static EntityInfo DeserializeComplexPropertiesForDynamicNode(
         GraphValue node,
         List<ComplexProperty> allComplexProperties,
         Type nodeType,
@@ -355,7 +355,7 @@ public sealed class GraphResultProcessor
 
         var entityInfo = new EntityInfo(
             ActualType: nodeType,
-            Label: node.Labels.FirstOrDefault() ?? "",
+            Label: node.Labels.Count == 0 ? "" : node.Labels[0],
             ActualLabels: node.Labels.ToList(),
             SimpleProperties: simpleProperties,
             ComplexProperties: new Dictionary<string, Property>()
@@ -680,7 +680,7 @@ public sealed class GraphResultProcessor
         );
     }
 
-    private bool TryDeserializeRelationshipProjection(
+    private static bool TryDeserializeRelationshipProjection(
         object? value,
         Type targetType,
         string projectionName,
@@ -754,7 +754,7 @@ public sealed class GraphResultProcessor
         return entityInfo;
     }
 
-    private void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, GraphValue relationship, Type targetType, GraphValue pathStartNode, GraphValue pathEndNode)
+    private static void EnhanceRelationshipEntityInfo(EntityInfo entityInfo, GraphValue relationship, Type targetType, GraphValue pathStartNode, GraphValue pathEndNode)
     {
         var direction = GetRelationshipDirection(relationship);
         var (startNodeId, endNodeId) = GetLogicalRelationshipNodeIds(relationship, pathStartNode, pathEndNode, direction);
@@ -877,7 +877,7 @@ public sealed class GraphResultProcessor
         return RelationshipDirection.Outgoing;
     }
 
-    private EntityInfo CreatePathSegmentEntityInfo(
+    private static EntityInfo CreatePathSegmentEntityInfo(
         EntityInfo sourceEntity,
         EntityInfo relEntity,
         EntityInfo targetEntity,
@@ -942,7 +942,7 @@ public sealed class GraphResultProcessor
     }
 
     // Add this method to extract all properties for dynamic nodes
-    private Dictionary<string, Property> ExtractAllSimplePropertiesForDynamicNode(IReadOnlyDictionary<string, object> properties)
+    private static Dictionary<string, Property> ExtractAllSimplePropertiesForDynamicNode(IReadOnlyDictionary<string, object> properties)
     {
         var result = new Dictionary<string, Property>();
         foreach (var (key, value) in properties)
@@ -972,7 +972,7 @@ public sealed class GraphResultProcessor
         var actualType = DiscoverActualNodeType(node, targetType);
 
         Dictionary<string, Property> simpleProperties;
-        var label = node.Labels.FirstOrDefault() ?? actualType.Name;
+        var label = node.Labels.Count == 0 ? actualType.Name : node.Labels[0];
 
         // Handle dynamic nodes differently
         if (typeof(Graph.DynamicNode).IsAssignableFrom(actualType))
@@ -1186,7 +1186,7 @@ public sealed class GraphResultProcessor
     /// <summary>
     /// Attempts to discover a more specific type from node labels.
     /// </summary>
-    private Type? DiscoverTypeFromNodeLabels(IReadOnlyList<string> labels, Type targetType)
+    private static Type? DiscoverTypeFromNodeLabels(IReadOnlyList<string> labels, Type targetType)
     {
         if (!labels.Any())
             return null;
@@ -1216,7 +1216,7 @@ public sealed class GraphResultProcessor
     /// <summary>
     /// Attempts to discover a more specific type from relationship type.
     /// </summary>
-    private Type? DiscoverTypeFromRelationshipType(string? relationshipType, Type targetType)
+    private static Type? DiscoverTypeFromRelationshipType(string? relationshipType, Type targetType)
     {
         if (string.IsNullOrEmpty(relationshipType))
             return null;
@@ -1258,7 +1258,7 @@ public sealed class GraphResultProcessor
     /// <see cref="DiscoverTypeFromNodeLabels"/>). The caller narrows this down via an
     /// assignability check against the specific target type it is resolving.
     /// </summary>
-    private IEnumerable<Type> GetKnownConcreteTypes()
+    private static IEnumerable<Type> GetKnownConcreteTypes()
     {
         return AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(assembly =>
@@ -1284,7 +1284,7 @@ public sealed class GraphResultProcessor
     /// <summary>
     /// Gets all known relationship types from loaded assemblies.
     /// </summary>
-    private IEnumerable<Type> GetKnownRelationshipTypes()
+    private static IEnumerable<Type> GetKnownRelationshipTypes()
     {
         // Get types from the current app domain that implement IRelationship
         return AppDomain.CurrentDomain.GetAssemblies()
@@ -1338,7 +1338,7 @@ public sealed class GraphResultProcessor
                     propertySchema.PropertyName,
                     propertySchema.IsNullable,
                     propertySchema.PropertyType == PropertyType.SimpleCollection
-                        ? CreateSimpleCollection(convertedValue, propertySchema.ElementType!)
+                        ? global::Cvoya.Graph.Serialization.Results.GraphResultProcessor.CreateSimpleCollection(convertedValue, propertySchema.ElementType!)
                         : new SimpleValue(convertedValue, propertySchema.PropertyInfo.PropertyType));
 
                 result[key] = property;
@@ -1348,7 +1348,7 @@ public sealed class GraphResultProcessor
         return result;
     }
 
-    private SimpleCollection CreateSimpleCollection(object convertedValue, Type elementType)
+    private static SimpleCollection CreateSimpleCollection(object convertedValue, Type elementType)
     {
         var items = new List<SimpleValue>();
         if (convertedValue is IEnumerable<object> enumerable)

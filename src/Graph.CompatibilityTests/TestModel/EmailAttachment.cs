@@ -11,5 +11,5 @@ public record EmailAttachment : Node
     public string MimeType { get; init; } = string.Empty;
     public long Size { get; init; }
     public string? AttachmentId { get; init; }
-    public bool IsInline { get; init; } = false;
+    public bool IsInline { get; init; }
 }

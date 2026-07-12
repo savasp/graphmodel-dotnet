@@ -70,6 +70,10 @@ public class Neo4jGraphStoreTests
             () => store.Graph.GetTransactionAsync(TestContext.Current.CancellationToken));
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1852:Seal internal types",
+        Justification = "DispatchProxy generates a runtime subclass of this type.")]
     private class TrackingDriverProxy : DispatchProxy
     {
         public int DisposeAsyncCallCount { get; private set; }
@@ -91,7 +95,7 @@ public class Neo4jGraphStoreTests
             };
         }
 
-        private object RecordDisposeAsync()
+        private ValueTask RecordDisposeAsync()
         {
             DisposeAsyncCallCount++;
             return ValueTask.CompletedTask;

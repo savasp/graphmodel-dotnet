@@ -95,9 +95,11 @@ public interface IQueryTests : IGraphTest
         await this.Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
         await this.Graph.CreateNodeAsync(p3, null, TestContext.Current.CancellationToken);
 
+#pragma warning disable CA1866 // Preserve the provider-translated string overload under test.
         var smiths = await this.Graph.Nodes<Person>()
             .Where(p => p.LastName == "Smith" && p.FirstName.StartsWith("A"))
             .ToListAsync(TestContext.Current.CancellationToken);
+#pragma warning restore CA1866
         Assert.Single(smiths);
         Assert.Equal("Alice", smiths[0].FirstName);
     }

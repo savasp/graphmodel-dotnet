@@ -127,7 +127,7 @@ internal sealed class EntityReader(EntityFactory entityFactory)
     }
 
     /// <summary>Rebuilds the serialized form of a relationship record.</summary>
-    public EntityInfo BuildRelationshipInfo(RelationshipRecord record, Type actualType)
+    public static EntityInfo BuildRelationshipInfo(RelationshipRecord record, Type actualType)
     {
         var simpleProperties = SnapshotToProperties(record.Properties);
 

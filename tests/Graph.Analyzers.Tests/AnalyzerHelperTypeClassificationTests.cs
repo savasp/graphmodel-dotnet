@@ -4,6 +4,7 @@
 namespace Cvoya.Graph.Analyzers.Tests;
 
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
 
 
@@ -48,7 +49,7 @@ public class AnalyzerHelperTypeClassificationTests
 
     private static readonly AnalyzerHelper Helper = new(Compilation);
 
-    private static Compilation CreateCompilation()
+    private static CSharpCompilation CreateCompilation()
     {
         var trustedAssemblies = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator);
@@ -237,14 +238,14 @@ public class AnalyzerHelperTypeClassificationTests
     [MemberData(nameof(SimpleTypeCases))]
     public void IsSimpleType_ReturnsExpectedResult(string shape, bool expected)
     {
-        AssertEqual(expected, Helper.IsSimpleType(Resolve(shape)), shape);
+        AssertEqual(expected, AnalyzerHelper.IsSimpleType(Resolve(shape)), shape);
     }
 
     [Theory]
     [MemberData(nameof(CollectionOfSimpleCases))]
     public void IsCollectionOfSimpleTypes_ReturnsExpectedResult(string shape, bool expected)
     {
-        AssertEqual(expected, Helper.IsCollectionOfSimpleTypes(Resolve(shape)), shape);
+        AssertEqual(expected, AnalyzerHelper.IsCollectionOfSimpleTypes(Resolve(shape)), shape);
     }
 
     [Theory]
@@ -265,7 +266,7 @@ public class AnalyzerHelperTypeClassificationTests
     [MemberData(nameof(DictionaryCases))]
     public void IsDictionaryType_ReturnsExpectedResult(string shape, bool expected)
     {
-        AssertEqual(expected, Helper.IsDictionaryType(Resolve(shape)), shape);
+        AssertEqual(expected, AnalyzerHelper.IsDictionaryType(Resolve(shape)), shape);
     }
 
     /// <summary>

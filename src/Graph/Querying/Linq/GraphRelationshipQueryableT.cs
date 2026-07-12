@@ -22,12 +22,12 @@ internal sealed class GraphRelationshipQueryable<TRel> : GraphQueryableBase<TRel
     }
 
     // For the root queryable, we'll create a placeholder that gets replaced during LINQ processing.
-    private static Expression CreateRootExpression()
+    private static ConstantExpression CreateRootExpression()
     {
         return Expression.Constant(CreatePlaceholderQueryable(), typeof(IGraphQueryable<TRel>));
     }
 
-    private static IGraphQueryable<TRel> CreatePlaceholderQueryable()
+    private static PlaceholderRelationshipQueryable<TRel> CreatePlaceholderQueryable()
     {
         // This is a minimal placeholder that provides the element type information
         return new PlaceholderRelationshipQueryable<TRel>();
