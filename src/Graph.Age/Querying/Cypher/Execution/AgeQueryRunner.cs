@@ -4,6 +4,7 @@
 namespace Cvoya.Graph.Age.Querying.Cypher.Execution;
 
 using System.Collections;
+using System.Data.Common;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -53,25 +54,8 @@ internal sealed partial class AgeQueryRunner
         ArgumentNullException.ThrowIfNull(projectionColumns);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var temporalParameters = NormalizeTemporalParameterArithmetic(cypher, parameters);
-        cypher = temporalParameters.Cypher;
-        parameters = temporalParameters.Parameters;
-        if (projectionColumns.Count == 0)
-        {
-            projectionColumns = InferProjectionColumns(cypher);
-        }
-        var distinct = ReturnDistinctRegex().IsMatch(cypher);
-        cypher = ReturnDistinctRegex().Replace(cypher, "RETURN");
-        var normalizedProjection = NormalizeProjectionAliases(cypher, projectionColumns);
-        cypher = normalizedProjection.Cypher;
-        var effectiveColumns = normalizedProjection.Columns.Count == 0 ? ["result"] : normalizedProjection.Columns;
-        var command = CreateCommand(cypher, parameters, effectiveColumns);
+        var (command, distinct) = PrepareCommand(cypher, parameters, projectionColumns, streaming: false);
         await using var commandLease = command.ConfigureAwait(false);
-        logger.LogDebug(
-            "Executing AGE Cypher query with {ParameterCount} parameters and {ColumnCount} projected columns: {Query}",
-            parameters.Count,
-            effectiveColumns.Count,
-            cypher);
 
         try
         {
@@ -97,12 +81,7 @@ internal sealed partial class AgeQueryRunner
             {
                 // The key embeds the value's runtime type so 1 (integer) and "1" (string) stay
                 // distinct rows.
-                records = records
-                    .DistinctBy(record => string.Join(
-                        '\u001f',
-                        record.Values.Select(pair =>
-                            $"{pair.Key}\u001e{pair.Value?.GetType().Name}\u001e{pair.Value}")), StringComparer.Ordinal)
-                    .ToList();
+                records = records.DistinctBy(GetDistinctKey, StringComparer.Ordinal).ToList();
             }
 
             logger.LogDebug("AGE query returned {RecordCount} records", records.Count);
@@ -114,10 +93,75 @@ internal sealed partial class AgeQueryRunner
         }
         catch (Exception exception) when (IsQueryExecutionFailure(exception))
         {
-            var correlationId = Guid.NewGuid().ToString("N");
-            logger.LogError(exception, "AGE query execution failed; correlation ID {CorrelationId}", correlationId);
-            throw new GraphException($"AGE query execution failed. Correlation ID: {correlationId}.", exception);
+            throw WrapQueryExecutionFailure(exception);
         }
+    }
+
+    public async Task<AgeResultCursor> RunStreamingAsync(
+        string cypher,
+        IReadOnlyDictionary<string, object?> parameters,
+        IReadOnlyList<string> projectionColumns,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(cypher);
+        ArgumentNullException.ThrowIfNull(parameters);
+        ArgumentNullException.ThrowIfNull(projectionColumns);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var (command, distinct) = PrepareCommand(cypher, parameters, projectionColumns, streaming: true);
+
+        try
+        {
+            var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            return new AgeResultCursor(
+                new AgeReaderRecordSource(command, reader, WrapQueryExecutionFailure),
+                distinct);
+        }
+        catch (OperationCanceledException)
+        {
+            await command.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+        catch (Exception exception) when (IsQueryExecutionFailure(exception))
+        {
+            await command.DisposeAsync().ConfigureAwait(false);
+            throw WrapQueryExecutionFailure(exception);
+        }
+        catch
+        {
+            await command.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private (NpgsqlCommand Command, bool Distinct) PrepareCommand(
+        string cypher,
+        IReadOnlyDictionary<string, object?> parameters,
+        IReadOnlyList<string> projectionColumns,
+        bool streaming)
+    {
+        var temporalParameters = NormalizeTemporalParameterArithmetic(cypher, parameters);
+        cypher = temporalParameters.Cypher;
+        parameters = temporalParameters.Parameters;
+        if (projectionColumns.Count == 0)
+        {
+            projectionColumns = InferProjectionColumns(cypher);
+        }
+
+        var distinct = ReturnDistinctRegex().IsMatch(cypher);
+        cypher = ReturnDistinctRegex().Replace(cypher, "RETURN");
+        var normalizedProjection = NormalizeProjectionAliases(cypher, projectionColumns);
+        cypher = normalizedProjection.Cypher;
+        var effectiveColumns = normalizedProjection.Columns.Count == 0 ? ["result"] : normalizedProjection.Columns;
+        var command = CreateCommand(cypher, parameters, effectiveColumns);
+        logger.LogDebug(
+            streaming
+                ? "Streaming AGE Cypher query with {ParameterCount} parameters and {ColumnCount} projected columns: {Query}"
+                : "Executing AGE Cypher query with {ParameterCount} parameters and {ColumnCount} projected columns: {Query}",
+            parameters.Count,
+            effectiveColumns.Count,
+            cypher);
+        return (command, distinct);
     }
 
     /// <summary>
@@ -126,8 +170,19 @@ internal sealed partial class AgeQueryRunner
     /// failures this correlation-id boundary is meant to catch. Anything else (e.g. a bug
     /// elsewhere) should propagate rather than be silently wrapped.
     /// </summary>
-    private static bool IsQueryExecutionFailure(Exception exception) =>
+    internal static bool IsQueryExecutionFailure(Exception exception) =>
         exception is NpgsqlException or JsonException or FormatException or InvalidCastException;
+
+    internal static string GetDistinctKey(AgeRecord record) => string.Join(
+        '\u001f',
+        record.Values.Select(pair => $"{pair.Key}\u001e{pair.Value?.GetType().Name}\u001e{pair.Value}"));
+
+    private GraphException WrapQueryExecutionFailure(Exception exception)
+    {
+        var correlationId = Guid.NewGuid().ToString("N");
+        logger.LogError(exception, "AGE query execution failed; correlation ID {CorrelationId}", correlationId);
+        return new GraphException($"AGE query execution failed. Correlation ID: {correlationId}.", exception);
+    }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage(
         "Security",
@@ -560,7 +615,7 @@ internal sealed partial class AgeQueryRunner
         };
     }
 
-    private static object? ParseTextAgtype(string text)
+    internal static object? ParseTextAgtype(string text)
     {
         var trimmed = text.Trim();
         if (trimmed.StartsWith('"'))
@@ -802,43 +857,208 @@ internal sealed record AgeRecord(IReadOnlyDictionary<string, object?> Values)
     public object? this[string key] => Values[key];
 }
 
-internal sealed class AgeResultCursor(IReadOnlyList<AgeRecord> records)
+internal interface IAgeRecordSource : IAsyncDisposable
 {
+    AgeRecord Current { get; }
+
+    ValueTask<bool> ReadAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class AgeReaderRecordSource(
+    DbCommand command,
+    DbDataReader reader,
+    Func<Exception, GraphException> wrapQueryExecutionFailure) : IAgeRecordSource
+{
+    public AgeRecord Current { get; private set; } = null!;
+
+    public async ValueTask<bool> ReadAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return false;
+            }
+
+            var values = new Dictionary<string, object?>(reader.FieldCount, StringComparer.Ordinal);
+            for (var index = 0; index < reader.FieldCount; index++)
+            {
+                values.Add(
+                    reader.GetName(index),
+                    await reader.IsDBNullAsync(index, cancellationToken).ConfigureAwait(false)
+                        ? null
+                        : AgeQueryRunner.ParseTextAgtype(reader.GetString(index)));
+            }
+
+            Current = new AgeRecord(values);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (AgeQueryRunner.IsQueryExecutionFailure(exception))
+        {
+            throw wrapQueryExecutionFailure(exception);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await reader.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            await command.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+}
+
+internal sealed class AgeResultCursor : IAsyncDisposable
+{
+    private readonly IReadOnlyList<AgeRecord>? records;
+    private readonly IAgeRecordSource? source;
+    private readonly HashSet<string>? distinctKeys;
     private int currentIndex = -1;
+    private AgeRecord? current;
+    private bool disposed;
 
-    public AgeRecord Current => currentIndex >= 0 && currentIndex < records.Count
-        ? records[currentIndex]
-        : throw new InvalidOperationException("The cursor is not positioned on a record.");
-
-    public int Count => records.Count;
-
-    public Task ConsumeAsync() => Task.CompletedTask;
-
-    public Task<List<AgeRecord>> ToListAsync(CancellationToken cancellationToken = default)
+    public AgeResultCursor(IReadOnlyList<AgeRecord> records)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(records.ToList());
+        this.records = records ?? throw new ArgumentNullException(nameof(records));
     }
 
-    public Task<AgeRecord> SingleAsync(CancellationToken cancellationToken = default)
+    public AgeResultCursor(IAgeRecordSource source, bool distinct)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(records.Count == 1
-            ? records[0]
-            : throw new InvalidOperationException($"Expected one AGE record but received {records.Count}."));
+        this.source = source ?? throw new ArgumentNullException(nameof(source));
+        distinctKeys = distinct ? new HashSet<string>(StringComparer.Ordinal) : null;
     }
 
-    public Task<AgeRecord> FirstAsync(CancellationToken cancellationToken = default)
+    public AgeRecord Current => current
+        ?? throw new InvalidOperationException("The cursor is not positioned on a record.");
+
+    public int Count => records?.Count
+        ?? throw new InvalidOperationException("A streaming AGE cursor does not have a buffered count.");
+
+    public async Task ConsumeAsync(CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(records.Count > 0
-            ? records[0]
-            : throw new InvalidOperationException("The AGE result contains no records."));
+        if (records is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            while (await FetchAsync(cancellationToken).ConfigureAwait(false))
+            {
+                // Drain the remaining records so the source is fully consumed.
+            }
+        }
+        finally
+        {
+            await DisposeAsync().ConfigureAwait(false);
+        }
     }
 
-    public Task<bool> FetchAsync()
+    public async Task<List<AgeRecord>> ToListAsync(CancellationToken cancellationToken = default)
     {
-        currentIndex++;
-        return Task.FromResult(currentIndex < records.Count);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (records is not null)
+        {
+            return records.ToList();
+        }
+
+        var result = new List<AgeRecord>();
+        try
+        {
+            while (await FetchAsync(cancellationToken).ConfigureAwait(false))
+            {
+                result.Add(Current);
+            }
+
+            return result;
+        }
+        finally
+        {
+            await DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    public async Task<AgeRecord> SingleAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await ToListAsync(cancellationToken).ConfigureAwait(false);
+        return result.Count == 1
+            ? result[0]
+            : throw new InvalidOperationException($"Expected one AGE record but received {result.Count}.");
+    }
+
+    public async Task<AgeRecord> FirstAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (records is not null)
+        {
+            return records.Count > 0
+                ? records[0]
+                : throw new InvalidOperationException("The AGE result contains no records.");
+        }
+
+        try
+        {
+            return await FetchAsync(cancellationToken).ConfigureAwait(false)
+                ? Current
+                : throw new InvalidOperationException("The AGE result contains no records.");
+        }
+        finally
+        {
+            await DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    public async ValueTask<bool> FetchAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (records is not null)
+        {
+            currentIndex++;
+            if (currentIndex >= records.Count)
+            {
+                current = null;
+                return false;
+            }
+
+            current = records[currentIndex];
+            return true;
+        }
+
+        while (await source!.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var record = source.Current;
+            if (distinctKeys is null || distinctKeys.Add(AgeQueryRunner.GetDistinctKey(record)))
+            {
+                current = record;
+                return true;
+            }
+        }
+
+        current = null;
+        return false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        if (source is not null)
+        {
+            await source.DisposeAsync().ConfigureAwait(false);
+        }
     }
 }

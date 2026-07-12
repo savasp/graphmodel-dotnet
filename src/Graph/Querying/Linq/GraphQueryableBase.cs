@@ -1,40 +1,30 @@
 // Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
 // See LICENSE in the project root for full license terms.
 
-namespace Cvoya.Graph.Age.Querying.Linq.Queryables;
+namespace Cvoya.Graph.Querying.Linq;
 
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
-using Cvoya.Graph.Age.Core;
-using Cvoya.Graph.Age.Querying.Linq.Providers;
 
 internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGraphQueryable<T>, IGraphQueryableKindProvider
 {
-    protected readonly GraphQueryProvider Provider;
-    protected readonly AgeGraphContext Context;
+    protected readonly IStreamingGraphQueryProvider Provider;
     protected readonly Expression Expression;
-    protected readonly AgeGraphTransaction? _transaction;
 
     protected GraphQueryableBase(
         Type elementType,
-        GraphQueryProvider provider,
-        AgeGraphContext graphContext,
-        AgeGraphTransaction? transaction,
+        IStreamingGraphQueryProvider provider,
         Expression expression,
         GraphQueryableKind queryableKind)
     {
         ElementType = elementType;
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
-        Context = graphContext ?? throw new ArgumentNullException(nameof(graphContext));
         Expression = expression ?? throw new ArgumentNullException(nameof(expression));
-        _transaction = transaction;
         QueryableKind = queryableKind;
     }
-
-    protected AgeGraphTransaction? Transaction => _transaction;
 
     public GraphQueryableKind QueryableKind { get; }
 
@@ -48,7 +38,7 @@ internal abstract class GraphQueryableBase<T> : IGraphQueryable<T>, IOrderedGrap
 
     #region IGraphQueryable Implementation
 
-    public IGraph Graph => Context.Graph;
+    public IGraph Graph => Provider.Graph;
     IGraphQueryProvider IGraphQueryable<T>.Provider => Provider;
 
     #endregion

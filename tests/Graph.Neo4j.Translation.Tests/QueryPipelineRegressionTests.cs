@@ -19,10 +19,9 @@ public class QueryPipelineRegressionTests
         var queryableSource = File.ReadAllText(Path.Join(
             root,
             "src",
-            "Graph.Neo4j",
+            "Graph",
             "Querying",
             "Linq",
-            "Queryables",
             "GraphQueryableBase.cs"));
         var getAsyncEnumerator = ExtractMember(
             queryableSource,

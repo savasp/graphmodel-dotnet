@@ -6,6 +6,7 @@ namespace Cvoya.Graph.Neo4j.Querying.Linq.Queryables;
 using System.Linq.Expressions;
 using Cvoya.Graph;
 using Cvoya.Graph.Querying;
+using Cvoya.Graph.Querying.Linq;
 
 /// <summary>
 /// Represents a full text search query expression

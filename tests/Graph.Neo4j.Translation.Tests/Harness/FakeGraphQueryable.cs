@@ -5,7 +5,7 @@ namespace Cvoya.Graph.Neo4j.Translation.Tests.Harness;
 
 using System.Collections;
 using System.Linq.Expressions;
-using Cvoya.Graph.Neo4j.Querying.Linq.Queryables;
+using Cvoya.Graph.Querying.Linq;
 
 /// <summary>
 /// A minimal <see cref="IGraphQueryable{T}"/> that carries only an expression tree and a

@@ -5,6 +5,7 @@ namespace Cvoya.Graph.Neo4j.Core;
 
 using Cvoya.Graph.Neo4j.Querying.Linq.Providers;
 using Cvoya.Graph.Neo4j.Querying.Linq.Queryables;
+using Cvoya.Graph.Querying.Linq;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -95,7 +96,7 @@ internal class Neo4jGraph : IGraph
         // session/connection leaks from long-lived queryables.
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return new GraphNodeQueryable<N>(provider, neo4jTx, _graphContext);
+        return new GraphNodeQueryable<N>(provider);
     }
 
     /// <inheritdoc />
@@ -106,7 +107,7 @@ internal class Neo4jGraph : IGraph
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return new GraphRelationshipQueryable<R>(provider, _graphContext, neo4jTx);
+        return new GraphRelationshipQueryable<R>(provider);
     }
 
     /// <inheritdoc />
@@ -454,7 +455,7 @@ internal class Neo4jGraph : IGraph
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return new GraphNodeQueryable<DynamicNode>(provider, neo4jTx, _graphContext);
+        return new GraphNodeQueryable<DynamicNode>(provider);
     }
 
     /// <inheritdoc />
@@ -464,7 +465,7 @@ internal class Neo4jGraph : IGraph
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return new GraphRelationshipQueryable<DynamicRelationship>(provider, _graphContext, neo4jTx);
+        return new GraphRelationshipQueryable<DynamicRelationship>(provider);
     }
 
     /// <inheritdoc />
@@ -496,7 +497,7 @@ internal class Neo4jGraph : IGraph
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return FullTextSearchQueryableFactory.CreateSearchQueryable<Graph.IEntity>(provider, neo4jTx, _graphContext, query);
+        return FullTextSearchQueryableFactory.CreateSearchQueryable<Graph.IEntity>(provider, query);
     }
 
     /// <inheritdoc />
@@ -508,7 +509,7 @@ internal class Neo4jGraph : IGraph
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<Graph.INode>(provider, neo4jTx, _graphContext, query);
+        return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<Graph.INode>(provider, query);
     }
 
     /// <inheritdoc />
@@ -520,7 +521,7 @@ internal class Neo4jGraph : IGraph
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<Graph.IRelationship>(provider, neo4jTx, _graphContext, query);
+        return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<Graph.IRelationship>(provider, query);
     }
 
     /// <inheritdoc />
@@ -535,7 +536,7 @@ internal class Neo4jGraph : IGraph
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<T>(provider, neo4jTx, _graphContext, query);
+        return FullTextSearchQueryableFactory.CreateNodeSearchQueryable<T>(provider, query);
     }
 
     /// <inheritdoc />
@@ -550,7 +551,7 @@ internal class Neo4jGraph : IGraph
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
-        return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<T>(provider, neo4jTx, _graphContext, query);
+        return FullTextSearchQueryableFactory.CreateRelationshipSearchQueryable<T>(provider, query);
     }
 
     /// <inheritdoc />
