@@ -3,7 +3,6 @@
 
 using Cvoya.Graph;
 using Cvoya.Graph.Neo4j;
-using Cvoya.Graph.Neo4j.Linq;
 using Neo4j.Driver;
 
 // Example 3: Transaction Management

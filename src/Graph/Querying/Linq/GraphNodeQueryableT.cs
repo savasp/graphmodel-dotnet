@@ -1,31 +1,25 @@
 // Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
 // See LICENSE in the project root for full license terms.
 
-namespace Cvoya.Graph.Neo4j.Querying.Linq.Queryables;
+namespace Cvoya.Graph.Querying.Linq;
 
 using System.Collections;
 using System.Linq.Expressions;
-using Cvoya.Graph.Neo4j.Core;
-using Cvoya.Graph.Neo4j.Querying.Linq.Providers;
-
-
 internal sealed class GraphNodeQueryable<TNode> :
     GraphQueryableBase<TNode>,
     IGraphQueryable<TNode>,
     IOrderedGraphQueryable<TNode>
     where TNode : class, INode
 {
-    public GraphNodeQueryable(GraphQueryProvider provider, GraphTransaction? transaction, GraphContext graphContext)
-        : base(typeof(TNode), provider, graphContext, transaction, CreateRootExpression(), GraphQueryableKind.Node)
+    public GraphNodeQueryable(IStreamingGraphQueryProvider provider)
+        : base(typeof(TNode), provider, CreateRootExpression(), GraphQueryableKind.Node)
     {
     }
 
     public GraphNodeQueryable(
-        GraphQueryProvider provider,
-        GraphContext graphContext,
-        GraphTransaction? transaction,
+        IStreamingGraphQueryProvider provider,
         Expression expression)
-        : base(typeof(TNode), provider, graphContext, transaction, expression, GraphQueryableKind.Node)
+        : base(typeof(TNode), provider, expression, GraphQueryableKind.Node)
     {
     }
 

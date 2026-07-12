@@ -5,241 +5,83 @@ namespace Cvoya.Graph.Age.Querying.Linq.Providers;
 
 using System.Linq.Expressions;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using Cvoya.Graph.Age.Core;
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
-using Cvoya.Graph.Age.Querying.Linq.Helpers;
-using Cvoya.Graph.Age.Querying.Linq.Queryables;
+using Cvoya.Graph.Querying.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 
-/// <summary>
-/// Provides LINQ query execution capabilities for graph operations.
-/// </summary>
-internal sealed class GraphQueryProvider : IGraphQueryProvider
+internal sealed class GraphQueryProvider : GraphQueryProviderBase<AgeGraphTransaction>
 {
-    private readonly AgeGraphContext _graphContext;
-    private readonly AgeGraphTransaction? _transaction;
-    private readonly bool _isReadOnly;
-    private readonly ILogger<GraphQueryProvider> _logger;
-    private readonly CypherEngine _cypherEngine;
+    private readonly AgeGraphContext context;
+    private readonly AgeGraphTransaction? transaction;
+    private readonly bool isReadOnly;
+    private readonly ILogger<GraphQueryProvider> logger;
+    private readonly CypherEngine cypherEngine;
 
     public GraphQueryProvider(AgeGraphContext context, AgeGraphTransaction? transaction, bool isReadOnly = false)
+        : base(context?.Graph ?? throw new ArgumentNullException(nameof(context)), transaction is null)
     {
-        _graphContext = context ?? throw new ArgumentNullException(nameof(context));
-        _transaction = transaction;
-        _isReadOnly = isReadOnly;
-        _logger = context.LoggerFactory?.CreateLogger<GraphQueryProvider>() ?? NullLogger<GraphQueryProvider>.Instance;
-        _cypherEngine = new CypherEngine(context.EntityFactory, context.LoggerFactory);
+        this.context = context;
+        this.transaction = transaction;
+        this.isReadOnly = isReadOnly;
+        logger = context.LoggerFactory?.CreateLogger<GraphQueryProvider>()
+            ?? NullLogger<GraphQueryProvider>.Instance;
+        cypherEngine = new CypherEngine(context.EntityFactory, context.LoggerFactory);
     }
 
-    public IGraph Graph => _graphContext.Graph;
-
-    #region IQueryProvider Implementation
-
-    public IQueryable CreateQuery(Expression expression)
-    {
-        ArgumentNullException.ThrowIfNull(expression);
-
-        var elementType = TypeHelpers.GetElementType(expression.Type);
-
-        try
-        {
-            return (IQueryable)GetType()
-                .GetMethod(nameof(CreateQuery), 1, [typeof(Expression)])!
-                .MakeGenericMethod(elementType)
-                .Invoke(this, [expression])!;
-        }
-        catch (TargetInvocationException ex) when (ex.InnerException is not null)
-        {
-            // Unwrap so the underlying failure from the invoked generic CreateQuery<TElement> is
-            // reported directly, instead of nested inside a reflection-invocation wrapper.
-            throw new InvalidOperationException($"Failed to create query for type {elementType}", ex.InnerException);
-        }
-        catch (Exception ex) when (ex is AmbiguousMatchException or MethodAccessException or ArgumentException)
-        {
-            throw new InvalidOperationException($"Failed to create query for type {elementType}", ex);
-        }
-    }
-
-    public IGraphQueryable<TElement> CreateQuery<TElement>(Expression expression)
-    {
-        ArgumentNullException.ThrowIfNull(expression);
-
-        // Use the transaction from the provider context - no need to extract from expression
-        var transaction = _transaction;
-
-        // Determine the queryable type based on TElement
-        if (typeof(INode).IsAssignableFrom(typeof(TElement)))
-        {
-            var nodeQueryableType = typeof(GraphNodeQueryable<>).MakeGenericType(typeof(TElement));
-            return (IGraphQueryable<TElement>)Activator.CreateInstance(
-                nodeQueryableType,
-                this,
-                _graphContext,
-                transaction,
-                expression)!;
-        }
-
-        if (typeof(IRelationship).IsAssignableFrom(typeof(TElement)))
-        {
-            var relQueryableType = typeof(GraphRelationshipQueryable<>).MakeGenericType(typeof(TElement));
-            return (IGraphQueryable<TElement>)Activator.CreateInstance(
-                relQueryableType,
-                this,
-                _graphContext,
-                transaction,
-                expression)!;
-        }
-
-        // For other types (projections, anonymous types, etc.)
-        return new GraphQueryable<TElement>(this, _graphContext, transaction, expression);
-    }
-
-    public object? Execute(Expression expression)
-    {
-        return ExecuteInternal<object>(expression);
-    }
-
-    public TResult Execute<TResult>(Expression expression)
-    {
-        return ExecuteInternal<TResult>(expression);
-    }
-
-    #endregion
-
-    public Task<object?> ExecuteAsync(Expression expression, CancellationToken cancellationToken = default)
-    {
-        return ExecuteAsync<object?>(expression, cancellationToken);
-    }
-
-    public async Task<TResult> ExecuteAsync<TResult>(
+    protected override async Task<TResult> ExecuteCoreAsync<TResult>(
         Expression expression,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(expression);
-        cancellationToken.ThrowIfCancellationRequested();
+        var result = await TransactionHelpers.ExecuteInTransactionAsync(
+            context,
+            transaction,
+            tx => cypherEngine.ExecuteAsync<TResult>(expression, tx, cancellationToken),
+            "Error executing query",
+            logger,
+            isReadOnly,
+            cancellationToken).ConfigureAwait(false);
+        return result!;
+    }
 
-        _logger.LogDebug("Executing async query for result type: {ResultType}", typeof(TResult).Name);
-        _logger.LogDebug("Expression type: {ExpressionType}", expression.Type.Name);
+    protected override Task<AgeGraphTransaction> GetOrCreateTransactionAsync(CancellationToken cancellationToken) =>
+        TransactionHelpers.GetOrCreateTransactionAsync(context, transaction, isReadOnly, cancellationToken);
 
-        if (_logger.IsEnabled(LogLevel.Debug))
+    protected override IAsyncEnumerable<TResult> StreamCoreAsync<TResult>(
+        Expression expression,
+        AgeGraphTransaction graphTransaction,
+        CancellationToken cancellationToken) =>
+        cypherEngine.StreamAsync<TResult>(expression, graphTransaction, cancellationToken);
+
+    protected override bool IsTransactionActive(AgeGraphTransaction graphTransaction) => graphTransaction.IsActive;
+
+    protected override bool IsDriverException(Exception exception) => exception is NpgsqlException;
+
+    protected override bool UnwrapCreateQueryInvocationException => true;
+
+    protected override bool ShouldWrapCreateQueryException(Exception exception) =>
+        exception is AmbiguousMatchException or MethodAccessException or ArgumentException;
+
+    protected override void LogExecution(Expression expression, Type resultType, bool streaming)
+    {
+        logger.LogDebug(
+            streaming ? "Streaming async query for result type: {ResultType}" : "Executing async query for result type: {ResultType}",
+            resultType.Name);
+        logger.LogDebug("Expression type: {ExpressionType}", expression.Type.Name);
+
+        if (logger.IsEnabled(LogLevel.Debug))
         {
             LogExpressionTree(expression);
         }
-
-        try
-        {
-            var result = await TransactionHelpers.ExecuteInTransactionAsync(
-                _graphContext,
-                _transaction,
-                tx =>
-                {
-                    // Execute using the CypherEngine
-                    return _cypherEngine.ExecuteAsync<TResult>(
-                        expression,
-                        tx,
-                        cancellationToken);
-                },
-                "Error executing query",
-                _logger,
-                isReadOnly: _isReadOnly,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            return result!;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error executing query");
-
-            throw;
-        }
     }
 
-    public async IAsyncEnumerable<TResult> StreamAsync<TResult>(
-        Expression expression,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(expression);
-        cancellationToken.ThrowIfCancellationRequested();
+    protected override void LogExecutionFailure(Exception exception) =>
+        logger.LogError(exception, "Error executing query");
 
-        _logger.LogDebug("Streaming async query for result type: {ResultType}", typeof(TResult).Name);
-        _logger.LogDebug("Expression type: {ExpressionType}", expression.Type.Name);
-
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            LogExpressionTree(expression);
-        }
-
-        AgeGraphTransaction? tx = null;
-        var ownsTransaction = _transaction is null;
-        var completed = false;
-
-        try
-        {
-            tx = await TransactionHelpers.GetOrCreateTransactionAsync(
-                _graphContext,
-                _transaction,
-                _isReadOnly,
-                cancellationToken).ConfigureAwait(false);
-
-            await foreach (var item in _cypherEngine.StreamAsync<TResult>(expression, tx, cancellationToken)
-                .WithCancellation(cancellationToken)
-                .ConfigureAwait(false))
-            {
-                yield return item;
-            }
-
-            if (ownsTransaction)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await tx.CommitAsync().ConfigureAwait(false);
-            }
-
-            completed = true;
-        }
-        finally
-        {
-            if (ownsTransaction && tx is not null)
-            {
-                if (!completed && tx.IsActive)
-                {
-                    try
-                    {
-                        await tx.RollbackAsync().ConfigureAwait(false);
-                    }
-                    catch (GraphException ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to roll back abandoned streaming query transaction");
-                    }
-                    catch (InvalidOperationException ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to roll back abandoned streaming query transaction");
-                    }
-                }
-
-                await tx.DisposeAsync().ConfigureAwait(false);
-            }
-        }
-    }
-
-    private TResult ExecuteInternal<TResult>(Expression expression)
-    {
-        // Use Task.Run to avoid SynchronizationContext deadlocks when sync callers
-        // (e.g. IQueryable.GetEnumerator / .ToList()) block on async execution.
-        return Task.Run(() => ExecuteAsync<TResult>(expression, CancellationToken.None))
-            .GetAwaiter()
-            .GetResult();
-    }
-
-    IQueryable<TElement> IQueryProvider.CreateQuery<TElement>(Expression expression)
-    {
-        return CreateQuery<TElement>(expression);
-    }
+    protected override void LogRollbackFailure(Exception exception) =>
+        logger.LogWarning(exception, "Failed to roll back abandoned streaming query transaction");
 
     private void LogExpressionTree(Expression expression, int depth = 0)
     {
@@ -247,24 +89,20 @@ internal sealed class GraphQueryProvider : IGraphQueryProvider
 
         if (expression is MethodCallExpression methodCall)
         {
-            _logger.LogDebug("{Indent}Method: {Method} from {DeclaringType}",
-                indent, methodCall.Method.Name, methodCall.Method.DeclaringType?.Name);
+            logger.LogDebug(
+                "{Indent}Method: {Method} from {DeclaringType}",
+                indent,
+                methodCall.Method.Name,
+                methodCall.Method.DeclaringType?.Name);
 
-            foreach (var arg in methodCall.Arguments)
+            foreach (var argument in methodCall.Arguments)
             {
-                LogExpressionTree(arg, depth + 1);
+                LogExpressionTree(argument, depth + 1);
             }
         }
         else if (expression is ConstantExpression constant)
         {
-            _logger.LogDebug("{Indent}Constant: {Type}",
-                indent, constant.Value?.GetType().Name ?? "null");
-        }
-        // More expression types can be added here as needed
-        else
-        {
-            _logger.LogDebug("{Indent}Unhandled expression type: {Type}",
-                indent, expression.GetType().Name);
+            logger.LogDebug("{Indent}Constant: {Type}", indent, constant.Value?.GetType().Name ?? "null");
         }
     }
 }

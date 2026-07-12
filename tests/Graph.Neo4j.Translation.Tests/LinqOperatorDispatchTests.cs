@@ -7,6 +7,7 @@ using System.Reflection;
 using Cvoya.Graph.Neo4j.Querying.Linq.Queryables;
 using Cvoya.Graph.Neo4j.Translation.Tests.Model;
 using Cvoya.Graph.Querying;
+using Cvoya.Graph.Querying.Linq;
 using LinqOperatorDispatch = Cvoya.Graph.Querying.LinqOperatorDispatch;
 
 /// <summary>

@@ -4,7 +4,7 @@
 namespace Cvoya.Graph.Age.Core;
 
 using Cvoya.Graph.Age.Querying.Linq.Providers;
-using Cvoya.Graph.Age.Querying.Linq.Queryables;
+using Cvoya.Graph.Querying.Linq;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -94,7 +94,7 @@ internal class AgeGraph : IGraph
         // session/connection leaks from long-lived queryables.
         var ageTransaction = ToAgeTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, ageTransaction, isReadOnly: true);
-        return new GraphNodeQueryable<N>(provider, ageTransaction, _graphContext);
+        return new GraphNodeQueryable<N>(provider);
     }
 
     /// <inheritdoc />
@@ -105,7 +105,7 @@ internal class AgeGraph : IGraph
 
         var ageTransaction = ToAgeTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, ageTransaction, isReadOnly: true);
-        return new GraphRelationshipQueryable<R>(provider, _graphContext, ageTransaction);
+        return new GraphRelationshipQueryable<R>(provider);
     }
 
     /// <inheritdoc />
@@ -458,7 +458,7 @@ internal class AgeGraph : IGraph
 
         var ageTransaction = ToAgeTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, ageTransaction, isReadOnly: true);
-        return new GraphNodeQueryable<DynamicNode>(provider, ageTransaction, _graphContext);
+        return new GraphNodeQueryable<DynamicNode>(provider);
     }
 
     /// <inheritdoc />
@@ -468,7 +468,7 @@ internal class AgeGraph : IGraph
 
         var ageTransaction = ToAgeTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, ageTransaction, isReadOnly: true);
-        return new GraphRelationshipQueryable<DynamicRelationship>(provider, _graphContext, ageTransaction);
+        return new GraphRelationshipQueryable<DynamicRelationship>(provider);
     }
 
     /// <inheritdoc />

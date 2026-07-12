@@ -30,6 +30,7 @@ internal sealed class CypherExecutor
             parameters,
             projectionColumns,
             cancellationToken).ConfigureAwait(false);
+        await using var cursorLease = cursor.ConfigureAwait(false);
         var records = await cursor.ToListAsync(cancellationToken).ConfigureAwait(false);
         logger.LogDebug("AGE query returned {Count} records", records.Count);
         return records;
@@ -43,14 +44,14 @@ internal sealed class CypherExecutor
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var cursor = await transaction.Runner.RunAsync(
+        var cursor = await transaction.Runner.RunStreamingAsync(
             cypher,
             parameters,
             projectionColumns,
             cancellationToken).ConfigureAwait(false);
-        while (await cursor.FetchAsync().ConfigureAwait(false))
+        await using var cursorLease = cursor.ConfigureAwait(false);
+        while (await cursor.FetchAsync(cancellationToken).ConfigureAwait(false))
         {
-            cancellationToken.ThrowIfCancellationRequested();
             yield return cursor.Current;
         }
     }
