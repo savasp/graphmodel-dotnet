@@ -151,7 +151,7 @@ internal class AgeGraph : IGraph
             throw new ArgumentException("Node cannot be null.", nameof(node));
 
         if (string.IsNullOrEmpty(node.Id))
-            throw new ArgumentException("Node ID cannot be null or empty.", nameof(node.Id));
+            throw new ArgumentException("Node ID cannot be null or empty.", nameof(node));
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -179,7 +179,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to create node of type {typeof(N).Name}";
-            _logger.LogError(ex, message);
+            _logger.LogError(ex, "Failed to create node of type {NodeType}", typeof(N).Name);
 
             if (ex is GraphException)
             {
@@ -199,7 +199,7 @@ internal class AgeGraph : IGraph
             throw new ArgumentException("Relationship cannot be null.", nameof(relationship));
 
         if (string.IsNullOrEmpty(relationship.Id))
-            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship.Id));
+            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship));
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -231,7 +231,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to create relationship of type {typeof(R).Name}";
-            _logger.LogError(ex, message);
+            _logger.LogError(ex, "Failed to create relationship of type {RelationshipType}", typeof(R).Name);
 
             if (ex is GraphException)
             {
@@ -251,7 +251,7 @@ internal class AgeGraph : IGraph
             throw new ArgumentException("Node cannot be null.", nameof(node));
 
         if (string.IsNullOrEmpty(node.Id))
-            throw new ArgumentException("Node ID cannot be null or empty.", nameof(node.Id));
+            throw new ArgumentException("Node ID cannot be null or empty.", nameof(node));
 
         GraphDataModel.EnforceGraphConstraintsForNode(node);
 
@@ -287,7 +287,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to update node {node.Id} of type {typeof(N).Name}";
-            _logger.LogError(ex, message);
+            _logger.LogError(ex, "Failed to update node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
 
             if (ex is GraphException)
             {
@@ -307,7 +307,7 @@ internal class AgeGraph : IGraph
             throw new ArgumentException("Relationship cannot be null.", nameof(relationship));
 
         if (string.IsNullOrEmpty(relationship.Id))
-            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship.Id));
+            throw new ArgumentException("Relationship ID cannot be null or empty.", nameof(relationship));
 
         GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
 
@@ -343,7 +343,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}";
-            _logger.LogError(ex, message);
+            _logger.LogError(ex, "Failed to update relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
 
             if (ex is GraphException)
             {
@@ -394,7 +394,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to delete node {id}";
-            _logger.LogError(ex, message);
+            _logger.LogError(ex, "Failed to delete node {NodeId}", id);
 
             if (ex is GraphException)
             {
@@ -438,7 +438,7 @@ internal class AgeGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to delete relationship {id}";
-            _logger.LogError(ex, message);
+            _logger.LogError(ex, "Failed to delete relationship {RelationshipId}", id);
 
             if (ex is GraphException)
             {
