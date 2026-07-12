@@ -213,7 +213,7 @@ reference types (see §7a below), and the three-arg shims remain available regar
 
 Every `where T : INode` / `where T : IRelationship` generic constraint across the query surface
 (query roots, LINQ operators, CRUD/transaction APIs, serialization generics) is now
-`where T : class, INode` / `where T : class, IRelationship`. `IRelationship<S, T>` already required
+`where T : class, INode` / `where T : class, IRelationship`. `IRelationship<TSource, TTarget>` already required
 `class` (plus `new()`) on its node type parameters; this extends the same "entities are reference
 types" rule to every other generic entity constraint. If your domain models are `record`/`class`
 types (the norm, and what every in-tree example and analyzer rule assumes), this changes nothing at

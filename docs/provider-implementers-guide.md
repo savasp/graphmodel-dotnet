@@ -16,7 +16,7 @@ The public interfaces to implement are:
 - `IGraph` in `src/Graph/IGraph.cs`: CRUD, synchronous query roots, full-text search, schema/index provisioning, and transactions.
 - `IGraphTransaction` in `src/Graph/IGraphTransaction.cs`: `CommitAsync()`, `RollbackAsync()`, and `IAsyncDisposable`.
 - `IGraphQueryProvider` in `src/Graph/GraphQueryable/IGraphQueryProvider.cs`: expression execution, query creation, and async terminal execution.
-- `IGraphQueryable<T>` in `src/Graph/GraphQueryable/`: the single LINQ root returned by `IGraph.Nodes<N>`/`Relationships<R>`/`DynamicNodes`/`DynamicRelationships`/search methods. Node-only and relationship-only operators (e.g. traversal) are gated by generic constraints on the operator itself (`where T : INode`), not by a separate receiver interface — `IGraphNodeQueryable<T>`/`IGraphRelationshipQueryable<T>` are `[Obsolete]` aliases kept for one release.
+- `IGraphQueryable<T>` in `src/Graph/GraphQueryable/`: the single LINQ root returned by `IGraph.Nodes<TNode>`/`Relationships<TRelationship>`/`DynamicNodes`/`DynamicRelationships`/search methods. Node-only and relationship-only operators (e.g. traversal) are gated by generic constraints on the operator itself (`where T : INode`), not by a separate receiver interface — `IGraphNodeQueryable<T>`/`IGraphRelationshipQueryable<T>` are `[Obsolete]` aliases kept for one release.
 
 `IGraph` methods accept an optional `IGraphTransaction`. A null transaction means the provider creates a per-operation or per-query execution transaction and owns its lifecycle. A non-null transaction means the caller owns commit/rollback/disposal, and the provider must reject foreign transaction implementations with a clear graph exception.
 

@@ -505,18 +505,18 @@ public interface IGraph
 {
     // Synchronous query roots for LINQ support - building a queryable performs no I/O; any
     // transaction/session acquisition happens when the query is executed.
-    IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null) where N : class, INode;
-    IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null) where R : class, IRelationship;
+    IGraphQueryable<TNode> Nodes<TNode>(IGraphTransaction? transaction = null) where TNode : class, INode;
+    IGraphQueryable<TRelationship> Relationships<TRelationship>(IGraphTransaction? transaction = null) where TRelationship : class, IRelationship;
 
     // CRUD operations
-    Task<N> GetNodeAsync<N>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : class, INode;
-    Task<R> GetRelationshipAsync<R>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : class, IRelationship;
+    Task<TNode> GetNodeAsync<TNode>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where TNode : class, INode;
+    Task<TRelationship> GetRelationshipAsync<TRelationship>(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where TRelationship : class, IRelationship;
 
-    Task CreateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : class, INode;
-    Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : class, IRelationship;
+    Task CreateNodeAsync<TNode>(TNode node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where TNode : class, INode;
+    Task CreateRelationshipAsync<TRelationship>(TRelationship relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where TRelationship : class, IRelationship;
 
-    Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : class, INode;
-    Task UpdateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : class, IRelationship;
+    Task UpdateNodeAsync<TNode>(TNode node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where TNode : class, INode;
+    Task UpdateRelationshipAsync<TRelationship>(TRelationship relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where TRelationship : class, IRelationship;
 
     Task DeleteNodeAsync(string id, bool cascadeDelete = false, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
     Task DeleteRelationshipAsync(string id, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default);
