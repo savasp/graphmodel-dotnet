@@ -4,6 +4,9 @@
 namespace Cvoya.Graph.Neo4j.Tests;
 
 using Cvoya.Graph.CompatibilityTests;
+using Cvoya.Graph.Neo4j.Core;
+using Cvoya.Graph.Neo4j.Querying.Cypher;
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
@@ -44,5 +47,29 @@ public sealed class Neo4jHarness : IGraphProviderTestHarness
         {
             throw new GraphProviderUnavailableException(ex.Message, ex);
         }
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask<int> CountNodesByPropertyAsync(
+        IGraph graph,
+        string label,
+        string propertyName,
+        IReadOnlyCollection<string> values,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        ArgumentNullException.ThrowIfNull(values);
+        var escapedLabel = CypherIdentifier.EscapeIfNeeded(label, "node label");
+        var escapedProperty = CypherIdentifier.EscapeIfNeeded(propertyName, "property name");
+
+        await using var transaction = await graph.GetTransactionAsync(cancellationToken);
+        var neo4jTransaction = transaction as GraphTransaction
+            ?? throw new ArgumentException("The graph was not created by the Neo4j harness.", nameof(graph));
+        var result = await neo4jTransaction.Transaction.RunAsync(
+            $"MATCH (n:{escapedLabel}) WHERE n.{escapedProperty} IN $values RETURN count(n) AS count",
+            new { values = values.ToArray() });
+        var record = await result.SingleAsync(cancellationToken);
+        await transaction.CommitAsync();
+        return record["count"].As<int>();
     }
 }

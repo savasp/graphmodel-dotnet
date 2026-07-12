@@ -150,4 +150,226 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         Assert.IsType<AnimalDescription>(fetched.Animals[2]);
         Assert.IsType<DogDescription>(fetched.Animals[3]);
     }
+
+    [Fact]
+    public async Task ConcurrentUpdates_SeparateTransactions_OneValueNodeNoOrphans()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var original = new ContractAddressValue { City = "Seattle", Street = "Concurrent Original" };
+        var owner = new ContractAddressOwner { Address = original };
+        await Graph.CreateNodeAsync(owner, null, cancellationToken);
+
+        var payloadA = new ContractAddressValue { City = "Denver", Street = "Concurrent Writer A" };
+        var payloadB = new ContractAddressValue { City = "Austin", Street = "Concurrent Writer B" };
+        var updateBarrier = new AsyncBarrier(participantCount: 2);
+
+        var failures = await Task.WhenAll(
+            UpdateInOwnTransactionAsync(owner with { Address = payloadA }, updateBarrier, cancellationToken),
+            UpdateInOwnTransactionAsync(owner with { Address = payloadB }, updateBarrier, cancellationToken));
+
+        Assert.True(
+            failures.Any(failure => failure is null),
+            $"Both concurrent updates failed: {failures[0]}; {failures[1]}");
+
+        var fetched = await Graph.GetNodeAsync<ContractAddressOwner>(owner.Id, null, cancellationToken);
+        var successfulPayloads = new List<ContractAddressValue>();
+        if (failures[0] is null) successfulPayloads.Add(payloadA);
+        if (failures[1] is null) successfulPayloads.Add(payloadB);
+        Assert.Contains(fetched.Address, successfulPayloads);
+        Assert.Equal(1, await CountContractAddressValuesAsync(
+            [original.Street, payloadA.Street, payloadB.Street], cancellationToken));
+    }
+
+    [Fact]
+    public async Task ConcurrentCollectionUpdates_SeparateTransactions_OneWritersItemsNoOrphans()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var original = new List<ContractAddressValue>
+        {
+            new() { City = "Seattle", Street = "Collection Original 1" },
+            new() { City = "Tacoma", Street = "Collection Original 2" },
+        };
+        var owner = new ContractAddressCollectionOwner { Addresses = original };
+        await Graph.CreateNodeAsync(owner, null, cancellationToken);
+
+        var payloadA = new List<ContractAddressValue>
+        {
+            new() { City = "Denver", Street = "Collection Writer A1" },
+            new() { City = "Boulder", Street = "Collection Writer A2" },
+            new() { City = "Golden", Street = "Collection Writer A3" },
+        };
+        var payloadB = new List<ContractAddressValue>
+        {
+            new() { City = "Austin", Street = "Collection Writer B1" },
+        };
+        var updateBarrier = new AsyncBarrier(participantCount: 2);
+
+        var failures = await Task.WhenAll(
+            UpdateInOwnTransactionAsync(owner with { Addresses = payloadA }, updateBarrier, cancellationToken),
+            UpdateInOwnTransactionAsync(owner with { Addresses = payloadB }, updateBarrier, cancellationToken));
+
+        Assert.True(
+            failures.Any(failure => failure is null),
+            $"Both concurrent updates failed: {failures[0]}; {failures[1]}");
+
+        var fetched = await Graph.GetNodeAsync<ContractAddressCollectionOwner>(owner.Id, null, cancellationToken);
+        var successfulPayloads = new List<List<ContractAddressValue>>();
+        if (failures[0] is null) successfulPayloads.Add(payloadA);
+        if (failures[1] is null) successfulPayloads.Add(payloadB);
+        Assert.True(
+            successfulPayloads.Any(payload => payload.SequenceEqual(fetched.Addresses)),
+            "The surviving collection must be one complete successful-writer payload.");
+
+        var candidateStreets = original.Concat(payloadA).Concat(payloadB).Select(address => address.Street).ToArray();
+        Assert.Equal(
+            fetched.Addresses.Count,
+            await CountContractAddressValuesAsync(candidateStreets, cancellationToken));
+    }
+
+    [Fact]
+    public async Task UpdateCleanup_RemovesOnlyComplexValue_DomainRelationshipAndNodeSurvive()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (owner, domainNode, domainRelationship) = await SeedCollisionAsync(
+            complexCity: "Complex Seattle",
+            domainCity: "Domain Portland",
+            cancellationToken);
+
+        var originalStreet = owner.Address.Street;
+        var replacement = new ContractAddressValue { City = "Complex Denver", Street = "16th St" };
+        await Graph.UpdateNodeAsync(owner with { Address = replacement }, null, cancellationToken);
+
+        var survivingNode = await Graph.GetNodeAsync<ContractAddressNode>(domainNode.Id, null, cancellationToken);
+        Assert.Equal(domainNode.Id, survivingNode.Id);
+        Assert.Equal(domainNode.Street, survivingNode.Street);
+        Assert.Equal(domainNode.City, survivingNode.City);
+        var survivingRelationship = await Graph.GetRelationshipAsync<ContractPrimaryAddress>(
+            domainRelationship.Id,
+            null,
+            cancellationToken);
+        Assert.Equal(domainRelationship.Id, survivingRelationship.Id);
+        Assert.Equal(domainRelationship.StartNodeId, survivingRelationship.StartNodeId);
+        Assert.Equal(domainRelationship.EndNodeId, survivingRelationship.EndNodeId);
+
+        var fetched = await Graph.GetNodeAsync<ContractAddressOwner>(owner.Id, null, cancellationToken);
+        Assert.Equal(replacement, fetched.Address);
+        Assert.Equal(1, await CountContractAddressValuesAsync(
+            [originalStreet, replacement.Street], cancellationToken));
+    }
+
+    [Fact]
+    public async Task CascadeDeleteCleanup_RemovesComplexValue_DomainNodeSurvives()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (owner, domainNode, _) = await SeedCollisionAsync(
+            complexCity: "Complex Vancouver",
+            domainCity: "Domain Tacoma",
+            cancellationToken);
+
+        await Graph.DeleteNodeAsync(owner.Id, cascadeDelete: true, null, cancellationToken);
+
+        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            Graph.GetNodeAsync<ContractAddressOwner>(owner.Id, null, cancellationToken));
+        Assert.Equal(
+            0,
+            await CountContractAddressValuesAsync([owner.Address.Street], cancellationToken));
+        var survivingNode = await Graph.GetNodeAsync<ContractAddressNode>(domainNode.Id, null, cancellationToken);
+        Assert.Equal(domainNode.Id, survivingNode.Id);
+        Assert.Equal(domainNode.Street, survivingNode.Street);
+        Assert.Equal(domainNode.City, survivingNode.City);
+    }
+
+    [Fact]
+    public async Task Navigation_ComplexPropertyPredicate_MatchesCollidingDomainRelationship()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (owner, _, _) = await SeedCollisionAsync(
+            complexCity: "Complex Austin",
+            domainCity: "Domain Boulder",
+            cancellationToken);
+
+        var viaDomainValue = await Graph.Nodes<ContractAddressOwner>()
+            .Where(candidate => candidate.Address.City == "Domain Boulder")
+            .ToListAsync(cancellationToken);
+        Assert.Contains(viaDomainValue, candidate => candidate.Id == owner.Id);
+
+        var viaComplexValue = await Graph.Nodes<ContractAddressOwner>()
+            .Where(candidate => candidate.Address.City == "Complex Austin")
+            .ToListAsync(cancellationToken);
+        var fetched = Assert.Single(viaComplexValue, candidate => candidate.Id == owner.Id);
+        Assert.Equal("Complex Austin", fetched.Address.City);
+    }
+
+    private async Task<int> CountContractAddressValuesAsync(
+        IReadOnlyCollection<string> streets,
+        CancellationToken cancellationToken) =>
+        await Harness.CountNodesByPropertyAsync(
+            Graph,
+            label: nameof(ContractAddressValue),
+            propertyName: nameof(ContractAddressValue.Street),
+            streets,
+            cancellationToken);
+
+    private async Task<(
+        ContractAddressOwner Owner,
+        ContractAddressNode DomainNode,
+        ContractPrimaryAddress DomainRelationship)> SeedCollisionAsync(
+        string complexCity,
+        string domainCity,
+        CancellationToken cancellationToken)
+    {
+        var owner = new ContractAddressOwner
+        {
+            Address = new ContractAddressValue { City = complexCity, Street = "1st Ave" },
+        };
+        await Graph.CreateNodeAsync(owner, null, cancellationToken);
+
+        var domainNode = new ContractAddressNode { City = domainCity, Street = "2nd Ave" };
+        await Graph.CreateNodeAsync(domainNode, null, cancellationToken);
+
+        var domainRelationship = new ContractPrimaryAddress(owner.Id, domainNode.Id);
+        await Graph.CreateRelationshipAsync(domainRelationship, null, cancellationToken);
+        return (owner, domainNode, domainRelationship);
+    }
+
+    private async Task<Exception?> UpdateInOwnTransactionAsync<TNode>(
+        TNode node,
+        AsyncBarrier updateBarrier,
+        CancellationToken cancellationToken)
+        where TNode : class, INode
+    {
+        try
+        {
+            await using var transaction = await Graph.GetTransactionAsync(cancellationToken);
+            await updateBarrier.SignalAndWaitAsync(cancellationToken);
+            await Graph.UpdateNodeAsync(node, transaction, cancellationToken);
+            await transaction.CommitAsync();
+            return null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
+    }
+
+    private sealed class AsyncBarrier(int participantCount)
+    {
+        private readonly TaskCompletionSource<bool> allParticipantsReady =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int remainingParticipants = participantCount;
+
+        public async Task SignalAndWaitAsync(CancellationToken cancellationToken)
+        {
+            if (Interlocked.Decrement(ref remainingParticipants) == 0)
+            {
+                allParticipantsReady.TrySetResult(true);
+            }
+
+            await allParticipantsReady.Task.WaitAsync(cancellationToken);
+        }
+    }
 }

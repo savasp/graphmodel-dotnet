@@ -3,7 +3,9 @@
 
 namespace Cvoya.Graph.Age.Tests;
 
+using Cvoya.Graph.Age.Core;
 using Cvoya.Graph.Age.Querying.Cypher;
+using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.CompatibilityTests;
 using Npgsql;
 using Npgsql.Age;
@@ -87,6 +89,35 @@ public sealed class AgeHarness : IGraphProviderTestHarness
                 await store.DisposeAsync();
             }
         }
+    }
+
+    public async ValueTask<int> CountNodesByPropertyAsync(
+        IGraph graph,
+        string label,
+        string propertyName,
+        IReadOnlyCollection<string> values,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        ArgumentNullException.ThrowIfNull(values);
+        var escapedLabel = CypherIdentifier.EscapeIfNeeded(label, "node label");
+        var escapedProperty = CypherIdentifier.EscapeIfNeeded(propertyName, "property name");
+
+        await using var transaction = await graph.GetTransactionAsync(cancellationToken);
+        var ageTransaction = transaction as AgeGraphTransaction
+            ?? throw new ArgumentException("The graph was not created by the AGE harness.", nameof(graph));
+        var result = await ageTransaction.Runner.RunAsync(
+            $"""
+            MATCH (n:{escapedLabel})
+            WHERE n.{escapedProperty} IN $values
+            RETURN count(n) AS node_count
+            """,
+            new { values = values.ToArray() },
+            cancellationToken);
+        await using var resultLease = result.ConfigureAwait(false);
+        var record = await result.SingleAsync(cancellationToken);
+        await transaction.CommitAsync();
+        return record["node_count"].As<int>();
     }
 
     private static string NewGraphName() => $"cvoya_tck_{Guid.NewGuid():N}";

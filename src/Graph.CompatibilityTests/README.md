@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 A shippable **compatibility test suite (TCK)** for CVOYA graph providers. Implement one small SPI,
-bind the suite's `I*Tests` interfaces to your provider, and run the same 345+ contract tests every
+bind the suite's `I*Tests` interfaces to your provider, and run the same 350+ contract tests every
 in-tree provider runs - proving your provider actually behaves the way CVOYA graph promises.
 
 ## 🚀 Quick Start
@@ -23,6 +23,10 @@ public sealed class MyProviderHarness : IGraphProviderTestHarness
     public ValueTask DisposeAsync() => /* release it */;
     public ValueTask<IGraph> GetGraphAsync(StoreIsolation isolation, CancellationToken ct) =>
         /* return an IGraph over an empty store */;
+    public ValueTask<int> CountNodesByPropertyAsync(
+        IGraph graph, string label, string propertyName, IReadOnlyCollection<string> values,
+        CancellationToken ct) =>
+        /* provider-native count used only for complex-property orphan assertions */;
 }
 
 // 2. Declare one intermediate base class.

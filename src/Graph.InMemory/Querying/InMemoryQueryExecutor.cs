@@ -10,8 +10,9 @@ using Cvoya.Graph.Querying;
 /// <summary>
 /// Interprets a <see cref="GraphQueryModel"/> with LINQ-to-objects over one store snapshot.
 /// Entities are fully hydrated (complex properties included) before any user lambda runs, so
-/// predicates, orderings, and projections execute exactly as written; the complex-property
-/// traversal steps the builder injects as query-language matching hints are therefore skipped.
+/// predicates, orderings, and projections execute exactly as written. Complex-property traversal
+/// hints are skipped for materialization, while predicates also consider colliding domain edges
+/// with the same relationship type and target label.
 /// </summary>
 internal sealed class InMemoryQueryExecutor(
     EntityReader reader,
@@ -50,9 +51,10 @@ internal sealed class InMemoryQueryExecutor(
         }
 
         var deferred = new List<PredicateFragment>();
+        var complexTraversals = model.Traversal.Where(step => step.IsComplexPropertyTraversal).ToList();
         foreach (var predicate in predicates)
         {
-            rows = FilterRows(rows, predicate, deferred);
+            rows = FilterRows(rows, predicate, deferred, complexTraversals);
         }
 
         var pairs = Project(rows, model);
@@ -568,7 +570,8 @@ internal sealed class InMemoryQueryExecutor(
     private IEnumerable<Row> FilterRows(
         IEnumerable<Row> rows,
         PredicateFragment predicate,
-        List<PredicateFragment> deferred)
+        List<PredicateFragment> deferred,
+        IReadOnlyList<TraversalStep> complexTraversals)
     {
         var parameterType = predicate.Predicate.Parameters[0].Type;
 
@@ -587,8 +590,87 @@ internal sealed class InMemoryQueryExecutor(
                 return true;
             }
 
-            return EvaluatePredicate(predicate.Predicate, input);
+            return EvaluatePredicate(predicate.Predicate, input) ||
+                EvaluatePredicateAgainstCollidingComplexTargets(predicate.Predicate, input, complexTraversals);
         });
+    }
+
+    private bool EvaluatePredicateAgainstCollidingComplexTargets(
+        LambdaExpression predicate,
+        object? input,
+        IReadOnlyList<TraversalStep> complexTraversals)
+    {
+        if (input is not INode sourceNode)
+        {
+            return false;
+        }
+
+        foreach (var step in complexTraversals)
+        {
+            if (step.RelationshipType is not { } relationshipType || step.TargetType is not { } targetType)
+            {
+                continue;
+            }
+
+            var property = GraphDataModel.GetComplexProperties(input.GetType()).FirstOrDefault(candidate =>
+                candidate.PropertyType == targetType &&
+                string.Equals(
+                    GraphDataModel.GetComplexPropertyRelationshipType(candidate),
+                    relationshipType,
+                    StringComparison.Ordinal));
+            if (property is null)
+            {
+                continue;
+            }
+
+            var targetLabel = Labels.GetLabelFromType(targetType);
+            foreach (var target in CollidingComplexTargets(sourceNode.Id, relationshipType, targetLabel))
+            {
+                var value = _reader.MaterializeComplexValue(target, _state, targetType);
+                var rewrittenBody = new ComplexPropertyValueRewriter(property, value).Visit(predicate.Body);
+                var rewritten = Expression.Lambda(rewrittenBody!, predicate.Parameters);
+                if (EvaluatePredicate(rewritten, input))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private IEnumerable<NodeRecord> CollidingComplexTargets(
+        string sourceId,
+        string relationshipType,
+        string targetLabel)
+    {
+        foreach (var relationship in _state.Relationships.Values)
+        {
+            if (!string.Equals(relationship.Type, relationshipType, StringComparison.Ordinal) ||
+                relationship.PhysicalSourceId != sourceId)
+            {
+                continue;
+            }
+
+            var targets = relationship.EndKey is { } targetKey && _state.Nodes.TryGetValue(targetKey, out var target)
+                ? [target]
+                : NodeRecordsById(relationship.PhysicalTargetId);
+            foreach (var candidate in targets)
+            {
+                if (candidate.Labels.Contains(targetLabel, StringComparer.Ordinal))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+    }
+
+    private sealed class ComplexPropertyValueRewriter(PropertyInfo property, object value) : ExpressionVisitor
+    {
+        protected override Expression VisitMember(MemberExpression node) =>
+            node.Member == property
+                ? Expression.Constant(value, property.PropertyType)
+                : base.VisitMember(node);
     }
 
     private static bool RowCanBind(Row row, string? alias, Type parameterType)
