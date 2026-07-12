@@ -77,6 +77,30 @@ public static class GraphQueryModelValidator
             ValidateLambdaReferences(model.Ordering[i].KeySelector, possibleScopeTypes, $"Ordering key {i}");
         }
 
+        if (model.PostPaging is { } postPaging)
+        {
+            if (model.Paging.Skip is null && model.Paging.Take is null)
+            {
+                throw new GraphException("A post-paging sequence stage requires a primary Skip or Take operation.");
+            }
+
+            for (var i = 0; i < postPaging.Predicates.Count; i++)
+            {
+                ValidateLambdaReferences(
+                    postPaging.Predicates[i].Predicate,
+                    possibleScopeTypes,
+                    $"Post-paging predicate {i}");
+            }
+
+            for (var i = 0; i < postPaging.Ordering.Count; i++)
+            {
+                ValidateLambdaReferences(
+                    postPaging.Ordering[i].KeySelector,
+                    possibleScopeTypes,
+                    $"Post-paging ordering key {i}");
+            }
+        }
+
         if (model.GroupBy is { } groupBy)
         {
             ValidateLambdaReferences(groupBy.KeySelector, possibleScopeTypes, "GroupBy key selector");

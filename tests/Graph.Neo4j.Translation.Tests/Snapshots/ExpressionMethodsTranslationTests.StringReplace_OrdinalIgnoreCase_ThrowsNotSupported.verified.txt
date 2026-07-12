@@ -1,0 +1,1 @@
+Cvoya.Graph.GraphQueryTranslationException: Cannot lower expression 'p.FirstName.Replace("a", "e", OrdinalIgnoreCase)': Replace with StringComparison.OrdinalIgnoreCase cannot be represented faithfully in Cypher; only StringComparison.Ordinal is supported.

@@ -86,6 +86,31 @@ internal sealed class InMemoryQueryExecutor(
             materialized = [.. materialized.Take(take)];
         }
 
+        if (model.PostPaging is { } postPaging)
+        {
+            foreach (var predicate in postPaging.Predicates)
+            {
+                materialized = [.. materialized.Where(pair => EvaluatePostPagingPredicate(pair, predicate))];
+            }
+
+            if (postPaging.Distinct)
+            {
+                materialized = [.. DistinctByValue(materialized)];
+            }
+
+            materialized = [.. ApplyOrdering(materialized, postPaging.Ordering)];
+
+            if (postPaging.Paging.Skip is { } postPagingSkip)
+            {
+                materialized = [.. materialized.Skip(postPagingSkip)];
+            }
+
+            if (postPaging.Paging.Take is { } postPagingTake)
+            {
+                materialized = [.. materialized.Take(postPagingTake)];
+            }
+        }
+
         var values = materialized.Select(p => p.Value).ToList();
         return ApplyTerminal(values, model, hints, allPredicate);
     }
@@ -675,6 +700,20 @@ internal sealed class InMemoryQueryExecutor(
     {
         var result = Invoke(Compile(predicate), input);
         return result is true;
+    }
+
+    private bool EvaluatePostPagingPredicate(
+        (Row Row, object? Value) pair,
+        PredicateFragment predicate)
+    {
+        var parameterType = predicate.Predicate.Parameters[0].Type;
+        var input = ResolveInput(pair.Row, predicate.Alias, parameterType);
+        if (input is null && pair.Value is not null && parameterType.IsInstanceOfType(pair.Value))
+        {
+            input = pair.Value;
+        }
+
+        return EvaluatePredicate(predicate.Predicate, input);
     }
 
     // ---- projection ----

@@ -259,31 +259,119 @@ internal sealed class ExpressionToCypherAstLowerer(
         }
 
         var target = Lower(node.Object!, aliases);
-        var args = node.Arguments.Select(argument => Lower(argument, aliases)).ToArray();
 
         return node.Method.Name switch
         {
-            nameof(string.Contains) => new AstBinaryExpression(CypherBinaryOperator.Contains, target, args[0]),
-            nameof(string.StartsWith) => new AstBinaryExpression(CypherBinaryOperator.StartsWith, target, args[0]),
-            nameof(string.EndsWith) => new AstBinaryExpression(CypherBinaryOperator.EndsWith, target, args[0]),
-            nameof(string.ToLower) or nameof(string.ToLowerInvariant) => Function("toLower", target),
-            nameof(string.ToUpper) or nameof(string.ToUpperInvariant) => Function("toUpper", target),
-            nameof(string.Trim) => Function("trim", target),
-            nameof(string.TrimStart) => Function("ltrim", target),
-            nameof(string.TrimEnd) => Function("rtrim", target),
-            nameof(string.Replace) => Function("replace", target, args[0], args[1]),
-            nameof(string.Substring) => Function("substring", [target, .. args]),
-            nameof(string.IndexOf) when args.Length == 1 => Function("string.indexOf", target, args[0], new Literal(0)),
-            nameof(string.LastIndexOf) when args.Length == 1 => Function("string.lastIndexOf", target, args[0]),
-            nameof(string.PadLeft) when args.Length == 1 => Function("string.padLeft", target, args[0], new Literal(" ")),
-            nameof(string.PadLeft) => Function("string.padLeft", target, args[0], args[1]),
-            nameof(string.PadRight) when args.Length == 1 => Function("string.padRight", target, args[0], new Literal(" ")),
-            nameof(string.PadRight) => Function("string.padRight", target, args[0], args[1]),
-            nameof(string.CompareTo) => Function("string.compareTo", target, args[0]),
-            nameof(string.ToString) => Function("toString", target),
-            _ => throw Unsupported(node, $"String method '{node.Method.Name}' is not supported."),
+            nameof(string.Contains) when node.Arguments.Count == 1 =>
+                StringPredicate(CypherBinaryOperator.Contains, target, Lower(node.Arguments[0], aliases)),
+            nameof(string.Contains) when node.Arguments.Count == 2 =>
+                LowerStringComparisonPredicate(node, CypherBinaryOperator.Contains, target, aliases),
+            nameof(string.StartsWith) when node.Arguments.Count == 1 =>
+                StringPredicate(CypherBinaryOperator.StartsWith, target, Lower(node.Arguments[0], aliases)),
+            nameof(string.StartsWith) when node.Arguments.Count == 2 =>
+                LowerStringComparisonPredicate(node, CypherBinaryOperator.StartsWith, target, aliases),
+            nameof(string.EndsWith) when node.Arguments.Count == 1 =>
+                StringPredicate(CypherBinaryOperator.EndsWith, target, Lower(node.Arguments[0], aliases)),
+            nameof(string.EndsWith) when node.Arguments.Count == 2 =>
+                LowerStringComparisonPredicate(node, CypherBinaryOperator.EndsWith, target, aliases),
+            nameof(string.ToLower) when node.Arguments.Count == 0 => Function("toLower", target),
+            nameof(string.ToLowerInvariant) when node.Arguments.Count == 0 => Function("toLower", target),
+            nameof(string.ToUpper) when node.Arguments.Count == 0 => Function("toUpper", target),
+            nameof(string.ToUpperInvariant) when node.Arguments.Count == 0 => Function("toUpper", target),
+            nameof(string.Trim) when node.Arguments.Count == 0 => Function("trim", target),
+            nameof(string.TrimStart) when node.Arguments.Count == 0 => Function("ltrim", target),
+            nameof(string.TrimEnd) when node.Arguments.Count == 0 => Function("rtrim", target),
+            nameof(string.Replace) when node.Arguments.Count == 2 => Function(
+                "replace",
+                target,
+                Lower(node.Arguments[0], aliases),
+                Lower(node.Arguments[1], aliases)),
+            nameof(string.Replace) when node.Arguments.Count == 3 =>
+                LowerStringComparisonReplace(node, target, aliases),
+            nameof(string.Substring) when node.Arguments.Count is 1 or 2 =>
+                Function("substring", [target, .. node.Arguments.Select(argument => Lower(argument, aliases))]),
+            nameof(string.IndexOf) when node.Arguments.Count == 1 =>
+                Function("string.indexOf", target, Lower(node.Arguments[0], aliases), new Literal(0)),
+            nameof(string.LastIndexOf) when node.Arguments.Count == 1 =>
+                Function("string.lastIndexOf", target, Lower(node.Arguments[0], aliases)),
+            nameof(string.PadLeft) when node.Arguments.Count == 1 =>
+                Function("string.padLeft", target, Lower(node.Arguments[0], aliases), new Literal(" ")),
+            nameof(string.PadLeft) when node.Arguments.Count == 2 => Function(
+                "string.padLeft",
+                target,
+                Lower(node.Arguments[0], aliases),
+                Lower(node.Arguments[1], aliases)),
+            nameof(string.PadRight) when node.Arguments.Count == 1 =>
+                Function("string.padRight", target, Lower(node.Arguments[0], aliases), new Literal(" ")),
+            nameof(string.PadRight) when node.Arguments.Count == 2 => Function(
+                "string.padRight",
+                target,
+                Lower(node.Arguments[0], aliases),
+                Lower(node.Arguments[1], aliases)),
+            nameof(string.CompareTo) when node.Arguments.Count == 1 =>
+                Function("string.compareTo", target, Lower(node.Arguments[0], aliases)),
+            nameof(string.ToString) when node.Arguments.Count == 0 => Function("toString", target),
+            _ => throw Unsupported(
+                node,
+                $"String method overload '{node.Method}' is not supported; its arguments cannot be represented faithfully in Cypher."),
         };
     }
+
+    private CypherExpression LowerStringComparisonPredicate(
+        MethodCallExpression node,
+        CypherBinaryOperator @operator,
+        CypherExpression target,
+        IReadOnlyDictionary<ParameterExpression, string> aliases)
+    {
+        var value = Lower(node.Arguments[0], aliases);
+        return EvaluateStringComparison(node, argumentIndex: 1) switch
+        {
+            StringComparison.Ordinal => StringPredicate(@operator, target, value),
+            var comparison => throw Unsupported(
+                node,
+                $"StringComparison.{comparison} cannot be represented faithfully in Cypher; " +
+                "only StringComparison.Ordinal is supported."),
+        };
+    }
+
+    private CypherExpression LowerStringComparisonReplace(
+        MethodCallExpression node,
+        CypherExpression target,
+        IReadOnlyDictionary<ParameterExpression, string> aliases)
+    {
+        var comparison = EvaluateStringComparison(node, argumentIndex: 2);
+        if (comparison != StringComparison.Ordinal)
+        {
+            throw Unsupported(
+                node,
+                $"Replace with StringComparison.{comparison} cannot be represented faithfully in Cypher; " +
+                "only StringComparison.Ordinal is supported.");
+        }
+
+        return Function(
+            "replace",
+            target,
+            Lower(node.Arguments[0], aliases),
+            Lower(node.Arguments[1], aliases));
+    }
+
+    private static StringComparison EvaluateStringComparison(MethodCallExpression node, int argumentIndex)
+    {
+        var argument = node.Arguments[argumentIndex];
+        if (!CanEvaluate(argument) || Evaluate(argument) is not StringComparison comparison || !Enum.IsDefined(comparison))
+        {
+            throw Unsupported(
+                node,
+                "The StringComparison argument must be a valid parameter-free value known while translating the query.");
+        }
+
+        return comparison;
+    }
+
+    private static AstBinaryExpression StringPredicate(
+        CypherBinaryOperator @operator,
+        CypherExpression target,
+        CypherExpression value) => new(@operator, target, value);
 
     private CypherExpression LowerMathMethod(
         MethodCallExpression node,

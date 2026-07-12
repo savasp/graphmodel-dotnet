@@ -58,6 +58,34 @@ public class OrderingPagingTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task WhereAfterTake_FiltersThePaginatedWindow()
+    {
+        var query = Root.Nodes<Person>().OrderBy(p => p.Age).Take(5).Where(p => p.Age >= 21);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task WhereBeforeTake_Unchanged()
+    {
+        var query = Root.Nodes<Person>().Where(p => p.Age >= 21).OrderBy(p => p.Age).Take(5);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task OrderByAfterTake_OrdersOnlyThePaginatedWindow()
+    {
+        var query = Root.Nodes<Person>().Take(5).OrderBy(p => p.Age);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task DistinctAfterTake_DeduplicatesOnlyThePaginatedWindow()
+    {
+        var query = Root.Nodes<Person>().Select(p => p.LastName).Take(5).Distinct();
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task Distinct_OnProjection()
     {
         var query = Root.Nodes<Person>().Select(p => p.LastName).Distinct();

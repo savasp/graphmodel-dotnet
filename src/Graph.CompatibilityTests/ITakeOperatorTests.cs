@@ -6,6 +6,137 @@ namespace Cvoya.Graph.CompatibilityTests;
 public interface ITakeOperatorTests : IGraphTest
 {
     [Fact]
+    public async Task CanFilterAfterTake()
+    {
+        var people = Enumerable.Range(1, 5)
+            .Select(age => new Person
+            {
+                FirstName = $"AfterTake{age}",
+                LastName = "PostPagingTake",
+                Age = age,
+            })
+            .ToArray();
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var expectedIds = people
+            .OrderBy(person => person.Age)
+            .Take(3)
+            .Where(person => person.Age >= 3)
+            .Select(person => person.Id)
+            .ToArray();
+        var actual = await Graph.Nodes<Person>()
+            .Where(person => person.LastName == "PostPagingTake")
+            .OrderBy(person => person.Age)
+            .Take(3)
+            .Where(person => person.Age >= 3)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedIds, actual.Select(person => person.Id));
+    }
+
+    [Fact]
+    public async Task CanFilterAfterSkip()
+    {
+        var people = Enumerable.Range(1, 5)
+            .Select(age => new Person
+            {
+                FirstName = $"AfterSkip{age}",
+                LastName = "PostPagingSkip",
+                Age = age,
+            })
+            .ToArray();
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var expectedIds = people
+            .OrderBy(person => person.Age)
+            .Skip(2)
+            .Where(person => person.Age >= 4)
+            .Select(person => person.Id)
+            .ToArray();
+        var actual = await Graph.Nodes<Person>()
+            .Where(person => person.LastName == "PostPagingSkip")
+            .OrderBy(person => person.Age)
+            .Skip(2)
+            .Where(person => person.Age >= 4)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedIds, actual.Select(person => person.Id));
+    }
+
+    [Fact]
+    public async Task CanOrderAfterTake()
+    {
+        var people = Enumerable.Range(1, 5)
+            .Select(age => new Person
+            {
+                FirstName = $"PostPagingOrder{age}",
+                LastName = "PostPagingOrder",
+                Age = age,
+            })
+            .ToArray();
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var expectedIds = people
+            .OrderBy(person => person.Age)
+            .Take(3)
+            .OrderByDescending(person => person.Age)
+            .Select(person => person.Id)
+            .ToArray();
+        var actual = await Graph.Nodes<Person>()
+            .Where(person => person.LastName == "PostPagingOrder")
+            .OrderBy(person => person.Age)
+            .Take(3)
+            .OrderByDescending(person => person.Age)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedIds, actual.Select(person => person.Id));
+    }
+
+    [Fact]
+    public async Task CanApplyDistinctAfterTake()
+    {
+        var people = new[]
+        {
+            new Person { FirstName = "Repeated", LastName = "PostPagingDistinct", Age = 1 },
+            new Person { FirstName = "Repeated", LastName = "PostPagingDistinct", Age = 2 },
+            new Person { FirstName = "Different", LastName = "PostPagingDistinct", Age = 3 },
+        };
+
+        foreach (var person in people)
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        var expected = people
+            .OrderBy(person => person.Age)
+            .Select(person => person.FirstName)
+            .Take(2)
+            .Distinct()
+            .ToArray();
+        var actual = await Graph.Nodes<Person>()
+            .Where(person => person.LastName == "PostPagingDistinct")
+            .OrderBy(person => person.Age)
+            .Select(person => person.FirstName)
+            .Take(2)
+            .Distinct()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
     public async Task TakeOperator_GeneratesCorrectCypherLimit()
     {
         // Arrange
