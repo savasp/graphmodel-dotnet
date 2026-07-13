@@ -1,0 +1,1 @@
+System.NotSupportedException: GroupBy is not supported by LINQ-to-Cypher translation yet; see #100.

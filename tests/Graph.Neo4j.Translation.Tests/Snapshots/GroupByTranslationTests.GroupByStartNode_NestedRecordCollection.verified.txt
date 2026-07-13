@@ -1,0 +1,7 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WHERE src.FirstName = $p0 AND EXISTS { MATCH (src)-[r:KNOWS]->(tgt:Person|Manager) }
+RETURN src.FirstName AS PersonName, [(src)-[r:KNOWS]->(tgt:Person|Manager) | { FirstName: tgt.FirstName, Age: tgt.Age }] AS Friends
+
+== Parameters ==
+p0 = "Alice"

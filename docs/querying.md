@@ -216,6 +216,97 @@ var projected = await graph.Nodes<Person>()
     .ToListAsync();
 ```
 
+### Projecting collections
+
+You can project a **correlated collection** per row: group a node's outgoing path segments by
+their start node and shape the segments into a nested list. On a graph provider this lowers to a
+Cypher *pattern comprehension* (`[(src)-[:KNOWS]->(tgt) WHERE ... | ...]`) evaluated per row — no
+client-side join.
+
+```csharp
+// Per person, the list of their friends' names (a nested collection projection)
+var social = await graph.Nodes<Person>()
+    .Where(p => p.FirstName == "Alice")
+    .PathSegments<Person, Knows, Person>()
+    .GroupBy(segment => segment.StartNode)
+    .Select(group => new
+    {
+        Name = group.Key.FirstName,
+        FriendCount = group.Count(),
+        FriendNames = group.Select(s => s.EndNode.FirstName).ToList()
+    })
+    .FirstOrDefaultAsync();
+```
+
+The inner collection can be filtered — either on the traversal before grouping, or inside the
+group — and both the list and any `Count()` observe that filter:
+
+```csharp
+// Filter the segments, then project the surviving collection and its count
+var youngFriends = await graph.Nodes<Person>()
+    .Where(p => p.FirstName == "Alice")
+    .PathSegments<Person, Knows, Person>()
+    .Where(path => path.EndNode.Age < 30)
+    .GroupBy(segment => segment.StartNode)
+    .Select(group => new
+    {
+        PersonName = group.Key.FirstName,
+        YoungFriends = group.Select(s => s.EndNode.FirstName).ToList(),
+        YoungFriendCount = group.Count()
+    })
+    .FirstOrDefaultAsync();
+
+// Or filter inside the group (e.g. only recent friendships)
+var recent = await graph.Nodes<Person>()
+    .Where(p => p.FirstName == "Alice")
+    .PathSegments<Person, Knows, Person>()
+    .GroupBy(segment => segment.StartNode)
+    .Select(group => new
+    {
+        PersonName = group.Key.FirstName,
+        RecentFriends = group
+            .Where(s => s.Relationship.Since > DateTime.UtcNow.AddDays(-12))
+            .Select(s => s.EndNode.FirstName)
+            .ToList()
+    })
+    .FirstOrDefaultAsync();
+```
+
+The inner `Select` may itself build an anonymous type, producing a list of nested records:
+
+```csharp
+.Select(group => new
+{
+    PersonName = group.Key.FirstName,
+    Friends = group.Select(s => new { s.EndNode.FirstName, s.EndNode.Age }).ToList()
+})
+```
+
+The inner collection can also be **aggregated**, **ordered**, or **re-grouped**. On a graph
+provider these lower to a scoped `CALL { … }` subquery (a pattern comprehension cannot order or
+aggregate a list):
+
+```csharp
+.Select(group => new
+{
+    Name = group.Key.FirstName,
+    FriendCount = group.Count(),
+    AverageAge = group.Average(s => s.EndNode.Age),
+    OldestFriend = group.Max(s => s.EndNode.Age),
+    // Ordered collection
+    ByAge = group.OrderBy(s => s.EndNode.Age)
+        .Select(s => new { s.EndNode.FirstName, s.EndNode.Age }).ToList(),
+    // Nested grouping
+    ByBand = group.GroupBy(s => s.EndNode.Age >= 30 ? "Senior" : "Junior")
+        .Select(g => new { Band = g.Key, Count = g.Count() }).ToList()
+})
+```
+
+Correlated collection projections require the provider to declare the `CallSubqueries`
+capability; projections that use `group.Count()` also require `PatternSizeProjection`. Providers
+that do not declare the required capabilities decline the query at translation time. As with LINQ
+`GroupBy`, roots with no matching path segment do not produce an empty group row.
+
 ## Aggregations
 
 ### Count, Any, All

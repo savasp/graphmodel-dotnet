@@ -1,0 +1,22 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WHERE src.FirstName = $p0 AND EXISTS { MATCH (src)-[r:KNOWS]->(tgt:Person|Manager) }
+CALL {
+  WITH src
+  MATCH (src)-[r:KNOWS]->(tgt:Person|Manager)
+  RETURN avg(tgt.Age) AS __group0
+}
+CALL {
+  WITH src
+  MATCH (src)-[r:KNOWS]->(tgt:Person|Manager)
+  RETURN max(tgt.Age) AS __group1
+}
+CALL {
+  WITH src
+  MATCH (src)-[r:KNOWS]->(tgt:Person|Manager)
+  RETURN min(tgt.Age) AS __group2
+}
+RETURN src.FirstName AS PersonName, COUNT { MATCH (src)-[r:KNOWS]->(tgt:Person|Manager) } AS FriendCount, __group0 AS AverageFriendAge, __group1 AS OldestFriend, __group2 AS YoungestFriend
+
+== Parameters ==
+p0 = "Alice"

@@ -1,0 +1,8 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WHERE src.FirstName = $p0 AND EXISTS { MATCH (src)-[r:KNOWS]->(tgt:Person|Manager) WHERE tgt.Age < $p1 }
+RETURN src.FirstName AS PersonName, [(src)-[r:KNOWS]->(tgt:Person|Manager) WHERE tgt.Age < $p1 | tgt.FirstName] AS YoungFriends, COUNT { MATCH (src)-[r:KNOWS]->(tgt:Person|Manager) WHERE tgt.Age < $p1 } AS YoungFriendCount
+
+== Parameters ==
+p0 = "Alice"
+p1 = 30

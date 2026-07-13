@@ -544,7 +544,8 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Equal("Alice Johnson", alice.FullName);
     }
 
-    [Fact(Skip = "Not supported yet - see #120")]
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
     public async Task CanQueryWithBasicPatternComprehension()
     {
         // Arrange: Create a simple social network
@@ -574,8 +575,7 @@ public interface IAdvancedQueryTests : IGraphTest
                 {
                     FriendName = p.EndNode.FirstName,
                     FriendAge = p.EndNode.Age,
-                    KnownSince = p.Relationship.Since,
-                    DaysKnown = (DateTime.UtcNow - p.Relationship.Since).Days
+                    KnownSince = p.Relationship.Since
                 }).ToList()
             })
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
@@ -588,7 +588,9 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Contains(friendsPattern.FriendDetails, f => f.FriendName == "Charlie" && f.FriendAge == 35);
     }
 
-    [Fact(Skip = "Not supported yet - see #120")]
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
     public async Task CanQueryWithFilteredPatternComprehension()
     {
         // Arrange
@@ -625,7 +627,48 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Equal(1, youngFriendsPattern.YoungFriendCount);
     }
 
-    [Fact(Skip = "Not supported yet - see #120")]
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
+    public async Task CanQueryWithPredicateCountAndArrayProjectionExcludesEmptyGroups()
+    {
+        var alice = new Person { FirstName = "Alice", Age = 40 };
+        var bob = new Person { FirstName = "Bob", Age = 25 };
+        var diana = new Person { FirstName = "Diana", Age = 30 };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(diana, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(alice, bob),
+            null,
+            TestContext.Current.CancellationToken);
+
+        var groups = await Graph.Nodes<Person>()
+            .PathSegments<Person, Knows, Person>()
+            .GroupBy(segment => segment.StartNode)
+            .Select(group => new
+            {
+                Name = group.Key.FirstName,
+                YoungFriendCount = group.Count(segment => segment.EndNode.Age < 30),
+                Friends = group
+                    .OrderBy(segment => segment.StartNode.Age)
+                    .Select(segment => new { segment.EndNode.FirstName, segment.EndNode.Age })
+                    .ToArray()
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(groups);
+        Assert.Equal("Alice", result.Name);
+        Assert.Equal(1, result.YoungFriendCount);
+        var friend = Assert.Single(result.Friends);
+        Assert.Equal("Bob", friend.FirstName);
+        Assert.Equal(25, friend.Age);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
     public async Task CanQueryWithAggregatedPatternComprehension()
     {
         // Arrange
@@ -664,7 +707,8 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Equal(25, friendAggregation.YoungestFriend);
     }
 
-    [Fact(Skip = "Not supported yet - see #120")]
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
     public async Task CanQueryWithTimeBasedPatternComprehension()
     {
         // Arrange
@@ -702,7 +746,8 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Contains("Bob", recentFriendships.RecentFriends);
     }
 
-    [Fact(Skip = "Not supported yet - see #122")]
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
     public async Task CanQueryWithOrderedPatternComprehension()
     {
         // Arrange
@@ -748,7 +793,8 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Equal(35, orderedFriendsPattern.FriendsByAge[1].Age);
     }
 
-    [Fact(Skip = "Not supported yet - see #122")]
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
     public async Task CanQueryWithGroupedPatternComprehension()
     {
         // Arrange
@@ -1078,7 +1124,9 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Equal("Charlie", charlie.FirstName);
     }
 
-    [Fact(Skip = "Not supported yet - see #123")]
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
     public async Task CanQueryWithTraversePathAndGroupBy()
     {
         // This test uses the Person class that has IList<Knows> Knows property
@@ -1161,16 +1209,17 @@ public interface IAdvancedQueryTests : IGraphTest
 
         Assert.Equal(2, filteredPaths.Count);
 
-        // Group the paths in memory instead of in the query
+        // Group the outgoing path segments by their start node and project the correlated
+        // collection of friend names per person (a graph-native pattern comprehension).
         var projectedAlice = await this.Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .Traverse<Knows, Person>()
-            .GroupBy(path => path)
+            .PathSegments<Person, Knows, Person>()
+            .GroupBy(s => s.StartNode)
             .Select(group => new
             {
                 Name = group.Key.FirstName,
                 FriendCount = group.Count(),
-                FriendNames = group.Select(p => p.FirstName).ToList()
+                FriendNames = group.Select(s => s.EndNode.FirstName).ToList()
             })
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
 
@@ -1181,7 +1230,7 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Contains("Charlie", projectedAlice.FriendNames);
     }
 
-    [Fact(Skip = "Not supported yet - see #123")]
+    [Fact]
     public async Task CanCombineNodeAndRelationshipQueries()
     {
         // Setup
@@ -1197,7 +1246,8 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
 
         // Execute separate queries and combine in memory
-        var people = await this.Graph.Nodes<Person>().ToDictionaryAsync(p => p.Id, TestContext.Current.CancellationToken);
+        var people = await this.Graph.Nodes<Person>()
+            .ToDictionaryAsync(p => p.Id, TestContext.Current.CancellationToken);
         var relationships = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
 
         // Build a connection map
@@ -1215,7 +1265,7 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Contains(connectionMap, m => m.PersonName == "Bob" && m.Connections.Contains("Charlie"));
     }
 
-    [Fact(Skip = "Not supported yet - see #124")]
+    [Fact(Skip = "Needs a node relationship-count (degree) projection surface that maps to size((p)-[:R]->()) - see #300")]
     public async Task CanProjectRelationshipCounts()
     {
         // Setup

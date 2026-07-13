@@ -144,6 +144,51 @@ public class CypherAstValidatorTests
     }
 
     [Fact]
+    public void Run_AllowsScopedCallReturnAliasInOuterScope()
+    {
+        var statement = new CypherStatement(
+        [
+            MatchNode("n"),
+            new CallSubqueryClause(
+                ["n"],
+                [new ReturnClause([new ReturnItem(new Literal(1), "value")], distinct: false)]),
+            new ReturnClause([new ReturnItem(new VariableRef("value"), null)], distinct: false),
+        ], new Dictionary<string, object?>());
+
+        validator.Run(statement);
+    }
+
+    [Fact]
+    public void Run_ThrowsWhenScopedCallDoesNotEndWithReturn()
+    {
+        var statement = new CypherStatement(
+        [
+            MatchNode("n"),
+            new CallSubqueryClause(["n"], [new WithClause([new ReturnItem(new VariableRef("n"), null)], false)]),
+        ], new Dictionary<string, object?>());
+
+        var exception = Assert.Throws<GraphException>(() => validator.Run(statement));
+
+        Assert.Contains("must end with a RETURN", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_ThrowsWhenScopedCallOutputConflictsWithOuterScope()
+    {
+        var statement = new CypherStatement(
+        [
+            MatchNode("n"),
+            new CallSubqueryClause(
+                ["n"],
+                [new ReturnClause([new ReturnItem(new Literal(1), "n")], distinct: false)]),
+        ], new Dictionary<string, object?>());
+
+        var exception = Assert.Throws<GraphException>(() => validator.Run(statement));
+
+        Assert.Contains("conflicts with an outer-scope variable", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Run_ThrowsPreciseException_WhenEntityProjectionAliasIsUnbound()
     {
         var statement = new CypherStatement(

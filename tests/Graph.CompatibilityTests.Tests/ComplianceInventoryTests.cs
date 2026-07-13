@@ -20,10 +20,16 @@ public sealed class ComplianceInventoryTests
     /// excluded: they can never execute on any provider, so they play no part in the strict-mode
     /// execution floor.
     /// </summary>
+    // +9 for #120: eight of the nine pattern-comprehension tests were un-skipped once correlated
+    // collection projections landed — Basic/Filtered/TimeBased/Ordered/Aggregated/Grouped pattern
+    // comprehensions and TraversePathAndGroupBy (gated on CallSubqueries), plus the ungated
+    // CanCombineNodeAndRelationshipQueries — and one cross-provider edge-case contract was added.
+    // CanProjectRelationshipCounts stays skipped pending a node relationship-count (degree)
+    // projection surface (#300).
     // +10 for ISubgraphCreationTests (atomic node–relationship–node subgraph create, #45).
     // +4 for #288: four new IFullTextSearchTests methods (multi-term AND, whole-token vs sub-token,
     // metacharacter robustness, search-as-source rejection).
-    private const int ExpectedTotalTestMethods = 372;
+    private const int ExpectedTotalTestMethods = 381;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

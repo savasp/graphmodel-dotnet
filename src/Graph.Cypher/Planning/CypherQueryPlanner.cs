@@ -52,9 +52,7 @@ public sealed class CypherQueryPlanner
 
         if (model.GroupBy is not null)
         {
-            RequireCapability(GraphCapability.CallSubqueries, "GroupBy");
-            throw new GraphQueryTranslationException(
-                "Cannot plan the query: GroupBy is not supported by graph query translation yet; see #100.");
+            return PlanGroupBy(model);
         }
 
         if (model.Union is not null)
@@ -157,6 +155,660 @@ public sealed class CypherQueryPlanner
         return statement;
     }
 
+    /// <summary>
+    /// Lowers a <c>GroupBy(seg =&gt; seg.StartNode)</c> over path segments followed by a correlated
+    /// collection projection. The grouping degenerates to "per start node, its outgoing segments",
+    /// so each group member of the anonymous-type projection becomes a Cypher pattern comprehension
+    /// (<c>[(src)-[r]-&gt;(tgt) WHERE ... | ...]</c>) or a pattern-count subquery over the traversal,
+    /// anchored on the root <c>src</c>. Members a pattern comprehension cannot express — aggregation
+    /// (avg/min/max/sum), ordering, and nested grouping over the correlated collection — each become a
+    /// scoped <c>CALL { WITH src … }</c> subquery whose yielded column the outer projection references.
+    /// </summary>
+    private CypherStatement PlanGroupBy(GraphQueryModel model)
+    {
+        RequireCapability(GraphCapability.CallSubqueries, "GroupBy");
+
+        var groupBy = model.GroupBy!;
+        RejectUnsupportedGroupByComposition(model, groupBy);
+        if (model.Projection?.Selector is not { } selector ||
+            StripConvert(selector.Body) is not NewExpression projection ||
+            projection.Members is null)
+        {
+            throw NotSupportedGroupBy("the projection after GroupBy must construct an anonymous type");
+        }
+
+        if (!IsStartNodeKey(groupBy.KeySelector))
+        {
+            throw NotSupportedGroupBy("only grouping by the path-segment start node is supported");
+        }
+
+        var traversal = model.Traversal.Where(step => !step.IsComplexPropertyTraversal).ToArray();
+        if (traversal.Length != 1)
+        {
+            throw NotSupportedGroupBy("exactly one traversal step must precede the grouping");
+        }
+
+        GraphQueryModelValidator.Validate(model);
+
+        var parameters = new CypherParameterRegistry();
+        var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
+
+        var rootPredicates = new List<CypherExpression>();
+        var segmentPredicates = new List<LambdaExpression>();
+        foreach (var predicate in model.Predicates)
+        {
+            if (typeof(IGraphPathSegment).IsAssignableFrom(predicate.Predicate.Parameters[0].Type))
+            {
+                segmentPredicates.Add(predicate.Predicate);
+            }
+            else
+            {
+                rootPredicates.Add(lowerer.LowerLambda(predicate.Predicate, "src"));
+            }
+        }
+
+        // LINQ GroupBy only yields a group for keys present in the input sequence. The outer root
+        // match therefore must exclude nodes with no matching segment; otherwise Cypher would emit
+        // a root row with empty comprehensions/count zero while the in-memory provider emits no row.
+        rootPredicates.Add(new PatternSubqueryExpression(
+            PatternSubqueryKind.Exists,
+            BuildGroupPattern(traversal[0]),
+            CombineSegmentPredicates(segmentPredicates, innerPredicate: null, lowerer)));
+
+        var groupParameter = selector.Parameters[0];
+        var subqueries = new List<ICypherClause>();
+        var items = new ReturnItem[projection.Arguments.Count];
+        for (var index = 0; index < projection.Arguments.Count; index++)
+        {
+            items[index] = new ReturnItem(
+                LowerGroupProjectionItem(
+                    projection.Arguments[index],
+                    groupParameter,
+                    groupBy.KeySelector.ReturnType,
+                    traversal[0],
+                    segmentPredicates,
+                    lowerer,
+                    subqueries),
+                projection.Members[index].Name);
+        }
+
+        var clauses = new List<ICypherClause>
+        {
+            BuildRootMatch(model.Root, "src"),
+        };
+        if (rootPredicates.Count > 0)
+        {
+            clauses.Add(new WhereClause(rootPredicates.Count == 1
+                ? rootPredicates[0]
+                : new ConjunctionExpression(rootPredicates)));
+        }
+
+        clauses.AddRange(subqueries);
+        clauses.Add(new ReturnClause(items, distinct: false));
+
+        switch (model.Terminal)
+        {
+            case TerminalOperation.ToListOrArray:
+                break;
+            case TerminalOperation.First:
+                clauses.Add(new LimitClause(new Literal(1)));
+                break;
+            case TerminalOperation.Single:
+                clauses.Add(new LimitClause(new Literal(2)));
+                break;
+            default:
+                throw NotSupportedGroupBy($"terminal operation '{model.Terminal}' after grouping is not supported");
+        }
+
+        var statement = new CypherStatement(clauses, parameters.Parameters, null);
+        ValidateCapabilities(statement);
+
+#if DEBUG
+        new CypherAstValidator().Run(statement);
+#endif
+
+        return statement;
+    }
+
+    private static CypherExpression LowerGroupProjectionItem(
+        Expression argument,
+        ParameterExpression groupParameter,
+        Type keyType,
+        TraversalStep step,
+        IReadOnlyList<LambdaExpression> segmentPredicates,
+        ExpressionToCypherAstLowerer lowerer,
+        List<ICypherClause> subqueries)
+    {
+        var item = StripToList(StripConvert(argument));
+
+        if (TryUnwrapGroupOperation(item, groupParameter, out var operation))
+        {
+            var pattern = BuildGroupPattern(step);
+            var predicate = CombineSegmentPredicates(segmentPredicates, operation.Predicate, lowerer);
+
+            switch (operation.Kind)
+            {
+                case GroupOperationKind.Count:
+                    return new PatternSubqueryExpression(PatternSubqueryKind.Count, pattern, predicate);
+                case GroupOperationKind.Collection:
+                    if (operation.Selector is not { } collectionSelector)
+                    {
+                        throw NotSupportedGroupBy("a group collection projection must include a Select");
+                    }
+
+                    return new PatternComprehensionExpression(
+                        pattern,
+                        LowerInnerProjection(collectionSelector, lowerer),
+                        predicate);
+                case GroupOperationKind.Aggregate:
+                    return BuildAggregateSubquery(operation, step, predicate, lowerer, subqueries);
+                case GroupOperationKind.OrderedCollection:
+                    return BuildOrderedCollectionSubquery(operation, step, predicate, lowerer, subqueries);
+                case GroupOperationKind.NestedGroupCollection:
+                    return BuildNestedGroupSubquery(operation, step, predicate, lowerer, subqueries);
+                default:
+                    throw NotSupportedGroupBy("this correlated collection projection shape is not supported");
+            }
+        }
+
+        // Not a group operation: the argument reads the grouping key (the start node). Rewrite
+        // group.Key to a start-node parameter bound to src and lower via the shared lowerer.
+        var keyParameter = Expression.Parameter(keyType, "src");
+        var rewritten = new GroupKeyRewriter(groupParameter, keyParameter).Visit(item)!;
+        if (ReferencesParameter(rewritten, groupParameter))
+        {
+            throw NotSupportedGroupBy(
+                "the projection references the group in a form that is not a supported collection " +
+                "operation or a key member access");
+        }
+
+        if (rewritten == keyParameter && typeof(INode).IsAssignableFrom(keyType))
+        {
+            return new EntityProjectionExpression("src", HasComplexProperties(keyType));
+        }
+
+        return lowerer.LowerLambda(Expression.Lambda(rewritten, keyParameter), "src");
+    }
+
+    /// <summary>
+    /// Emits a scoped subquery computing one aggregate (Average/Min/Max/Sum) over the correlated
+    /// collection and returns a reference to its yielded column. A pattern comprehension cannot
+    /// express these list aggregates, so the traversal is re-matched inside a <c>CALL { … }</c>.
+    /// </summary>
+    private static VariableRef BuildAggregateSubquery(
+        GroupOperation operation,
+        TraversalStep step,
+        CypherExpression? predicate,
+        ExpressionToCypherAstLowerer lowerer,
+        List<ICypherClause> subqueries)
+    {
+        var column = $"__group{subqueries.Count}";
+        var body = new List<ICypherClause> { new MatchClause([BuildGroupPattern(step)], optional: false) };
+        if (predicate is not null)
+        {
+            body.Add(new WhereClause(predicate));
+        }
+
+        var argumentSelector = operation.AggregateArgument ?? operation.Selector;
+        var argument = argumentSelector is { } selector
+            ? lowerer.LowerLambda(selector, "src")
+            : new VariableRef("tgt");
+        body.Add(new ReturnClause(
+            [new ReturnItem(Function(operation.AggregateFunction!, argument), column)],
+            distinct: false));
+        subqueries.Add(new CallSubqueryClause(["src"], body));
+        return new VariableRef(column);
+    }
+
+    /// <summary>
+    /// Emits a scoped subquery that orders the correlated collection and collects the projected
+    /// elements into a list, returning a reference to its yielded column. Pattern comprehensions
+    /// cannot order, so the ordering happens on a <c>WITH … ORDER BY</c> inside a <c>CALL { … }</c>.
+    /// </summary>
+    private static VariableRef BuildOrderedCollectionSubquery(
+        GroupOperation operation,
+        TraversalStep step,
+        CypherExpression? predicate,
+        ExpressionToCypherAstLowerer lowerer,
+        List<ICypherClause> subqueries)
+    {
+        if (operation.Selector is not { } selector || operation.OrderKey is not { } orderKey)
+        {
+            throw NotSupportedGroupBy("an ordered collection projection requires OrderBy and Select");
+        }
+
+        var column = $"__group{subqueries.Count}";
+        var body = new List<ICypherClause> { new MatchClause([BuildGroupPattern(step)], optional: false) };
+        if (predicate is not null)
+        {
+            body.Add(new WhereClause(predicate));
+        }
+
+        body.Add(new WithClause(
+            [
+                new ReturnItem(new VariableRef("src"), null),
+                new ReturnItem(new VariableRef("tgt"), null),
+                new ReturnItem(new VariableRef("r"), null),
+            ],
+            distinct: false));
+        body.Add(new OrderByClause([new OrderByItem(lowerer.LowerLambda(orderKey, "src"), operation.OrderDescending)]));
+        body.Add(new ReturnClause(
+            [new ReturnItem(Function("collect", LowerInnerProjection(selector, lowerer)), column)],
+            distinct: false));
+        subqueries.Add(new CallSubqueryClause(["src"], body));
+        return new VariableRef(column);
+    }
+
+    /// <summary>
+    /// Emits a scoped subquery that groups the correlated collection by an inner key, aggregates each
+    /// inner group, and collects the per-group summaries into a list. Returns a reference to its
+    /// yielded column.
+    /// </summary>
+    private static VariableRef BuildNestedGroupSubquery(
+        GroupOperation operation,
+        TraversalStep step,
+        CypherExpression? predicate,
+        ExpressionToCypherAstLowerer lowerer,
+        List<ICypherClause> subqueries)
+    {
+        if (operation.NestedKey is not { } nestedKey ||
+            operation.Selector is not { } selector ||
+            StripConvert(selector.Body) is not NewExpression summary ||
+            summary.Members is null)
+        {
+            throw NotSupportedGroupBy("a nested grouping projection requires GroupBy and an anonymous Select");
+        }
+
+        var nestedGroupParameter = selector.Parameters[0];
+        var column = $"__group{subqueries.Count}";
+        const string keyAlias = "__key";
+        var body = new List<ICypherClause> { new MatchClause([BuildGroupPattern(step)], optional: false) };
+        if (predicate is not null)
+        {
+            body.Add(new WhereClause(predicate));
+        }
+
+        // WITH <inner key> AS __key, tgt, r  (bind the group category alongside the segment scope)
+        body.Add(new WithClause(
+            [
+                new ReturnItem(lowerer.LowerLambda(nestedKey, "src"), keyAlias),
+                new ReturnItem(new VariableRef("src"), null),
+                new ReturnItem(new VariableRef("tgt"), null),
+                new ReturnItem(new VariableRef("r"), null),
+            ],
+            distinct: false));
+
+        // WITH __key, <aggregates...>  then RETURN collect({ member: ... }) grouped by __key.
+        var aggregationItems = new List<ReturnItem> { new(new VariableRef(keyAlias), keyAlias) };
+        var summaryEntries = new List<MapEntry>();
+        for (var index = 0; index < summary.Arguments.Count; index++)
+        {
+            var memberName = summary.Members[index].Name;
+            var entry = LowerNestedSummaryMember(
+                summary.Arguments[index],
+                nestedGroupParameter,
+                nestedKey.ReturnType,
+                keyAlias,
+                lowerer,
+                aggregationItems);
+            summaryEntries.Add(new MapEntry(memberName, entry));
+        }
+
+        body.Add(new WithClause(aggregationItems, distinct: false));
+        body.Add(new ReturnClause(
+            [new ReturnItem(Function("collect", new MapExpression(summaryEntries)), column)],
+            distinct: false));
+        subqueries.Add(new CallSubqueryClause(["src"], body));
+        return new VariableRef(column);
+    }
+
+    /// <summary>
+    /// Lowers one member of a nested group's summary projection (<c>g =&gt; new { g.Key, g.Count(),
+    /// g.Select(...).ToList() }</c>) into either the group-key reference or an aggregation column, and
+    /// returns the map-value expression that references it.
+    /// </summary>
+    private static CypherExpression LowerNestedSummaryMember(
+        Expression argument,
+        ParameterExpression nestedGroupParameter,
+        Type nestedKeyType,
+        string keyAlias,
+        ExpressionToCypherAstLowerer lowerer,
+        List<ReturnItem> aggregationItems)
+    {
+        var item = StripToList(StripConvert(argument));
+
+        if (TryUnwrapGroupOperation(item, nestedGroupParameter, out var operation))
+        {
+            if (operation.Predicate is not null)
+            {
+                throw NotSupportedGroupBy("filtering inside a nested group is not supported");
+            }
+
+            var column = $"__agg{aggregationItems.Count}";
+            CypherExpression aggregate = operation.Kind switch
+            {
+                GroupOperationKind.Count => Function("count", new VariableRef("tgt")),
+                GroupOperationKind.Aggregate => Function(
+                    operation.AggregateFunction!,
+                    (operation.AggregateArgument ?? operation.Selector) is { } selector
+                        ? lowerer.LowerLambda(selector, "src")
+                        : new VariableRef("tgt")),
+                GroupOperationKind.Collection when operation.Selector is { } collectionSelector =>
+                    Function("collect", LowerInnerProjection(collectionSelector, lowerer)),
+                _ => throw NotSupportedGroupBy("this nested group summary member shape is not supported"),
+            };
+
+            aggregationItems.Add(new ReturnItem(aggregate, column));
+            return new VariableRef(column);
+        }
+
+        // The member reads the nested group key.
+        var keyParameter = Expression.Parameter(nestedKeyType, keyAlias);
+        var rewritten = new GroupKeyRewriter(nestedGroupParameter, keyParameter).Visit(item)!;
+        if (ReferencesParameter(rewritten, nestedGroupParameter))
+        {
+            throw NotSupportedGroupBy("this nested group summary member shape is not supported");
+        }
+
+        return lowerer.LowerLambda(Expression.Lambda(rewritten, keyParameter), keyAlias);
+    }
+
+    private static CypherExpression? CombineSegmentPredicates(
+        IReadOnlyList<LambdaExpression> segmentPredicates,
+        LambdaExpression? innerPredicate,
+        ExpressionToCypherAstLowerer lowerer)
+    {
+        var predicates = new List<CypherExpression>();
+        foreach (var predicate in segmentPredicates)
+        {
+            predicates.Add(lowerer.LowerLambda(predicate, "src"));
+        }
+
+        if (innerPredicate is not null)
+        {
+            predicates.Add(lowerer.LowerLambda(innerPredicate, "src"));
+        }
+
+        return predicates.Count switch
+        {
+            0 => null,
+            1 => predicates[0],
+            _ => new ConjunctionExpression(predicates),
+        };
+    }
+
+    private static CypherExpression LowerInnerProjection(
+        LambdaExpression selector,
+        ExpressionToCypherAstLowerer lowerer)
+    {
+        if (StripConvert(selector.Body) is NewExpression @new && @new.Members is not null)
+        {
+            var entries = @new.Arguments
+                .Select((argument, index) => new MapEntry(
+                    @new.Members[index].Name,
+                    lowerer.LowerLambda(Expression.Lambda(argument, selector.Parameters), "src")))
+                .ToArray();
+            return new MapExpression(entries);
+        }
+
+        return lowerer.LowerLambda(selector, "src");
+    }
+
+    private static PathPattern BuildGroupPattern(TraversalStep step)
+    {
+        var direction = step.Direction switch
+        {
+            GraphTraversalDirection.Outgoing => CypherDirection.Outgoing,
+            GraphTraversalDirection.Incoming => CypherDirection.Incoming,
+            GraphTraversalDirection.Both => CypherDirection.Both,
+            _ => throw new GraphQueryTranslationException($"Traversal direction '{step.Direction}' is not supported."),
+        };
+
+        IReadOnlyList<string> types = step.RelationshipClrType is null
+            ? step.RelationshipType is { } relationshipType ? [relationshipType] : []
+            : Labels.GetCompatibleLabels(step.RelationshipClrType);
+
+        return new PathPattern(
+        [
+            new NodePattern("src", []),
+            new RelationshipPattern("r", direction, depth: null, types),
+            new NodePattern("tgt", step.TargetType is null ? [] : Labels.GetCompatibleLabels(step.TargetType)),
+        ]);
+    }
+
+    private static bool IsStartNodeKey(LambdaExpression keySelector)
+    {
+        return StripConvert(keySelector.Body) is MemberExpression
+        {
+            Expression: ParameterExpression parameter,
+            Member.Name: nameof(IGraphPathSegment.StartNode),
+        } && typeof(IGraphPathSegment).IsAssignableFrom(parameter.Type);
+    }
+
+    private static void RejectUnsupportedGroupByComposition(
+        GraphQueryModel model,
+        GroupByFragment groupBy)
+    {
+        if (model.Root is not NodeRoot and not DynamicRoot)
+        {
+            throw NotSupportedGroupBy("search and relationship roots are not supported");
+        }
+
+        if (model.SearchFilter is not null || model.Join is not null || model.SelectMany is not null ||
+            model.Union is not null || model.PathShape is not null)
+        {
+            throw NotSupportedGroupBy("search, joins, unions, and additional query fragments are not supported");
+        }
+
+        if (groupBy.ElementSelector is not null || groupBy.ResultSelector is not null)
+        {
+            throw NotSupportedGroupBy("GroupBy element and result selector overloads are not supported");
+        }
+
+        if (model.Distinct || model.Ordering.Count > 0 || model.Paging.Skip is not null ||
+            model.Paging.Take is not null || model.PostPaging is not null)
+        {
+            throw NotSupportedGroupBy(
+                "Distinct, outer ordering, and outer paging are not supported; materialize the grouped query first");
+        }
+
+        var traversal = model.Traversal.Where(step => !step.IsComplexPropertyTraversal).ToArray();
+        if (traversal is [{ Depth.Min: 1, Depth.Max: 1, RelationshipPredicates.Count: 0 }])
+        {
+            return;
+        }
+
+        throw NotSupportedGroupBy(
+            "the grouping traversal must be one hop and cannot carry relationship-predicate modifiers");
+    }
+
+    private static bool TryUnwrapGroupOperation(
+        Expression expression,
+        ParameterExpression groupParameter,
+        out GroupOperation operation)
+    {
+        operation = default;
+        LambdaExpression? selector = null;
+        LambdaExpression? predicate = null;
+        string? aggregateFunction = null;
+        LambdaExpression? aggregateArgument = null;
+        LambdaExpression? orderKey = null;
+        var orderDescending = false;
+        LambdaExpression? nestedKey = null;
+        var kind = GroupOperationKind.Collection;
+        var hasTerminal = false;
+        var operationAfterProjection = false;
+        var current = expression;
+
+        while (current is MethodCallExpression call &&
+            (call.Method.DeclaringType == typeof(Enumerable) || call.Method.DeclaringType == typeof(Queryable)))
+        {
+            var source = call.Method.IsStatic ? call.Arguments[0] : call.Object!;
+            switch (call.Method.Name)
+            {
+                case nameof(Enumerable.Select):
+                    if (selector is not null)
+                    {
+                        throw NotSupportedGroupBy("multiple Select operations over a group are not supported");
+                    }
+
+                    selector = ExtractRequiredLambda(call.Arguments[^1], "Select");
+                    if (operationAfterProjection)
+                    {
+                        throw NotSupportedGroupBy(
+                            "Where, OrderBy, and GroupBy must precede Select in a correlated collection pipeline");
+                    }
+
+                    break;
+                case nameof(Enumerable.Where):
+                    predicate = predicate is null
+                        ? ExtractRequiredLambda(call.Arguments[^1], "Where")
+                        : throw NotSupportedGroupBy("multiple Where filters over a group are not supported");
+                    operationAfterProjection = selector is null;
+                    break;
+                case nameof(Enumerable.OrderBy) or nameof(Enumerable.OrderByDescending):
+                    if (orderKey is not null)
+                    {
+                        throw NotSupportedGroupBy("multiple OrderBy operations over a group are not supported");
+                    }
+
+                    orderKey = ExtractRequiredLambda(call.Arguments[^1], "OrderBy");
+                    orderDescending = call.Method.Name == nameof(Enumerable.OrderByDescending);
+                    kind = GroupOperationKind.OrderedCollection;
+                    operationAfterProjection = selector is null;
+                    break;
+                case nameof(Enumerable.GroupBy):
+                    if (nestedKey is not null)
+                    {
+                        throw NotSupportedGroupBy("multiple nested GroupBy operations are not supported");
+                    }
+
+                    nestedKey = ExtractRequiredLambda(call.Arguments[^1], "GroupBy");
+                    kind = GroupOperationKind.NestedGroupCollection;
+                    operationAfterProjection = selector is null;
+                    break;
+                case nameof(Enumerable.Count) when !hasTerminal:
+                    if (call.Arguments.Count > 1)
+                    {
+                        predicate = predicate is null
+                            ? ExtractRequiredLambda(call.Arguments[^1], "Count")
+                            : throw NotSupportedGroupBy(
+                                "Count(predicate) cannot be combined with a separate Where filter");
+                        operationAfterProjection = selector is null;
+                    }
+
+                    kind = GroupOperationKind.Count;
+                    hasTerminal = true;
+                    break;
+                case nameof(Enumerable.Average) or nameof(Enumerable.Sum) or
+                    nameof(Enumerable.Min) or nameof(Enumerable.Max) when !hasTerminal:
+                    kind = GroupOperationKind.Aggregate;
+                    aggregateFunction = call.Method.Name switch
+                    {
+                        nameof(Enumerable.Average) => "avg",
+                        nameof(Enumerable.Sum) => "sum",
+                        nameof(Enumerable.Min) => "min",
+                        nameof(Enumerable.Max) => "max",
+                        _ => null,
+                    };
+                    aggregateArgument = call.Arguments.Count > 1
+                        ? ExtractRequiredLambda(call.Arguments[^1], call.Method.Name)
+                        : null;
+                    operationAfterProjection = aggregateArgument is not null && selector is null;
+                    hasTerminal = true;
+                    break;
+                case nameof(Enumerable.ToList) or nameof(Enumerable.ToArray) or nameof(Enumerable.AsEnumerable):
+                    break;
+                default:
+                    // Anything else is not representable in the correlated-collection lowering.
+                    return false;
+            }
+
+            current = source;
+        }
+
+        if (current != groupParameter)
+        {
+            return false;
+        }
+
+        operation = new GroupOperation(
+            kind,
+            selector,
+            predicate,
+            aggregateFunction,
+            aggregateArgument,
+            orderKey,
+            orderDescending,
+            nestedKey);
+        return true;
+    }
+
+    private static LambdaExpression? ExtractLambda(Expression expression)
+    {
+        return expression switch
+        {
+            LambdaExpression lambda => lambda,
+            System.Linq.Expressions.UnaryExpression { NodeType: ExpressionType.Quote, Operand: LambdaExpression lambda } => lambda,
+            _ => null,
+        };
+    }
+
+    private static LambdaExpression ExtractRequiredLambda(Expression expression, string operation) =>
+        ExtractLambda(expression) ?? throw NotSupportedGroupBy(
+            $"the {operation} operation does not contain a recognizable lambda expression");
+
+    private static Expression StripToList(Expression expression)
+    {
+        while (expression is MethodCallExpression
+            {
+                Method.Name: nameof(Enumerable.ToList) or nameof(Enumerable.ToArray) or nameof(Enumerable.AsEnumerable),
+            } call &&
+            (call.Method.DeclaringType == typeof(Enumerable) || call.Method.DeclaringType == typeof(Queryable)))
+        {
+            expression = call.Method.IsStatic ? call.Arguments[0] : call.Object!;
+        }
+
+        return expression;
+    }
+
+    private static GraphQueryTranslationException NotSupportedGroupBy(string reason) =>
+        new($"Cannot plan the GroupBy query: {reason}.");
+
+    private enum GroupOperationKind
+    {
+        Collection,
+        Count,
+        Aggregate,
+        OrderedCollection,
+        NestedGroupCollection,
+    }
+
+    private readonly record struct GroupOperation(
+        GroupOperationKind Kind,
+        LambdaExpression? Selector,
+        LambdaExpression? Predicate,
+        string? AggregateFunction = null,
+        LambdaExpression? AggregateArgument = null,
+        LambdaExpression? OrderKey = null,
+        bool OrderDescending = false,
+        LambdaExpression? NestedKey = null);
+
+    private sealed class GroupKeyRewriter(
+        ParameterExpression groupParameter,
+        ParameterExpression keyParameter) : ExpressionVisitor
+    {
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            if (node.Expression == groupParameter && node.Member.Name == nameof(IGrouping<object, object>.Key))
+            {
+                return keyParameter;
+            }
+
+            return base.VisitMember(node);
+        }
+    }
+
     private void RequireCapability(GraphCapability capability, string construct)
     {
         if (dialect.Capabilities.Has(capability))
@@ -171,10 +823,19 @@ public sealed class CypherQueryPlanner
 
     private void ValidateCapabilities(CypherStatement statement)
     {
-        foreach (var clause in statement.Clauses)
+        ValidateCapabilities(statement.Clauses);
+    }
+
+    private void ValidateCapabilities(IReadOnlyList<ICypherClause> clauses)
+    {
+        foreach (var clause in clauses)
         {
             switch (clause)
             {
+                case CallSubqueryClause subquery:
+                    RequireCapability(GraphCapability.CallSubqueries, "CallSubqueries");
+                    ValidateCapabilities(subquery.Body);
+                    break;
                 case MatchClause match:
                     if (match.Optional)
                     {

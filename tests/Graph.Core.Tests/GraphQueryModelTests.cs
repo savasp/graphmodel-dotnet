@@ -255,6 +255,59 @@ public class GraphQueryModelTests
     }
 
     [Fact]
+    public void Validator_RejectsGroupedProjectionReferencingOutOfScopeParameter()
+    {
+        var segment = Expression.Parameter(typeof(IGraphPathSegment<Person, Knows, Person>), "seg");
+        var keySelector = Expression.Lambda(Expression.Property(segment, nameof(IGraphPathSegment.StartNode)), segment);
+
+        // The grouped projection references a foreign parameter that is neither the group nor a
+        // nested-lambda local nor a captured constant, so it is a mis-bound query.
+        var group = Expression.Parameter(typeof(System.Linq.IGrouping<Person, Person>), "g");
+        var foreign = Expression.Parameter(typeof(Person), "other");
+        var projection = Expression.Lambda(Expression.Property(foreign, nameof(Person.Name)), group);
+
+        var model = CreateGroupedModel(keySelector, projection);
+
+        var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
+
+        Assert.Contains("Grouped projection selector references parameter 'other'", exception.Message);
+    }
+
+    [Fact]
+    public void Validator_AcceptsGroupedProjectionOverGroupParameter()
+    {
+        var segment = Expression.Parameter(typeof(IGraphPathSegment<Person, Knows, Person>), "seg");
+        var keySelector = Expression.Lambda(Expression.Property(segment, nameof(IGraphPathSegment.StartNode)), segment);
+
+        var group = Expression.Parameter(
+            typeof(System.Linq.IGrouping<Person, IGraphPathSegment<Person, Knows, Person>>), "g");
+        var key = Expression.Property(group, nameof(System.Linq.IGrouping<Person, Person>.Key));
+        var projection = Expression.Lambda(Expression.Property(key, nameof(Person.Name)), group);
+
+        GraphQueryModelValidator.Validate(CreateGroupedModel(keySelector, projection));
+    }
+
+    private static GraphQueryModel CreateGroupedModel(LambdaExpression keySelector, LambdaExpression projection)
+    {
+        return new GraphQueryModel(
+            new NodeRoot(typeof(Person)),
+            [],
+            [CreateTraversalStep()],
+            new ProjectionShape(ProjectionKind.Scalar, projection),
+            [],
+            new Paging(null, null),
+            TerminalOperation.ToListOrArray,
+            distinct: false,
+            terminalOperand: null,
+            pathShape: null,
+            join: null,
+            searchFilter: null,
+            groupBy: new GroupByFragment(keySelector, null, null),
+            selectMany: null,
+            union: null);
+    }
+
+    [Fact]
     public void UnionFragment_RequiresBoundaryModelsAndElementType()
     {
         var operand = CreateUnionOperand(typeof(Person));

@@ -310,20 +310,8 @@ public static class QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(keySelector);
         ArgumentNullException.ThrowIfNull(elementSelector);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<Dictionary<TKey, TElement>>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<TSource>, Expression<Func<TSource, TKey>>, Expression<Func<TSource, TElement>>, Dictionary<TKey, TElement>>)
-                        QueryTerminals.ToDictionaryAsyncMarker).Method,
-                    source.Expression,
-                    keySelector,
-                    elementSelector),
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        return await Task.Run(() => source.ToDictionary(keySelector.Compile(), elementSelector.Compile()), cancellationToken).ConfigureAwait(false);
+        var items = await source.ToListAsync(cancellationToken).ConfigureAwait(false);
+        return items.ToDictionary(keySelector.Compile(), elementSelector.Compile());
     }
 
     /// <summary>
@@ -337,19 +325,8 @@ public static class QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<Dictionary<TKey, TSource>>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<TSource>, Expression<Func<TSource, TKey>>, Dictionary<TKey, TSource>>)
-                        QueryTerminals.ToDictionaryAsyncMarker).Method,
-                    source.Expression,
-                    keySelector),
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        return await Task.Run(() => source.ToDictionary(keySelector.Compile()), cancellationToken).ConfigureAwait(false);
+        var items = await source.ToListAsync(cancellationToken).ConfigureAwait(false);
+        return items.ToDictionary(keySelector.Compile());
     }
 
     /// <summary>
@@ -365,20 +342,8 @@ public static class QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(keySelector);
         ArgumentNullException.ThrowIfNull(elementSelector);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<ILookup<TKey, TElement>>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<TSource>, Expression<Func<TSource, TKey>>, Expression<Func<TSource, TElement>>, ILookup<TKey, TElement>>)
-                        QueryTerminals.ToLookupAsyncMarker).Method,
-                    source.Expression,
-                    keySelector,
-                    elementSelector),
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        return await Task.Run(() => source.ToLookup(keySelector.Compile(), elementSelector.Compile()), cancellationToken).ConfigureAwait(false);
+        var items = await source.ToListAsync(cancellationToken).ConfigureAwait(false);
+        return items.ToLookup(keySelector.Compile(), elementSelector.Compile());
     }
 
     /// <summary>
@@ -392,19 +357,8 @@ public static class QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(keySelector);
 
-        if (source.Provider is IGraphQueryProvider graphProvider)
-        {
-            return await graphProvider.ExecuteAsync<ILookup<TKey, TSource>>(
-                Expression.Call(
-                    null,
-                    ((Func<IQueryable<TSource>, Expression<Func<TSource, TKey>>, ILookup<TKey, TSource>>)
-                        QueryTerminals.ToLookupAsyncMarker).Method,
-                    source.Expression,
-                    keySelector),
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        return await Task.Run(() => source.ToLookup(keySelector.Compile()), cancellationToken).ConfigureAwait(false);
+        var items = await source.ToListAsync(cancellationToken).ConfigureAwait(false);
+        return items.ToLookup(keySelector.Compile());
     }
 
     /// <summary>

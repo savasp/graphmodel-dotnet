@@ -312,6 +312,8 @@ public sealed class GraphResultMaterializer
                     {
                         SimpleValue simpleValue => ConvertToParameterType(simpleValue.Object, param.ParameterType),
                         EntityInfo complexEntityInfo => MaterializeSingleElement<object>(complexEntityInfo, param.ParameterType),
+                        EntityCollection entityCollection => MaterializeEntityCollection(entityCollection, param.ParameterType),
+                        SimpleCollection simpleCollection => MaterializeSimpleCollection(simpleCollection, param.ParameterType),
                         _ => param.HasDefaultValue ? param.DefaultValue : GetDefaultValue(param.ParameterType)
                     };
 
@@ -362,6 +364,47 @@ public sealed class GraphResultMaterializer
 
     private static object? GetDefaultValue(Type type) =>
         type.IsValueType ? Activator.CreateInstance(type) : null;
+
+    private object? MaterializeEntityCollection(EntityCollection collection, Type targetType)
+    {
+        var elementType = GraphResultTypeHelpers.GetTargetTypeIfCollection(targetType);
+        var elements = collection.Entities
+            .Select(entity => MaterializeSingleElement<object>(entity, elementType))
+            .ToList();
+        return BuildCollection(elements, elementType, targetType);
+    }
+
+    private static object? MaterializeSimpleCollection(SimpleCollection collection, Type targetType)
+    {
+        var elementType = GraphResultTypeHelpers.GetTargetTypeIfCollection(targetType);
+        var elements = collection.Values
+            .Select(value => GraphValueConverter.ConvertTo(value.Object, elementType))
+            .ToList();
+        return BuildCollection(elements, elementType, targetType);
+    }
+
+    private static object BuildCollection(List<object?> items, Type elementType, Type targetType)
+    {
+        if (targetType.IsArray)
+        {
+            var array = Array.CreateInstance(elementType, items.Count);
+            for (var index = 0; index < items.Count; index++)
+            {
+                array.SetValue(items[index], index);
+            }
+
+            return array;
+        }
+
+        var listType = typeof(List<>).MakeGenericType(elementType);
+        var list = (IList)Activator.CreateInstance(listType)!;
+        foreach (var item in items)
+        {
+            list.Add(item);
+        }
+
+        return list;
+    }
 
     private static T ConvertToCollectionType<T>(List<object> items, Type elementType)
     {

@@ -18,21 +18,59 @@ public sealed class CypherAstValidator : ICypherPass
         ArgumentNullException.ThrowIfNull(input);
 
         var scope = new HashSet<string>(StringComparer.Ordinal);
+        ValidateClauses(input.Clauses, scope, input.Parameters);
+        return input;
+    }
 
-        foreach (var clause in input.Clauses)
+    private static void ValidateClauses(
+        IReadOnlyList<ICypherClause> clauses,
+        HashSet<string> scope,
+        IReadOnlyDictionary<string, object?> parameters)
+    {
+        foreach (var clause in clauses)
         {
             switch (clause)
             {
+                case CallSubqueryClause subquery:
+                    foreach (var imported in subquery.ImportedVariables)
+                    {
+                        ValidateAlias(imported, scope);
+                    }
+
+                    if (subquery.Body[^1] is not ReturnClause subReturn)
+                    {
+                        throw new GraphException("A scoped CALL subquery must end with a RETURN clause.");
+                    }
+
+                    var innerScope = new HashSet<string>(subquery.ImportedVariables, StringComparer.Ordinal);
+                    ValidateClauses(subquery.Body, innerScope, parameters);
+                    foreach (var item in subReturn.Items)
+                    {
+                        var exported = item.Alias ?? (item.Expression as VariableRef)?.Alias;
+                        if (exported is null)
+                        {
+                            continue;
+                        }
+
+                        if (!scope.Add(exported))
+                        {
+                            throw new GraphException(
+                                $"Scoped CALL subquery output '{exported}' conflicts with an outer-scope variable.");
+                        }
+                    }
+
+                    break;
+
                 case MatchClause match:
                     BindMatchAliases(scope, match);
                     break;
 
                 case WhereClause where:
-                    ValidateExpression(where.Predicate, scope, input.Parameters);
+                    ValidateExpression(where.Predicate, scope, parameters);
                     break;
 
                 case WithClause with:
-                    ValidateReturnItems(with.Items, scope, input.Parameters);
+                    ValidateReturnItems(with.Items, scope, parameters);
                     if (!with.Wildcard)
                     {
                         scope = ProjectWithScope(with);
@@ -41,12 +79,12 @@ public sealed class CypherAstValidator : ICypherPass
                     break;
 
                 case UnwindClause unwind:
-                    ValidateExpression(unwind.Source, scope, input.Parameters);
+                    ValidateExpression(unwind.Source, scope, parameters);
                     scope.Add(unwind.Alias);
                     break;
 
                 case CallClause call:
-                    ValidateExpressions(call.Arguments, scope, input.Parameters);
+                    ValidateExpressions(call.Arguments, scope, parameters);
                     foreach (var yield in call.Yields)
                     {
                         scope.Add(yield.Alias ?? yield.Name);
@@ -55,7 +93,7 @@ public sealed class CypherAstValidator : ICypherPass
                     break;
 
                 case FullTextSearchClause search:
-                    ValidateParameter(search.Query.Name, input.Parameters);
+                    ValidateParameter(search.Query.Name, parameters);
                     scope.Add(search.Alias);
                     if (search.Target == Cvoya.Graph.Querying.SearchRootTarget.Relationships)
                     {
@@ -80,31 +118,29 @@ public sealed class CypherAstValidator : ICypherPass
                     break;
 
                 case ReturnClause @return:
-                    ValidateReturnItems(@return.Items, scope, input.Parameters);
+                    ValidateReturnItems(@return.Items, scope, parameters);
                     break;
 
                 case OrderByClause orderBy:
                     foreach (var item in orderBy.Items)
                     {
-                        ValidateExpression(item.Expression, scope, input.Parameters);
+                        ValidateExpression(item.Expression, scope, parameters);
                     }
 
                     break;
 
                 case SkipClause skip:
-                    ValidateExpression(skip.Count, scope, input.Parameters);
+                    ValidateExpression(skip.Count, scope, parameters);
                     break;
 
                 case LimitClause limit:
-                    ValidateExpression(limit.Count, scope, input.Parameters);
+                    ValidateExpression(limit.Count, scope, parameters);
                     break;
 
                 default:
                     throw new GraphException($"Unsupported Cypher clause '{clause.GetType().Name}'.");
             }
         }
-
-        return input;
     }
 
     private static void BindMatchAliases(HashSet<string> scope, MatchClause match)

@@ -21,6 +21,7 @@ internal sealed class InMemoryQueryExecutor(
 {
     private const string NoElements = "Sequence contains no elements";
     private const string MoreThanOneElement = "Sequence contains more than one element";
+    private static readonly object NullGroupKey = new();
 
     private readonly EntityReader _reader = reader;
     private readonly StoreState _state = state;
@@ -57,7 +58,8 @@ internal sealed class InMemoryQueryExecutor(
             rows = FilterRows(rows, predicates, deferred, complexTraversals);
         }
 
-        var pairs = Project(rows, model);
+        var projectionSource = model.GroupBy is { } groupBy ? GroupRows(rows, groupBy) : rows;
+        var pairs = Project(projectionSource, model);
 
         foreach (var predicate in deferred)
         {
@@ -569,7 +571,7 @@ internal sealed class InMemoryQueryExecutor(
 
     private IEnumerable<Row> FilterRows(
         IEnumerable<Row> rows,
-        IReadOnlyList<PredicateFragment> predicates,
+        List<PredicateFragment> predicates,
         List<PredicateFragment> deferred,
         IReadOnlyList<TraversalStep> complexTraversals)
     {
@@ -897,6 +899,68 @@ internal sealed class InMemoryQueryExecutor(
         }
 
         return EvaluatePredicate(predicate.Predicate, input);
+    }
+
+    // ---- grouping ----
+
+    /// <summary>
+    /// Groups the post-traversal/post-filter rows by the compiled key selector and yields one row
+    /// per group whose <see cref="Row.Current"/> is an <see cref="IGrouping{TKey,TElement}"/> (or the
+    /// result-selector output). Nested <c>group.Select/Where/OrderBy/Count/Average/Max/Min</c> then
+    /// materialize natively when the projection lambda runs.
+    /// </summary>
+    private IEnumerable<Row> GroupRows(IEnumerable<Row> rows, GroupByFragment groupBy)
+    {
+        var keySelector = groupBy.KeySelector;
+        var sourceType = keySelector.Parameters[0].Type;
+        var keyType = keySelector.ReturnType;
+        var elementType = groupBy.ElementSelector?.ReturnType ?? sourceType;
+        var keyDelegate = Compile(keySelector);
+        var elementDelegate = groupBy.ElementSelector is null ? null : Compile(groupBy.ElementSelector);
+        var groupingType = typeof(Grouping<,>).MakeGenericType(keyType, elementType);
+        var listType = typeof(List<>).MakeGenericType(elementType);
+
+        var order = new List<object>();
+        var groups = new Dictionary<object, (object? Key, System.Collections.IList Elements, Row Row)>(
+            GraphValueComparer.Instance);
+
+        foreach (var row in rows)
+        {
+            _cancellationToken.ThrowIfCancellationRequested();
+            var source = ResolveInput(row, null, sourceType);
+            var key = Invoke(keyDelegate, source);
+            var element = elementDelegate is null ? source : Invoke(elementDelegate, source);
+            var boxedKey = key ?? NullGroupKey;
+            if (!groups.TryGetValue(boxedKey, out var group))
+            {
+                group = (key, (System.Collections.IList)Activator.CreateInstance(listType)!, row);
+                groups[boxedKey] = group;
+                order.Add(boxedKey);
+            }
+
+            group.Elements.Add(element);
+        }
+
+        foreach (var boxedKey in order)
+        {
+            var group = groups[boxedKey];
+            var grouping = Activator.CreateInstance(groupingType, group.Key, group.Elements)!;
+            var newRow = group.Row.Clone();
+            newRow.Current = groupBy.ResultSelector is { } resultSelector
+                ? Invoke(Compile(resultSelector), group.Key, grouping)
+                : grouping;
+            yield return newRow;
+        }
+    }
+
+    private sealed class Grouping<TKey, TElement>(TKey key, List<TElement> elements)
+        : IGrouping<TKey, TElement>
+    {
+        public TKey Key => key;
+
+        public IEnumerator<TElement> GetEnumerator() => elements.GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => elements.GetEnumerator();
     }
 
     // ---- projection ----

@@ -79,6 +79,10 @@ public sealed class CypherRenderer
                 builder.Append(string.Join(", ", @return.Items.Select(RenderReturnItem)));
                 break;
 
+            case CallSubqueryClause subquery:
+                RenderCallSubquery(builder, subquery);
+                break;
+
             case CallClause call:
                 builder.Append("CALL ")
                     .Append(call.Procedure)
@@ -208,6 +212,24 @@ public sealed class CypherRenderer
     {
         var expression = RenderExpression(item.Expression);
         return item.Alias is null ? expression : $"{expression} AS {item.Alias}";
+    }
+
+    private void RenderCallSubquery(StringBuilder builder, CallSubqueryClause subquery)
+    {
+        builder.Append("CALL {");
+        if (subquery.ImportedVariables.Count > 0)
+        {
+            builder.AppendLine().Append("  WITH ").Append(string.Join(", ", subquery.ImportedVariables));
+        }
+
+        foreach (var clause in subquery.Body)
+        {
+            var inner = new StringBuilder();
+            RenderClause(inner, clause);
+            builder.AppendLine().Append("  ").Append(inner.ToString().Replace("\n", "\n  ", StringComparison.Ordinal));
+        }
+
+        builder.AppendLine().Append('}');
     }
 
     private string RenderExpression(CypherExpression expression, CypherBinaryOperator? parentOperator = null)
