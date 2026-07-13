@@ -26,7 +26,11 @@ public sealed class ComplianceInventoryTests
     // CanCombineNodeAndRelationshipQueries — and one cross-provider edge-case contract was added.
     // CanProjectRelationshipCounts stays skipped pending a node relationship-count (degree)
     // projection surface (#300).
-    private const int ExpectedTotalTestMethods = 367;
+    // +3 for #294: capability-certifying tests in IAdvancedQueryTests -
+    // CanQueryPolymorphicBaseTypeAcrossSubtypeLabels (MultiLabelMatch), CanOrderByBareEntity
+    // (OrderByEntity), and CanProjectComplexCollectionSize (PatternSizeProjection). OptionalTraversal
+    // uses the two pre-existing null-propagating navigation contracts in IQueryTests.
+    private const int ExpectedTotalTestMethods = 370;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()
@@ -45,6 +49,33 @@ public sealed class ComplianceInventoryTests
             .Count(m => m.GetCustomAttributes(inherit: false).Any(a => a is FactAttribute { Skip: null }));
 
         Assert.Equal(expected, ComplianceInventory.TotalTestMethods);
+    }
+
+    [Fact]
+    public void EveryCapabilityHasRunnableCoverageOrAnExplicitNoSurfaceRecord()
+    {
+        GraphCapability[] recordOnly =
+        [
+            GraphCapability.NestedTransactions,
+            GraphCapability.ShortestPath,
+        ];
+
+        var covered = typeof(IGraphTest).Assembly.GetTypes()
+            .Where(type => type.IsInterface && type.IsPublic && typeof(IGraphTest).IsAssignableFrom(type))
+            .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(method => method.GetCustomAttribute<FactAttribute>(inherit: false) is { Skip: null })
+                .SelectMany(method => method.GetCustomAttributes<RequiresCapabilityAttribute>(inherit: false)
+                    .Concat(type.GetCustomAttributes<RequiresCapabilityAttribute>(inherit: false))))
+            .Select(attribute => attribute.Capability)
+            .Distinct()
+            .Order()
+            .ToArray();
+        var expected = Enum.GetValues<GraphCapability>()
+            .Except(recordOnly)
+            .Order()
+            .ToArray();
+
+        Assert.Equal(expected, covered);
     }
 
     [Fact]

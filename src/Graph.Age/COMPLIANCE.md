@@ -5,7 +5,7 @@
 | Provider | `Cvoya.Graph.Age` (issue #86 implementation) |
 | Compliance suite | `Cvoya.Graph.CompatibilityTests` 1.0.0-alpha.20251014.0 |
 | Backing store | Apache AGE 1.7.0 / PostgreSQL 18 |
-| Date / run | 2026-07-11 / local strict certifying run; CI uses the same lane |
+| Date / run | 2026-07-13 / local strict certifying run; CI uses the same lane |
 
 ## Declared capabilities
 
@@ -17,22 +17,22 @@
 | ComplexPropertyCascade | Yes | Owned value nodes are deleted transactionally. |
 | CallSubqueries | No | |
 | PatternSizeProjection | No | |
-| MultiLabelMatch | No | Logical inheritance labels are lowered by the provider; native multi-label matching is not declared. |
-| OrderByEntity | No | Provider lowering supports the shared queries without claiming native support. |
+| MultiLabelMatch | Yes | Logical inheritance labels are lowered to AGE-compatible predicates. |
+| OrderByEntity | Yes | Entity ordering is lowered to a stable AGE-compatible key. |
 | ShortestPath | No | |
-| OptionalTraversal | No | Provider lowering supports required shared queries without claiming native support. |
+| OptionalTraversal | Yes | Optional matches are lowered while preserving owners with absent paths. |
 
 ## Results
 
-| Executed cases | Passed | Skipped (declared capability) | Failed |
-|---|---|---|---|
-| 361 | 337 | 24 | 0 |
+| Runtime cases | Passed | Skipped (declared capability) | Statically skipped | Failed |
+|---|---|---|---|---|
+| 390 | 356 | 33 | 1 | 0 |
 
-The compatibility inventory contains 348 runnable test methods. For this capability set,
-`ComplianceInventory.MinimumExecuted(declared)` is 324 methods and the strict compliance guard
+The compatibility inventory contains 370 runnable test methods. For this capability set,
+`ComplianceInventory.MinimumExecuted(declared)` is 337 methods and the strict compliance guard
 passes. Theory data rows make the runtime case count slightly larger than the method inventory.
-The suite also contains nine statically skipped, issue-tracked tests; the inventory deliberately
-excludes them, so they are not counted as capability skips above. The provider-specific adapter,
+The suite also contains one statically skipped, issue-tracked test; the inventory deliberately
+excludes it, so it is not counted as a capability skip above. The provider-specific adapter,
 dialect, SQL-envelope, and security tests are also excluded from the table.
 
 Reproduce:

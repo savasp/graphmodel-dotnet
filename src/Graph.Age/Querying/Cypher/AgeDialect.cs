@@ -12,43 +12,33 @@ namespace Cvoya.Graph.Age.Querying.Cypher;
 /// </summary>
 public sealed class AgeDialect : ICypherDialect
 {
-    private readonly bool planning;
+    private static readonly CapabilitySet SupportedCapabilities = CapabilitySet.Of(
+        GraphCapability.Transactions,
+        GraphCapability.ComplexPropertyCascade,
+        GraphCapability.MultiLabelMatch,
+        GraphCapability.OrderByEntity,
+        GraphCapability.OptionalTraversal);
 
     /// <summary>Initializes the Apache AGE dialect.</summary>
     public AgeDialect()
     {
     }
 
-    private AgeDialect(bool planning)
-    {
-        this.planning = planning;
-    }
-
     /// <summary>Gets the shared Apache AGE dialect instance.</summary>
     public static AgeDialect Instance { get; } = new();
 
-    internal static AgeDialect PlanningInstance { get; } = new(planning: true);
+    internal static AgeDialect PlanningInstance { get; } = Instance;
 
     /// <inheritdoc/>
     public string Name => "Apache AGE";
 
     /// <inheritdoc/>
     /// <remarks>
-    /// The planning instance claims capabilities the runner lowers to AGE-compatible rewrites
-    /// (multi-label matches, entity ordering, optional traversal), so the shared planner emits
-    /// those constructs; the public instance declares only natively verified capabilities and is
-    /// what the compatibility suite reads. See src/Graph.Age/COMPLIANCE.md for the rationale.
+    /// AGE-compatible lowering implements multi-label matches, entity ordering, and optional
+    /// traversal before rendering. Capabilities describe user-visible behavior, whether native or
+    /// lowered, so both the planning and public instances declare those features.
     /// </remarks>
-    public CapabilitySet Capabilities => planning
-        ? CapabilitySet.Of(
-            GraphCapability.Transactions,
-            GraphCapability.ComplexPropertyCascade,
-            GraphCapability.MultiLabelMatch,
-            GraphCapability.OrderByEntity,
-            GraphCapability.OptionalTraversal)
-        : CapabilitySet.Of(
-            GraphCapability.Transactions,
-            GraphCapability.ComplexPropertyCascade);
+    public CapabilitySet Capabilities => SupportedCapabilities;
 
     /// <inheritdoc/>
     public string FullTextNodeProcedure => throw FullTextNotSupported();

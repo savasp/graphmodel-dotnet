@@ -13,13 +13,14 @@ public sealed class AgeDialectTests
     {
         var capabilities = AgeDialect.Instance.Capabilities;
 
-        Assert.True(capabilities.Has(GraphCapability.Transactions));
-        Assert.True(capabilities.Has(GraphCapability.ComplexPropertyCascade));
-        Assert.False(capabilities.Has(GraphCapability.FullTextSearch));
-        Assert.False(capabilities.Has(GraphCapability.NestedTransactions));
-        Assert.False(capabilities.Has(GraphCapability.CallSubqueries));
-        Assert.False(capabilities.Has(GraphCapability.PatternSizeProjection));
-        Assert.False(capabilities.Has(GraphCapability.ShortestPath));
+        Assert.Equal(
+            CapabilitySet.Of(
+                GraphCapability.Transactions,
+                GraphCapability.ComplexPropertyCascade,
+                GraphCapability.MultiLabelMatch,
+                GraphCapability.OrderByEntity,
+                GraphCapability.OptionalTraversal),
+            capabilities);
     }
 
     [Fact]

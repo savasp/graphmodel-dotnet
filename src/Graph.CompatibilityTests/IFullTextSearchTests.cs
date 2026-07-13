@@ -28,6 +28,7 @@ public interface IFullTextSearchTests : IGraphTest
     }
 
     [Fact]
+    [RequiresCapability(GraphCapability.ComplexPropertyCascade)]
     public async Task CanSearchNodesWithComplexPropertiesAndFullTextSearch()
     {
         // Create test data with complex properties

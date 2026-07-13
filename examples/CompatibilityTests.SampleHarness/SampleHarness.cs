@@ -19,9 +19,11 @@ public sealed class SampleHarness : IGraphProviderTestHarness
 
     /// <summary>
     /// A real provider declares exactly the capabilities its backing store supports. This sample
-    /// declares everything except full-text search, purely as an illustration.
+    /// lists two common capabilities purely as an illustration.
     /// </summary>
-    public CapabilitySet Capabilities { get; } = CapabilitySet.All.Except(GraphCapability.FullTextSearch);
+    public CapabilitySet Capabilities { get; } = CapabilitySet.Of(
+        GraphCapability.Transactions,
+        GraphCapability.ComplexPropertyCascade);
 
     /// <inheritdoc/>
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;

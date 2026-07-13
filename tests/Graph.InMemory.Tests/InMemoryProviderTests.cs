@@ -109,17 +109,14 @@ public sealed class InMemoryProviderTests
     {
         var capabilities = new InMemoryHarness().Capabilities;
 
-        Assert.True(capabilities.Has(GraphCapability.Transactions));
-        Assert.True(capabilities.Has(GraphCapability.ComplexPropertyCascade));
-        // The interpreter executes correlated collection projections and pattern-size counts
-        // natively by compiling the real projection lambda over grouped rows; see #120.
-        Assert.True(capabilities.Has(GraphCapability.CallSubqueries));
-        Assert.True(capabilities.Has(GraphCapability.PatternSizeProjection));
-        Assert.False(capabilities.Has(GraphCapability.FullTextSearch));
-        Assert.False(capabilities.Has(GraphCapability.NestedTransactions));
-        Assert.False(capabilities.Has(GraphCapability.MultiLabelMatch));
-        Assert.False(capabilities.Has(GraphCapability.OrderByEntity));
-        Assert.False(capabilities.Has(GraphCapability.ShortestPath));
-        Assert.False(capabilities.Has(GraphCapability.OptionalTraversal));
+        Assert.Equal(
+            CapabilitySet.Of(
+                GraphCapability.Transactions,
+                GraphCapability.ComplexPropertyCascade,
+                GraphCapability.CallSubqueries,
+                GraphCapability.PatternSizeProjection,
+                GraphCapability.MultiLabelMatch,
+                GraphCapability.OptionalTraversal),
+            capabilities);
     }
 }

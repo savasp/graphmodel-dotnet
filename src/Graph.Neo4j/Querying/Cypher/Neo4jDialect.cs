@@ -12,6 +12,16 @@ namespace Cvoya.Graph.Neo4j.Querying.Cypher;
 /// </summary>
 public sealed class Neo4jDialect : ICypherDialect
 {
+    private static readonly CapabilitySet SupportedCapabilities = CapabilitySet.Of(
+        GraphCapability.FullTextSearch,
+        GraphCapability.Transactions,
+        GraphCapability.ComplexPropertyCascade,
+        GraphCapability.CallSubqueries,
+        GraphCapability.PatternSizeProjection,
+        GraphCapability.MultiLabelMatch,
+        GraphCapability.OrderByEntity,
+        GraphCapability.OptionalTraversal);
+
     /// <summary>Gets the shared Neo4j dialect instance.</summary>
     public static Neo4jDialect Instance { get; } = new();
 
@@ -19,7 +29,7 @@ public sealed class Neo4jDialect : ICypherDialect
     public string Name => "Neo4j";
 
     /// <inheritdoc/>
-    public CapabilitySet Capabilities => CapabilitySet.All;
+    public CapabilitySet Capabilities => SupportedCapabilities;
 
     /// <inheritdoc/>
     public string FullTextNodeProcedure => "db.index.fulltext.queryNodes";

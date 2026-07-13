@@ -18,7 +18,9 @@ dotnet add package Cvoya.Graph.CompatibilityTests
 public sealed class MyProviderHarness : IGraphProviderTestHarness
 {
     public string ProviderName => "MyCompany.CVOYA graph.MyProvider";
-    public CapabilitySet Capabilities => CapabilitySet.All; // or Except(...) for what you don't support
+    public CapabilitySet Capabilities => CapabilitySet.Of(
+        GraphCapability.Transactions,
+        GraphCapability.ComplexPropertyCascade); // list only verified features
     public ValueTask InitializeAsync() => /* start/connect infrastructure once per test class */;
     public ValueTask DisposeAsync() => /* release it */;
     public ValueTask<IGraph> GetGraphAsync(StoreIsolation isolation, CancellationToken ct) =>
@@ -57,7 +59,7 @@ skeleton.
 ## 🔧 Capabilities
 
 Some suite areas are optional (for example `FullTextSearch`). Declare only what your backing store
-actually supports via `CapabilitySet.All.Except(...)`; the suite skips - never fails - tests that
+actually supports via `CapabilitySet.Of(...)`; the suite skips - never fails - tests that
 need a capability you haven't declared, with a fixed, parseable skip reason.
 
 ## 📚 Documentation
