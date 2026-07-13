@@ -148,6 +148,12 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Deleted {DeletedCount} complex property relationships for parent {ParentId}")]
     internal static partial void LogDebugComplexPropertyManager221(this ILogger logger, global::System.Int32 deletedCount, global::System.String parentId);
 
+    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating subgraph {SourceType}-[{RelationshipType}]->{TargetType} in a single statement")]
+    internal static partial void LogDebugNeo4jSubgraphManager44(this ILogger logger, global::System.String sourceType, global::System.String relationshipType, global::System.String targetType);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Created subgraph for relationship {RelationshipId}")]
+    internal static partial void LogInformationNeo4jSubgraphManager54(this ILogger logger, global::System.String relationshipId);
+
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Creating node of type {NodeType} with ID {NodeId}")]
     internal static partial void LogDebugNeo4jNodeManager54(this ILogger logger, global::System.String nodeType, global::System.String nodeId);
 

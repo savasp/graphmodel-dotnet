@@ -13,6 +13,7 @@ internal class GraphContext
 {
     private Neo4jNodeManager? _nodeManager;
     private Neo4jRelationshipManager? _relationshipManager;
+    private Neo4jSubgraphManager? _subgraphManager;
     private EntityFactory? _entityFactory;
     private Neo4jSchemaManager? _schemaManager;
     private readonly SchemaRegistry _schemaRegistry;
@@ -26,6 +27,7 @@ internal class GraphContext
 
     internal Neo4jNodeManager NodeManager => _nodeManager ??= new(this);
     internal Neo4jRelationshipManager RelationshipManager => _relationshipManager ??= new(this);
+    internal Neo4jSubgraphManager SubgraphManager => _subgraphManager ??= new(this);
     internal EntityFactory EntityFactory => _entityFactory ??= new(LoggerFactory);
     internal Neo4jSchemaManager SchemaManager => _schemaManager ??= new(this, _schemaRegistry);
 

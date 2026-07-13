@@ -409,6 +409,48 @@ public enum EmploymentType
 }
 ```
 
+### Creating a subgraph atomically
+
+`CreateAsync(source, relationship, target, options)` creates a node–relationship–node subgraph —
+both endpoint nodes and the relationship that connects them — as a single atomic operation. On the
+Neo4j provider it is composed into one Cypher statement, so the whole subgraph (both nodes, all of
+their complex-property value-node subtrees, and the edge) is created in a single database
+round-trip.
+
+```csharp
+var alice = new Person { FirstName = "Alice" };
+var bob = new Person { FirstName = "Bob" };
+var knows = new Knows { StartNodeId = alice.Id, EndNodeId = bob.Id, Since = DateTime.UtcNow };
+
+await graph.CreateAsync(alice, knows, bob);
+```
+
+Semantics:
+
+- **Atomic.** The whole subgraph is created as one transactional unit. If any part fails, nothing
+  is created.
+- **Endpoint ids must match.** `relationship.StartNodeId` and `relationship.EndNodeId` must equal
+  `source.Id` and `target.Id` respectively; otherwise an `ArgumentException` is thrown before any
+  work is done.
+- **Direction is honored.** The relationship's `Direction` determines the stored edge direction,
+  exactly as for `CreateRelationshipAsync`.
+- **Default (`CreateMissingEndpoints = false`).** Both endpoint nodes are *created*. If a node with
+  an endpoint id already exists, the operation fails atomically and creates nothing — matching the
+  create-only semantics of `CreateNodeAsync`.
+- **`CreateMissingEndpoints = true`.** Each endpoint is *merged* by id. An endpoint that already
+  exists is reused **entirely as-is** — only its id is used to match, and both its simple properties
+  and its existing complex-property subtrees are left untouched (the properties you pass on that
+  endpoint object are ignored). A missing endpoint is created with its full properties **and** its
+  complex-property subtree. The edge is always created. All providers (Neo4j, Apache AGE, in-memory)
+  agree on this.
+
+```csharp
+// Reuse an existing "alice" node if present, create "bob" and the edge:
+await graph.CreateAsync(
+    alice, knows, bob,
+    new GraphOperationOptions { CreateMissingEndpoints = true });
+```
+
 ## 🎨 Attribute Configuration
 
 Graph Model uses attributes to configure how entities are mapped to the graph database:
@@ -514,6 +556,10 @@ public interface IGraph
 
     Task CreateNodeAsync<TNode>(TNode node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where TNode : class, INode;
     Task CreateRelationshipAsync<TRelationship>(TRelationship relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where TRelationship : class, IRelationship;
+
+    // Atomic node–relationship–node subgraph create (both endpoints + edge in one operation)
+    Task CreateAsync<TSource, TRelationship, TTarget>(TSource source, TRelationship relationship, TTarget target, GraphOperationOptions? options = null, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where TSource : class, INode where TRelationship : class, IRelationship where TTarget : class, INode;
 
     Task UpdateNodeAsync<TNode>(TNode node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where TNode : class, INode;
     Task UpdateRelationshipAsync<TRelationship>(TRelationship relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where TRelationship : class, IRelationship;

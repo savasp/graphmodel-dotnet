@@ -59,6 +59,12 @@ internal sealed class FakeGraph : IGraph, IAsyncDisposable
     public Task CreateRelationshipAsync<R>(R relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where R : class, IRelationship =>
         throw new NotSupportedException();
 
+    public Task CreateAsync<TSource, TRelationship, TTarget>(TSource source, TRelationship relationship, TTarget target, GraphOperationOptions? options = null, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
+        where TSource : class, INode
+        where TRelationship : class, IRelationship
+        where TTarget : class, INode =>
+        throw new NotSupportedException();
+
     public Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default) where N : class, INode =>
         throw new NotSupportedException();
 
