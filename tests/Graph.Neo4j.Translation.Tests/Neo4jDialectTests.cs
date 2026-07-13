@@ -12,6 +12,24 @@ namespace Cvoya.Graph.Neo4j.Translation.Tests;
 public class Neo4jDialectTests
 {
     [Fact]
+    public void DeclaresOnlyCapabilitiesWithUserVisibleSupport()
+    {
+        var capabilities = Neo4jDialect.Instance.Capabilities;
+
+        Assert.Equal(
+            CapabilitySet.Of(
+                GraphCapability.FullTextSearch,
+                GraphCapability.Transactions,
+                GraphCapability.ComplexPropertyCascade,
+                GraphCapability.CallSubqueries,
+                GraphCapability.PatternSizeProjection,
+                GraphCapability.MultiLabelMatch,
+                GraphCapability.OrderByEntity,
+                GraphCapability.OptionalTraversal),
+            capabilities);
+    }
+
+    [Fact]
     public void FullTextClause_RendersItsExplicitParameterReference()
     {
         var statement = new CypherStatement(

@@ -1435,4 +1435,87 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.DoesNotContain(connectionStats, cs => cs.StartNode.FirstName == "Dave");
     }
 
+    /// <summary>
+    /// Certifies <see cref="GraphCapability.MultiLabelMatch"/>: querying a polymorphic base type
+    /// whose subtypes are known matches every stored subtype in a single pattern
+    /// (Cypher <c>MATCH (n:Person|Manager)</c>), returning derived instances with their full type.
+    /// </summary>
+    [Fact]
+    [RequiresCapability(GraphCapability.MultiLabelMatch)]
+    public async Task CanQueryPolymorphicBaseTypeAcrossSubtypeLabels()
+    {
+        var person = new Person { FirstName = "Pat", LastName = "Plain" };
+        var manager = new Manager { FirstName = "Mona", LastName = "Boss", Department = "Ops", TeamSize = 7 };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(manager, null, TestContext.Current.CancellationToken);
+
+        var all = await this.Graph.Nodes<Person>()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, all.Count);
+        Assert.Contains(all, p => p.FirstName == "Pat" && p is not Manager);
+        var retrievedManager = Assert.Single(all, p => p.FirstName == "Mona");
+        var typedManager = Assert.IsType<Manager>(retrievedManager);
+        Assert.Equal("Ops", typedManager.Department);
+        Assert.Equal(7, typedManager.TeamSize);
+    }
+
+    /// <summary>
+    /// Certifies <see cref="GraphCapability.OrderByEntity"/>: ordering by a bare entity variable
+    /// (<c>OrderBy(e =&gt; e)</c>) lowers to <c>ORDER BY n</c> and executes, returning every row.
+    /// Node ordering is not property-defined, so the assertion checks executability and the full
+    /// result set rather than a specific order.
+    /// </summary>
+    [Fact]
+    [RequiresCapability(GraphCapability.OrderByEntity)]
+    public async Task CanOrderByBareEntity()
+    {
+        await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Alpha" }, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Beta" }, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(new Person { FirstName = "Cid", LastName = "Gamma" }, null, TestContext.Current.CancellationToken);
+
+        var ordered = await this.Graph.Nodes<Person>()
+            .OrderBy(p => p)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, ordered.Count);
+        Assert.Contains(ordered, p => p.FirstName == "Ann");
+        Assert.Contains(ordered, p => p.FirstName == "Bob");
+        Assert.Contains(ordered, p => p.FirstName == "Cid");
+    }
+
+    /// <summary>
+    /// Certifies <see cref="GraphCapability.PatternSizeProjection"/>: counting a complex-property
+    /// collection (<c>owner.Collection.Count</c>) lowers to a pattern-size subquery
+    /// (<c>COUNT { (owner)-[:PROPERTY]-&gt;() }</c>) that a provider evaluates server-side.
+    /// </summary>
+    [Fact]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
+    [RequiresCapability(GraphCapability.ComplexPropertyCascade)]
+    public async Task CanProjectComplexCollectionSize()
+    {
+        var busy = new Kennel
+        {
+            Name = "Busy",
+            Animals = [new AnimalDescription { Name = "Rex" }, new AnimalDescription { Name = "Fido" }, new AnimalDescription { Name = "Spot" }],
+        };
+        var quiet = new Kennel
+        {
+            Name = "Quiet",
+            Animals = [new AnimalDescription { Name = "Whiskers" }],
+        };
+        var empty = new Kennel { Name = "Empty", Animals = [] };
+        await this.Graph.CreateNodeAsync(busy, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(quiet, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(empty, null, TestContext.Current.CancellationToken);
+
+        var sizes = await this.Graph.Nodes<Kennel>()
+            .Select(k => new { k.Name, Count = k.Animals.Count })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, sizes.Count);
+        Assert.Contains(sizes, s => s.Name == "Busy" && s.Count == 3);
+        Assert.Contains(sizes, s => s.Name == "Quiet" && s.Count == 1);
+        Assert.Contains(sizes, s => s.Name == "Empty" && s.Count == 0);
+    }
 }

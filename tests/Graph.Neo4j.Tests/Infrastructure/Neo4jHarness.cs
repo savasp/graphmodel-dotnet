@@ -22,7 +22,7 @@ public sealed class Neo4jHarness : IGraphProviderTestHarness
     public string ProviderName => "Cvoya.Graph.Neo4j";
 
     /// <inheritdoc/>
-    public CapabilitySet Capabilities => CapabilitySet.All;
+    public CapabilitySet Capabilities => Neo4jDialect.Instance.Capabilities;
 
     /// <summary>
     /// Gets the logger factory shared with the underlying <see cref="TestInfrastructureFixture"/>,

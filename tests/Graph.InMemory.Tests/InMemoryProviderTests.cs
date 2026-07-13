@@ -115,11 +115,11 @@ public sealed class InMemoryProviderTests
         // natively by compiling the real projection lambda over grouped rows; see #120.
         Assert.True(capabilities.Has(GraphCapability.CallSubqueries));
         Assert.True(capabilities.Has(GraphCapability.PatternSizeProjection));
+        Assert.True(capabilities.Has(GraphCapability.MultiLabelMatch));
+        Assert.True(capabilities.Has(GraphCapability.OptionalTraversal));
         Assert.False(capabilities.Has(GraphCapability.FullTextSearch));
         Assert.False(capabilities.Has(GraphCapability.NestedTransactions));
-        Assert.False(capabilities.Has(GraphCapability.MultiLabelMatch));
         Assert.False(capabilities.Has(GraphCapability.OrderByEntity));
         Assert.False(capabilities.Has(GraphCapability.ShortestPath));
-        Assert.False(capabilities.Has(GraphCapability.OptionalTraversal));
     }
 }

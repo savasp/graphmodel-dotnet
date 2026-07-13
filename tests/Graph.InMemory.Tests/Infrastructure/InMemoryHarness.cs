@@ -25,7 +25,11 @@ public sealed class InMemoryHarness : IGraphProviderTestHarness
         // executes correlated collection projections (pattern comprehensions) and pattern-size
         // counts natively; see #120.
         GraphCapability.CallSubqueries,
-        GraphCapability.PatternSizeProjection);
+        GraphCapability.PatternSizeProjection,
+        // Polymorphic base queries and null-propagating navigation have the same user-visible
+        // semantics as their Cypher counterparts even though the interpreter uses CLR objects.
+        GraphCapability.MultiLabelMatch,
+        GraphCapability.OptionalTraversal);
 
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 

@@ -239,7 +239,9 @@ public sealed class MyProviderHarness : IGraphProviderTestHarness
 
     // Declare only what your backing store actually supports. Unlisted capabilities' tests skip,
     // never fail - see GraphCapability in src/Graph for the full member list.
-    public CapabilitySet Capabilities => CapabilitySet.All.Except(GraphCapability.FullTextSearch);
+    public CapabilitySet Capabilities => CapabilitySet.Of(
+        GraphCapability.Transactions,
+        GraphCapability.ComplexPropertyCascade);
 
     public ValueTask InitializeAsync() => /* start/connect infrastructure once per test class */;
     public ValueTask DisposeAsync() => /* release it */;
@@ -310,3 +312,25 @@ Under strict mode, the guard also promotes `GraphProviderUnavailableException` (
 - **"Compatible"** means: 0 failed, every skip is a declared-capability skip, and the executed count meets the guard's floor for your declared capabilities.
 
 See `examples/CompatibilityTests.SampleHarness` for a minimal compiling skeleton of all three pieces, and `tests/Graph.InMemory.Tests` for the full in-tree worked implementation.
+
+### 6. Capability coverage map
+
+Every optional `GraphCapability` is either certified by a `[RequiresCapability]`-gated test (which runs where the harness declares the capability and skips-with-reason where it doesn't) or recorded here as having no certifiable user surface yet. The last three columns show what the in-tree harnesses do today. Neo4j declares every capability with a user-visible surface; in-memory and AGE also declare features they provide through equivalent evaluation or lowering rather than native Cypher syntax.
+
+| Capability | Certifying test(s) | Attribution | Neo4j | in-memory | AGE |
+|---|---|---|---|---|---|
+| `FullTextSearch` | `IFullTextSearchTests` (all methods) | interface | pass | skip | skip |
+| `Transactions` | `ITransactionTests` (all methods) | interface | pass | pass | pass |
+| `ComplexPropertyCascade` | `IComplexObjectGraphSerializationTests` (all methods) | interface | pass | pass | pass |
+| `CallSubqueries` | `IAdvancedQueryTests` correlated-collection pattern comprehensions (`CanQueryWith{Basic,Filtered,Aggregated,TimeBased,Ordered,Grouped}PatternComprehension`, `CanQueryWithTraversePathAndGroupBy`) | method | pass | pass | skip |
+| `PatternSizeProjection` | `IAdvancedQueryTests.CanProjectComplexCollectionSize` | method | pass | pass | skip |
+| `MultiLabelMatch` | `IAdvancedQueryTests.CanQueryPolymorphicBaseTypeAcrossSubtypeLabels` | method | pass | pass | pass |
+| `OrderByEntity` | `IAdvancedQueryTests.CanOrderByBareEntity` | method | pass | skip | pass |
+| `OptionalTraversal` | `IQueryTests.Navigation{Equality,Projection}_MissingComplexProperty*` | method | pass | pass | pass |
+| `NestedTransactions` | _record only_ | — | — | — | — |
+| `ShortestPath` | _record only_ | — | — | — | — |
+
+Two capabilities are records rather than gated tests because they have no user-drivable surface to certify:
+
+- **`NestedTransactions`** — the public transaction API takes no parent transaction or savepoint, so there is no nested operation to drive. No in-tree provider declares it. When the API gains that surface, add a gated test with the feature.
+- **`ShortestPath`** — reserved; no query construct references it and no in-tree provider declares it, so there is nothing to exercise yet.

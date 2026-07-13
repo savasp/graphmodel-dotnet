@@ -3,6 +3,10 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
+// Every test here drives an explicit, provider-managed transaction (IGraphTransaction), so the
+// whole interface is gated on the Transactions capability - a provider that does not declare it
+// skips all of them.
+[RequiresCapability(GraphCapability.Transactions)]
 public interface ITransactionTests : IGraphTest
 {
     [Fact]

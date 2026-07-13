@@ -45,6 +45,8 @@ public interface IQueryTests : IGraphTest
     /// Recorded on #221; a future revisit is tracked in #233.
     /// </summary>
     [Fact]
+    [RequiresCapability(GraphCapability.OptionalTraversal)]
+    [RequiresCapability(GraphCapability.ComplexPropertyCascade)]
     public async Task NavigationEquality_NullMatchesMissingComplexProperty()
     {
         var missing = new PersonWithOptionalProfile { FirstName = "NoProfile", Profile = null };
@@ -69,6 +71,8 @@ public interface IQueryTests : IGraphTest
     /// complex property yields a null value for that row instead of dropping the row.
     /// </summary>
     [Fact]
+    [RequiresCapability(GraphCapability.OptionalTraversal)]
+    [RequiresCapability(GraphCapability.ComplexPropertyCascade)]
     public async Task NavigationProjection_MissingComplexPropertyYieldsNull()
     {
         var missing = new PersonWithOptionalProfile { FirstName = "NoProfile", Profile = null };
