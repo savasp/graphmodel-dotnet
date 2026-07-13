@@ -280,7 +280,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
         };
     }
 
-    private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Graph.IRelationship
+    internal void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Graph.IRelationship
     {
         // For DynamicRelationship, validate against existing schemas if any
         if (relationship is DynamicRelationship dynamicRelationship)

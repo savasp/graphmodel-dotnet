@@ -184,6 +184,8 @@ Declare only supported capabilities. The planner rejects reachable unsupported c
 
 For example, an initial AGE dialect should decline at least `FullTextSearch`, `NestedTransactions`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, and `OrderByEntity` unless its renderer strategy genuinely supports them. Do not emulate unsupported full-text search with a semantically weaker regular-expression query while still declaring `FullTextSearch`.
 
+Declaring `FullTextSearch` guarantees: case-insensitive, exact-token (whole-word) matching; a multi-term query matches an entity iff ALL terms match, in any order and at any distance; the matched property set is exactly the entity's own `[Property(IncludeInFullTextSearch)]` string properties (string-only by construction; for dynamic entities, all string property values). Text on complex-property value nodes is NOT part of the owning entity's match set. Ranking, stemming, phrase adjacency, prefix/wildcard, and matching beyond the floor are provider-defined: the TCK asserts nothing about them and never asserts a non-match for near-tokens (only for sub-tokens, which must not match). Search result order is unspecified; ordering comes only from explicit `OrderBy`. Providers share one definition of a "term" via `FullTextQueryTokenizer` (split on any non-letter/non-digit, lowercase invariant, drop empties) and each lower it into their own engine syntax; the shared planner keeps the raw query string.
+
 Provider-specific dynamic-entity accessor methods must carry `[CypherDynamicEntityAccessor]`. The planner checks the attribute on the exact `MethodInfo`; a matching method or declaring-type name is not sufficient.
 
 ### 2. Plan and render

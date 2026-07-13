@@ -76,6 +76,8 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                 $"The expression does not contain a graph query root: {expression}.");
         }
 
+        RejectSearchAsTraversalSource(builder);
+
         return new GraphQueryModel(
             builder._root,
             builder._predicates,
@@ -99,6 +101,17 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                     new Paging(builder._postPagingSkip, builder._postPagingTake),
                     builder._postPagingDistinct)
                 : null);
+    }
+
+    // TODO(#295): remove when search-as-source lands
+    private static void RejectSearchAsTraversalSource(GraphQueryModelBuilder builder)
+    {
+        if (builder._root is SearchRoot && builder._explicitTraversalCount > 0)
+        {
+            throw new GraphQueryTranslationException(
+                "Full-text search cannot be the source of a traversal yet (Search(...) followed by " +
+                "Traverse/PathSegments). Apply Search() after the traversal instead. Tracked by #295.");
+        }
     }
 
     /// <inheritdoc/>
