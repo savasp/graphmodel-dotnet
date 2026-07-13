@@ -81,6 +81,28 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         }
     }
 
+    /// <summary>
+    /// Creates <paramref name="node"/> only when no node with the same Id already exists,
+    /// implementing MERGE-by-Id endpoint semantics for the subgraph create: an existing endpoint is
+    /// reused as-is (its properties and complex-property subtree are left untouched).
+    /// </summary>
+    public async Task CreateNodeIfMissingAsync<TNode>(
+        TNode node,
+        AgeGraphTransaction transaction,
+        CancellationToken cancellationToken = default)
+        where TNode : class, Graph.INode
+    {
+        ArgumentNullException.ThrowIfNull(node);
+
+        if (await NodeExistsByIdAsync(node.Id, transaction.Runner, cancellationToken).ConfigureAwait(false))
+        {
+            _logger.LogDebugAgeNodeManager44(typeof(TNode).Name, node.Id);
+            return;
+        }
+
+        await CreateNodeAsync(node, transaction, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<bool> UpdateNodeAsync<TNode>(
         TNode node,
         AgeGraphTransaction transaction,
@@ -282,6 +304,17 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         var result = await transaction.RunAsync(
             "MATCH (n {Id: $nodeId}) WHERE $nodeLabel IN coalesce(n.inheritance_labels, []) RETURN count(n) AS existingCount",
             new { nodeId = id, nodeLabel = label }, cancellationToken).ConfigureAwait(false);
+        return (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["existingCount"].As<long>() > 0;
+    }
+
+    private static async Task<bool> NodeExistsByIdAsync(
+        string id,
+        AgeQueryRunner transaction,
+        CancellationToken cancellationToken)
+    {
+        var result = await transaction.RunAsync(
+            "MATCH (n {Id: $nodeId}) RETURN count(n) AS existingCount",
+            new { nodeId = id }, cancellationToken).ConfigureAwait(false);
         return (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["existingCount"].As<long>() > 0;
     }
 

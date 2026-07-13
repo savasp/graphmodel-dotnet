@@ -225,6 +225,93 @@ internal sealed class InMemoryGraph : IGraph
         _logger.LogDebugInMemoryGraph225(relationship.Id, typeof(R).Name);
     }
 
+    public async Task CreateAsync<TSource, TRelationship, TTarget>(
+        TSource source,
+        TRelationship relationship,
+        TTarget target,
+        GraphOperationOptions? options = null,
+        IGraphTransaction? transaction = null,
+        CancellationToken cancellationToken = default)
+        where TSource : class, INode
+        where TRelationship : class, IRelationship
+        where TTarget : class, INode
+    {
+        SubgraphArguments.Validate(source, relationship, target);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await _schemaRegistry.InitializeAsync(cancellationToken).ConfigureAwait(false);
+
+        GraphDataModel.EnforceGraphConstraintsForNode(source);
+        GraphDataModel.EnforceGraphConstraintsForNode(target);
+        GraphDataModel.EnforceGraphConstraintsForRelationship(relationship);
+        _validator.ValidateNode(source);
+        _validator.ValidateNode(target);
+        _validator.ValidateRelationship(relationship);
+
+        var createMissingEndpoints = options?.CreateMissingEndpoints ?? false;
+
+        var decomposedSource = EntityWriter.DecomposeNode(_entityFactory.Serialize(source));
+        var decomposedTarget = EntityWriter.DecomposeNode(_entityFactory.Serialize(target));
+        var relationshipRecord = EntityWriter.DecomposeRelationship(_entityFactory.Serialize(relationship), relationship);
+
+        var sourceConstraints = ConstraintChecker.From(_schemaRegistry.GetNodeSchema(decomposedSource.Node.Label));
+        var targetConstraints = ConstraintChecker.From(_schemaRegistry.GetNodeSchema(decomposedTarget.Node.Label));
+        var relationshipConstraints = ConstraintChecker.From(_schemaRegistry.GetRelationshipSchema(relationshipRecord.Type));
+
+        // Both nodes and the edge are applied within one transaction unit: any failure (a duplicate
+        // endpoint id under default semantics, a constraint violation, ...) rolls the whole thing
+        // back, so nothing is created.
+        await TransactionRunner.ExecuteAsync(
+            _store,
+            transaction,
+            tx =>
+            {
+                AddOrMergeEndpoint(tx, decomposedSource, sourceConstraints, createMissingEndpoints);
+                AddOrMergeEndpoint(tx, decomposedTarget, targetConstraints, createMissingEndpoints);
+
+                tx.Apply(state =>
+                {
+                    if (relationshipConstraints is not null)
+                    {
+                        ConstraintChecker.CheckRelationship(state, relationshipRecord, relationshipConstraints);
+                    }
+
+                    return state.AddRelationship(relationshipRecord);
+                });
+                return true;
+            },
+            $"Failed to create subgraph for relationship of type {typeof(TRelationship).Name}",
+            cancellationToken).ConfigureAwait(false);
+
+        RuntimeMetadata.PopulateNodeLabels(source, decomposedSource.Node.Labels);
+        RuntimeMetadata.PopulateNodeLabels(target, decomposedTarget.Node.Labels);
+        RuntimeMetadata.PopulateRelationshipType(relationship, relationshipRecord.Type);
+    }
+
+    private static void AddOrMergeEndpoint(
+        InMemoryTransaction tx,
+        EntityWriter.DecomposedNode decomposed,
+        ConstraintChecker.Constraints? constraints,
+        bool createMissingEndpoints)
+    {
+        tx.Apply(state =>
+        {
+            // MERGE-by-id semantics: if the endpoint already exists, reuse it as-is (no clobber,
+            // no duplicate, no new complex-property subtree).
+            if (createMissingEndpoints && state.RootNodes(decomposed.Node.Id).Count > 0)
+            {
+                return state;
+            }
+
+            if (constraints is not null)
+            {
+                ConstraintChecker.CheckNode(state, decomposed.Node, constraints);
+            }
+
+            return state.AddNode(decomposed.Node, decomposed.ComplexValueNodes, decomposed.ComplexEdges);
+        });
+    }
+
     public async Task UpdateNodeAsync<N>(
         N node,
         IGraphTransaction? transaction = null,

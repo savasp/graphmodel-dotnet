@@ -244,6 +244,74 @@ internal class AgeGraph : IGraph
     }
 
     /// <inheritdoc />
+    public async Task CreateAsync<TSource, TRelationship, TTarget>(
+        TSource source,
+        TRelationship relationship,
+        TTarget target,
+        GraphOperationOptions? options = null,
+        IGraphTransaction? transaction = null,
+        CancellationToken cancellationToken = default)
+        where TSource : class, Graph.INode
+        where TRelationship : class, Graph.IRelationship
+        where TTarget : class, Graph.INode
+    {
+        SubgraphArguments.Validate(source, relationship, target);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var createMissingEndpoints = options?.CreateMissingEndpoints ?? false;
+
+        try
+        {
+            _logger.LogDebugAgeGraph208(typeof(TRelationship).Name);
+
+            // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
+            await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
+
+            // Both endpoint nodes (with their complex-property subtrees) and the edge are created
+            // within one AGE transaction, so any failure rolls back the whole subgraph.
+            await TransactionHelpers.ExecuteInTransactionAsync(
+                _graphContext,
+                transaction,
+                async tx =>
+                {
+                    if (createMissingEndpoints)
+                    {
+                        await _graphContext.NodeManager.CreateNodeIfMissingAsync(source, tx, cancellationToken).ConfigureAwait(false);
+                        await _graphContext.NodeManager.CreateNodeIfMissingAsync(target, tx, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await _graphContext.NodeManager.CreateNodeAsync(source, tx, cancellationToken).ConfigureAwait(false);
+                        await _graphContext.NodeManager.CreateNodeAsync(target, tx, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    await _graphContext.RelationshipManager.CreateRelationshipAsync(relationship, tx, cancellationToken).ConfigureAwait(false);
+                    return true;
+                },
+                $"Failed to create subgraph for relationship of type {typeof(TRelationship).Name}",
+                _logger,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            var message = $"Failed to create subgraph for relationship of type {typeof(TRelationship).Name}";
+            _logger.LogErrorAgeGraph234(ex, typeof(TRelationship).Name);
+
+            if (ex is GraphException)
+            {
+                throw;
+            }
+
+            throw new GraphException(message, ex);
+        }
+    }
+
+    /// <inheritdoc />
     public async Task UpdateNodeAsync<N>(N node, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where N : class, Graph.INode
     {

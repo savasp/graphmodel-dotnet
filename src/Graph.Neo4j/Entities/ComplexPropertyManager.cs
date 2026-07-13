@@ -31,6 +31,99 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         Dictionary<string, object?> NodeProperties,
         Dictionary<string, object> RelationshipProperties);
 
+    /// <summary>
+    /// A value node to be created inside a single composed statement, addressed by in-statement
+    /// Cypher variables (parent and its own) rather than a database elementId.
+    /// </summary>
+    /// <param name="ParentVariable">The Cypher variable bound to the parent node.</param>
+    /// <param name="Variable">The Cypher variable to bind this value node to.</param>
+    /// <param name="RelationshipType">The (unescaped) marker relationship type linking parent and child.</param>
+    /// <param name="Label">The (unescaped) label of the value node.</param>
+    /// <param name="NodeProperties">The value node's simple-property map.</param>
+    /// <param name="RelationshipProperties">The marker relationship's property map.</param>
+    internal sealed record ValueNodeSpec(
+        string ParentVariable,
+        string Variable,
+        string RelationshipType,
+        string Label,
+        Dictionary<string, object?> NodeProperties,
+        Dictionary<string, object> RelationshipProperties);
+
+    /// <summary>
+    /// Walks the complex-property subtree of <paramref name="rootEntity"/> breadth-first and returns
+    /// a flat list of value nodes to create, each addressed by an in-statement Cypher variable
+    /// derived from <paramref name="rootVariable"/>. This shares the property/relationship shaping
+    /// used by the per-node create path, so both paths persist complex properties identically, but
+    /// binds nodes by variable so the whole subtree can be composed into a single statement.
+    /// </summary>
+    internal static IReadOnlyList<ValueNodeSpec> CollectValueNodeSpecs(string rootVariable, EntityInfo rootEntity)
+    {
+        var specs = new List<ValueNodeSpec>();
+        var queue = new Queue<(string Variable, EntityInfo Entity, int Depth)>();
+        queue.Enqueue((rootVariable, rootEntity, 0));
+        var counter = 0;
+
+        while (queue.Count > 0)
+        {
+            var (parentVariable, entity, depth) = queue.Dequeue();
+            if (entity.ComplexProperties.Count == 0)
+                continue;
+
+            if (depth >= GraphDataModel.DefaultDepthAllowed &&
+                entity.ComplexProperties.Values.Any(property => property.Value is not null))
+            {
+                throw new GraphException(
+                    $"Complex properties cannot exceed {GraphDataModel.DefaultDepthAllowed} levels of depth.");
+            }
+
+            foreach (var (propertyName, complexProperty) in entity.ComplexProperties)
+            {
+                switch (complexProperty.Value)
+                {
+                    case EntityInfo childEntity:
+                        specs.Add(BuildValueNodeSpec(
+                            parentVariable, rootVariable, ref counter, propertyName, complexProperty, childEntity, sequenceNumber: 0, queue, depth));
+                        break;
+
+                    case EntityCollection collection:
+                        var index = 0;
+                        foreach (var item in collection.Entities)
+                        {
+                            specs.Add(BuildValueNodeSpec(
+                                parentVariable, rootVariable, ref counter, propertyName, complexProperty, item, index++, queue, depth));
+                        }
+                        break;
+
+                    case null:
+                        continue;
+
+                    default:
+                        throw new GraphException(
+                            $"Unsupported complex property type: {complexProperty.Value.GetType().Name} for property {propertyName}");
+                }
+            }
+        }
+
+        return specs;
+    }
+
+    private static ValueNodeSpec BuildValueNodeSpec(
+        string parentVariable,
+        string rootVariable,
+        ref int counter,
+        string propertyName,
+        Property property,
+        EntityInfo entity,
+        int sequenceNumber,
+        Queue<(string Variable, EntityInfo Entity, int Depth)> queue,
+        int depth)
+    {
+        var (relationshipType, nodeProps, relProps) = BuildValueNodeContent(propertyName, property, entity, sequenceNumber);
+        var variable = $"{rootVariable}_v{counter++}";
+        queue.Enqueue((variable, entity, depth + 1));
+        return new ValueNodeSpec(parentVariable, variable, relationshipType, entity.Label, nodeProps, relProps);
+    }
+
     public async Task CreateComplexPropertiesAsync(
         IAsyncTransaction transaction,
         string parentId,
@@ -106,6 +199,19 @@ internal sealed class ComplexPropertyManager(GraphContext context)
         EntityInfo entity,
         int sequenceNumber)
     {
+        var (relationshipType, nodeProps, relProps) = BuildValueNodeContent(propertyName, property, entity, sequenceNumber);
+        return new PendingValueNode(parentElementId, relationshipType, entity, nodeProps, relProps);
+    }
+
+    /// <summary>
+    /// Builds the marker relationship type and the node/relationship property maps for a single
+    /// complex-property value node. Shared by the per-node create path (which addresses parents by
+    /// database elementId) and the single-statement subgraph path (which addresses them by Cypher
+    /// variable), so both persist complex properties identically.
+    /// </summary>
+    private static (string RelationshipType, Dictionary<string, object?> NodeProperties, Dictionary<string, object> RelationshipProperties)
+        BuildValueNodeContent(string propertyName, Property property, EntityInfo entity, int sequenceNumber)
+    {
         var relationshipType = property.RelationshipType ?? (property.PropertyInfo is null
             ? GraphDataModel.PropertyNameToRelationshipTypeName(propertyName)
             : GraphDataModel.GetComplexPropertyRelationshipType(property.PropertyInfo));
@@ -120,7 +226,7 @@ internal sealed class ComplexPropertyManager(GraphContext context)
             [ComplexPropertyStorage.RelationshipMarkerProperty] = true
         };
 
-        return new PendingValueNode(parentElementId, relationshipType, entity, nodeProps, relProps);
+        return (relationshipType, nodeProps, relProps);
     }
 
     /// <summary>
