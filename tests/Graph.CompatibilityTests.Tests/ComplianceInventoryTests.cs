@@ -21,7 +21,9 @@ public sealed class ComplianceInventoryTests
     /// execution floor.
     /// </summary>
     // +10 for ISubgraphCreationTests (atomic node–relationship–node subgraph create, #45).
-    private const int ExpectedTotalTestMethods = 368;
+    // +4 for #288: four new IFullTextSearchTests methods (multi-term AND, whole-token vs sub-token,
+    // metacharacter robustness, search-as-source rejection).
+    private const int ExpectedTotalTestMethods = 372;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

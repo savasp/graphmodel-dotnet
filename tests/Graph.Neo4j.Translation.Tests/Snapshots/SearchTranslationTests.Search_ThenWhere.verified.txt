@@ -17,5 +17,5 @@ RETURN {
 } AS Node
 
 == Parameters ==
-p0 = "Alice"
+p0 = "alice"
 p1 = 21
