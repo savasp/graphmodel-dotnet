@@ -3,6 +3,10 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
+// Every test in this interface persists, updates, deletes, or navigates a complex-property subtree
+// (nested owned objects stored as part of their owning node), so the whole area is gated on the
+// ComplexPropertyCascade capability - a provider that does not declare it skips all of them.
+[RequiresCapability(GraphCapability.ComplexPropertyCascade)]
 public interface IComplexObjectGraphSerializationTests : IGraphTest
 {
     [Fact]
