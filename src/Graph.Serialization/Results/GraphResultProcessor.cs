@@ -471,13 +471,34 @@ public sealed class GraphResultProcessor
 
     private EntityInfo CreateEntityInfoFromProjection(GraphRecord record, Type targetType)
     {
+        return BuildProjectionEntityInfo(
+            record.Keys.Select(key => new KeyValuePair<string, object?>(key, record[key].ToObject())),
+            targetType);
+    }
+
+    private EntityInfo BuildProjectionEntityInfo(
+        IEnumerable<KeyValuePair<string, object?>> columns,
+        Type targetType)
+    {
         var simpleProperties = new Dictionary<string, Property>();
         var complexProperties = new Dictionary<string, Property>();
 
         // Extract all values from the record as simple or complex properties
-        foreach (var key in record.Keys)
+        foreach (var (key, value) in columns)
         {
-            var value = record[key].ToObject();
+            // A correlated collection projection (pattern comprehension) yields a list whose
+            // elements are themselves projected structures (maps); build a nested entity per
+            // element so the materializer can bind each field to the target element type.
+            if (value is System.Collections.IEnumerable and not string &&
+                TryBuildProjectionEntityCollection(value, out var projectedCollection))
+            {
+                complexProperties[key] = new Property(
+                    PropertyInfo: null!,
+                    Label: key,
+                    IsNullable: true,
+                    Value: projectedCollection);
+                continue;
+            }
 
             // Handle node values specially - convert them to EntityInfo.
             if (value is GraphValue { Kind: GraphValueKind.Node } n)
@@ -673,6 +694,48 @@ public sealed class GraphResultProcessor
             SimpleProperties: simpleProperties,
             ComplexProperties: complexProperties
         );
+    }
+
+    /// <summary>
+    /// Builds an <see cref="EntityCollection"/> for a projected list whose every element is itself a
+    /// projected structure (a map), such as a pattern comprehension producing a list of anonymous
+    /// objects. Each element becomes a nested projection <see cref="EntityInfo"/> whose fields the
+    /// materializer binds to the target element type. Lists of scalars (or empty lists) are declined
+    /// so the scalar collection path handles them.
+    /// </summary>
+    private bool TryBuildProjectionEntityCollection(object? value, out EntityCollection collection)
+    {
+        collection = null!;
+        if (value is not System.Collections.IEnumerable sequence || value is string)
+        {
+            return false;
+        }
+
+        var entities = new List<EntityInfo>();
+        foreach (var element in sequence)
+        {
+            if (element is not IReadOnlyDictionary<string, object> map)
+            {
+                return false;
+            }
+
+            // ActualType is left null so the materializer binds each element against the target
+            // collection's element type (unknown here, since projection properties carry no
+            // PropertyInfo) rather than the placeholder object type.
+            var elementInfo = BuildProjectionEntityInfo(
+                map.Select(pair => new KeyValuePair<string, object?>(pair.Key, pair.Value)),
+                typeof(object)) with
+            { ActualType = null! };
+            entities.Add(elementInfo);
+        }
+
+        if (entities.Count == 0)
+        {
+            return false;
+        }
+
+        collection = new EntityCollection(typeof(object), entities);
+        return true;
     }
 
     private static bool TryDeserializeRelationshipProjection(

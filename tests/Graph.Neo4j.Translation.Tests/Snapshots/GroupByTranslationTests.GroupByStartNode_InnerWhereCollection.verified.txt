@@ -1,0 +1,8 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WHERE src.FirstName = $p0
+RETURN src.FirstName AS PersonName, [(src)-[r:KNOWS]->(tgt:Person|Manager) WHERE r.Since > $p1 | tgt.FirstName] AS RecentFriends
+
+== Parameters ==
+p0 = "Alice"
+p1 = 5

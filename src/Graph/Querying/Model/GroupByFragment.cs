@@ -38,4 +38,28 @@ public sealed record GroupByFragment
 
     /// <summary>Gets the optional result selector applied to each key/group pair.</summary>
     public LambdaExpression? ResultSelector { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the grouping key is a path-segment start node
+    /// (<c>GroupBy(segment =&gt; segment.StartNode)</c>). This is the correlated collection-projection
+    /// shape supported by graph query translation; other grouping shapes (for example grouping by a
+    /// scalar property) remain unsupported aggregation grouping.
+    /// </summary>
+    public bool GroupsByPathSegmentStartNode
+    {
+        get
+        {
+            var body = KeySelector.Body;
+            while (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } convert)
+            {
+                body = convert.Operand;
+            }
+
+            return body is MemberExpression
+            {
+                Expression: ParameterExpression parameter,
+                Member.Name: nameof(IGraphPathSegment.StartNode),
+            } && typeof(IGraphPathSegment).IsAssignableFrom(parameter.Type);
+        }
+    }
 }

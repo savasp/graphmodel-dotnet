@@ -121,8 +121,10 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider
                 "SelectMany is not supported by graph query translation yet; see #100.");
         }
 
-        if (model.GroupBy is not null)
+        if (model.GroupBy is { } groupBy && !groupBy.GroupsByPathSegmentStartNode)
         {
+            // Only the #120 correlated collection-projection shape (grouping by a path-segment start
+            // node) is supported; scalar-key aggregation grouping remains a #100 concern.
             throw new NotSupportedException(
                 "GroupBy is not supported by graph query translation yet; see #100.");
         }

@@ -677,6 +677,17 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         var elementSelector = second is { Parameters.Count: 1 } ? second : null;
         var resultSelector = elementSelector is null ? second : third;
 
+        // An identity projection carried into the grouping (e.g. the implicit `seg => seg` left by
+        // PathSegments) contributes nothing: the group element is the current scope, reconstructible
+        // from the traversal. Clearing it lets a following Select over the IGrouping be recognized
+        // as the group projection instead of tripping chained-projection composition.
+        if (_projection?.Selector is { } projectionSelector &&
+            projectionSelector.Body == projectionSelector.Parameters[0])
+        {
+            _projection = null;
+        }
+
+        _currentType = keySelector.Parameters[0].Type;
         _groupBy = new GroupByFragment(keySelector, elementSelector, resultSelector);
     }
 

@@ -20,7 +20,12 @@ public sealed class InMemoryHarness : IGraphProviderTestHarness
     // surface is not capability-gated; reserved features must not be advertised pre-emptively.
     public CapabilitySet Capabilities => CapabilitySet.Of(
         GraphCapability.Transactions,
-        GraphCapability.ComplexPropertyCascade);
+        GraphCapability.ComplexPropertyCascade,
+        // The interpreter compiles and invokes the real projection lambda over grouped rows, so it
+        // executes correlated collection projections (pattern comprehensions) and pattern-size
+        // counts natively; see #120.
+        GraphCapability.CallSubqueries,
+        GraphCapability.PatternSizeProjection);
 
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 

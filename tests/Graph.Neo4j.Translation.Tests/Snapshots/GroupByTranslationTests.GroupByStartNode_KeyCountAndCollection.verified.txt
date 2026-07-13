@@ -1,0 +1,7 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WHERE src.FirstName = $p0
+RETURN src.FirstName AS Name, COUNT { MATCH (src)-[r:KNOWS]->(tgt:Person|Manager) } AS FriendCount, [(src)-[r:KNOWS]->(tgt:Person|Manager) | tgt.FirstName] AS FriendNames
+
+== Parameters ==
+p0 = "Alice"

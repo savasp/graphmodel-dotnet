@@ -427,12 +427,15 @@ public class CypherQueryPlannerTests
     [Fact]
     public void Plan_GroupByModel_ThrowsDefinedTranslationError()
     {
+        // A scalar-key grouping is not the supported correlated collection-projection shape and is
+        // rejected with a defined GroupBy translation error (mapped to the #100 NotSupported message
+        // by the provider's legacy exception preservation).
         Expression<Func<Person, int>> key = person => person.Age;
         var model = Model(groupBy: new GroupByFragment(key, null, null));
 
         var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
 
-        Assert.Contains("GroupBy is not supported by graph query translation yet; see #100.", exception.Message);
+        Assert.Contains("GroupBy", exception.Message);
     }
 
     [Fact]

@@ -68,7 +68,18 @@ public static class GraphQueryModelValidator
         }
         else if (model.Projection?.Selector is { } selector)
         {
-            ValidateLambdaReferences(selector, possibleScopeTypes, "Projection selector");
+            if (model.GroupBy is not null)
+            {
+                // The projection ranges over the grouping (its key and members), which is not a
+                // query scope. Only the group parameter, nested-lambda locals, and captured
+                // constants may appear; a reference to any other outer scope is a mis-bound query.
+                ValidateParameterContainment(selector, "Grouped projection selector");
+            }
+            else
+            {
+                ValidateLambdaReferences(selector, possibleScopeTypes, "Projection selector");
+            }
+
             possibleScopeTypes.Add(selector.ReturnType);
         }
 
