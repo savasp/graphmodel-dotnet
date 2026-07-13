@@ -26,6 +26,9 @@ public abstract class CompatibilityTest(
     private IGraph? graph;
 
     /// <inheritdoc/>
+    public IGraphProviderTestHarness Harness => harness;
+
+    /// <inheritdoc/>
     public IGraph Graph => graph
         ?? throw new InvalidOperationException(
             "Graph is not available: InitializeAsync has not completed, or the test was skipped.");

@@ -37,4 +37,16 @@ public sealed class SampleHarness : IGraphProviderTestHarness
     /// </summary>
     public ValueTask<IGraph> GetGraphAsync(StoreIsolation isolation, CancellationToken cancellationToken) =>
         throw new GraphProviderUnavailableException("The sample harness has no backing store.");
+
+    /// <inheritdoc/>
+    public ValueTask<int> CountNodesByPropertyAsync(
+        IGraph graph,
+        string label,
+        string propertyName,
+        IReadOnlyCollection<string> values,
+        CancellationToken cancellationToken) =>
+        throw new GraphProviderUnavailableException("The sample harness has no backing store.");
+
+    /// <inheritdoc/>
+    public bool IsExpectedConcurrentUpdateException(Exception exception) => false;
 }

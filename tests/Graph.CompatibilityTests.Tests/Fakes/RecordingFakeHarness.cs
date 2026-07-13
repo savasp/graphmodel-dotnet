@@ -33,4 +33,13 @@ internal sealed class RecordingFakeHarness : IGraphProviderTestHarness
         Events.Add("store-acquire");
         return ValueTask.FromResult<IGraph>(new FakeGraph(() => Events.Add("store-dispose")));
     }
+
+    public ValueTask<int> CountNodesByPropertyAsync(
+        IGraph graph,
+        string label,
+        string propertyName,
+        IReadOnlyCollection<string> values,
+        CancellationToken cancellationToken) => ValueTask.FromResult(0);
+
+    public bool IsExpectedConcurrentUpdateException(Exception exception) => false;
 }

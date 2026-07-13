@@ -21,4 +21,13 @@ public sealed class FakeHarness : IGraphProviderTestHarness
 
     public ValueTask<IGraph> GetGraphAsync(StoreIsolation isolation, CancellationToken cancellationToken) =>
         ValueTask.FromResult<IGraph>(new FakeGraph());
+
+    public ValueTask<int> CountNodesByPropertyAsync(
+        IGraph graph,
+        string label,
+        string propertyName,
+        IReadOnlyCollection<string> values,
+        CancellationToken cancellationToken) => ValueTask.FromResult(0);
+
+    public bool IsExpectedConcurrentUpdateException(Exception exception) => false;
 }

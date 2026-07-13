@@ -31,6 +31,10 @@ internal sealed class EntityReader(EntityFactory entityFactory)
         return _entityFactory.Deserialize(BuildEntityInfo(record, state, actualType));
     }
 
+    /// <summary>Materializes a stored node shape as a complex-property value type.</summary>
+    public object MaterializeComplexValue(NodeRecord record, StoreState state, Type targetType) =>
+        _entityFactory.Deserialize(BuildEntityInfo(record, state, targetType));
+
     /// <summary>Materializes a relationship record as the given target type.</summary>
     public object MaterializeRelationship(RelationshipRecord record, Type targetType)
     {

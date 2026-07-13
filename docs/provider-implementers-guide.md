@@ -250,6 +250,23 @@ public sealed class MyProviderHarness : IGraphProviderTestHarness
         // Throw GraphProviderUnavailableException if infrastructure (e.g. Docker) can't start -
         // it renders as a skip locally, and a failure under GRAPHMODEL_COMPLIANCE_STRICT=1.
     }
+
+    public ValueTask<int> CountNodesByPropertyAsync(
+        IGraph graph,
+        string label,
+        string propertyName,
+        IReadOnlyCollection<string> values,
+        CancellationToken ct)
+    {
+        // Execute the narrowest provider-native count needed by the complex-property orphan
+        // contracts. This is not a general raw-query escape hatch.
+    }
+
+    public bool IsExpectedConcurrentUpdateException(Exception exception)
+    {
+        // Return true only for provider-specific serialization, deadlock, or retryable write
+        // conflicts that may legitimately reject one of two same-node updates.
+    }
 }
 ```
 

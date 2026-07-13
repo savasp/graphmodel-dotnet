@@ -49,6 +49,23 @@ public sealed class InMemoryGraphStore : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    internal int CountNodesByProperty(
+        string label,
+        string propertyName,
+        IReadOnlyCollection<string> values)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+        ArgumentNullException.ThrowIfNull(values);
+
+        var expectedValues = values.ToHashSet(StringComparer.Ordinal);
+        return _store.CurrentState.Nodes.Values.Count(node =>
+            node.Labels.Contains(label, StringComparer.Ordinal) &&
+            node.Properties.TryGetValue(propertyName, out var property) &&
+            property.Value is string value &&
+            expectedValues.Contains(value));
+    }
+
     /// <summary>
     /// Disposes the store. The in-memory store owns no external resources; this exists for
     /// symmetry with provider stores that do.

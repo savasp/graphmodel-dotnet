@@ -39,4 +39,32 @@ public interface IGraphProviderTestHarness : IAsyncLifetime
     /// reached.
     /// </exception>
     ValueTask<IGraph> GetGraphAsync(StoreIsolation isolation, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Counts store nodes carrying <paramref name="label"/> whose <paramref name="propertyName"/>
+    /// value is one of <paramref name="values"/>. The compatibility suite uses this narrow probe
+    /// only for store-level orphan assertions that cannot be expressed through typed
+    /// <see cref="IGraph"/> queries.
+    /// </summary>
+    /// <param name="graph">A graph previously returned by this harness.</param>
+    /// <param name="label">The store node label to match.</param>
+    /// <param name="propertyName">The stored property name to inspect.</param>
+    /// <param name="values">The property values included in the count.</param>
+    /// <param name="cancellationToken">A cancellation token for the probe.</param>
+    /// <returns>The number of matching store nodes.</returns>
+    ValueTask<int> CountNodesByPropertyAsync(
+        IGraph graph,
+        string label,
+        string propertyName,
+        IReadOnlyCollection<string> values,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Determines whether <paramref name="exception"/> is an expected provider-specific
+    /// concurrency conflict from two transactions updating the same node.
+    /// </summary>
+    /// <param name="exception">The exception raised by an update or commit.</param>
+    /// <returns><see langword="true"/> only for errors the provider may legitimately raise under
+    /// write contention; otherwise, <see langword="false"/>.</returns>
+    bool IsExpectedConcurrentUpdateException(Exception exception);
 }
