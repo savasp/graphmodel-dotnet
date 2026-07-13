@@ -32,7 +32,7 @@ internal sealed class CypherExecutor
             cancellationToken).ConfigureAwait(false);
         await using var cursorLease = cursor.ConfigureAwait(false);
         var records = await cursor.ToListAsync(cancellationToken).ConfigureAwait(false);
-        logger.LogDebug("AGE query returned {Count} records", records.Count);
+        logger.LogDebugCypherExecutor35(records.Count);
         return records;
     }
 

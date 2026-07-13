@@ -62,7 +62,7 @@ public class TestInfrastructureFixture : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        logger.LogDebug("Disposing test infrastructure fixture");
+        logger.LogDebugTestInfrastructureFixture65();
 
         // Release the database back to the pool so other test classes can use it
         if (cachedDatabaseName != null && databasePool != null)
@@ -91,12 +91,12 @@ public class TestInfrastructureFixture : IAsyncLifetime
 
         if (!getNewDatabase && cachedDatabaseName != null)
         {
-            logger.LogDebug("Reusing existing database: {DatabaseName}", cachedDatabaseName);
+            logger.LogDebugTestInfrastructureFixture94(cachedDatabaseName);
             await databasePool.CleanDatabaseAsync(cachedDatabaseName);
         }
         else
         {
-            logger.LogDebug("Getting new database for test");
+            logger.LogDebugTestInfrastructureFixture99();
 
             if (cachedDatabaseName != null)
             {

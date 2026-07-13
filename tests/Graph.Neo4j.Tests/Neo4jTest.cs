@@ -26,7 +26,7 @@ public abstract class Neo4jTest(Neo4jHarness harness, StoreIsolation isolation =
     {
         var testName = TestContext.Current?.Test?.TestDisplayName ?? "UnknownTest";
 
-        logger.LogInformation("Initializing test: {TestName}", testName);
+        logger.LogInformationNeo4jTest29(testName);
 
         var testId = TestContext.Current?.Test?.UniqueID ?? Guid.NewGuid().ToString("N");
         TestContextCorrelation.CorrelationId.Value = testId;
@@ -34,7 +34,7 @@ public abstract class Neo4jTest(Neo4jHarness harness, StoreIsolation isolation =
 
         await base.InitializeAsync();
 
-        logger.LogInformation("Test {TestName} initialized successfully", testName);
+        logger.LogInformationNeo4jTest37(testName);
     }
 
     public override async ValueTask DisposeAsync()

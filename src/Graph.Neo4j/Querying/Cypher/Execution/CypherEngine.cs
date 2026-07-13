@@ -57,7 +57,7 @@ internal sealed class CypherEngine
     {
         try
         {
-            _logger.LogDebug("Executing query for type {Type}", typeof(T).Name);
+            _logger.LogDebugCypherEngine60(typeof(T).Name);
 
             // Build the Cypher query from the expression
             var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
@@ -87,7 +87,7 @@ internal sealed class CypherEngine
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to execute query for type {Type}", typeof(T).Name);
+            _logger.LogErrorCypherEngine90(ex, typeof(T).Name);
             throw;
         }
     }
@@ -99,7 +99,7 @@ internal sealed class CypherEngine
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        _logger.LogDebug("Streaming query for type {Type}", typeof(T).Name);
+        _logger.LogDebugCypherEngine102(typeof(T).Name);
 
         var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
         LogCypherQuery(cypherQuery);
@@ -269,16 +269,13 @@ internal sealed class CypherEngine
         if (_logger.IsEnabled(LogLevel.Debug))
         {
             var parameterNames = cypherQuery.Parameters.Keys.ToArray();
-            _logger.LogDebug("Generated Cypher: {Cypher}", cypherQuery.Text);
-            _logger.LogDebug(
-                "Generated Cypher parameter names: {ParameterNames}; count: {ParameterCount}",
-                parameterNames,
-                parameterNames.Length);
+            _logger.LogDebugCypherEngine272(cypherQuery.Text);
+            _logger.LogDebugCypherEngine273(parameterNames, parameterNames.Length);
         }
 
         if (_logger.IsEnabled(LogLevel.Trace))
         {
-            _logger.LogTrace("Generated Cypher parameters: {Parameters}", cypherQuery.Parameters);
+            _logger.LogTraceCypherEngine281(cypherQuery.Parameters);
         }
     }
 

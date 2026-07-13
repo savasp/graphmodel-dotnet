@@ -76,5 +76,17 @@ dotnet_diagnostic.CA1001.severity = none
 [tests/Graph.CompatibilityTests.Tests/ComplianceLedgerCollection.cs]
 dotnet_diagnostic.CA1711.severity = none
 
+# This translation snapshot intentionally pins the string overload's expression shape.
+[tests/Graph.Neo4j.Translation.Tests/ExpressionMethodsTranslationTests.cs]
+dotnet_diagnostic.CA1847.severity = none
+
+# Underscore-separated scenario names are the established convention for executable tests.
+[tests/**.cs]
+dotnet_diagnostic.CA1707.severity = none
+
+# The compatibility suite is executable xUnit contract code despite living under src for packing.
+[src/Graph.CompatibilityTests/**.cs]
+dotnet_diagnostic.CA1707.severity = none
+
 [*.{csproj,props,targets,xml,yml,yaml,json,md}]
 indent_size = 2

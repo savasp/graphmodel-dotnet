@@ -35,8 +35,7 @@ public sealed class GraphResultMaterializer
         var elementType = GraphResultTypeHelpers.GetTargetTypeIfCollection(targetType);
         var isCollectionType = targetType != elementType;
 
-        _logger.LogDebug("MaterializeAsync: TargetType={TargetType}, ElementType={ElementType}, IsCollectionType={IsCollectionType}, RecordCount={RecordCount}",
-            targetType.Name, elementType.Name, isCollectionType, records.Count);
+        _logger.LogDebugGraphResultMaterializer38(targetType.Name, elementType.Name, isCollectionType, records.Count);
 
         // Handle empty results consistently
         if (!records.Any())
@@ -62,17 +61,17 @@ public sealed class GraphResultMaterializer
             records,
             elementType,
             cancellationToken).ConfigureAwait(false);
-        _logger.LogDebug("MaterializeAsync: ProcessAsync returned {EntityInfoCount} entity infos", entityInfos.Count);
+        _logger.LogDebugGraphResultMaterializer65(entityInfos.Count);
 
         var result = isCollectionType
             ? MaterializeAsCollection<T>(entityInfos, elementType)
             : MaterializeSingleElement<T>(entityInfos.FirstOrDefault(), elementType);
 
-        _logger.LogDebug("MaterializeAsync: Final result type={ResultType}", result?.GetType().Name ?? "null");
+        _logger.LogDebugGraphResultMaterializer71(result?.GetType().Name ?? "null");
         if (result is IEnumerable enumerable && !(result is string))
         {
             var count = enumerable.Cast<object>().Count();
-            _logger.LogDebug("MaterializeAsync: Collection result contains {Count} items", count);
+            _logger.LogDebugGraphResultMaterializer75(count);
         }
 
         return result;
@@ -90,7 +89,7 @@ public sealed class GraphResultMaterializer
             [record],
             targetType,
             cancellationToken).ConfigureAwait(false);
-        _logger.LogDebug("MaterializeRecordAsync: ProcessAsync returned {EntityInfoCount} entity infos", entityInfos.Count);
+        _logger.LogDebugGraphResultMaterializer93(entityInfos.Count);
 
         return MaterializeSingleElement<T>(entityInfos.FirstOrDefault(), targetType);
     }
@@ -153,18 +152,17 @@ public sealed class GraphResultMaterializer
 
     private T MaterializeAsCollection<T>(List<EntityInfo> entityInfos, Type elementType)
     {
-        _logger.LogDebug("MaterializeAsCollection: Processing {EntityInfoCount} entity infos for element type {ElementType}",
-            entityInfos.Count, elementType.Name);
+        _logger.LogDebugGraphResultMaterializer156(entityInfos.Count, elementType.Name);
 
         var elements = entityInfos
             .Select(entityInfo => MaterializeSingleElement<object>(entityInfo, elementType))
             .Where(item => item is not null)
             .ToList();
 
-        _logger.LogDebug("MaterializeAsCollection: Materialized {ElementCount} non-null elements", elements.Count);
+        _logger.LogDebugGraphResultMaterializer164(elements.Count);
 
         var result = ConvertToCollectionType<T>(elements!, elementType);
-        _logger.LogDebug("MaterializeAsCollection: Converted to collection type {ResultType}", result?.GetType().Name ?? "null");
+        _logger.LogDebugGraphResultMaterializer167(result?.GetType().Name ?? "null");
 
         return result;
     }
@@ -178,8 +176,7 @@ public sealed class GraphResultMaterializer
         var typeToDeserialize = entityInfo.ActualType ?? elementType;
         var canDeserialize = _entityFactory.CanDeserialize(typeToDeserialize);
 
-        _logger.LogDebug("MaterializeSingleElement: ElementType={ElementType}, ActualType={ActualType}, CanDeserialize={CanDeserialize}",
-            elementType.Name, entityInfo.ActualType?.Name ?? "null", canDeserialize);
+        _logger.LogDebugGraphResultMaterializer181(elementType.Name, entityInfo.ActualType?.Name ?? "null", canDeserialize);
 
         var result = canDeserialize
             ? _entityFactory.Deserialize(entityInfo)
@@ -275,15 +272,12 @@ public sealed class GraphResultMaterializer
         // This allows interfaces like IRelationship to be materialized as their concrete types (e.g., Knows, Friend)
         var typeToInstantiate = entityInfo.ActualType ?? targetType;
 
-        _logger.LogDebug("CreateComplexObject: Creating {TypeName} from EntityInfo with {SimpleCount} simple properties, {ComplexCount} complex properties",
-            typeToInstantiate.Name, entityInfo.SimpleProperties.Count, entityInfo.ComplexProperties.Count);
+        _logger.LogDebugGraphResultMaterializer278(typeToInstantiate.Name, entityInfo.SimpleProperties.Count, entityInfo.ComplexProperties.Count);
 
         if (_logger.IsEnabled(LogLevel.Debug))
         {
-            _logger.LogDebug("CreateComplexObject: Simple property names: [{SimpleProps}]",
-                string.Join(", ", entityInfo.SimpleProperties.Keys));
-            _logger.LogDebug("CreateComplexObject: Complex property types: [{ComplexProps}]",
-                string.Join(", ", entityInfo.ComplexProperties.Select(kvp => $"{kvp.Key}:{kvp.Value.Value?.GetType().Name ?? "null"}")));
+            _logger.LogDebugGraphResultMaterializer283(string.Join(", ", entityInfo.SimpleProperties.Keys));
+            _logger.LogDebugGraphResultMaterializer285(string.Join(", ", entityInfo.ComplexProperties.Select(kvp => $"{kvp.Key}:{kvp.Value.Value?.GetType().Name ?? "null"}")));
         }
 
         var constructors = typeToInstantiate.GetConstructors()
@@ -303,8 +297,7 @@ public sealed class GraphResultMaterializer
 
                 if (_logger.IsEnabled(LogLevel.Debug))
                 {
-                    _logger.LogDebug("CreateComplexObject: Trying constructor with {ParamCount} parameters: [{Params}]",
-                        parameters.Length, string.Join(", ", parameters.Select(p => $"{p.Name}:{p.ParameterType.Name}")));
+                    _logger.LogDebugGraphResultMaterializer306(parameters.Length, string.Join(", ", parameters.Select(p => $"{p.Name}:{p.ParameterType.Name}")));
                 }
 
                 for (int i = 0; i < parameters.Length; i++)
@@ -313,9 +306,7 @@ public sealed class GraphResultMaterializer
                     var paramName = param.Name ?? $"param{i}";
                     var matchingProperty = FindPropertyInEntityInfo(entityInfo, paramName);
 
-                    _logger.LogDebug("CreateComplexObject: Parameter {ParamName} -> Property {PropertyFound} (Type: {PropertyType})",
-                        paramName, matchingProperty != null ? "FOUND" : "NOT_FOUND",
-                        matchingProperty?.Value?.GetType().Name ?? "null");
+                    _logger.LogDebugGraphResultMaterializer316(paramName, matchingProperty != null ? "FOUND" : "NOT_FOUND", matchingProperty?.Value?.GetType().Name ?? "null");
 
                     values[i] = matchingProperty?.Value switch
                     {
@@ -324,20 +315,17 @@ public sealed class GraphResultMaterializer
                         _ => param.HasDefaultValue ? param.DefaultValue : GetDefaultValue(param.ParameterType)
                     };
 
-                    _logger.LogDebug(
-                        "CreateComplexObject: Parameter {ParamName} set to type {ValueType}",
-                        paramName,
-                        values[i]?.GetType().Name ?? "null");
+                    _logger.LogDebugGraphResultMaterializer327(paramName, values[i]?.GetType().Name ?? "null");
                 }
 
                 // Use constructor.Invoke instead of Activator.CreateInstance to avoid ambiguity
                 var result = constructor.Invoke(values);
-                _logger.LogDebug("CreateComplexObject: Successfully created {TypeName} instance", typeToInstantiate.Name);
+                _logger.LogDebugGraphResultMaterializer335(typeToInstantiate.Name);
                 return result;
             }
             catch (Exception ex) when (ex is ArgumentException || ex is AmbiguousMatchException || ex is TargetParameterCountException)
             {
-                _logger.LogDebug("CreateComplexObject: Constructor failed: {Exception}", ex.Message);
+                _logger.LogDebugGraphResultMaterializer340(ex.Message);
                 // Try the next constructor
                 continue;
             }

@@ -85,14 +85,11 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
                         break;
 
                     case null:
-                        logger.LogDebug("Skipping null complex property {PropertyName}", propertyName);
+                        logger.LogDebugComplexPropertyManager88(propertyName);
                         continue;
 
                     default:
-                        logger.LogWarning(
-                            "Unsupported complex property type: {PropertyType} for property {PropertyName}",
-                            complexProperty.Value.GetType().Name,
-                            propertyName);
+                        logger.LogWarningComplexPropertyManager92(complexProperty.Value.GetType().Name, propertyName);
                         throw new GraphException(
                             $"Unsupported complex property type: {complexProperty.Value.GetType().Name} for property {propertyName}");
                 }
@@ -199,10 +196,12 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             nextLevel.Add((complexNodeId, pending[rowId].Entity));
         }
 
-        logger.LogDebug(
-            "Created {Count} complex property node(s) across {RelationshipTypeCount} semantic relationship type(s)",
-            pending.Count,
-            pending.Select(node => node.RelationshipType).Distinct(StringComparer.Ordinal).Count());
+        if (logger.IsEnabled(LogLevel.Debug))
+        {
+            logger.LogDebugComplexPropertyManager202(
+                pending.Count,
+                pending.Select(node => node.RelationshipType).Distinct(StringComparer.Ordinal).Count());
+        }
 
         return nextLevel;
     }
@@ -267,9 +266,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
                 new { propertyNodeId = propertyNode["propertyNodeId"].As<string>() }, cancellationToken).ConfigureAwait(false);
         }
 
-        logger.LogDebug(
-            "Deleted {DeletedCount} complex property relationships for parent {ParentId}",
-            propertyNodes.Count, parentId);
+        logger.LogDebugComplexPropertyManager270(propertyNodes.Count, parentId);
     }
 
 }

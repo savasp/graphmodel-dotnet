@@ -103,7 +103,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        logger.LogDebug("Disposing DatabasePool");
+        logger.LogDebugDatabasePoolManager106();
 
         if (usesSharedDefaultDatabase)
         {
@@ -124,7 +124,7 @@ public sealed class DatabasePoolManager : IAsyncDisposable
 
     public async Task<string> RequestDatabaseAsync()
     {
-        logger.LogDebug("Requesting an available database from the pool");
+        logger.LogDebugDatabasePoolManager127();
         if (!await databasesAreAvailableSemaphore.WaitAsync(RequestTimeout))
         {
             throw new TimeoutException(
@@ -132,11 +132,11 @@ public sealed class DatabasePoolManager : IAsyncDisposable
                 "This likely means databases are not being released back to the pool, or setup failed.");
         }
 
-        logger.LogDebug("A database is available, acquiring it");
+        logger.LogDebugDatabasePoolManager135();
         availableDatabases.TryDequeue(out var databaseName);
         if (databaseName != null)
         {
-            logger.LogDebug("Acquired database {DatabaseName} from the pool", databaseName);
+            logger.LogDebugDatabasePoolManager139(databaseName);
             return databaseName;
         }
         throw new InvalidOperationException("No available databases in the pool. This should not have happened because of the semaphore.");
@@ -144,11 +144,11 @@ public sealed class DatabasePoolManager : IAsyncDisposable
 
     public async Task ReleaseDatabaseAsync(string databaseName)
     {
-        logger.LogDebug("Releasing database {DatabaseName} back to the pool", databaseName);
+        logger.LogDebugDatabasePoolManager147(databaseName);
         await CleanDatabaseAsync(databaseName);
         availableDatabases.Enqueue(databaseName);
         databasesAreAvailableSemaphore.Release();
-        logger.LogDebug("Database {DatabaseName} is now available in the pool", databaseName);
+        logger.LogDebugDatabasePoolManager151(databaseName);
     }
 
     /// <summary>
@@ -163,17 +163,17 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             throw new InvalidOperationException($"Database '{databaseName}' is not owned by this test process.");
         }
 
-        logger.LogDebug("Cleaning database {DatabaseName}", databaseName);
+        logger.LogDebugDatabasePoolManager166(databaseName);
         await using var session = driver.AsyncSession(builder => builder.WithDatabase(databaseName));
         var result = await session.RunAsync("MATCH (n) DETACH DELETE n");
         await result.ConsumeAsync();
-        logger.LogDebug("Database {DatabaseName} cleaned successfully", databaseName);
+        logger.LogDebugDatabasePoolManager170(databaseName);
     }
 
     private async Task SetupDatabasesAsync()
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        logger.LogInformation("Setting up {Count} databases in the pool (max concurrency: {Concurrency})", maxPoolSize, MaxSetupConcurrency);
+        logger.LogInformationDatabasePoolManager176(maxPoolSize, MaxSetupConcurrency);
 
         // Use bounded parallelism to avoid exhausting the driver connection pool
         using var concurrencyLimiter = new SemaphoreSlim(MaxSetupConcurrency);
@@ -187,19 +187,19 @@ public sealed class DatabasePoolManager : IAsyncDisposable
             await concurrencyLimiter.WaitAsync();
             try
             {
-                logger.LogDebug("Creating database {DatabaseName} in the pool", databaseName);
+                logger.LogDebugDatabasePoolManager190(databaseName);
                 await CreateDatabaseIfNotExistsAsync(databaseName);
                 await CleanDatabaseAsync(databaseName);
                 availableDatabases.Enqueue(databaseName);
                 databasesAreAvailableSemaphore.Release();
                 var count = Interlocked.Increment(ref successCount);
-                logger.LogDebug("Database {DatabaseName} is ready for use ({Count}/{Total}, {Elapsed:F1}s)", databaseName, count, maxPoolSize, sw.Elapsed.TotalSeconds);
+                logger.LogDebugDatabasePoolManager196(databaseName, count, maxPoolSize, sw.Elapsed.TotalSeconds);
             }
             catch (Exception ex)
             {
                 failures.Enqueue(ex);
                 Interlocked.Increment(ref failCount);
-                logger.LogError(ex, "Failed to create database {DatabaseName}, skipping", databaseName);
+                logger.LogErrorDatabasePoolManager202(ex, databaseName);
             }
             finally
             {
@@ -222,56 +222,52 @@ public sealed class DatabasePoolManager : IAsyncDisposable
                 "Ensure Neo4j is running and accessible.");
         }
 
-        logger.LogInformation("Database pool setup complete: {SuccessCount} ready, {FailCount} failed in {Elapsed:F1}s",
-            successCount, failCount, sw.Elapsed.TotalSeconds);
+        logger.LogInformationDatabasePoolManager225(successCount, failCount, sw.Elapsed.TotalSeconds);
     }
 
     private async Task CreateDatabaseIfNotExistsAsync(string databaseName)
     {
-        logger.LogDebug("Creating database {DatabaseName} if it does not exist", databaseName);
+        logger.LogDebugDatabasePoolManager231(databaseName);
         await using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
         var result = await session.RunAsync($"CREATE DATABASE {EscapeDatabaseName(databaseName)} IF NOT EXISTS");
         await result.ConsumeAsync();
         await WaitForDatabaseOnlineAsync(databaseName);
-        logger.LogDebug("Database {DatabaseName} is now ready", databaseName);
+        logger.LogDebugDatabasePoolManager236(databaseName);
     }
 
     private async Task SetupSharedDefaultDatabaseAsync(int failCount, System.Diagnostics.Stopwatch sw)
     {
         usesSharedDefaultDatabase = true;
-        logger.LogWarning(
-            "Neo4j database administration is unavailable; using shared default database {DatabaseName} for tests ({FailCount} database-create failures)",
-            defaultDatabaseName,
-            failCount);
+        logger.LogWarningDatabasePoolManager242(defaultDatabaseName, failCount);
 
         await CleanDatabaseAsync(defaultDatabaseName);
         availableDatabases.Enqueue(defaultDatabaseName);
         databasesAreAvailableSemaphore.Release();
 
-        logger.LogInformation("Shared default database {DatabaseName} is ready in {Elapsed:F1}s", defaultDatabaseName, sw.Elapsed.TotalSeconds);
+        logger.LogInformationDatabasePoolManager251(defaultDatabaseName, sw.Elapsed.TotalSeconds);
     }
 
     private async Task DropDatabaseAsync(string databaseName)
     {
-        logger.LogDebug("Scheduling drop of database {DatabaseName}", databaseName);
+        logger.LogDebugDatabasePoolManager256(databaseName);
         try
         {
-            logger.LogDebug("Dropping database {DatabaseName}", databaseName);
+            logger.LogDebugDatabasePoolManager259(databaseName);
             await using var session = driver.AsyncSession(builder => builder.WithDatabase("system"));
             var result = await session.RunAsync($"DROP DATABASE {EscapeDatabaseName(databaseName)}");
             await result.ConsumeAsync();
-            logger.LogDebug("Database {DatabaseName} dropped successfully", databaseName);
+            logger.LogDebugDatabasePoolManager263(databaseName);
         }
         catch (Exception)
         {
-            logger.LogWarning("Failed to drop database {DatabaseName}. It may not exist or is already dropped.", databaseName);
+            logger.LogWarningDatabasePoolManager267(databaseName);
             // Ignore errors during cleanup - the database might not exist
         }
     }
 
     private async Task WaitForDatabaseOnlineAsync(string databaseName, int maxAttempts = 30, int delayMs = 1000)
     {
-        logger.LogDebug("Waiting for database {DatabaseName} to become available for driver connections", databaseName);
+        logger.LogDebugDatabasePoolManager274(databaseName);
         // Wait until the driver can actually connect to the database
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
@@ -280,18 +276,18 @@ public sealed class DatabasePoolManager : IAsyncDisposable
                 await using var session = driver.AsyncSession(builder => builder.WithDatabase(databaseName));
                 var result = await session.RunAsync("RETURN 1");
                 await result.ConsumeAsync();
-                logger.LogDebug("Database {DatabaseName} is now online", databaseName);
+                logger.LogDebugDatabasePoolManager283(databaseName);
                 return; // Successfully connected to the database
             }
             catch (Neo4jException ex) when (ex.Message.Contains("not found") || ex.Message.Contains("does not exist") || ex.Message.Contains("not available"))
             {
                 // Database not yet available for driver connections
-                logger.LogDebug("Database {DatabaseName} not yet available, attempt {Attempt}/{MaxAttempts}", databaseName, attempt + 1, maxAttempts);
+                logger.LogDebugDatabasePoolManager289(databaseName, attempt + 1, maxAttempts);
             }
             catch (Exception ex)
             {
                 // Other errors, continue waiting
-                logger.LogDebug("Error checking database {DatabaseName}, attempt {Attempt}/{MaxAttempts}: {Error}", databaseName, attempt + 1, maxAttempts, ex.Message);
+                logger.LogDebugDatabasePoolManager294(databaseName, attempt + 1, maxAttempts, ex.Message);
             }
 
             await Task.Delay(delayMs);

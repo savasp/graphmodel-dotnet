@@ -60,10 +60,15 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransacti
 
     protected override void LogExecution(Expression expression, Type resultType, bool streaming)
     {
-        logger.LogDebug(
-            streaming ? "Streaming async query for result type: {ResultType}" : "Executing async query for result type: {ResultType}",
-            resultType.Name);
-        logger.LogDebug("Expression type: {ExpressionType}", expression.Type.Name);
+        if (streaming)
+        {
+            logger.LogDebugGraphQueryProvider65(resultType.Name);
+        }
+        else
+        {
+            logger.LogDebugGraphQueryProvider69(resultType.Name);
+        }
+        logger.LogDebugGraphQueryProvider71(expression.Type.Name);
 
         if (logger.IsEnabled(LogLevel.Debug))
         {
@@ -72,10 +77,10 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransacti
     }
 
     protected override void LogExecutionFailure(Exception exception) =>
-        logger.LogError(exception, "Error executing query");
+        logger.LogErrorGraphQueryProvider80(exception);
 
     protected override void LogRollbackFailure(Exception exception) =>
-        logger.LogWarning(exception, "Failed to roll back abandoned streaming query transaction");
+        logger.LogWarningGraphQueryProvider83(exception);
 
     private void LogExpressionTree(Expression expression, int depth = 0)
     {
@@ -83,11 +88,7 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransacti
 
         if (expression is MethodCallExpression methodCall)
         {
-            logger.LogDebug(
-                "{Indent}Method: {Method} from {DeclaringType}",
-                indent,
-                methodCall.Method.Name,
-                methodCall.Method.DeclaringType?.Name);
+            logger.LogDebugGraphQueryProvider91(indent, methodCall.Method.Name, methodCall.Method.DeclaringType?.Name);
 
             foreach (var argument in methodCall.Arguments)
             {
@@ -96,7 +97,7 @@ internal sealed class GraphQueryProvider : GraphQueryProviderBase<GraphTransacti
         }
         else if (expression is ConstantExpression constant)
         {
-            logger.LogDebug("{Indent}Constant: {Type}", indent, constant.Value?.GetType().Name ?? "null");
+            logger.LogDebugGraphQueryProvider104(indent, constant.Value?.GetType().Name ?? "null");
         }
     }
 }

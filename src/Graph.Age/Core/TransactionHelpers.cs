@@ -51,15 +51,15 @@ internal static class TransactionHelpers
                 }
                 catch (GraphException ex)
                 {
-                    logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
+                    logger?.LogWarningTransactionHelpers54(ex);
                 }
                 catch (InvalidOperationException ex)
                 {
-                    logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
+                    logger?.LogWarningTransactionHelpers58(ex);
                 }
                 catch (NpgsqlException ex)
                 {
-                    logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
+                    logger?.LogWarningTransactionHelpers62(ex);
                 }
             }
 
@@ -67,7 +67,7 @@ internal static class TransactionHelpers
         }
         catch (Exception ex)
         {
-            logger?.LogError(ex, "{ErrorMessage}", errorMessage);
+            logger?.LogErrorTransactionHelpers70(ex, errorMessage);
             failed = true;
             if (transaction == null)
             {
@@ -80,15 +80,15 @@ internal static class TransactionHelpers
                 }
                 catch (GraphException rollbackException)
                 {
-                    logger?.LogWarning(rollbackException, "Failed to roll back failed transaction");
+                    logger?.LogWarningTransactionHelpers83(rollbackException);
                 }
                 catch (InvalidOperationException rollbackException)
                 {
-                    logger?.LogWarning(rollbackException, "Failed to roll back failed transaction");
+                    logger?.LogWarningTransactionHelpers87(rollbackException);
                 }
                 catch (NpgsqlException rollbackException)
                 {
-                    logger?.LogWarning(rollbackException, "Failed to roll back failed transaction");
+                    logger?.LogWarningTransactionHelpers91(rollbackException);
                 }
             }
 
@@ -104,7 +104,7 @@ internal static class TransactionHelpers
                 }
                 catch (Exception disposeException) when (failed)
                 {
-                    logger?.LogWarning(disposeException, "Failed to dispose transaction after a failed operation");
+                    logger?.LogWarningTransactionHelpers107(disposeException);
                 }
             }
         }

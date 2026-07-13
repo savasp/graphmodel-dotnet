@@ -11,7 +11,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <EnableNETAnalyzers>true</EnableNETAnalyzers>
-        <AnalysisMode>Default</AnalysisMode>
+        <AnalysisMode>Recommended</AnalysisMode>
         <AnalysisModeSecurity>All</AnalysisModeSecurity>
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>

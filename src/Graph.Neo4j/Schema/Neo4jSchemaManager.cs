@@ -42,7 +42,7 @@ internal class Neo4jSchemaManager
         // Quick check without lock for performance
         if (_isSchemaInitialized)
         {
-            _logger.LogDebug("Schema already initialized, skipping initialization");
+            _logger.LogDebugNeo4jSchemaManager45();
             return;
         }
 
@@ -53,11 +53,11 @@ internal class Neo4jSchemaManager
             // Double-check pattern
             if (_isSchemaInitialized)
             {
-                _logger.LogDebug("Schema already initialized, skipping initialization");
+                _logger.LogDebugNeo4jSchemaManager56();
                 return;
             }
 
-            _logger.LogInformation("Initializing Neo4j schema...");
+            _logger.LogInformationNeo4jSchemaManager60();
 
             // Initialize the schema registry if not already done
             if (!_schemaRegistry.IsInitialized)
@@ -65,8 +65,7 @@ internal class Neo4jSchemaManager
                 await _schemaRegistry.InitializeAsync(cancellationToken).ConfigureAwait(false);
                 var nodeLabelsCount = (await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false)).Count();
                 var relationshipTypesCount = (await _schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken).ConfigureAwait(false)).Count();
-                _logger.LogDebug("Schema registry initialized with {NodeCount} node types and {RelationshipCount} relationship types",
-                    nodeLabelsCount, relationshipTypesCount);
+                _logger.LogDebugNeo4jSchemaManager68(nodeLabelsCount, relationshipTypesCount);
             }
 
             // Create constraints and indexes for all discovered node types
@@ -87,7 +86,7 @@ internal class Neo4jSchemaManager
             await CreateGeneralFullTextIndexesAsync(cancellationToken).ConfigureAwait(false);
 
             _isSchemaInitialized = true;
-            _logger.LogInformation("Neo4j schema initialization completed successfully");
+            _logger.LogInformationNeo4jSchemaManager90();
         }
         catch (OperationCanceledException)
         {
@@ -95,7 +94,7 @@ internal class Neo4jSchemaManager
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to initialize Neo4j schema");
+            _logger.LogErrorNeo4jSchemaManager98(ex);
             throw new GraphException("Failed to initialize Neo4j schema", ex);
         }
         finally
@@ -113,7 +112,7 @@ internal class Neo4jSchemaManager
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        _logger.LogInformation("Recreating Neo4j indexes...");
+        _logger.LogInformationNeo4jSchemaManager116();
 
         try
         {
@@ -137,7 +136,7 @@ internal class Neo4jSchemaManager
             // Recreate general full text indexes
             await CreateGeneralFullTextIndexesAsync(cancellationToken).ConfigureAwait(false);
 
-            _logger.LogInformation("Neo4j indexes recreated successfully");
+            _logger.LogInformationNeo4jSchemaManager140();
         }
         catch (OperationCanceledException)
         {
@@ -145,7 +144,7 @@ internal class Neo4jSchemaManager
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to recreate Neo4j indexes");
+            _logger.LogErrorNeo4jSchemaManager148(ex);
             throw new GraphException("Failed to recreate Neo4j indexes", ex);
         }
     }
@@ -157,7 +156,7 @@ internal class Neo4jSchemaManager
         {
             if (_processedSchemas.Contains(processedKey))
             {
-                _logger.LogDebug("Node schema already processed for label: {Label}", label);
+                _logger.LogDebugNeo4jSchemaManager160(label);
                 return;
             }
         }
@@ -165,7 +164,7 @@ internal class Neo4jSchemaManager
         var schema = await _schemaRegistry.GetNodeSchemaAsync(label, cancellationToken).ConfigureAwait(false);
         if (schema == null)
         {
-            _logger.LogWarning("No schema found for node label: {Label}", label);
+            _logger.LogWarningNeo4jSchemaManager168(label);
             return;
         }
 
@@ -180,7 +179,7 @@ internal class Neo4jSchemaManager
             _processedSchemas.Add(processedKey);
         }
 
-        _logger.LogDebug("Successfully processed node schema for label: {Label}", label);
+        _logger.LogDebugNeo4jSchemaManager183(label);
     }
 
     private async Task CreateRelationshipConstraintsAndIndexesAsync(string type, CancellationToken cancellationToken = default)
@@ -190,7 +189,7 @@ internal class Neo4jSchemaManager
         {
             if (_processedSchemas.Contains(processedKey))
             {
-                _logger.LogDebug("Relationship schema already processed for type: {Type}", type);
+                _logger.LogDebugNeo4jSchemaManager193(type);
                 return;
             }
         }
@@ -198,7 +197,7 @@ internal class Neo4jSchemaManager
         var schema = await _schemaRegistry.GetRelationshipSchemaAsync(type, cancellationToken).ConfigureAwait(false);
         if (schema == null)
         {
-            _logger.LogWarning("No schema found for relationship type: {Type}", type);
+            _logger.LogWarningNeo4jSchemaManager201(type);
             return;
         }
 
@@ -213,7 +212,7 @@ internal class Neo4jSchemaManager
             _processedSchemas.Add(processedKey);
         }
 
-        _logger.LogDebug("Successfully processed relationship schema for type: {Type}", type);
+        _logger.LogDebugNeo4jSchemaManager216(type);
     }
 
     private async Task CreateNodeConstraintsAsync(string label, EntitySchemaInfo schema)
@@ -236,7 +235,7 @@ internal class Neo4jSchemaManager
                 var idConstraint = $"CREATE CONSTRAINT {idConstraintName} IF NOT EXISTS FOR (n:{EscapedLabel(label)}) REQUIRE n.Id IS UNIQUE";
                 var result = await tx.RunAsync(idConstraint).ConfigureAwait(false);
                 await result.ConsumeAsync().ConfigureAwait(false);
-                _logger.LogDebug("Created unique Id constraint for label {Label}", label);
+                _logger.LogDebugNeo4jSchemaManager239(label);
             }
 
             // Handle composite key constraints
@@ -258,7 +257,10 @@ internal class Neo4jSchemaManager
 
                     var result = await tx.RunAsync(compositeKeyConstraint).ConfigureAwait(false);
                     await result.ConsumeAsync().ConfigureAwait(false);
-                    _logger.LogDebug("Created composite key constraint for properties {Properties} on label {Label}", string.Join(", ", keyPropertyNames), label);
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.LogDebugNeo4jSchemaManager261(string.Join(", ", keyPropertyNames), label);
+                    }
                 }
             }
 
@@ -280,7 +282,7 @@ internal class Neo4jSchemaManager
                         var uniqueConstraint = $"CREATE CONSTRAINT {uniqueConstraintName} IF NOT EXISTS FOR (n:{EscapedLabel(label)}) REQUIRE n.{propertySchema.Name} IS UNIQUE";
                         var result = await tx.RunAsync(uniqueConstraint).ConfigureAwait(false);
                         await result.ConsumeAsync().ConfigureAwait(false);
-                        _logger.LogDebug("Created unique constraint for property {Property} on label {Label}", propertySchema.Name, label);
+                        _logger.LogDebugNeo4jSchemaManager283(propertySchema.Name, label);
                     }
                 }
 
@@ -290,13 +292,13 @@ internal class Neo4jSchemaManager
                     // A property is considered complex if it's not a simple type (i.e., it's a user-defined class/record)
                     if (!GraphDataModel.IsSimple(propertySchema.PropertyInfo.PropertyType))
                     {
-                        _logger.LogDebug("Skipping NOT NULL constraint for complex property {Property} on label {Label} - complex properties are modeled as separate nodes", propertySchema.Name, label);
+                        _logger.LogDebugNeo4jSchemaManager293(propertySchema.Name, label);
                         continue;
                     }
 
                     if (!supportsPropertyExistenceConstraints)
                     {
-                        _logger.LogDebug("Skipping NOT NULL constraint for property {Property} on label {Label} because Neo4j Community does not support property existence constraints", propertySchema.Name, label);
+                        _logger.LogDebugNeo4jSchemaManager299(propertySchema.Name, label);
                         continue;
                     }
 
@@ -310,7 +312,7 @@ internal class Neo4jSchemaManager
                         var notNullConstraint = $"CREATE CONSTRAINT {notNullConstraintName} IF NOT EXISTS FOR (n:{EscapedLabel(label)}) REQUIRE n.{propertySchema.Name} IS NOT NULL";
                         var result = await tx.RunAsync(notNullConstraint).ConfigureAwait(false);
                         await result.ConsumeAsync().ConfigureAwait(false);
-                        _logger.LogDebug("Created not null constraint for property {Property} on label {Label}", propertySchema.Name, label);
+                        _logger.LogDebugNeo4jSchemaManager313(propertySchema.Name, label);
                     }
                 }
             }
@@ -320,7 +322,7 @@ internal class Neo4jSchemaManager
         catch (Exception ex)
         {
             await tx.RollbackAsync().ConfigureAwait(false);
-            _logger.LogError(ex, "Failed to create constraints for node label: {Label}", label);
+            _logger.LogErrorNeo4jSchemaManager323(ex, label);
             throw;
         }
     }
@@ -345,7 +347,7 @@ internal class Neo4jSchemaManager
                 var idConstraint = $"CREATE CONSTRAINT {idConstraintName} IF NOT EXISTS FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.Id IS UNIQUE";
                 var result = await tx.RunAsync(idConstraint).ConfigureAwait(false);
                 await result.ConsumeAsync().ConfigureAwait(false);
-                _logger.LogDebug("Created unique Id constraint for relationship type {Type}", type);
+                _logger.LogDebugNeo4jSchemaManager348(type);
             }
 
             // Handle composite key constraints
@@ -367,7 +369,10 @@ internal class Neo4jSchemaManager
 
                     var result = await tx.RunAsync(compositeKeyConstraint).ConfigureAwait(false);
                     await result.ConsumeAsync().ConfigureAwait(false);
-                    _logger.LogDebug("Created composite key constraint for properties {Properties} on relationship type {Type}", string.Join(", ", keyPropertyNames), type);
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.LogDebugNeo4jSchemaManager370(string.Join(", ", keyPropertyNames), type);
+                    }
                 }
             }
 
@@ -389,7 +394,7 @@ internal class Neo4jSchemaManager
                         var uniqueConstraint = $"CREATE CONSTRAINT {uniqueConstraintName} IF NOT EXISTS FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.{propertySchema.Name} IS UNIQUE";
                         var result = await tx.RunAsync(uniqueConstraint).ConfigureAwait(false);
                         await result.ConsumeAsync().ConfigureAwait(false);
-                        _logger.LogDebug("Created unique constraint for property {Property} on relationship type {Type}", propertySchema.Name, type);
+                        _logger.LogDebugNeo4jSchemaManager392(propertySchema.Name, type);
                     }
                 }
 
@@ -397,7 +402,7 @@ internal class Neo4jSchemaManager
                 {
                     if (!supportsPropertyExistenceConstraints)
                     {
-                        _logger.LogDebug("Skipping NOT NULL constraint for property {Property} on relationship type {Type} because Neo4j Community does not support property existence constraints", propertySchema.Name, type);
+                        _logger.LogDebugNeo4jSchemaManager400(propertySchema.Name, type);
                         continue;
                     }
 
@@ -411,7 +416,7 @@ internal class Neo4jSchemaManager
                         var notNullConstraint = $"CREATE CONSTRAINT {notNullConstraintName} IF NOT EXISTS FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.{propertySchema.Name} IS NOT NULL";
                         var result = await tx.RunAsync(notNullConstraint).ConfigureAwait(false);
                         await result.ConsumeAsync().ConfigureAwait(false);
-                        _logger.LogDebug("Created not null constraint for property {Property} on relationship type {Type}", propertySchema.Name, type);
+                        _logger.LogDebugNeo4jSchemaManager414(propertySchema.Name, type);
                     }
                 }
             }
@@ -421,7 +426,7 @@ internal class Neo4jSchemaManager
         catch (Exception ex)
         {
             await tx.RollbackAsync().ConfigureAwait(false);
-            _logger.LogError(ex, "Failed to create constraints for relationship type: {Type}", type);
+            _logger.LogErrorNeo4jSchemaManager424(ex, type);
             throw;
         }
     }
@@ -444,19 +449,19 @@ internal class Neo4jSchemaManager
             var supported = !edition.Equals("community", StringComparison.OrdinalIgnoreCase);
             if (!supported)
             {
-                _logger.LogInformation("Neo4j Community detected; required-property constraints will be skipped because they require Enterprise Edition");
+                _logger.LogInformationNeo4jSchemaManager447();
             }
 
             return supported;
         }
         catch (Neo4jException ex)
         {
-            _logger.LogWarning(ex, "Failed to detect Neo4j edition; assuming property existence constraints are supported");
+            _logger.LogWarningNeo4jSchemaManager454(ex);
             return true;
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Failed to detect Neo4j edition; assuming property existence constraints are supported");
+            _logger.LogWarningNeo4jSchemaManager459(ex);
             return true;
         }
     }
@@ -488,7 +493,7 @@ internal class Neo4jSchemaManager
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to retrieve existing constraints for {LabelOrType}, proceeding with creation attempts", labelOrType);
+            _logger.LogWarningNeo4jSchemaManager491(ex, labelOrType);
             return new List<string>();
         }
     }
@@ -518,7 +523,7 @@ internal class Neo4jSchemaManager
                     var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR (n:{EscapedLabel(label)}) ON (n.{propertySchema.Name})";
                     var result = await tx.RunAsync(createIndex).ConfigureAwait(false);
                     await result.ConsumeAsync().ConfigureAwait(false);
-                    _logger.LogDebug("Created index {Index} for property {Property} on label {Label}", indexName, propertySchema.Name, label);
+                    _logger.LogDebugNeo4jSchemaManager521(indexName, propertySchema.Name, label);
                 }
             }
 
@@ -554,7 +559,7 @@ internal class Neo4jSchemaManager
                     var createIndex = $"CREATE INDEX {indexName} IF NOT EXISTS FOR ()-[r:{EscapedType(type)}]-() ON (r.{propertySchema.Name})";
                     var result = await tx.RunAsync(createIndex).ConfigureAwait(false);
                     await result.ConsumeAsync().ConfigureAwait(false);
-                    _logger.LogDebug("Created index {Index} for property {Property} on relationship type {Type}", indexName, propertySchema.Name, type);
+                    _logger.LogDebugNeo4jSchemaManager557(indexName, propertySchema.Name, type);
                 }
             }
 
@@ -569,7 +574,7 @@ internal class Neo4jSchemaManager
 
     private async Task CreateGeneralFullTextIndexesAsync(CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Creating global full text indexes");
+        _logger.LogDebugNeo4jSchemaManager572();
 
         var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
         await using var sessionLease = session.ConfigureAwait(false);
@@ -606,11 +611,11 @@ internal class Neo4jSchemaManager
                 var propList = string.Join(", ", nodeStringProps.Select(p => $"n.{p}"));
                 var createNodeIndex = $"CREATE FULLTEXT INDEX node_fulltext_index IF NOT EXISTS FOR (n:{labelList}) ON EACH [{propList}]";
                 await tx.RunAsync(createNodeIndex).ConfigureAwait(false);
-                _logger.LogDebug("Created global node full-text index with {LabelCount} labels and {PropertyCount} properties", nodeLabels.Count, nodeStringProps.Count);
+                _logger.LogDebugNeo4jSchemaManager609(nodeLabels.Count, nodeStringProps.Count);
             }
             else
             {
-                _logger.LogDebug("Skipped node full-text index creation - no labels or string properties found");
+                _logger.LogDebugNeo4jSchemaManager613();
             }
 
             // Collect relationship types and string properties from schema registry
@@ -641,20 +646,20 @@ internal class Neo4jSchemaManager
                 var propList = string.Join(", ", relStringProps.Select(p => $"r.{p}"));
                 var createRelIndex = $"CREATE FULLTEXT INDEX rel_fulltext_index IF NOT EXISTS FOR ()-[r:{typeList}]-() ON EACH [{propList}]";
                 await tx.RunAsync(createRelIndex).ConfigureAwait(false);
-                _logger.LogDebug("Created global relationship full-text index with {TypeCount} types and {PropertyCount} properties", relTypes.Count, relStringProps.Count);
+                _logger.LogDebugNeo4jSchemaManager644(relTypes.Count, relStringProps.Count);
             }
             else
             {
-                _logger.LogDebug("Skipped relationship full-text index creation - no types or string properties found");
+                _logger.LogDebugNeo4jSchemaManager648();
             }
 
             await tx.CommitAsync().ConfigureAwait(false);
-            _logger.LogDebug("Global full-text index creation completed");
+            _logger.LogDebugNeo4jSchemaManager652();
         }
         catch (Exception ex)
         {
             await tx.RollbackAsync().ConfigureAwait(false);
-            _logger.LogError(ex, "Failed to create global full-text indexes");
+            _logger.LogErrorNeo4jSchemaManager657(ex);
             throw;
         }
     }
@@ -687,12 +692,12 @@ internal class Neo4jSchemaManager
                 {
                     var dropIndex = $"DROP INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} IF EXISTS";
                     await tx.RunAsync(dropIndex).ConfigureAwait(false);
-                    _logger.LogDebug("Dropped index: {IndexName}", indexName);
+                    _logger.LogDebugNeo4jSchemaManager690(indexName);
                 }
             }
 
             await tx.CommitAsync().ConfigureAwait(false);
-            _logger.LogInformation("Dropped {Count} indexes", records.Count);
+            _logger.LogInformationNeo4jSchemaManager695(records.Count);
         }
         catch (Exception)
         {
@@ -719,7 +724,7 @@ internal class Neo4jSchemaManager
             _processedSchemas.Clear();
         }
         _isSchemaInitialized = false;
-        _logger.LogDebug("Cleared schema cache and reset initialization state");
+        _logger.LogDebugNeo4jSchemaManager722();
     }
 
     /// <summary>

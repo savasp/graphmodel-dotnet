@@ -41,7 +41,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        _logger.LogDebug("Creating node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+        _logger.LogDebugAgeNodeManager44(typeof(TNode).Name, node.Id);
 
         try
         {
@@ -70,13 +70,13 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             await _complexPropertyManager.CreateComplexPropertiesAsync(
                 transaction.Runner, nodeId, entity, cancellationToken).ConfigureAwait(false);
 
-            _logger.LogInformation("Created node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+            _logger.LogInformationAgeNodeManager73(typeof(TNode).Name, node.Id);
 
             return node;
         }
         catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Error creating node of type {NodeType}", typeof(TNode).Name);
+            _logger.LogErrorAgeNodeManager79(ex, typeof(TNode).Name);
             throw new GraphException("Failed to create node.", ex);
         }
     }
@@ -89,7 +89,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        _logger.LogDebug("Updating node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+        _logger.LogDebugAgeNodeManager92(typeof(TNode).Name, node.Id);
 
         try
         {
@@ -112,7 +112,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
 
             if (parentElementId is null)
             {
-                _logger.LogWarning("Node with ID {NodeId} not found for update", node.Id);
+                _logger.LogWarningAgeNodeManager115(node.Id);
                 throw new EntityNotFoundException($"Node with ID {node.Id} not found for update");
             }
 
@@ -120,12 +120,12 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
             await _complexPropertyManager.UpdateComplexPropertiesAsync(
                 transaction.Runner, parentElementId, entity, cancellationToken).ConfigureAwait(false);
 
-            _logger.LogInformation("Updated node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+            _logger.LogInformationAgeNodeManager123(typeof(TNode).Name, node.Id);
             return true;
         }
         catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Error updating node {NodeId} of type {NodeType}", node.Id, typeof(TNode).Name);
+            _logger.LogErrorAgeNodeManager128(ex, node.Id, typeof(TNode).Name);
             throw new GraphException("Failed to update node.", ex);
         }
     }
@@ -138,7 +138,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
     {
         ArgumentException.ThrowIfNullOrEmpty(nodeId);
 
-        _logger.LogDebug("Deleting node with ID: {NodeId}, cascade: {CascadeDelete}", nodeId, cascadeDelete);
+        _logger.LogDebugAgeNodeManager141(nodeId, cascadeDelete);
 
         try
         {
@@ -148,7 +148,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
                 cancellationToken).ConfigureAwait(false);
             if (rootCount == 0)
             {
-                _logger.LogWarning("Node with ID {NodeId} not found for deletion", nodeId);
+                _logger.LogWarningAgeNodeManager151(nodeId);
                 throw new EntityNotFoundException($"Node with ID {nodeId} not found for deletion");
             }
 
@@ -221,16 +221,16 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
 
             if (!wasDeleted)
             {
-                _logger.LogWarning("Node with ID {NodeId} not found for deletion", nodeId);
+                _logger.LogWarningAgeNodeManager224(nodeId);
                 throw new EntityNotFoundException($"Node with ID {nodeId} not found for deletion");
             }
 
-            _logger.LogInformation("Deleted node with ID {NodeId}", nodeId);
+            _logger.LogInformationAgeNodeManager228(nodeId);
             return true;
         }
         catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Error deleting node with ID: {NodeId}", nodeId);
+            _logger.LogErrorAgeNodeManager233(ex, nodeId);
             throw new GraphException("Failed to delete node.", ex);
         }
     }

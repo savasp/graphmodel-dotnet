@@ -530,15 +530,14 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         Dictionary<string, Property> complexProperties,
         HashSet<object> visited)
     {
-        _logger.LogDebug("ProcessDynamicProperties: Processing {PropertyCount} properties", properties.Count);
+        _logger.LogDebugEntityFactory533(properties.Count);
 
         foreach (var kvp in properties)
         {
             var propertyName = kvp.Key;
             var propertyValue = kvp.Value;
 
-            _logger.LogDebug("ProcessDynamicProperties: Processing property '{PropertyName}' with value '{PropertyValue}' of type '{PropertyType}'",
-                propertyName, propertyValue, propertyValue?.GetType().Name ?? "null");
+            _logger.LogDebugEntityFactory540(propertyName, propertyValue, propertyValue?.GetType().Name ?? "null");
 
             if (propertyValue == null)
             {
@@ -571,7 +570,7 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             if (GraphDataModel.IsSimple(valueType))
             {
                 // Simple property
-                _logger.LogDebug("ProcessDynamicProperties: Adding simple property '{PropertyName}' to simpleProperties", propertyName);
+                _logger.LogDebugEntityFactory574(propertyName);
                 simpleProperties[propertyName] = new Property(
                     GetPropertyInfo(valueType, propertyName),
                     propertyName,

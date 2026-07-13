@@ -36,8 +36,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
-        _logger.LogDebug("Creating relationship of type {RelationshipType} from {StartNodeId} to {EndNodeId}",
-            typeof(TRelationship).Name, relationship.StartNodeId, relationship.EndNodeId);
+        _logger.LogDebugNeo4jRelationshipManager39(typeof(TRelationship).Name, relationship.StartNodeId, relationship.EndNodeId);
 
         try
         {
@@ -74,14 +73,13 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
                     "One or both nodes may not exist.");
             }
 
-            _logger.LogInformation("Created relationship of type {RelationshipType} with ID {RelationshipId}",
-                typeof(TRelationship).Name, relationship.Id);
+            _logger.LogInformationNeo4jRelationshipManager77(typeof(TRelationship).Name, relationship.Id);
 
             return relationship;
         }
         catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Error creating relationship of type {RelationshipType}", typeof(TRelationship).Name);
+            _logger.LogErrorNeo4jRelationshipManager84(ex, typeof(TRelationship).Name);
             throw new GraphException($"Failed to create relationship: {ex.Message}", ex);
         }
     }
@@ -94,8 +92,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
-        _logger.LogDebug("Updating relationship of type {RelationshipType} with ID {RelationshipId}",
-            typeof(TRelationship).Name, relationship.Id);
+        _logger.LogDebugNeo4jRelationshipManager97(typeof(TRelationship).Name, relationship.Id);
 
         try
         {
@@ -123,7 +120,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             if (!updated.Exists)
             {
-                _logger.LogWarning("Relationship with ID {RelationshipId} not found for update", relationship.Id);
+                _logger.LogWarningNeo4jRelationshipManager126(relationship.Id);
                 throw new EntityNotFoundException($"Relationship with ID {relationship.Id} not found for update");
             }
 
@@ -138,15 +135,13 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
             // fails, the transaction rolls back the guarded update statement above.
             ValidateRelationshipProperties(relationship);
 
-            _logger.LogInformation("Updated relationship of type {RelationshipType} with ID {RelationshipId}",
-                typeof(TRelationship).Name, relationship.Id);
+            _logger.LogInformationNeo4jRelationshipManager141(typeof(TRelationship).Name, relationship.Id);
 
             return true;
         }
         catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Error updating relationship {RelationshipId} of type {RelationshipType}",
-                relationship.Id, typeof(TRelationship).Name);
+            _logger.LogErrorNeo4jRelationshipManager148(ex, relationship.Id, typeof(TRelationship).Name);
             throw new GraphException($"Failed to update relationship: {ex.Message}", ex);
         }
     }
@@ -158,7 +153,7 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
     {
         ArgumentException.ThrowIfNullOrEmpty(relationshipId);
 
-        _logger.LogDebug("Deleting relationship with ID {RelationshipId}", relationshipId);
+        _logger.LogDebugNeo4jRelationshipManager161(relationshipId);
 
         try
         {
@@ -173,16 +168,16 @@ internal sealed class Neo4jRelationshipManager(GraphContext context)
 
             if (deletedCount == 0)
             {
-                _logger.LogWarning("Relationship with ID {RelationshipId} not found for deletion", relationshipId);
+                _logger.LogWarningNeo4jRelationshipManager176(relationshipId);
                 throw new EntityNotFoundException($"Relationship with ID {relationshipId} not found for deletion");
             }
 
-            _logger.LogInformation("Deleted relationship with ID {RelationshipId}", relationshipId);
+            _logger.LogInformationNeo4jRelationshipManager180(relationshipId);
             return true;
         }
         catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Error deleting relationship with ID {RelationshipId}", relationshipId);
+            _logger.LogErrorNeo4jRelationshipManager185(ex, relationshipId);
             throw new GraphException($"Failed to delete relationship: {ex.Message}", ex);
         }
     }

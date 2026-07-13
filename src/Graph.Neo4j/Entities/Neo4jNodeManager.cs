@@ -51,7 +51,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        _logger.LogDebug("Creating node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+        _logger.LogDebugNeo4jNodeManager54(typeof(TNode).Name, node.Id);
 
         try
         {
@@ -72,7 +72,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             await _complexPropertyManager.CreateComplexPropertiesAsync(
                 transaction.Transaction, nodeId, entity, cancellationToken).ConfigureAwait(false);
 
-            _logger.LogInformation("Created node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+            _logger.LogInformationNeo4jNodeManager75(typeof(TNode).Name, node.Id);
 
             return node;
         }
@@ -82,7 +82,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating node of type {NodeType}", typeof(TNode).Name);
+            _logger.LogErrorNeo4jNodeManager85(ex, typeof(TNode).Name);
             throw new GraphException($"Failed to create node: {ex.Message}", ex);
         }
     }
@@ -95,7 +95,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        _logger.LogDebug("Updating node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+        _logger.LogDebugNeo4jNodeManager98(typeof(TNode).Name, node.Id);
 
         try
         {
@@ -115,7 +115,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
             if (parentElementId is null)
             {
-                _logger.LogWarning("Node with ID {NodeId} not found for update", node.Id);
+                _logger.LogWarningNeo4jNodeManager118(node.Id);
                 throw new EntityNotFoundException($"Node with ID {node.Id} not found for update");
             }
 
@@ -123,12 +123,12 @@ internal sealed class Neo4jNodeManager(GraphContext context)
             await _complexPropertyManager.UpdateComplexPropertiesAsync(
                 transaction.Transaction, parentElementId, entity, cancellationToken).ConfigureAwait(false);
 
-            _logger.LogInformation("Updated node of type {NodeType} with ID {NodeId}", typeof(TNode).Name, node.Id);
+            _logger.LogInformationNeo4jNodeManager126(typeof(TNode).Name, node.Id);
             return true;
         }
         catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Error updating node {NodeId} of type {NodeType}", node.Id, typeof(TNode).Name);
+            _logger.LogErrorNeo4jNodeManager131(ex, node.Id, typeof(TNode).Name);
             throw new GraphException($"Failed to update node: {ex.Message}", ex);
         }
     }
@@ -141,7 +141,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
     {
         ArgumentException.ThrowIfNullOrEmpty(nodeId);
 
-        _logger.LogDebug("Deleting node with ID: {NodeId}, cascade: {CascadeDelete}", nodeId, cascadeDelete);
+        _logger.LogDebugNeo4jNodeManager144(nodeId, cascadeDelete);
 
         try
         {
@@ -153,7 +153,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
                 cancellationToken).ConfigureAwait(false);
             if (rootCount == 0)
             {
-                _logger.LogWarning("Node with ID {NodeId} not found for deletion", nodeId);
+                _logger.LogWarningNeo4jNodeManager156(nodeId);
                 throw new EntityNotFoundException($"Node with ID {nodeId} not found for deletion");
             }
 
@@ -213,16 +213,16 @@ internal sealed class Neo4jNodeManager(GraphContext context)
 
             if (!wasDeleted)
             {
-                _logger.LogWarning("Node with ID {NodeId} not found for deletion", nodeId);
+                _logger.LogWarningNeo4jNodeManager216(nodeId);
                 throw new EntityNotFoundException($"Node with ID {nodeId} not found for deletion");
             }
 
-            _logger.LogInformation("Deleted node with ID {NodeId}", nodeId);
+            _logger.LogInformationNeo4jNodeManager220(nodeId);
             return true;
         }
         catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Error deleting node with ID: {NodeId}", nodeId);
+            _logger.LogErrorNeo4jNodeManager225(ex, nodeId);
             throw new GraphException($"Failed to delete node: {ex.Message}", ex);
         }
     }

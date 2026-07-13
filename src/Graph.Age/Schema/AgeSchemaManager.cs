@@ -46,7 +46,7 @@ internal sealed class AgeSchemaManager
             }
 
             initialized = true;
-            logger.LogDebug("Initialized AGE schema metadata");
+            logger.LogDebugAgeSchemaManager49();
         }
         finally
         {
@@ -57,7 +57,7 @@ internal sealed class AgeSchemaManager
     public async Task RecreateIndexesAsync(CancellationToken cancellationToken = default)
     {
         await InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
-        logger.LogInformation("AGE property indexes are unavailable because entity properties are stored in agtype");
+        logger.LogInformationAgeSchemaManager60();
     }
 
     public SchemaRegistry GetSchemaRegistry() => schemaRegistry;

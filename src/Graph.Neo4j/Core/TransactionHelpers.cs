@@ -50,15 +50,15 @@ internal static class TransactionHelpers
                 }
                 catch (GraphException ex)
                 {
-                    logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
+                    logger?.LogWarningTransactionHelpers53(ex);
                 }
                 catch (Neo4jException ex)
                 {
-                    logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
+                    logger?.LogWarningTransactionHelpers57(ex);
                 }
                 catch (InvalidOperationException ex)
                 {
-                    logger?.LogWarning(ex, "Failed to roll back cancelled transaction");
+                    logger?.LogWarningTransactionHelpers61(ex);
                 }
             }
 
@@ -66,7 +66,7 @@ internal static class TransactionHelpers
         }
         catch (Exception ex)
         {
-            logger?.LogError(ex, "{ErrorMessage}", errorMessage);
+            logger?.LogErrorTransactionHelpers69(ex, errorMessage);
             if (transaction == null)
             {
                 await tx.RollbackAsync().ConfigureAwait(false);

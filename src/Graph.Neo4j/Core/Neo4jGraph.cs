@@ -48,7 +48,7 @@ internal class Neo4jGraph : IGraph
 
         // Don't initialize schema registry here - let it be initialized lazily on first use
         // This avoids double initialization and concurrency issues
-        _logger.LogInformation("Graph initialized for database '{DatabaseName}'", databaseName);
+        _logger.LogInformationNeo4jGraph51(databaseName);
     }
 
     public SchemaRegistry SchemaRegistry => _schemaRegistry;
@@ -60,12 +60,12 @@ internal class Neo4jGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Beginning new transaction");
+            _logger.LogDebugNeo4jGraph63();
 
             var graphTransaction = new GraphTransaction(_graphContext);
             await graphTransaction.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully began transaction");
+            _logger.LogDebugNeo4jGraph68();
             return graphTransaction;
         }
         catch (OperationCanceledException)
@@ -79,7 +79,7 @@ internal class Neo4jGraph : IGraph
         catch (Exception ex)
         {
             const string message = "Failed to begin transaction";
-            _logger.LogError(ex, message);
+            _logger.LogErrorNeo4jGraph82(ex);
             throw new GraphException(message, ex);
         }
     }
@@ -88,7 +88,7 @@ internal class Neo4jGraph : IGraph
     public IGraphQueryable<N> Nodes<N>(IGraphTransaction? transaction = null)
         where N : class, Graph.INode
     {
-        _logger.LogDebug("Building nodes queryable for type {NodeType}", typeof(N).Name);
+        _logger.LogDebugNeo4jGraph91(typeof(N).Name);
 
         // Building a queryable performs no I/O. When no transaction is provided, execution time
         // (GraphQueryProvider.ExecuteAsync -> TransactionHelpers.ExecuteInTransactionAsync)
@@ -103,7 +103,7 @@ internal class Neo4jGraph : IGraph
     public IGraphQueryable<R> Relationships<R>(IGraphTransaction? transaction = null)
         where R : class, Graph.IRelationship
     {
-        _logger.LogDebug("Building relationships queryable for type {RelationshipType}", typeof(R).Name);
+        _logger.LogDebugNeo4jGraph106(typeof(R).Name);
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -159,7 +159,7 @@ internal class Neo4jGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Creating node of type {NodeType}", typeof(N).Name);
+            _logger.LogDebugNeo4jGraph162(typeof(N).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
             await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
@@ -171,7 +171,7 @@ internal class Neo4jGraph : IGraph
                 $"Failed to create node of type {typeof(N).Name}",
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully created node {NodeId}", node.Id);
+            _logger.LogDebugNeo4jGraph174(node.Id);
         }
         catch (OperationCanceledException)
         {
@@ -180,7 +180,7 @@ internal class Neo4jGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to create node of type {typeof(N).Name}";
-            _logger.LogError(ex, "Failed to create node of type {NodeType}", typeof(N).Name);
+            _logger.LogErrorNeo4jGraph183(ex, typeof(N).Name);
 
             if (ex is GraphException)
             {
@@ -206,7 +206,7 @@ internal class Neo4jGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Creating relationship of type {RelationshipType}", typeof(R).Name);
+            _logger.LogDebugNeo4jGraph209(typeof(R).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
             await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
@@ -222,7 +222,7 @@ internal class Neo4jGraph : IGraph
                 $"Failed to create relationship of type {typeof(R).Name}",
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully created relationship {RelationshipId}", relationship.Id);
+            _logger.LogDebugNeo4jGraph225(relationship.Id);
         }
         catch (OperationCanceledException)
         {
@@ -231,7 +231,7 @@ internal class Neo4jGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to create relationship of type {typeof(R).Name}";
-            _logger.LogError(ex, "Failed to create relationship of type {RelationshipType}", typeof(R).Name);
+            _logger.LogErrorNeo4jGraph234(ex, typeof(R).Name);
 
             if (ex is GraphException)
             {
@@ -259,7 +259,7 @@ internal class Neo4jGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Updating node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
+            _logger.LogDebugNeo4jGraph262(node.Id, typeof(N).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data
             // operations). The update path validates properties against the schema registry, so
@@ -277,7 +277,7 @@ internal class Neo4jGraph : IGraph
                 $"Failed to update node {node.Id} of type {typeof(N).Name}",
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully updated node {NodeId}", node.Id);
+            _logger.LogDebugNeo4jGraph280(node.Id);
         }
         catch (OperationCanceledException)
         {
@@ -286,7 +286,7 @@ internal class Neo4jGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to update node {node.Id} of type {typeof(N).Name}";
-            _logger.LogError(ex, "Failed to update node {NodeId} of type {NodeType}", node.Id, typeof(N).Name);
+            _logger.LogErrorNeo4jGraph289(ex, node.Id, typeof(N).Name);
 
             if (ex is GraphException)
             {
@@ -314,7 +314,7 @@ internal class Neo4jGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Updating relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
+            _logger.LogDebugNeo4jGraph317(relationship.Id, typeof(R).Name);
 
             // Ensure schema is created before any transaction (to avoid mixing schema and data
             // operations). The update path validates properties against the schema registry, so
@@ -332,7 +332,7 @@ internal class Neo4jGraph : IGraph
                 $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}",
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully updated relationship {RelationshipId}", relationship.Id);
+            _logger.LogDebugNeo4jGraph335(relationship.Id);
         }
         catch (OperationCanceledException)
         {
@@ -341,7 +341,7 @@ internal class Neo4jGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to update relationship {relationship.Id} of type {typeof(R).Name}";
-            _logger.LogError(ex, "Failed to update relationship {RelationshipId} of type {RelationshipType}", relationship.Id, typeof(R).Name);
+            _logger.LogErrorNeo4jGraph344(ex, relationship.Id, typeof(R).Name);
 
             if (ex is GraphException)
             {
@@ -363,7 +363,7 @@ internal class Neo4jGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Deleting node {NodeId}", id);
+            _logger.LogDebugNeo4jGraph366(id);
 
             // Delete-by-ID needs the complete registered-label set to recognize legacy nodes
             // written before EntityKind was stored. Initialize before opening the data
@@ -381,7 +381,7 @@ internal class Neo4jGraph : IGraph
                 $"Failed to delete node {id}",
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully deleted node {NodeId}", id);
+            _logger.LogDebugNeo4jGraph384(id);
 
         }
         catch (OperationCanceledException)
@@ -391,7 +391,7 @@ internal class Neo4jGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to delete node {id}";
-            _logger.LogError(ex, "Failed to delete node {NodeId}", id);
+            _logger.LogErrorNeo4jGraph394(ex, id);
 
             if (ex is GraphException)
             {
@@ -412,7 +412,7 @@ internal class Neo4jGraph : IGraph
 
         try
         {
-            _logger.LogDebug("Deleting relationship {RelationshipId}", id);
+            _logger.LogDebugNeo4jGraph415(id);
 
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
@@ -426,7 +426,7 @@ internal class Neo4jGraph : IGraph
                 _logger,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            _logger.LogDebug("Successfully deleted relationship {RelationshipId}", id);
+            _logger.LogDebugNeo4jGraph429(id);
         }
         catch (OperationCanceledException)
         {
@@ -435,7 +435,7 @@ internal class Neo4jGraph : IGraph
         catch (Exception ex)
         {
             var message = $"Failed to delete relationship {id}";
-            _logger.LogError(ex, "Failed to delete relationship {RelationshipId}", id);
+            _logger.LogErrorNeo4jGraph438(ex, id);
 
             if (ex is GraphException)
             {
@@ -451,7 +451,7 @@ internal class Neo4jGraph : IGraph
     /// <inheritdoc />
     public IGraphQueryable<DynamicNode> DynamicNodes(IGraphTransaction? transaction = null)
     {
-        _logger.LogDebug("Building dynamic nodes queryable");
+        _logger.LogDebugNeo4jGraph454();
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -461,7 +461,7 @@ internal class Neo4jGraph : IGraph
     /// <inheritdoc />
     public IGraphQueryable<DynamicRelationship> DynamicRelationships(IGraphTransaction? transaction = null)
     {
-        _logger.LogDebug("Building dynamic relationships queryable");
+        _logger.LogDebugNeo4jGraph464();
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -493,7 +493,7 @@ internal class Neo4jGraph : IGraph
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        _logger.LogDebug("Building full text search queryable; query length: {QueryLength}", query.Length);
+        _logger.LogDebugNeo4jGraph496(query.Length);
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -505,7 +505,7 @@ internal class Neo4jGraph : IGraph
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        _logger.LogDebug("Building full text search queryable for nodes; query length: {QueryLength}", query.Length);
+        _logger.LogDebugNeo4jGraph508(query.Length);
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -517,7 +517,7 @@ internal class Neo4jGraph : IGraph
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        _logger.LogDebug("Building full text search queryable for relationships; query length: {QueryLength}", query.Length);
+        _logger.LogDebugNeo4jGraph520(query.Length);
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -529,10 +529,7 @@ internal class Neo4jGraph : IGraph
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        _logger.LogDebug(
-            "Building full text search queryable for nodes of type {NodeType}; query length: {QueryLength}",
-            typeof(T).Name,
-            query.Length);
+        _logger.LogDebugNeo4jGraph532(typeof(T).Name, query.Length);
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -544,10 +541,7 @@ internal class Neo4jGraph : IGraph
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
 
-        _logger.LogDebug(
-            "Building full text search queryable for relationships of type {RelationshipType}; query length: {QueryLength}",
-            typeof(T).Name,
-            query.Length);
+        _logger.LogDebugNeo4jGraph547(typeof(T).Name, query.Length);
 
         var neo4jTx = ToNeo4jTransaction(transaction);
         var provider = new GraphQueryProvider(_graphContext, neo4jTx, isReadOnly: true);
@@ -559,9 +553,9 @@ internal class Neo4jGraph : IGraph
     {
         try
         {
-            _logger.LogInformation("Recreating indexes for Neo4j graph");
+            _logger.LogInformationNeo4jGraph562();
             await _graphContext.SchemaManager.RecreateIndexesAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogInformation("Index recreation completed successfully");
+            _logger.LogInformationNeo4jGraph564();
         }
         catch (OperationCanceledException)
         {
@@ -569,7 +563,7 @@ internal class Neo4jGraph : IGraph
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to recreate indexes");
+            _logger.LogErrorNeo4jGraph572(ex);
             throw new GraphException("Failed to recreate indexes", ex);
         }
     }

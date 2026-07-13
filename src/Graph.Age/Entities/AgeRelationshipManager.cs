@@ -37,8 +37,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
-        _logger.LogDebug("Creating relationship of type {RelationshipType} from {StartNodeId} to {EndNodeId}",
-            typeof(TRelationship).Name, relationship.StartNodeId, relationship.EndNodeId);
+        _logger.LogDebugAgeRelationshipManager40(typeof(TRelationship).Name, relationship.StartNodeId, relationship.EndNodeId);
 
         try
         {
@@ -83,14 +82,13 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                     "One or both nodes may not exist.");
             }
 
-            _logger.LogInformation("Created relationship of type {RelationshipType} with ID {RelationshipId}",
-                typeof(TRelationship).Name, relationship.Id);
+            _logger.LogInformationAgeRelationshipManager86(typeof(TRelationship).Name, relationship.Id);
 
             return relationship;
         }
         catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Error creating relationship of type {RelationshipType}", typeof(TRelationship).Name);
+            _logger.LogErrorAgeRelationshipManager93(ex, typeof(TRelationship).Name);
             throw new GraphException("Failed to create relationship.", ex);
         }
     }
@@ -103,8 +101,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
-        _logger.LogDebug("Updating relationship of type {RelationshipType} with ID {RelationshipId}",
-            typeof(TRelationship).Name, relationship.Id);
+        _logger.LogDebugAgeRelationshipManager106(typeof(TRelationship).Name, relationship.Id);
 
         try
         {
@@ -135,7 +132,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
 
             if (!updated.Exists)
             {
-                _logger.LogWarning("Relationship with ID {RelationshipId} not found for update", relationship.Id);
+                _logger.LogWarningAgeRelationshipManager138(relationship.Id);
                 throw new EntityNotFoundException($"Relationship with ID {relationship.Id} not found for update");
             }
 
@@ -150,15 +147,13 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             // fails, the transaction rolls back the guarded update statement above.
             ValidateRelationshipProperties(relationship);
 
-            _logger.LogInformation("Updated relationship of type {RelationshipType} with ID {RelationshipId}",
-                typeof(TRelationship).Name, relationship.Id);
+            _logger.LogInformationAgeRelationshipManager153(typeof(TRelationship).Name, relationship.Id);
 
             return true;
         }
         catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Error updating relationship {RelationshipId} of type {RelationshipType}",
-                relationship.Id, typeof(TRelationship).Name);
+            _logger.LogErrorAgeRelationshipManager160(ex, relationship.Id, typeof(TRelationship).Name);
             throw new GraphException("Failed to update relationship.", ex);
         }
     }
@@ -170,7 +165,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
     {
         ArgumentException.ThrowIfNullOrEmpty(relationshipId);
 
-        _logger.LogDebug("Deleting relationship with ID {RelationshipId}", relationshipId);
+        _logger.LogDebugAgeRelationshipManager173(relationshipId);
 
         try
         {
@@ -185,16 +180,16 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
 
             if (deletedCount == 0)
             {
-                _logger.LogWarning("Relationship with ID {RelationshipId} not found for deletion", relationshipId);
+                _logger.LogWarningAgeRelationshipManager188(relationshipId);
                 throw new EntityNotFoundException($"Relationship with ID {relationshipId} not found for deletion");
             }
 
-            _logger.LogInformation("Deleted relationship with ID {RelationshipId}", relationshipId);
+            _logger.LogInformationAgeRelationshipManager192(relationshipId);
             return true;
         }
         catch (Exception ex) when (ex is not GraphException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Error deleting relationship with ID {RelationshipId}", relationshipId);
+            _logger.LogErrorAgeRelationshipManager197(ex, relationshipId);
             throw new GraphException("Failed to delete relationship.", ex);
         }
     }
