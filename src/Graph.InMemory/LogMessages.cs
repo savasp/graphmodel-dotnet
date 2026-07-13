@@ -9,10 +9,11 @@ namespace Cvoya.Graph.Logging;
 
 internal static partial class LogMessages
 {
-    [LoggerMessage(EventId = 1, Level = LogLevel.Debug, Message = "Created node {NodeId} of type {NodeType}")]
+    // LoggerExtensions emitted numeric event ID 0; preserve it during this mechanical migration.
+    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created node {NodeId} of type {NodeType}")]
     internal static partial void LogDebugInMemoryGraph178(this ILogger logger, global::System.String nodeId, global::System.String nodeType);
 
-    [LoggerMessage(EventId = 2, Level = LogLevel.Debug, Message = "Created relationship {RelationshipId} of type {RelationshipType}")]
+    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created relationship {RelationshipId} of type {RelationshipType}")]
     internal static partial void LogDebugInMemoryGraph225(this ILogger logger, global::System.String relationshipId, global::System.String relationshipType);
 
 }
