@@ -275,19 +275,54 @@ internal class AgeGraph : IGraph
                 transaction,
                 async tx =>
                 {
-                    if (createMissingEndpoints)
+                    // The provider implementation is intentionally multi-statement. When the caller
+                    // owns the surrounding transaction, isolate this operation behind a savepoint so
+                    // a later endpoint/relationship failure cannot leave partial writes that the caller
+                    // could subsequently commit.
+                    var savepoint = transaction is null ? null : $"cvoya_subgraph_{Guid.NewGuid():N}";
+                    if (savepoint is not null)
                     {
-                        await _graphContext.NodeManager.CreateNodeIfMissingAsync(source, tx, cancellationToken).ConfigureAwait(false);
-                        await _graphContext.NodeManager.CreateNodeIfMissingAsync(target, tx, cancellationToken).ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        await _graphContext.NodeManager.CreateNodeAsync(source, tx, cancellationToken).ConfigureAwait(false);
-                        await _graphContext.NodeManager.CreateNodeAsync(target, tx, cancellationToken).ConfigureAwait(false);
+                        await tx.DbTransaction.SaveAsync(savepoint, cancellationToken).ConfigureAwait(false);
                     }
 
-                    await _graphContext.RelationshipManager.CreateRelationshipAsync(relationship, tx, cancellationToken).ConfigureAwait(false);
-                    return true;
+                    try
+                    {
+                        if (createMissingEndpoints)
+                        {
+                            await _graphContext.NodeManager.CreateNodeIfMissingAsync(source, tx, cancellationToken).ConfigureAwait(false);
+                            await _graphContext.NodeManager.CreateNodeIfMissingAsync(target, tx, cancellationToken).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            await _graphContext.NodeManager.CreateNodeAsync(source, tx, cancellationToken).ConfigureAwait(false);
+                            await _graphContext.NodeManager.CreateNodeAsync(target, tx, cancellationToken).ConfigureAwait(false);
+                        }
+
+                        await _graphContext.RelationshipManager.CreateRelationshipAsync(relationship, tx, cancellationToken).ConfigureAwait(false);
+
+                        if (savepoint is not null)
+                        {
+                            await tx.DbTransaction.ReleaseAsync(savepoint, cancellationToken).ConfigureAwait(false);
+                        }
+
+                        return true;
+                    }
+                    catch (Exception operationException) when (savepoint is not null)
+                    {
+                        try
+                        {
+                            await tx.DbTransaction.RollbackAsync(savepoint, CancellationToken.None).ConfigureAwait(false);
+                            await tx.DbTransaction.ReleaseAsync(savepoint, CancellationToken.None).ConfigureAwait(false);
+                        }
+                        catch (Exception rollbackException) when (rollbackException is NpgsqlException or InvalidOperationException)
+                        {
+                            throw new GraphException(
+                                "Failed to restore the caller transaction after subgraph creation failed.",
+                                new AggregateException(operationException, rollbackException));
+                        }
+
+                        throw;
+                    }
                 },
                 $"Failed to create subgraph for relationship of type {typeof(TRelationship).Name}",
                 _logger,

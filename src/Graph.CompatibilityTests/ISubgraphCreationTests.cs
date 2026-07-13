@@ -9,6 +9,14 @@ namespace Cvoya.Graph.CompatibilityTests;
 /// </summary>
 public interface ISubgraphCreationTests : IGraphTest
 {
+    public sealed record MarkerCollisionNode : Node
+    {
+        [Property(Label = "__graphModelSubgraphCreated")]
+        public bool ReservedLookingProperty { get; set; }
+
+        public AddressValue Address { get; set; } = new();
+    }
+
     [Fact]
     public async Task CreateSubgraph_CreatesBothNodesAndRelationship()
     {
@@ -162,7 +170,7 @@ public interface ISubgraphCreationTests : IGraphTest
         Assert.Equal("Downtown", fetchedSource.Name);
         Assert.Equal(3, fetchedSource.Animals.Count);
         Assert.Equal(
-            new[] { "Fido", "Rex", "Whiskers" },
+            ["Fido", "Rex", "Whiskers"],
             fetchedSource.Animals.Select(a => a.Name).OrderBy(name => name).ToArray());
 
         var kennelsWithId = await Graph.Nodes<Kennel>()
@@ -203,5 +211,104 @@ public interface ISubgraphCreationTests : IGraphTest
         Assert.Equal("Sourceville", fetchedSource.Address.City);
         Assert.Equal("2 Target Ave", fetchedTarget.Address.Street);
         Assert.Equal("Targettown", fetchedTarget.Address.City);
+    }
+
+    [Fact]
+    public async Task CreateSubgraph_ValidatesEndpointProperties()
+    {
+        var source = new IAttributeValidationTests.PersonWithRequiredProperties
+        {
+            FirstName = string.Empty,
+            LastName = string.Empty
+        };
+        var target = new Person { FirstName = "Bob" };
+        var knows = new Knows { StartNodeId = source.Id, EndNodeId = target.Id };
+
+        await Assert.ThrowsAsync<GraphException>(async () =>
+            await Graph.CreateAsync(source, knows, target, null, null, TestContext.Current.CancellationToken));
+
+        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
+            await Graph.GetNodeAsync<Person>(target.Id, null, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateSubgraph_CallerTransactionFailureLeavesNoPartialEndpoints()
+    {
+        var source = new Person { FirstName = "Alice" };
+        var target = new Person { FirstName = "Bob" };
+        var invalidRelationship = new IAttributeValidationTests.RelationshipWithValidationProperties(
+            source.Id,
+            target.Id)
+        {
+            Notes = string.Empty
+        };
+
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<GraphException>(async () =>
+            await Graph.CreateAsync(
+                source,
+                invalidRelationship,
+                target,
+                null,
+                transaction,
+                TestContext.Current.CancellationToken));
+
+        // The caller still owns a usable transaction. Committing it must not persist endpoints from
+        // the failed subgraph operation.
+        await transaction.CommitAsync();
+
+        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
+            await Graph.GetNodeAsync<Person>(source.Id, null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<EntityNotFoundException>(async () =>
+            await Graph.GetNodeAsync<Person>(target.Id, null, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateSubgraph_CreateMissingEndpoints_MatchedEndpointMarkerPropertyRemainsUntouched()
+    {
+        var existing = new MarkerCollisionNode
+        {
+            ReservedLookingProperty = true,
+            Address = new AddressValue { Street = "Original St", City = "Original City" }
+        };
+        await Graph.CreateNodeAsync(existing, null, TestContext.Current.CancellationToken);
+
+        var source = new MarkerCollisionNode
+        {
+            Id = existing.Id,
+            ReservedLookingProperty = false,
+            Address = new AddressValue { Street = "Ignored St", City = "Ignored City" }
+        };
+        var target = new MarkerCollisionNode
+        {
+            ReservedLookingProperty = true,
+            Address = new AddressValue { Street = "New St", City = "New City" }
+        };
+        var knows = new Knows { StartNodeId = source.Id, EndNodeId = target.Id };
+
+        await Graph.CreateAsync(
+            source,
+            knows,
+            target,
+            new GraphOperationOptions { CreateMissingEndpoints = true },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var fetched = await Graph.GetNodeAsync<MarkerCollisionNode>(
+            existing.Id,
+            null,
+            TestContext.Current.CancellationToken);
+        Assert.True(fetched.ReservedLookingProperty);
+        Assert.Equal("Original St", fetched.Address.Street);
+        Assert.Equal("Original City", fetched.Address.City);
+
+        var fetchedTarget = await Graph.GetNodeAsync<MarkerCollisionNode>(
+            target.Id,
+            null,
+            TestContext.Current.CancellationToken);
+        Assert.True(fetchedTarget.ReservedLookingProperty);
+        Assert.Equal("New St", fetchedTarget.Address.Street);
+        Assert.Equal("New City", fetchedTarget.Address.City);
     }
 }

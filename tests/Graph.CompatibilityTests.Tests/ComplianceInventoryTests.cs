@@ -20,8 +20,8 @@ public sealed class ComplianceInventoryTests
     /// excluded: they can never execute on any provider, so they play no part in the strict-mode
     /// execution floor.
     /// </summary>
-    // +7 for ISubgraphCreationTests (atomic node–relationship–node subgraph create, #45).
-    private const int ExpectedTotalTestMethods = 365;
+    // +10 for ISubgraphCreationTests (atomic node–relationship–node subgraph create, #45).
+    private const int ExpectedTotalTestMethods = 368;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

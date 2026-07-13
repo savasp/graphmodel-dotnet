@@ -27,9 +27,10 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
     /// <summary>
     /// Transient marker recorded on an endpoint <c>ON CREATE</c> so its complex-property subtree is
     /// created only when this statement actually created the endpoint (not when it matched an
-    /// existing one). It is removed within the same statement, so it is never committed or read.
+    /// existing one). Each endpoint gets a unique property name so the marker cannot overwrite a
+    /// mapped user property. It is removed within the same statement, so it is never committed or read.
     /// </summary>
-    private const string TransientCreatedMarker = "__graphModelSubgraphCreated";
+    private const string TransientCreatedMarkerPrefix = "__graphModelSubgraphCreated";
 
     private static readonly string[] _ignoredRelationshipProperties =
     [
@@ -98,6 +99,7 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
     {
         GraphDataModel.EnsureNoReferenceCycle(node);
         GraphDataModel.EnsureComplexPropertyDepth(node);
+        context.NodeManager.ValidateNodeProperties(node);
         return _serializer.Serialize(node);
     }
 
@@ -106,6 +108,7 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
     {
         GraphDataModel.EnsureNoReferenceCycle(relationship);
         GraphDataModel.EnsureComplexPropertyDepth(relationship);
+        context.RelationshipManager.ValidateRelationshipProperties(relationship);
 
         var entity = _serializer.Serialize(relationship);
         if (entity.ComplexProperties.Count > 0)
@@ -138,12 +141,16 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
             // duplicated.
             parameters[$"{variable}_id"] = id;
             var setLabels = labelClause is null ? string.Empty : $"{variable}:{labelClause}, ";
-            var setMarker = specs.Count > 0 ? $", {variable}.{TransientCreatedMarker} = true" : string.Empty;
+            var transientMarker = specs.Count > 0
+                ? $"{TransientCreatedMarkerPrefix}_{Guid.NewGuid():N}"
+                : null;
+            var setMarker = transientMarker is null ? string.Empty : $", {variable}.{transientMarker} = true";
+
             builder.Append("MERGE (").Append(variable).Append(" {Id: $").Append(variable).Append("_id}) ")
                 .Append("ON CREATE SET ").Append(setLabels)
                 .Append(variable).Append(" = $").Append(variable).Append("_props").Append(setMarker).Append('\n');
 
-            AppendGuardedValueNodes(builder, parameters, variable, specs);
+            AppendGuardedValueNodes(builder, parameters, variable, transientMarker, specs);
         }
         else
         {
@@ -177,7 +184,7 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
 
     /// <summary>
     /// Emits the endpoint's complex-property subtree so it is created only when this statement
-    /// created the endpoint (see <see cref="TransientCreatedMarker"/>). The whole subtree — arbitrary
+    /// created the endpoint (see <see cref="TransientCreatedMarkerPrefix"/>). The whole subtree — arbitrary
     /// nesting depth — is one CREATE of comma-separated patterns inside a single FOREACH: each value
     /// node is bound to a variable a later pattern reuses as its parent, so BFS order (parent before
     /// child) keeps the references valid. The marker is removed afterwards so it never persists.
@@ -186,6 +193,7 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
         StringBuilder builder,
         Dictionary<string, object> parameters,
         string variable,
+        string? transientMarker,
         IReadOnlyList<ComplexPropertyManager.ValueNodeSpec> specs)
     {
         if (specs.Count == 0)
@@ -193,8 +201,8 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
             return;
         }
 
-        builder.Append("FOREACH (_ IN CASE WHEN coalesce(").Append(variable).Append('.').Append(TransientCreatedMarker)
-            .Append(", false) THEN [1] ELSE [] END |\n  CREATE ");
+        builder.Append("FOREACH (_ IN CASE WHEN ").Append(variable).Append('.').Append(transientMarker)
+            .Append(" THEN [1] ELSE [] END |\n  CREATE ");
 
         for (var i = 0; i < specs.Count; i++)
         {
@@ -216,8 +224,7 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
             parameters[$"{spec.Variable}_rel"] = spec.RelationshipProperties;
         }
 
-        builder.Append("\n)\n");
-        builder.Append("REMOVE ").Append(variable).Append('.').Append(TransientCreatedMarker).Append('\n');
+        builder.Append("\n  REMOVE ").Append(variable).Append('.').Append(transientMarker).Append("\n)\n");
     }
 
     private static void AppendEdge(

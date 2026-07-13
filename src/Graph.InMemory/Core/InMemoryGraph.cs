@@ -266,11 +266,19 @@ internal sealed class InMemoryGraph : IGraph
             transaction,
             tx =>
             {
-                AddOrMergeEndpoint(tx, decomposedSource, sourceConstraints, createMissingEndpoints);
-                AddOrMergeEndpoint(tx, decomposedTarget, targetConstraints, createMissingEndpoints);
-
                 tx.Apply(state =>
                 {
+                    state = AddOrMergeEndpoint(
+                        state,
+                        decomposedSource,
+                        sourceConstraints,
+                        createMissingEndpoints);
+                    state = AddOrMergeEndpoint(
+                        state,
+                        decomposedTarget,
+                        targetConstraints,
+                        createMissingEndpoints);
+
                     if (relationshipConstraints is not null)
                     {
                         ConstraintChecker.CheckRelationship(state, relationshipRecord, relationshipConstraints);
@@ -288,28 +296,25 @@ internal sealed class InMemoryGraph : IGraph
         RuntimeMetadata.PopulateRelationshipType(relationship, relationshipRecord.Type);
     }
 
-    private static void AddOrMergeEndpoint(
-        InMemoryTransaction tx,
+    private static StoreState AddOrMergeEndpoint(
+        StoreState state,
         EntityWriter.DecomposedNode decomposed,
         ConstraintChecker.Constraints? constraints,
         bool createMissingEndpoints)
     {
-        tx.Apply(state =>
+        // MERGE-by-id semantics: if the endpoint already exists, reuse it as-is (no clobber,
+        // no duplicate, no new complex-property subtree).
+        if (createMissingEndpoints && state.RootNodes(decomposed.Node.Id).Count > 0)
         {
-            // MERGE-by-id semantics: if the endpoint already exists, reuse it as-is (no clobber,
-            // no duplicate, no new complex-property subtree).
-            if (createMissingEndpoints && state.RootNodes(decomposed.Node.Id).Count > 0)
-            {
-                return state;
-            }
+            return state;
+        }
 
-            if (constraints is not null)
-            {
-                ConstraintChecker.CheckNode(state, decomposed.Node, constraints);
-            }
+        if (constraints is not null)
+        {
+            ConstraintChecker.CheckNode(state, decomposed.Node, constraints);
+        }
 
-            return state.AddNode(decomposed.Node, decomposed.ComplexValueNodes, decomposed.ComplexEdges);
-        });
+        return state.AddNode(decomposed.Node, decomposed.ComplexValueNodes, decomposed.ComplexEdges);
     }
 
     public async Task UpdateNodeAsync<N>(
