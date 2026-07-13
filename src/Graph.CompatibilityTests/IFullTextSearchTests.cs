@@ -3,6 +3,17 @@
 
 namespace Cvoya.Graph.CompatibilityTests;
 
+/// <summary>
+/// Declaring <see cref="GraphCapability.FullTextSearch"/> guarantees: case-insensitive, exact-token
+/// (whole-word) matching; a multi-term query matches an entity iff ALL terms match, in any order and
+/// at any distance; the matched property set is exactly the entity's own
+/// <c>[Property(IncludeInFullTextSearch)]</c> string properties (string-only by construction; for
+/// dynamic entities, all string property values). Text on complex-property value nodes is NOT part of
+/// the owning entity's match set. Ranking, stemming, phrase adjacency, prefix/wildcard, and matching
+/// beyond the floor are provider-defined: the TCK asserts nothing about them and never asserts a
+/// non-match for near-tokens (only for sub-tokens, which must not match). Search result order is
+/// unspecified; ordering comes only from explicit <c>OrderBy</c>.
+/// </summary>
 [RequiresCapability(GraphCapability.FullTextSearch)]
 public interface IFullTextSearchTests : IGraphTest
 {
@@ -151,18 +162,18 @@ public interface IFullTextSearchTests : IGraphTest
         {
             StartNodeId = person1.Id,
             EndNodeId = person2.Id,
-            HowWell = "unique_search_term_12345"
+            HowWell = "uniquesearchterm12345"
         };
 
         await this.Graph.CreateRelationshipAsync(relationship, null, TestContext.Current.CancellationToken);
 
         // Search using generic IRelationship interface
-        var results = await this.Graph.SearchRelationships("unique_search_term_12345").ToListAsync(TestContext.Current.CancellationToken);
+        var results = await this.Graph.SearchRelationships("uniquesearchterm12345").ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(results);
         Assert.IsType<KnowsWell>(results[0]);
         var foundRelationship = (KnowsWell)results[0];
-        Assert.Contains("unique_search_term_12345", foundRelationship.HowWell);
+        Assert.Contains("uniquesearchterm12345", foundRelationship.HowWell);
     }
 
     [Fact]
@@ -491,5 +502,76 @@ public interface IFullTextSearchTests : IGraphTest
         Assert.Single(viaConvenience);
         Assert.Single(viaOperator);
         Assert.Equal(viaConvenience[0].Id, viaOperator[0].Id);
+    }
+
+    // ---- #288: FullTextSearch semantic-contract floor ----
+
+    [Fact]
+    public async Task MultiTermSearch_MatchesOnlyEntitiesContainingAllTerms()
+    {
+        // Bio is a searchable string property; FirstName/LastName are kept term-free so the only
+        // searchable tokens are the ones under test.
+        var cloudOnly = new Person { FirstName = "AndCloud", LastName = "AndTerm", Bio = "expertise in cloud systems" };
+        var computingOnly = new Person { FirstName = "AndComputing", LastName = "AndTerm", Bio = "distributed computing research" };
+        var both = new Person { FirstName = "AndBoth", LastName = "AndTerm", Bio = "cloud computing platforms" };
+
+        await this.Graph.CreateNodeAsync(cloudOnly, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(computingOnly, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(both, null, TestContext.Current.CancellationToken);
+
+        var results = await this.Graph.SearchNodes<Person>("cloud computing").ToListAsync(TestContext.Current.CancellationToken);
+
+        // ALL terms must match: only the node whose text contains both "cloud" and "computing".
+        Assert.Single(results);
+        Assert.Equal(both.Id, results[0].Id);
+    }
+
+    [Fact]
+    public async Task Search_MatchesWholeTokenButNotSubToken()
+    {
+        var person = new Person { FirstName = "Holiday", LastName = "Planner", Bio = "planning a long vacation abroad" };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+
+        var wholeToken = await this.Graph.SearchNodes<Person>("vacation").ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Single(wholeToken);
+        Assert.Equal(person.Id, wholeToken[0].Id);
+
+        // A sub-token must not match: "vaca" is not the whole word "vacation".
+        var subToken = await this.Graph.SearchNodes<Person>("vaca").ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Empty(subToken);
+    }
+
+    [Fact]
+    public async Task Search_WithMetacharacters_DoesNotThrowAndMatchesToken()
+    {
+        var person = new Person { FirstName = "Holiday", LastName = "Planner", Bio = "planning a long vacation abroad" };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+
+        // Live Lucene syntax in the raw query must be sanitized, not parsed: these must neither throw
+        // nor change semantics away from the plain "vacation" token.
+        var tilde = await this.Graph.SearchNodes<Person>("vacation~").ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Single(tilde);
+        Assert.Equal(person.Id, tilde[0].Id);
+
+        var star = await this.Graph.SearchNodes<Person>("vacation*").ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Single(star);
+        Assert.Equal(person.Id, star[0].Id);
+    }
+
+    [Fact]
+    public async Task SearchAsTraversalSource_IsRejectedWithNamedError()
+    {
+        // TODO(#295): search-as-source is rejected at translation time until #295 lands. The query
+        // never executes, so no fixture data is required; it is gated under FullTextSearch like the
+        // rest of this suite.
+        var query = this.Graph.Nodes<Person>()
+            .Search("anything")
+            .Traverse<Knows, Person>();
+
+        var exception = await Assert.ThrowsAsync<GraphQueryTranslationException>(
+            async () => await query.ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("Search", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Traverse", exception.Message, StringComparison.Ordinal);
     }
 }

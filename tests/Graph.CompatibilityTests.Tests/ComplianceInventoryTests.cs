@@ -30,7 +30,10 @@ public sealed class ComplianceInventoryTests
     // CanQueryPolymorphicBaseTypeAcrossSubtypeLabels (MultiLabelMatch), CanOrderByBareEntity
     // (OrderByEntity), and CanProjectComplexCollectionSize (PatternSizeProjection). OptionalTraversal
     // uses the two pre-existing null-propagating navigation contracts in IQueryTests.
-    private const int ExpectedTotalTestMethods = 370;
+    // +10 for ISubgraphCreationTests (atomic node–relationship–node subgraph create, #45).
+    // +4 for #288: four new IFullTextSearchTests methods (multi-term AND, whole-token vs sub-token,
+    // metacharacter robustness, search-as-source rejection).
+    private const int ExpectedTotalTestMethods = 384;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

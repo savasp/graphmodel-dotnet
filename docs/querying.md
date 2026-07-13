@@ -505,10 +505,12 @@ var prefixSearch = await graph.Nodes<Person>()
 ### Search Features
 
 - **Case Insensitive**: All search operations are case-insensitive by default
-- **Multi-word Support**: Search for phrases like "machine learning" or "artificial intelligence"
-- **Property Control**: Use `[Property(IncludeInFullTextSearch = false)]` to exclude properties from search
+- **Exact-token matching**: Terms match whole words, not substrings — searching "vaca" does not match "vacation"
+- **Multi-word AND**: A multi-term query such as `Search("machine learning")` matches an entity only when **all** terms match, in any order and at any distance (not just when any one term matches)
+- **Property Control**: Use `[Property(IncludeInFullTextSearch = false)]` to exclude properties from search; only the entity's own string properties are searched (complex-property value nodes are not)
 - **Automatic Indexing**: Full-text indexes are created and managed automatically
 - **LINQ Integration**: Seamlessly integrate search into existing LINQ query chains
+- **Unordered results**: Search result order is unspecified; add an explicit `OrderBy` when order matters
 
 ## Combining Node and Relationship Queries
 

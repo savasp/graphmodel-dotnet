@@ -148,6 +148,20 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
+    public void SearchAsTraversalSource_IsRejectedWithNamedError()
+    {
+        // TODO(#295): search-as-source is rejected at the shared front-end until #295 lands.
+        var query = Root<Person>().Search("engineer").Traverse<Knows, Company>();
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(
+            () => GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Contains("Search", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Traverse", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("#295", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RelationshipQuery_ProducesRelationshipRoot()
     {
         var model = GraphQueryModelBuilder.Build(Root<Knows>().Expression);

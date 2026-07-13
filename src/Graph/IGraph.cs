@@ -145,6 +145,57 @@ public interface IGraph
         where TRelationship : class, IRelationship;
 
     /// <summary>
+    /// Creates a node–relationship–node subgraph — both endpoint nodes and the relationship that
+    /// connects them — as a single atomic operation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The whole subgraph (both endpoint nodes, all of their complex-property value-node subtrees,
+    /// and the edge) is created as one transactional unit: if any part fails, nothing is created.
+    /// The relationship's <see cref="IRelationship.Direction"/> is honored for the stored edge.
+    /// </para>
+    /// <para>
+    /// <paramref name="relationship"/>'s <see cref="IRelationship.StartNodeId"/> and
+    /// <see cref="IRelationship.EndNodeId"/> must equal <paramref name="source"/>'s and
+    /// <paramref name="target"/>'s <see cref="IEntity.Id"/> respectively; otherwise an
+    /// <see cref="ArgumentException"/> is thrown.
+    /// </para>
+    /// <para>
+    /// By default both endpoint nodes are created and the operation fails atomically if an endpoint
+    /// id already exists. Set <see cref="GraphOperationOptions.CreateMissingEndpoints"/> to
+    /// <see langword="true"/> to instead merge each endpoint by id — an existing node is reused
+    /// entirely as-is (both its simple properties and its existing complex-property subtrees are left
+    /// untouched, and the passed-in endpoint object's properties are ignored for it), while a missing
+    /// endpoint is created with its full properties and complex-property subtree. The edge is always
+    /// created.
+    /// </para>
+    /// </remarks>
+    /// <typeparam name="TSource">The type of the source (start) node</typeparam>
+    /// <typeparam name="TRelationship">The type of the relationship</typeparam>
+    /// <typeparam name="TTarget">The type of the target (end) node</typeparam>
+    /// <param name="source">The source (start) node</param>
+    /// <param name="relationship">The relationship connecting the two nodes</param>
+    /// <param name="target">The target (end) node</param>
+    /// <param name="options">Options controlling how the endpoint nodes are handled.
+    /// If null, the default (create both endpoints) is used.</param>
+    /// <param name="transaction">The transaction to use.
+    /// If null, a new transaction will be automatically created and used.</param>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
+    /// <exception cref="ArgumentException">Thrown when an argument is null, or when the relationship
+    /// endpoints do not match the source and target node ids.</exception>
+    /// <exception cref="GraphException">Thrown when the subgraph cannot be created or there is another issue</exception>
+    Task CreateAsync<TSource, TRelationship, TTarget>(
+        TSource source,
+        TRelationship relationship,
+        TTarget target,
+        GraphOperationOptions? options = null,
+        IGraphTransaction? transaction = null,
+        CancellationToken cancellationToken = default)
+        where TSource : class, INode
+        where TRelationship : class, IRelationship
+        where TTarget : class, INode;
+
+    /// <summary>
     /// Updates an existing node in the graph with options for relationship handling
     /// </summary>
     /// <typeparam name="TNode">The type of the node</typeparam>

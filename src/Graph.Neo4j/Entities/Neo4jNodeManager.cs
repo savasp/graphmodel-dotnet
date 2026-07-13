@@ -357,7 +357,7 @@ internal sealed class Neo4jNodeManager(GraphContext context)
         return records.Count > 0 ? records[0]["elementId"].As<string>() : null;
     }
 
-    private void ValidateNodeProperties<TNode>(TNode node) where TNode : class, Graph.INode
+    internal void ValidateNodeProperties<TNode>(TNode node) where TNode : class, Graph.INode
     {
         // For DynamicNode, validate against existing schemas if any
         if (node is DynamicNode dynamicNode)
