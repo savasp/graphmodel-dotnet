@@ -25,7 +25,11 @@ public sealed class ComplianceInventoryTests
     // comprehensions and TraversePathAndGroupBy (gated on CallSubqueries), plus the ungated
     // CanCombineNodeAndRelationshipQueries. CanProjectRelationshipCounts stays skipped pending a
     // node relationship-count (degree) projection surface (#124).
-    private const int ExpectedTotalTestMethods = 366;
+    // +4 for #294: capability-certifying tests in IAdvancedQueryTests -
+    // CanQueryPolymorphicBaseTypeAcrossSubtypeLabels (MultiLabelMatch), CanOrderByBareEntity
+    // (OrderByEntity), CanProjectThroughOptionalComplexPropertyRetainingOwnersWithoutIt
+    // (OptionalTraversal), and CanProjectComplexCollectionSize (PatternSizeProjection).
+    private const int ExpectedTotalTestMethods = 370;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

@@ -25,7 +25,11 @@ public enum GraphCapability
     Transactions,
 
     /// <summary>
-    /// Transactions nested within an already-open transaction.
+    /// Transactions nested within an already-open transaction (savepoint-style semantics where an
+    /// inner transaction can commit or roll back independently of its enclosing one). Reserved: the
+    /// in-tree Neo4j provider exposes only independent top-level transactions
+    /// (<see cref="IGraphTransaction"/> via <c>GetTransactionAsync</c> takes no parent), so there is
+    /// no user-drivable nested-transaction surface to certify yet.
     /// </summary>
     NestedTransactions,
 
@@ -58,13 +62,17 @@ public enum GraphCapability
     OrderByEntity,
 
     /// <summary>
-    /// Shortest-path traversal queries. Reserved for future use.
+    /// Shortest-path traversal queries. Reserved for future use: no query construct references it
+    /// yet, so there is no user-drivable surface to certify.
     /// </summary>
     ShortestPath,
 
     /// <summary>
     /// Traversals where a relationship hop may be absent from the result without excluding the
-    /// matched entity (optional/outer-join-style traversal). Reserved for future use.
+    /// matched entity (optional/outer-join-style traversal). Backs optional complex-property
+    /// navigation: a query that reads through a complex property some owners may lack lowers to an
+    /// <c>OPTIONAL MATCH</c>, so owners without the property survive (with a null leaf) rather than
+    /// being filtered out.
     /// </summary>
     OptionalTraversal
 }

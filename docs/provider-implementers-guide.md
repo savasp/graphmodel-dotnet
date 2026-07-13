@@ -308,3 +308,25 @@ Under strict mode, the guard also promotes `GraphProviderUnavailableException` (
 - **"Compatible"** means: 0 failed, every skip is a declared-capability skip, and the executed count meets the guard's floor for your declared capabilities.
 
 See `examples/CompatibilityTests.SampleHarness` for a minimal compiling skeleton of all three pieces, and `tests/Graph.InMemory.Tests` for the full in-tree worked implementation.
+
+### 6. Capability coverage map
+
+Every optional `GraphCapability` is either certified by a `[RequiresCapability]`-gated test (which runs where the harness declares the capability and skips-with-reason where it doesn't) or recorded here as having no certifiable user surface yet. The last three columns show what the in-tree harnesses do today (Neo4j declares `CapabilitySet.All`; the in-memory harness declares Transactions, ComplexPropertyCascade, CallSubqueries, PatternSizeProjection; the AGE public harness declares Transactions, ComplexPropertyCascade).
+
+| Capability | Certifying test(s) | Attribution | Neo4j | in-memory | AGE |
+|---|---|---|---|---|---|
+| `FullTextSearch` | `IFullTextSearchTests` (all methods) | interface | pass | skip | skip |
+| `Transactions` | `ITransactionTests` (all methods) | interface | pass | pass | pass |
+| `ComplexPropertyCascade` | `IComplexObjectGraphSerializationTests` (all methods) | interface | pass | pass | pass |
+| `CallSubqueries` | `IAdvancedQueryTests` correlated-collection pattern comprehensions (`CanQueryWith{Basic,Filtered,Aggregated,TimeBased,Ordered,Grouped}PatternComprehension`, `CanQueryWithTraversePathAndGroupBy`) | method | pass | pass | skip |
+| `PatternSizeProjection` | `IAdvancedQueryTests.CanProjectComplexCollectionSize` | method | pass | pass | skip |
+| `MultiLabelMatch` | `IAdvancedQueryTests.CanQueryPolymorphicBaseTypeAcrossSubtypeLabels` | method | pass | skip | skip |
+| `OrderByEntity` | `IAdvancedQueryTests.CanOrderByBareEntity` | method | pass | skip | skip |
+| `OptionalTraversal` | `IAdvancedQueryTests.CanProjectThroughOptionalComplexPropertyRetainingOwnersWithoutIt` | method | pass | skip | skip |
+| `NestedTransactions` | _record only_ | — | — | — | — |
+| `ShortestPath` | _record only_ | — | — | — | — |
+
+Two capabilities are records rather than gated tests because they have no user-drivable surface to certify:
+
+- **`NestedTransactions`** — the in-tree Neo4j provider exposes only independent top-level transactions: `IGraph.GetTransactionAsync` takes no parent, and each call opens its own driver session and Bolt transaction. There is no savepoint/nested-transaction construct to drive, so Neo4j's declaration comes only from the blanket `CapabilitySet.All`. When a provider grows a genuine nested-transaction surface, add a gated test here and stop relying on the blanket declaration.
+- **`ShortestPath`** — reserved; no query construct references it, so there is nothing to exercise yet.
