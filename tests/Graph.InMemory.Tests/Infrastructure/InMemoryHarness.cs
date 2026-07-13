@@ -57,4 +57,6 @@ public sealed class InMemoryHarness : IGraphProviderTestHarness
 
         return ValueTask.FromResult(store.CountNodesByProperty(label, propertyName, values));
     }
+
+    public bool IsExpectedConcurrentUpdateException(Exception exception) => false;
 }

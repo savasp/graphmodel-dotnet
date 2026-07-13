@@ -72,4 +72,9 @@ public sealed class Neo4jHarness : IGraphProviderTestHarness
         await transaction.CommitAsync();
         return record["count"].As<int>();
     }
+
+    /// <inheritdoc/>
+    public bool IsExpectedConcurrentUpdateException(Exception exception) =>
+        exception is GraphException { InnerException: Neo4jException { IsRetriable: true } } or
+            Neo4jException { IsRetriable: true };
 }

@@ -28,4 +28,6 @@ public sealed class FakeHarness : IGraphProviderTestHarness
         string propertyName,
         IReadOnlyCollection<string> values,
         CancellationToken cancellationToken) => ValueTask.FromResult(0);
+
+    public bool IsExpectedConcurrentUpdateException(Exception exception) => false;
 }

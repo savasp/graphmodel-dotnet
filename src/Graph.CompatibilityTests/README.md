@@ -27,6 +27,8 @@ public sealed class MyProviderHarness : IGraphProviderTestHarness
         IGraph graph, string label, string propertyName, IReadOnlyCollection<string> values,
         CancellationToken ct) =>
         /* provider-native count used only for complex-property orphan assertions */;
+    public bool IsExpectedConcurrentUpdateException(Exception exception) =>
+        /* true only for provider-specific retryable write-contention errors */;
 }
 
 // 2. Declare one intermediate base class.

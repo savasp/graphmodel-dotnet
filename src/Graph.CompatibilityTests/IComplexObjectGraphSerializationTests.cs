@@ -167,6 +167,7 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
             UpdateInOwnTransactionAsync(owner with { Address = payloadA }, updateBarrier, cancellationToken),
             UpdateInOwnTransactionAsync(owner with { Address = payloadB }, updateBarrier, cancellationToken));
 
+        AssertExpectedConcurrentFailures(failures);
         Assert.True(
             failures.Any(failure => failure is null),
             $"Both concurrent updates failed: {failures[0]}; {failures[1]}");
@@ -181,7 +182,7 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
     }
 
     [Fact]
-    public async Task ConcurrentCollectionUpdates_SeparateTransactions_OneWritersItemsNoOrphans()
+    public async Task ConcurrentCollectionUpdates_SeparateTransactions_OneWriterItemsNoOrphans()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var original = new List<ContractAddressValue>
@@ -208,6 +209,7 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
             UpdateInOwnTransactionAsync(owner with { Addresses = payloadA }, updateBarrier, cancellationToken),
             UpdateInOwnTransactionAsync(owner with { Addresses = payloadB }, updateBarrier, cancellationToken));
 
+        AssertExpectedConcurrentFailures(failures);
         Assert.True(
             failures.Any(failure => failure is null),
             $"Both concurrent updates failed: {failures[0]}; {failures[1]}");
@@ -298,6 +300,12 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
             .ToListAsync(cancellationToken);
         var fetched = Assert.Single(viaComplexValue, candidate => candidate.Id == owner.Id);
         Assert.Equal("Complex Austin", fetched.Address.City);
+
+        var splitAcrossTargets = await Graph.Nodes<ContractAddressOwner>()
+            .Where(candidate => candidate.Address.City == "Domain Boulder")
+            .Where(candidate => candidate.Address.Street == "1st Ave")
+            .ToListAsync(cancellationToken);
+        Assert.DoesNotContain(splitAcrossTargets, candidate => candidate.Id == owner.Id);
     }
 
     private async Task<int> CountContractAddressValuesAsync(
@@ -338,9 +346,11 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         CancellationToken cancellationToken)
         where TNode : class, INode
     {
+        var barrierSignaled = false;
         try
         {
             await using var transaction = await Graph.GetTransactionAsync(cancellationToken);
+            barrierSignaled = true;
             await updateBarrier.SignalAndWaitAsync(cancellationToken);
             await Graph.UpdateNodeAsync(node, transaction, cancellationToken);
             await transaction.CommitAsync();
@@ -352,7 +362,22 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
         }
         catch (Exception exception)
         {
+            if (!barrierSignaled)
+            {
+                updateBarrier.Signal();
+            }
+
             return exception;
+        }
+    }
+
+    private void AssertExpectedConcurrentFailures(IEnumerable<Exception?> failures)
+    {
+        foreach (var failure in failures.OfType<Exception>())
+        {
+            Assert.True(
+                Harness.IsExpectedConcurrentUpdateException(failure),
+                $"Unexpected concurrent update failure: {failure}");
         }
     }
 
@@ -364,12 +389,16 @@ public interface IComplexObjectGraphSerializationTests : IGraphTest
 
         public async Task SignalAndWaitAsync(CancellationToken cancellationToken)
         {
+            Signal();
+            await allParticipantsReady.Task.WaitAsync(cancellationToken);
+        }
+
+        public void Signal()
+        {
             if (Interlocked.Decrement(ref remainingParticipants) == 0)
             {
                 allParticipantsReady.TrySetResult(true);
             }
-
-            await allParticipantsReady.Task.WaitAsync(cancellationToken);
         }
     }
 }

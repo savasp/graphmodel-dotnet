@@ -120,5 +120,8 @@ public sealed class AgeHarness : IGraphProviderTestHarness
         return record["node_count"].As<int>();
     }
 
+    public bool IsExpectedConcurrentUpdateException(Exception exception) =>
+        exception.GetBaseException() is PostgresException { SqlState: "40001" or "40P01" };
+
     private static string NewGraphName() => $"cvoya_tck_{Guid.NewGuid():N}";
 }

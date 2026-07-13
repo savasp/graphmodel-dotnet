@@ -261,6 +261,12 @@ public sealed class MyProviderHarness : IGraphProviderTestHarness
         // Execute the narrowest provider-native count needed by the complex-property orphan
         // contracts. This is not a general raw-query escape hatch.
     }
+
+    public bool IsExpectedConcurrentUpdateException(Exception exception)
+    {
+        // Return true only for provider-specific serialization, deadlock, or retryable write
+        // conflicts that may legitimately reject one of two same-node updates.
+    }
 }
 ```
 

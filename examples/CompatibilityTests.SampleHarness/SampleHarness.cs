@@ -46,4 +46,7 @@ public sealed class SampleHarness : IGraphProviderTestHarness
         IReadOnlyCollection<string> values,
         CancellationToken cancellationToken) =>
         throw new GraphProviderUnavailableException("The sample harness has no backing store.");
+
+    /// <inheritdoc/>
+    public bool IsExpectedConcurrentUpdateException(Exception exception) => false;
 }

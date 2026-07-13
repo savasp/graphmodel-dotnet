@@ -52,9 +52,9 @@ internal sealed class InMemoryQueryExecutor(
 
         var deferred = new List<PredicateFragment>();
         var complexTraversals = model.Traversal.Where(step => step.IsComplexPropertyTraversal).ToList();
-        foreach (var predicate in predicates)
+        if (predicates.Count > 0)
         {
-            rows = FilterRows(rows, predicate, deferred, complexTraversals);
+            rows = FilterRows(rows, predicates, deferred, complexTraversals);
         }
 
         var pairs = Project(rows, model);
@@ -569,74 +569,146 @@ internal sealed class InMemoryQueryExecutor(
 
     private IEnumerable<Row> FilterRows(
         IEnumerable<Row> rows,
-        PredicateFragment predicate,
+        IReadOnlyList<PredicateFragment> predicates,
         List<PredicateFragment> deferred,
         IReadOnlyList<TraversalStep> complexTraversals)
     {
-        var parameterType = predicate.Predicate.Parameters[0].Type;
-
         return rows.Where(row =>
         {
-            var input = ResolveInput(row, predicate.Alias, parameterType);
-            if (input is null && !RowCanBind(row, predicate.Alias, parameterType))
+            var boundPredicates = new List<BoundPredicate>(predicates.Count);
+            foreach (var predicate in predicates)
             {
-                // Applies to the projected value; evaluated after projection. Deferring inside
-                // the first row that fails to bind keeps binding decisions per-query.
-                if (!deferred.Contains(predicate))
+                var parameterType = predicate.Predicate.Parameters[0].Type;
+                var input = ResolveInput(row, predicate.Alias, parameterType);
+                if (input is null && !RowCanBind(row, predicate.Alias, parameterType))
                 {
-                    deferred.Add(predicate);
+                    // Applies to the projected value; evaluated after projection. Deferring inside
+                    // the first row that fails to bind keeps binding decisions per-query.
+                    if (!deferred.Contains(predicate))
+                    {
+                        deferred.Add(predicate);
+                    }
+
+                    continue;
                 }
 
-                return true;
+                boundPredicates.Add(new BoundPredicate(predicate.Predicate, input));
             }
 
-            return EvaluatePredicate(predicate.Predicate, input) ||
-                EvaluatePredicateAgainstCollidingComplexTargets(predicate.Predicate, input, complexTraversals);
+            return boundPredicates.All(predicate => EvaluatePredicate(predicate.Predicate, predicate.Input)) ||
+                EvaluatePredicatesAgainstCollidingComplexTargets(boundPredicates, complexTraversals);
         });
     }
 
-    private bool EvaluatePredicateAgainstCollidingComplexTargets(
-        LambdaExpression predicate,
-        object? input,
+    private bool EvaluatePredicatesAgainstCollidingComplexTargets(
+        IReadOnlyList<BoundPredicate> predicates,
         IReadOnlyList<TraversalStep> complexTraversals)
     {
-        if (input is not INode sourceNode)
+        var slots = ComplexTargetSlots(predicates, complexTraversals);
+        if (slots.Count == 0)
         {
             return false;
         }
 
-        foreach (var step in complexTraversals)
+        var replacements = new Dictionary<(string SourceId, Type SourceType, PropertyInfo Property), object>();
+        return EvaluateCombinations(slotIndex: 0);
+
+        bool EvaluateCombinations(int slotIndex)
         {
-            if (step.RelationshipType is not { } relationshipType || step.TargetType is not { } targetType)
+            if (slotIndex == slots.Count)
             {
-                continue;
+                return predicates.All(EvaluateWithReplacements);
             }
 
-            var property = GraphDataModel.GetComplexProperties(input.GetType()).FirstOrDefault(candidate =>
-                candidate.PropertyType == targetType &&
-                string.Equals(
-                    GraphDataModel.GetComplexPropertyRelationshipType(candidate),
-                    relationshipType,
-                    StringComparison.Ordinal));
-            if (property is null)
+            var slot = slots[slotIndex];
+            var key = (slot.SourceId, slot.SourceType, slot.Property);
+            foreach (var value in slot.Values)
             {
-                continue;
-            }
-
-            var targetLabel = Labels.GetLabelFromType(targetType);
-            foreach (var target in CollidingComplexTargets(sourceNode.Id, relationshipType, targetLabel))
-            {
-                var value = _reader.MaterializeComplexValue(target, _state, targetType);
-                var rewrittenBody = new ComplexPropertyValueRewriter(property, value).Visit(predicate.Body);
-                var rewritten = Expression.Lambda(rewrittenBody!, predicate.Parameters);
-                if (EvaluatePredicate(rewritten, input))
+                replacements[key] = value;
+                if (EvaluateCombinations(slotIndex + 1))
                 {
                     return true;
                 }
             }
+
+            replacements.Remove(key);
+            return false;
         }
 
-        return false;
+        bool EvaluateWithReplacements(BoundPredicate predicate)
+        {
+            if (predicate.Input is not INode sourceNode)
+            {
+                return EvaluatePredicate(predicate.Predicate, predicate.Input);
+            }
+
+            var propertyReplacements = replacements
+                .Where(pair => pair.Key.SourceId == sourceNode.Id && pair.Key.SourceType == predicate.Input.GetType())
+                .ToDictionary(pair => pair.Key.Property, pair => pair.Value);
+            var rewrittenBody = new ComplexPropertyValueRewriter(
+                predicate.Predicate.Parameters[0],
+                propertyReplacements).Visit(predicate.Predicate.Body);
+            var rewritten = Expression.Lambda(rewrittenBody!, predicate.Predicate.Parameters);
+            return EvaluatePredicate(rewritten, predicate.Input);
+        }
+    }
+
+    private IReadOnlyList<ComplexTargetSlot> ComplexTargetSlots(
+        IReadOnlyList<BoundPredicate> predicates,
+        IReadOnlyList<TraversalStep> complexTraversals)
+    {
+        var slots = new Dictionary<(string SourceId, Type SourceType, PropertyInfo Property), ComplexTargetSlot>();
+        foreach (var predicate in predicates)
+        {
+            if (predicate.Input is not INode sourceNode)
+            {
+                continue;
+            }
+
+            var sourceType = predicate.Input.GetType();
+            foreach (var step in complexTraversals)
+            {
+                if (step.RelationshipType is not { } relationshipType || step.TargetType is not { } targetType)
+                {
+                    continue;
+                }
+
+                var property = GraphDataModel.GetComplexProperties(sourceType).FirstOrDefault(candidate =>
+                    candidate.PropertyType == targetType &&
+                    string.Equals(
+                        GraphDataModel.GetComplexPropertyRelationshipType(candidate),
+                        relationshipType,
+                        StringComparison.Ordinal));
+                if (property is null || !ReferencesParameterProperty(predicate.Predicate, property))
+                {
+                    continue;
+                }
+
+                var key = (sourceNode.Id, sourceType, property);
+                if (slots.ContainsKey(key))
+                {
+                    continue;
+                }
+
+                var targetLabel = Labels.GetLabelFromType(targetType);
+                var values = CollidingComplexTargets(sourceNode.Id, relationshipType, targetLabel)
+                    .Select(target => _reader.MaterializeComplexValue(target, _state, targetType))
+                    .ToList();
+                if (values.Count > 0)
+                {
+                    slots.Add(key, new ComplexTargetSlot(sourceNode.Id, sourceType, property, values));
+                }
+            }
+        }
+
+        return [.. slots.Values];
+    }
+
+    private static bool ReferencesParameterProperty(LambdaExpression predicate, PropertyInfo property)
+    {
+        var finder = new ParameterPropertyAccessFinder(predicate.Parameters[0], property);
+        finder.Visit(predicate.Body);
+        return finder.Found;
     }
 
     private IEnumerable<NodeRecord> CollidingComplexTargets(
@@ -665,13 +737,42 @@ internal sealed class InMemoryQueryExecutor(
         }
     }
 
-    private sealed class ComplexPropertyValueRewriter(PropertyInfo property, object value) : ExpressionVisitor
+    private sealed class ComplexPropertyValueRewriter(
+        ParameterExpression parameter,
+        IReadOnlyDictionary<PropertyInfo, object> replacements) : ExpressionVisitor
     {
         protected override Expression VisitMember(MemberExpression node) =>
-            node.Member == property
+            node.Expression == parameter &&
+            node.Member is PropertyInfo property &&
+            replacements.TryGetValue(property, out var value)
                 ? Expression.Constant(value, property.PropertyType)
                 : base.VisitMember(node);
     }
+
+    private sealed class ParameterPropertyAccessFinder(
+        ParameterExpression parameter,
+        PropertyInfo property) : ExpressionVisitor
+    {
+        public bool Found { get; private set; }
+
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            if (node.Expression == parameter && node.Member == property)
+            {
+                Found = true;
+            }
+
+            return Found ? node : base.VisitMember(node);
+        }
+    }
+
+    private sealed record BoundPredicate(LambdaExpression Predicate, object? Input);
+
+    private sealed record ComplexTargetSlot(
+        string SourceId,
+        Type SourceType,
+        PropertyInfo Property,
+        IReadOnlyList<object> Values);
 
     private static bool RowCanBind(Row row, string? alias, Type parameterType)
     {

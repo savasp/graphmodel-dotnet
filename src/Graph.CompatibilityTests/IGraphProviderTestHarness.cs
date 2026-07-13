@@ -58,4 +58,13 @@ public interface IGraphProviderTestHarness : IAsyncLifetime
         string propertyName,
         IReadOnlyCollection<string> values,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Determines whether <paramref name="exception"/> is an expected provider-specific
+    /// concurrency conflict from two transactions updating the same node.
+    /// </summary>
+    /// <param name="exception">The exception raised by an update or commit.</param>
+    /// <returns><see langword="true"/> only for errors the provider may legitimately raise under
+    /// write contention; otherwise, <see langword="false"/>.</returns>
+    bool IsExpectedConcurrentUpdateException(Exception exception);
 }
