@@ -30,6 +30,39 @@ public class GroupByTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task GroupByStartNode_PredicateCountArrayAndSourceOrdering()
+    {
+        var query = Root.Nodes<Person>()
+            .PathSegments<Person, Knows, Person>()
+            .GroupBy(s => s.StartNode)
+            .Select(group => new
+            {
+                Name = group.Key.FirstName,
+                YoungFriendCount = group.Count(segment => segment.EndNode.Age < 30),
+                Friends = group
+                    .OrderBy(segment => segment.StartNode.Age)
+                    .Select(segment => new { segment.EndNode.FirstName, segment.EndNode.Age })
+                    .ToArray(),
+            });
+        return VerifyTranslation((IQueryable<object>)query);
+    }
+
+    [Fact]
+    public Task GroupByStartNode_OuterOrderingThrowsInsteadOfBeingIgnored()
+    {
+        var query = Root.Nodes<Person>()
+            .PathSegments<Person, Knows, Person>()
+            .GroupBy(s => s.StartNode)
+            .Select(group => new
+            {
+                Name = group.Key.FirstName,
+                Friends = group.Select(segment => segment.EndNode.FirstName).ToList(),
+            })
+            .OrderBy(result => result.Name);
+        return VerifyTranslationThrows((IQueryable<object>)query);
+    }
+
+    [Fact]
     public Task GroupByStartNode_FilteredCollectionAndCount()
     {
         var query = Root.Nodes<Person>()

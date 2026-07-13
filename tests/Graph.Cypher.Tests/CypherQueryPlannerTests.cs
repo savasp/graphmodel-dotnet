@@ -113,6 +113,37 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_ValidatesCapabilitiesInsideScopedCallSubquery()
+    {
+        Expression<Func<IGraphPathSegment<Person, Knows, Person>, Person>> key = segment => segment.StartNode;
+        Expression<Func<IGrouping<Person, IGraphPathSegment<Person, Knows, Person>>, object>> projection = group =>
+            new
+            {
+                Friends = group
+                    .OrderBy(segment => segment.EndNode)
+                    .Select(segment => segment.EndNode.Name)
+                    .ToList()
+            };
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows),
+            isComplexPropertyTraversal: false,
+            sourceAlias: "src",
+            targetAlias: "tgt");
+
+        AssertMissingCapability(
+            GraphCapability.OrderByEntity,
+            Model(
+                traversal: [traversal],
+                projection: new ProjectionShape(ProjectionKind.Scalar, projection),
+                groupBy: new GroupByFragment(key, null, null)));
+    }
+
+    [Fact]
     public void Plan_SameNamedUnmarkedDynamicAccessorIsRejected()
     {
         Expression<Func<DynamicNode, bool>> predicate = node =>

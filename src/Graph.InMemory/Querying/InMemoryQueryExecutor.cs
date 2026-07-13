@@ -571,7 +571,7 @@ internal sealed class InMemoryQueryExecutor(
 
     private IEnumerable<Row> FilterRows(
         IEnumerable<Row> rows,
-        IReadOnlyList<PredicateFragment> predicates,
+        List<PredicateFragment> predicates,
         List<PredicateFragment> deferred,
         IReadOnlyList<TraversalStep> complexTraversals)
     {

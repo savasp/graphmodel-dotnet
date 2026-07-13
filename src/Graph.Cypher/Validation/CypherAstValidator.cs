@@ -37,13 +37,25 @@ public sealed class CypherAstValidator : ICypherPass
                         ValidateAlias(imported, scope);
                     }
 
+                    if (subquery.Body[^1] is not ReturnClause subReturn)
+                    {
+                        throw new GraphException("A scoped CALL subquery must end with a RETURN clause.");
+                    }
+
                     var innerScope = new HashSet<string>(subquery.ImportedVariables, StringComparer.Ordinal);
                     ValidateClauses(subquery.Body, innerScope, parameters);
-                    if (subquery.Body.Count > 0 && subquery.Body[^1] is ReturnClause subReturn)
+                    foreach (var item in subReturn.Items)
                     {
-                        foreach (var item in subReturn.Items.Where(item => item.Alias is not null))
+                        var exported = item.Alias ?? (item.Expression as VariableRef)?.Alias;
+                        if (exported is null)
                         {
-                            scope.Add(item.Alias!);
+                            continue;
+                        }
+
+                        if (!scope.Add(exported))
+                        {
+                            throw new GraphException(
+                                $"Scoped CALL subquery output '{exported}' conflicts with an outer-scope variable.");
                         }
                     }
 

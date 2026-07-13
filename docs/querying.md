@@ -303,7 +303,9 @@ aggregate a list):
 ```
 
 Correlated collection projections require the provider to declare the `CallSubqueries`
-capability; providers that do not will decline the query at translation time.
+capability; projections that use `group.Count()` also require `PatternSizeProjection`. Providers
+that do not declare the required capabilities decline the query at translation time. As with LINQ
+`GroupBy`, roots with no matching path segment do not produce an empty group row.
 
 ## Aggregations
 

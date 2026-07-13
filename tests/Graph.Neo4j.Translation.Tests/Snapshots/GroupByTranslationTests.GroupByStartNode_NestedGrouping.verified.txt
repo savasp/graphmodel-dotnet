@@ -1,10 +1,10 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-WHERE src.FirstName = $p0
+WHERE src.FirstName = $p0 AND EXISTS { MATCH (src)-[r:KNOWS]->(tgt:Person|Manager) }
 CALL {
   WITH src
   MATCH (src)-[r:KNOWS]->(tgt:Person|Manager)
-  WITH CASE WHEN tgt.Age >= $p1 THEN $p2 ELSE $p3 END AS __key, tgt, r
+  WITH CASE WHEN tgt.Age >= $p1 THEN $p2 ELSE $p3 END AS __key, src, tgt, r
   WITH __key AS __key, count(tgt) AS __agg1, collect(tgt.FirstName) AS __agg2
   RETURN collect({ Group: __key, Count: __agg1, Names: __agg2 }) AS __group0
 }

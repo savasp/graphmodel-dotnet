@@ -1,0 +1,14 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WHERE EXISTS { MATCH (src)-[r:KNOWS]->(tgt:Person|Manager) }
+CALL {
+  WITH src
+  MATCH (src)-[r:KNOWS]->(tgt:Person|Manager)
+  WITH src, tgt, r
+  ORDER BY src.Age
+  RETURN collect({ FirstName: tgt.FirstName, Age: tgt.Age }) AS __group0
+}
+RETURN src.FirstName AS Name, COUNT { MATCH (src)-[r:KNOWS]->(tgt:Person|Manager) WHERE tgt.Age < $p0 } AS YoungFriendCount, __group0 AS Friends
+
+== Parameters ==
+p0 = 30

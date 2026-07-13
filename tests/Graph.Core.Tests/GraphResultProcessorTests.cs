@@ -74,6 +74,36 @@ public class GraphResultProcessorTests
     }
 
     [Fact]
+    public async Task NestedProjectionCollections_MaterializeNonEmptyAndEmptyArrays()
+    {
+        var records = new[]
+        {
+            ProjectionRecord(
+                "Alice",
+                [
+                    GraphValue.Map(new Dictionary<string, GraphValue>
+                    {
+                        ["Name"] = GraphValue.Scalar("Bob"),
+                        ["Age"] = GraphValue.Scalar(25),
+                    }),
+                ]),
+            ProjectionRecord("Diana", []),
+        };
+        var materializer = new GraphResultMaterializer(factory, loggerFactory: null);
+
+        var results = await materializer.MaterializeAsync<List<CollectionProjection>>(
+            records,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(results);
+        Assert.Equal(2, results.Count);
+        var friend = Assert.Single(results[0].Friends);
+        Assert.Equal("Bob", friend.Name);
+        Assert.Equal(25, friend.Age);
+        Assert.Empty(results[1].Friends);
+    }
+
+    [Fact]
     public void WireFactories_CopyInputsAndRejectInvalidPaths()
     {
         var labels = new List<string> { "Person" };
@@ -95,6 +125,13 @@ public class GraphResultProcessorTests
                 ["Node"] = node,
                 ["ComplexProperties"] = GraphValue.List(complexProperties ?? []),
             }),
+        });
+
+    private static GraphRecord ProjectionRecord(string name, IReadOnlyList<GraphValue> friends) => new(
+        new Dictionary<string, GraphValue>
+        {
+            ["Name"] = GraphValue.Scalar(name),
+            ["Friends"] = GraphValue.List(friends),
         });
 
     private static GraphValue Node(
@@ -157,4 +194,8 @@ public class GraphResultProcessorTests
                 ["ComplexProperties"] = GraphValue.List([]),
             }),
         });
+
+    private sealed record CollectionProjection(string Name, FriendProjection[] Friends);
+
+    private sealed record FriendProjection(string Name, int Age);
 }

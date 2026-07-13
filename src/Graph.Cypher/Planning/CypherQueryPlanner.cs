@@ -169,6 +169,7 @@ public sealed class CypherQueryPlanner
         RequireCapability(GraphCapability.CallSubqueries, "GroupBy");
 
         var groupBy = model.GroupBy!;
+        RejectUnsupportedGroupByComposition(model, groupBy);
         if (model.Projection?.Selector is not { } selector ||
             StripConvert(selector.Body) is not NewExpression projection ||
             projection.Members is null)
@@ -205,6 +206,14 @@ public sealed class CypherQueryPlanner
                 rootPredicates.Add(lowerer.LowerLambda(predicate.Predicate, "src"));
             }
         }
+
+        // LINQ GroupBy only yields a group for keys present in the input sequence. The outer root
+        // match therefore must exclude nodes with no matching segment; otherwise Cypher would emit
+        // a root row with empty comprehensions/count zero while the in-memory provider emits no row.
+        rootPredicates.Add(new PatternSubqueryExpression(
+            PatternSubqueryKind.Exists,
+            BuildGroupPattern(traversal[0]),
+            CombineSegmentPredicates(segmentPredicates, innerPredicate: null, lowerer)));
 
         var groupParameter = selector.Parameters[0];
         var subqueries = new List<ICypherClause>();
@@ -313,6 +322,11 @@ public sealed class CypherQueryPlanner
                 "operation or a key member access");
         }
 
+        if (rewritten == keyParameter && typeof(INode).IsAssignableFrom(keyType))
+        {
+            return new EntityProjectionExpression("src", HasComplexProperties(keyType));
+        }
+
         return lowerer.LowerLambda(Expression.Lambda(rewritten, keyParameter), "src");
     }
 
@@ -321,7 +335,7 @@ public sealed class CypherQueryPlanner
     /// collection and returns a reference to its yielded column. A pattern comprehension cannot
     /// express these list aggregates, so the traversal is re-matched inside a <c>CALL { … }</c>.
     /// </summary>
-    private static CypherExpression BuildAggregateSubquery(
+    private static VariableRef BuildAggregateSubquery(
         GroupOperation operation,
         TraversalStep step,
         CypherExpression? predicate,
@@ -335,7 +349,8 @@ public sealed class CypherQueryPlanner
             body.Add(new WhereClause(predicate));
         }
 
-        var argument = operation.AggregateArgument is { } selector
+        var argumentSelector = operation.AggregateArgument ?? operation.Selector;
+        var argument = argumentSelector is { } selector
             ? lowerer.LowerLambda(selector, "src")
             : new VariableRef("tgt");
         body.Add(new ReturnClause(
@@ -350,7 +365,7 @@ public sealed class CypherQueryPlanner
     /// elements into a list, returning a reference to its yielded column. Pattern comprehensions
     /// cannot order, so the ordering happens on a <c>WITH … ORDER BY</c> inside a <c>CALL { … }</c>.
     /// </summary>
-    private static CypherExpression BuildOrderedCollectionSubquery(
+    private static VariableRef BuildOrderedCollectionSubquery(
         GroupOperation operation,
         TraversalStep step,
         CypherExpression? predicate,
@@ -370,7 +385,11 @@ public sealed class CypherQueryPlanner
         }
 
         body.Add(new WithClause(
-            [new ReturnItem(new VariableRef("tgt"), null), new ReturnItem(new VariableRef("r"), null)],
+            [
+                new ReturnItem(new VariableRef("src"), null),
+                new ReturnItem(new VariableRef("tgt"), null),
+                new ReturnItem(new VariableRef("r"), null),
+            ],
             distinct: false));
         body.Add(new OrderByClause([new OrderByItem(lowerer.LowerLambda(orderKey, "src"), operation.OrderDescending)]));
         body.Add(new ReturnClause(
@@ -385,7 +404,7 @@ public sealed class CypherQueryPlanner
     /// inner group, and collects the per-group summaries into a list. Returns a reference to its
     /// yielded column.
     /// </summary>
-    private static CypherExpression BuildNestedGroupSubquery(
+    private static VariableRef BuildNestedGroupSubquery(
         GroupOperation operation,
         TraversalStep step,
         CypherExpression? predicate,
@@ -413,6 +432,7 @@ public sealed class CypherQueryPlanner
         body.Add(new WithClause(
             [
                 new ReturnItem(lowerer.LowerLambda(nestedKey, "src"), keyAlias),
+                new ReturnItem(new VariableRef("src"), null),
                 new ReturnItem(new VariableRef("tgt"), null),
                 new ReturnItem(new VariableRef("r"), null),
             ],
@@ -470,7 +490,9 @@ public sealed class CypherQueryPlanner
                 GroupOperationKind.Count => Function("count", new VariableRef("tgt")),
                 GroupOperationKind.Aggregate => Function(
                     operation.AggregateFunction!,
-                    operation.AggregateArgument is { } selector ? lowerer.LowerLambda(selector, "src") : new VariableRef("tgt")),
+                    (operation.AggregateArgument ?? operation.Selector) is { } selector
+                        ? lowerer.LowerLambda(selector, "src")
+                        : new VariableRef("tgt")),
                 GroupOperationKind.Collection when operation.Selector is { } collectionSelector =>
                     Function("collect", LowerInnerProjection(collectionSelector, lowerer)),
                 _ => throw NotSupportedGroupBy("this nested group summary member shape is not supported"),
@@ -563,6 +585,43 @@ public sealed class CypherQueryPlanner
         } && typeof(IGraphPathSegment).IsAssignableFrom(parameter.Type);
     }
 
+    private static void RejectUnsupportedGroupByComposition(
+        GraphQueryModel model,
+        GroupByFragment groupBy)
+    {
+        if (model.Root is not NodeRoot and not DynamicRoot)
+        {
+            throw NotSupportedGroupBy("search and relationship roots are not supported");
+        }
+
+        if (model.SearchFilter is not null || model.Join is not null || model.SelectMany is not null ||
+            model.Union is not null || model.PathShape is not null)
+        {
+            throw NotSupportedGroupBy("search, joins, unions, and additional query fragments are not supported");
+        }
+
+        if (groupBy.ElementSelector is not null || groupBy.ResultSelector is not null)
+        {
+            throw NotSupportedGroupBy("GroupBy element and result selector overloads are not supported");
+        }
+
+        if (model.Distinct || model.Ordering.Count > 0 || model.Paging.Skip is not null ||
+            model.Paging.Take is not null || model.PostPaging is not null)
+        {
+            throw NotSupportedGroupBy(
+                "Distinct, outer ordering, and outer paging are not supported; materialize the grouped query first");
+        }
+
+        var traversal = model.Traversal.Where(step => !step.IsComplexPropertyTraversal).ToArray();
+        if (traversal is [{ Depth.Min: 1, Depth.Max: 1, RelationshipPredicates.Count: 0 }])
+        {
+            return;
+        }
+
+        throw NotSupportedGroupBy(
+            "the grouping traversal must be one hop and cannot carry relationship-predicate modifiers");
+    }
+
     private static bool TryUnwrapGroupOperation(
         Expression expression,
         ParameterExpression groupParameter,
@@ -578,6 +637,7 @@ public sealed class CypherQueryPlanner
         LambdaExpression? nestedKey = null;
         var kind = GroupOperationKind.Collection;
         var hasTerminal = false;
+        var operationAfterProjection = false;
         var current = expression;
 
         while (current is MethodCallExpression call &&
@@ -587,23 +647,56 @@ public sealed class CypherQueryPlanner
             switch (call.Method.Name)
             {
                 case nameof(Enumerable.Select):
-                    selector = ExtractLambda(call.Arguments[^1]);
+                    if (selector is not null)
+                    {
+                        throw NotSupportedGroupBy("multiple Select operations over a group are not supported");
+                    }
+
+                    selector = ExtractRequiredLambda(call.Arguments[^1], "Select");
+                    if (operationAfterProjection)
+                    {
+                        throw NotSupportedGroupBy(
+                            "Where, OrderBy, and GroupBy must precede Select in a correlated collection pipeline");
+                    }
+
                     break;
                 case nameof(Enumerable.Where):
                     predicate = predicate is null
-                        ? ExtractLambda(call.Arguments[^1])
+                        ? ExtractRequiredLambda(call.Arguments[^1], "Where")
                         : throw NotSupportedGroupBy("multiple Where filters over a group are not supported");
+                    operationAfterProjection = selector is null;
                     break;
                 case nameof(Enumerable.OrderBy) or nameof(Enumerable.OrderByDescending):
-                    orderKey = ExtractLambda(call.Arguments[^1]);
+                    if (orderKey is not null)
+                    {
+                        throw NotSupportedGroupBy("multiple OrderBy operations over a group are not supported");
+                    }
+
+                    orderKey = ExtractRequiredLambda(call.Arguments[^1], "OrderBy");
                     orderDescending = call.Method.Name == nameof(Enumerable.OrderByDescending);
                     kind = GroupOperationKind.OrderedCollection;
+                    operationAfterProjection = selector is null;
                     break;
                 case nameof(Enumerable.GroupBy):
-                    nestedKey = ExtractLambda(call.Arguments[^1]);
+                    if (nestedKey is not null)
+                    {
+                        throw NotSupportedGroupBy("multiple nested GroupBy operations are not supported");
+                    }
+
+                    nestedKey = ExtractRequiredLambda(call.Arguments[^1], "GroupBy");
                     kind = GroupOperationKind.NestedGroupCollection;
+                    operationAfterProjection = selector is null;
                     break;
                 case nameof(Enumerable.Count) when !hasTerminal:
+                    if (call.Arguments.Count > 1)
+                    {
+                        predicate = predicate is null
+                            ? ExtractRequiredLambda(call.Arguments[^1], "Count")
+                            : throw NotSupportedGroupBy(
+                                "Count(predicate) cannot be combined with a separate Where filter");
+                        operationAfterProjection = selector is null;
+                    }
+
                     kind = GroupOperationKind.Count;
                     hasTerminal = true;
                     break;
@@ -618,7 +711,10 @@ public sealed class CypherQueryPlanner
                         nameof(Enumerable.Max) => "max",
                         _ => null,
                     };
-                    aggregateArgument = call.Arguments.Count > 1 ? ExtractLambda(call.Arguments[^1]) : null;
+                    aggregateArgument = call.Arguments.Count > 1
+                        ? ExtractRequiredLambda(call.Arguments[^1], call.Method.Name)
+                        : null;
+                    operationAfterProjection = aggregateArgument is not null && selector is null;
                     hasTerminal = true;
                     break;
                 case nameof(Enumerable.ToList) or nameof(Enumerable.ToArray) or nameof(Enumerable.AsEnumerable):
@@ -657,6 +753,10 @@ public sealed class CypherQueryPlanner
             _ => null,
         };
     }
+
+    private static LambdaExpression ExtractRequiredLambda(Expression expression, string operation) =>
+        ExtractLambda(expression) ?? throw NotSupportedGroupBy(
+            $"the {operation} operation does not contain a recognizable lambda expression");
 
     private static Expression StripToList(Expression expression)
     {
@@ -723,10 +823,19 @@ public sealed class CypherQueryPlanner
 
     private void ValidateCapabilities(CypherStatement statement)
     {
-        foreach (var clause in statement.Clauses)
+        ValidateCapabilities(statement.Clauses);
+    }
+
+    private void ValidateCapabilities(IReadOnlyList<ICypherClause> clauses)
+    {
+        foreach (var clause in clauses)
         {
             switch (clause)
             {
+                case CallSubqueryClause subquery:
+                    RequireCapability(GraphCapability.CallSubqueries, "CallSubqueries");
+                    ValidateCapabilities(subquery.Body);
+                    break;
                 case MatchClause match:
                     if (match.Optional)
                     {

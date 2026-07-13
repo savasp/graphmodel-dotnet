@@ -20,12 +20,13 @@ public sealed class ComplianceInventoryTests
     /// excluded: they can never execute on any provider, so they play no part in the strict-mode
     /// execution floor.
     /// </summary>
-    // +8 for #120: eight of the nine pattern-comprehension tests were un-skipped once correlated
+    // +9 for #120: eight of the nine pattern-comprehension tests were un-skipped once correlated
     // collection projections landed — Basic/Filtered/TimeBased/Ordered/Aggregated/Grouped pattern
     // comprehensions and TraversePathAndGroupBy (gated on CallSubqueries), plus the ungated
-    // CanCombineNodeAndRelationshipQueries. CanProjectRelationshipCounts stays skipped pending a
-    // node relationship-count (degree) projection surface (#124).
-    private const int ExpectedTotalTestMethods = 366;
+    // CanCombineNodeAndRelationshipQueries — and one cross-provider edge-case contract was added.
+    // CanProjectRelationshipCounts stays skipped pending a node relationship-count (degree)
+    // projection surface (#300).
+    private const int ExpectedTotalTestMethods = 367;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

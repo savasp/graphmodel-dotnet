@@ -7,6 +7,11 @@ internal static class GraphResultTypeHelpers
 {
     public static Type GetTargetTypeIfCollection(Type type)
     {
+        if (type.IsArray)
+        {
+            return type.GetElementType()!;
+        }
+
         // If it's already not a collection type, return as-is
         if (!type.IsGenericType)
             return type;

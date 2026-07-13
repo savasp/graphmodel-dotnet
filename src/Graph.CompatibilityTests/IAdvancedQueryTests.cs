@@ -590,6 +590,7 @@ public interface IAdvancedQueryTests : IGraphTest
 
     [Fact]
     [RequiresCapability(GraphCapability.CallSubqueries)]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
     public async Task CanQueryWithFilteredPatternComprehension()
     {
         // Arrange
@@ -628,6 +629,46 @@ public interface IAdvancedQueryTests : IGraphTest
 
     [Fact]
     [RequiresCapability(GraphCapability.CallSubqueries)]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
+    public async Task CanQueryWithPredicateCountAndArrayProjectionExcludesEmptyGroups()
+    {
+        var alice = new Person { FirstName = "Alice", Age = 40 };
+        var bob = new Person { FirstName = "Bob", Age = 25 };
+        var diana = new Person { FirstName = "Diana", Age = 30 };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(diana, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(alice, bob),
+            null,
+            TestContext.Current.CancellationToken);
+
+        var groups = await Graph.Nodes<Person>()
+            .PathSegments<Person, Knows, Person>()
+            .GroupBy(segment => segment.StartNode)
+            .Select(group => new
+            {
+                Name = group.Key.FirstName,
+                YoungFriendCount = group.Count(segment => segment.EndNode.Age < 30),
+                Friends = group
+                    .OrderBy(segment => segment.StartNode.Age)
+                    .Select(segment => new { segment.EndNode.FirstName, segment.EndNode.Age })
+                    .ToArray()
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(groups);
+        Assert.Equal("Alice", result.Name);
+        Assert.Equal(1, result.YoungFriendCount);
+        var friend = Assert.Single(result.Friends);
+        Assert.Equal("Bob", friend.FirstName);
+        Assert.Equal(25, friend.Age);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
     public async Task CanQueryWithAggregatedPatternComprehension()
     {
         // Arrange
@@ -1085,6 +1126,7 @@ public interface IAdvancedQueryTests : IGraphTest
 
     [Fact]
     [RequiresCapability(GraphCapability.CallSubqueries)]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
     public async Task CanQueryWithTraversePathAndGroupBy()
     {
         // This test uses the Person class that has IList<Knows> Knows property
@@ -1204,8 +1246,8 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateRelationshipAsync(new Knows(bob, charlie), null, TestContext.Current.CancellationToken);
 
         // Execute separate queries and combine in memory
-        var people = (await this.Graph.Nodes<Person>().ToListAsync(TestContext.Current.CancellationToken))
-            .ToDictionary(p => p.Id);
+        var people = await this.Graph.Nodes<Person>()
+            .ToDictionaryAsync(p => p.Id, TestContext.Current.CancellationToken);
         var relationships = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
 
         // Build a connection map
