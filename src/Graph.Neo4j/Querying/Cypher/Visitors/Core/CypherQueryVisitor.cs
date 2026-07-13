@@ -46,15 +46,78 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         }
 
         var rendered = new CypherRenderer(Neo4jDialect.Instance).Render(statement);
+        var parameters = RewriteFullTextSearchParameters(statement, rendered.Parameters);
         (Type Source, Type Relationship, Type Target)? pathTypes = statement.PathTypes is null
             ? null
             : (statement.PathTypes.Source, statement.PathTypes.Relationship, statement.PathTypes.Target);
-        Query = new CypherQuery(rendered.Text, rendered.Parameters, pathTypes, rendered.ProjectionColumns);
+        Query = new CypherQuery(rendered.Text, parameters, pathTypes, rendered.ProjectionColumns);
         if (_logger?.IsEnabled(LogLevel.Debug) == true)
         {
             _logger.LogDebugCypherQueryVisitor53(Query.Parameters.Keys.ToArray(), Query.Parameters.Count);
         }
         return node;
+    }
+
+    // Lucene classic-parser special characters. Tokens are alphanumeric after tokenization, so
+    // escaping is belt-and-braces defence against injection through the raw query string.
+    private static readonly char[] LuceneSpecialCharacters =
+        ['+', '-', '&', '|', '!', '(', ')', '{', '}', '[', ']', '^', '"', '~', '*', '?', ':', '\\', '/'];
+
+    // A pure-negative Lucene query has no positive clause, so it matches no documents regardless of
+    // stored content — the deterministic "match nothing" for an empty term list. Neo4j's Lucene
+    // parser throws on an empty string (verified against db.index.fulltext.queryNodes), so we cannot
+    // pass one through.
+    private const string MatchNothingLuceneQuery = "-cvoyanomatchsentinel";
+
+    /// <summary>
+    /// Rewrites each full-text search parameter from the raw user query into a sanitized, AND-joined
+    /// Lucene query so the Neo4j lowering honours the <c>FullTextSearch</c> contract (case-insensitive,
+    /// whole-word, all-terms-match) instead of inheriting the Lucene parser's default OR combinator and
+    /// live metacharacter syntax.
+    /// </summary>
+    private static IReadOnlyDictionary<string, object?> RewriteFullTextSearchParameters(
+        CypherStatement statement,
+        IReadOnlyDictionary<string, object?> parameters)
+    {
+        var searchClauses = statement.Clauses.OfType<FullTextSearchClause>().ToList();
+        if (searchClauses.Count == 0)
+        {
+            return parameters;
+        }
+
+        var rewritten = new Dictionary<string, object?>(parameters);
+        foreach (var clause in searchClauses)
+        {
+            var parameterName = clause.Query.Name;
+            var raw = rewritten.TryGetValue(parameterName, out var value) ? value as string ?? string.Empty : string.Empty;
+            rewritten[parameterName] = RewriteToLuceneAndQuery(raw);
+        }
+
+        return rewritten;
+    }
+
+    private static string RewriteToLuceneAndQuery(string raw)
+    {
+        var tokens = FullTextQueryTokenizer.Tokenize(raw);
+        return tokens.Count == 0
+            ? MatchNothingLuceneQuery
+            : string.Join(" AND ", tokens.Select(EscapeLuceneToken));
+    }
+
+    private static string EscapeLuceneToken(string token)
+    {
+        var builder = new System.Text.StringBuilder(token.Length);
+        foreach (var character in token)
+        {
+            if (Array.IndexOf(LuceneSpecialCharacters, character) >= 0)
+            {
+                builder.Append('\\');
+            }
+
+            builder.Append(character);
+        }
+
+        return builder.ToString();
     }
 
     private static Exception PreserveLegacyProviderException(GraphQueryTranslationException exception)
