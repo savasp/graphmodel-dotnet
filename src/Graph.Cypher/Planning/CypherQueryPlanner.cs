@@ -190,6 +190,15 @@ public sealed class CypherQueryPlanner
             throw NotSupportedGroupBy("exactly one traversal step must precede the grouping");
         }
 
+        // Reject members that reference the group outside the recognized correlated-collection grammar
+        // up-front, using the shared boundary so this provider and the in-memory interpreter fail with
+        // the identical exception type and message. The deeper NotSupportedGroupBy throws below remain a
+        // backstop but are unreachable for shapes this validator rejects.
+        if (CorrelatedGroupProjectionValidation.Validate(model) is { } reason)
+        {
+            throw new GraphQueryTranslationException(CorrelatedGroupProjectionValidation.BuildMessage(reason));
+        }
+
         GraphQueryModelValidator.Validate(model);
 
         var parameters = new CypherParameterRegistry();

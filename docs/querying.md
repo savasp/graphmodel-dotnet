@@ -345,6 +345,16 @@ traversal, and `Distinct`/`OrderBy`/`Skip`/`Take` applied to the grouped result 
 translation time with a `NotSupportedException`; materialize the grouped query first and continue
 client-side.
 
+For correlated path grouping, the recognized grammar over the group — `Select`, `Where`,
+`OrderBy`/`OrderByDescending`,
+`Count`, `Average`/`Sum`/`Min`/`Max`, nested `GroupBy` (optionally terminated by
+`ToList`/`ToArray`/`AsEnumerable`), or a projection of the group key — is a **shared contract
+enforced identically across providers**. Any other operation over the group (for example
+`First`, `Take`, `Skip`, `Distinct`, `ElementAt`) cannot be lowered to a pattern comprehension or
+subquery and is rejected up-front with the same `GraphQueryTranslationException` on every
+provider, so a shape that fails on a graph database fails the same way on the in-memory provider
+rather than silently succeeding client-side.
+
 ## Aggregations
 
 ### Count, Any, All
