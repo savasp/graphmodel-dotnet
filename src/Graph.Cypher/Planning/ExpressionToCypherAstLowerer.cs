@@ -738,7 +738,11 @@ internal sealed class ExpressionToCypherAstLowerer(
         var pattern = new PathPattern(
         [
             new NodePattern(sourceAlias, []),
-            new RelationshipPattern(alias: null, Labels.GetLabelFromType(relationshipType), cypherDirection, depth: null),
+            new RelationshipPattern(
+                alias: null,
+                direction: cypherDirection,
+                depth: null,
+                types: Labels.GetCompatibleLabels(relationshipType)),
             new NodePattern(alias: null, []),
         ]);
 

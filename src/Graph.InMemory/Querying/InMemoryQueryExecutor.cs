@@ -1211,7 +1211,9 @@ internal sealed class InMemoryQueryExecutor(
     private sealed class CountRelationshipsRewriter(StoreState state) : ExpressionVisitor
     {
         private static readonly MethodInfo CountMethod =
-            typeof(InMemoryDegreeCounter).GetMethod(nameof(InMemoryDegreeCounter.Count))!;
+            typeof(InMemoryDegreeCounter).GetMethod(
+                nameof(InMemoryDegreeCounter.Count),
+                BindingFlags.Static | BindingFlags.NonPublic)!;
 
         protected override Expression VisitMethodCall(MethodCallExpression node)
         {
@@ -1221,14 +1223,27 @@ internal sealed class InMemoryQueryExecutor(
                 return base.VisitMethodCall(node);
             }
 
-            var typeLabel = Labels.GetLabelFromType(node.Method.GetGenericArguments()[0]);
+            if (node.Arguments[0] is not ParameterExpression)
+            {
+                throw new GraphQueryTranslationException(
+                    "CountRelationships must be called on a query parameter (e.g. p.CountRelationships<Rel>(...)).");
+            }
+
+            if (node.Arguments[1] is not ConstantExpression { Value: GraphTraversalDirection direction } ||
+                !Enum.IsDefined(direction))
+            {
+                throw new GraphQueryTranslationException(
+                    "The direction argument to CountRelationships must be a constant GraphTraversalDirection value.");
+            }
+
+            var relationshipType = node.Method.GetGenericArguments()[0];
 
             return Expression.Call(
                 CountMethod,
                 Expression.Constant(state),
                 Expression.Convert(Visit(node.Arguments[0]), typeof(INode)),
-                Expression.Constant(typeLabel),
-                Visit(node.Arguments[1]));
+                Expression.Constant(relationshipType, typeof(Type)),
+                Expression.Constant(direction));
         }
     }
 

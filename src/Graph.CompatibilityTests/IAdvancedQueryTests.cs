@@ -1405,6 +1405,85 @@ public interface IAdvancedQueryTests : IGraphTest
     }
 
     [Fact]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
+    public async Task RelationshipCounts_UsePhysicalDirectionAndIncludeDerivedTypes()
+    {
+        var alice = new Person { FirstName = "Alice" };
+        var bob = new Person { FirstName = "Bob" };
+        await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new KnowsWell(alice, bob) { Direction = RelationshipDirection.Incoming },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var counts = await this.Graph.Nodes<Person>()
+            .Select(person => new
+            {
+                person.FirstName,
+                Outgoing = person.CountRelationships<Knows>(GraphTraversalDirection.Outgoing),
+                Incoming = person.CountRelationships<Knows>(GraphTraversalDirection.Incoming),
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var aliceCounts = counts.Single(count => count.FirstName == "Alice");
+        Assert.Equal(0, aliceCounts.Outgoing);
+        Assert.Equal(1, aliceCounts.Incoming);
+
+        var bobCounts = counts.Single(count => count.FirstName == "Bob");
+        Assert.Equal(1, bobCounts.Outgoing);
+        Assert.Equal(0, bobCounts.Incoming);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
+    public async Task RelationshipCounts_CountAnUndirectedSelfLoopOnce()
+    {
+        var alice = new Person { FirstName = "Alice" };
+        await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new Knows(alice, alice), null, TestContext.Current.CancellationToken);
+
+        var count = await this.Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .Select(person => person.CountRelationships<Knows>(GraphTraversalDirection.Both))
+            .SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
+    public async Task RelationshipCounts_RejectNonConstantDirectionConsistently()
+    {
+        await this.Graph.CreateNodeAsync(
+            new Person { FirstName = "Alice" }, null, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<GraphQueryTranslationException>(async () =>
+            await this.Graph.Nodes<Person>()
+                .Select(person => person.CountRelationships<Knows>(DirectionFor(person)))
+                .ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
+    public async Task RelationshipCounts_RejectNonParameterReceiverConsistently()
+    {
+        await this.Graph.CreateNodeAsync(
+            new Person { FirstName = "Alice" }, null, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<GraphQueryTranslationException>(async () =>
+            await this.Graph.Nodes<Person>()
+                .Select(person => Identity(person)
+                    .CountRelationships<Knows>(GraphTraversalDirection.Outgoing))
+                .ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    private static GraphTraversalDirection DirectionFor(INode _) => GraphTraversalDirection.Outgoing;
+
+    private static INode Identity(INode node) => node;
+
+    [Fact]
     public async Task CanRecognizeSpecialTypesAsNonComplexProperties_Node()
     {
         // Setup

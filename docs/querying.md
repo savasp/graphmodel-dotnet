@@ -236,12 +236,14 @@ var stats = await graph.Nodes<Person>()
     .ToListAsync();
 ```
 
-`GraphTraversalDirection` matches the `Traverse` direction semantics: `Outgoing` counts
-relationships that start at the node, `Incoming` counts those that end at it, and `Both` counts
-either. The direction argument must be a compile-time constant. This surface requires the
-`PatternSizeProjection` capability; providers that do not declare it reject the query at
-translation time. Calling `CountRelationships` outside a query projection throws
-`InvalidOperationException`.
+`GraphTraversalDirection` matches the `Traverse` direction semantics: `Outgoing` counts physical
+edges leaving the node and `Incoming` counts physical edges arriving at it. A relationship stored
+with `RelationshipDirection.Incoming` therefore reverses its logical start/end orientation. `Both`
+counts each incident relationship once, including a self-loop. Counting a base relationship type
+also includes stored derived relationship types. The direction argument must be a compile-time
+constant. This surface requires the `PatternSizeProjection` capability; providers that do not
+declare it reject the query at translation time. Calling `CountRelationships` outside a query
+projection throws `InvalidOperationException`.
 
 ### Projecting collections
 
