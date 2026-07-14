@@ -65,6 +65,13 @@ public class OrderingPagingTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task WhereAfterSkip_PreservesTheInputOrdering()
+    {
+        var query = Root.Nodes<Person>().OrderBy(p => p.Age).Skip(2).Where(p => p.Age >= 21);
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task WhereBeforeTake_Unchanged()
     {
         var query = Root.Nodes<Person>().Where(p => p.Age >= 21).OrderBy(p => p.Age).Take(5);

@@ -267,6 +267,15 @@ internal sealed partial class AgeQueryRunner
 
     internal static string NormalizeClauseOrder(string cypher)
     {
+        // The shared renderer carries post-paging sort keys through entity hydration and reapplies
+        // them before its final simple RETURN. That pipeline already has the WITH boundaries AGE
+        // requires; moving either ORDER BY would separate it from the row shape it orders and can
+        // leave multiple ORDER BY clauses after RETURN.
+        if (cypher.Contains(" AS __projectionOrder", StringComparison.Ordinal))
+        {
+            return NormalizeEntityProjection(cypher);
+        }
+
         // The shared planner ordinarily places paging immediately after the root MATCH to reduce
         // work before its entity-projection expansion. AGE requires WITH between MATCH and
         // LIMIT/SKIP, so unscoped paging moves after the final projection. The first paging window

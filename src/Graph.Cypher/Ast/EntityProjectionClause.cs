@@ -31,7 +31,8 @@ public sealed record EntityProjectionClause : ICypherClause
             targetAlias,
             loadSourceProperties,
             loadTargetProperties,
-            includePathCoordinates: false)
+            includePathCoordinates: false,
+            ordering: [])
     {
     }
 
@@ -51,6 +52,36 @@ public sealed record EntityProjectionClause : ICypherClause
         bool loadSourceProperties,
         bool loadTargetProperties,
         bool includePathCoordinates)
+        : this(
+            shape,
+            sourceAlias,
+            relationshipAlias,
+            targetAlias,
+            loadSourceProperties,
+            loadTargetProperties,
+            includePathCoordinates,
+            ordering: [])
+    {
+    }
+
+    /// <summary>Initializes an entity wire projection.</summary>
+    /// <param name="shape">The projection shape.</param>
+    /// <param name="sourceAlias">The source node alias.</param>
+    /// <param name="relationshipAlias">The relationship alias for a path segment.</param>
+    /// <param name="targetAlias">The target node alias.</param>
+    /// <param name="loadSourceProperties">Whether declared complex properties are loaded from the source node.</param>
+    /// <param name="loadTargetProperties">Whether declared complex properties are loaded from the target node.</param>
+    /// <param name="includePathCoordinates">Whether the projection includes graph-path and hop indexes.</param>
+    /// <param name="ordering">The result ordering to restore after entity materialization.</param>
+    public EntityProjectionClause(
+        EntityProjectionShape shape,
+        string sourceAlias,
+        string? relationshipAlias,
+        string? targetAlias,
+        bool loadSourceProperties,
+        bool loadTargetProperties,
+        bool includePathCoordinates,
+        IReadOnlyList<OrderByItem> ordering)
     {
         Shape = ArgumentValidation.DefinedEnum(shape, nameof(shape));
         SourceAlias = ArgumentValidation.RequiredName(sourceAlias, nameof(sourceAlias));
@@ -59,6 +90,7 @@ public sealed record EntityProjectionClause : ICypherClause
         LoadSourceProperties = loadSourceProperties;
         LoadTargetProperties = loadTargetProperties;
         IncludePathCoordinates = includePathCoordinates;
+        Ordering = ArgumentValidation.List(ordering, nameof(ordering));
 
         if (shape == EntityProjectionShape.PathSegment &&
             (RelationshipAlias is null || TargetAlias is null))
@@ -87,4 +119,7 @@ public sealed record EntityProjectionClause : ICypherClause
 
     /// <summary>Gets whether the projection includes graph-path and hop indexes.</summary>
     public bool IncludePathCoordinates { get; }
+
+    /// <summary>Gets the result ordering restored after entity materialization.</summary>
+    public IReadOnlyList<OrderByItem> Ordering { get; }
 }
