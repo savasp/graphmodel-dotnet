@@ -258,6 +258,50 @@ public sealed class CypherAstValidator : ICypherPass
                 ValidateExpressions(list.Items, scope, parameters);
                 break;
 
+            case ListComprehensionExpression comprehension:
+                {
+                    ValidateExpression(comprehension.Source, scope, parameters);
+                    var comprehensionScope = new HashSet<string>(scope, StringComparer.Ordinal)
+                    {
+                        comprehension.IteratorAlias,
+                    };
+                    if (comprehension.Predicate is not null)
+                    {
+                        ValidateExpression(comprehension.Predicate, comprehensionScope, parameters);
+                    }
+
+                    if (comprehension.Projection is not null)
+                    {
+                        ValidateExpression(comprehension.Projection, comprehensionScope, parameters);
+                    }
+
+                    break;
+                }
+
+            case ReduceExpression reduce:
+                {
+                    ValidateExpression(reduce.Seed, scope, parameters);
+                    ValidateExpression(reduce.Source, scope, parameters);
+                    var reduceScope = new HashSet<string>(scope, StringComparer.Ordinal)
+                    {
+                        reduce.AccumulatorAlias,
+                        reduce.IteratorAlias,
+                    };
+                    ValidateExpression(reduce.Reducer, reduceScope, parameters);
+                    break;
+                }
+
+            case AllExpression all:
+                {
+                    ValidateExpression(all.Source, scope, parameters);
+                    var allScope = new HashSet<string>(scope, StringComparer.Ordinal)
+                    {
+                        all.IteratorAlias,
+                    };
+                    ValidateExpression(all.Predicate, allScope, parameters);
+                    break;
+                }
+
             case MapExpression map:
                 ValidateExpressions(map.Entries.Select(entry => entry.Value).ToArray(), scope, parameters);
                 break;
