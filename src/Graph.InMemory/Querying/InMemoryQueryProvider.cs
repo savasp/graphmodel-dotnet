@@ -131,6 +131,17 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider
             throw new NotSupportedException(ScalarGroupByValidation.BuildMessage(reason));
         }
 
+        // Enforce the correlated grouped-projection grammar with the same shared boundary the Cypher
+        // planner uses, so an unsupported member (for example First/Take/Skip over the group) fails with
+        // the identical exception type and message here as on Neo4j — rather than the CLR silently
+        // executing a shape Cypher cannot lower. This throw is outside the builder's translation-exception
+        // mapping, so the GraphQueryTranslationException is not downgraded to NotSupportedException.
+        if (CorrelatedGroupProjectionValidation.Validate(model) is { } correlatedReason)
+        {
+            throw new GraphQueryTranslationException(
+                CorrelatedGroupProjectionValidation.BuildMessage(correlatedReason));
+        }
+
         if (model.Union is not null)
         {
             throw new GraphException(
@@ -144,6 +155,12 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider
     /// </summary>
     private static Exception MapTranslationException(GraphQueryTranslationException exception)
     {
+        if (exception.Message.StartsWith(
+            "Cannot translate the correlated grouped projection:", StringComparison.Ordinal))
+        {
+            return exception;
+        }
+
         if (exception.Message.Contains("SelectMany", StringComparison.Ordinal))
         {
             return new NotSupportedException("SelectMany is not supported by graph query translation yet; see #100.");
