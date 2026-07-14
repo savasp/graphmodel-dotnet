@@ -19,7 +19,8 @@ public sealed class AgeDialectTests
                 GraphCapability.ComplexPropertyCascade,
                 GraphCapability.MultiLabelMatch,
                 GraphCapability.OrderByEntity,
-                GraphCapability.OptionalTraversal),
+                GraphCapability.OptionalTraversal,
+                GraphCapability.FullTextSearch),
             capabilities);
     }
 

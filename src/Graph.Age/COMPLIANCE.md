@@ -11,7 +11,7 @@
 
 | Capability | Declared | Note |
 |---|---|---|
-| FullTextSearch | No | AGE full-text semantics are not exposed by this provider. |
+| FullTextSearch | Yes | Lowered to a two-phase Postgres text search; see "Full-text search" below. |
 | Transactions | Yes | One PostgreSQL connection and transaction per graph transaction. |
 | NestedTransactions | No | |
 | ComplexPropertyCascade | Yes | Owned value nodes are deleted transactionally. |
@@ -22,18 +22,54 @@
 | ShortestPath | No | |
 | OptionalTraversal | Yes | Optional matches are lowered while preserving owners with absent paths. |
 
+## Full-text search
+
+AGE cannot express full-text matching in its Cypher subset, so the provider lowers it to Postgres
+text search as an **expression-level, two-phase id-seeding** step, before the shared Cypher pipeline
+runs (`AgeFullTextSearch`, `AgeFullTextSearchRewriter`):
+
+1. **Phase 1** runs a plain-SQL `to_tsvector(...) @@ plainto_tsquery('simple', @query)` query over the
+   graph's `CvoyaNode` / `CvoyaRelationship` label table, on the **caller's transaction**, and returns
+   the matching entities' public `Id` values. The raw user text reaches Postgres only through the
+   `@query` bind parameter (never `to_tsquery`, never interpolation); `plainto_tsquery` strips live
+   query metacharacters (`~ * : ( )`) rather than parsing them.
+2. The provider **rewrites** each `Search(source, query)` operator to `Where(source, e => ids.Contains(e.Id))`
+   and hands the residual, search-free query to the unchanged shared planner and renderer, so aliases,
+   projections, paging, and composition all come out right by construction.
+
+Semantics (the contract floor the shared TCK pins):
+
+- **`'simple'` regconfig** — no stemming and no stop-word removal, so matching is case-insensitive,
+  whole-token, and multi-term queries match iff every term matches. `'english'` would drift off the
+  cross-provider floor (e.g. `Search("the")`).
+- **Matched property set** — for a typed entity, exactly that type's `[Property(IncludeInFullTextSearch)]`
+  string properties; inheritance is a per-concrete-type disjunct keyed by each type's own
+  `inheritance_labels` label, so `SearchNodes<Person>` also matches `Manager` rows. For dynamic
+  entities, all string property values except the framework's internal keys. Text on complex-property
+  value nodes is **not** part of the owning entity's match set (the per-type label filter excludes those
+  rows); untyped/dynamic search has no domain label to filter on, so it may also match value-node rows.
+- **`graph.Search()`** (mixed `IEntity`) is node-only in this provider (it is built on `Nodes<INode>`).
+- **Search-as-source** (`Search().Traverse()`) is rejected at translation time (tracked by #295); the
+  rewriter leaves that shape intact so the shared front-end's rejection still fires.
+- **No indexes yet** — correctness comes from a sequential scan; GIN acceleration is #291, whose coarse
+  index conjunct must preserve exactly the predicate above.
+- **Id-set limit** — a single search may seed at most 10,000 ids into the residual query (the list rides
+  to AGE as one `agtype` parameter blob); a larger match set fails with an actionable `GraphException`.
+
 ## Results
 
-| Runtime cases | Passed | Skipped (declared capability) | Statically skipped | Failed |
+| Inventory test methods | Executed | Capability-skipped | Statically skipped | Failed |
 |---|---|---|---|---|
-| 390 | 356 | 33 | 1 | 0 |
+| 384 | 375 | 9 | 1 | 0 |
 
-The compatibility inventory contains 370 runnable test methods. For this capability set,
-`ComplianceInventory.MinimumExecuted(declared)` is 337 methods and the strict compliance guard
-passes. Theory data rows make the runtime case count slightly larger than the method inventory.
-The suite also contains one statically skipped, issue-tracked test; the inventory deliberately
-excludes it, so it is not counted as a capability skip above. The provider-specific adapter,
-dialect, SQL-envelope, and security tests are also excluded from the table.
+The compatibility inventory contains 384 runnable test methods. For this capability set (which now
+declares `FullTextSearch`), `ComplianceInventory.MinimumExecuted(declared)` is 375 methods and the
+strict compliance guard passes; the remaining 9 capability skips are all `CallSubqueries` /
+`PatternSizeProjection` tests (tracked by #308). Theory data rows make the runtime case count
+slightly larger than the method inventory. The suite also contains one statically skipped,
+issue-tracked test; the inventory deliberately excludes it, so it is not counted as a capability
+skip above. The provider-specific adapter, dialect, SQL-envelope, full-text, and security tests are
+also excluded from the table.
 
 Reproduce:
 

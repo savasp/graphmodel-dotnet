@@ -37,8 +37,9 @@ internal sealed class CypherEngine
     private readonly GraphResultMaterializer _materializer;
     private readonly AgeRecordAdapter _recordAdapter = new();
     private readonly ILoggerFactory? _loggerFactory;
+    private readonly AgeFullTextSearchRewriter _fullTextSearchRewriter;
 
-    public CypherEngine(EntityFactory entityFactory, ILoggerFactory? loggerFactory)
+    public CypherEngine(EntityFactory entityFactory, SchemaRegistry schemaRegistry, ILoggerFactory? loggerFactory)
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
         _logger = loggerFactory?.CreateLogger<CypherEngine>() ?? NullLogger<CypherEngine>.Instance;
@@ -47,7 +48,7 @@ internal sealed class CypherEngine
         _executor = new CypherExecutor(loggerFactory);
         _materializer = new GraphResultMaterializer(entityFactory, loggerFactory);
         _loggerFactory = loggerFactory;
-
+        _fullTextSearchRewriter = new AgeFullTextSearchRewriter(schemaRegistry);
     }
 
     public async Task<T?> ExecuteAsync<T>(
@@ -58,6 +59,12 @@ internal sealed class CypherEngine
         try
         {
             _logger.LogDebugCypherEngine60(typeof(T).Name);
+
+            // Lower any full-text Search operator out of the expression tree (phase 1 + rewrite to a
+            // Where over the matched ids) before the shared pipeline runs. Unchanged when there is no
+            // Search or the Search feeds a traversal (rejected downstream).
+            expression = await _fullTextSearchRewriter
+                .RewriteAsync(expression, transaction.Runner, cancellationToken).ConfigureAwait(false);
 
             // Build the Cypher query from the expression
             var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
@@ -76,8 +83,19 @@ internal sealed class CypherEngine
             ValidateMinMaxTerminalValue<T>(expression, records);
 
             // Let the materializer handle everything - no need to duplicate logic here
+            var adapted = _recordAdapter.Adapt(records);
+
+            // graph.Search returns IGraphQueryable<IEntity>, but AGE lowers full-text search to a
+            // node-rooted residual query, so the polymorphic IEntity result is materialized through the
+            // node path (INode : IEntity). See MaterializeMixedEntitiesAsync.
+            if (ExtractElementType(typeof(T), expression) == typeof(IEntity))
+            {
+                return await MaterializeMixedEntitiesAsync<T>(
+                    adapted, cypherQuery.GraphPathTypes, cancellationToken).ConfigureAwait(false);
+            }
+
             var result = await _materializer.MaterializeAsync<T>(
-                _recordAdapter.Adapt(records),
+                adapted,
                 cypherQuery.GraphPathTypes,
                 cancellationToken).ConfigureAwait(false);
             return result;
@@ -101,6 +119,10 @@ internal sealed class CypherEngine
         cancellationToken.ThrowIfCancellationRequested();
 
         _logger.LogDebugCypherEngine103(typeof(T).Name);
+
+        // See ExecuteAsync: lower full-text search before building the query.
+        expression = await _fullTextSearchRewriter
+            .RewriteAsync(expression, transaction.Runner, cancellationToken).ConfigureAwait(false);
 
         var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
         LogCypherQuery(cypherQuery);
@@ -128,9 +150,12 @@ internal sealed class CypherEngine
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var item = await _materializer.MaterializeRecordAsync<T>(
-                _recordAdapter.Adapt(record),
-                cancellationToken).ConfigureAwait(false);
+            var adaptedRecord = _recordAdapter.Adapt(record);
+            var item = typeof(T) == typeof(IEntity)
+                ? (T?)(object?)await _materializer
+                    .MaterializeRecordAsync<INode>(adaptedRecord, cancellationToken).ConfigureAwait(false)
+                : await _materializer
+                    .MaterializeRecordAsync<T>(adaptedRecord, cancellationToken).ConfigureAwait(false);
 
             if (item is not null)
             {
@@ -300,6 +325,31 @@ internal sealed class CypherEngine
         }
 
         return new CypherQuery(query.Text, convertedParams, query.GraphPathTypes, query.ProjectionColumns);
+    }
+
+    // graph.Search yields IGraphQueryable<IEntity>. AGE lowers full-text search to a node-rooted
+    // residual query whose records the shared node path materializes, but the IEntity path
+    // (ProcessMixedEntities) expects a different, entity-search record shape. Since AGE's search is
+    // node-only, materialize through INode (INode : IEntity) and repackage into the requested IEntity
+    // collection shape.
+    private async Task<T?> MaterializeMixedEntitiesAsync<T>(
+        List<GraphRecord> records,
+        (Type Source, Type Relationship, Type Target)? graphPathTypes,
+        CancellationToken cancellationToken)
+    {
+        var nodes = await _materializer
+            .MaterializeAsync<List<INode>>(records, graphPathTypes, cancellationToken)
+            .ConfigureAwait(false) ?? [];
+
+        object result = typeof(T) switch
+        {
+            var t when t == typeof(List<IEntity>) => nodes.Cast<IEntity>().ToList(),
+            var t when t == typeof(IEntity[]) => nodes.Cast<IEntity>().ToArray(),
+            var t when t == typeof(IEnumerable<IEntity>) => nodes.Cast<IEntity>().ToList(),
+            _ => nodes.Cast<IEntity>().FirstOrDefault()!,
+        };
+
+        return (T?)result;
     }
 
     private static Type ExtractElementType(Type resultType, Expression expression)

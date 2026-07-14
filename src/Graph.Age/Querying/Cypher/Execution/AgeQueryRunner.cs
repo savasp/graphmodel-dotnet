@@ -43,6 +43,64 @@ internal sealed partial class AgeQueryRunner
         return RunAsync(cypher, dictionary, InferProjectionColumns(cypher), cancellationToken);
     }
 
+    /// <summary>The AGE graph name, which is also the Postgres schema holding this graph's label tables.</summary>
+    public string GraphName => graphName;
+
+    /// <summary>
+    /// Runs a plain (non-<c>cypher()</c>) SQL statement on this runner's connection and transaction,
+    /// binding the caller-supplied search text to the <c>@query</c> parameter, and returns the string
+    /// values of the first result column. This is the phase-1 seam for full-text search: AGE cannot
+    /// express Postgres text search in its Cypher subset, so the provider runs it as SQL over the
+    /// label tables and seeds the residual Cypher query with the matching ids (see
+    /// <see cref="Querying.AgeFullTextSearch"/>). It executes on the SAME transaction as the residual
+    /// query, so it observes that transaction's uncommitted writes.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Security",
+        "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "The caller composes the statement from validated SQL identifiers (AgeSqlIdentifier) " +
+            "and constant text; the only user-controlled value is the search text, which travels as the " +
+            "@query bind parameter.")]
+    internal async Task<List<string>> QueryScalarStringsAsync(
+        string sql,
+        string queryParameter,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sql);
+        ArgumentNullException.ThrowIfNull(queryParameter);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.Parameters.Add(new NpgsqlParameter("query", queryParameter));
+        await using var commandLease = command.ConfigureAwait(false);
+
+        try
+        {
+            var values = new List<string>();
+            var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await using var readerLease = reader.ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (!await reader.IsDBNullAsync(0, cancellationToken).ConfigureAwait(false))
+                {
+                    values.Add(reader.GetString(0));
+                }
+            }
+
+            return values;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsQueryExecutionFailure(exception))
+        {
+            throw WrapQueryExecutionFailure(exception);
+        }
+    }
+
     public async Task<AgeResultCursor> RunAsync(
         string cypher,
         IReadOnlyDictionary<string, object?> parameters,
