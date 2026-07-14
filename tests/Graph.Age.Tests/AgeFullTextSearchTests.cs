@@ -24,13 +24,29 @@ public sealed class AgeFullTextSearchTests
             [new AgeFullTextSearch.FullTextCandidate("Person", ["FirstName", "LastName", "Bio"])]);
 
         Assert.Equal(
-            "SELECT t.props ->> 'Id' AS id" + N +
-            "FROM (SELECT properties::text::jsonb AS props FROM \"cvoya_g1\".\"CvoyaNode\") AS t" + N +
-            "WHERE (to_tsvector('simple', concat_ws(' ', t.props ->> 'FirstName', t.props ->> 'LastName', " +
-            "t.props ->> 'Bio')) @@ plainto_tsquery('simple', @query) " +
-            "AND jsonb_exists(t.props -> 'inheritance_labels', 'Person'))" + N +
+            "SELECT (properties::text::jsonb) ->> 'Id' AS id" + N +
+            "FROM \"cvoya_g1\".\"CvoyaNode\"" + N +
+            "WHERE to_tsvector('simple', \"cvoya_g1\".age_fulltext_blob(properties)) @@ plainto_tsquery('simple', @query)" + N +
+            "  AND ((to_tsvector('simple', concat_ws(' ', (properties::text::jsonb) ->> 'FirstName', " +
+            "(properties::text::jsonb) ->> 'LastName', (properties::text::jsonb) ->> 'Bio')) " +
+            "@@ plainto_tsquery('simple', @query) " +
+            "AND jsonb_exists((properties::text::jsonb) -> 'inheritance_labels', 'Person')))" + N +
             "LIMIT 10001",
             sql);
+    }
+
+    [Fact]
+    public void BuildTypedSql_HasCoarseIndexableConjunctBeforePrecisePredicate()
+    {
+        var sql = AgeFullTextSearch.BuildTypedSql(
+            "cvoya_g1",
+            "CvoyaNode",
+            [new AgeFullTextSearch.FullTextCandidate("Person", ["Bio"])]);
+
+        // The coarse conjunct matches the GIN index expression verbatim so the planner can use it; the
+        // precise per-type predicate follows as a recheck (coarse superset of precise).
+        var coarse = "to_tsvector('simple', \"cvoya_g1\".age_fulltext_blob(properties)) @@ plainto_tsquery('simple', @query)";
+        Assert.Contains($"WHERE {coarse}{N}  AND (", sql, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -46,10 +62,10 @@ public sealed class AgeFullTextSearchTests
 
         // Inheritance is expressed as one disjunct per concrete type, each with its own label test and
         // its own searchable properties (so Manager's Department participates only for Manager rows).
-        Assert.Contains("jsonb_exists(t.props -> 'inheritance_labels', 'Person')", sql, StringComparison.Ordinal);
-        Assert.Contains("jsonb_exists(t.props -> 'inheritance_labels', 'Manager')", sql, StringComparison.Ordinal);
-        Assert.Contains("t.props ->> 'Department'", sql, StringComparison.Ordinal);
-        Assert.Contains($"){N}   OR (", sql, StringComparison.Ordinal);
+        Assert.Contains("jsonb_exists((properties::text::jsonb) -> 'inheritance_labels', 'Person')", sql, StringComparison.Ordinal);
+        Assert.Contains("jsonb_exists((properties::text::jsonb) -> 'inheritance_labels', 'Manager')", sql, StringComparison.Ordinal);
+        Assert.Contains("(properties::text::jsonb) ->> 'Department'", sql, StringComparison.Ordinal);
+        Assert.Contains($"){N}       OR (", sql, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -61,23 +77,20 @@ public sealed class AgeFullTextSearchTests
             [new AgeFullTextSearch.FullTextCandidate("KnowsWell", ["HowWell"])]);
 
         Assert.Contains("FROM \"cvoya_g1\".\"CvoyaRelationship\"", sql, StringComparison.Ordinal);
-        Assert.Contains("jsonb_exists(t.props -> 'inheritance_labels', 'KnowsWell')", sql, StringComparison.Ordinal);
+        Assert.Contains("jsonb_exists((properties::text::jsonb) -> 'inheritance_labels', 'KnowsWell')", sql, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void BuildDynamicSql_AggregatesAllValuesExcludingInternalKeys()
+    public void BuildDynamicSql_IsTheCoarseAllValuesPredicate()
     {
         var sql = AgeFullTextSearch.BuildDynamicSql("cvoya_g1", "CvoyaNode");
 
+        // Dynamic search matches on all string values, which is exactly the indexed coarse expression,
+        // so it is served directly by the GIN index with no precise recheck.
         Assert.Equal(
-            "SELECT t.props ->> 'Id' AS id" + N +
-            "FROM (SELECT properties::text::jsonb AS props FROM \"cvoya_g1\".\"CvoyaNode\") AS t" + N +
-            "WHERE to_tsvector('simple', (" + N +
-            "        SELECT concat_ws(' ', array_agg(kv.value #>> '{}'))" + N +
-            "        FROM jsonb_each(t.props) AS kv(key, value)" + N +
-            "        WHERE jsonb_typeof(kv.value) = 'string'" + N +
-            "          AND kv.key NOT IN ('Id', 'inheritance_labels', '__graphModelEntityKind__', '__metadata__')" + N +
-            "    )) @@ plainto_tsquery('simple', @query)" + N +
+            "SELECT (properties::text::jsonb) ->> 'Id' AS id" + N +
+            "FROM \"cvoya_g1\".\"CvoyaNode\"" + N +
+            "WHERE to_tsvector('simple', \"cvoya_g1\".age_fulltext_blob(properties)) @@ plainto_tsquery('simple', @query)" + N +
             "LIMIT 10001",
             sql);
     }
@@ -90,8 +103,8 @@ public sealed class AgeFullTextSearchTests
             "CvoyaNode",
             [new AgeFullTextSearch.FullTextCandidate("O'Brien", ["Ap'os"])]);
 
-        Assert.Contains("t.props ->> 'Ap''os'", sql, StringComparison.Ordinal);
-        Assert.Contains("jsonb_exists(t.props -> 'inheritance_labels', 'O''Brien')", sql, StringComparison.Ordinal);
+        Assert.Contains("(properties::text::jsonb) ->> 'Ap''os'", sql, StringComparison.Ordinal);
+        Assert.Contains("jsonb_exists((properties::text::jsonb) -> 'inheritance_labels', 'O''Brien')", sql, StringComparison.Ordinal);
     }
 
     [Fact]

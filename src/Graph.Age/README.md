@@ -63,8 +63,10 @@ residual query. Matching is case-insensitive, whole-token, and multi-term-AND (t
 regconfig sits on the cross-provider contract floor); terms are normalized by the shared tokenizer
 and always sent as a bind parameter, never interpolated. Mixed `graph.Search()` queries scan both
 physical tables and combine nodes and relationships before applying ordering, paging, or terminals.
-A single search may seed at most 10,000 ids (a larger match set fails with an actionable error);
-results are not yet index-accelerated. See [COMPLIANCE.md](COMPLIANCE.md) for the full semantics.
+A single search may seed at most 10,000 ids (a larger match set fails with an actionable error).
+Phase 1 is accelerated by one coarse, blob-level GIN index on each physical table (created at graph
+provisioning and rebuilt by `RecreateIndexesAsync`); dropping an index degrades performance but never
+correctness. See [COMPLIANCE.md](COMPLIANCE.md) for the full semantics.
 
 ## Local AGE
 
