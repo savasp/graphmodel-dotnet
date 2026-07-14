@@ -17,6 +17,7 @@ using Cvoya.Graph.Querying;
 internal sealed class InMemoryQueryExecutor(
     EntityReader reader,
     StoreState state,
+    SchemaRegistry schemaRegistry,
     CancellationToken cancellationToken)
 {
     private const string NoElements = "Sequence contains no elements";
@@ -26,18 +27,13 @@ internal sealed class InMemoryQueryExecutor(
     private readonly EntityReader _reader = reader;
     private readonly StoreState _state = state;
     private readonly CancellationToken _cancellationToken = cancellationToken;
+    private readonly InMemoryFullTextMatcher _fullTextMatcher = new(schemaRegistry);
     private readonly Dictionary<LambdaExpression, Delegate> _compiled = [];
 
     /// <summary>Executes the model and returns the raw terminal result.</summary>
     public object? Execute(GraphQueryModel model, TerminalHints hints)
     {
         _cancellationToken.ThrowIfCancellationRequested();
-
-        if (model.Root is SearchRoot || model.SearchFilter is not null)
-        {
-            throw new GraphException(
-                "Full-text search is not supported by the in-memory provider (the FullTextSearch capability is not declared).");
-        }
 
         var rows = RootRows(model.Root);
         rows = ApplyTraversal(rows, model);
@@ -56,6 +52,11 @@ internal sealed class InMemoryQueryExecutor(
         if (predicates.Count > 0)
         {
             rows = FilterRows(rows, predicates, deferred, complexTraversals);
+        }
+
+        if (model.SearchFilter is { } searchFilter)
+        {
+            rows = ApplySearchFilter(rows, searchFilter);
         }
 
         var projectionSource = model.GroupBy is { } groupBy ? GroupRows(rows, groupBy) : rows;
@@ -286,8 +287,75 @@ internal sealed class InMemoryQueryExecutor(
                 return MaterializeNodeRoot(typeof(DynamicNode), "src", includeComplexValues: true);
             case DynamicRoot { ElementType: { } elementType } when elementType == typeof(DynamicRelationship):
                 return MaterializeRelationshipRoot(typeof(DynamicRelationship), "r");
+            case SearchRoot searchRoot:
+                return SearchRootRows(searchRoot);
             default:
                 throw new GraphException($"Query root '{root.GetType().Name}' is not supported by the in-memory provider.");
+        }
+    }
+
+    // ---- full-text search ----
+
+    private IEnumerable<Row> SearchRootRows(SearchRoot searchRoot)
+    {
+        var terms = FullTextQueryTokenizer.Tokenize(searchRoot.Query);
+        if (terms.Count == 0)
+        {
+            yield break;
+        }
+
+        // Candidate rows come from the normal materialization path, so subtype narrowing (e.g.
+        // SearchNodes<Person> returning Manager rows) and complex-property hydration already work.
+        var candidates = searchRoot.Target switch
+        {
+            SearchRootTarget.Nodes => MaterializeNodeRoot(searchRoot.ElementType ?? typeof(INode), "src"),
+            SearchRootTarget.Relationships => MaterializeRelationshipRoot(searchRoot.ElementType ?? typeof(IRelationship), "r"),
+            SearchRootTarget.Entities => MaterializeNodeRoot(typeof(INode), "src")
+                .Concat(MaterializeRelationshipRoot(typeof(IRelationship), "r")),
+            _ => throw new GraphException($"Unsupported full-text search target '{searchRoot.Target}'."),
+        };
+
+        foreach (var row in candidates)
+        {
+            _cancellationToken.ThrowIfCancellationRequested();
+            if (row.Current is { } entity && _fullTextMatcher.Matches(entity, terms))
+            {
+                yield return row;
+            }
+        }
+    }
+
+    private IEnumerable<Row> ApplySearchFilter(IEnumerable<Row> rows, SearchRoot searchFilter)
+    {
+        var terms = FullTextQueryTokenizer.Tokenize(searchFilter.Query);
+        var narrowing = searchFilter.ElementType is { } elementType
+            && elementType != typeof(INode)
+            && elementType != typeof(IRelationship)
+            && elementType != typeof(IEntity)
+            && elementType != typeof(DynamicNode)
+            && elementType != typeof(DynamicRelationship)
+                ? elementType
+                : null;
+
+        foreach (var row in rows)
+        {
+            _cancellationToken.ThrowIfCancellationRequested();
+            if (row.Current is not { } entity)
+            {
+                continue;
+            }
+
+            // Element-type narrowing mirrors the shared planner's semi-join scope (subtypes
+            // included via IsInstanceOfType); then the current entity must match the query.
+            if (narrowing is not null && !narrowing.IsInstanceOfType(entity))
+            {
+                continue;
+            }
+
+            if (_fullTextMatcher.Matches(entity, terms))
+            {
+                yield return row;
+            }
         }
     }
 

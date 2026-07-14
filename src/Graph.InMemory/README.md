@@ -35,8 +35,8 @@ never mutates the store.
 - Concurrency model: transactions buffer their writes and commit atomically under a single
   store-wide lock (single-writer serialized commits; reads take lock-free snapshots). This is
   simple and correct for a test double, not a throughput design.
-- Full-text search (`GraphCapability.FullTextSearch`) is not supported: the `Search*` entry
-  points build queryables, and execution fails with a `GraphException`. The compatibility suite
-  skips those tests via the capability declaration.
+- Full-text search (`GraphCapability.FullTextSearch`) is supported at the contract floor only:
+  naive, index-free, whole-word matching over each entity's own searchable string properties. No
+  stemming, ranking, prefix, or substring matching.
 
 See `docs/testing-with-the-in-memory-provider.md` in the repository for the full guide.

@@ -109,7 +109,7 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider
         GraphQueryModelValidator.Validate(model);
 
         var state = _transaction is not null ? _transaction.View : _store.CurrentState;
-        var executor = new InMemoryQueryExecutor(_reader, state, cancellationToken);
+        var executor = new InMemoryQueryExecutor(_reader, state, Graph.SchemaRegistry, cancellationToken);
         return executor.Execute(model, TerminalHints.From(expression));
     }
 
