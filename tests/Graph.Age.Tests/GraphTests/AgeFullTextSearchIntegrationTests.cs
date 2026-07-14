@@ -34,4 +34,35 @@ public sealed class AgeFullTextSearchIntegrationTests(AgeHarness harness)
         var afterRollback = await this.Graph.SearchNodes<Person>("TransientToken").ToListAsync(ct);
         Assert.Empty(afterRollback);
     }
+
+    [Fact]
+    public async Task MixedSearch_AppliesOrderingPagingAndTerminalsAfterCombiningBothKinds()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string term = "MixedSearchBoundary";
+        var first = new Person { FirstName = term, LastName = "Node" };
+        var second = new Person { FirstName = "Endpoint", LastName = "Node" };
+        await this.Graph.CreateNodeAsync(first, null, ct);
+        await this.Graph.CreateNodeAsync(second, null, ct);
+
+        var relationship = new KnowsWell
+        {
+            StartNodeId = first.Id,
+            EndNodeId = second.Id,
+            HowWell = $"{term} relationship",
+        };
+        await this.Graph.CreateRelationshipAsync(relationship, null, ct);
+
+        var all = await this.Graph.Search(term).ToListAsync(ct);
+        Assert.Equal(2, all.Count);
+
+        var paged = await this.Graph.Search(term)
+            .OrderBy(entity => entity.Id)
+            .Take(1)
+            .ToListAsync(ct);
+        Assert.Single(paged);
+        Assert.Equal(all.MinBy(entity => entity.Id)!.Id, paged[0].Id);
+
+        Assert.Equal(2, await this.Graph.Search(term).CountAsync(ct));
+    }
 }

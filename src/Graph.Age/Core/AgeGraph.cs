@@ -3,9 +3,9 @@
 
 namespace Cvoya.Graph.Age.Core;
 
+using Cvoya.Graph.Age.Querying;
 using Cvoya.Graph.Age.Querying.Linq.Providers;
 using Cvoya.Graph.Querying.Linq;
-
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -598,7 +598,13 @@ internal class AgeGraph : IGraph
     public IGraphQueryable<Graph.IEntity> Search(string query, IGraphTransaction? transaction = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
-        return Nodes<Graph.INode>(transaction).Search(query);
+
+        var ageTransaction = ToAgeTransaction(transaction);
+        var provider = new GraphQueryProvider(_graphContext, ageTransaction, isReadOnly: true);
+        var nodeSource = ((IQueryable)new GraphNodeQueryable<Graph.INode>(provider)).Expression;
+        var relationshipSource = ((IQueryable)new GraphRelationshipQueryable<Graph.IRelationship>(provider)).Expression;
+        var searchRoot = new AgeMixedSearchRootExpression(query, nodeSource, relationshipSource);
+        return new GraphQueryable<Graph.IEntity>(provider, searchRoot);
     }
 
     /// <inheritdoc />

@@ -46,9 +46,10 @@ public sealed class AgeDialect : ICypherDialect
     /// <inheritdoc/>
     /// <remarks>
     /// Unreachable backstop. AGE lowers full-text search in its own expression-level rewrite, and the
-    /// planner's capability gate rejects it before rendering because AGE does not declare
-    /// <see cref="GraphCapability.FullTextSearch"/>. This collapses the four former full-text name
-    /// members into a single throwing hook (issue #292).
+    /// rewrite removes the search expression before the shared planner and renderer run. AGE does
+    /// declare <see cref="GraphCapability.FullTextSearch"/> because the lowering implements the
+    /// user-visible capability; reaching this hook therefore indicates a provider bug. This collapses
+    /// the four former full-text name members into a single throwing hook (issue #292).
     /// </remarks>
     public string RenderFullTextSearch(FullTextSearchClause clause, ICypherRenderContext context) =>
         throw FullTextNotSupported();

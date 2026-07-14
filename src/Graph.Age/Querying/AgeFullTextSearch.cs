@@ -5,6 +5,7 @@ namespace Cvoya.Graph.Age.Querying;
 
 using Cvoya.Graph.Age.Querying.Cypher.Execution;
 using Cvoya.Graph.Age.Serialization;
+using Cvoya.Graph.Querying;
 
 /// <summary>
 /// Phase 1 of AGE's two-phase full-text search. AGE cannot express full-text matching in its Cypher
@@ -48,7 +49,7 @@ internal static class AgeFullTextSearch
     /// <c>Id</c> values. Executing on the caller's transaction is deliberate: an uncommitted write in
     /// that transaction is visible to the search.
     /// </summary>
-    public static async Task<IReadOnlyList<string>> FindMatchingIdsAsync(
+    internal static async Task<IReadOnlyList<string>> FindMatchingIdsAsync(
         Type elementType,
         string query,
         SchemaRegistry schemaRegistry,
@@ -59,6 +60,17 @@ internal static class AgeFullTextSearch
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(schemaRegistry);
         ArgumentNullException.ThrowIfNull(runner);
+
+        // PostgreSQL's lexer is deliberately not the semantic authority here. Normalize through the
+        // provider-neutral tokenizer first so punctuation and Unicode boundaries mean the same thing
+        // for every provider that declares FullTextSearch.
+        var terms = FullTextQueryTokenizer.Tokenize(query);
+        if (terms.Count == 0)
+        {
+            return [];
+        }
+
+        var normalizedQuery = string.Join(' ', terms);
 
         var (target, isDynamic) = Classify(elementType);
         var table = target == FullTextTarget.Nodes
@@ -85,7 +97,7 @@ internal static class AgeFullTextSearch
             sql = BuildTypedSql(runner.GraphName, table, candidates);
         }
 
-        var ids = await runner.QueryScalarStringsAsync(sql, query, cancellationToken).ConfigureAwait(false);
+        var ids = await runner.QueryScalarStringsAsync(sql, normalizedQuery, cancellationToken).ConfigureAwait(false);
         EnforceIdSetLimit(ids.Count);
         return ids;
     }
@@ -117,8 +129,6 @@ internal static class AgeFullTextSearch
             return (FullTextTarget.Relationships, true);
         }
 
-        // IEntity and INode both search nodes: AgeGraph.Search over IEntity is built on Nodes<INode>,
-        // so a mixed root never reaches phase 1 as a cross-table union.
         return typeof(Graph.IRelationship).IsAssignableFrom(elementType)
             ? (FullTextTarget.Relationships, false)
             : (FullTextTarget.Nodes, false);
@@ -210,6 +220,7 @@ internal static class AgeFullTextSearch
     internal static string BuildDynamicSql(string graphName, string table)
     {
         var exclusions = string.Join(", ",
+            SqlString(nameof(Graph.IEntity.Id)),
             SqlString("inheritance_labels"),
             SqlString(SerializationBridge.EntityKindPropertyName),
             SqlString(SerializationBridge.MetadataPropertyName));
@@ -217,9 +228,10 @@ internal static class AgeFullTextSearch
             $"SELECT t.props ->> 'Id' AS id{Environment.NewLine}" +
             $"FROM {FromClause(graphName, table)}{Environment.NewLine}" +
             $"WHERE to_tsvector('simple', ({Environment.NewLine}" +
-            $"        SELECT concat_ws(' ', array_agg(kv.value)){Environment.NewLine}" +
-            $"        FROM jsonb_each_text(t.props) AS kv(key, value){Environment.NewLine}" +
-            $"        WHERE kv.key NOT IN ({exclusions}){Environment.NewLine}" +
+            $"        SELECT concat_ws(' ', array_agg(kv.value #>> '{{}}')){Environment.NewLine}" +
+            $"        FROM jsonb_each(t.props) AS kv(key, value){Environment.NewLine}" +
+            $"        WHERE jsonb_typeof(kv.value) = 'string'{Environment.NewLine}" +
+            $"          AND kv.key NOT IN ({exclusions}){Environment.NewLine}" +
             $"    )) @@ plainto_tsquery('simple', @query){Environment.NewLine}" +
             $"LIMIT {MaxMatchedIds + 1}";
     }

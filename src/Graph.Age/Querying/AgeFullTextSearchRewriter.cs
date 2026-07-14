@@ -96,6 +96,24 @@ internal sealed class AgeFullTextSearchRewriter
         IReadOnlyDictionary<MethodCallExpression, string[]> idsBySearch) =>
         new SearchToWhereRewriter(idsBySearch).Visit(expression);
 
+    /// <summary>Builds the residual id-membership predicate used by both typed and mixed search.</summary>
+    internal static MethodCallExpression BuildIdFilter(Expression source, Type elementType, string[] ids)
+    {
+        var parameter = Expression.Parameter(elementType, "e");
+        var idProperty = elementType.GetProperty(nameof(Graph.IEntity.Id))
+            ?? typeof(Graph.IEntity).GetProperty(nameof(Graph.IEntity.Id))!;
+        var predicateBody = Expression.Call(
+            EnumerableContainsMethod,
+            Expression.Constant(ids, typeof(IEnumerable<string>)),
+            Expression.Property(parameter, idProperty));
+        var predicate = Expression.Lambda(predicateBody, parameter);
+
+        return Expression.Call(
+            WhereMethod.MakeGenericMethod(elementType),
+            source,
+            Expression.Quote(predicate));
+    }
+
     private static string ExtractQuery(MethodCallExpression search)
     {
         // The Search operator builds Expression.Constant(searchQuery), so the argument is a constant
@@ -206,27 +224,10 @@ internal sealed class AgeFullTextSearchRewriter
                 // Visit the source first so a nested Search (chained Search calls) is rewritten too.
                 var source = Visit(node.Arguments[0]);
                 var elementType = node.Method.GetGenericArguments()[0];
-                return BuildWhere(source, elementType, ids);
+                return BuildIdFilter(source, elementType, ids);
             }
 
             return base.VisitMethodCall(node);
-        }
-
-        private static MethodCallExpression BuildWhere(Expression source, Type elementType, string[] ids)
-        {
-            var parameter = Expression.Parameter(elementType, "e");
-            var idProperty = elementType.GetProperty(nameof(Graph.IEntity.Id))
-                ?? typeof(Graph.IEntity).GetProperty(nameof(Graph.IEntity.Id))!;
-            var predicateBody = Expression.Call(
-                EnumerableContainsMethod,
-                Expression.Constant(ids, typeof(IEnumerable<string>)),
-                Expression.Property(parameter, idProperty));
-            var predicate = Expression.Lambda(predicateBody, parameter);
-
-            return Expression.Call(
-                WhereMethod.MakeGenericMethod(elementType),
-                source,
-                Expression.Quote(predicate));
         }
     }
 }

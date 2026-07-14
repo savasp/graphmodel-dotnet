@@ -30,9 +30,9 @@ runs (`AgeFullTextSearch`, `AgeFullTextSearchRewriter`):
 
 1. **Phase 1** runs a plain-SQL `to_tsvector(...) @@ plainto_tsquery('simple', @query)` query over the
    graph's `CvoyaNode` / `CvoyaRelationship` label table, on the **caller's transaction**, and returns
-   the matching entities' public `Id` values. The raw user text reaches Postgres only through the
-   `@query` bind parameter (never `to_tsquery`, never interpolation); `plainto_tsquery` strips live
-   query metacharacters (`~ * : ( )`) rather than parsing them.
+   the matching entities' public `Id` values. The shared tokenizer first normalizes the raw text to
+   the provider-neutral term definition; those terms reach Postgres only through the `@query` bind
+   parameter (never `to_tsquery`, never interpolation).
 2. The provider **rewrites** each `Search(source, query)` operator to `Where(source, e => ids.Contains(e.Id))`
    and hands the residual, search-free query to the unchanged shared planner and renderer, so aliases,
    projections, paging, and composition all come out right by construction.
@@ -48,7 +48,9 @@ Semantics (the contract floor the shared TCK pins):
   entities, all string property values except the framework's internal keys. Text on complex-property
   value nodes is **not** part of the owning entity's match set (the per-type label filter excludes those
   rows); untyped/dynamic search has no domain label to filter on, so it may also match value-node rows.
-- **`graph.Search()`** (mixed `IEntity`) is node-only in this provider (it is built on `Nodes<INode>`).
+- **`graph.Search()`** runs phase 1 against both physical tables, materializes the matching nodes and
+  relationships on the same transaction, and combines them before applying the outer LINQ pipeline.
+  Explicit ordering, paging, and terminals therefore operate on the mixed result as a whole.
 - **Search-as-source** (`Search().Traverse()`) is rejected at translation time (tracked by #295); the
   rewriter leaves that shape intact so the shared front-end's rejection still fires.
 - **No indexes yet** — correctness comes from a sequential scan; GIN acceleration is #291, whose coarse
@@ -60,10 +62,10 @@ Semantics (the contract floor the shared TCK pins):
 
 | Inventory test methods | Executed | Capability-skipped | Statically skipped | Failed |
 |---|---|---|---|---|
-| 384 | 375 | 9 | 1 | 0 |
+| 385 | 376 | 9 | 1 | 0 |
 
-The compatibility inventory contains 384 runnable test methods. For this capability set (which now
-declares `FullTextSearch`), `ComplianceInventory.MinimumExecuted(declared)` is 375 methods and the
+The compatibility inventory contains 385 runnable test methods. For this capability set (which now
+declares `FullTextSearch`), `ComplianceInventory.MinimumExecuted(declared)` is 376 methods and the
 strict compliance guard passes; the remaining 9 capability skips are all `CallSubqueries` /
 `PatternSizeProjection` tests (tracked by #308). Theory data rows make the runtime case count
 slightly larger than the method inventory. The suite also contains one statically skipped,

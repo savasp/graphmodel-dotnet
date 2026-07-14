@@ -73,9 +73,10 @@ public sealed class AgeFullTextSearchTests
             "SELECT t.props ->> 'Id' AS id" + N +
             "FROM (SELECT properties::text::jsonb AS props FROM \"cvoya_g1\".\"CvoyaNode\") AS t" + N +
             "WHERE to_tsvector('simple', (" + N +
-            "        SELECT concat_ws(' ', array_agg(kv.value))" + N +
-            "        FROM jsonb_each_text(t.props) AS kv(key, value)" + N +
-            "        WHERE kv.key NOT IN ('inheritance_labels', '__graphModelEntityKind__', '__metadata__')" + N +
+            "        SELECT concat_ws(' ', array_agg(kv.value #>> '{}'))" + N +
+            "        FROM jsonb_each(t.props) AS kv(key, value)" + N +
+            "        WHERE jsonb_typeof(kv.value) = 'string'" + N +
+            "          AND kv.key NOT IN ('Id', 'inheritance_labels', '__graphModelEntityKind__', '__metadata__')" + N +
             "    )) @@ plainto_tsquery('simple', @query)" + N +
             "LIMIT 10001",
             sql);

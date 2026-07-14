@@ -125,8 +125,9 @@ public interface IFullTextSearchTests : IGraphTest
         // Search for "SearchUser" across all entities
         var results = await this.Graph.Search("SearchUser").ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.True(results.Count >= 1, "Should find at least one entity containing 'SearchUser'");
+        Assert.Equal(2, results.Count);
         Assert.True(results.Any(e => e is INode), "Should find node entities");
+        Assert.True(results.Any(e => e is IRelationship), "Should find relationship entities");
     }
 
     [Fact]
@@ -459,6 +460,23 @@ public interface IFullTextSearchTests : IGraphTest
         var found = await this.Graph.SearchRelationships<DynamicRelationship>("Good friends").ToListAsync(TestContext.Current.CancellationToken);
         Assert.Single(found);
         Assert.Equal("Good friends", found[0].Properties["HowWell"]);
+    }
+
+    [Fact]
+    public async Task DynamicSearch_DoesNotTreatNonStringValuesAsText()
+    {
+        var person = new Person
+        {
+            FirstName = "Numeric",
+            LastName = "Boundary",
+            Age = 8347261,
+        };
+        await this.Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+
+        var found = await this.Graph.SearchNodes<DynamicNode>("8347261")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(found);
     }
 
     // ---- IGraph.Search* convenience/`.Search()` operator equivalence (issue #94 scope item 8 /
