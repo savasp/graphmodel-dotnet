@@ -21,6 +21,9 @@ public sealed class InMemoryHarness : IGraphProviderTestHarness
     public CapabilitySet Capabilities => CapabilitySet.Of(
         GraphCapability.Transactions,
         GraphCapability.ComplexPropertyCascade,
+        // Naive, index-free whole-word matching over each entity's own searchable string
+        // properties, satisfying the #288 FullTextSearch contract floor; see #289.
+        GraphCapability.FullTextSearch,
         // The interpreter compiles and invokes the real projection lambda over grouped rows, so it
         // executes correlated collection projections (pattern comprehensions) and pattern-size
         // counts natively; see #120.

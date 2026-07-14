@@ -86,9 +86,11 @@ creating a new store.
 
 ## What is different
 
-- **No full-text search.** The provider does not declare `GraphCapability.FullTextSearch`;
-  `Search`/`SearchNodes`/`SearchRelationships` build queryables whose execution throws a
-  `GraphException`. The compatibility suite skips those tests with a capability reason.
+- **Naive full-text search.** The provider declares `GraphCapability.FullTextSearch` and satisfies
+  the contract floor with index-free, whole-word matching over each entity's own searchable string
+  properties (`[Property(IncludeInFullTextSearch)]`; all string values for dynamic entities). There
+  is no stemming, ranking, prefix, or substring matching — the floor only. It is the executable
+  spec of the contract, not a search engine.
 - **Not a production store.** Nothing is persisted, queries are unindexed scans, and commits are
   serialized through a single store-wide lock. It is a test double and executable specification,
   not a database.
