@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using Cvoya.Graph.Age.Core;
 using Cvoya.Graph.Age.Querying.Cypher.Builders;
 using Cvoya.Graph.Age.Querying.Cypher.Visitors.Core;
+using Cvoya.Graph.Querying;
 using Cvoya.Graph.Serialization;
 using Cvoya.Graph.Serialization.Results;
 using Microsoft.Extensions.Logging;
@@ -37,8 +38,10 @@ internal sealed class CypherEngine
     private readonly GraphResultMaterializer _materializer;
     private readonly AgeRecordAdapter _recordAdapter = new();
     private readonly ILoggerFactory? _loggerFactory;
+    private readonly AgeFullTextSearchRewriter _fullTextSearchRewriter;
+    private readonly SchemaRegistry _schemaRegistry;
 
-    public CypherEngine(EntityFactory entityFactory, ILoggerFactory? loggerFactory)
+    public CypherEngine(EntityFactory entityFactory, SchemaRegistry schemaRegistry, ILoggerFactory? loggerFactory)
     {
         _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
         _logger = loggerFactory?.CreateLogger<CypherEngine>() ?? NullLogger<CypherEngine>.Instance;
@@ -47,7 +50,8 @@ internal sealed class CypherEngine
         _executor = new CypherExecutor(loggerFactory);
         _materializer = new GraphResultMaterializer(entityFactory, loggerFactory);
         _loggerFactory = loggerFactory;
-
+        _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
+        _fullTextSearchRewriter = new AgeFullTextSearchRewriter(schemaRegistry);
     }
 
     public async Task<T?> ExecuteAsync<T>(
@@ -58,6 +62,20 @@ internal sealed class CypherEngine
         try
         {
             _logger.LogDebugCypherEngine60(typeof(T).Name);
+
+            if (AgeMixedSearchRootExpression.TryFind(expression, out var mixedRoot))
+            {
+                ValidateMixedSearchExpression(expression);
+                var entities = await LoadMixedSearchEntitiesAsync(
+                    mixedRoot!, transaction, cancellationToken).ConfigureAwait(false);
+                return AgeMixedSearchEvaluator.Evaluate<T>(expression, entities);
+            }
+
+            // Lower any full-text Search operator out of the expression tree (phase 1 + rewrite to a
+            // Where over the matched ids) before the shared pipeline runs. Unchanged when there is no
+            // Search or the Search feeds a traversal (rejected downstream).
+            expression = await _fullTextSearchRewriter
+                .RewriteAsync(expression, transaction.Runner, cancellationToken).ConfigureAwait(false);
 
             // Build the Cypher query from the expression
             var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
@@ -76,8 +94,10 @@ internal sealed class CypherEngine
             ValidateMinMaxTerminalValue<T>(expression, records);
 
             // Let the materializer handle everything - no need to duplicate logic here
+            var adapted = _recordAdapter.Adapt(records);
+
             var result = await _materializer.MaterializeAsync<T>(
-                _recordAdapter.Adapt(records),
+                adapted,
                 cypherQuery.GraphPathTypes,
                 cancellationToken).ConfigureAwait(false);
             return result;
@@ -101,6 +121,24 @@ internal sealed class CypherEngine
         cancellationToken.ThrowIfCancellationRequested();
 
         _logger.LogDebugCypherEngine103(typeof(T).Name);
+
+        if (AgeMixedSearchRootExpression.TryFind(expression, out var mixedRoot))
+        {
+            ValidateMixedSearchExpression(expression);
+            var entities = await LoadMixedSearchEntitiesAsync(
+                mixedRoot!, transaction, cancellationToken).ConfigureAwait(false);
+            foreach (var item in AgeMixedSearchEvaluator.EvaluateSequence<T>(expression, entities))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return item;
+            }
+
+            yield break;
+        }
+
+        // See ExecuteAsync: lower full-text search before building the query.
+        expression = await _fullTextSearchRewriter
+            .RewriteAsync(expression, transaction.Runner, cancellationToken).ConfigureAwait(false);
 
         var cypherQuery = BuildCypherQuery(typeof(T), expression, _loggerFactory);
         LogCypherQuery(cypherQuery);
@@ -128,9 +166,9 @@ internal sealed class CypherEngine
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var item = await _materializer.MaterializeRecordAsync<T>(
-                _recordAdapter.Adapt(record),
-                cancellationToken).ConfigureAwait(false);
+            var adaptedRecord = _recordAdapter.Adapt(record);
+            var item = await _materializer
+                .MaterializeRecordAsync<T>(adaptedRecord, cancellationToken).ConfigureAwait(false);
 
             if (item is not null)
             {
@@ -300,6 +338,48 @@ internal sealed class CypherEngine
         }
 
         return new CypherQuery(query.Text, convertedParams, query.GraphPathTypes, query.ProjectionColumns);
+    }
+
+    private async Task<IReadOnlyList<IEntity>> LoadMixedSearchEntitiesAsync(
+        AgeMixedSearchRootExpression root,
+        AgeGraphTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var nodeIds = await AgeFullTextSearch.FindMatchingIdsAsync(
+            typeof(INode), root.SearchQuery, _schemaRegistry, transaction.Runner, cancellationToken)
+            .ConfigureAwait(false);
+        var relationshipIds = await AgeFullTextSearch.FindMatchingIdsAsync(
+            typeof(IRelationship), root.SearchQuery, _schemaRegistry, transaction.Runner, cancellationToken)
+            .ConfigureAwait(false);
+        AgeFullTextSearch.EnforceIdSetLimit(nodeIds.Count + relationshipIds.Count);
+
+        var nodes = nodeIds.Count == 0
+            ? []
+            : await ExecuteAsync<List<INode>>(
+                AgeFullTextSearchRewriter.BuildIdFilter(root.NodeSource, typeof(INode), [.. nodeIds]),
+                transaction,
+                cancellationToken).ConfigureAwait(false) ?? [];
+        var relationships = relationshipIds.Count == 0
+            ? []
+            : await ExecuteAsync<List<IRelationship>>(
+                AgeFullTextSearchRewriter.BuildIdFilter(
+                    root.RelationshipSource, typeof(IRelationship), [.. relationshipIds]),
+                transaction,
+                cancellationToken).ConfigureAwait(false) ?? [];
+
+        return [.. nodes.Cast<IEntity>(), .. relationships.Cast<IEntity>()];
+    }
+
+    private static void ValidateMixedSearchExpression(Expression expression)
+    {
+        var model = GraphQueryModelBuilder.Build(expression);
+        GraphQueryModelValidator.Validate(model);
+        if (model.Traversal.Count > 0)
+        {
+            throw new GraphQueryTranslationException(
+                "Full-text search cannot be the source of a traversal yet (Search(...) followed by " +
+                "Traverse/PathSegments). Apply Search() after the traversal instead. Tracked by #295.");
+        }
     }
 
     private static Type ExtractElementType(Type resultType, Expression expression)

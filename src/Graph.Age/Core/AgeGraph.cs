@@ -3,9 +3,9 @@
 
 namespace Cvoya.Graph.Age.Core;
 
+using Cvoya.Graph.Age.Querying;
 using Cvoya.Graph.Age.Querying.Linq.Providers;
 using Cvoya.Graph.Querying.Linq;
-
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -598,7 +598,13 @@ internal class AgeGraph : IGraph
     public IGraphQueryable<Graph.IEntity> Search(string query, IGraphTransaction? transaction = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query, nameof(query));
-        return Nodes<Graph.INode>(transaction).Search(query);
+
+        var ageTransaction = ToAgeTransaction(transaction);
+        var provider = new GraphQueryProvider(_graphContext, ageTransaction, isReadOnly: true);
+        var nodeSource = ((IQueryable)new GraphNodeQueryable<Graph.INode>(provider)).Expression;
+        var relationshipSource = ((IQueryable)new GraphRelationshipQueryable<Graph.IRelationship>(provider)).Expression;
+        var searchRoot = new AgeMixedSearchRootExpression(query, nodeSource, relationshipSource);
+        return new GraphQueryable<Graph.IEntity>(provider, searchRoot);
     }
 
     /// <inheritdoc />
@@ -647,10 +653,11 @@ internal class AgeGraph : IGraph
         {
             throw;
         }
-        catch (GraphException ex)
+        catch (Exception ex) when (ex is GraphException or Npgsql.NpgsqlException)
         {
-            // Schema initialization is pure in-memory reflection scanning (no Npgsql call in
-            // this path); the only failure it raises is a label-collision GraphException.
+            // Recreating indexes provisions the graph and issues DDL over Npgsql, so a failure can be a
+            // label-collision GraphException from initialization or an NpgsqlException from the index
+            // DDL; wrap either into the public contract.
             _logger.LogErrorAgeGraph551(ex);
             throw new GraphException("Failed to recreate indexes", ex);
         }

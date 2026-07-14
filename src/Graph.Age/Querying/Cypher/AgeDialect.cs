@@ -17,7 +17,8 @@ public sealed class AgeDialect : ICypherDialect
         GraphCapability.ComplexPropertyCascade,
         GraphCapability.MultiLabelMatch,
         GraphCapability.OrderByEntity,
-        GraphCapability.OptionalTraversal);
+        GraphCapability.OptionalTraversal,
+        GraphCapability.FullTextSearch);
 
     /// <summary>Initializes the Apache AGE dialect.</summary>
     public AgeDialect()
@@ -35,17 +36,20 @@ public sealed class AgeDialect : ICypherDialect
     /// <inheritdoc/>
     /// <remarks>
     /// AGE-compatible lowering implements multi-label matches, entity ordering, and optional
-    /// traversal before rendering. Capabilities describe user-visible behavior, whether native or
-    /// lowered, so both the planning and public instances declare those features.
+    /// traversal before rendering. Full-text search is lowered earlier still, at the expression level,
+    /// to a two-phase Postgres text-search query (<see cref="Querying.AgeFullTextSearch"/>).
+    /// Capabilities describe user-visible behavior, whether native or lowered, so both the planning and
+    /// public instances declare those features.
     /// </remarks>
     public CapabilitySet Capabilities => SupportedCapabilities;
 
     /// <inheritdoc/>
     /// <remarks>
     /// Unreachable backstop. AGE lowers full-text search in its own expression-level rewrite, and the
-    /// planner's capability gate rejects it before rendering because AGE does not declare
-    /// <see cref="GraphCapability.FullTextSearch"/>. This collapses the four former full-text name
-    /// members into a single throwing hook (issue #292).
+    /// rewrite removes the search expression before the shared planner and renderer run. AGE does
+    /// declare <see cref="GraphCapability.FullTextSearch"/> because the lowering implements the
+    /// user-visible capability; reaching this hook therefore indicates a provider bug. This collapses
+    /// the four former full-text name members into a single throwing hook (issue #292).
     /// </remarks>
     public string RenderFullTextSearch(FullTextSearchClause clause, ICypherRenderContext context) =>
         throw FullTextNotSupported();
