@@ -10,12 +10,13 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// <summary>Initializes provider-neutral schema metadata for the AGE provider.</summary>
 /// <remarks>
 /// AGE stores entity properties inside <c>agtype</c>, so PostgreSQL property constraints and
-/// indexes cannot express the CVOYA schema rules. The CRUD layer enforces those rules before
-/// writes; this manager owns metadata discovery and keeps the public index-recreation operation
-/// deterministic until AGE exposes property-level indexing.
+/// per-property indexes cannot express the CVOYA schema rules. The CRUD layer enforces those rules
+/// before writes; this manager owns metadata discovery and creates the coarse, blob-level full-text
+/// GIN indexes (<see cref="AgeFullTextIndex"/>) that accelerate search.
 /// </remarks>
 internal sealed class AgeSchemaManager
 {
+    private readonly AgeGraphContext context;
     private readonly SchemaRegistry schemaRegistry;
     private readonly ILogger<AgeSchemaManager> logger;
     private readonly SemaphoreSlim initializationGate = new(1, 1);
@@ -23,7 +24,7 @@ internal sealed class AgeSchemaManager
 
     public AgeSchemaManager(AgeGraphContext context, SchemaRegistry schemaRegistry)
     {
-        ArgumentNullException.ThrowIfNull(context);
+        this.context = context ?? throw new ArgumentNullException(nameof(context));
         this.schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
         logger = context.LoggerFactory?.CreateLogger<AgeSchemaManager>() ?? NullLogger<AgeSchemaManager>.Instance;
     }
@@ -57,6 +58,15 @@ internal sealed class AgeSchemaManager
     public async Task RecreateIndexesAsync(CancellationToken cancellationToken = default)
     {
         await InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
+
+        // Provisioning creates the physical label tables, so the full-text GIN indexes can be created
+        // here idempotently. Opening a dedicated connection (rather than reusing a transaction) mirrors
+        // how the store provisions the graph, and index DDL does not need the caller's transaction.
+        var connection = await context.Store.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var connectionLease = connection.ConfigureAwait(false);
+        await context.Store.EnsureGraphProvisionedAsync(connection, cancellationToken).ConfigureAwait(false);
+        await AgeFullTextIndex.EnsureAsync(connection, context.GraphName, cancellationToken).ConfigureAwait(false);
+
         logger.LogInformationAgeSchemaManager60();
     }
 

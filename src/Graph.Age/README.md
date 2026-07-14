@@ -62,8 +62,9 @@ and collects the matching entities' `Id`s; the provider then rewrites `Search(so
 residual query. Matching is case-insensitive, whole-token, and multi-term-AND (the `'simple'`
 regconfig sits on the cross-provider contract floor); the raw query is always a bind parameter, never
 interpolated. A single search may seed at most 10,000 ids (a larger match set fails with an actionable
-error); results are not yet index-accelerated. See [COMPLIANCE.md](COMPLIANCE.md) for the full
-semantics.
+error). Phase 1 is accelerated by a coarse, blob-level GIN index per label table (created at graph
+provisioning and by `RecreateIndexesAsync`); dropping the index degrades performance but never
+correctness. See [COMPLIANCE.md](COMPLIANCE.md) for the full semantics.
 
 ## Local AGE
 
