@@ -12,13 +12,13 @@ namespace Cvoya.Graph.InMemory;
 internal static class InMemoryDegreeCounter
 {
     /// <summary>
-    /// Counts the relationships of type <paramref name="typeLabel"/> incident to
+    /// Counts relationships assignable to <paramref name="relationshipType"/> incident to
     /// <paramref name="node"/> in the given <paramref name="direction"/>.
     /// </summary>
-    public static int Count(
+    internal static int Count(
         StoreState state,
         INode node,
-        string typeLabel,
+        Type relationshipType,
         GraphTraversalDirection direction)
     {
         var id = node.Id;
@@ -27,23 +27,24 @@ internal static class InMemoryDegreeCounter
         foreach (var relationship in state.Relationships.Values)
         {
             // Internal complex-property edges are keyed by property name, never a user relationship
-            // type, so the type-label match already excludes them; the guard makes that explicit.
+            // type, and have no CLR type. Match assignability so counting a base relationship also
+            // includes its stored derived relationship types, like typed graph queries do.
             if (relationship.IsComplexProperty ||
-                !string.Equals(relationship.Type, typeLabel, StringComparison.Ordinal))
+                relationship.ActualType is null ||
+                !relationshipType.IsAssignableFrom(relationship.ActualType))
             {
                 continue;
             }
 
-            // For Both, count each incident end separately so a self-loop contributes 2 — matching
-            // Cypher's undirected `COUNT { (src)-[:R]-() }` (which traverses a self-loop in both
-            // directions) and the graph-theory degree where a self-loop counts twice.
+            // Direction follows the physical edge, which may be reversed from logical Start/End by
+            // RelationshipDirection.Incoming. An undirected Cypher pattern returns a self-loop once.
             count += direction switch
             {
-                GraphTraversalDirection.Outgoing => relationship.StartNodeId == id ? 1 : 0,
-                GraphTraversalDirection.Incoming => relationship.EndNodeId == id ? 1 : 0,
+                GraphTraversalDirection.Outgoing => relationship.PhysicalSourceId == id ? 1 : 0,
+                GraphTraversalDirection.Incoming => relationship.PhysicalTargetId == id ? 1 : 0,
                 GraphTraversalDirection.Both =>
-                    (relationship.StartNodeId == id ? 1 : 0) + (relationship.EndNodeId == id ? 1 : 0),
-                _ => 0,
+                    relationship.PhysicalSourceId == id || relationship.PhysicalTargetId == id ? 1 : 0,
+                _ => throw new ArgumentOutOfRangeException(nameof(direction)),
             };
         }
 

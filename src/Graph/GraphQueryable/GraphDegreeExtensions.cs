@@ -17,9 +17,11 @@ public static class GraphDegreeExtensions
     /// <param name="node">The node whose relationships are counted.</param>
     /// <param name="direction">
     /// Which relationships to count relative to <paramref name="node"/>:
-    /// <see cref="GraphTraversalDirection.Outgoing"/> counts relationships that start at the node,
-    /// <see cref="GraphTraversalDirection.Incoming"/> counts relationships that end at the node, and
-    /// <see cref="GraphTraversalDirection.Both"/> counts relationships in either direction.
+    /// <see cref="GraphTraversalDirection.Outgoing"/> counts physical edges leaving the node,
+    /// <see cref="GraphTraversalDirection.Incoming"/> counts physical edges arriving at the node, and
+    /// <see cref="GraphTraversalDirection.Both"/> counts incident relationships in either direction.
+    /// A relationship stored with <see cref="RelationshipDirection.Incoming"/> reverses its logical
+    /// start/end orientation for this purpose, consistently with graph traversal.
     /// </param>
     /// <returns>The number of matching relationships.</returns>
     /// <remarks>

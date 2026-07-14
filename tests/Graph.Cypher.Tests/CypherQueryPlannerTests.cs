@@ -501,7 +501,8 @@ public class CypherQueryPlannerTests
             element =>
             {
                 var relationship = Assert.IsType<RelationshipPattern>(element);
-                Assert.Equal(["KNOWS"], relationship.Types);
+                Assert.Single(relationship.Types);
+                Assert.Contains("KNOWS", relationship.Types);
                 Assert.Equal(expected, relationship.Direction);
                 Assert.Null(relationship.Depth);
             },
