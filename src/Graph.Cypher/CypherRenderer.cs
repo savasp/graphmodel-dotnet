@@ -460,69 +460,172 @@ public sealed class CypherRenderer : ICypherRenderContext
 
     private void RenderEntityProjection(StringBuilder builder, EntityProjectionClause projection)
     {
+        RenderProjectionOrderingCapture(builder, projection.Ordering);
+        RenderEntityProjectionBody(builder, projection);
+    }
+
+    private void RenderEntityProjectionBody(StringBuilder builder, EntityProjectionClause projection)
+    {
         if (projection.Shape == EntityProjectionShape.Node)
         {
             if (!projection.LoadSourceProperties)
             {
-                RenderSimpleNodeProjection(builder, projection.SourceAlias);
+                RenderSimpleNodeProjection(builder, projection);
                 return;
             }
 
-            RenderNodePropertyLoad(builder, projection.SourceAlias);
+            RenderNodePropertyLoad(builder, projection);
             return;
         }
 
         if (projection.IncludePathCoordinates)
         {
-            builder.Append("RETURN pathIndex, hopIndex, { StartNode: { Node: ")
+            RenderProjectionResultStart(builder, projection.Ordering);
+            builder.Append("pathIndex, hopIndex, { StartNode: { Node: ")
                 .Append(projection.SourceAlias)
                 .Append(", ComplexProperties: [] }, Relationship: ")
                 .Append(projection.RelationshipAlias)
                 .Append(", EndNode: { Node: ")
                 .Append(projection.TargetAlias)
                 .Append(", ComplexProperties: [] } } AS PathSegment");
+            CompleteProjectionResult(
+                builder,
+                projection.Ordering,
+                "pathIndex, hopIndex, PathSegment");
             return;
         }
 
         if (!projection.LoadSourceProperties && !projection.LoadTargetProperties)
         {
-            builder.Append("RETURN {\n")
+            RenderProjectionResultStart(builder, projection.Ordering);
+            builder.Append("{\n")
                 .Append("    StartNode: { Node: ").Append(projection.SourceAlias).Append(", ComplexProperties: [] },\n")
                 .Append("    Relationship: ").Append(projection.RelationshipAlias).Append(",\n")
                 .Append("    EndNode: { Node: ").Append(projection.TargetAlias).Append(", ComplexProperties: [] }\n")
                 .Append("} AS PathSegment");
+            CompleteProjectionResult(builder, projection.Ordering, "PathSegment");
             return;
         }
 
         RenderPathSegmentPropertyLoad(builder, projection);
     }
 
-    private static void RenderSimpleNodeProjection(StringBuilder builder, string alias)
+    private void RenderProjectionOrderingCapture(
+        StringBuilder builder,
+        IReadOnlyList<OrderByItem> ordering)
     {
-        builder.Append("RETURN {\n")
-            .Append("                Node: ").Append(alias).Append(",\n")
-            .Append("                ComplexProperties: []\n")
-            .Append("            } AS Node");
+        if (ordering.Count == 0)
+        {
+            return;
+        }
+
+        builder.Append("WITH *");
+        for (var index = 0; index < ordering.Count; index++)
+        {
+            builder.Append(",\n    ")
+                .Append(RenderExpression(ordering[index].Expression))
+                .Append(" AS ")
+                .Append(ProjectionOrderAlias(index));
+        }
+
+        builder.AppendLine();
     }
 
-    private void RenderNodePropertyLoad(StringBuilder builder, string alias)
+    private static void RenderProjectionOrdering(
+        StringBuilder builder,
+        IReadOnlyList<OrderByItem> ordering)
     {
+        if (ordering.Count == 0)
+        {
+            return;
+        }
+
+        builder.Append("\nORDER BY ");
+        for (var index = 0; index < ordering.Count; index++)
+        {
+            if (index > 0)
+            {
+                builder.Append(", ");
+            }
+
+            builder.Append(ProjectionOrderAlias(index));
+            if (ordering[index].Descending)
+            {
+                builder.Append(" DESC");
+            }
+        }
+    }
+
+    private static string ProjectionOrderAlias(int index) => $"__projectionOrder{index}";
+
+    private static void AppendProjectionOrderAliases(
+        StringBuilder builder,
+        IReadOnlyList<OrderByItem> ordering)
+    {
+        for (var index = 0; index < ordering.Count; index++)
+        {
+            builder.Append(", ").Append(ProjectionOrderAlias(index));
+        }
+    }
+
+    private static void RenderProjectionResultStart(
+        StringBuilder builder,
+        IReadOnlyList<OrderByItem> ordering)
+    {
+        builder.Append(ordering.Count == 0 ? "RETURN " : "WITH ");
+    }
+
+    private static void CompleteProjectionResult(
+        StringBuilder builder,
+        IReadOnlyList<OrderByItem> ordering,
+        string resultColumns)
+    {
+        if (ordering.Count == 0)
+        {
+            return;
+        }
+
+        AppendProjectionOrderAliases(builder, ordering);
+        RenderProjectionOrdering(builder, ordering);
+        builder.Append("\nRETURN ").Append(resultColumns);
+    }
+
+    private static void RenderSimpleNodeProjection(
+        StringBuilder builder,
+        EntityProjectionClause projection)
+    {
+        RenderProjectionResultStart(builder, projection.Ordering);
+        builder.Append("{\n")
+            .Append("                Node: ").Append(projection.SourceAlias).Append(",\n")
+            .Append("                ComplexProperties: []\n")
+            .Append("            } AS Node");
+        CompleteProjectionResult(builder, projection.Ordering, "Node");
+    }
+
+    private void RenderNodePropertyLoad(StringBuilder builder, EntityProjectionClause projection)
+    {
+        var alias = projection.SourceAlias;
         builder.Append("OPTIONAL MATCH src_path = (").Append(alias)
             .Append(")-[rels*1..").Append(GraphDataModel.DefaultDepthAllowed).Append("]->(prop)\n")
             .Append("WHERE ALL(rel IN rels WHERE rel.").Append(dialect.ComplexPropertyRelationshipMarker).Append(" = true)\n")
-            .Append("WITH ").Append(alias).Append(",\n")
+            .Append("WITH ").Append(alias);
+        AppendProjectionOrderAliases(builder, projection.Ordering);
+        builder.Append(",\n")
             .Append("    CASE WHEN src_path IS NULL THEN [] ELSE [i IN range(0, size(rels) - 1) | {\n")
             .Append("        ParentNode: CASE WHEN i = 0 THEN ").Append(alias).Append(" ELSE nodes(src_path)[i] END,\n")
             .Append("        Relationship: rels[i],\n")
             .Append("        SequenceNumber: rels[i].SequenceNumber,\n")
             .Append("        Property: nodes(src_path)[i + 1]\n")
             .Append("    }] END AS src_property_path\n")
-            .Append("WITH ").Append(alias)
-            .Append(", reduce(flat = [], path IN collect(src_property_path) | flat + path) AS src_properties\n")
-            .Append("RETURN {\n")
+            .Append("WITH ").Append(alias);
+        AppendProjectionOrderAliases(builder, projection.Ordering);
+        builder.Append(", reduce(flat = [], path IN collect(src_property_path) | flat + path) AS src_properties\n");
+        RenderProjectionResultStart(builder, projection.Ordering);
+        builder.Append("{\n")
             .Append("    Node: ").Append(alias).Append(",\n")
             .Append("    ComplexProperties: src_properties\n")
             .Append("} AS Node");
+        CompleteProjectionResult(builder, projection.Ordering, "Node");
     }
 
     private void RenderPathSegmentPropertyLoad(StringBuilder builder, EntityProjectionClause projection)
@@ -533,35 +636,60 @@ public sealed class CypherRenderer : ICypherRenderContext
 
         if (projection.LoadSourceProperties)
         {
-            AppendPathPropertyLoad(builder, sourceAlias, relationshipAlias, targetAlias, sourceAlias, "src", "rels", "prop");
+            AppendPathPropertyLoad(
+                builder,
+                projection,
+                sourceAlias,
+                relationshipAlias,
+                targetAlias,
+                sourceAlias,
+                "src",
+                "rels",
+                "prop");
             builder.AppendLine();
         }
         else
         {
             builder.Append("WITH ").Append(sourceAlias).Append(", ").Append(relationshipAlias).Append(", ")
-                .Append(targetAlias).Append(", [] AS src_properties\n");
+                .Append(targetAlias);
+            AppendProjectionOrderAliases(builder, projection.Ordering);
+            builder.Append(", [] AS src_properties\n");
         }
 
         if (projection.LoadTargetProperties)
         {
-            AppendPathPropertyLoad(builder, sourceAlias, relationshipAlias, targetAlias, targetAlias, "tgt", "trels", "tprop");
+            AppendPathPropertyLoad(
+                builder,
+                projection,
+                sourceAlias,
+                relationshipAlias,
+                targetAlias,
+                targetAlias,
+                "tgt",
+                "trels",
+                "tprop");
             builder.AppendLine();
         }
         else
         {
             builder.Append("WITH ").Append(sourceAlias).Append(", ").Append(relationshipAlias).Append(", ")
-                .Append(targetAlias).Append(", src_properties, [] AS tgt_properties\n");
+                .Append(targetAlias).Append(", src_properties");
+            AppendProjectionOrderAliases(builder, projection.Ordering);
+            builder.Append(", [] AS tgt_properties\n");
         }
 
-        builder.Append("RETURN {\n")
+        RenderProjectionResultStart(builder, projection.Ordering);
+        builder.Append("{\n")
             .Append("    StartNode: { Node: ").Append(sourceAlias).Append(", ComplexProperties: src_properties },\n")
             .Append("    Relationship: ").Append(relationshipAlias).Append(",\n")
             .Append("    EndNode: { Node: ").Append(targetAlias).Append(", ComplexProperties: tgt_properties }\n")
             .Append("} AS PathSegment");
+        CompleteProjectionResult(builder, projection.Ordering, "PathSegment");
     }
 
     private void AppendPathPropertyLoad(
         StringBuilder builder,
+        EntityProjectionClause projection,
         string sourceAlias,
         string relationshipAlias,
         string targetAlias,
@@ -577,6 +705,7 @@ public sealed class CypherRenderer : ICypherRenderContext
             .Append(dialect.ComplexPropertyRelationshipMarker).Append(" = true)\n")
             .Append("WITH ").Append(sourceAlias).Append(", ").Append(relationshipAlias).Append(", ")
             .Append(targetAlias);
+        AppendProjectionOrderAliases(builder, projection.Ordering);
         if (prefix == "tgt")
         {
             builder.Append(", src_properties");
@@ -592,6 +721,7 @@ public sealed class CypherRenderer : ICypherRenderContext
             .Append("}] END AS ").Append(prefix).Append("_property_path\n")
             .Append("WITH ").Append(sourceAlias).Append(", ").Append(relationshipAlias).Append(", ")
             .Append(targetAlias);
+        AppendProjectionOrderAliases(builder, projection.Ordering);
         if (prefix == "tgt")
         {
             builder.Append(", src_properties");
