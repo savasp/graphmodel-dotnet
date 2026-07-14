@@ -44,6 +44,11 @@ public static class ScalarGroupByValidation
             return "search, joins, unions, and additional query fragments cannot be combined with grouping";
         }
 
+        if (!IsScalarKeyType(groupBy.KeySelector.ReturnType))
+        {
+            return "the grouping key must be a scalar value; grouping by an entity, node, or composite key is not supported";
+        }
+
         if (model.Traversal.Count > 0 || ContainsComplexPropertyNavigation(groupBy.KeySelector))
         {
             return "grouping after a traversal is only supported for the path-segment start-node collection shape; " +
@@ -61,11 +66,6 @@ public static class ScalarGroupByValidation
             predicate.Predicate.Parameters.Count != 1 || predicate.Predicate.Parameters[0].Type != sourceType))
         {
             return "filtering a grouped result is not supported; apply Where before GroupBy";
-        }
-
-        if (!IsScalarKeyType(groupBy.KeySelector.ReturnType))
-        {
-            return "the grouping key must be a scalar value; grouping by an entity, node, or composite key is not supported";
         }
 
         if (groupBy.ElementSelector is not null)
