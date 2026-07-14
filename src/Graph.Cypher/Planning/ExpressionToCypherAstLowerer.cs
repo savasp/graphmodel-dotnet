@@ -184,6 +184,11 @@ internal sealed class ExpressionToCypherAstLowerer(
             return collectionExpression;
         }
 
+        if (TryLowerCountRelationships(node, aliases, out var degreeExpression))
+        {
+            return degreeExpression;
+        }
+
         if (node.Method.DeclaringType == typeof(string))
         {
             return LowerStringMethod(node, aliases);
@@ -688,6 +693,56 @@ internal sealed class ExpressionToCypherAstLowerer(
             _ => throw Unsupported(node, $"Complex collection method '{node.Method.Name}' requires a predicate."),
         };
 
+        return true;
+    }
+
+    private bool TryLowerCountRelationships(
+        MethodCallExpression node,
+        IReadOnlyDictionary<ParameterExpression, string> aliases,
+        out CypherExpression expression)
+    {
+        expression = null!;
+        if (node.Method.DeclaringType != typeof(GraphDegreeExtensions) ||
+            node.Method.Name != nameof(GraphDegreeExtensions.CountRelationships))
+        {
+            return false;
+        }
+
+        // The node whose degree is counted must resolve to a bound query scope (the projection
+        // parameter), so the subquery's source node reuses that alias.
+        if (node.Arguments[0] is not ParameterExpression nodeParameter)
+        {
+            throw Unsupported(
+                node,
+                "CountRelationships must be called on a query parameter (e.g. p.CountRelationships<Rel>(...)).");
+        }
+
+        var sourceAlias = ResolveAlias(nodeParameter, aliases);
+
+        // The direction selects the pattern orientation and must be known while translating.
+        if (node.Arguments[1] is not ConstantExpression { Value: GraphTraversalDirection direction } ||
+            !Enum.IsDefined(direction))
+        {
+            throw new GraphQueryTranslationException(
+                "The direction argument to CountRelationships must be a constant GraphTraversalDirection value.");
+        }
+
+        var relationshipType = node.Method.GetGenericArguments()[0];
+        var cypherDirection = direction switch
+        {
+            GraphTraversalDirection.Outgoing => CypherDirection.Outgoing,
+            GraphTraversalDirection.Incoming => CypherDirection.Incoming,
+            _ => CypherDirection.Both,
+        };
+
+        var pattern = new PathPattern(
+        [
+            new NodePattern(sourceAlias, []),
+            new RelationshipPattern(alias: null, Labels.GetLabelFromType(relationshipType), cypherDirection, depth: null),
+            new NodePattern(alias: null, []),
+        ]);
+
+        expression = new PatternSubqueryExpression(PatternSubqueryKind.Count, pattern);
         return true;
     }
 

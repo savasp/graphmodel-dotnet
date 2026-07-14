@@ -24,8 +24,8 @@ public sealed class ComplianceInventoryTests
     // collection projections landed — Basic/Filtered/TimeBased/Ordered/Aggregated/Grouped pattern
     // comprehensions and TraversePathAndGroupBy (gated on CallSubqueries), plus the ungated
     // CanCombineNodeAndRelationshipQueries — and one cross-provider edge-case contract was added.
-    // CanProjectRelationshipCounts stays skipped pending a node relationship-count (degree)
-    // projection surface (#300).
+    // +1 for #300: CanProjectRelationshipCounts was un-skipped once the node relationship-count
+    // (degree) projection surface (CountRelationships, gated on PatternSizeProjection) landed.
     // +3 for #294: capability-certifying tests in IAdvancedQueryTests -
     // CanQueryPolymorphicBaseTypeAcrossSubtypeLabels (MultiLabelMatch), CanOrderByBareEntity
     // (OrderByEntity), and CanProjectComplexCollectionSize (PatternSizeProjection). OptionalTraversal
@@ -39,7 +39,7 @@ public sealed class ComplianceInventoryTests
     // pins that an unsupported correlated grouped-projection member (Take over the group) is rejected
     // with the same GraphQueryTranslationException on every provider.
     // +5 for #318: three correlated-composition cases and two scalar-projection parity cases.
-    private const int ExpectedTotalTestMethods = 401;
+    private const int ExpectedTotalTestMethods = 402;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

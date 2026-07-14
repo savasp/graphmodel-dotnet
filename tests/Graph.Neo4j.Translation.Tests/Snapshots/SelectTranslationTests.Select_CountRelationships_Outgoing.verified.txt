@@ -1,0 +1,6 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+RETURN COUNT { MATCH (src)-[:KNOWS]->() }
+
+== Parameters ==
+(none)
