@@ -575,6 +575,86 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void CorrelatedGroupProjection_AcceptsSupportedCollectionAndAggregateMembers()
+    {
+        Expression<Func<IGrouping<Person, IGraphPathSegment<Person, Knows, Person>>, object>> projection = group =>
+            new
+            {
+                Name = group.Key.Name,
+                Friends = group.Select(segment => segment.EndNode.Name).ToList(),
+                FriendCount = group.Count(),
+                YoungFriendCount = group.Count(segment => segment.EndNode.Age < 30),
+                OldestFriend = group.Max(segment => segment.EndNode.Age),
+                Ordered = group.OrderBy(segment => segment.EndNode.Age)
+                    .Select(segment => segment.EndNode.Name)
+                    .ToArray(),
+            };
+
+        Assert.Null(CorrelatedGroupProjectionValidation.Validate(GroupedModel(projection)));
+    }
+
+    [Fact]
+    public void CorrelatedGroupProjection_AcceptsNestedGroupingMember()
+    {
+        Expression<Func<IGrouping<Person, IGraphPathSegment<Person, Knows, Person>>, object>> projection = group =>
+            new
+            {
+                Name = group.Key.Name,
+                AgeGroups = group
+                    .GroupBy(segment => segment.EndNode.Age >= 30)
+                    .Select(inner => new { inner.Key, Count = inner.Count() })
+                    .ToList(),
+            };
+
+        Assert.Null(CorrelatedGroupProjectionValidation.Validate(GroupedModel(projection)));
+    }
+
+    [Fact]
+    public void CorrelatedGroupProjection_RejectsUnsupportedGroupOperation()
+    {
+        Expression<Func<IGrouping<Person, IGraphPathSegment<Person, Knows, Person>>, object>> projection = group =>
+            new
+            {
+                Name = group.Key.Name,
+                Friends = group.Take(2).Select(segment => segment.EndNode.Name).ToList(),
+            };
+
+        var reason = CorrelatedGroupProjectionValidation.Validate(GroupedModel(projection));
+
+        Assert.NotNull(reason);
+        Assert.Contains("Take", reason);
+        Assert.Contains("Friends", reason);
+
+        // The canonical message deliberately omits the "GroupBy" substring the provider mappings key on,
+        // so it surfaces as a GraphQueryTranslationException rather than being downgraded.
+        var message = CorrelatedGroupProjectionValidation.BuildMessage(reason!);
+        Assert.DoesNotContain("GroupBy", message, StringComparison.Ordinal);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(GroupedModel(projection)));
+        Assert.Equal(message, exception.Message);
+    }
+
+    private static GraphQueryModel GroupedModel(LambdaExpression projection)
+    {
+        Expression<Func<IGraphPathSegment<Person, Knows, Person>, Person>> key = segment => segment.StartNode;
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows),
+            isComplexPropertyTraversal: false,
+            sourceAlias: "src",
+            targetAlias: "tgt");
+
+        return Model(
+            traversal: [traversal],
+            projection: new ProjectionShape(ProjectionKind.Scalar, projection),
+            groupBy: new GroupByFragment(key, null, null));
+    }
+
+    [Fact]
     public void Plan_SelectManyModel_ThrowsDefinedTranslationError()
     {
         Expression<Func<Person, IEnumerable<Address>>> collection = person => person.Offices;

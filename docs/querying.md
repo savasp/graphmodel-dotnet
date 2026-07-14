@@ -341,9 +341,22 @@ Scalar-key grouping requires the provider to declare the `GroupByAggregation` ca
 supported surface is deliberately minimal: a node root (optionally with a `Where` before `GroupBy`),
 a scalar key, and a projection that reads `g.Key` and/or the `Count`/`Sum`/`Average`/`Min`/`Max`
 aggregates. Everything else — entity or composite keys, element selectors, grouping after a
-traversal, and `Distinct`/`OrderBy`/`Skip`/`Take` applied to the grouped result — is declined at
-translation time with a `NotSupportedException`; materialize the grouped query first and continue
-client-side.
+traversal, collection projections such as `g.Select(...).ToList()`, filtered aggregates such as
+`g.Count(predicate)`, and `Distinct`/`OrderBy`/`Skip`/`Take` applied to the grouped result — is
+declined at translation time with a `NotSupportedException`; materialize the grouped query first and
+continue client-side.
+
+For correlated path grouping, the recognized grammar over the group — `Select`, `Where`,
+`OrderBy`/`OrderByDescending`,
+`Count`, `Average`/`Sum`/`Min`/`Max`, nested `GroupBy` (optionally terminated by
+`ToList`/`ToArray`/`AsEnumerable`), or a projection of the group key — is a **shared contract
+enforced identically across providers**. Any other operation over the group (for example
+`First`, `Take`, `Skip`, `Distinct`, `ElementAt`) cannot be lowered to a pattern comprehension or
+subquery and is rejected up-front with the same `GraphQueryTranslationException` on every
+provider, so a shape that fails on a graph database fails the same way on the in-memory provider
+rather than silently succeeding client-side. Collection projections require exactly one `Select`;
+`Where`, ordering, and nested grouping must precede it. A bare group collection, multiple `Select`
+operations, or a filter/order applied after `Select` is rejected by the same shared validator.
 
 ## Aggregations
 

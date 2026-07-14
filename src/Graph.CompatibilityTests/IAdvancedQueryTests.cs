@@ -835,6 +835,105 @@ public interface IAdvancedQueryTests : IGraphTest
     }
 
     [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
+    public async Task UnsupportedGroupedProjectionShapeIsRejectedConsistently()
+    {
+        // A bounded correlated collection (Take(2)) over the group is outside the recognized
+        // correlated-collection grammar: it cannot be lowered to a Cypher pattern comprehension or
+        // subquery. Both providers must reject it up-front with the same translation exception rather
+        // than one planner throwing while the in-memory interpreter silently executes it. AGE does not
+        // declare CallSubqueries, so this capability-gated test skips there.
+        var alice = new Person { FirstName = "Alice", Age = 30 };
+        var bob = new Person { FirstName = "Bob", Age = 25 };
+        var charlie = new Person { FirstName = "Charlie", Age = 35 };
+
+        await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, bob), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(new Knows(alice, charlie), null, TestContext.Current.CancellationToken);
+
+        var exception = await Assert.ThrowsAsync<GraphQueryTranslationException>(async () =>
+            await this.Graph.Nodes<Person>()
+                .Where(p => p.FirstName == "Alice")
+                .PathSegments<Person, Knows, Person>()
+                .GroupBy(segment => segment.StartNode)
+                .Select(group => new
+                {
+                    PersonName = group.Key.FirstName,
+                    Friends = group.Take(2).Select(segment => segment.EndNode.FirstName).ToList(),
+                })
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        // The message is the shared, provider-neutral one, naming the offending operation and the
+        // supported grammar, so the failure is deterministic and identical on every provider.
+        Assert.Contains("Cannot translate the correlated grouped projection", exception.Message);
+        Assert.Contains("Take", exception.Message);
+        Assert.Contains("Friends", exception.Message);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
+    public async Task GroupedProjectionWithoutSelectIsRejectedConsistently()
+    {
+        var exception = await Assert.ThrowsAsync<GraphQueryTranslationException>(async () =>
+            await this.Graph.Nodes<Person>()
+                .PathSegments<Person, Knows, Person>()
+                .GroupBy(segment => segment.StartNode)
+                .Select(group => new { Friends = group.ToList() })
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("Cannot translate the correlated grouped projection", exception.Message);
+        Assert.Contains("without a Select", exception.Message);
+        Assert.Contains("Friends", exception.Message);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
+    public async Task GroupedProjectionWithMultipleSelectsIsRejectedConsistently()
+    {
+        var exception = await Assert.ThrowsAsync<GraphQueryTranslationException>(async () =>
+            await this.Graph.Nodes<Person>()
+                .PathSegments<Person, Knows, Person>()
+                .GroupBy(segment => segment.StartNode)
+                .Select(group => new
+                {
+                    Friends = group
+                        .Select(segment => segment.EndNode)
+                        .Select(person => person.FirstName)
+                        .ToList(),
+                })
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("Cannot translate the correlated grouped projection", exception.Message);
+        Assert.Contains("multiple Select", exception.Message);
+        Assert.Contains("Friends", exception.Message);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.CallSubqueries)]
+    public async Task GroupedProjectionWithWhereAfterSelectIsRejectedConsistently()
+    {
+        var exception = await Assert.ThrowsAsync<GraphQueryTranslationException>(async () =>
+            await this.Graph.Nodes<Person>()
+                .PathSegments<Person, Knows, Person>()
+                .GroupBy(segment => segment.StartNode)
+                .Select(group => new
+                {
+                    Friends = group
+                        .Select(segment => segment.EndNode)
+                        .Where(person => person.Age >= 18)
+                        .ToList(),
+                })
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("Cannot translate the correlated grouped projection", exception.Message);
+        Assert.Contains("after Select", exception.Message);
+        Assert.Contains("Friends", exception.Message);
+    }
+
+    [Fact]
     public async Task CanQueryWithFullTextSearch_SimpleContains()
     {
         // Arrange: Create nodes with text content for full-text search
