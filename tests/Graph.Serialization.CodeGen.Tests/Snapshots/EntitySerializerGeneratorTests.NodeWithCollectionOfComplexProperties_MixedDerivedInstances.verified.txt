@@ -89,8 +89,9 @@ internal sealed class AnimalDescriptionSerializer : IEntitySerializer
         );
     }
 
-    private static readonly HashSet<Type> _currentlyProcessing = new();
-    private static readonly Dictionary<Type, EntitySchema> _schemaCache = new();
+    [ThreadStatic]
+    private static HashSet<Type>? _currentlyProcessing;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, EntitySchema> _schemaCache = new();
 
     /// <summary>
     /// Gets the schema information for AnimalDescription.
@@ -106,13 +107,14 @@ internal sealed class AnimalDescriptionSerializer : IEntitySerializer
     public static EntitySchema GetSchemaStatic()
     {
         var typeKey = typeof(TestNamespace.AnimalDescription);
+        var currentlyProcessing = _currentlyProcessing ??= new HashSet<Type>();
 
         // Return cached schema if available
         if (_schemaCache.TryGetValue(typeKey, out var cachedSchema))
             return cachedSchema;
 
         // Check if we're already processing this type (circular reference)
-        if (_currentlyProcessing.Contains(typeKey))
+        if (currentlyProcessing.Contains(typeKey))
         {
             // Return a schema without nested schemas to break the cycle
             return new EntitySchema(
@@ -126,7 +128,7 @@ internal sealed class AnimalDescriptionSerializer : IEntitySerializer
         }
 
         // Mark this type as being processed
-        _currentlyProcessing.Add(typeKey);
+        currentlyProcessing.Add(typeKey);
 
         try
         {
@@ -155,13 +157,12 @@ internal sealed class AnimalDescriptionSerializer : IEntitySerializer
             );
 
             // Cache the complete schema
-            _schemaCache[typeKey] = schema;
-            return schema;
+            return _schemaCache.GetOrAdd(typeKey, schema);
         }
         finally
         {
             // Remove from processing set
-            _currentlyProcessing.Remove(typeKey);
+            currentlyProcessing.Remove(typeKey);
         }
     }
 }
@@ -267,8 +268,9 @@ internal sealed class DogDescriptionSerializer : IEntitySerializer
         );
     }
 
-    private static readonly HashSet<Type> _currentlyProcessing = new();
-    private static readonly Dictionary<Type, EntitySchema> _schemaCache = new();
+    [ThreadStatic]
+    private static HashSet<Type>? _currentlyProcessing;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, EntitySchema> _schemaCache = new();
 
     /// <summary>
     /// Gets the schema information for DogDescription.
@@ -284,13 +286,14 @@ internal sealed class DogDescriptionSerializer : IEntitySerializer
     public static EntitySchema GetSchemaStatic()
     {
         var typeKey = typeof(TestNamespace.DogDescription);
+        var currentlyProcessing = _currentlyProcessing ??= new HashSet<Type>();
 
         // Return cached schema if available
         if (_schemaCache.TryGetValue(typeKey, out var cachedSchema))
             return cachedSchema;
 
         // Check if we're already processing this type (circular reference)
-        if (_currentlyProcessing.Contains(typeKey))
+        if (currentlyProcessing.Contains(typeKey))
         {
             // Return a schema without nested schemas to break the cycle
             return new EntitySchema(
@@ -304,7 +307,7 @@ internal sealed class DogDescriptionSerializer : IEntitySerializer
         }
 
         // Mark this type as being processed
-        _currentlyProcessing.Add(typeKey);
+        currentlyProcessing.Add(typeKey);
 
         try
         {
@@ -344,13 +347,12 @@ internal sealed class DogDescriptionSerializer : IEntitySerializer
             );
 
             // Cache the complete schema
-            _schemaCache[typeKey] = schema;
-            return schema;
+            return _schemaCache.GetOrAdd(typeKey, schema);
         }
         finally
         {
             // Remove from processing set
-            _currentlyProcessing.Remove(typeKey);
+            currentlyProcessing.Remove(typeKey);
         }
     }
 }
@@ -425,8 +427,9 @@ internal sealed class HandlerDescriptionSerializer : IEntitySerializer
         );
     }
 
-    private static readonly HashSet<Type> _currentlyProcessing = new();
-    private static readonly Dictionary<Type, EntitySchema> _schemaCache = new();
+    [ThreadStatic]
+    private static HashSet<Type>? _currentlyProcessing;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, EntitySchema> _schemaCache = new();
 
     /// <summary>
     /// Gets the schema information for HandlerDescription.
@@ -442,13 +445,14 @@ internal sealed class HandlerDescriptionSerializer : IEntitySerializer
     public static EntitySchema GetSchemaStatic()
     {
         var typeKey = typeof(TestNamespace.HandlerDescription);
+        var currentlyProcessing = _currentlyProcessing ??= new HashSet<Type>();
 
         // Return cached schema if available
         if (_schemaCache.TryGetValue(typeKey, out var cachedSchema))
             return cachedSchema;
 
         // Check if we're already processing this type (circular reference)
-        if (_currentlyProcessing.Contains(typeKey))
+        if (currentlyProcessing.Contains(typeKey))
         {
             // Return a schema without nested schemas to break the cycle
             return new EntitySchema(
@@ -462,7 +466,7 @@ internal sealed class HandlerDescriptionSerializer : IEntitySerializer
         }
 
         // Mark this type as being processed
-        _currentlyProcessing.Add(typeKey);
+        currentlyProcessing.Add(typeKey);
 
         try
         {
@@ -491,13 +495,12 @@ internal sealed class HandlerDescriptionSerializer : IEntitySerializer
             );
 
             // Cache the complete schema
-            _schemaCache[typeKey] = schema;
-            return schema;
+            return _schemaCache.GetOrAdd(typeKey, schema);
         }
         finally
         {
             // Remove from processing set
-            _currentlyProcessing.Remove(typeKey);
+            currentlyProcessing.Remove(typeKey);
         }
     }
 }
@@ -664,8 +667,9 @@ internal sealed class KennelSerializer : IEntitySerializer
         );
     }
 
-    private static readonly HashSet<Type> _currentlyProcessing = new();
-    private static readonly Dictionary<Type, EntitySchema> _schemaCache = new();
+    [ThreadStatic]
+    private static HashSet<Type>? _currentlyProcessing;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, EntitySchema> _schemaCache = new();
 
     /// <summary>
     /// Gets the schema information for Kennel.
@@ -681,13 +685,14 @@ internal sealed class KennelSerializer : IEntitySerializer
     public static EntitySchema GetSchemaStatic()
     {
         var typeKey = typeof(TestNamespace.Kennel);
+        var currentlyProcessing = _currentlyProcessing ??= new HashSet<Type>();
 
         // Return cached schema if available
         if (_schemaCache.TryGetValue(typeKey, out var cachedSchema))
             return cachedSchema;
 
         // Check if we're already processing this type (circular reference)
-        if (_currentlyProcessing.Contains(typeKey))
+        if (currentlyProcessing.Contains(typeKey))
         {
             // Return a schema without nested schemas to break the cycle
             return new EntitySchema(
@@ -701,7 +706,7 @@ internal sealed class KennelSerializer : IEntitySerializer
         }
 
         // Mark this type as being processed
-        _currentlyProcessing.Add(typeKey);
+        currentlyProcessing.Add(typeKey);
 
         try
         {
@@ -758,13 +763,12 @@ internal sealed class KennelSerializer : IEntitySerializer
             );
 
             // Cache the complete schema
-            _schemaCache[typeKey] = schema;
-            return schema;
+            return _schemaCache.GetOrAdd(typeKey, schema);
         }
         finally
         {
             // Remove from processing set
-            _currentlyProcessing.Remove(typeKey);
+            currentlyProcessing.Remove(typeKey);
         }
     }
 }
@@ -935,8 +939,9 @@ internal sealed class PoliceDogDescriptionSerializer : IEntitySerializer
         );
     }
 
-    private static readonly HashSet<Type> _currentlyProcessing = new();
-    private static readonly Dictionary<Type, EntitySchema> _schemaCache = new();
+    [ThreadStatic]
+    private static HashSet<Type>? _currentlyProcessing;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, EntitySchema> _schemaCache = new();
 
     /// <summary>
     /// Gets the schema information for PoliceDogDescription.
@@ -952,13 +957,14 @@ internal sealed class PoliceDogDescriptionSerializer : IEntitySerializer
     public static EntitySchema GetSchemaStatic()
     {
         var typeKey = typeof(TestNamespace.PoliceDogDescription);
+        var currentlyProcessing = _currentlyProcessing ??= new HashSet<Type>();
 
         // Return cached schema if available
         if (_schemaCache.TryGetValue(typeKey, out var cachedSchema))
             return cachedSchema;
 
         // Check if we're already processing this type (circular reference)
-        if (_currentlyProcessing.Contains(typeKey))
+        if (currentlyProcessing.Contains(typeKey))
         {
             // Return a schema without nested schemas to break the cycle
             return new EntitySchema(
@@ -972,7 +978,7 @@ internal sealed class PoliceDogDescriptionSerializer : IEntitySerializer
         }
 
         // Mark this type as being processed
-        _currentlyProcessing.Add(typeKey);
+        currentlyProcessing.Add(typeKey);
 
         try
         {
@@ -1036,13 +1042,12 @@ internal sealed class PoliceDogDescriptionSerializer : IEntitySerializer
             );
 
             // Cache the complete schema
-            _schemaCache[typeKey] = schema;
-            return schema;
+            return _schemaCache.GetOrAdd(typeKey, schema);
         }
         finally
         {
             // Remove from processing set
-            _currentlyProcessing.Remove(typeKey);
+            currentlyProcessing.Remove(typeKey);
         }
     }
 }

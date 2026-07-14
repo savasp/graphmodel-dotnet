@@ -14,9 +14,12 @@ internal static class Schema
         var label = type.Label;
         var uniqueSerializerName = type.SerializerClassName;
 
-        // Use a set to track what's currently being processed
-        sb.AppendLine("    private static readonly HashSet<Type> _currentlyProcessing = new();");
-        sb.AppendLine("    private static readonly Dictionary<Type, EntitySchema> _schemaCache = new();");
+        // Circular-schema detection belongs to the current synchronous call chain, not all
+        // callers. A process-wide marker makes a concurrent first caller look recursive and
+        // returns an empty schema. The shared cache itself must also support concurrent writes.
+        sb.AppendLine("    [ThreadStatic]");
+        sb.AppendLine("    private static HashSet<Type>? _currentlyProcessing;");
+        sb.AppendLine("    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, EntitySchema> _schemaCache = new();");
         sb.AppendLine();
 
         sb.AppendLine("    /// <summary>");
@@ -34,13 +37,14 @@ internal static class Schema
         sb.AppendLine($"    public static EntitySchema GetSchemaStatic()");
         sb.AppendLine("    {");
         sb.AppendLine($"        var typeKey = typeof({typeName});");
+        sb.AppendLine("        var currentlyProcessing = _currentlyProcessing ??= new HashSet<Type>();");
         sb.AppendLine();
         sb.AppendLine($"        // Return cached schema if available");
         sb.AppendLine($"        if (_schemaCache.TryGetValue(typeKey, out var cachedSchema))");
         sb.AppendLine($"            return cachedSchema;");
         sb.AppendLine();
         sb.AppendLine($"        // Check if we're already processing this type (circular reference)");
-        sb.AppendLine($"        if (_currentlyProcessing.Contains(typeKey))");
+        sb.AppendLine($"        if (currentlyProcessing.Contains(typeKey))");
         sb.AppendLine($"        {{");
         sb.AppendLine($"            // Return a schema without nested schemas to break the cycle");
         sb.AppendLine($"            return new EntitySchema(");
@@ -54,7 +58,7 @@ internal static class Schema
         sb.AppendLine($"        }}");
         sb.AppendLine();
         sb.AppendLine($"        // Mark this type as being processed");
-        sb.AppendLine($"        _currentlyProcessing.Add(typeKey);");
+        sb.AppendLine($"        currentlyProcessing.Add(typeKey);");
         sb.AppendLine();
         sb.AppendLine($"        try");
         sb.AppendLine($"        {{");
@@ -78,13 +82,12 @@ internal static class Schema
         sb.AppendLine($"            );");
         sb.AppendLine();
         sb.AppendLine($"            // Cache the complete schema");
-        sb.AppendLine($"            _schemaCache[typeKey] = schema;");
-        sb.AppendLine($"            return schema;");
+        sb.AppendLine($"            return _schemaCache.GetOrAdd(typeKey, schema);");
         sb.AppendLine($"        }}");
         sb.AppendLine($"        finally");
         sb.AppendLine($"        {{");
         sb.AppendLine($"            // Remove from processing set");
-        sb.AppendLine($"            _currentlyProcessing.Remove(typeKey);");
+        sb.AppendLine($"            currentlyProcessing.Remove(typeKey);");
         sb.AppendLine($"        }}");
         sb.AppendLine("    }");
     }

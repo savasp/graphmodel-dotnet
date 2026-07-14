@@ -3,6 +3,7 @@
 
 namespace Cvoya.Graph.Serialization.CodeGen.Tests;
 
+using Cvoya.Graph.Serialization;
 using Microsoft.CodeAnalysis;
 
 /// <summary>
@@ -29,6 +30,51 @@ public class EntitySerializerGeneratorTests
             """;
 
         return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
+    }
+
+    [Fact]
+    public async Task GeneratedSchemaInitialization_IsThreadSafe()
+    {
+        var generatedProperties = string.Join(
+            "\n",
+            Enumerable.Range(0, 512).Select(index => $"public int Value{index} {{ get; set; }}"));
+        var source = $$"""
+            using Cvoya.Graph;
+
+            namespace ThreadSafeSchema;
+
+            [Node("ConcurrentNode")]
+            public record ConcurrentNode : Node
+            {
+                {{generatedProperties}}
+            }
+            """;
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+        var serializer = assembly.GetType("ThreadSafeSchema.Generated.ConcurrentNodeSerializer", throwOnError: true)!;
+        var getSchema = serializer.GetMethod("GetSchemaStatic")!;
+
+        const int workerCount = 16;
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var ready = new CountdownEvent(workerCount);
+        using var start = new ManualResetEventSlim();
+        var tasks = Enumerable.Range(0, workerCount)
+            .Select(_ => Task.Factory.StartNew(
+                () =>
+                {
+                    ready.Signal();
+                    start.Wait(cancellationToken);
+                    return (EntitySchema)getSchema.Invoke(null, null)!;
+                },
+                cancellationToken,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default))
+            .ToArray();
+
+        Assert.True(ready.Wait(TimeSpan.FromSeconds(10), cancellationToken));
+        start.Set();
+        var schemas = await Task.WhenAll(tasks);
+
+        Assert.All(schemas, schema => Assert.Contains("Value511", schema.SimpleProperties.Keys));
     }
 
     [Fact]

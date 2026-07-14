@@ -1,9 +1,10 @@
 == Cypher ==
 MATCH (src:Person|Manager)
 WITH *
-LIMIT 5
-WITH *
 ORDER BY src.Age
+SKIP 2
+WITH *
+WHERE src.Age >= $p0
 WITH *,
     src.Age AS __projectionOrder0
 OPTIONAL MATCH src_path = (src)-[rels*1..5]->(prop)
@@ -24,4 +25,4 @@ ORDER BY __projectionOrder0
 RETURN Node
 
 == Parameters ==
-(none)
+p0 = 21

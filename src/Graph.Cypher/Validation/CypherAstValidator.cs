@@ -115,6 +115,11 @@ public sealed class CypherAstValidator : ICypherPass
                         ValidateAlias(targetAlias, scope);
                     }
 
+                    foreach (var item in projection.Ordering)
+                    {
+                        ValidateExpression(item.Expression, scope, parameters);
+                    }
+
                     break;
 
                 case ReturnClause @return:
