@@ -35,7 +35,10 @@ public sealed class ComplianceInventoryTests
     // metacharacter robustness, search-as-source rejection).
     // +10 net for #306 scalar-key GroupBy: +11 IGroupByTests methods (gated on GroupByAggregation),
     // -1 for the removed IAdvancedQueryTests.GroupByThrowsNotSupportedUntilIssue100 (now supported).
-    private const int ExpectedTotalTestMethods = 395;
+    // +1 for #307: IAdvancedQueryTests.UnsupportedGroupedProjectionShapeIsRejectedConsistently -
+    // pins that an unsupported correlated grouped-projection member (Take over the group) is rejected
+    // with the same GraphQueryTranslationException on every provider.
+    private const int ExpectedTotalTestMethods = 396;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

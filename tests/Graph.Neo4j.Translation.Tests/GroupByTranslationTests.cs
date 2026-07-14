@@ -242,4 +242,30 @@ public class GroupByTranslationTests : TranslationTestBase
             .Select(g => new { g.Key, Count = g.Count() });
         return VerifyTranslationThrows((IQueryable<object>)query);
     }
+
+    [Fact]
+    public void GroupByStartNode_UnsupportedGroupOperationThrowsCanonicalTranslationError()
+    {
+        // Take over the group is outside the recognized correlated-collection grammar. The planner must
+        // reject it at translation with the shared, provider-neutral message - and, crucially, the
+        // Neo4j provider must surface it as a GraphQueryTranslationException (the canonical message omits
+        // the "GroupBy" substring the legacy mapping keys on, so it is not downgraded to
+        // NotSupportedException), matching the in-memory provider exactly.
+        var query = Root.Nodes<Person>()
+            .Where(p => p.FirstName == "Alice")
+            .PathSegments<Person, Knows, Person>()
+            .GroupBy(s => s.StartNode)
+            .Select(group => new
+            {
+                Name = group.Key.FirstName,
+                Friends = group.Take(2).Select(s => s.EndNode.FirstName).ToList(),
+            });
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            CypherTranslator.Translate((IQueryable<object>)query));
+
+        Assert.Contains("Cannot translate the correlated grouped projection", exception.Message);
+        Assert.Contains("Take", exception.Message);
+        Assert.Contains("Friends", exception.Message);
+    }
 }
