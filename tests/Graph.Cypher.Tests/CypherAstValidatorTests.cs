@@ -380,6 +380,72 @@ public class CypherAstValidatorTests
     }
 
     [Fact]
+    public void Run_DoesNotLeakReduceAliasesIntoSurroundingClause()
+    {
+        var expression = new ReduceExpression(
+            "total",
+            new Literal(0),
+            "item",
+            new ListExpression([new Literal(1)]),
+            new BinaryExpression(
+                CypherBinaryOperator.Add,
+                new VariableRef("total"),
+                new VariableRef("item")));
+        var statement = new CypherStatement(
+        [
+            new ReturnClause(
+            [
+                new ReturnItem(expression, "sum"),
+                new ReturnItem(new VariableRef("total"), "leaked"),
+            ], distinct: false),
+        ], new Dictionary<string, object?>());
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(statement));
+
+        Assert.Contains("'total'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_DoesNotLeakAllIteratorIntoSurroundingClause()
+    {
+        var expression = new AllExpression(
+            "item",
+            new ListExpression([new Literal(1)]),
+            new BinaryExpression(
+                CypherBinaryOperator.GreaterThan,
+                new VariableRef("item"),
+                new Literal(0)));
+        var statement = new CypherStatement(
+        [
+            new ReturnClause(
+            [
+                new ReturnItem(expression, "positive"),
+                new ReturnItem(new VariableRef("item"), "leaked"),
+            ], distinct: false),
+        ], new Dictionary<string, object?>());
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(statement));
+
+        Assert.Contains("'item'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_DoesNotBindAllIteratorInItsSourceExpression()
+    {
+        var expression = new AllExpression(
+            "item",
+            new VariableRef("item"),
+            new BinaryExpression(
+                CypherBinaryOperator.GreaterThan,
+                new VariableRef("item"),
+                new Literal(0)));
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(ReturnExpression(expression)));
+
+        Assert.Contains("'item'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Run_WildcardWith_PreservesTheCurrentScope()
     {
         var statement = new CypherStatement(

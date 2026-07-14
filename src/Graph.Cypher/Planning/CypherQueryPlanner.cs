@@ -1106,6 +1106,14 @@ public sealed class CypherQueryPlanner
             PatternComprehensionExpression comprehension => comprehension.Predicate is null
                 ? [comprehension.Projection]
                 : [comprehension.Predicate, comprehension.Projection],
+            ListComprehensionExpression comprehension => new CypherExpression?[]
+            {
+                comprehension.Source,
+                comprehension.Predicate,
+                comprehension.Projection,
+            }.OfType<CypherExpression>(),
+            ReduceExpression reduce => [reduce.Seed, reduce.Source, reduce.Reducer],
+            AllExpression all => [all.Source, all.Predicate],
             _ => [],
         };
     }
