@@ -1,0 +1,1 @@
+System.NotSupportedException: GroupBy is not supported for this query shape: the grouping key must be a scalar value; grouping by an entity, node, or composite key is not supported.

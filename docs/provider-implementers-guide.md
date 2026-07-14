@@ -182,7 +182,7 @@ Implement `ICypherDialect` from `Cvoya.Graph.Cypher`. The interface owns every s
 
 `GetFunctionBehavior` distinguishes functions rendered by the backend, parameter-free functions evaluated on the client, and unsupported functions. Client evaluation binds a query parameter; it never inlines the value. A function marked `EvaluateOnClient` fails translation if its arguments depend on a server-side expression. AGE can therefore client-evaluate zero-argument temporal constructors without pretending to support temporal arithmetic over stored properties.
 
-Declare only supported capabilities. The planner rejects reachable unsupported constructs before execution with `GraphQueryTranslationException`; the message names the construct, the exact `GraphCapability` member, and the dialect. Current translation-time checks cover `FullTextSearch`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, `OrderByEntity`, and `OptionalTraversal`. Transaction capabilities remain execution/store concerns.
+Declare only supported capabilities. The planner rejects reachable unsupported constructs before execution with `GraphQueryTranslationException`; the message names the construct, the exact `GraphCapability` member, and the dialect. Current translation-time checks cover `FullTextSearch`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, `OrderByEntity`, `OptionalTraversal`, and `GroupByAggregation`. Transaction capabilities remain execution/store concerns.
 
 For example, an initial AGE dialect should decline at least `FullTextSearch`, `NestedTransactions`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, and `OrderByEntity` unless its renderer strategy genuinely supports them. Do not emulate unsupported full-text search with a semantically weaker regular-expression query while still declaring `FullTextSearch`.
 
@@ -329,6 +329,7 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `MultiLabelMatch` | `IAdvancedQueryTests.CanQueryPolymorphicBaseTypeAcrossSubtypeLabels` | method | pass | pass | pass |
 | `OrderByEntity` | `IAdvancedQueryTests.CanOrderByBareEntity` | method | pass | skip | pass |
 | `OptionalTraversal` | `IQueryTests.Navigation{Equality,Projection}_MissingComplexProperty*` | method | pass | pass | pass |
+| `GroupByAggregation` | `IGroupByTests` (all methods) | interface | pass | pass | skip |
 | `NestedTransactions` | _record only_ | — | — | — | — |
 | `ShortestPath` | _record only_ | — | — | — | — |
 

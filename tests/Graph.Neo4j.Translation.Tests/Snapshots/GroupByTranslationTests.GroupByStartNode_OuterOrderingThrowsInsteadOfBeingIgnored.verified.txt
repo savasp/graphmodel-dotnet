@@ -1,1 +1,1 @@
-System.NotSupportedException: GroupBy is not supported by LINQ-to-Cypher translation yet; see #100.
+System.NotSupportedException: Cannot plan the GroupBy query: Distinct, outer ordering, and outer paging are not supported; materialize the grouped query first.

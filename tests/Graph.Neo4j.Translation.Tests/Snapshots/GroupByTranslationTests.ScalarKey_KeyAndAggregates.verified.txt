@@ -1,0 +1,7 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WITH src.LastName AS __key, count(src) AS __a0, avg(src.Age) AS __a1, max(src.Age) AS __a2, min(src.Age) AS __a3, sum(src.Age) AS __a4
+RETURN __key AS LastName, __a0 AS Count, __a1 AS AverageAge, __a2 AS Oldest, __a3 AS Youngest, __a4 AS TotalAge
+
+== Parameters ==
+(none)

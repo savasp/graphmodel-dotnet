@@ -414,23 +414,9 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Equal(5, projected[0].Abs);
     }
 
-    [Fact]
-    [Trait("GraphModel", "ExpectedUnsupported")]
-    public async Task GroupByThrowsNotSupportedUntilIssue100()
-    {
-        await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateNodeAsync(new Person { FirstName = "Bob", LastName = "Smith" }, null, TestContext.Current.CancellationToken);
-        await this.Graph.CreateNodeAsync(new Person { FirstName = "Ann", LastName = "Brown" }, null, TestContext.Current.CancellationToken);
-
-        var ex = await Assert.ThrowsAsync<NotSupportedException>(async () =>
-            await this.Graph.Nodes<Person>()
-                .GroupBy(p => p.FirstName)
-                .Select(g => new { Name = g.Key, Count = g.Count() })
-                .ToListAsync(TestContext.Current.CancellationToken));
-
-        Assert.Contains("GroupBy", ex.Message);
-        Assert.Contains("#100", ex.Message);
-    }
+    // Scalar-key GroupBy with per-group aggregation is now supported (#306); its behavior is
+    // covered by IGroupByTests, gated on GraphCapability.GroupByAggregation. Providers that do not
+    // declare that capability still reject GroupBy via the shared translation guard.
 
     [Fact]
     [Trait("GraphModel", "ExpectedUnsupported")]

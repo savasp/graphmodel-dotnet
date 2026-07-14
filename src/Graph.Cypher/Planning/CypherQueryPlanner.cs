@@ -50,9 +50,11 @@ public sealed class CypherQueryPlanner
                 "Cannot plan the query: SelectMany is not supported by graph query translation yet; see #100.");
         }
 
-        if (model.GroupBy is not null)
+        if (model.GroupBy is { } groupByModel)
         {
-            return PlanGroupBy(model);
+            return groupByModel.GroupsByPathSegmentStartNode
+                ? PlanGroupBy(model)
+                : PlanScalarGroupBy(model);
         }
 
         if (model.Union is not null)
@@ -268,6 +270,174 @@ public sealed class CypherQueryPlanner
 #endif
 
         return statement;
+    }
+
+    /// <summary>
+    /// Lowers a scalar-key grouping (<c>GroupBy(x =&gt; x.Key).Select(g =&gt; new { g.Key, g.Count(),
+    /// g.Sum(...) })</c>, or the equivalent result-selector overload) into an implicit-grouping
+    /// <c>WITH &lt;key&gt; AS __key, &lt;agg&gt;(...) AS __aN … RETURN __key AS &lt;alias&gt;, __aN AS
+    /// &lt;alias&gt; …</c>. Cypher groups by every non-aggregated <c>WITH</c> term, so <c>__key</c> is
+    /// the grouping key; when the projection has no aggregate, <c>WITH DISTINCT</c> yields the
+    /// distinct keys. Only <c>Key</c> references and the <c>Count/Sum/Average/Min/Max</c> aggregates
+    /// are supported; other per-group shapes are rejected.
+    /// </summary>
+    private CypherStatement PlanScalarGroupBy(GraphQueryModel model)
+    {
+        RequireCapability(GraphCapability.GroupByAggregation, "GroupBy aggregation");
+
+        var groupBy = model.GroupBy!;
+        if (ScalarGroupByValidation.DescribeUnsupported(model) is { } reason)
+        {
+            throw new GraphQueryTranslationException(ScalarGroupByValidation.BuildMessage(reason));
+        }
+
+        // Normalize the two supported projection forms to a common (keyParameter, groupParameter,
+        // members) shape. In the Select-over-grouping form the key is read as `g.Key`; in the
+        // result-selector form it is the first lambda parameter.
+        ParameterExpression? keyParameter;
+        ParameterExpression groupParameter;
+        Expression projectionBody;
+        if (groupBy.ResultSelector is { } resultSelector)
+        {
+            keyParameter = resultSelector.Parameters[0];
+            groupParameter = resultSelector.Parameters[1];
+            projectionBody = StripConvert(resultSelector.Body);
+        }
+        else
+        {
+            var selector = model.Projection!.Selector!;
+            keyParameter = null;
+            groupParameter = selector.Parameters[0];
+            projectionBody = StripConvert(selector.Body);
+        }
+
+        GraphQueryModelValidator.Validate(model);
+
+        var parameters = new CypherParameterRegistry();
+        var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
+
+        var clauses = new List<ICypherClause> { BuildRootMatch(model.Root, "src") };
+        var predicates = model.Predicates
+            .Select(predicate => lowerer.LowerLambda(predicate.Predicate, "src"))
+            .ToList();
+        if (predicates.Count > 0)
+        {
+            clauses.Add(new WhereClause(predicates.Count == 1
+                ? predicates[0]
+                : new ConjunctionExpression(predicates)));
+        }
+
+        var keyType = groupBy.KeySelector.ReturnType;
+        var keyVariable = Expression.Parameter(keyType, "__key");
+        var withItems = new List<ReturnItem> { new(lowerer.LowerLambda(groupBy.KeySelector, "src"), "__key") };
+        var returnItems = new List<ReturnItem>();
+
+        if (projectionBody is NewExpression projection && projection.Members is not null)
+        {
+            for (var index = 0; index < projection.Arguments.Count; index++)
+            {
+                returnItems.Add(new ReturnItem(
+                    LowerScalarGroupItem(
+                        projection.Arguments[index], keyParameter, groupParameter, keyVariable, lowerer, withItems),
+                    projection.Members[index].Name));
+            }
+        }
+        else
+        {
+            returnItems.Add(new ReturnItem(
+                LowerScalarGroupItem(projectionBody, keyParameter, groupParameter, keyVariable, lowerer, withItems),
+                null));
+        }
+
+        if (lowerer.NavigationMatches.Count > 0)
+        {
+            throw NotSupportedGroupBy(
+                "grouping keys and aggregates over complex (owned) properties are not supported");
+        }
+
+        // With no aggregate term, WITH does not group; DISTINCT yields the distinct keys instead.
+        clauses.Add(new WithClause(withItems, distinct: withItems.Count == 1));
+        clauses.Add(new ReturnClause(returnItems, distinct: false));
+
+        switch (model.Terminal)
+        {
+            case TerminalOperation.ToListOrArray:
+                break;
+            case TerminalOperation.First:
+                clauses.Add(new LimitClause(new Literal(1)));
+                break;
+            case TerminalOperation.Single:
+                clauses.Add(new LimitClause(new Literal(2)));
+                break;
+            default:
+                throw NotSupportedGroupBy($"terminal operation '{model.Terminal}' after grouping is not supported");
+        }
+
+        var statement = new CypherStatement(clauses, parameters.Parameters, null);
+        ValidateCapabilities(statement);
+
+#if DEBUG
+        new CypherAstValidator().Run(statement);
+#endif
+
+        return statement;
+    }
+
+    /// <summary>
+    /// Lowers one member of a scalar grouping's projection: an aggregate over the group
+    /// (<c>Count/Sum/Average/Min/Max</c>) becomes a <c>WITH</c> aggregation column referenced from
+    /// <c>RETURN</c>; anything else must read the grouping key, which is rewritten to the
+    /// <c>__key</c> variable.
+    /// </summary>
+    private static CypherExpression LowerScalarGroupItem(
+        Expression argument,
+        ParameterExpression? keyParameter,
+        ParameterExpression groupParameter,
+        ParameterExpression keyVariable,
+        ExpressionToCypherAstLowerer lowerer,
+        List<ReturnItem> withItems)
+    {
+        var item = StripToList(StripConvert(argument));
+
+        if (TryUnwrapGroupOperation(item, groupParameter, out var operation))
+        {
+            if (operation.Predicate is not null)
+            {
+                throw NotSupportedGroupBy("filtering a scalar group before aggregating is not supported");
+            }
+
+            // withItems always opens with the __key term, so subtract it for a 0-based aggregate index.
+            var column = $"__a{withItems.Count - 1}";
+            CypherExpression aggregate = operation.Kind switch
+            {
+                GroupOperationKind.Count => Function("count", new VariableRef("src")),
+                GroupOperationKind.Aggregate => Function(
+                    operation.AggregateFunction!,
+                    (operation.AggregateArgument ?? operation.Selector) is { } selector
+                        ? lowerer.LowerLambda(selector, "src")
+                        : new VariableRef("src")),
+                _ => throw NotSupportedGroupBy(
+                    "only the Count, Sum, Average, Min, and Max aggregates are supported over a scalar group"),
+            };
+
+            withItems.Add(new ReturnItem(aggregate, column));
+            return new VariableRef(column);
+        }
+
+        // Not an aggregate: the member reads the grouping key. Rewrite the key reference (either
+        // `g.Key` or the result-selector key parameter) to the __key variable and lower it.
+        var rewritten = keyParameter is null
+            ? new GroupKeyRewriter(groupParameter, keyVariable).Visit(item)!
+            : new ParameterReplacer(keyParameter, keyVariable).Visit(item)!;
+        if (ReferencesParameter(rewritten, groupParameter) ||
+            (keyParameter is not null && ReferencesParameter(rewritten, keyParameter)))
+        {
+            throw NotSupportedGroupBy(
+                "the projection references the group in a form that is not a supported aggregate or a key expression");
+        }
+
+        CypherExpression key = lowerer.LowerLambda(Expression.Lambda(rewritten, keyVariable), "__key");
+        return key;
     }
 
     private static CypherExpression LowerGroupProjectionItem(
@@ -807,6 +977,14 @@ public sealed class CypherQueryPlanner
 
             return base.VisitMember(node);
         }
+    }
+
+    private sealed class ParameterReplacer(
+        ParameterExpression from,
+        ParameterExpression to) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) =>
+            node == from ? to : base.VisitParameter(node);
     }
 
     private void RequireCapability(GraphCapability capability, string construct)

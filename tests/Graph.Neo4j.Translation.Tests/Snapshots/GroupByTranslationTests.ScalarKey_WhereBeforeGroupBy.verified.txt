@@ -1,0 +1,8 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WHERE src.Age >= $p0
+WITH src.LastName AS __key, count(src) AS __a0
+RETURN __key AS Key, __a0 AS Count
+
+== Parameters ==
+p0 = 18

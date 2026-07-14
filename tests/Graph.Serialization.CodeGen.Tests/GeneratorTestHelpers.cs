@@ -38,6 +38,39 @@ internal static class GeneratorTestHelpers
         return Render(runResult, generatorDiagnostics, outputCompilation);
     }
 
+    public static System.Reflection.Assembly CompileAndLoadGeneratedAssembly(
+        string source,
+        [CallerMemberName] string testName = "")
+    {
+        var compilation = CreateCompilation(source, testName);
+        var driver = CSharpGeneratorDriver.Create(new EntitySerializerGenerator().AsSourceGenerator());
+        driver.RunGeneratorsAndUpdateCompilation(
+            compilation,
+            out var outputCompilation,
+            out var generatorDiagnostics);
+
+        var errors = generatorDiagnostics
+            .Concat(outputCompilation.GetDiagnostics())
+            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .ToArray();
+        if (errors.Length > 0)
+        {
+            throw new InvalidOperationException(string.Join("\n", errors.Select(error => error.ToString())));
+        }
+
+        using var assemblyStream = new MemoryStream();
+        var emitResult = outputCompilation.Emit(assemblyStream);
+        if (!emitResult.Success)
+        {
+            throw new InvalidOperationException(string.Join(
+                "\n",
+                emitResult.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+        }
+
+        assemblyStream.Position = 0;
+        return System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromStream(assemblyStream);
+    }
+
     public static IReadOnlyCollection<IncrementalStepRunReason> GetSecondRunReasons(
         string source,
         string trackingName,
@@ -348,7 +381,7 @@ internal static class GeneratorTestHelpers
             .Split(Path.PathSeparator);
 
         var references = trustedAssemblies
-            .Where(path => Path.GetFileName(path) is "System.Private.CoreLib.dll" or "System.Runtime.dll" or "netstandard.dll" or "System.Collections.dll" or "System.Linq.dll" or "System.Linq.Expressions.dll" or "System.ComponentModel.Primitives.dll")
+            .Where(path => Path.GetFileName(path) is "System.Private.CoreLib.dll" or "System.Runtime.dll" or "netstandard.dll" or "System.Collections.dll" or "System.Collections.Concurrent.dll" or "System.Linq.dll" or "System.Linq.Expressions.dll" or "System.ComponentModel.Primitives.dll")
             .Select(path => (MetadataReference)MetadataReference.CreateFromFile(path))
             .ToList();
 

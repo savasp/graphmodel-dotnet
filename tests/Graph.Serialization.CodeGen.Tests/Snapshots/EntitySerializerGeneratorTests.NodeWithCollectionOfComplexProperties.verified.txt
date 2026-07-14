@@ -209,8 +209,9 @@ internal sealed class PersonSerializer : IEntitySerializer
         );
     }
 
-    private static readonly HashSet<Type> _currentlyProcessing = new();
-    private static readonly Dictionary<Type, EntitySchema> _schemaCache = new();
+    [ThreadStatic]
+    private static HashSet<Type>? _currentlyProcessing;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, EntitySchema> _schemaCache = new();
 
     /// <summary>
     /// Gets the schema information for Person.
@@ -226,13 +227,14 @@ internal sealed class PersonSerializer : IEntitySerializer
     public static EntitySchema GetSchemaStatic()
     {
         var typeKey = typeof(TestNamespace.Person);
+        var currentlyProcessing = _currentlyProcessing ??= new HashSet<Type>();
 
         // Return cached schema if available
         if (_schemaCache.TryGetValue(typeKey, out var cachedSchema))
             return cachedSchema;
 
         // Check if we're already processing this type (circular reference)
-        if (_currentlyProcessing.Contains(typeKey))
+        if (currentlyProcessing.Contains(typeKey))
         {
             // Return a schema without nested schemas to break the cycle
             return new EntitySchema(
@@ -246,7 +248,7 @@ internal sealed class PersonSerializer : IEntitySerializer
         }
 
         // Mark this type as being processed
-        _currentlyProcessing.Add(typeKey);
+        currentlyProcessing.Add(typeKey);
 
         try
         {
@@ -314,13 +316,12 @@ internal sealed class PersonSerializer : IEntitySerializer
             );
 
             // Cache the complete schema
-            _schemaCache[typeKey] = schema;
-            return schema;
+            return _schemaCache.GetOrAdd(typeKey, schema);
         }
         finally
         {
             // Remove from processing set
-            _currentlyProcessing.Remove(typeKey);
+            currentlyProcessing.Remove(typeKey);
         }
     }
 }
@@ -430,8 +431,9 @@ internal sealed class PhoneNumberSerializer : IEntitySerializer
         );
     }
 
-    private static readonly HashSet<Type> _currentlyProcessing = new();
-    private static readonly Dictionary<Type, EntitySchema> _schemaCache = new();
+    [ThreadStatic]
+    private static HashSet<Type>? _currentlyProcessing;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, EntitySchema> _schemaCache = new();
 
     /// <summary>
     /// Gets the schema information for PhoneNumber.
@@ -447,13 +449,14 @@ internal sealed class PhoneNumberSerializer : IEntitySerializer
     public static EntitySchema GetSchemaStatic()
     {
         var typeKey = typeof(TestNamespace.PhoneNumber);
+        var currentlyProcessing = _currentlyProcessing ??= new HashSet<Type>();
 
         // Return cached schema if available
         if (_schemaCache.TryGetValue(typeKey, out var cachedSchema))
             return cachedSchema;
 
         // Check if we're already processing this type (circular reference)
-        if (_currentlyProcessing.Contains(typeKey))
+        if (currentlyProcessing.Contains(typeKey))
         {
             // Return a schema without nested schemas to break the cycle
             return new EntitySchema(
@@ -467,7 +470,7 @@ internal sealed class PhoneNumberSerializer : IEntitySerializer
         }
 
         // Mark this type as being processed
-        _currentlyProcessing.Add(typeKey);
+        currentlyProcessing.Add(typeKey);
 
         try
         {
@@ -507,13 +510,12 @@ internal sealed class PhoneNumberSerializer : IEntitySerializer
             );
 
             // Cache the complete schema
-            _schemaCache[typeKey] = schema;
-            return schema;
+            return _schemaCache.GetOrAdd(typeKey, schema);
         }
         finally
         {
             // Remove from processing set
-            _currentlyProcessing.Remove(typeKey);
+            currentlyProcessing.Remove(typeKey);
         }
     }
 }

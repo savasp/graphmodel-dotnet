@@ -307,6 +307,44 @@ capability; projections that use `group.Count()` also require `PatternSizeProjec
 that do not declare the required capabilities decline the query at translation time. As with LINQ
 `GroupBy`, roots with no matching path segment do not produce an empty group row.
 
+### Scalar-key grouping (per-group aggregates)
+
+You can also group a node set by a **scalar key** and project per-group aggregates, either through
+a `Select` over the grouping or through the result-selector `GroupBy` overload:
+
+```csharp
+var byDepartment = await graph.Nodes<Employee>()
+    .Where(e => e.Active)
+    .GroupBy(e => e.Department)
+    .Select(g => new
+    {
+        Department = g.Key,
+        Count = g.Count(),
+        TotalSalary = g.Sum(e => e.Salary),
+        AverageAge = g.Average(e => e.Age),
+        Youngest = g.Min(e => e.Age),
+        Oldest = g.Max(e => e.Age),
+    })
+    .ToListAsync();
+
+// Result-selector overload, and key-only grouping (distinct keys):
+var counts = await graph.Nodes<Employee>()
+    .GroupBy(e => e.Department, (dept, group) => new { Department = dept, Count = group.Count() })
+    .ToListAsync();
+var departments = await graph.Nodes<Employee>()
+    .GroupBy(e => e.Department)
+    .Select(g => g.Key)
+    .ToListAsync();
+```
+
+Scalar-key grouping requires the provider to declare the `GroupByAggregation` capability. The
+supported surface is deliberately minimal: a node root (optionally with a `Where` before `GroupBy`),
+a scalar key, and a projection that reads `g.Key` and/or the `Count`/`Sum`/`Average`/`Min`/`Max`
+aggregates. Everything else — entity or composite keys, element selectors, grouping after a
+traversal, and `Distinct`/`OrderBy`/`Skip`/`Take` applied to the grouped result — is declined at
+translation time with a `NotSupportedException`; materialize the grouped query first and continue
+client-side.
+
 ## Aggregations
 
 ### Count, Any, All
