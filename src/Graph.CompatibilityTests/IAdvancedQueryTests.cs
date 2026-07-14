@@ -1350,7 +1350,8 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Contains(connectionMap, m => m.PersonName == "Bob" && m.Connections.Contains("Charlie"));
     }
 
-    [Fact(Skip = "Needs a node relationship-count (degree) projection surface that maps to size((p)-[:R]->()) - see #300")]
+    [Fact]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
     public async Task CanProjectRelationshipCounts()
     {
         // Setup
@@ -1371,17 +1372,15 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateRelationshipAsync(new Knows(bob, dave), null, TestContext.Current.CancellationToken);
         await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
 
-        // Get all relationships once
-        var allRelationships = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
-
-        // Project connection counts
+        // Project connection counts using the graph-native degree projection surface, which maps to
+        // a relationship-count pattern subquery (size((p)-[:KNOWS]->()) / COUNT { }).
         var connectionStats = await this.Graph.Nodes<Person>()
             .Select(p => new
             {
                 Name = p.FirstName,
-                OutgoingCount = allRelationships.Count(k => k.StartNodeId == p.Id),
-                IncomingCount = allRelationships.Count(k => k.EndNodeId == p.Id),
-                TotalConnections = allRelationships.Count(k => k.StartNodeId == p.Id || k.EndNodeId == p.Id)
+                OutgoingCount = p.CountRelationships<Knows>(GraphTraversalDirection.Outgoing),
+                IncomingCount = p.CountRelationships<Knows>(GraphTraversalDirection.Incoming),
+                TotalConnections = p.CountRelationships<Knows>(GraphTraversalDirection.Both)
             })
             .OrderByDescending(s => s.OutgoingCount)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -1392,10 +1391,17 @@ public interface IAdvancedQueryTests : IGraphTest
         var aliceStats = connectionStats.First(s => s.Name == "Alice");
         Assert.Equal(3, aliceStats.OutgoingCount);
         Assert.Equal(0, aliceStats.IncomingCount);
+        Assert.Equal(3, aliceStats.TotalConnections);
 
         var daveStats = connectionStats.First(s => s.Name == "Dave");
         Assert.Equal(0, daveStats.OutgoingCount);
         Assert.Equal(3, daveStats.IncomingCount);
+        Assert.Equal(3, daveStats.TotalConnections);
+
+        var bobStats = connectionStats.First(s => s.Name == "Bob");
+        Assert.Equal(2, bobStats.OutgoingCount);
+        Assert.Equal(1, bobStats.IncomingCount);
+        Assert.Equal(3, bobStats.TotalConnections);
     }
 
     [Fact]

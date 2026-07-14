@@ -1197,12 +1197,39 @@ internal sealed class InMemoryQueryExecutor(
     {
         if (!_compiled.TryGetValue(lambda, out var compiled))
         {
-            var nullPropagating = (LambdaExpression)new NullPropagatingMemberAccessVisitor().Visit(lambda)!;
+            // CountRelationships is a translation marker whose body throws; rewrite each call into a
+            // degree computation over the store snapshot before the lambda is compiled and invoked.
+            var rewritten = (LambdaExpression)new CountRelationshipsRewriter(_state).Visit(lambda)!;
+            var nullPropagating = (LambdaExpression)new NullPropagatingMemberAccessVisitor().Visit(rewritten)!;
             compiled = nullPropagating.Compile();
             _compiled[lambda] = compiled;
         }
 
         return compiled;
+    }
+
+    private sealed class CountRelationshipsRewriter(StoreState state) : ExpressionVisitor
+    {
+        private static readonly MethodInfo CountMethod =
+            typeof(InMemoryDegreeCounter).GetMethod(nameof(InMemoryDegreeCounter.Count))!;
+
+        protected override Expression VisitMethodCall(MethodCallExpression node)
+        {
+            if (node.Method.DeclaringType != typeof(GraphDegreeExtensions) ||
+                node.Method.Name != nameof(GraphDegreeExtensions.CountRelationships))
+            {
+                return base.VisitMethodCall(node);
+            }
+
+            var typeLabel = Labels.GetLabelFromType(node.Method.GetGenericArguments()[0]);
+
+            return Expression.Call(
+                CountMethod,
+                Expression.Constant(state),
+                Expression.Convert(Visit(node.Arguments[0]), typeof(INode)),
+                Expression.Constant(typeLabel),
+                Visit(node.Arguments[1]));
+        }
     }
 
     private sealed class NullPropagatingMemberAccessVisitor : ExpressionVisitor
