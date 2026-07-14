@@ -71,14 +71,10 @@ public static class CorrelatedGroupProjectionValidation
         var group = selector.Parameters[0];
         for (var index = 0; index < projection.Arguments.Count; index++)
         {
-            if (!IsSupportedMember(projection.Arguments[index], group, out var operation))
+            if (!IsSupportedMember(projection.Arguments[index], group, out var problem))
             {
                 var member = projection.Members[index].Name;
-                return operation is { } method
-                    ? $"projection member '{member}' applies '.{method}(...)' to the group, which is not a " +
-                      "supported correlated-collection operation"
-                    : $"projection member '{member}' references the group in a form that is not a supported " +
-                      "collection operation or a group-key member access";
+                return $"projection member '{member}' {problem}";
             }
         }
 
@@ -106,27 +102,125 @@ public static class CorrelatedGroupProjectionValidation
     private static bool IsSupportedMember(
         Expression argument,
         ParameterExpression group,
-        out string? unsupportedOperation)
+        out string problem)
     {
-        unsupportedOperation = null;
+        problem = string.Empty;
 
-        var item = StripToList(StripConvert(argument));
+        var item = StripConvert(argument);
         var current = item;
+        var hasSelector = false;
+        var hasPredicate = false;
+        var hasOrdering = false;
+        var hasNestedGrouping = false;
+        var hasTerminal = false;
+        var operationAfterProjection = false;
+        var requiresCollectionSelector = true;
         while (current is MethodCallExpression call &&
             (call.Method.DeclaringType == typeof(Enumerable) || call.Method.DeclaringType == typeof(Queryable)))
         {
             if (!RecognizedGroupOperations.Contains(call.Method.Name))
             {
-                unsupportedOperation = call.Method.Name;
-                break;
+                problem = $"applies '.{call.Method.Name}(...)' to the group, which is not a supported " +
+                    "correlated-collection operation";
+                return false;
+            }
+
+            if (LambdaCapturesGroup(call, group))
+            {
+                problem = $"captures the outer group inside '.{call.Method.Name}(...)', which cannot be lowered";
+                return false;
+            }
+
+            switch (call.Method.Name)
+            {
+                case nameof(Enumerable.Select):
+                    if (hasSelector)
+                    {
+                        problem = "contains multiple Select operations over the group";
+                        return false;
+                    }
+
+                    if (operationAfterProjection)
+                    {
+                        problem = "applies Where, OrderBy, or nested grouping after Select";
+                        return false;
+                    }
+
+                    hasSelector = true;
+                    break;
+                case nameof(Enumerable.Where):
+                    if (hasPredicate)
+                    {
+                        problem = "contains multiple Where filters over the group";
+                        return false;
+                    }
+
+                    hasPredicate = true;
+                    operationAfterProjection = !hasSelector;
+                    break;
+                case nameof(Enumerable.OrderBy) or nameof(Enumerable.OrderByDescending):
+                    if (hasOrdering)
+                    {
+                        problem = "contains multiple OrderBy operations over the group";
+                        return false;
+                    }
+
+                    hasOrdering = true;
+                    operationAfterProjection = !hasSelector;
+                    break;
+                case nameof(Enumerable.GroupBy):
+                    if (hasNestedGrouping)
+                    {
+                        problem = "contains multiple nested grouping operations";
+                        return false;
+                    }
+
+                    hasNestedGrouping = true;
+                    operationAfterProjection = !hasSelector;
+                    break;
+                case nameof(Enumerable.Count):
+                    if (hasTerminal)
+                    {
+                        problem = "contains more than one terminal aggregate over the group";
+                        return false;
+                    }
+
+                    if (call.Arguments.Count > 1 && hasPredicate)
+                    {
+                        problem = "combines Count(predicate) with a separate Where filter";
+                        return false;
+                    }
+
+                    hasTerminal = true;
+                    requiresCollectionSelector = false;
+                    break;
+                case nameof(Enumerable.Average) or nameof(Enumerable.Sum) or
+                    nameof(Enumerable.Min) or nameof(Enumerable.Max):
+                    if (hasTerminal)
+                    {
+                        problem = "contains more than one terminal aggregate over the group";
+                        return false;
+                    }
+
+                    hasTerminal = true;
+                    requiresCollectionSelector = false;
+                    operationAfterProjection = call.Arguments.Count > 1 && !hasSelector;
+                    break;
+                case nameof(Enumerable.ToList) or nameof(Enumerable.ToArray) or nameof(Enumerable.AsEnumerable):
+                    break;
             }
 
             current = call.Method.IsStatic ? call.Arguments[0] : call.Object!;
         }
 
-        // A chain of recognized operations terminating at the group is a supported correlated collection.
-        if (unsupportedOperation is null && current == group)
+        if (current == group)
         {
+            if (requiresCollectionSelector && !hasSelector)
+            {
+                problem = "projects the group as a collection without a Select";
+                return false;
+            }
+
             return true;
         }
 
@@ -135,8 +229,34 @@ public static class CorrelatedGroupProjectionValidation
         // the key type (IGrouping's first type argument) so member accesses on it stay well-formed.
         var keyType = group.Type.IsGenericType ? group.Type.GetGenericArguments()[0] : group.Type;
         var keyParameter = Expression.Parameter(keyType, "key");
-        var rewritten = new GroupKeyRewriter(group, keyParameter).Visit(item)!;
-        return !ReferencesParameter(rewritten, group);
+        var rewritten = new GroupKeyRewriter(group, keyParameter).Visit(StripToList(item))!;
+        if (!ReferencesParameter(rewritten, group))
+        {
+            return true;
+        }
+
+        problem = "references the group in a form that is not a supported collection operation or a " +
+            "group-key member access";
+        return false;
+    }
+
+    private static bool LambdaCapturesGroup(MethodCallExpression call, ParameterExpression group)
+    {
+        foreach (var argument in call.Arguments.Skip(1))
+        {
+            var lambda = argument switch
+            {
+                LambdaExpression direct => direct,
+                UnaryExpression { NodeType: ExpressionType.Quote, Operand: LambdaExpression quoted } => quoted,
+                _ => null,
+            };
+            if (lambda is not null && ReferencesParameter(lambda.Body, group))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static Expression StripConvert(Expression expression)

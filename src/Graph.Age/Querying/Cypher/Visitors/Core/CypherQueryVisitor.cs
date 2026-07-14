@@ -59,6 +59,12 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 
     private static Exception PreserveLegacyProviderException(GraphQueryTranslationException exception)
     {
+        if (exception.Message.StartsWith(
+            "Cannot translate the correlated grouped projection:", StringComparison.Ordinal))
+        {
+            return exception;
+        }
+
         if (exception.Message.Contains("SelectMany", StringComparison.Ordinal))
             return new NotSupportedException("SelectMany is not supported by LINQ-to-Cypher translation yet; see #100.");
 

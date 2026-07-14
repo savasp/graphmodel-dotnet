@@ -225,4 +225,24 @@ public interface IGroupByTests : IGraphTest
                 .Select(group => new { City = group.Key, Count = group.Count() })
                 .ToListAsync(TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task GroupByScalarKey_CollectionProjection_Throws()
+    {
+        await Assert.ThrowsAsync<NotSupportedException>(async () =>
+            await Graph.Nodes<DepartmentMember>()
+                .GroupBy(employee => employee.Department)
+                .Select(group => group.Select(employee => employee.Name).ToList())
+                .ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GroupByScalarKey_PredicateCount_Throws()
+    {
+        await Assert.ThrowsAsync<NotSupportedException>(async () =>
+            await Graph.Nodes<DepartmentMember>()
+                .GroupBy(employee => employee.Department)
+                .Select(group => new { group.Key, Seniors = group.Count(employee => employee.Age >= 40) })
+                .ToListAsync(TestContext.Current.CancellationToken));
+    }
 }

@@ -248,9 +248,9 @@ public class GroupByTranslationTests : TranslationTestBase
     {
         // Take over the group is outside the recognized correlated-collection grammar. The planner must
         // reject it at translation with the shared, provider-neutral message - and, crucially, the
-        // Neo4j provider must surface it as a GraphQueryTranslationException (the canonical message omits
-        // the "GroupBy" substring the legacy mapping keys on, so it is not downgraded to
-        // NotSupportedException), matching the in-memory provider exactly.
+        // Neo4j provider must surface it as a GraphQueryTranslationException. The legacy exception
+        // mapping explicitly preserves this canonical shared-validator message instead of downgrading
+        // it to NotSupportedException, matching the in-memory provider exactly.
         var query = Root.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
             .PathSegments<Person, Knows, Person>()
