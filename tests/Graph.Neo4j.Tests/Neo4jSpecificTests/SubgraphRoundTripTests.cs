@@ -12,6 +12,7 @@ using global::Neo4j.Driver;
 /// and the connecting edge — into a single statement, so it costs exactly one <c>RunAsync</c>
 /// round-trip to the database.
 /// </summary>
+[Collection(Neo4jExclusiveAccess.Name)]
 public sealed class SubgraphRoundTripTests
 {
     [Fact]
