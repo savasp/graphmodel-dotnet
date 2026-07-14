@@ -1,0 +1,33 @@
+== Cypher ==
+CALL db.index.fulltext.queryNodes('node_fulltext_index', $p0) YIELD node AS n
+MATCH p = (n)-[r:KNOWS*1..2]-(tgt:Person|Manager)
+WHERE ('Person' IN labels(n) OR 'Manager' IN labels(n)) AND length(p) = $p1
+WITH collect(p) AS __paths
+UNWIND range(0, size(__paths) - 1) AS pathIndex
+WITH __paths[pathIndex] AS p, pathIndex
+UNWIND range(0, length(p) - 1) AS hopIndex
+WITH pathIndex, hopIndex, nodes(p)[hopIndex] AS src, relationships(p)[hopIndex] AS r, nodes(p)[hopIndex + 1] AS tgt
+RETURN pathIndex, hopIndex, { StartNode: { Node: src, ComplexProperties: reduce(flat = [], propertyPath IN [
+            (src)-[propertyRelationships*1..5]->(propertyNode)
+            WHERE ALL(propertyRelationship IN propertyRelationships WHERE propertyRelationship.__graphModelComplexProperty = true) |
+            [i IN range(0, size(propertyRelationships) - 1) | {
+                ParentNode: startNode(propertyRelationships[i]),
+                Relationship: propertyRelationships[i],
+                SequenceNumber: propertyRelationships[i].SequenceNumber,
+                Property: endNode(propertyRelationships[i])
+            }]
+        ] | flat + propertyPath) }, Relationship: r, EndNode: { Node: tgt, ComplexProperties: reduce(flat = [], propertyPath IN [
+            (tgt)-[propertyRelationships*1..5]->(propertyNode)
+            WHERE ALL(propertyRelationship IN propertyRelationships WHERE propertyRelationship.__graphModelComplexProperty = true) |
+            [i IN range(0, size(propertyRelationships) - 1) | {
+                ParentNode: startNode(propertyRelationships[i]),
+                Relationship: propertyRelationships[i],
+                SequenceNumber: propertyRelationships[i].SequenceNumber,
+                Property: endNode(propertyRelationships[i])
+            }]
+        ] | flat + propertyPath) } } AS PathSegment
+ORDER BY pathIndex, hopIndex
+
+== Parameters ==
+p0 = "alice"
+p1 = 2

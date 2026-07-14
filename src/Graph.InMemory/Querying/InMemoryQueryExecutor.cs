@@ -320,6 +320,14 @@ internal sealed class InMemoryQueryExecutor(
             _cancellationToken.ThrowIfCancellationRequested();
             if (row.Current is { } entity && _fullTextMatcher.Matches(entity, terms))
             {
+                var searchAlias = searchRoot.Target switch
+                {
+                    SearchRootTarget.Nodes => "n",
+                    SearchRootTarget.Relationships => "r",
+                    SearchRootTarget.Entities => "entity",
+                    _ => throw new GraphException($"Unsupported full-text search target '{searchRoot.Target}'."),
+                };
+                row.Bindings[searchAlias] = entity;
                 yield return row;
             }
         }

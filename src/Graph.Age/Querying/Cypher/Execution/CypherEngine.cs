@@ -72,8 +72,8 @@ internal sealed class CypherEngine
             }
 
             // Lower any full-text Search operator out of the expression tree (phase 1 + rewrite to a
-            // Where over the matched ids) before the shared pipeline runs. Unchanged when there is no
-            // Search or the Search feeds a traversal (rejected downstream).
+            // Where over the matched ids) before the shared pipeline runs. Unchanged only when there
+            // is no Search; typed search traversal continues over the rewritten node source.
             expression = await _fullTextSearchRewriter
                 .RewriteAsync(expression, transaction.Runner, cancellationToken).ConfigureAwait(false);
 
@@ -374,12 +374,6 @@ internal sealed class CypherEngine
     {
         var model = GraphQueryModelBuilder.Build(expression);
         GraphQueryModelValidator.Validate(model);
-        if (model.Traversal.Count > 0)
-        {
-            throw new GraphQueryTranslationException(
-                "Full-text search cannot be the source of a traversal yet (Search(...) followed by " +
-                "Traverse/PathSegments). Apply Search() after the traversal instead. Tracked by #295.");
-        }
     }
 
     private static Type ExtractElementType(Type resultType, Expression expression)

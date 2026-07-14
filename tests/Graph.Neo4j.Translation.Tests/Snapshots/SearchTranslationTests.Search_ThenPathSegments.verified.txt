@@ -1,0 +1,9 @@
+== Cypher ==
+CALL db.index.fulltext.queryNodes('node_fulltext_index', $p0) YIELD node AS n
+MATCH (n)-[r:KNOWS]->(tgt:Person|Manager)
+WHERE ('Person' IN labels(n) OR 'Manager' IN labels(n)) AND r.Since >= $p1
+RETURN n.Id AS StartId, tgt.Id AS EndId
+
+== Parameters ==
+p0 = "alice"
+p1 = 2020

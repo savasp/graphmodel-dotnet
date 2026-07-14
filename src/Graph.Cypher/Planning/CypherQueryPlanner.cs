@@ -69,8 +69,14 @@ public sealed class CypherQueryPlanner
         GraphQueryModelValidator.Validate(model);
 
         var parameters = new CypherParameterRegistry();
-        var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
         var state = CreateState(model, parameters);
+        var pathSegmentSourceAlias = model.Root is SearchRoot { Target: SearchRootTarget.Nodes }
+            ? state.RootAlias
+            : "src";
+        var lowerer = new ExpressionToCypherAstLowerer(
+            parameters,
+            dialect,
+            pathSegmentSourceAlias);
 
         var predicates = LowerPredicates(model, state, lowerer);
         var ordering = LowerOrdering(model, state, lowerer);
@@ -78,7 +84,10 @@ public sealed class CypherQueryPlanner
             ? LowerProjection(model, state, lowerer)
             : null;
         var postPagingLowerer = model.PostPaging is not null
-            ? new ExpressionToCypherAstLowerer(parameters, dialect)
+            ? new ExpressionToCypherAstLowerer(
+                parameters,
+                dialect,
+                pathSegmentSourceAlias)
             : null;
         var postPagingPredicates = model.PostPaging is { } postPaging
             ? postPaging.Predicates
@@ -105,7 +114,7 @@ public sealed class CypherQueryPlanner
 
         var clauses = new List<ICypherClause>();
         AddRootAndTraversalClauses(clauses, model, state);
-        AddSearchFilterClause(clauses, model.SearchFilter, state.SearchParameter);
+        AddSearchFilterClause(clauses, model.SearchFilter, state.SearchFilterParameter);
         clauses.AddRange(lowerer.NavigationMatches);
 
         if (predicates.Count > 0)
@@ -1145,11 +1154,19 @@ public sealed class CypherQueryPlanner
 
         var searchParameter = model.Root is SearchRoot search
             ? parameters.Add(search.Query)
-            : model.SearchFilter is { } searchFilter
-                ? parameters.Add(searchFilter.Query)
-                : null;
+            : null;
+        var searchFilterParameter = model.SearchFilter is { } searchFilter
+            ? parameters.Add(searchFilter.Query)
+            : null;
 
-        return new PlanningState(rootAlias, rootType, targetAlias, targetType, explicitTraversal, searchParameter);
+        return new PlanningState(
+            rootAlias,
+            rootType,
+            targetAlias,
+            targetType,
+            explicitTraversal,
+            searchParameter,
+            searchFilterParameter);
     }
 
     private static List<CypherExpression> LowerPredicates(
@@ -1191,7 +1208,8 @@ public sealed class CypherQueryPlanner
     {
         if (model.Root is SearchRoot { Target: SearchRootTarget.Nodes })
         {
-            return "n";
+            var searchScopeAlias = declaredAlias ?? state.CurrentAlias;
+            return searchScopeAlias == "src" ? "n" : searchScopeAlias;
         }
 
         if (model.Root is SearchRoot { Target: SearchRootTarget.Entities })
@@ -1499,6 +1517,14 @@ public sealed class CypherQueryPlanner
                 SearchRootTarget.Nodes,
                 state.SearchParameter ?? throw MissingSearchParameter(),
                 "n"));
+            if (state.ExplicitTraversal.Count > 0)
+            {
+                clauses.Add(BuildTraversalMatch(
+                    model.Root,
+                    state.ExplicitTraversal,
+                    model.PathShape is null ? null : "p"));
+            }
+
             return;
         }
 
@@ -1595,9 +1621,12 @@ public sealed class CypherQueryPlanner
         string? pathAlias)
     {
         var rootType = GetRootType(root);
-        var rootAlias = rootType is { IsInterface: true } && typeof(INode).IsAssignableFrom(rootType)
-            ? "src_1"
-            : "src";
+        var rootAlias = root switch
+        {
+            SearchRoot { Target: SearchRootTarget.Nodes } => "n",
+            _ when rootType is { IsInterface: true } && typeof(INode).IsAssignableFrom(rootType) => "src_1",
+            _ => "src",
+        };
         var patterns = new List<PathPattern>();
 
         for (var index = 0; index < traversal.Count; index++)
@@ -1616,7 +1645,9 @@ public sealed class CypherQueryPlanner
             [
                 new NodePattern(
                     sourceAlias,
-                    sourceAlias == rootAlias && rootType is not null ? Labels.GetCompatibleLabels(rootType) : []),
+                    sourceAlias == rootAlias && root is not SearchRoot && rootType is not null
+                        ? Labels.GetCompatibleLabels(rootType)
+                        : []),
                 new RelationshipPattern(
                     relationshipAlias,
                     step.Direction switch
@@ -2249,7 +2280,8 @@ public sealed class CypherQueryPlanner
         string TargetAlias,
         Type? CurrentType,
         IReadOnlyList<TraversalStep> ExplicitTraversal,
-        QueryParameter? SearchParameter)
+        QueryParameter? SearchParameter,
+        QueryParameter? SearchFilterParameter)
     {
         public string CurrentAlias => ExplicitTraversal.Count == 0 ? RootAlias : TargetAlias;
 

@@ -1,0 +1,12 @@
+== Cypher ==
+CALL db.index.fulltext.queryNodes('node_fulltext_index', $p0) YIELD node AS n
+MATCH (n)<-[r:KNOWS*1..2]-(tgt:Person|Manager)
+WHERE ('Person' IN labels(n) OR 'Manager' IN labels(n)) AND tgt.Age > $p1
+ORDER BY tgt.FirstName
+SKIP 1
+LIMIT 2
+RETURN tgt.FirstName
+
+== Parameters ==
+p0 = "alice"
+p1 = 21

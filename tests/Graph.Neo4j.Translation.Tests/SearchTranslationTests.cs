@@ -35,4 +35,61 @@ public class SearchTranslationTests : TranslationTestBase
         var query = Root.Nodes<Person>().Traverse<Knows, Person>().Search("Alice");
         return VerifyTranslation(query);
     }
+
+    [Fact]
+    public Task Search_ThenTraverse_WithComposition()
+    {
+        var query = Root.Nodes<Person>()
+            .Search("Alice")
+            .Traverse<Knows, Person>(options => options
+                .Depth(1, 2)
+                .Direction(GraphTraversalDirection.Incoming))
+            .Where(person => person.Age > 21)
+            .OrderBy(person => person.FirstName)
+            .Skip(1)
+            .Take(2)
+            .Select(person => person.FirstName);
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Search_ThenTraverse_ThenSearch()
+    {
+        var query = Root.Nodes<Person>()
+            .Search("Alice")
+            .Traverse<Knows, Person>()
+            .Search("Bob");
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Search_ThenPathSegments()
+    {
+        var query = Root.Nodes<Person>()
+            .Search("Alice")
+            .PathSegments<Person, Knows, Person>()
+            .Where(segment => segment.Relationship.Since >= 2020)
+            .Select(segment => new
+            {
+                StartId = segment.StartNode.Id,
+                EndId = segment.EndNode.Id,
+            });
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Search_ThenTraversePaths()
+    {
+        var query = Root.Nodes<Person>()
+            .Search("Alice")
+            .TraversePaths<Knows, Person>(options => options
+                .Depth(1, 2)
+                .Direction(GraphTraversalDirection.Both))
+            .Where(path => path.Segments.Count == 2);
+
+        return VerifyTranslation(query);
+    }
 }

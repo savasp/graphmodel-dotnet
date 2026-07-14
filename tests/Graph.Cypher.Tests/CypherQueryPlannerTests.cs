@@ -295,6 +295,79 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_BindsSearchRootAsTraversalSourceAndPreservesTargetScopes()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 21;
+        Expression<Func<Person, string>> ordering = person => person.Name;
+        Expression<Func<Person, string>> projection = person => person.Name;
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Incoming,
+            new Cvoya.Graph.Querying.DepthRange(1, 2),
+            [],
+            typeof(Person),
+            typeof(Knows),
+            isComplexPropertyTraversal: false,
+            sourceAlias: "n",
+            targetAlias: "friend");
+        var model = Model(
+            root: new SearchRoot("Ada", SearchRootTarget.Nodes, typeof(Person)),
+            traversal: [traversal],
+            predicates: [new PredicateFragment(predicate, "friend")],
+            ordering: [new OrderingKey(ordering, descending: false, alias: "friend")],
+            projection: new ProjectionShape(ProjectionKind.Scalar, projection),
+            paging: new Paging(skip: 1, take: 2));
+
+        var statement = planner.Plan(model);
+
+        Assert.IsType<FullTextSearchClause>(statement.Clauses[0]);
+        var match = Assert.IsType<MatchClause>(statement.Clauses[1]);
+        var pattern = Assert.Single(match.Patterns);
+        Assert.Equal("n", Assert.IsType<NodePattern>(pattern.Elements[0]).Alias);
+        Assert.Equal("friend", Assert.IsType<NodePattern>(pattern.Elements[2]).Alias);
+        var where = Assert.Single(statement.Clauses.OfType<WhereClause>());
+        Assert.Contains(
+            Descendants(where.Predicate),
+            expression => expression is PropertyAccess
+            {
+                Target: VariableRef { Alias: "friend" },
+                Property: nameof(Person.Age),
+            });
+        var orderBy = Assert.Single(statement.Clauses.OfType<OrderByClause>());
+        Assert.Equal(
+            "friend",
+            Assert.IsType<VariableRef>(Assert.IsType<PropertyAccess>(Assert.Single(orderBy.Items).Expression).Target).Alias);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_SearchRootTraversePaths_PreservesPathMetadata()
+    {
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 3),
+            [],
+            typeof(Person),
+            typeof(Knows),
+            isComplexPropertyTraversal: false,
+            sourceAlias: "n",
+            targetAlias: "tgt");
+        var model = Model(
+            root: new SearchRoot("Ada", SearchRootTarget.Nodes, typeof(Person)),
+            traversal: [traversal],
+            pathShape: new QueryPathShape(typeof(Person), typeof(Knows), typeof(Person)));
+
+        var statement = planner.Plan(model);
+
+        Assert.IsType<FullTextSearchClause>(statement.Clauses[0]);
+        var match = Assert.IsType<MatchClause>(statement.Clauses[1]);
+        Assert.Equal("p", Assert.Single(match.Patterns).Alias);
+        Assert.Equal(new CypherPathTypes(typeof(Person), typeof(Knows), typeof(Person)), statement.PathTypes);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
     public void Plan_LowersDistinctBeforeOrderingAndPaging()
     {
         Expression<Func<Person, string>> projection = person => person.Name;
@@ -943,7 +1016,8 @@ public class CypherQueryPlannerTests
         SearchRoot? searchFilter = null,
         GroupByFragment? groupBy = null,
         SelectManyFragment? selectMany = null,
-        UnionFragment? union = null) =>
+        UnionFragment? union = null,
+        QueryPathShape? pathShape = null) =>
         new(
             root ?? new NodeRoot(typeof(Person)),
             predicates ?? [],
@@ -954,7 +1028,7 @@ public class CypherQueryPlannerTests
             terminal,
             distinct,
             terminalOperand,
-            pathShape: null,
+            pathShape,
             join,
             searchFilter,
             groupBy,

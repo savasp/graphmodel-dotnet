@@ -130,7 +130,7 @@ Transaction behavior:
 - Caller transaction: execute inside the supplied provider transaction and do not commit or roll it back automatically.
 - `CommitAsync()` completes the transaction; `RollbackAsync()` aborts it; disposal should clean up uncommitted transactions.
 
-Full-text search is part of `IGraph`: `Search`, `SearchNodes`, `SearchRelationships`, and typed overloads — thin synchronous conveniences over the `.Search()` LINQ operator (building a queryable performs no I/O). Providers should respect `[Property(IncludeInFullTextSearch = false)]`, support dynamic entities, and initialize required full-text indexes.
+Full-text search is part of `IGraph`: `Search`, `SearchNodes`, `SearchRelationships`, and typed overloads — thin synchronous conveniences over the `.Search()` LINQ operator (building a queryable performs no I/O). Providers should respect `[Property(IncludeInFullTextSearch = false)]`, support dynamic entities, and initialize required full-text indexes. A typed node search is also a valid source for `Traverse`, `PathSegments`, and `TraversePaths`; providers must preserve the searched node scope through every subsequent traversal step and LINQ operator. Mixed node-and-relationship search remains non-traversable because it has no single typed node scope.
 
 Exception behavior follows the public API contract: provider/backend failures are wrapped in `GraphException`, missing entities from get/update/delete operations throw `EntityNotFoundException` (derived from `GraphException`), and invalid caller input preserves argument exceptions where the public API already does so.
 
