@@ -36,8 +36,10 @@ public sealed class AgeDialect : ICypherDialect
     /// <inheritdoc/>
     /// <remarks>
     /// AGE-compatible lowering implements multi-label matches, entity ordering, and optional
-    /// traversal before rendering. Capabilities describe user-visible behavior, whether native or
-    /// lowered, so both the planning and public instances declare those features.
+    /// traversal before rendering. Full-text search is lowered earlier still, at the expression level,
+    /// to a two-phase Postgres text-search query (<see cref="Querying.AgeFullTextSearch"/>).
+    /// Capabilities describe user-visible behavior, whether native or lowered, so both the planning and
+    /// public instances declare those features.
     /// </remarks>
     public CapabilitySet Capabilities => SupportedCapabilities;
 
