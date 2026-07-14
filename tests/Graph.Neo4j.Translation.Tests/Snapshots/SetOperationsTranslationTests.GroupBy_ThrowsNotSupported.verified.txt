@@ -1,1 +1,1 @@
-System.NotSupportedException: GroupBy is not supported by LINQ-to-Cypher translation yet; see #100.
+System.NotSupportedException: GroupBy is not supported for this query shape: a group projection (a Select over the grouping or a result-selector overload) is required.

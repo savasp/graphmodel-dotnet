@@ -23,6 +23,7 @@ A provider is **compliant** when its compatibility run reports N passed / M skip
 | OrderByEntity | Yes / No | |
 | ShortestPath | Yes / No | |
 | OptionalTraversal | Yes / No | |
+| GroupByAggregation | Yes / No | |
 
 ## Results
 

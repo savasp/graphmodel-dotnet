@@ -170,4 +170,76 @@ public class GroupByTranslationTests : TranslationTestBase
             });
         return VerifyTranslation((IQueryable<object>)query);
     }
+
+    [Fact]
+    public Task ScalarKey_KeyAndAggregates()
+    {
+        var query = Root.Nodes<Person>()
+            .GroupBy(p => p.LastName)
+            .Select(g => new
+            {
+                LastName = g.Key,
+                Count = g.Count(),
+                AverageAge = g.Average(p => p.Age),
+                Oldest = g.Max(p => p.Age),
+                Youngest = g.Min(p => p.Age),
+                TotalAge = g.Sum(p => p.Age),
+            });
+        return VerifyTranslation((IQueryable<object>)query);
+    }
+
+    [Fact]
+    public Task ScalarKey_WhereBeforeGroupBy()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(p => p.Age >= 18)
+            .GroupBy(p => p.LastName)
+            .Select(g => new { g.Key, Count = g.Count() });
+        return VerifyTranslation((IQueryable<object>)query);
+    }
+
+    [Fact]
+    public Task ScalarKey_DistinctKeysWithoutAggregate()
+    {
+        var query = Root.Nodes<Person>()
+            .GroupBy(p => p.LastName)
+            .Select(g => g.Key);
+        return VerifyTranslation((IQueryable<string>)query);
+    }
+
+    [Fact]
+    public Task ScalarKey_ResultSelectorOverload()
+    {
+        var query = Root.Nodes<Person>()
+            .GroupBy(p => p.LastName, (last, group) => new { LastName = last, Count = group.Count() });
+        return VerifyTranslation((IQueryable<object>)query);
+    }
+
+    [Fact]
+    public Task ScalarKey_ComputedKeyExpression()
+    {
+        var query = Root.Nodes<Person>()
+            .GroupBy(p => p.Age >= 18 ? "Adult" : "Minor")
+            .Select(g => new { Category = g.Key, Count = g.Count() });
+        return VerifyTranslation((IQueryable<object>)query);
+    }
+
+    [Fact]
+    public Task ScalarKey_OuterOrderingThrowsInsteadOfBeingIgnored()
+    {
+        var query = Root.Nodes<Person>()
+            .GroupBy(p => p.LastName)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .OrderBy(result => result.Key);
+        return VerifyTranslationThrows((IQueryable<object>)query);
+    }
+
+    [Fact]
+    public Task ScalarKey_EntityKeyThrows()
+    {
+        var query = Root.Nodes<Person>()
+            .GroupBy(p => p.HomeAddress)
+            .Select(g => new { g.Key, Count = g.Count() });
+        return VerifyTranslationThrows((IQueryable<object>)query);
+    }
 }

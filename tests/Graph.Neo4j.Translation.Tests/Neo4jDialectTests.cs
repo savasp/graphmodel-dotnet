@@ -25,7 +25,8 @@ public class Neo4jDialectTests
                 GraphCapability.PatternSizeProjection,
                 GraphCapability.MultiLabelMatch,
                 GraphCapability.OrderByEntity,
-                GraphCapability.OptionalTraversal),
+                GraphCapability.OptionalTraversal,
+                GraphCapability.GroupByAggregation),
             capabilities);
     }
 

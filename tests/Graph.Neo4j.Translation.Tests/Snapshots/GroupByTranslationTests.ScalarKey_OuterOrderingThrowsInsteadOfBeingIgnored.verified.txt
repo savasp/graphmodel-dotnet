@@ -1,0 +1,1 @@
+System.NotSupportedException: GroupBy is not supported for this query shape: Distinct, ordering, and paging over a grouped result are not supported; materialize the grouped query first.

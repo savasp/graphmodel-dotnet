@@ -121,12 +121,14 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider
                 "SelectMany is not supported by graph query translation yet; see #100.");
         }
 
-        if (model.GroupBy is { } groupBy && !groupBy.GroupsByPathSegmentStartNode)
+        if (model.GroupBy is { } groupBy && !groupBy.GroupsByPathSegmentStartNode &&
+            ScalarGroupByValidation.DescribeUnsupported(model) is { } reason)
         {
-            // Only the #120 correlated collection-projection shape (grouping by a path-segment start
-            // node) is supported; scalar-key aggregation grouping remains a #100 concern.
-            throw new NotSupportedException(
-                "GroupBy is not supported by graph query translation yet; see #100.");
+            // The #120 correlated collection-projection shape (grouping by a path-segment start node)
+            // and structurally supported scalar-key aggregation grouping (#306) both flow through to
+            // the interpreter; only genuinely unsupported grouping shapes are rejected here, with the
+            // same reason the Cypher planner reports so rejections match across providers.
+            throw new NotSupportedException(ScalarGroupByValidation.BuildMessage(reason));
         }
 
         if (model.Union is not null)
@@ -149,7 +151,9 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider
 
         if (exception.Message.Contains("GroupBy", StringComparison.Ordinal))
         {
-            return new NotSupportedException("GroupBy is not supported by graph query translation yet; see #100.");
+            // Preserve the precise builder rejection (e.g. chained GroupBy) rather than a generic
+            // message, so scalar-key grouping (#306) surfaces the same actionable reason everywhere.
+            return new NotSupportedException(exception.Message);
         }
 
         if (exception.Message.Contains("Union", StringComparison.Ordinal))

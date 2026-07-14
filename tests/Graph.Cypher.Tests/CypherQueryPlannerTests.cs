@@ -105,11 +105,28 @@ public class CypherQueryPlannerTests
     [Fact]
     public void Plan_MissingCallSubqueriesCapabilityFailsAtTranslation()
     {
-        Expression<Func<Person, int>> key = person => person.Age;
+        // The correlated collection-projection shape (grouping path segments by their start node)
+        // lowers to CALL {} subqueries and therefore requires CallSubqueries.
+        Expression<Func<IGraphPathSegment<Person, Knows, Person>, Person>> key = segment => segment.StartNode;
+        Expression<Func<IGrouping<Person, IGraphPathSegment<Person, Knows, Person>>, object>> projection = group =>
+            new { Friends = group.Select(segment => segment.EndNode.Name).ToList() };
+        var traversal = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows),
+            isComplexPropertyTraversal: false,
+            sourceAlias: "src",
+            targetAlias: "tgt");
 
         AssertMissingCapability(
             GraphCapability.CallSubqueries,
-            Model(groupBy: new GroupByFragment(key, null, null)));
+            Model(
+                traversal: [traversal],
+                projection: new ProjectionShape(ProjectionKind.Scalar, projection),
+                groupBy: new GroupByFragment(key, null, null)));
     }
 
     [Fact]
@@ -456,17 +473,105 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
-    public void Plan_GroupByModel_ThrowsDefinedTranslationError()
+    public void Plan_GroupByModelWithoutProjection_ThrowsDefinedTranslationError()
     {
-        // A scalar-key grouping is not the supported correlated collection-projection shape and is
-        // rejected with a defined GroupBy translation error (mapped to the #100 NotSupported message
-        // by the provider's legacy exception preservation).
+        // A scalar-key grouping needs a group projection (a Select over the grouping or a
+        // result-selector overload); grouping alone has no translatable RETURN shape.
         Expression<Func<Person, int>> key = person => person.Age;
         var model = Model(groupBy: new GroupByFragment(key, null, null));
 
         var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
 
         Assert.Contains("GroupBy", exception.Message);
+        Assert.Contains("group projection", exception.Message);
+    }
+
+    [Fact]
+    public void Plan_ScalarGroupBy_LowersToImplicitGroupingWithAndReturn()
+    {
+        Expression<Func<Person, string>> key = person => person.Name;
+        Expression<Func<IGrouping<string, Person>, object>> projection =
+            g => new { Name = g.Key, Count = g.Count(), OldestAge = g.Max(p => p.Age) };
+        var model = Model(
+            groupBy: new GroupByFragment(key, null, null),
+            projection: new ProjectionShape(ProjectionKind.Anonymous, projection));
+
+        var statement = planner.Plan(model);
+
+        var with = Assert.Single(statement.Clauses.OfType<WithClause>());
+        Assert.False(with.Distinct);
+        Assert.Equal("__key", with.Items[0].Alias);
+        Assert.Equal("__a0", with.Items[1].Alias);
+        Assert.Equal("count", Assert.IsType<FunctionCall>(with.Items[1].Expression).Name);
+        Assert.Equal("__a1", with.Items[2].Alias);
+        Assert.Equal("max", Assert.IsType<FunctionCall>(with.Items[2].Expression).Name);
+
+        var @return = Assert.Single(statement.Clauses.OfType<ReturnClause>());
+        Assert.Equal(["Name", "Count", "OldestAge"], @return.Items.Select(item => item.Alias!).ToArray());
+        Assert.Equal("__key", Assert.IsType<VariableRef>(@return.Items[0].Expression).Alias);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_ScalarGroupByKeyOnly_UsesDistinctWith()
+    {
+        Expression<Func<Person, string>> key = person => person.Name;
+        Expression<Func<IGrouping<string, Person>, string>> projection = g => g.Key;
+        var model = Model(
+            groupBy: new GroupByFragment(key, null, null),
+            projection: new ProjectionShape(ProjectionKind.Scalar, projection));
+
+        var statement = planner.Plan(model);
+
+        var with = Assert.Single(statement.Clauses.OfType<WithClause>());
+        Assert.True(with.Distinct);
+        Assert.Equal("__key", Assert.Single(with.Items).Alias);
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_ScalarGroupByEntityKey_ThrowsDefinedTranslationError()
+    {
+        Expression<Func<Person, Person>> key = person => person;
+        Expression<Func<IGrouping<Person, Person>, object>> projection = g => new { Count = g.Count() };
+        var model = Model(
+            groupBy: new GroupByFragment(key, null, null),
+            projection: new ProjectionShape(ProjectionKind.Anonymous, projection));
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+
+        Assert.Contains("scalar value", exception.Message);
+    }
+
+    [Fact]
+    public void Plan_ScalarGroupByWithOuterOrdering_ThrowsDefinedTranslationError()
+    {
+        Expression<Func<Person, string>> key = person => person.Name;
+        Expression<Func<IGrouping<string, Person>, object>> projection = g => new { Name = g.Key };
+        Expression<Func<Person, string>> orderKey = person => person.Name;
+        var model = Model(
+            groupBy: new GroupByFragment(key, null, null),
+            projection: new ProjectionShape(ProjectionKind.Anonymous, projection),
+            ordering: [new OrderingKey(orderKey, descending: false, alias: null)]);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+
+        Assert.Contains("ordering", exception.Message);
+    }
+
+    [Fact]
+    public void Plan_ScalarGroupBy_RequiresGroupByAggregationCapability()
+    {
+        var limited = new CypherQueryPlanner(new TestCypherDialect(CapabilitySet.Of(), "LimitedCypher"));
+        Expression<Func<Person, string>> key = person => person.Name;
+        Expression<Func<IGrouping<string, Person>, object>> projection = g => new { Name = g.Key, Count = g.Count() };
+        var model = Model(
+            groupBy: new GroupByFragment(key, null, null),
+            projection: new ProjectionShape(ProjectionKind.Anonymous, projection));
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => limited.Plan(model));
+
+        Assert.Contains(nameof(GraphCapability.GroupByAggregation), exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

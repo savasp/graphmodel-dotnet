@@ -72,5 +72,15 @@ public enum GraphCapability
     /// <c>OPTIONAL MATCH</c>, so owners without the property survive (with a null leaf) rather than
     /// being filtered out.
     /// </summary>
-    OptionalTraversal
+    OptionalTraversal,
+
+    /// <summary>
+    /// Grouping a node set by a scalar key and projecting per-group aggregates
+    /// (<c>GroupBy(x =&gt; x.Key).Select(g =&gt; new { g.Key, g.Count(), g.Sum(...), ... })</c> and the
+    /// equivalent result-selector overload). Lowers to an implicit-grouping <c>WITH … RETURN …</c>
+    /// where non-aggregated terms form the grouping key. Distinct from <see cref="CallSubqueries"/>,
+    /// which backs the correlated collection-projection shape (grouping path segments by their start
+    /// node); this member backs scalar-key aggregation grouping.
+    /// </summary>
+    GroupByAggregation
 }

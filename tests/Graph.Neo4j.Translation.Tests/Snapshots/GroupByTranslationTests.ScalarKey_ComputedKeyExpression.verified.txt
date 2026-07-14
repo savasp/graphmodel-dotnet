@@ -1,0 +1,9 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WITH CASE WHEN src.Age >= $p0 THEN $p1 ELSE $p2 END AS __key, count(src) AS __a0
+RETURN __key AS Category, __a0 AS Count
+
+== Parameters ==
+p0 = 18
+p1 = "Adult"
+p2 = "Minor"

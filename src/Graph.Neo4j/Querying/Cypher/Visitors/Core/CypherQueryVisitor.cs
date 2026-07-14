@@ -126,7 +126,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
             return new NotSupportedException("SelectMany is not supported by LINQ-to-Cypher translation yet; see #100.");
 
         if (exception.Message.Contains("GroupBy", StringComparison.Ordinal))
-            return new NotSupportedException("GroupBy is not supported by LINQ-to-Cypher translation yet; see #100.");
+            return new NotSupportedException(exception.Message);
 
         if (exception.Message.Contains("Union", StringComparison.Ordinal))
             return new GraphException("Union operations are not yet fully implemented in the refactored architecture");
