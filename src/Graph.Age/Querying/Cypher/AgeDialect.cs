@@ -17,7 +17,8 @@ public sealed class AgeDialect : ICypherDialect
         GraphCapability.ComplexPropertyCascade,
         GraphCapability.MultiLabelMatch,
         GraphCapability.OrderByEntity,
-        GraphCapability.OptionalTraversal);
+        GraphCapability.OptionalTraversal,
+        GraphCapability.FullTextSearch);
 
     /// <summary>Initializes the Apache AGE dialect.</summary>
     public AgeDialect()
