@@ -57,4 +57,19 @@ public class CypherRendererTests
 
         Assert.Equal(["pathIndex", "hopIndex", "PathSegment"], result.ProjectionColumns);
     }
+
+    [Fact]
+    public void Render_FullTextClause_AgainstDialectWithoutSupport_ThrowsNamedTranslationException()
+    {
+        // TestCypherDialect declares no RenderFullTextSearch override, so it inherits the throwing
+        // interface default — the dialect-owned seam's backstop for a dialect that lacks full-text.
+        var statement = new CypherStatement(
+            [new FullTextSearchClause(Cvoya.Graph.Querying.SearchRootTarget.Nodes, new QueryParameter("p0"), "n")],
+            new Dictionary<string, object?> { ["p0"] = "Ada" });
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => renderer.Render(statement));
+
+        Assert.Contains(nameof(GraphCapability.FullTextSearch), exception.Message, StringComparison.Ordinal);
+        Assert.Contains("TestCypher", exception.Message, StringComparison.Ordinal);
+    }
 }

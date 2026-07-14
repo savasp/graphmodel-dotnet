@@ -10,7 +10,7 @@ using Cvoya.Graph.Cypher.Ast.Expressions;
 using Cvoya.Graph.Cypher.Validation;
 
 /// <summary>Renders the shared Cypher AST using an <see cref="ICypherDialect"/>.</summary>
-public sealed class CypherRenderer
+public sealed class CypherRenderer : ICypherRenderContext
 {
     private readonly ICypherDialect dialect;
 
@@ -99,7 +99,7 @@ public sealed class CypherRenderer
                 break;
 
             case FullTextSearchClause search:
-                RenderFullTextSearch(builder, search);
+                builder.Append(dialect.RenderFullTextSearch(search, this));
                 break;
 
             case UnwindClause unwind:
@@ -432,51 +432,17 @@ public sealed class CypherRenderer
         throw new GraphException($"Cannot render '{text}' as a Cypher float literal.");
     }
 
-    private void RenderFullTextSearch(StringBuilder builder, FullTextSearchClause search)
-    {
-        if (search.Target == Cvoya.Graph.Querying.SearchRootTarget.Entities)
-        {
-            RenderEntitySearch(builder, search);
-            return;
-        }
+    /// <summary>
+    /// Renders an expression on behalf of a dialect that owns a clause's syntax
+    /// (see <see cref="ICypherDialect.RenderFullTextSearch"/>).
+    /// </summary>
+    string ICypherRenderContext.RenderExpression(CypherExpression expression) =>
+        RenderExpression(expression);
 
-        var (procedure, index, yieldedName) = search.Target switch
-        {
-            Cvoya.Graph.Querying.SearchRootTarget.Nodes =>
-                (dialect.FullTextNodeProcedure, dialect.FullTextNodeIndex, "node"),
-            Cvoya.Graph.Querying.SearchRootTarget.Relationships =>
-                (dialect.FullTextRelationshipProcedure, dialect.FullTextRelationshipIndex, "relationship"),
-            _ => throw new GraphException($"Unsupported full-text search target '{search.Target}'."),
-        };
-
-        builder.Append("CALL ")
-            .Append(procedure)
-            .Append('(')
-            .Append(RenderLiteral(index))
-            .Append(", ")
-            .Append(RenderExpression(search.Query))
-            .Append(") YIELD ")
-            .Append(yieldedName)
-            .Append(" AS ")
-            .Append(search.Alias);
-    }
-
-    private void RenderEntitySearch(StringBuilder builder, FullTextSearchClause search)
-    {
-        builder.Append("CALL {\n")
-            .Append("    CALL ").Append(dialect.FullTextNodeProcedure).Append('(')
-            .Append(RenderLiteral(dialect.FullTextNodeIndex)).Append(", ")
-            .Append(RenderExpression(search.Query)).Append(") YIELD node\n")
-            .Append("    RETURN node AS entity\n")
-            .Append("    UNION ALL\n")
-            .Append("    CALL ").Append(dialect.FullTextRelationshipProcedure).Append('(')
-            .Append(RenderLiteral(dialect.FullTextRelationshipIndex)).Append(", ")
-            .Append(RenderExpression(search.Query)).Append(") YIELD relationship\n")
-            .Append("    MATCH (src)-[relationship]->(tgt)\n")
-            .Append("    RETURN { StartNode: { Node: src, ComplexProperties: [] }, ")
-            .Append("Relationship: relationship, EndNode: { Node: tgt, ComplexProperties: [] } } AS entity\n")
-            .Append('}');
-    }
+    /// <summary>
+    /// Renders a CLR value as a Cypher literal on behalf of a dialect that owns a clause's syntax.
+    /// </summary>
+    string ICypherRenderContext.RenderLiteral(object? value) => RenderLiteral(value);
 
     private string[] GetProjectionColumns(CypherStatement statement)
     {
