@@ -17,14 +17,8 @@ internal sealed class TestCypherDialect(
 
     public CapabilitySet Capabilities { get; } = capabilities;
 
-    public string FullTextNodeProcedure => "test.searchNodes";
-
-    public string FullTextRelationshipProcedure => "test.searchRelationships";
-
-    public string FullTextNodeIndex => "nodes";
-
-    public string FullTextRelationshipIndex => "relationships";
-
+    // No RenderFullTextSearch override: this dialect inherits the throwing default, so it doubles
+    // as the "dialect that does not support full-text search" fixture (see CypherRendererTests).
     public string ComplexPropertyRelationshipMarker => "__testComplexProperty";
 
     public string RenderParameter(string name) => $"${name}";

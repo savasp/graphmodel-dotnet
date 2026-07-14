@@ -484,6 +484,27 @@ shared Cypher dialect layer cannot represent their .NET semantics faithfully. Qu
 appeared to use those overloads previously had their extra arguments silently discarded and
 should be rewritten to a supported ordinal comparison or evaluated client-side.
 
+## 23. `ICypherDialect` owns full-text clause rendering
+
+This affects only custom Cypher **providers** (implementers of the `Cvoya.Graph.Cypher` SPI); it
+has no effect on application code. The four full-text name members on `ICypherDialect` —
+`FullTextNodeProcedure`, `FullTextRelationshipProcedure`, `FullTextNodeIndex`, and
+`FullTextRelationshipIndex` — are **removed**. The shared `CypherRenderer` no longer hard-codes the
+`CALL <proc>(<index>, <query>) YIELD …` scaffolding or the mixed-entity `CALL { … UNION ALL … }`
+subquery; instead it delegates the whole clause to the dialect:
+
+```csharp
+string RenderFullTextSearch(FullTextSearchClause clause, ICypherRenderContext context);
+```
+
+The member has a default implementation that throws `GraphQueryTranslationException`, so a dialect
+that does not declare `GraphCapability.FullTextSearch` needs no change. A dialect that **does**
+support full-text search moves its procedure/index names and its clause shape into an override of
+`RenderFullTextSearch`, rendering expressions and literals through the supplied
+`ICypherRenderContext`. The rendered Cypher is byte-for-byte identical to previous versions; this is
+a pure relocation of where the clause is rendered, completing the dialect-abstraction work begun in
+#215.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

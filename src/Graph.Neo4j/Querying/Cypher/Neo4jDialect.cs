@@ -1,6 +1,7 @@
 // Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.
 // See LICENSE in the project root for full license terms.
 
+using System.Text;
 using Cvoya.Graph.Cypher;
 using Cvoya.Graph.Cypher.Ast;
 using Cvoya.Graph.Neo4j.Entities;
@@ -31,17 +32,12 @@ public sealed class Neo4jDialect : ICypherDialect
     /// <inheritdoc/>
     public CapabilitySet Capabilities => SupportedCapabilities;
 
-    /// <inheritdoc/>
-    public string FullTextNodeProcedure => "db.index.fulltext.queryNodes";
-
-    /// <inheritdoc/>
-    public string FullTextRelationshipProcedure => "db.index.fulltext.queryRelationships";
-
-    /// <inheritdoc/>
-    public string FullTextNodeIndex => "node_fulltext_index";
-
-    /// <inheritdoc/>
-    public string FullTextRelationshipIndex => "rel_fulltext_index";
+    // The Neo4j full-text scaffolding — the procedure/index names and the mixed-entity subquery
+    // shape — is private to this dialect; the shared renderer delegates the whole clause here.
+    private const string FullTextNodeProcedure = "db.index.fulltext.queryNodes";
+    private const string FullTextRelationshipProcedure = "db.index.fulltext.queryRelationships";
+    private const string FullTextNodeIndex = "node_fulltext_index";
+    private const string FullTextRelationshipIndex = "rel_fulltext_index";
 
     /// <inheritdoc/>
     public string ComplexPropertyRelationshipMarker => ComplexPropertyStorage.RelationshipMarkerProperty;
@@ -118,5 +114,58 @@ public sealed class Neo4jDialect : ICypherDialect
 
         var conditions = labels.Select(item => $"{renderLiteral(item)} IN labels({target})").ToArray();
         return conditions.Length == 1 ? conditions[0] : $"({string.Join(" OR ", conditions)})";
+    }
+
+    /// <inheritdoc/>
+    public string RenderFullTextSearch(FullTextSearchClause clause, ICypherRenderContext context)
+    {
+        ArgumentNullException.ThrowIfNull(clause);
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (clause.Target == Cvoya.Graph.Querying.SearchRootTarget.Entities)
+        {
+            return RenderEntitySearch(clause, context);
+        }
+
+        var (procedure, index, yieldedName) = clause.Target switch
+        {
+            Cvoya.Graph.Querying.SearchRootTarget.Nodes =>
+                (FullTextNodeProcedure, FullTextNodeIndex, "node"),
+            Cvoya.Graph.Querying.SearchRootTarget.Relationships =>
+                (FullTextRelationshipProcedure, FullTextRelationshipIndex, "relationship"),
+            _ => throw new GraphException($"Unsupported full-text search target '{clause.Target}'."),
+        };
+
+        return new StringBuilder()
+            .Append("CALL ")
+            .Append(procedure)
+            .Append('(')
+            .Append(context.RenderLiteral(index))
+            .Append(", ")
+            .Append(context.RenderExpression(clause.Query))
+            .Append(") YIELD ")
+            .Append(yieldedName)
+            .Append(" AS ")
+            .Append(clause.Alias)
+            .ToString();
+    }
+
+    private static string RenderEntitySearch(FullTextSearchClause search, ICypherRenderContext context)
+    {
+        return new StringBuilder()
+            .Append("CALL {\n")
+            .Append("    CALL ").Append(FullTextNodeProcedure).Append('(')
+            .Append(context.RenderLiteral(FullTextNodeIndex)).Append(", ")
+            .Append(context.RenderExpression(search.Query)).Append(") YIELD node\n")
+            .Append("    RETURN node AS entity\n")
+            .Append("    UNION ALL\n")
+            .Append("    CALL ").Append(FullTextRelationshipProcedure).Append('(')
+            .Append(context.RenderLiteral(FullTextRelationshipIndex)).Append(", ")
+            .Append(context.RenderExpression(search.Query)).Append(") YIELD relationship\n")
+            .Append("    MATCH (src)-[relationship]->(tgt)\n")
+            .Append("    RETURN { StartNode: { Node: src, ComplexProperties: [] }, ")
+            .Append("Relationship: relationship, EndNode: { Node: tgt, ComplexProperties: [] } } AS entity\n")
+            .Append('}')
+            .ToString();
     }
 }

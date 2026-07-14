@@ -175,8 +175,10 @@ Implement `ICypherDialect` from `Cvoya.Graph.Cypher`. The interface owns every s
 - identifier escaping, node-label lists, relationship-type lists, and depth ranges;
 - provider-neutral function names such as `temporal.datetime` and `string.join`;
 - label predicates and the complex-property relationship marker;
-- full-text procedure and index names; and
+- full-text search rendering (`RenderFullTextSearch`) — the dialect owns the whole clause, including any procedure/index names and mixed-entity subquery shape; and
 - a `CapabilitySet` using the same `GraphCapability` enum as the compatibility suite.
+
+`RenderFullTextSearch(FullTextSearchClause, ICypherRenderContext)` has a default implementation that throws `GraphQueryTranslationException`, so a dialect that does not declare `FullTextSearch` need not implement it. Dialects that do declare it render the clause using the supplied `ICypherRenderContext` (expression and literal rendering) and keep every backend-specific name (Neo4j's `db.index.fulltext.*` procedures and `*_fulltext_index` indexes) private to the dialect rather than in the shared renderer.
 
 `GetFunctionBehavior` distinguishes functions rendered by the backend, parameter-free functions evaluated on the client, and unsupported functions. Client evaluation binds a query parameter; it never inlines the value. A function marked `EvaluateOnClient` fails translation if its arguments depend on a server-side expression. AGE can therefore client-evaluate zero-argument temporal constructors without pretending to support temporal arithmetic over stored properties.
 

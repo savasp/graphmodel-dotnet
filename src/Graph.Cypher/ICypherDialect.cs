@@ -52,17 +52,21 @@ public interface ICypherDialect
     /// <param name="renderLiteral">A renderer for dialect string literals.</param>
     string RenderLabelTest(string target, IReadOnlyList<string> labels, Func<string, string> renderLiteral);
 
-    /// <summary>Gets the node full-text procedure name.</summary>
-    string FullTextNodeProcedure { get; }
-
-    /// <summary>Gets the relationship full-text procedure name.</summary>
-    string FullTextRelationshipProcedure { get; }
-
-    /// <summary>Gets the node full-text index name.</summary>
-    string FullTextNodeIndex { get; }
-
-    /// <summary>Gets the relationship full-text index name.</summary>
-    string FullTextRelationshipIndex { get; }
+    /// <summary>
+    /// Renders a full-text search clause in this dialect's syntax, or throws
+    /// <see cref="GraphQueryTranslationException"/> if the dialect does not support full-text search.
+    /// </summary>
+    /// <param name="clause">The full-text search clause to render.</param>
+    /// <param name="context">Renderer services (expressions, literals) for the dialect to use.</param>
+    /// <remarks>
+    /// The default implementation declines full-text search; dialects that declare
+    /// <see cref="GraphCapability.FullTextSearch"/> override it. This keeps the whole full-text
+    /// scaffolding — procedure/index names and any mixed-entity subquery shape — private to the
+    /// dialect rather than hard-coded in the shared renderer.
+    /// </remarks>
+    string RenderFullTextSearch(FullTextSearchClause clause, ICypherRenderContext context) =>
+        throw new GraphQueryTranslationException(
+            $"The {Name} dialect does not support capability {GraphCapability.FullTextSearch}.");
 
     /// <summary>Gets the stored marker property that identifies owned complex-property relationships.</summary>
     string ComplexPropertyRelationshipMarker { get; }
