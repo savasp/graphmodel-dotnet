@@ -248,6 +248,9 @@ public sealed class CypherRenderer : ICypherRenderContext
             UnaryExpression unary => RenderUnary(unary),
             LabelTest label => RenderLabelTest(label),
             ListExpression list => $"[{string.Join(", ", list.Items.Select(item => RenderExpression(item)))}]",
+            ListComprehensionExpression comprehension => RenderListComprehension(comprehension),
+            ReduceExpression reduce => RenderReduce(reduce),
+            AllExpression all => RenderAll(all),
             MapExpression map => $"{{ {string.Join(", ", map.Entries.Select(entry => $"{entry.Key}: {RenderExpression(entry.Value)}"))} }}",
             EntityProjectionExpression entity => RenderEntityProjectionExpression(entity),
             IndexExpression index => $"{RenderExpression(index.Target)}[{RenderExpression(index.Index)}]",
@@ -382,6 +385,26 @@ public sealed class CypherRenderer : ICypherRenderContext
     {
         var predicate = expression.Predicate is null ? string.Empty : $" WHERE {RenderExpression(expression.Predicate)}";
         return $"[{RenderPattern(expression.Pattern)}{predicate} | {RenderExpression(expression.Projection)}]";
+    }
+
+    private string RenderListComprehension(ListComprehensionExpression expression)
+    {
+        var predicate = expression.Predicate is null ? string.Empty : $" WHERE {RenderExpression(expression.Predicate)}";
+        var projection = expression.Projection is null ? string.Empty : $" | {RenderExpression(expression.Projection)}";
+        return $"[{expression.IteratorAlias} IN {RenderExpression(expression.Source)}{predicate}{projection}]";
+    }
+
+    private string RenderReduce(ReduceExpression expression)
+    {
+        return $"reduce({expression.AccumulatorAlias} = {RenderExpression(expression.Seed)}, " +
+            $"{expression.IteratorAlias} IN {RenderExpression(expression.Source)} | " +
+            $"{RenderExpression(expression.Reducer)})";
+    }
+
+    private string RenderAll(AllExpression expression)
+    {
+        return $"ALL({expression.IteratorAlias} IN {RenderExpression(expression.Source)} WHERE " +
+            $"{RenderExpression(expression.Predicate)})";
     }
 
     private static string RenderLiteral(object? value)

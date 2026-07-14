@@ -257,6 +257,195 @@ public class CypherAstValidatorTests
     }
 
     [Fact]
+    public void Run_AcceptsNestedListComprehensionScopes()
+    {
+        var expression = new ListComprehensionExpression(
+            new ListExpression([new ListExpression([new Literal(1), new Literal(2)])]),
+            "outer",
+            projection: new ListComprehensionExpression(
+                new VariableRef("outer"),
+                "inner",
+                predicate: new BinaryExpression(
+                    CypherBinaryOperator.GreaterThan,
+                    new VariableRef("inner"),
+                    new Literal(0)),
+                projection: new BinaryExpression(
+                    CypherBinaryOperator.Add,
+                    new VariableRef("inner"),
+                    new IndexExpression(new VariableRef("outer"), new Literal(0)))));
+
+        validator.Run(ReturnExpression(expression));
+    }
+
+    [Fact]
+    public void Run_AcceptsReduceBodyReferencesToAccumulatorAndIterator()
+    {
+        var expression = new ReduceExpression(
+            "total",
+            new Literal(0),
+            "item",
+            new ListExpression([new Literal(1), new Literal(2)]),
+            new BinaryExpression(
+                CypherBinaryOperator.Add,
+                new VariableRef("total"),
+                new VariableRef("item")));
+
+        validator.Run(ReturnExpression(expression));
+    }
+
+    [Fact]
+    public void Run_AcceptsAllIteratorInPredicateOverOuterProperty()
+    {
+        var expression = new AllExpression(
+            "item",
+            new PropertyAccess(new VariableRef("n"), "items"),
+            new PropertyAccess(new VariableRef("item"), "active"));
+        var statement = new CypherStatement(
+        [
+            MatchNode("n"),
+            new ReturnClause([new ReturnItem(expression, null)], distinct: false),
+        ], new Dictionary<string, object?>());
+
+        validator.Run(statement);
+    }
+
+    [Fact]
+    public void Run_DoesNotBindListIteratorInItsSourceExpression()
+    {
+        var expression = new ListComprehensionExpression(
+            new VariableRef("item"),
+            "item",
+            projection: new VariableRef("item"));
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(ReturnExpression(expression)));
+
+        Assert.Contains("'item'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_DoesNotBindReduceAccumulatorInItsSeedExpression()
+    {
+        var expression = new ReduceExpression(
+            "total",
+            new VariableRef("total"),
+            "item",
+            new ListExpression([new Literal(1)]),
+            new BinaryExpression(
+                CypherBinaryOperator.Add,
+                new VariableRef("total"),
+                new VariableRef("item")));
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(ReturnExpression(expression)));
+
+        Assert.Contains("'total'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_DoesNotBindReduceIteratorInItsSourceExpression()
+    {
+        var expression = new ReduceExpression(
+            "total",
+            new Literal(0),
+            "item",
+            new VariableRef("item"),
+            new BinaryExpression(
+                CypherBinaryOperator.Add,
+                new VariableRef("total"),
+                new VariableRef("item")));
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(ReturnExpression(expression)));
+
+        Assert.Contains("'item'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_DoesNotLeakListComprehensionAliasIntoSurroundingClause()
+    {
+        var expression = new ListComprehensionExpression(
+            new ListExpression([new Literal(1)]),
+            "item",
+            projection: new VariableRef("item"));
+        var statement = new CypherStatement(
+        [
+            new ReturnClause(
+            [
+                new ReturnItem(expression, "items"),
+                new ReturnItem(new VariableRef("item"), "leaked"),
+            ], distinct: false),
+        ], new Dictionary<string, object?>());
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(statement));
+
+        Assert.Contains("'item'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_DoesNotLeakReduceAliasesIntoSurroundingClause()
+    {
+        var expression = new ReduceExpression(
+            "total",
+            new Literal(0),
+            "item",
+            new ListExpression([new Literal(1)]),
+            new BinaryExpression(
+                CypherBinaryOperator.Add,
+                new VariableRef("total"),
+                new VariableRef("item")));
+        var statement = new CypherStatement(
+        [
+            new ReturnClause(
+            [
+                new ReturnItem(expression, "sum"),
+                new ReturnItem(new VariableRef("total"), "leaked"),
+            ], distinct: false),
+        ], new Dictionary<string, object?>());
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(statement));
+
+        Assert.Contains("'total'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_DoesNotLeakAllIteratorIntoSurroundingClause()
+    {
+        var expression = new AllExpression(
+            "item",
+            new ListExpression([new Literal(1)]),
+            new BinaryExpression(
+                CypherBinaryOperator.GreaterThan,
+                new VariableRef("item"),
+                new Literal(0)));
+        var statement = new CypherStatement(
+        [
+            new ReturnClause(
+            [
+                new ReturnItem(expression, "positive"),
+                new ReturnItem(new VariableRef("item"), "leaked"),
+            ], distinct: false),
+        ], new Dictionary<string, object?>());
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(statement));
+
+        Assert.Contains("'item'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Run_DoesNotBindAllIteratorInItsSourceExpression()
+    {
+        var expression = new AllExpression(
+            "item",
+            new VariableRef("item"),
+            new BinaryExpression(
+                CypherBinaryOperator.GreaterThan,
+                new VariableRef("item"),
+                new Literal(0)));
+
+        var ex = Assert.Throws<GraphException>(() => validator.Run(ReturnExpression(expression)));
+
+        Assert.Contains("'item'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Run_WildcardWith_PreservesTheCurrentScope()
     {
         var statement = new CypherStatement(
@@ -272,5 +461,12 @@ public class CypherAstValidatorTests
     private static MatchClause MatchNode(string alias)
     {
         return new MatchClause([new PathPattern([new NodePattern(alias, ["Person"])])], optional: false);
+    }
+
+    private static CypherStatement ReturnExpression(CypherExpression expression)
+    {
+        return new CypherStatement(
+            [new ReturnClause([new ReturnItem(expression, null)], distinct: false)],
+            new Dictionary<string, object?>());
     }
 }

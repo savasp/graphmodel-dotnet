@@ -132,6 +132,85 @@ public class ConstructorValidationTests
     }
 
     [Fact]
+    public void ListComprehensionExpression_RejectsMissingPredicateAndProjection()
+    {
+        var ex = Assert.Throws<ArgumentException>(
+            () => new ListComprehensionExpression(new VariableRef("items"), "item"));
+
+        Assert.Contains("predicate", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("projection", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ReduceExpression_RejectsMatchingAccumulatorAndIteratorAliases()
+    {
+        var ex = Assert.Throws<ArgumentException>(
+            () => new ReduceExpression(
+                "item",
+                new Literal(0),
+                "item",
+                new VariableRef("items"),
+                new VariableRef("item")));
+
+        Assert.Equal("iteratorAlias", ex.ParamName);
+        Assert.Contains("different", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void LocalExpressionAliases_RejectWhitespace()
+    {
+        Assert.ThrowsAny<ArgumentException>(
+            () => new ListComprehensionExpression(new VariableRef("items"), " ", projection: new Literal(1)));
+        Assert.ThrowsAny<ArgumentException>(
+            () => new ReduceExpression(" ", new Literal(0), "item", new VariableRef("items"), new Literal(1)));
+        Assert.ThrowsAny<ArgumentException>(
+            () => new ReduceExpression("total", new Literal(0), " ", new VariableRef("items"), new Literal(1)));
+        Assert.ThrowsAny<ArgumentException>(
+            () => new AllExpression(" ", new VariableRef("items"), new Literal(true)));
+    }
+
+    [Fact]
+    public void LocalExpressions_RejectNullRequiredExpressions()
+    {
+        Assert.Throws<ArgumentNullException>(
+            () => new ListComprehensionExpression(null!, "item", projection: new Literal(1)));
+        Assert.Throws<ArgumentNullException>(
+            () => new ReduceExpression("total", null!, "item", new VariableRef("items"), new Literal(1)));
+        Assert.Throws<ArgumentNullException>(
+            () => new ReduceExpression("total", new Literal(0), "item", null!, new Literal(1)));
+        Assert.Throws<ArgumentNullException>(
+            () => new ReduceExpression("total", new Literal(0), "item", new VariableRef("items"), null!));
+        Assert.Throws<ArgumentNullException>(
+            () => new AllExpression("item", null!, new Literal(true)));
+        Assert.Throws<ArgumentNullException>(
+            () => new AllExpression("item", new VariableRef("items"), null!));
+    }
+
+    [Fact]
+    public void LocalExpressions_UseRecordValueEquality()
+    {
+        Assert.Equal(
+            new ListComprehensionExpression(new VariableRef("items"), "item", projection: new VariableRef("item")),
+            new ListComprehensionExpression(new VariableRef("items"), "item", projection: new VariableRef("item")));
+        Assert.Equal(
+            new ReduceExpression(
+                "total",
+                new Literal(0),
+                "item",
+                new VariableRef("items"),
+                new VariableRef("total")),
+            new ReduceExpression(
+                "total",
+                new Literal(0),
+                "item",
+                new VariableRef("items"),
+                new VariableRef("total")));
+        Assert.Equal(
+            new AllExpression("item", new VariableRef("items"), new VariableRef("item")),
+            new AllExpression("item", new VariableRef("items"), new VariableRef("item")));
+    }
+
+    [Fact]
     public void RelationshipPattern_RejectsUndefinedDirection()
     {
         var ex = Assert.Throws<ArgumentOutOfRangeException>(

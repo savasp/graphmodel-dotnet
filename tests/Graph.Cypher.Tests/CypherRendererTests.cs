@@ -59,6 +59,115 @@ public class CypherRendererTests
     }
 
     [Fact]
+    public void Render_ListComprehensionWithFilterOnly_UsesCanonicalSyntax()
+    {
+        var expression = new ListComprehensionExpression(
+            IntegerList(),
+            "item",
+            predicate: new BinaryExpression(
+                CypherBinaryOperator.GreaterThan,
+                new VariableRef("item"),
+                new Literal(1)));
+
+        var result = RenderExpression(expression);
+
+        Assert.Equal("[item IN [1, 2] WHERE item > 1]", result);
+    }
+
+    [Fact]
+    public void Render_ListComprehensionWithProjectionOnly_UsesCanonicalSyntax()
+    {
+        var expression = new ListComprehensionExpression(
+            IntegerList(),
+            "item",
+            projection: new BinaryExpression(
+                CypherBinaryOperator.Multiply,
+                new VariableRef("item"),
+                new Literal(2)));
+
+        var result = RenderExpression(expression);
+
+        Assert.Equal("[item IN [1, 2] | item * 2]", result);
+    }
+
+    [Fact]
+    public void Render_ListComprehensionWithFilterAndProjection_UsesCanonicalSyntax()
+    {
+        var expression = new ListComprehensionExpression(
+            IntegerList(),
+            "item",
+            new BinaryExpression(
+                CypherBinaryOperator.GreaterThan,
+                new VariableRef("item"),
+                new Literal(1)),
+            new BinaryExpression(
+                CypherBinaryOperator.Multiply,
+                new VariableRef("item"),
+                new Literal(2)));
+
+        var result = RenderExpression(expression);
+
+        Assert.Equal("[item IN [1, 2] WHERE item > 1 | item * 2]", result);
+    }
+
+    [Fact]
+    public void Render_NestedListComprehensions_PreserveTheirLocalAliases()
+    {
+        var expression = new ListComprehensionExpression(
+            new ListExpression([IntegerList()]),
+            "outer",
+            projection: new ListComprehensionExpression(
+                new VariableRef("outer"),
+                "inner",
+                new BinaryExpression(
+                    CypherBinaryOperator.GreaterThan,
+                    new VariableRef("inner"),
+                    new Literal(1)),
+                new BinaryExpression(
+                    CypherBinaryOperator.Multiply,
+                    new VariableRef("inner"),
+                    new Literal(2))));
+
+        var result = RenderExpression(expression);
+
+        Assert.Equal("[outer IN [[1, 2]] | [inner IN outer WHERE inner > 1 | inner * 2]]", result);
+    }
+
+    [Fact]
+    public void Render_Reduce_UsesAccumulatorAndIteratorSyntax()
+    {
+        var expression = new ReduceExpression(
+            "total",
+            new Literal(0),
+            "item",
+            IntegerList(),
+            new BinaryExpression(
+                CypherBinaryOperator.Add,
+                new VariableRef("total"),
+                new VariableRef("item")));
+
+        var result = RenderExpression(expression);
+
+        Assert.Equal("reduce(total = 0, item IN [1, 2] | total + item)", result);
+    }
+
+    [Fact]
+    public void Render_AllOverPropertyExpression_UsesCanonicalSyntax()
+    {
+        var expression = new AllExpression(
+            "item",
+            new PropertyAccess(new VariableRef("n"), "items"),
+            new BinaryExpression(
+                CypherBinaryOperator.Equal,
+                new PropertyAccess(new VariableRef("item"), "active"),
+                new Literal(true)));
+
+        var result = RenderExpression(expression);
+
+        Assert.Equal("ALL(item IN n.items WHERE item.active = true)", result);
+    }
+
+    [Fact]
     public void Render_FullTextClause_AgainstDialectWithoutSupport_ThrowsNamedTranslationException()
     {
         // TestCypherDialect declares no RenderFullTextSearch override, so it inherits the throwing
@@ -72,4 +181,9 @@ public class CypherRendererTests
         Assert.Contains(nameof(GraphCapability.FullTextSearch), exception.Message, StringComparison.Ordinal);
         Assert.Contains("TestCypher", exception.Message, StringComparison.Ordinal);
     }
+
+    private string RenderExpression(CypherExpression expression) =>
+        ((ICypherRenderContext)renderer).RenderExpression(expression);
+
+    private static ListExpression IntegerList() => new([new Literal(1), new Literal(2)]);
 }
