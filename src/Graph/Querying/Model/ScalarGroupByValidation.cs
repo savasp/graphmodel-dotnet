@@ -89,6 +89,11 @@ public static class ScalarGroupByValidation
             return "a Select after a result-selector GroupBy is not supported; use a single projection form";
         }
 
+        if (ValidateProjectionShape(groupBy, model.Projection?.Selector) is { } projectionReason)
+        {
+            return projectionReason;
+        }
+
         return null;
     }
 
@@ -126,6 +131,148 @@ public static class ScalarGroupByValidation
         return finder.Found;
     }
 
+    private static string? ValidateProjectionShape(GroupByFragment groupBy, LambdaExpression? selector)
+    {
+        ParameterExpression? keyParameter;
+        ParameterExpression groupParameter;
+        Expression body;
+        if (groupBy.ResultSelector is { } resultSelector)
+        {
+            keyParameter = resultSelector.Parameters[0];
+            groupParameter = resultSelector.Parameters[1];
+            body = StripConvert(resultSelector.Body);
+        }
+        else
+        {
+            if (selector is null)
+            {
+                return "a group projection (a Select over the grouping or a result-selector overload) is required";
+            }
+
+            keyParameter = null;
+            groupParameter = selector.Parameters[0];
+            body = StripConvert(selector.Body);
+        }
+
+        IReadOnlyList<Expression> items;
+        if (body is NewExpression { Members: not null } projection)
+        {
+            items = projection.Arguments;
+        }
+        else if (body is NewExpression or MemberInitExpression or ListInitExpression or NewArrayExpression)
+        {
+            return "the group projection must be a constructor projection with named members, a key expression, " +
+                "or a supported aggregate";
+        }
+        else
+        {
+            items = [body];
+        }
+
+        foreach (var item in items)
+        {
+            if (ValidateProjectionItem(item, keyParameter, groupParameter) is { } reason)
+            {
+                return reason;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ValidateProjectionItem(
+        Expression expression,
+        ParameterExpression? keyParameter,
+        ParameterExpression groupParameter)
+    {
+        var item = StripConvert(expression);
+        var current = item;
+        var hasSelector = false;
+        var hasAggregate = false;
+        while (current is MethodCallExpression call &&
+            (call.Method.DeclaringType == typeof(Enumerable) || call.Method.DeclaringType == typeof(Queryable)))
+        {
+            switch (call.Method.Name)
+            {
+                case nameof(Enumerable.Select):
+                    if (hasSelector)
+                    {
+                        return "multiple Select operations over a scalar group are not supported";
+                    }
+
+                    hasSelector = true;
+                    break;
+                case nameof(Enumerable.Count):
+                    if (hasAggregate)
+                    {
+                        return "multiple terminal aggregates over a scalar group are not supported";
+                    }
+
+                    if (call.Arguments.Count > 1)
+                    {
+                        return "Count(predicate) over a scalar group is not supported; filter before GroupBy";
+                    }
+
+                    hasAggregate = true;
+                    break;
+                case nameof(Enumerable.Average) or nameof(Enumerable.Sum) or
+                    nameof(Enumerable.Min) or nameof(Enumerable.Max):
+                    if (hasAggregate)
+                    {
+                        return "multiple terminal aggregates over a scalar group are not supported";
+                    }
+
+                    hasAggregate = true;
+                    break;
+                case nameof(Enumerable.Where):
+                    return "filtering inside a scalar group is not supported; filter before GroupBy";
+                case nameof(Enumerable.ToList) or nameof(Enumerable.ToArray) or nameof(Enumerable.AsEnumerable):
+                    return "projecting a scalar group as a collection is not supported; project only the key and aggregates";
+                default:
+                    return $"operation '{call.Method.Name}' over a scalar group is not supported";
+            }
+
+            if (call.Arguments.Skip(1).Any(argument => ReferencesParameter(argument, groupParameter)))
+            {
+                return $"operation '{call.Method.Name}' captures the outer scalar group in its selector";
+            }
+
+            current = call.Method.IsStatic ? call.Arguments[0] : call.Object!;
+        }
+
+        if (current == groupParameter)
+        {
+            return hasAggregate
+                ? null
+                : "the scalar group may only be referenced through Key, Count, Sum, Average, Min, or Max";
+        }
+
+        var rewritten = keyParameter is null
+            ? new ScalarGroupKeyRewriter(groupParameter).Visit(item)!
+            : item;
+        return ReferencesParameter(rewritten, groupParameter)
+            ? "the projection references the scalar group outside Key, Count, Sum, Average, Min, or Max"
+            : null;
+    }
+
+    private static Expression StripConvert(Expression expression)
+    {
+        while (expression is UnaryExpression
+            { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } unary)
+        {
+            expression = unary.Operand;
+        }
+
+        return expression;
+    }
+
+    private static bool ReferencesParameter(Expression expression, ParameterExpression parameter)
+    {
+        var finder = new ParameterReferenceFinder(parameter);
+        finder.Visit(expression);
+        return finder.Found;
+    }
+
     private sealed class ComplexPropertyNavigationFinder : ExpressionVisitor
     {
         public bool Found { get; private set; }
@@ -139,6 +286,30 @@ public static class ScalarGroupByValidation
             }
 
             return base.VisitMember(node);
+        }
+    }
+
+    private sealed class ScalarGroupKeyRewriter(ParameterExpression groupParameter) : ExpressionVisitor
+    {
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            if (node.Expression == groupParameter && node.Member.Name == nameof(IGrouping<object, object>.Key))
+            {
+                return Expression.Default(node.Type);
+            }
+
+            return base.VisitMember(node);
+        }
+    }
+
+    private sealed class ParameterReferenceFinder(ParameterExpression parameter) : ExpressionVisitor
+    {
+        public bool Found { get; private set; }
+
+        protected override Expression VisitParameter(ParameterExpression node)
+        {
+            Found |= node == parameter;
+            return base.VisitParameter(node);
         }
     }
 }

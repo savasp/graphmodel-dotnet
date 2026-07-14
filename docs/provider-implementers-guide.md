@@ -324,7 +324,7 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `FullTextSearch` | `IFullTextSearchTests` (all methods) | interface | pass | skip | skip |
 | `Transactions` | `ITransactionTests` (all methods) | interface | pass | pass | pass |
 | `ComplexPropertyCascade` | `IComplexObjectGraphSerializationTests` (all methods) | interface | pass | pass | pass |
-| `CallSubqueries` | `IAdvancedQueryTests` correlated-collection pattern comprehensions (`CanQueryWith{Basic,Filtered,Aggregated,TimeBased,Ordered,Grouped}PatternComprehension`, `CanQueryWithTraversePathAndGroupBy`, `UnsupportedGroupedProjectionShapeIsRejectedConsistently`) | method | pass | pass | skip |
+| `CallSubqueries` | `IAdvancedQueryTests` correlated-collection pattern comprehensions and grouped-projection rejection cases | method | pass | pass | skip |
 | `PatternSizeProjection` | `IAdvancedQueryTests.CanProjectComplexCollectionSize` | method | pass | pass | skip |
 | `MultiLabelMatch` | `IAdvancedQueryTests.CanQueryPolymorphicBaseTypeAcrossSubtypeLabels` | method | pass | pass | pass |
 | `OrderByEntity` | `IAdvancedQueryTests.CanOrderByBareEntity` | method | pass | skip | pass |
@@ -339,8 +339,10 @@ is a shared contract, not a per-provider concern: the recognized per-member oper
 group-key projection) are defined once in `CorrelatedGroupProjectionValidation` and enforced up-front
 by every provider. A member that steps outside that grammar (for example `First`/`Take`/`Skip` over
 the group) must be rejected with the same `GraphQueryTranslationException` and message everywhere —
-`UnsupportedGroupedProjectionShapeIsRejectedConsistently` pins that a provider does not silently
-execute a shape it cannot lower.
+the TCK rejection cases also pin collection-without-`Select`, multiple-`Select`, and
+operation-after-`Select` composition so a provider does not silently execute a shape it cannot lower.
+`ScalarGroupByValidation` provides the corresponding shared boundary for scalar grouping: key and
+aggregate projections only, without collection projections or filtering inside a group.
 
 Two capabilities are records rather than gated tests because they have no user-drivable surface to certify:
 
