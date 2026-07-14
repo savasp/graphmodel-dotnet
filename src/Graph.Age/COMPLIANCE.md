@@ -5,7 +5,7 @@
 | Provider | `Cvoya.Graph.Age` (issue #86 implementation) |
 | Compliance suite | `Cvoya.Graph.CompatibilityTests` 1.0.0-alpha.20251014.0 |
 | Backing store | Apache AGE 1.7.0 / PostgreSQL 18 |
-| Date / run | 2026-07-13 / local strict certifying run; CI uses the same lane |
+| Date / run | 2026-07-14 / local strict certifying run; CI uses the same lane |
 
 ## Declared capabilities
 
@@ -51,8 +51,10 @@ Semantics (the contract floor the shared TCK pins):
 - **`graph.Search()`** runs phase 1 against both physical tables, materializes the matching nodes and
   relationships on the same transaction, and combines them before applying the outer LINQ pipeline.
   Explicit ordering, paging, and terminals therefore operate on the mixed result as a whole.
-- **Search-as-source** (`Search().Traverse()`) is rejected at translation time (tracked by #295); the
-  rewriter leaves that shape intact so the shared front-end's rejection still fires.
+- **Typed search-as-source** (`Nodes<T>().Search(...).Traverse(...)`) is rewritten before traversal,
+  so the id-filtered node source flows through the existing traversal pipeline with direction, depth,
+  path shape, filters, projections, ordering, paging, and terminals intact. Mixed `graph.Search(...)`
+  results remain non-traversable because they combine nodes and relationships without one typed node scope.
 - **GIN acceleration** (#291) — each physical entity table has one coarse, blob-level GIN expression index over
   `to_tsvector('simple', <graph>.age_fulltext_blob(properties))`, where `age_fulltext_blob` is an
   `IMMUTABLE` function (created per graph schema) returning all string values in the blob minus the
@@ -69,11 +71,11 @@ Semantics (the contract floor the shared TCK pins):
 
 | Inventory test methods | Executed | Capability-skipped | Statically skipped | Failed |
 |---|---|---|---|---|
-| 385 | 376 | 9 | 1 | 0 |
+| 409 | 378 | 31 | 1 | 0 |
 
-The compatibility inventory contains 385 runnable test methods. For this capability set (which now
-declares `FullTextSearch`), `ComplianceInventory.MinimumExecuted(declared)` is 376 methods and the
-strict compliance guard passes; the remaining 9 capability skips are all `CallSubqueries` /
+The compatibility inventory contains 409 runnable test methods. For this capability set (which now
+declares `FullTextSearch`), `ComplianceInventory.MinimumExecuted(declared)` is 378 methods and the
+strict compliance guard passes; the remaining 31 capability skips are all `CallSubqueries` /
 `PatternSizeProjection` tests (tracked by #308). Theory data rows make the runtime case count
 slightly larger than the method inventory. The suite also contains one statically skipped,
 issue-tracked test; the inventory deliberately excludes it, so it is not counted as a capability

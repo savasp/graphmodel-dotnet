@@ -76,7 +76,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                 $"The expression does not contain a graph query root: {expression}.");
         }
 
-        RejectSearchAsTraversalSource(builder);
+        RejectMixedEntitySearchAsTraversalSource(builder);
 
         return new GraphQueryModel(
             builder._root,
@@ -103,14 +103,14 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                 : null);
     }
 
-    // TODO(#295): remove when search-as-source lands
-    private static void RejectSearchAsTraversalSource(GraphQueryModelBuilder builder)
+    private static void RejectMixedEntitySearchAsTraversalSource(GraphQueryModelBuilder builder)
     {
-        if (builder._root is SearchRoot && builder._explicitTraversalCount > 0)
+        if (builder._root is SearchRoot { Target: SearchRootTarget.Entities } &&
+            builder._explicitTraversalCount > 0)
         {
             throw new GraphQueryTranslationException(
-                "Full-text search cannot be the source of a traversal yet (Search(...) followed by " +
-                "Traverse/PathSegments). Apply Search() after the traversal instead. Tracked by #295.");
+                "Mixed-entity full-text search cannot be used as a traversal source because it has no " +
+                "single typed node scope. Start from SearchNodes<T>(...) or Nodes<T>().Search(...) instead.");
         }
     }
 

@@ -577,19 +577,127 @@ public interface IFullTextSearchTests : IGraphTest
     }
 
     [Fact]
-    public async Task SearchAsTraversalSource_IsRejectedWithNamedError()
+    public async Task SearchAsTraversalSource_TraversePreservesCompositionAndTerminal()
     {
-        // TODO(#295): search-as-source is rejected at translation time until #295 lands. The query
-        // never executes, so no fixture data is required; it is gated under FullTextSearch like the
-        // rest of this suite.
-        var query = this.Graph.Nodes<Person>()
-            .Search("anything")
-            .Traverse<Knows, Person>();
+        var source = new Person
+        {
+            FirstName = "TraversalSource",
+            LastName = "Search",
+            Bio = "orbitseed cloud",
+        };
+        var firstHop = new Person { FirstName = "Alpha", LastName = "Target", Age = 35 };
+        var secondHop = new Person { FirstName = "Beta", LastName = "Target", Age = 45 };
+        var directTarget = new Person { FirstName = "Gamma", LastName = "Target", Age = 50 };
 
-        var exception = await Assert.ThrowsAsync<GraphQueryTranslationException>(
-            async () => await query.ToListAsync(TestContext.Current.CancellationToken));
+        await this.Graph.CreateNodeAsync(source, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(firstHop, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(secondHop, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(directTarget, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new KnowsWell(firstHop, source), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new KnowsWell(secondHop, firstHop), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new KnowsWell(directTarget, source), null, TestContext.Current.CancellationToken);
 
-        Assert.Contains("Search", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("Traverse", exception.Message, StringComparison.Ordinal);
+        var result = await this.Graph.Nodes<Person>()
+            .Search("orbitseed cloud")
+            .Traverse<KnowsWell, Person>(options => options
+                .Depth(1, 2)
+                .Direction(GraphTraversalDirection.Incoming))
+            .Where(person => person.Age >= 40)
+            .OrderBy(person => person.FirstName)
+            .Skip(1)
+            .Take(1)
+            .Select(person => person.FirstName)
+            .SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("Gamma", result);
+    }
+
+    [Fact]
+    public async Task SearchAsTraversalSource_PathSegmentsPreservesSegmentShape()
+    {
+        var source = new Person
+        {
+            FirstName = "SegmentSource",
+            LastName = "Search",
+            Bio = "segmentseed marker",
+        };
+        var included = new Person { FirstName = "Included", LastName = "Target" };
+        var excluded = new Person { FirstName = "Excluded", LastName = "Target" };
+
+        await this.Graph.CreateNodeAsync(source, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(included, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(excluded, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new KnowsWell(source, included) { HowWell = "include" },
+            null,
+            TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new KnowsWell(source, excluded) { HowWell = "exclude" },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var results = await this.Graph.Nodes<Person>()
+            .Search("segmentseed marker")
+            .PathSegments<Person, KnowsWell, Person>()
+            .Where(segment => segment.Relationship.HowWell == "include")
+            .Select(segment => new
+            {
+                StartId = segment.StartNode.Id,
+                EndId = segment.EndNode.Id,
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.Equal(source.Id, result.StartId);
+        Assert.Equal(included.Id, result.EndId);
+    }
+
+    [Fact]
+    public async Task SearchAsTraversalSource_TraversePathsPreservesPathShape()
+    {
+        var source = new Person
+        {
+            FirstName = "PathSource",
+            LastName = "Search",
+            Bio = "pathseed marker",
+        };
+        var middle = new Person { FirstName = "Middle", LastName = "Target" };
+        var end = new Person { FirstName = "End", LastName = "Target" };
+
+        await this.Graph.CreateNodeAsync(source, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(middle, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(end, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new KnowsWell(source, middle), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new KnowsWell(middle, end), null, TestContext.Current.CancellationToken);
+
+        var paths = await this.Graph.Nodes<Person>()
+            .Search("pathseed marker")
+            .TraversePaths<KnowsWell, Person>(1, 2)
+            .Where(path => path.Segments.Count == 2)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var path = Assert.Single(paths);
+        Assert.Equal(source.Id, path.Start.Id);
+        Assert.Equal(end.Id, path.End.Id);
+        Assert.Equal(2, path.Segments.Count);
+    }
+
+    [Fact]
+    public async Task SearchAsTraversalSource_EmptySearchReturnsNoTraversalRows()
+    {
+        var target = new Person { FirstName = "Target", LastName = "Only" };
+        await this.Graph.CreateNodeAsync(target, null, TestContext.Current.CancellationToken);
+
+        var results = await this.Graph.Nodes<Person>()
+            .Search("missingtraversalseed")
+            .Traverse<KnowsWell, Person>()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(results);
     }
 }

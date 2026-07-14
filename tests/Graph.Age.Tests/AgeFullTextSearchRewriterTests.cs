@@ -69,28 +69,23 @@ public sealed class AgeFullTextSearchRewriterTests
     }
 
     [Fact]
-    public void FeedsTraversal_TrueWhenSearchIsTheSourceOfATraversal()
+    public void ApplyRewrite_SearchAsTraversalSource_PreservesTraversalOverIdFilter()
     {
-        // Nodes<Person>().Search("q").PathSegments<Person, KnowsWell, Person>() — search-as-source, which
-        // the shared front-end rejects. The rewriter must leave it intact (return false-to-rewrite).
-        var search = Search<Person>(Root<Person>(), "q");
+        var root = Root<Person>();
+        var search = Search<Person>(root, "q");
         var traversal = Expression.Call(
             PathSegmentsDefinition.MakeGenericMethod(typeof(Person), typeof(KnowsWell), typeof(Person)),
             search);
+        var ids = new[] { "id-1", "id-2" };
 
-        Assert.True(AgeFullTextSearchRewriter.FeedsTraversal(traversal));
-    }
+        var rewritten = Assert.IsAssignableFrom<MethodCallExpression>(AgeFullTextSearchRewriter.ApplyRewrite(
+            traversal,
+            new Dictionary<MethodCallExpression, string[]> { [search] = ids }));
 
-    [Fact]
-    public void FeedsTraversal_FalseWhenSearchIsAppliedAfterATraversal()
-    {
-        // PathSegments(...).Search("q") — post-traversal search, the normal case, which is rewritten.
-        var traversal = Expression.Call(
-            PathSegmentsDefinition.MakeGenericMethod(typeof(Person), typeof(KnowsWell), typeof(Person)),
-            Root<Person>());
-        var search = Search<IGraphPathSegment<Person, KnowsWell, Person>>(traversal, "q");
-
-        Assert.False(AgeFullTextSearchRewriter.FeedsTraversal(search));
+        Assert.Equal(nameof(GraphTraversalExtensions.PathSegments), rewritten.Method.Name);
+        var where = Assert.IsAssignableFrom<MethodCallExpression>(rewritten.Arguments[0]);
+        Assert.Equal(nameof(GraphQueryableExtensions.Where), where.Method.Name);
+        Assert.Same(root, where.Arguments[0]);
     }
 
     private static Expression StripQuote(Expression expression) =>

@@ -17,7 +17,8 @@ namespace Cvoya.Graph.Cypher.Planning;
 
 internal sealed class ExpressionToCypherAstLowerer(
     CypherParameterRegistry parameters,
-    ICypherDialect dialect)
+    ICypherDialect dialect,
+    string pathSegmentSourceAlias = "src")
 {
     private const string NeutralDateTime = "temporal.datetime";
     private const string NeutralLocalDateTime = "temporal.localDateTime";
@@ -750,7 +751,7 @@ internal sealed class ExpressionToCypherAstLowerer(
         return true;
     }
 
-    private static bool TryLowerComplexCollectionCount(
+    private bool TryLowerComplexCollectionCount(
         MemberExpression node,
         IReadOnlyDictionary<ParameterExpression, string> aliases,
         out CypherExpression expression)
@@ -806,7 +807,7 @@ internal sealed class ExpressionToCypherAstLowerer(
         return true;
     }
 
-    private static bool TryLowerComplexNullComparison(
+    private bool TryLowerComplexNullComparison(
         LinqBinaryExpression node,
         IReadOnlyDictionary<ParameterExpression, string> aliases,
         out CypherExpression expression)
@@ -848,7 +849,7 @@ internal sealed class ExpressionToCypherAstLowerer(
         {
             currentAlias = members[0].Name switch
             {
-                nameof(IGraphPathSegment.StartNode) => "src",
+                nameof(IGraphPathSegment.StartNode) => pathSegmentSourceAlias,
                 nameof(IGraphPathSegment.Relationship) => "r",
                 nameof(IGraphPathSegment.EndNode) => "tgt",
                 _ => currentAlias,
@@ -893,7 +894,7 @@ internal sealed class ExpressionToCypherAstLowerer(
         return traversed;
     }
 
-    private static ComplexPattern BuildComplexPattern(
+    private ComplexPattern BuildComplexPattern(
         MemberExpression node,
         IReadOnlyDictionary<ParameterExpression, string> aliases)
     {
@@ -909,7 +910,7 @@ internal sealed class ExpressionToCypherAstLowerer(
         {
             currentAlias = members[0].Name switch
             {
-                nameof(IGraphPathSegment.StartNode) => "src",
+                nameof(IGraphPathSegment.StartNode) => pathSegmentSourceAlias,
                 nameof(IGraphPathSegment.Relationship) => "r",
                 nameof(IGraphPathSegment.EndNode) => "tgt",
                 _ => currentAlias,
@@ -967,7 +968,7 @@ internal sealed class ExpressionToCypherAstLowerer(
         ], optional: true));
     }
 
-    private static bool TryMapPathSegmentMember(
+    private bool TryMapPathSegmentMember(
         MemberExpression node,
         IReadOnlyDictionary<ParameterExpression, string> aliases,
         out CypherExpression expression)
@@ -981,7 +982,7 @@ internal sealed class ExpressionToCypherAstLowerer(
 
         expression = node.Member.Name switch
         {
-            nameof(IGraphPathSegment.StartNode) => new VariableRef("src"),
+            nameof(IGraphPathSegment.StartNode) => new VariableRef(pathSegmentSourceAlias),
             nameof(IGraphPathSegment.Relationship) => new VariableRef("r"),
             nameof(IGraphPathSegment.EndNode) => new VariableRef("tgt"),
             _ => new PropertyAccess(new VariableRef(ResolveAlias(parameter, aliases)), node.Member.Name),

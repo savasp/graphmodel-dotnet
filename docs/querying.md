@@ -556,7 +556,28 @@ var summaries = await graph.Nodes<Article>()
     .Search("artificial intelligence")
     .Select(a => new { a.Title, a.Summary })
     .ToListAsync();
+
+// Use a typed node search as the source of a traversal
+var colleagues = await graph.Nodes<Person>()
+    .Search("cloud architect")
+    .Traverse<Knows, Person>(options => options
+        .Depth(1, 2)
+        .Direction(GraphTraversalDirection.Both))
+    .Where(person => person.IsActive)
+    .OrderBy(person => person.Name)
+    .ToListAsync();
+
+// Preserve full path information after a typed node search
+var paths = await graph.SearchNodes<Person>("cloud architect")
+    .TraversePaths<Knows, Person>(1, 3)
+    .ToListAsync();
 ```
+
+Typed node searches can feed `Traverse<TRel, TEnd>`,
+`PathSegments<TStart, TRel, TEnd>`, and `TraversePaths<TRel, TEnd>`; later filters,
+projections, ordering, paging, and terminals apply to the traversal results. Mixed node-and-relationship
+searches from `graph.Search(...)` cannot be traversal sources because they do not have one typed node
+scope. Use `SearchNodes<T>(...)` or `Nodes<T>().Search(...)` when traversal is required.
 
 ### Traditional String Operations
 
@@ -590,6 +611,7 @@ var prefixSearch = await graph.Nodes<Person>()
 - **Property Control**: Use `[Property(IncludeInFullTextSearch = false)]` to exclude properties from search; only the entity's own string properties are searched (complex-property value nodes are not)
 - **Automatic Indexing**: Full-text indexes are created and managed automatically
 - **LINQ Integration**: Seamlessly integrate search into existing LINQ query chains
+- **Traversal source**: Typed node search results can directly feed node traversal operators
 - **Unordered results**: Search result order is unspecified; add an explicit `OrderBy` when order matters
 
 ## Combining Node and Relationship Queries

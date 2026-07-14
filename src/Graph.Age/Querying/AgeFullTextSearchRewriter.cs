@@ -34,8 +34,6 @@ internal sealed class AgeFullTextSearchRewriter
         .Single(method => method.Name == nameof(Enumerable.Contains) && method.GetParameters().Length == 2)
         .MakeGenericMethod(typeof(string));
 
-    private static readonly HashSet<MethodInfo> TraversalMethods = ResolveTraversalMethods();
-
     private readonly SchemaRegistry _schemaRegistry;
 
     public AgeFullTextSearchRewriter(SchemaRegistry schemaRegistry) =>
@@ -43,9 +41,7 @@ internal sealed class AgeFullTextSearchRewriter
 
     /// <summary>
     /// Returns the search-free equivalent of <paramref name="expression"/>. Unchanged when the
-    /// expression contains no <c>Search</c>, or when a <c>Search</c> feeds a traversal
-    /// (search-as-source), which the shared front-end rejects at model build — the rewrite must not
-    /// turn that rejected shape into a runnable query, so it is passed through untouched.
+    /// expression contains no <c>Search</c>.
     /// </summary>
     public async Task<Expression> RewriteAsync(
         Expression expression,
@@ -56,7 +52,7 @@ internal sealed class AgeFullTextSearchRewriter
         ArgumentNullException.ThrowIfNull(runner);
 
         var searches = LocateSearches(expression);
-        if (searches.Count == 0 || FeedsTraversal(expression))
+        if (searches.Count == 0)
         {
             return expression;
         }
@@ -81,10 +77,6 @@ internal sealed class AgeFullTextSearchRewriter
     /// <summary>Collects every <c>Search</c> operator in the tree. Test seam for the detection half.</summary>
     internal static IReadOnlyList<MethodCallExpression> LocateSearches(Expression expression) =>
         SearchLocator.Locate(expression);
-
-    /// <summary>True when a <c>Search</c> feeds a traversal (search-as-source). Test seam.</summary>
-    internal static bool FeedsTraversal(Expression expression) =>
-        SearchLocator.FeedsTraversal(expression);
 
     /// <summary>
     /// Synchronous rewrite half: replaces each located <c>Search(source, q)</c> with
@@ -134,18 +126,7 @@ internal sealed class AgeFullTextSearchRewriter
                 && method.IsGenericMethodDefinition
                 && method.GetParameters().Length == parameterCount);
 
-    private static HashSet<MethodInfo> ResolveTraversalMethods()
-    {
-        // Traverse<TRel, TEnd>() expands to PathSegments + Select at construction time, so PathSegments
-        // and TraversePaths are the only traversal operators that reach the provider.
-        return typeof(GraphTraversalExtensions)
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Where(method => method.Name is nameof(GraphTraversalExtensions.PathSegments)
-                or nameof(GraphTraversalExtensions.TraversePaths))
-            .ToHashSet();
-    }
-
-    /// <summary>Locates <c>Search</c> operators and detects the search-as-source shape.</summary>
+    /// <summary>Locates <c>Search</c> operators.</summary>
     private static class SearchLocator
     {
         public static List<MethodCallExpression> Locate(Expression expression)
@@ -153,18 +134,6 @@ internal sealed class AgeFullTextSearchRewriter
             var collector = new SearchCollector();
             collector.Visit(expression);
             return collector.Searches;
-        }
-
-        /// <summary>
-        /// True when a <c>Search</c> result flows into a traversal (<c>PathSegments</c>/<c>TraversePaths</c>,
-        /// which is what <c>Traverse</c> lowers to). The shared model builder rejects this shape; the
-        /// rewriter leaves it intact so that rejection still fires.
-        /// </summary>
-        public static bool FeedsTraversal(Expression expression)
-        {
-            var detector = new TraversalSourceDetector();
-            detector.Visit(expression);
-            return detector.Found;
         }
 
         private sealed class SearchCollector : ExpressionVisitor
@@ -182,35 +151,6 @@ internal sealed class AgeFullTextSearchRewriter
             }
         }
 
-        private sealed class TraversalSourceDetector : ExpressionVisitor
-        {
-            public bool Found { get; private set; }
-
-            protected override Expression VisitMethodCall(MethodCallExpression node)
-            {
-                if (!Found && IsTraversal(node) && node.Arguments.Count > 0 && ContainsSearch(node.Arguments[0]))
-                {
-                    Found = true;
-                }
-
-                return base.VisitMethodCall(node);
-            }
-
-            private static bool IsTraversal(MethodCallExpression node)
-            {
-                var method = node.Method.IsGenericMethod
-                    ? node.Method.GetGenericMethodDefinition()
-                    : node.Method;
-                return TraversalMethods.Contains(method);
-            }
-
-            private static bool ContainsSearch(Expression source)
-            {
-                var collector = new SearchCollector();
-                collector.Visit(source);
-                return collector.Searches.Count > 0;
-            }
-        }
     }
 
     /// <summary>Replaces each located <c>Search(source, query)</c> with <c>Where(source, e =&gt; ids.Contains(e.Id))</c>.</summary>

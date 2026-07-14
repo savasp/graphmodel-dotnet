@@ -19,6 +19,7 @@ public static class GraphQueryModelValidator
     {
         ArgumentNullException.ThrowIfNull(model);
 
+        ValidateSearchTraversalRoot(model);
         ValidateTerminalOperand(model);
         ValidateAliasBindings(model);
 
@@ -145,6 +146,17 @@ public static class GraphQueryModelValidator
             Validate(union.Second);
             ValidateUnionOperandType(union.First, union.ElementType, "first");
             ValidateUnionOperandType(union.Second, union.ElementType, "second");
+        }
+    }
+
+    private static void ValidateSearchTraversalRoot(GraphQueryModel model)
+    {
+        if (model.Root is SearchRoot { Target: SearchRootTarget.Entities } &&
+            model.Traversal.Any(step => !step.IsComplexPropertyTraversal))
+        {
+            throw new GraphQueryTranslationException(
+                "Mixed-entity full-text search cannot be used as a traversal source because it has no " +
+                "single typed node scope. Start from SearchNodes<T>(...) or Nodes<T>().Search(...) instead.");
         }
     }
 

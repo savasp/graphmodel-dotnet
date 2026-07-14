@@ -148,17 +148,86 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
-    public void SearchAsTraversalSource_IsRejectedWithNamedError()
+    public void SearchAsTraversalSource_PreservesRootTraversalAndTargetOperators()
     {
-        // TODO(#295): search-as-source is rejected at the shared front-end until #295 lands.
-        var query = Root<Person>().Search("engineer").Traverse<Knows, Company>();
+        var query = Root<Person>()
+            .Search("engineer")
+            .Traverse<Knows, Company>(options => options
+                .Depth(1, 2)
+                .Direction(GraphTraversalDirection.Incoming))
+            .Where(company => company.Id != "")
+            .OrderBy(company => company.Id)
+            .Skip(1)
+            .Take(2)
+            .Select(company => company.Id);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var root = Assert.IsType<SearchRoot>(model.Root);
+        Assert.Equal(SearchRootTarget.Nodes, root.Target);
+        Assert.Equal(typeof(Person), root.ElementType);
+        var traversal = Assert.Single(model.Traversal);
+        Assert.Equal("n", traversal.SourceAlias);
+        Assert.Equal("tgt", traversal.TargetAlias);
+        Assert.Equal(new DepthRange(1, 2), traversal.Depth);
+        Assert.Equal(GraphTraversalDirection.Incoming, traversal.Direction);
+        Assert.Equal("tgt", Assert.Single(model.Predicates).Alias);
+        Assert.Equal("tgt", Assert.Single(model.Ordering).Alias);
+        Assert.Equal(new Paging(1, 2), model.Paging);
+        Assert.Equal(typeof(string), model.Projection?.Selector?.ReturnType);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void SearchAsPathSegmentsSource_PreservesSegmentShape()
+    {
+        var query = Root<Person>()
+            .Search("engineer")
+            .PathSegments<Person, Knows, Company>();
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var traversal = Assert.Single(model.Traversal);
+        Assert.Equal("n", traversal.SourceAlias);
+        Assert.Equal("tgt", traversal.TargetAlias);
+        Assert.Equal(ProjectionKind.PathSegment, model.Projection?.Kind);
+        Assert.Null(model.PathShape);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void SearchAsTraversePathsSource_PreservesPathShape()
+    {
+        var query = Root<Person>()
+            .Search("engineer")
+            .TraversePaths<Knows, Company>(options => options
+                .Depth(1, 3)
+                .Direction(GraphTraversalDirection.Both));
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var traversal = Assert.Single(model.Traversal);
+        Assert.Equal("n", traversal.SourceAlias);
+        Assert.Equal(new DepthRange(1, 3), traversal.Depth);
+        Assert.Equal(GraphTraversalDirection.Both, traversal.Direction);
+        Assert.Equal(new QueryPathShape(typeof(Person), typeof(Knows), typeof(Company)), model.PathShape);
+        Assert.Null(model.Projection);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void MixedEntitySearchAsTraversalSource_IsRejectedWithPreciseError()
+    {
+        var provider = new TestGraphQueryProvider();
+        var source = new TestGraphQueryable<Person>(provider, new MixedSearchRootExpression());
+        var query = source.Traverse<Knows, Company>();
 
         var exception = Assert.Throws<GraphQueryTranslationException>(
             () => GraphQueryModelBuilder.Build(query.Expression));
 
-        Assert.Contains("Search", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("Traverse", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("#295", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Mixed-entity", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("single typed node scope", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("SearchNodes", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -870,6 +939,19 @@ public class GraphQueryModelBuilderTests
     private sealed class LimitHolder
     {
         public int Value;
+    }
+
+    private sealed class MixedSearchRootExpression : Expression, IGraphSearchRootExpression
+    {
+        public string SearchQuery => "engineer";
+
+        public Type EntityType => typeof(Person);
+
+        public SearchRootTarget Target => SearchRootTarget.Entities;
+
+        public override ExpressionType NodeType => ExpressionType.Extension;
+
+        public override Type Type => typeof(IGraphQueryable<Person>);
     }
 
     private sealed record Address
