@@ -1546,7 +1546,12 @@ public sealed class CypherQueryPlanner
         AddOrderingAndPaging(clauses, effectiveOrdering, paging, reverseOrdering);
         AddTerminalLimit(clauses, model, paging);
 
-        AddProjectionClause(clauses, model, projection, distinctApplied);
+        AddProjectionClause(
+            clauses,
+            model,
+            projection,
+            distinctApplied,
+            resultOrdering: []);
     }
 
     private static void AddPostPagingStageAndProjection(
@@ -1643,7 +1648,10 @@ public sealed class CypherQueryPlanner
             effectivePostPagingOrdering,
             postPaging.Paging,
             reverseOrdering: false);
-        AddProjectionClause(clauses, model, projection, distinctApplied);
+        var resultOrdering = effectivePostPagingOrdering.Count > 0
+            ? effectivePostPagingOrdering
+            : effectiveOrdering;
+        AddProjectionClause(clauses, model, projection, distinctApplied, resultOrdering);
     }
 
     /// <summary>
@@ -1812,7 +1820,8 @@ public sealed class CypherQueryPlanner
         List<ICypherClause> clauses,
         GraphQueryModel model,
         ProjectionPlan projection,
-        bool distinctApplied)
+        bool distinctApplied,
+        IReadOnlyList<OrderByItem> resultOrdering)
     {
         if (projection.Items is not null)
         {
@@ -1826,7 +1835,9 @@ public sealed class CypherQueryPlanner
             projection.RelationshipAlias,
             projection.TargetAlias,
             projection.LoadSourceProperties,
-            projection.LoadTargetProperties));
+            projection.LoadTargetProperties,
+            includePathCoordinates: false,
+            ordering: resultOrdering));
     }
 
     private static void AddGraphPathProjection(

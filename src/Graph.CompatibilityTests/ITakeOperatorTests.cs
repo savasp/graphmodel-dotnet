@@ -68,6 +68,7 @@ public interface ITakeOperatorTests : IGraphTest
             .Where(person => person.Age >= 4)
             .ToListAsync(TestContext.Current.CancellationToken);
 
+        Assert.Equal([4, 5], actual.Select(person => person.Age));
         Assert.Equal(expectedIds, actual.Select(person => person.Id));
     }
 

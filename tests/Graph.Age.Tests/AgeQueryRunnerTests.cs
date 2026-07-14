@@ -113,6 +113,27 @@ public sealed class AgeQueryRunnerTests
     }
 
     [Fact]
+    public void NormalizeClauseOrder_PreservesCarriedProjectionOrderingPipeline()
+    {
+        const string cypher = """
+            MATCH (src)
+            WITH *
+            ORDER BY src.Age
+            LIMIT 3
+            WITH *
+            ORDER BY src.Age DESC
+            WITH *, src.Age AS __projectionOrder0
+            WITH src AS Node, __projectionOrder0
+            ORDER BY __projectionOrder0 DESC
+            RETURN Node
+            """;
+
+        var normalized = AgeQueryRunner.NormalizeClauseOrder(cypher);
+
+        Assert.Equal(cypher, normalized);
+    }
+
+    [Fact]
     public void NormalizeClauseOrder_MovesOnlyUnscopedOrderingAndPaging()
     {
         const string cypher = """
