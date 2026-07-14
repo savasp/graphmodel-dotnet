@@ -3,6 +3,9 @@
 
 namespace Cvoya.Graph.Querying;
 
+using System.Linq.Expressions;
+using System.Reflection;
+
 /// <summary>
 /// Shared structural validation for scalar-key grouping (grouping a node set by a scalar key and
 /// projecting per-group aggregates). Both the Cypher planner and the in-memory interpreter route
@@ -41,9 +44,23 @@ public static class ScalarGroupByValidation
             return "search, joins, unions, and additional query fragments cannot be combined with grouping";
         }
 
-        if (model.Traversal.Any(step => !step.IsComplexPropertyTraversal))
+        if (model.Traversal.Count > 0 || ContainsComplexPropertyNavigation(groupBy.KeySelector))
         {
-            return "grouping after a traversal is only supported for the path-segment start-node collection shape";
+            return "grouping after a traversal is only supported for the path-segment start-node collection shape; " +
+                "scalar grouping must start from a node root with an optional Where";
+        }
+
+        var sourceType = model.Root switch
+        {
+            NodeRoot node => node.ElementType,
+            DynamicRoot { ElementType: { } elementType } => elementType,
+            DynamicRoot => typeof(DynamicNode),
+            _ => null,
+        };
+        if (sourceType is not null && model.Predicates.Any(predicate =>
+            predicate.Predicate.Parameters.Count != 1 || predicate.Predicate.Parameters[0].Type != sourceType))
+        {
+            return "filtering a grouped result is not supported; apply Where before GroupBy";
         }
 
         if (!IsScalarKeyType(groupBy.KeySelector.ReturnType))
@@ -100,5 +117,28 @@ public static class ScalarGroupByValidation
             || underlying == typeof(DateOnly)
             || underlying == typeof(TimeOnly)
             || underlying == typeof(TimeSpan);
+    }
+
+    private static bool ContainsComplexPropertyNavigation(LambdaExpression selector)
+    {
+        var finder = new ComplexPropertyNavigationFinder();
+        finder.Visit(selector.Body);
+        return finder.Found;
+    }
+
+    private sealed class ComplexPropertyNavigationFinder : ExpressionVisitor
+    {
+        public bool Found { get; private set; }
+
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            if (node.Member is PropertyInfo property && GraphDataModel.IsComplex(property.PropertyType))
+            {
+                Found = true;
+                return node;
+            }
+
+            return base.VisitMember(node);
+        }
     }
 }

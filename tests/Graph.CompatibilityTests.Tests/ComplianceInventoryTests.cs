@@ -33,9 +33,9 @@ public sealed class ComplianceInventoryTests
     // +10 for ISubgraphCreationTests (atomic node–relationship–node subgraph create, #45).
     // +4 for #288: four new IFullTextSearchTests methods (multi-term AND, whole-token vs sub-token,
     // metacharacter robustness, search-as-source rejection).
-    // +8 net for #306 scalar-key GroupBy: +9 IGroupByTests methods (gated on GroupByAggregation),
+    // +10 net for #306 scalar-key GroupBy: +11 IGroupByTests methods (gated on GroupByAggregation),
     // -1 for the removed IAdvancedQueryTests.GroupByThrowsNotSupportedUntilIssue100 (now supported).
-    private const int ExpectedTotalTestMethods = 393;
+    private const int ExpectedTotalTestMethods = 395;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

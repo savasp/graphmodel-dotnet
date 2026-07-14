@@ -200,4 +200,29 @@ public interface IGroupByTests : IGraphTest
                 .OrderBy(row => row.Department)
                 .ToListAsync(TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task GroupByThenOuterFilter_Throws()
+    {
+        var group = $"gb-filter-{Guid.NewGuid():N}";
+        await SeedAsync(group);
+
+        await Assert.ThrowsAsync<NotSupportedException>(async () =>
+            await Graph.Nodes<DepartmentMember>()
+                .Where(e => e.Name.StartsWith(group))
+                .GroupBy(e => e.Department)
+                .Select(g => new { Department = g.Key, Count = g.Count() })
+                .Where(row => row.Count > 1)
+                .ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GroupByAfterComplexPropertyNavigation_Throws()
+    {
+        await Assert.ThrowsAsync<NotSupportedException>(async () =>
+            await Graph.Nodes<PersonWithComplexProperties>()
+                .GroupBy(person => person.Address.City)
+                .Select(group => new { City = group.Key, Count = group.Count() })
+                .ToListAsync(TestContext.Current.CancellationToken));
+    }
 }
