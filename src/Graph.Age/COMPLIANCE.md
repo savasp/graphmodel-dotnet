@@ -53,8 +53,15 @@ Semantics (the contract floor the shared TCK pins):
   Explicit ordering, paging, and terminals therefore operate on the mixed result as a whole.
 - **Search-as-source** (`Search().Traverse()`) is rejected at translation time (tracked by #295); the
   rewriter leaves that shape intact so the shared front-end's rejection still fires.
-- **No indexes yet** — correctness comes from a sequential scan; GIN acceleration is #291, whose coarse
-  index conjunct must preserve exactly the predicate above.
+- **GIN acceleration** (#291) — each physical entity table has one coarse, blob-level GIN expression index over
+  `to_tsvector('simple', <graph>.age_fulltext_blob(properties))`, where `age_fulltext_blob` is an
+  `IMMUTABLE` function (created per graph schema) returning all string values in the blob minus the
+  framework's internal keys. Phase-1 SQL AND-s that coarse conjunct (matching the index expression
+  verbatim) with the precise per-type predicate; Postgres serves the coarse conjunct from the index and
+  rechecks the precise one. Coarse ⊇ precise, so the result set is identical whether or not the index
+  exists — dropping it degrades performance, never correctness. The indexes are created at graph
+  provisioning and rebuilt by `IGraph.RecreateIndexesAsync`. Write amplification: a 5,000-node bulk insert of
+  text-heavy nodes took ~16 ms without the index and ~52 ms with it (~3.2×) on the local AGE container.
 - **Id-set limit** — a single search may seed at most 10,000 ids into the residual query (the list rides
   to AGE as one `agtype` parameter blob); a larger match set fails with an actionable `GraphException`.
 

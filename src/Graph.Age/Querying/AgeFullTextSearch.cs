@@ -21,9 +21,9 @@ using Cvoya.Graph.Querying;
 /// <item>The <c>'simple'</c> regconfig is required: no stemming and no stop-word removal, so the match
 /// set sits exactly on the cross-provider contract floor (case-insensitive, whole-token, all-terms).
 /// <c>'english'</c> would make <c>Search("the")</c> diverge from the other providers.</item>
-/// <item>The raw user text reaches Postgres only through <c>plainto_tsquery('simple', @query)</c> as a
-/// bind parameter: never <c>to_tsquery</c>, never string interpolation. <c>plainto_tsquery</c> also
-/// strips live query metacharacters (<c>~ * : ( )</c>) rather than parsing them.</item>
+/// <item>The shared tokenizer normalizes raw text before its terms reach Postgres through
+/// <c>plainto_tsquery('simple', @query)</c> as a bind parameter: never <c>to_tsquery</c>, never string
+/// interpolation.</item>
 /// </list>
 /// </remarks>
 internal static class AgeFullTextSearch
@@ -34,6 +34,19 @@ internal static class AgeFullTextSearch
     /// rather than build an unbounded parameter. Documented in <c>COMPLIANCE.md</c>.
     /// </summary>
     internal const int MaxMatchedIds = 10_000;
+
+    /// <summary>
+    /// The unqualified name of the <c>IMMUTABLE</c> function that extracts an entity's searchable text
+    /// from its <c>agtype</c> blob. It lives in each graph's own schema (not a shared one) so
+    /// concurrent per-graph provisioning never races on a single catalog tuple. The phase-1 coarse
+    /// conjunct and the GIN index expression (<see cref="Schema.AgeFullTextIndex"/>) both reference it
+    /// by the same schema-qualified name so the planner matches the index expression textually.
+    /// </summary>
+    internal const string BlobFunctionName = "age_fulltext_blob";
+
+    /// <summary>The schema-qualified reference to the blob function for <paramref name="graphName"/>.</summary>
+    internal static string BlobFunctionRef(string graphName) =>
+        $"{AgeSqlIdentifier.Quote(graphName, "graph name")}.{BlobFunctionName}";
 
     private enum FullTextTarget
     {
@@ -181,11 +194,22 @@ internal static class AgeFullTextSearch
         return candidates;
     }
 
+    // agtype -> text -> jsonb once per row so the precise predicates read plain JSON.
+    private const string Props = "(properties::text::jsonb)";
+
+    // The coarse conjunct, matching the GIN index expression (AgeFullTextIndex) verbatim so the planner
+    // can use the index; without the index it is a correct (slower) sequential scan. It over-matches
+    // relative to the precise per-type predicate (coarse ⊇ precise), so AND-ing the two never changes
+    // the result set. The dynamic all-values predicate IS this coarse expression.
+    private static string CoarsePredicate(string graphName) =>
+        $"to_tsvector('simple', {BlobFunctionRef(graphName)}(properties)) @@ plainto_tsquery('simple', @query)";
+
     /// <summary>
-    /// Builds the typed phase-1 SQL: a disjunction of per-candidate-type predicates, each a
-    /// <c>to_tsvector</c> over that type's searchable properties AND-ed with an
-    /// <c>inheritance_labels</c> membership test for that type's own label. The label test naturally
-    /// excludes complex-property value-node rows, which carry the value type's label, not the owner's.
+    /// Builds the typed phase-1 SQL: the coarse (indexable) conjunct AND-ed with a disjunction of
+    /// per-candidate-type predicates, each a <c>to_tsvector</c> over that type's searchable properties
+    /// AND-ed with an <c>inheritance_labels</c> membership test for that type's own label. The label
+    /// test naturally excludes complex-property value-node rows, which carry the value type's label, not
+    /// the owner's.
     /// </summary>
     internal static string BuildTypedSql(
         string graphName,
@@ -193,12 +217,13 @@ internal static class AgeFullTextSearch
         IReadOnlyList<FullTextCandidate> candidates)
     {
         var predicates = string.Join(
-            $"{Environment.NewLine}   OR ",
+            $"{Environment.NewLine}       OR ",
             candidates.Select(BuildCandidatePredicate));
         return
-            $"SELECT t.props ->> 'Id' AS id{Environment.NewLine}" +
-            $"FROM {FromClause(graphName, table)}{Environment.NewLine}" +
-            $"WHERE {predicates}{Environment.NewLine}" +
+            $"SELECT {Props} ->> 'Id' AS id{Environment.NewLine}" +
+            $"FROM {BaseTable(graphName, table)}{Environment.NewLine}" +
+            $"WHERE {CoarsePredicate(graphName)}{Environment.NewLine}" +
+            $"  AND ({predicates}){Environment.NewLine}" +
             $"LIMIT {MaxMatchedIds + 1}";
     }
 
@@ -206,43 +231,29 @@ internal static class AgeFullTextSearch
     {
         var extractions = string.Join(
             ", ",
-            candidate.SearchableProperties.Select(property => $"t.props ->> {SqlString(property)}"));
+            candidate.SearchableProperties.Select(property => $"{Props} ->> {SqlString(property)}"));
         return
             $"(to_tsvector('simple', concat_ws(' ', {extractions})) @@ plainto_tsquery('simple', @query) " +
-            $"AND jsonb_exists(t.props -> 'inheritance_labels', {SqlString(candidate.Label)}))";
+            $"AND jsonb_exists({Props} -> 'inheritance_labels', {SqlString(candidate.Label)}))";
     }
 
     /// <summary>
     /// Builds the dynamic phase-1 SQL for <see cref="Graph.DynamicNode"/>/<see cref="Graph.DynamicRelationship"/>:
-    /// a <c>to_tsvector</c> over every string property value in the blob, excluding the framework's
-    /// internal keys. There is no schema to name searchable properties, so all values participate.
+    /// the coarse "all string values" predicate, which is exactly the dynamic match set (there is no
+    /// schema to name searchable properties) and is served directly by the GIN index.
     /// </summary>
-    internal static string BuildDynamicSql(string graphName, string table)
-    {
-        var exclusions = string.Join(", ",
-            SqlString(nameof(Graph.IEntity.Id)),
-            SqlString("inheritance_labels"),
-            SqlString(SerializationBridge.EntityKindPropertyName),
-            SqlString(SerializationBridge.MetadataPropertyName));
-        return
-            $"SELECT t.props ->> 'Id' AS id{Environment.NewLine}" +
-            $"FROM {FromClause(graphName, table)}{Environment.NewLine}" +
-            $"WHERE to_tsvector('simple', ({Environment.NewLine}" +
-            $"        SELECT concat_ws(' ', array_agg(kv.value #>> '{{}}')){Environment.NewLine}" +
-            $"        FROM jsonb_each(t.props) AS kv(key, value){Environment.NewLine}" +
-            $"        WHERE jsonb_typeof(kv.value) = 'string'{Environment.NewLine}" +
-            $"          AND kv.key NOT IN ({exclusions}){Environment.NewLine}" +
-            $"    )) @@ plainto_tsquery('simple', @query){Environment.NewLine}" +
-            $"LIMIT {MaxMatchedIds + 1}";
-    }
+    internal static string BuildDynamicSql(string graphName, string table) =>
+        $"SELECT {Props} ->> 'Id' AS id{Environment.NewLine}" +
+        $"FROM {BaseTable(graphName, table)}{Environment.NewLine}" +
+        $"WHERE {CoarsePredicate(graphName)}{Environment.NewLine}" +
+        $"LIMIT {MaxMatchedIds + 1}";
 
-    // All nodes/relationships live in one agtype-blob table per kind, keyed inside the blob; the graph
-    // name doubles as the Postgres schema. The blob is cast agtype -> text -> jsonb once per row so the
-    // predicates read plain JSON. graphName and table are validated as SQL identifiers; the search text
-    // is the only user input and travels as the @query bind parameter.
-    private static string FromClause(string graphName, string table) =>
-        $"(SELECT properties::text::jsonb AS props FROM " +
-        $"{AgeSqlIdentifier.Quote(graphName, "graph name")}.{AgeSqlIdentifier.Quote(table, "table name")}) AS t";
+    // All nodes/relationships live in one agtype-blob label table per kind; the graph name doubles as
+    // the Postgres schema. The query reads the base table directly (not a derived table) so the coarse
+    // conjunct over the raw `properties` column matches the GIN index expression. graphName and table
+    // are validated as SQL identifiers; the search text is the only user input and rides as @query.
+    private static string BaseTable(string graphName, string table) =>
+        $"{AgeSqlIdentifier.Quote(graphName, "graph name")}.{AgeSqlIdentifier.Quote(table, "table name")}";
 
     private static string SqlString(string value) =>
         $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
