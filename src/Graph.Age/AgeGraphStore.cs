@@ -126,6 +126,7 @@ public sealed class AgeGraphStore : IAsyncDisposable
         if (await exists.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is true)
         {
             await EnsurePhysicalLabelsAsync(connection, cancellationToken).ConfigureAwait(false);
+            await Schema.AgeFullTextIndex.EnsureAsync(connection, GraphName, cancellationToken).ConfigureAwait(false);
             provisioned = true;
             return;
         }
@@ -136,6 +137,7 @@ public sealed class AgeGraphStore : IAsyncDisposable
         create.Parameters.AddWithValue("name", GraphName);
         await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         await EnsurePhysicalLabelsAsync(connection, cancellationToken).ConfigureAwait(false);
+        await Schema.AgeFullTextIndex.EnsureAsync(connection, GraphName, cancellationToken).ConfigureAwait(false);
         provisioned = true;
     }
 

@@ -63,17 +63,20 @@ internal sealed partial class AgeQueryRunner
             "@query bind parameter.")]
     internal async Task<List<string>> QueryScalarStringsAsync(
         string sql,
-        string queryParameter,
+        string? queryParameter,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sql);
-        ArgumentNullException.ThrowIfNull(queryParameter);
         cancellationToken.ThrowIfCancellationRequested();
 
         var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = sql;
-        command.Parameters.Add(new NpgsqlParameter("query", queryParameter));
+        if (queryParameter is not null)
+        {
+            command.Parameters.Add(new NpgsqlParameter("query", queryParameter));
+        }
+
         await using var commandLease = command.ConfigureAwait(false);
 
         try
