@@ -472,6 +472,73 @@ public class CypherQueryPlannerTests
         Assert.Contains("complex-property collection", exception.Message);
     }
 
+    [Theory]
+    [InlineData(GraphTraversalDirection.Outgoing, CypherDirection.Outgoing)]
+    [InlineData(GraphTraversalDirection.Incoming, CypherDirection.Incoming)]
+    [InlineData(GraphTraversalDirection.Both, CypherDirection.Both)]
+    public void Plan_CountRelationshipsMarker_LowersToCountPatternSubquery(
+        GraphTraversalDirection direction,
+        CypherDirection expected)
+    {
+        // The direction must appear as a constant enum literal in the expression tree (a captured
+        // variable would lower to a non-constant node), so each case uses its own inline literal.
+        Expression<Func<Person, int>> selector = direction switch
+        {
+            GraphTraversalDirection.Outgoing => person => person.CountRelationships<Knows>(GraphTraversalDirection.Outgoing),
+            GraphTraversalDirection.Incoming => person => person.CountRelationships<Knows>(GraphTraversalDirection.Incoming),
+            _ => person => person.CountRelationships<Knows>(GraphTraversalDirection.Both),
+        };
+        var statement = planner.Plan(Model(projection: new ProjectionShape(ProjectionKind.Scalar, selector)));
+
+        var item = Assert.Single(Assert.IsType<ReturnClause>(statement.Clauses[^1]).Items);
+        var subquery = Assert.IsType<PatternSubqueryExpression>(item.Expression);
+        Assert.Equal(PatternSubqueryKind.Count, subquery.Kind);
+        Assert.Null(subquery.Predicate);
+
+        Assert.Collection(
+            subquery.Pattern.Elements,
+            element => Assert.IsType<NodePattern>(element),
+            element =>
+            {
+                var relationship = Assert.IsType<RelationshipPattern>(element);
+                Assert.Single(relationship.Types);
+                Assert.Contains("KNOWS", relationship.Types);
+                Assert.Equal(expected, relationship.Direction);
+                Assert.Null(relationship.Depth);
+            },
+            element => Assert.IsType<NodePattern>(element));
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_CountRelationshipsMarker_HonorsPatternSizeProjectionCapabilityGate()
+    {
+        Expression<Func<Person, int>> selector = person => person.CountRelationships<Knows>(GraphTraversalDirection.Outgoing);
+
+        AssertMissingCapability(
+            GraphCapability.PatternSizeProjection,
+            Model(projection: new ProjectionShape(ProjectionKind.Scalar, selector)));
+    }
+
+    [Fact]
+    public void Plan_CountRelationshipsMarker_NonConstantDirection_Throws()
+    {
+        // A direction that is not a compile-time constant cannot be resolved into a pattern
+        // orientation while translating and is rejected rather than silently guessed.
+        var direction = GraphTraversalDirection.Outgoing;
+        Expression<Func<Person, int>> selector = person => person.CountRelationships<Knows>(Vary(direction));
+        var model = Model(projection: new ProjectionShape(ProjectionKind.Scalar, selector));
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+
+        Assert.Contains("constant", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(GraphTraversalDirection), exception.Message, StringComparison.Ordinal);
+    }
+
+    // Keeps the direction argument out of the expression tree as a plain constant, forcing a
+    // non-constant argument node for the rejection test.
+    private static GraphTraversalDirection Vary(GraphTraversalDirection direction) => direction;
+
     [Fact]
     public void Plan_GroupByModelWithoutProjection_ThrowsDefinedTranslationError()
     {
