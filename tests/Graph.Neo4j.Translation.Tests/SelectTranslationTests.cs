@@ -76,4 +76,42 @@ public class SelectTranslationTests : TranslationTestBase
         var query = Root.Nodes<Person>().Select(p => p.Offices.Select(office => office.City));
         return VerifyTranslation(query);
     }
+
+    [Fact]
+    public Task Select_CountRelationships_Outgoing()
+    {
+        var query = Root.Nodes<Person>()
+            .Select(p => p.CountRelationships<Knows>(GraphTraversalDirection.Outgoing));
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Select_CountRelationships_Incoming()
+    {
+        var query = Root.Nodes<Person>()
+            .Select(p => p.CountRelationships<Knows>(GraphTraversalDirection.Incoming));
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Select_CountRelationships_Both()
+    {
+        var query = Root.Nodes<Person>()
+            .Select(p => p.CountRelationships<Knows>(GraphTraversalDirection.Both));
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task Select_CountRelationships_AnonymousProjection()
+    {
+        var query = Root.Nodes<Person>()
+            .Select(p => new
+            {
+                p.FirstName,
+                Outgoing = p.CountRelationships<Knows>(GraphTraversalDirection.Outgoing),
+                Incoming = p.CountRelationships<Knows>(GraphTraversalDirection.Incoming),
+                Total = p.CountRelationships<Knows>(GraphTraversalDirection.Both),
+            });
+        return VerifyTranslation(query);
+    }
 }

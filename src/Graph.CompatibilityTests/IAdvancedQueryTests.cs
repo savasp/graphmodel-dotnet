@@ -1350,7 +1350,8 @@ public interface IAdvancedQueryTests : IGraphTest
         Assert.Contains(connectionMap, m => m.PersonName == "Bob" && m.Connections.Contains("Charlie"));
     }
 
-    [Fact(Skip = "Needs a node relationship-count (degree) projection surface that maps to size((p)-[:R]->()) - see #300")]
+    [Fact]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
     public async Task CanProjectRelationshipCounts()
     {
         // Setup
@@ -1371,17 +1372,15 @@ public interface IAdvancedQueryTests : IGraphTest
         await this.Graph.CreateRelationshipAsync(new Knows(bob, dave), null, TestContext.Current.CancellationToken);
         await this.Graph.CreateRelationshipAsync(new Knows(charlie, dave), null, TestContext.Current.CancellationToken);
 
-        // Get all relationships once
-        var allRelationships = await this.Graph.Relationships<Knows>().ToListAsync(TestContext.Current.CancellationToken);
-
-        // Project connection counts
+        // Project connection counts using the graph-native degree projection surface, which maps to
+        // a relationship-count pattern subquery (size((p)-[:KNOWS]->()) / COUNT { }).
         var connectionStats = await this.Graph.Nodes<Person>()
             .Select(p => new
             {
                 Name = p.FirstName,
-                OutgoingCount = allRelationships.Count(k => k.StartNodeId == p.Id),
-                IncomingCount = allRelationships.Count(k => k.EndNodeId == p.Id),
-                TotalConnections = allRelationships.Count(k => k.StartNodeId == p.Id || k.EndNodeId == p.Id)
+                OutgoingCount = p.CountRelationships<Knows>(GraphTraversalDirection.Outgoing),
+                IncomingCount = p.CountRelationships<Knows>(GraphTraversalDirection.Incoming),
+                TotalConnections = p.CountRelationships<Knows>(GraphTraversalDirection.Both)
             })
             .OrderByDescending(s => s.OutgoingCount)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -1392,11 +1391,97 @@ public interface IAdvancedQueryTests : IGraphTest
         var aliceStats = connectionStats.First(s => s.Name == "Alice");
         Assert.Equal(3, aliceStats.OutgoingCount);
         Assert.Equal(0, aliceStats.IncomingCount);
+        Assert.Equal(3, aliceStats.TotalConnections);
 
         var daveStats = connectionStats.First(s => s.Name == "Dave");
         Assert.Equal(0, daveStats.OutgoingCount);
         Assert.Equal(3, daveStats.IncomingCount);
+        Assert.Equal(3, daveStats.TotalConnections);
+
+        var bobStats = connectionStats.First(s => s.Name == "Bob");
+        Assert.Equal(2, bobStats.OutgoingCount);
+        Assert.Equal(1, bobStats.IncomingCount);
+        Assert.Equal(3, bobStats.TotalConnections);
     }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
+    public async Task RelationshipCounts_UsePhysicalDirectionAndIncludeDerivedTypes()
+    {
+        var alice = new Person { FirstName = "Alice" };
+        var bob = new Person { FirstName = "Bob" };
+        await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new KnowsWell(alice, bob) { Direction = RelationshipDirection.Incoming },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var counts = await this.Graph.Nodes<Person>()
+            .Select(person => new
+            {
+                person.FirstName,
+                Outgoing = person.CountRelationships<Knows>(GraphTraversalDirection.Outgoing),
+                Incoming = person.CountRelationships<Knows>(GraphTraversalDirection.Incoming),
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var aliceCounts = counts.Single(count => count.FirstName == "Alice");
+        Assert.Equal(0, aliceCounts.Outgoing);
+        Assert.Equal(1, aliceCounts.Incoming);
+
+        var bobCounts = counts.Single(count => count.FirstName == "Bob");
+        Assert.Equal(1, bobCounts.Outgoing);
+        Assert.Equal(0, bobCounts.Incoming);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
+    public async Task RelationshipCounts_CountAnUndirectedSelfLoopOnce()
+    {
+        var alice = new Person { FirstName = "Alice" };
+        await this.Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new Knows(alice, alice), null, TestContext.Current.CancellationToken);
+
+        var count = await this.Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .Select(person => person.CountRelationships<Knows>(GraphTraversalDirection.Both))
+            .SingleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
+    public async Task RelationshipCounts_RejectNonConstantDirectionConsistently()
+    {
+        await this.Graph.CreateNodeAsync(
+            new Person { FirstName = "Alice" }, null, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<GraphQueryTranslationException>(async () =>
+            await this.Graph.Nodes<Person>()
+                .Select(person => person.CountRelationships<Knows>(DirectionFor(person)))
+                .ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.PatternSizeProjection)]
+    public async Task RelationshipCounts_RejectNonParameterReceiverConsistently()
+    {
+        await this.Graph.CreateNodeAsync(
+            new Person { FirstName = "Alice" }, null, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<GraphQueryTranslationException>(async () =>
+            await this.Graph.Nodes<Person>()
+                .Select(person => Identity(person)
+                    .CountRelationships<Knows>(GraphTraversalDirection.Outgoing))
+                .ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    private static GraphTraversalDirection DirectionFor(INode _) => GraphTraversalDirection.Outgoing;
+
+    private static INode Identity(INode node) => node;
 
     [Fact]
     public async Task CanRecognizeSpecialTypesAsNonComplexProperties_Node()

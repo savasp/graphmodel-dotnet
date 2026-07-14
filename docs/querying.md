@@ -216,6 +216,35 @@ var projected = await graph.Nodes<Person>()
     .ToListAsync();
 ```
 
+### Relationship-count projection
+
+Inside a projection you can count a node's relationships (its *degree*) by relationship type and
+direction with `CountRelationships<TRel>(...)`. It is a projection-only marker: the provider
+recognizes the call and translates it into a native relationship-count subquery — in Cypher a
+`COUNT { MATCH (p)-[:REL]->() }` / `size((p)-[:REL]->())` pattern subquery — rather than fetching
+relationships to the client.
+
+```csharp
+var stats = await graph.Nodes<Person>()
+    .Select(p => new
+    {
+        p.FirstName,
+        OutgoingKnows = p.CountRelationships<Knows>(GraphTraversalDirection.Outgoing),
+        IncomingKnows = p.CountRelationships<Knows>(GraphTraversalDirection.Incoming),
+        TotalKnows    = p.CountRelationships<Knows>(GraphTraversalDirection.Both),
+    })
+    .ToListAsync();
+```
+
+`GraphTraversalDirection` matches the `Traverse` direction semantics: `Outgoing` counts physical
+edges leaving the node and `Incoming` counts physical edges arriving at it. A relationship stored
+with `RelationshipDirection.Incoming` therefore reverses its logical start/end orientation. `Both`
+counts each incident relationship once, including a self-loop. Counting a base relationship type
+also includes stored derived relationship types. The direction argument must be a compile-time
+constant. This surface requires the `PatternSizeProjection` capability; providers that do not
+declare it reject the query at translation time. Calling `CountRelationships` outside a query
+projection throws `InvalidOperationException`.
+
 ### Projecting collections
 
 You can project a **correlated collection** per row: group a node's outgoing path segments by

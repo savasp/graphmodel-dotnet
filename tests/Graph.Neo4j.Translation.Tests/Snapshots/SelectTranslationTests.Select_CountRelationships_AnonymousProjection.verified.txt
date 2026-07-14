@@ -1,0 +1,6 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+RETURN src.FirstName AS FirstName, COUNT { MATCH (src)-[:KNOWS]->() } AS Outgoing, COUNT { MATCH (src)<-[:KNOWS]-() } AS Incoming, COUNT { MATCH (src)-[:KNOWS]-() } AS Total
+
+== Parameters ==
+(none)

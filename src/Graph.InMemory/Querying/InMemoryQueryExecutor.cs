@@ -1197,12 +1197,54 @@ internal sealed class InMemoryQueryExecutor(
     {
         if (!_compiled.TryGetValue(lambda, out var compiled))
         {
-            var nullPropagating = (LambdaExpression)new NullPropagatingMemberAccessVisitor().Visit(lambda)!;
+            // CountRelationships is a translation marker whose body throws; rewrite each call into a
+            // degree computation over the store snapshot before the lambda is compiled and invoked.
+            var rewritten = (LambdaExpression)new CountRelationshipsRewriter(_state).Visit(lambda)!;
+            var nullPropagating = (LambdaExpression)new NullPropagatingMemberAccessVisitor().Visit(rewritten)!;
             compiled = nullPropagating.Compile();
             _compiled[lambda] = compiled;
         }
 
         return compiled;
+    }
+
+    private sealed class CountRelationshipsRewriter(StoreState state) : ExpressionVisitor
+    {
+        private static readonly MethodInfo CountMethod =
+            typeof(InMemoryDegreeCounter).GetMethod(
+                nameof(InMemoryDegreeCounter.Count),
+                BindingFlags.Static | BindingFlags.NonPublic)!;
+
+        protected override Expression VisitMethodCall(MethodCallExpression node)
+        {
+            if (node.Method.DeclaringType != typeof(GraphDegreeExtensions) ||
+                node.Method.Name != nameof(GraphDegreeExtensions.CountRelationships))
+            {
+                return base.VisitMethodCall(node);
+            }
+
+            if (node.Arguments[0] is not ParameterExpression)
+            {
+                throw new GraphQueryTranslationException(
+                    "CountRelationships must be called on a query parameter (e.g. p.CountRelationships<Rel>(...)).");
+            }
+
+            if (node.Arguments[1] is not ConstantExpression { Value: GraphTraversalDirection direction } ||
+                !Enum.IsDefined(direction))
+            {
+                throw new GraphQueryTranslationException(
+                    "The direction argument to CountRelationships must be a constant GraphTraversalDirection value.");
+            }
+
+            var relationshipType = node.Method.GetGenericArguments()[0];
+
+            return Expression.Call(
+                CountMethod,
+                Expression.Constant(state),
+                Expression.Convert(Visit(node.Arguments[0]), typeof(INode)),
+                Expression.Constant(relationshipType, typeof(Type)),
+                Expression.Constant(direction));
+        }
     }
 
     private sealed class NullPropagatingMemberAccessVisitor : ExpressionVisitor
