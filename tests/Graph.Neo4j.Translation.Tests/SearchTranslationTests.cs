@@ -54,6 +54,17 @@ public class SearchTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task Search_ThenTraverse_ThenSearch()
+    {
+        var query = Root.Nodes<Person>()
+            .Search("Alice")
+            .Traverse<Knows, Person>()
+            .Search("Bob");
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task Search_ThenPathSegments()
     {
         var query = Root.Nodes<Person>()

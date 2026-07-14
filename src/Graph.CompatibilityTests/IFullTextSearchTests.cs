@@ -700,4 +700,42 @@ public interface IFullTextSearchTests : IGraphTest
 
         Assert.Empty(results);
     }
+
+    [Fact]
+    public async Task SearchAsTraversalSource_ComposesWithPostTraversalSearch()
+    {
+        var source = new Person
+        {
+            FirstName = "FilterSource",
+            LastName = "Search",
+            Bio = "filtersourceseed marker",
+        };
+        var matching = new Person
+        {
+            FirstName = "Matching",
+            LastName = "Target",
+            Bio = "filtertargetseed marker",
+        };
+        var other = new Person { FirstName = "Other", LastName = "Target" };
+
+        await this.Graph.CreateNodeAsync(source, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(matching, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateNodeAsync(other, null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new KnowsWell(source, matching), null, TestContext.Current.CancellationToken);
+        await this.Graph.CreateRelationshipAsync(
+            new KnowsWell(source, other), null, TestContext.Current.CancellationToken);
+
+        // Both search queries must apply: the first scopes the traversal source, the second
+        // filters the traversal results. A provider that drops or reuses either query returns
+        // the wrong row set.
+        var results = await this.Graph.Nodes<Person>()
+            .Search("filtersourceseed")
+            .Traverse<KnowsWell, Person>()
+            .Search("filtertargetseed")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.Equal(matching.Id, result.Id);
+    }
 }

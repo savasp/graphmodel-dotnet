@@ -33,15 +33,16 @@ public sealed class ComplianceInventoryTests
     // +10 for ISubgraphCreationTests (atomic node–relationship–node subgraph create, #45).
     // +3 for #288: three new IFullTextSearchTests methods (multi-term AND, whole-token vs sub-token,
     // and metacharacter robustness).
-    // +4 for #295: positive search-as-source coverage for Traverse, PathSegments, TraversePaths,
-    // and an empty search result (replacing #288's temporary rejection test, +3 net).
+    // +5 for #295: positive search-as-source coverage for Traverse, PathSegments, TraversePaths,
+    // an empty search result, and a post-traversal search filter over a search-root traversal
+    // (replacing #288's temporary rejection test, +4 net).
     // +10 net for #306 scalar-key GroupBy: +11 IGroupByTests methods (gated on GroupByAggregation),
     // -1 for the removed IAdvancedQueryTests.GroupByThrowsNotSupportedUntilIssue100 (now supported).
     // +1 for #307: IAdvancedQueryTests.UnsupportedGroupedProjectionShapeIsRejectedConsistently -
     // pins that an unsupported correlated grouped-projection member (Take over the group) is rejected
     // with the same GraphQueryTranslationException on every provider.
     // +5 for #318: three correlated-composition cases and two scalar-projection parity cases.
-    private const int ExpectedTotalTestMethods = 409;
+    private const int ExpectedTotalTestMethods = 410;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

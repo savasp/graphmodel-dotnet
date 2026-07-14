@@ -71,12 +71,13 @@ Semantics (the contract floor the shared TCK pins):
 
 | Inventory test methods | Executed | Capability-skipped | Statically skipped | Failed |
 |---|---|---|---|---|
-| 409 | 378 | 31 | 1 | 0 |
+| 410 | 379 | 31 | 1 | 0 |
 
-The compatibility inventory contains 409 runnable test methods. For this capability set (which now
-declares `FullTextSearch`), `ComplianceInventory.MinimumExecuted(declared)` is 378 methods and the
-strict compliance guard passes; the remaining 31 capability skips are all `CallSubqueries` /
-`PatternSizeProjection` tests (tracked by #308). Theory data rows make the runtime case count
+The compatibility inventory contains 410 runnable test methods. For this capability set (which now
+declares `FullTextSearch`), `ComplianceInventory.MinimumExecuted(declared)` is 379 methods and the
+strict compliance guard passes; the remaining 31 capability skips are the `CallSubqueries` /
+`PatternSizeProjection` tests (tracked by #308) plus the `GroupByAggregation` suite (tracked by
+#330). Theory data rows make the runtime case count
 slightly larger than the method inventory. The suite also contains one statically skipped,
 issue-tracked test; the inventory deliberately excludes it, so it is not counted as a capability
 skip above. The provider-specific adapter, dialect, SQL-envelope, full-text, and security tests are

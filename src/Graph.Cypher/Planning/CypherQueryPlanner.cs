@@ -114,7 +114,7 @@ public sealed class CypherQueryPlanner
 
         var clauses = new List<ICypherClause>();
         AddRootAndTraversalClauses(clauses, model, state);
-        AddSearchFilterClause(clauses, model.SearchFilter, state.SearchParameter);
+        AddSearchFilterClause(clauses, model.SearchFilter, state.SearchFilterParameter);
         clauses.AddRange(lowerer.NavigationMatches);
 
         if (predicates.Count > 0)
@@ -1146,11 +1146,19 @@ public sealed class CypherQueryPlanner
 
         var searchParameter = model.Root is SearchRoot search
             ? parameters.Add(search.Query)
-            : model.SearchFilter is { } searchFilter
-                ? parameters.Add(searchFilter.Query)
-                : null;
+            : null;
+        var searchFilterParameter = model.SearchFilter is { } searchFilter
+            ? parameters.Add(searchFilter.Query)
+            : null;
 
-        return new PlanningState(rootAlias, rootType, targetAlias, targetType, explicitTraversal, searchParameter);
+        return new PlanningState(
+            rootAlias,
+            rootType,
+            targetAlias,
+            targetType,
+            explicitTraversal,
+            searchParameter,
+            searchFilterParameter);
     }
 
     private static List<CypherExpression> LowerPredicates(
@@ -2264,7 +2272,8 @@ public sealed class CypherQueryPlanner
         string TargetAlias,
         Type? CurrentType,
         IReadOnlyList<TraversalStep> ExplicitTraversal,
-        QueryParameter? SearchParameter)
+        QueryParameter? SearchParameter,
+        QueryParameter? SearchFilterParameter)
     {
         public string CurrentAlias => ExplicitTraversal.Count == 0 ? RootAlias : TargetAlias;
 
