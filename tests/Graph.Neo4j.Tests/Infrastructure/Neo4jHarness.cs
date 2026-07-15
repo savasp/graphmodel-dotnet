@@ -30,6 +30,10 @@ public sealed class Neo4jHarness : IGraphProviderTestHarness
     /// </summary>
     public static ILoggerFactory LoggerFactory => TestInfrastructureFixture.LoggerFactory;
 
+    internal string CurrentDatabaseName => fixture.CurrentDatabaseName;
+
+    internal static IDriver CreateIndependentDriver() => TestInfrastructureFixture.CreateIndependentDriver();
+
     /// <inheritdoc/>
     public ValueTask InitializeAsync() => fixture.InitializeAsync();
 

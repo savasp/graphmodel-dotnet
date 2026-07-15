@@ -6,6 +6,7 @@ namespace Cvoya.Graph.Neo4j.Tests;
 using System.Globalization;
 using System.Net.Sockets;
 using DotNet.Testcontainers.Builders;
+using global::Neo4j.Driver;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -54,6 +55,21 @@ public class TestInfrastructureFixture : IAsyncLifetime
     }
 
     public static ILoggerFactory LoggerFactory => loggerFactory;
+
+    internal string CurrentDatabaseName => cachedDatabaseName
+        ?? throw new InvalidOperationException("A test database has not been acquired.");
+
+    internal static IDriver CreateIndependentDriver()
+    {
+        return GraphDatabase.Driver(
+            testInfrastructure.ConnectionString,
+            AuthTokens.Basic(testInfrastructure.Username, testInfrastructure.Password),
+            builder => builder
+                .WithMaxConnectionPoolSize(10)
+                .WithMaxConnectionLifetime(TimeSpan.FromMinutes(2))
+                .WithConnectionAcquisitionTimeout(TimeSpan.FromSeconds(30))
+                .WithConnectionTimeout(TimeSpan.FromSeconds(30)));
+    }
 
     public async ValueTask InitializeAsync()
     {

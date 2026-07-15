@@ -50,6 +50,19 @@ var store = new Neo4jGraphStore("neo4j+s://localhost:7687", "neo4j", "password")
 var graph = store.Graph;
 ```
 
+### Concurrent schema initialization
+
+Independent `Neo4jGraphStore` instances may safely initialize the same database at the same time,
+including configured constraints, range indexes, and the provider's general full-text indexes.
+Retryable Neo4j schema failures are replayed through driver-managed transactions. If concurrent
+creation reports a non-retryable schema conflict, the provider treats it as success only when the
+installed object's name, entity type, labels or relationship types, properties, and schema kind are
+equivalent to the requested definition. An incompatible existing object still fails with the
+original Neo4j error.
+
+`RecreateIndexesAsync` has the same concurrency guarantee. Concurrent callers may both complete
+when they request the same index definitions; incompatible definitions are not suppressed.
+
 ## 📚 Documentation
 
 For comprehensive documentation, examples, and best practices:
