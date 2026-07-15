@@ -373,8 +373,20 @@ internal static partial class LogMessages
     [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to detect Neo4j edition; assuming property existence constraints are supported")]
     internal static partial void LogWarningNeo4jSchemaManager459(this ILogger logger, Exception exception);
 
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to read the existing schema snapshot; proceeding with creation attempts")]
+    internal static partial void LogWarningNeo4jSchemaManager466(this ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Schema object {Name} already exists with an equivalent definition; skipping creation")]
+    internal static partial void LogDebugNeo4jSchemaManager478(this ILogger logger, global::System.String name);
+
     [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to retrieve existing constraints for {LabelOrType}, proceeding with creation attempts")]
     internal static partial void LogWarningNeo4jSchemaManager491(this ILogger logger, Exception exception, global::System.String labelOrType);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Information, Message = "Recreating full-text index {Name} because its installed definition does not match the current model")]
+    internal static partial void LogInformationNeo4jSchemaManager502(this ILogger logger, global::System.String name);
+
+    [LoggerMessage(EventId = 0, Level = LogLevel.Warning, Message = "Failed to recreate full-text index {Name}; preserving the original schema conflict")]
+    internal static partial void LogWarningNeo4jSchemaManager512(this ILogger logger, Exception exception, global::System.String name);
 
     [LoggerMessage(EventId = 0, Level = LogLevel.Debug, Message = "Created index {Index} for property {Property} on label {Label}")]
     internal static partial void LogDebugNeo4jSchemaManager521(this ILogger logger, global::System.String index, global::System.String property, global::System.String label);

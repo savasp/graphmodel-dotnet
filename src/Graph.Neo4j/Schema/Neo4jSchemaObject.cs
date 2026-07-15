@@ -100,13 +100,13 @@ internal static class Neo4jSchemaMetadata
         };
     }
 
-    public static Neo4jSchemaEntityType GetEntityType(string entityType)
+    public static Neo4jSchemaEntityType? GetEntityType(string? entityType)
     {
         return entityType switch
         {
             "NODE" => Neo4jSchemaEntityType.Node,
             "RELATIONSHIP" => Neo4jSchemaEntityType.Relationship,
-            _ => throw new ArgumentOutOfRangeException(nameof(entityType), entityType, "Unknown Neo4j schema entity type.")
+            _ => null
         };
     }
 }

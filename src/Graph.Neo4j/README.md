@@ -60,6 +60,11 @@ installed object's name, entity type, labels or relationship types, properties, 
 equivalent to the requested definition. An incompatible existing object still fails with the
 original Neo4j error.
 
+The provider-owned general full-text indexes (`node_fulltext_index` and `rel_fulltext_index`) are
+the exception: their definition is derived from the whole registered model, so it legitimately
+changes as the model evolves. When their installed definition no longer matches the current model,
+the provider drops and recreates them during initialization instead of failing.
+
 `RecreateIndexesAsync` has the same concurrency guarantee. Concurrent callers may both complete
 when they request the same index definitions; incompatible definitions are not suppressed.
 

@@ -97,6 +97,16 @@ public sealed class Neo4jSchemaObjectTests
         Assert.Equal(expectedName, Neo4jSchemaMetadata.GetConstraintKind(metadataType).ToString());
     }
 
+    [Theory]
+    [InlineData("NODE", nameof(Neo4jSchemaEntityType.Node))]
+    [InlineData("RELATIONSHIP", nameof(Neo4jSchemaEntityType.Relationship))]
+    [InlineData("SOMETHING_ELSE", null)]
+    [InlineData(null, null)]
+    public void EntityType_MapsKnownValuesAndRejectsUnknownOnes(string? metadataEntityType, string? expectedName)
+    {
+        Assert.Equal(expectedName, Neo4jSchemaMetadata.GetEntityType(metadataEntityType)?.ToString());
+    }
+
     private static Neo4jSchemaObjectDescriptor Descriptor(
         string name,
         Neo4jSchemaObjectKind kind,

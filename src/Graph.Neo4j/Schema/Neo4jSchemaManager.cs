@@ -11,6 +11,7 @@ using global::Neo4j.Driver;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
+using SchemaSnapshot = System.Collections.Generic.IReadOnlyDictionary<string, Neo4jSchemaObjectDescriptor>;
 
 /// <summary>
 /// Schema manager that handles Neo4j-specific schema operations using the SchemaRegistry.
@@ -68,22 +69,26 @@ internal class Neo4jSchemaManager
                 _logger.LogDebugNeo4jSchemaManager68(nodeLabelsCount, relationshipTypesCount);
             }
 
+            // Read the installed schema once so re-initialization over an existing equivalent
+            // schema skips creation without a per-object conflict round trip.
+            var existingSchema = await GetExistingSchemaSnapshotAsync(cancellationToken).ConfigureAwait(false);
+
             // Create constraints and indexes for all discovered node types
             var nodeLabels = await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
             foreach (var nodeLabel in nodeLabels)
             {
-                await CreateNodeConstraintsAndIndexesAsync(nodeLabel, cancellationToken).ConfigureAwait(false);
+                await CreateNodeConstraintsAndIndexesAsync(nodeLabel, existingSchema, cancellationToken).ConfigureAwait(false);
             }
 
             // Create constraints and indexes for all discovered relationship types
             var relationshipTypes = await _schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken).ConfigureAwait(false);
             foreach (var relationshipType in relationshipTypes)
             {
-                await CreateRelationshipConstraintsAndIndexesAsync(relationshipType, cancellationToken).ConfigureAwait(false);
+                await CreateRelationshipConstraintsAndIndexesAsync(relationshipType, existingSchema, cancellationToken).ConfigureAwait(false);
             }
 
             // Create general full text indexes
-            await CreateGeneralFullTextIndexesAsync(cancellationToken).ConfigureAwait(false);
+            await CreateGeneralFullTextIndexesAsync(existingSchema, cancellationToken).ConfigureAwait(false);
 
             _isSchemaInitialized = true;
             _logger.LogInformationNeo4jSchemaManager90();
@@ -119,22 +124,24 @@ internal class Neo4jSchemaManager
             // Drop all existing indexes
             await DropAllIndexesAsync(cancellationToken).ConfigureAwait(false);
 
-            // Recreate indexes for all registered node types
+            // Recreate indexes for all registered node types. No snapshot: the indexes were just
+            // dropped, so anything a create conflicts with came from a concurrent peer and is
+            // handled by the conflict path.
             var nodeLabels = await _schemaRegistry.GetRegisteredNodeLabelsAsync(cancellationToken).ConfigureAwait(false);
             foreach (var nodeLabel in nodeLabels)
             {
-                await CreateNodeIndexesAsync(nodeLabel, cancellationToken).ConfigureAwait(false);
+                await CreateNodeIndexesAsync(nodeLabel, existingSchema: null, cancellationToken).ConfigureAwait(false);
             }
 
             // Recreate indexes for all registered relationship types
             var relationshipTypes = await _schemaRegistry.GetRegisteredRelationshipTypesAsync(cancellationToken).ConfigureAwait(false);
             foreach (var relationshipType in relationshipTypes)
             {
-                await CreateRelationshipIndexesAsync(relationshipType, cancellationToken).ConfigureAwait(false);
+                await CreateRelationshipIndexesAsync(relationshipType, existingSchema: null, cancellationToken).ConfigureAwait(false);
             }
 
             // Recreate general full text indexes
-            await CreateGeneralFullTextIndexesAsync(cancellationToken).ConfigureAwait(false);
+            await CreateGeneralFullTextIndexesAsync(existingSchema: null, cancellationToken).ConfigureAwait(false);
 
             _logger.LogInformationNeo4jSchemaManager140();
         }
@@ -149,7 +156,10 @@ internal class Neo4jSchemaManager
         }
     }
 
-    private async Task CreateNodeConstraintsAndIndexesAsync(string label, CancellationToken cancellationToken = default)
+    private async Task CreateNodeConstraintsAndIndexesAsync(
+        string label,
+        SchemaSnapshot? existingSchema,
+        CancellationToken cancellationToken = default)
     {
         var processedKey = $"node:{label}";
         lock (_processedSchemas)
@@ -169,10 +179,10 @@ internal class Neo4jSchemaManager
         }
 
         // First, create constraints in their own transaction
-        await CreateNodeConstraintsAsync(label, schema, cancellationToken).ConfigureAwait(false);
+        await CreateNodeConstraintsAsync(label, schema, existingSchema, cancellationToken).ConfigureAwait(false);
 
         // Then, create indexes in a separate transaction
-        await CreateNodeIndexesAsync(label, cancellationToken).ConfigureAwait(false);
+        await CreateNodeIndexesAsync(label, existingSchema, cancellationToken).ConfigureAwait(false);
 
         lock (_processedSchemas)
         {
@@ -182,7 +192,10 @@ internal class Neo4jSchemaManager
         _logger.LogDebugNeo4jSchemaManager183(label);
     }
 
-    private async Task CreateRelationshipConstraintsAndIndexesAsync(string type, CancellationToken cancellationToken = default)
+    private async Task CreateRelationshipConstraintsAndIndexesAsync(
+        string type,
+        SchemaSnapshot? existingSchema,
+        CancellationToken cancellationToken = default)
     {
         var processedKey = $"relationship:{type}";
         lock (_processedSchemas)
@@ -202,10 +215,10 @@ internal class Neo4jSchemaManager
         }
 
         // First, create constraints in their own transaction
-        await CreateRelationshipConstraintsAsync(type, schema, cancellationToken).ConfigureAwait(false);
+        await CreateRelationshipConstraintsAsync(type, schema, existingSchema, cancellationToken).ConfigureAwait(false);
 
         // Then, create indexes in a separate transaction
-        await CreateRelationshipIndexesAsync(type, cancellationToken).ConfigureAwait(false);
+        await CreateRelationshipIndexesAsync(type, existingSchema, cancellationToken).ConfigureAwait(false);
 
         lock (_processedSchemas)
         {
@@ -218,6 +231,7 @@ internal class Neo4jSchemaManager
     private async Task CreateNodeConstraintsAsync(
         string label,
         EntitySchemaInfo schema,
+        SchemaSnapshot? existingSchema,
         CancellationToken cancellationToken)
     {
         var supportsPropertyExistenceConstraints =
@@ -226,7 +240,7 @@ internal class Neo4jSchemaManager
         try
         {
             var idConstraintName = $"unique_{label}_Id".ToLowerInvariant();
-            await CreateSchemaObjectAsync(
+            var createdIdConstraint = await CreateSchemaObjectAsync(
                 new Neo4jSchemaObjectCreation(
                     new Neo4jSchemaObjectDescriptor(
                         idConstraintName,
@@ -235,8 +249,12 @@ internal class Neo4jSchemaManager
                         [label],
                         ["Id"]),
                     $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(idConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE n.Id IS UNIQUE"),
+                existingSchema,
                 cancellationToken).ConfigureAwait(false);
-            _logger.LogDebugNeo4jSchemaManager239(label);
+            if (createdIdConstraint)
+            {
+                _logger.LogDebugNeo4jSchemaManager239(label);
+            }
 
             if (schema.HasCompositeKey())
             {
@@ -245,7 +263,7 @@ internal class Neo4jSchemaManager
                     $"composite_key_{label}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
                 var cypherPropertyNames = keyPropertyNames.Select(property => $"n.{property}");
 
-                await CreateSchemaObjectAsync(
+                var createdCompositeKeyConstraint = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
                         new Neo4jSchemaObjectDescriptor(
                             compositeKeyConstraintName,
@@ -254,9 +272,10 @@ internal class Neo4jSchemaManager
                             [label],
                             keyPropertyNames),
                         $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(compositeKeyConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE ({string.Join(", ", cypherPropertyNames)}) IS UNIQUE"),
+                    existingSchema,
                     cancellationToken).ConfigureAwait(false);
 
-                if (_logger.IsEnabled(LogLevel.Debug))
+                if (createdCompositeKeyConstraint && _logger.IsEnabled(LogLevel.Debug))
                 {
                     _logger.LogDebugNeo4jSchemaManager261(string.Join(", ", keyPropertyNames), label);
                 }
@@ -273,7 +292,7 @@ internal class Neo4jSchemaManager
                 {
                     var uniqueConstraintName =
                         $"unique_{label}_{propertySchema.Name}".ToLowerInvariant();
-                    await CreateSchemaObjectAsync(
+                    var createdUniqueConstraint = await CreateSchemaObjectAsync(
                         new Neo4jSchemaObjectCreation(
                             new Neo4jSchemaObjectDescriptor(
                                 uniqueConstraintName,
@@ -282,8 +301,12 @@ internal class Neo4jSchemaManager
                                 [label],
                                 [propertySchema.Name]),
                             $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(uniqueConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE n.{propertySchema.Name} IS UNIQUE"),
+                        existingSchema,
                         cancellationToken).ConfigureAwait(false);
-                    _logger.LogDebugNeo4jSchemaManager283(propertySchema.Name, label);
+                    if (createdUniqueConstraint)
+                    {
+                        _logger.LogDebugNeo4jSchemaManager283(propertySchema.Name, label);
+                    }
                 }
 
                 if (!propertySchema.IsRequired)
@@ -307,7 +330,7 @@ internal class Neo4jSchemaManager
 
                 var notNullConstraintName =
                     $"notnull_{label}_{propertySchema.Name}".ToLowerInvariant();
-                await CreateSchemaObjectAsync(
+                var createdNotNullConstraint = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
                         new Neo4jSchemaObjectDescriptor(
                             notNullConstraintName,
@@ -316,8 +339,12 @@ internal class Neo4jSchemaManager
                             [label],
                             [propertySchema.Name]),
                         $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(notNullConstraintName, "constraint name")} FOR (n:{EscapedLabel(label)}) REQUIRE n.{propertySchema.Name} IS NOT NULL"),
+                    existingSchema,
                     cancellationToken).ConfigureAwait(false);
-                _logger.LogDebugNeo4jSchemaManager313(propertySchema.Name, label);
+                if (createdNotNullConstraint)
+                {
+                    _logger.LogDebugNeo4jSchemaManager313(propertySchema.Name, label);
+                }
             }
         }
         catch (Exception ex)
@@ -330,6 +357,7 @@ internal class Neo4jSchemaManager
     private async Task CreateRelationshipConstraintsAsync(
         string type,
         EntitySchemaInfo schema,
+        SchemaSnapshot? existingSchema,
         CancellationToken cancellationToken)
     {
         var supportsPropertyExistenceConstraints =
@@ -338,7 +366,7 @@ internal class Neo4jSchemaManager
         try
         {
             var idConstraintName = $"unique_rel_{type}_Id".ToLowerInvariant();
-            await CreateSchemaObjectAsync(
+            var createdIdConstraint = await CreateSchemaObjectAsync(
                 new Neo4jSchemaObjectCreation(
                     new Neo4jSchemaObjectDescriptor(
                         idConstraintName,
@@ -347,8 +375,12 @@ internal class Neo4jSchemaManager
                         [type],
                         ["Id"]),
                     $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(idConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.Id IS UNIQUE"),
+                existingSchema,
                 cancellationToken).ConfigureAwait(false);
-            _logger.LogDebugNeo4jSchemaManager348(type);
+            if (createdIdConstraint)
+            {
+                _logger.LogDebugNeo4jSchemaManager348(type);
+            }
 
             if (schema.HasCompositeKey())
             {
@@ -357,7 +389,7 @@ internal class Neo4jSchemaManager
                     $"composite_key_rel_{type}_{string.Join("_", keyPropertyNames)}".ToLowerInvariant();
                 var cypherPropertyNames = keyPropertyNames.Select(property => $"r.{property}");
 
-                await CreateSchemaObjectAsync(
+                var createdCompositeKeyConstraint = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
                         new Neo4jSchemaObjectDescriptor(
                             compositeKeyConstraintName,
@@ -366,9 +398,10 @@ internal class Neo4jSchemaManager
                             [type],
                             keyPropertyNames),
                         $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(compositeKeyConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE ({string.Join(", ", cypherPropertyNames)}) IS UNIQUE"),
+                    existingSchema,
                     cancellationToken).ConfigureAwait(false);
 
-                if (_logger.IsEnabled(LogLevel.Debug))
+                if (createdCompositeKeyConstraint && _logger.IsEnabled(LogLevel.Debug))
                 {
                     _logger.LogDebugNeo4jSchemaManager370(string.Join(", ", keyPropertyNames), type);
                 }
@@ -385,7 +418,7 @@ internal class Neo4jSchemaManager
                 {
                     var uniqueConstraintName =
                         $"unique_rel_{type}_{propertySchema.Name}".ToLowerInvariant();
-                    await CreateSchemaObjectAsync(
+                    var createdUniqueConstraint = await CreateSchemaObjectAsync(
                         new Neo4jSchemaObjectCreation(
                             new Neo4jSchemaObjectDescriptor(
                                 uniqueConstraintName,
@@ -394,8 +427,12 @@ internal class Neo4jSchemaManager
                                 [type],
                                 [propertySchema.Name]),
                             $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(uniqueConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.{propertySchema.Name} IS UNIQUE"),
+                        existingSchema,
                         cancellationToken).ConfigureAwait(false);
-                    _logger.LogDebugNeo4jSchemaManager392(propertySchema.Name, type);
+                    if (createdUniqueConstraint)
+                    {
+                        _logger.LogDebugNeo4jSchemaManager392(propertySchema.Name, type);
+                    }
                 }
 
                 if (!propertySchema.IsRequired)
@@ -411,7 +448,7 @@ internal class Neo4jSchemaManager
 
                 var notNullConstraintName =
                     $"notnull_rel_{type}_{propertySchema.Name}".ToLowerInvariant();
-                await CreateSchemaObjectAsync(
+                var createdNotNullConstraint = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
                         new Neo4jSchemaObjectDescriptor(
                             notNullConstraintName,
@@ -420,8 +457,12 @@ internal class Neo4jSchemaManager
                             [type],
                             [propertySchema.Name]),
                         $"CREATE CONSTRAINT {CypherIdentifier.EscapeIfNeeded(notNullConstraintName, "constraint name")} FOR ()-[r:{EscapedType(type)}]-() REQUIRE r.{propertySchema.Name} IS NOT NULL"),
+                    existingSchema,
                     cancellationToken).ConfigureAwait(false);
-                _logger.LogDebugNeo4jSchemaManager414(propertySchema.Name, type);
+                if (createdNotNullConstraint)
+                {
+                    _logger.LogDebugNeo4jSchemaManager414(propertySchema.Name, type);
+                }
             }
         }
         catch (Exception ex)
@@ -467,10 +508,32 @@ internal class Neo4jSchemaManager
         }
     }
 
-    private async Task CreateSchemaObjectAsync(
+    /// <summary>
+    /// Ensures the requested schema object exists. Returns <see langword="true"/> when a create
+    /// (or recreate) statement was executed, and <see langword="false"/> when an equivalent
+    /// object was already installed.
+    /// </summary>
+    private async Task<bool> CreateSchemaObjectAsync(
         Neo4jSchemaObjectCreation requested,
-        CancellationToken cancellationToken)
+        SchemaSnapshot? existingSchema,
+        CancellationToken cancellationToken,
+        bool recreateIncompatibleIndex = false)
     {
+        if (existingSchema is not null
+            && existingSchema.TryGetValue(requested.Descriptor.Name, out var snapshot))
+        {
+            if (requested.Descriptor.IsEquivalentTo(snapshot))
+            {
+                _logger.LogDebugNeo4jSchemaManager478(requested.Descriptor.Name);
+                return false;
+            }
+
+            if (CanRecreateIncompatibleIndex(recreateIncompatibleIndex, snapshot))
+            {
+                return await RecreateIncompatibleIndexAsync(requested, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
         try
         {
             await ExecuteManagedWriteAsync(
@@ -480,6 +543,7 @@ internal class Neo4jSchemaManager
                     await result.ConsumeAsync().ConfigureAwait(false);
                 },
                 cancellationToken).ConfigureAwait(false);
+            return true;
         }
         catch (Neo4jException ex) when (Neo4jSchemaErrorClassifier.IsPotentialEquivalentConflict(ex))
         {
@@ -502,11 +566,147 @@ internal class Neo4jSchemaManager
 
             if (requested.Descriptor.IsEquivalentTo(installed))
             {
-                return;
+                _logger.LogDebugNeo4jSchemaManager478(requested.Descriptor.Name);
+                return false;
+            }
+
+            if (CanRecreateIncompatibleIndex(recreateIncompatibleIndex, installed))
+            {
+                try
+                {
+                    return await RecreateIncompatibleIndexAsync(requested, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception recreateException)
+                {
+                    // Preserve the original actionable Neo4j conflict if the recreate fails.
+                    _logger.LogWarningNeo4jSchemaManager512(recreateException, requested.Descriptor.Name);
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex).Throw();
+                }
             }
 
             throw;
         }
+    }
+
+    /// <summary>
+    /// Whether an incompatible installed object may be replaced by the requested definition.
+    /// Only the provider-owned general full-text indexes opt in: their definition is derived
+    /// from the whole registered model, so it legitimately drifts as the model evolves, and the
+    /// provider owns their fixed names. Everything else keeps the actionable Neo4j error.
+    /// </summary>
+    private static bool CanRecreateIncompatibleIndex(
+        bool recreateIncompatibleIndex,
+        Neo4jSchemaObjectDescriptor? installed)
+    {
+        return recreateIncompatibleIndex && installed?.Kind == Neo4jSchemaObjectKind.FullTextIndex;
+    }
+
+    private async Task<bool> RecreateIncompatibleIndexAsync(
+        Neo4jSchemaObjectCreation requested,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformationNeo4jSchemaManager502(requested.Descriptor.Name);
+
+        await ExecuteManagedWriteAsync(
+            async transaction =>
+            {
+                var dropIndex =
+                    $"DROP INDEX {CypherIdentifier.EscapeIfNeeded(requested.Descriptor.Name, "index name")} IF EXISTS";
+                var result = await transaction.RunAsync(dropIndex).ConfigureAwait(false);
+                await result.ConsumeAsync().ConfigureAwait(false);
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        // Re-enter without the recreate option so a concurrent peer racing on the same name
+        // resolves through the equivalence check instead of drop/create ping-pong.
+        return await CreateSchemaObjectAsync(requested, existingSchema: null, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reads all installed constraints plus the managed index types (range and full-text) in two
+    /// round trips, keyed by name. Returns <see langword="null"/> when the metadata read fails so
+    /// callers fall back to create-first behavior.
+    /// </summary>
+    private async Task<SchemaSnapshot?> GetExistingSchemaSnapshotAsync(CancellationToken cancellationToken)
+    {
+        const string constraintsQuery =
+            "SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties RETURN name, type, entityType, labelsOrTypes, properties";
+        const string indexesQuery = """
+            SHOW INDEXES YIELD name, type, entityType, labelsOrTypes, properties, owningConstraint
+            WHERE (type = 'RANGE' OR type = 'FULLTEXT') AND owningConstraint IS NULL
+            RETURN name, type, entityType, labelsOrTypes, properties
+            """;
+
+        try
+        {
+            var existingSchema = new Dictionary<string, Neo4jSchemaObjectDescriptor>(StringComparer.Ordinal);
+            await CollectSchemaObjectsAsync(constraintsQuery, isConstraint: true, existingSchema, cancellationToken).ConfigureAwait(false);
+            await CollectSchemaObjectsAsync(indexesQuery, isConstraint: false, existingSchema, cancellationToken).ConfigureAwait(false);
+            return existingSchema;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarningNeo4jSchemaManager466(ex);
+            return null;
+        }
+    }
+
+    private async Task CollectSchemaObjectsAsync(
+        string query,
+        bool isConstraint,
+        Dictionary<string, Neo4jSchemaObjectDescriptor> existingSchema,
+        CancellationToken cancellationToken)
+    {
+        var session = _context.Driver.AsyncSession(builder => builder.WithDatabase(_context.DatabaseName));
+        await using var sessionLease = session.ConfigureAwait(false);
+        var executionTask = session.ExecuteReadAsync(
+            async transaction =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var result = await transaction.RunAsync(query).ConfigureAwait(false);
+                return await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+            });
+        var records = await executionTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        foreach (var record in records)
+        {
+            var descriptor = MapSchemaObject(record, isConstraint);
+            if (descriptor is not null)
+            {
+                existingSchema[descriptor.Name] = descriptor;
+            }
+        }
+    }
+
+    private static Neo4jSchemaObjectDescriptor? MapSchemaObject(IRecord record, bool isConstraint)
+    {
+        var entityType = Neo4jSchemaMetadata.GetEntityType(record["entityType"].As<string?>());
+        if (entityType is null)
+        {
+            return null;
+        }
+
+        var metadataType = record["type"].As<string>();
+        var kind = isConstraint
+            ? Neo4jSchemaMetadata.GetConstraintKind(metadataType)
+            : Neo4jSchemaMetadata.GetIndexKind(metadataType);
+        var labelsOrTypesValue = record["labelsOrTypes"];
+        var propertiesValue = record["properties"];
+
+        return new Neo4jSchemaObjectDescriptor(
+            record["name"].As<string>(),
+            kind,
+            entityType.Value,
+            labelsOrTypesValue is null ? [] : labelsOrTypesValue.As<List<string>>(),
+            propertiesValue is null ? [] : propertiesValue.As<List<string>>());
     }
 
     private async Task ExecuteManagedWriteAsync(
@@ -553,29 +753,16 @@ internal class Neo4jSchemaManager
                 var result = await transaction.RunAsync(query, new { name = requested.Name }).ConfigureAwait(false);
                 var records = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
                 var record = records.SingleOrDefault();
-                if (record is null)
-                {
-                    return null;
-                }
-
-                var metadataType = record["type"].As<string>();
-                var kind = isConstraint
-                    ? Neo4jSchemaMetadata.GetConstraintKind(metadataType)
-                    : Neo4jSchemaMetadata.GetIndexKind(metadataType);
-                var propertiesValue = record["properties"];
-
-                return new Neo4jSchemaObjectDescriptor(
-                    record["name"].As<string>(),
-                    kind,
-                    Neo4jSchemaMetadata.GetEntityType(record["entityType"].As<string>()),
-                    record["labelsOrTypes"].As<List<string>>(),
-                    propertiesValue is null ? [] : propertiesValue.As<List<string>>());
+                return record is null ? null : MapSchemaObject(record, isConstraint);
             });
 
         return await executionTask.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task CreateNodeIndexesAsync(string label, CancellationToken cancellationToken = default)
+    private async Task CreateNodeIndexesAsync(
+        string label,
+        SchemaSnapshot? existingSchema,
+        CancellationToken cancellationToken = default)
     {
         var schema = await _schemaRegistry.GetNodeSchemaAsync(label, cancellationToken).ConfigureAwait(false);
         if (schema == null) return;
@@ -590,7 +777,7 @@ internal class Neo4jSchemaManager
             }
 
             var indexName = $"idx_{label}_{propertySchema.Name}".ToLowerInvariant();
-            await CreateSchemaObjectAsync(
+            var created = await CreateSchemaObjectAsync(
                 new Neo4jSchemaObjectCreation(
                     new Neo4jSchemaObjectDescriptor(
                         indexName,
@@ -599,12 +786,19 @@ internal class Neo4jSchemaManager
                         [label],
                         [propertySchema.Name]),
                     $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR (n:{EscapedLabel(label)}) ON (n.{propertySchema.Name})"),
+                existingSchema,
                 cancellationToken).ConfigureAwait(false);
-            _logger.LogDebugNeo4jSchemaManager521(indexName, propertySchema.Name, label);
+            if (created)
+            {
+                _logger.LogDebugNeo4jSchemaManager521(indexName, propertySchema.Name, label);
+            }
         }
     }
 
-    private async Task CreateRelationshipIndexesAsync(string type, CancellationToken cancellationToken = default)
+    private async Task CreateRelationshipIndexesAsync(
+        string type,
+        SchemaSnapshot? existingSchema,
+        CancellationToken cancellationToken = default)
     {
         var schema = await _schemaRegistry.GetRelationshipSchemaAsync(type, cancellationToken).ConfigureAwait(false);
         if (schema == null) return;
@@ -619,7 +813,7 @@ internal class Neo4jSchemaManager
             }
 
             var indexName = $"idx_{type}_{propertySchema.Name}".ToLowerInvariant();
-            await CreateSchemaObjectAsync(
+            var created = await CreateSchemaObjectAsync(
                 new Neo4jSchemaObjectCreation(
                     new Neo4jSchemaObjectDescriptor(
                         indexName,
@@ -628,12 +822,18 @@ internal class Neo4jSchemaManager
                         [type],
                         [propertySchema.Name]),
                     $"CREATE INDEX {CypherIdentifier.EscapeIfNeeded(indexName, "index name")} FOR ()-[r:{EscapedType(type)}]-() ON (r.{propertySchema.Name})"),
+                existingSchema,
                 cancellationToken).ConfigureAwait(false);
-            _logger.LogDebugNeo4jSchemaManager557(indexName, propertySchema.Name, type);
+            if (created)
+            {
+                _logger.LogDebugNeo4jSchemaManager557(indexName, propertySchema.Name, type);
+            }
         }
     }
 
-    private async Task CreateGeneralFullTextIndexesAsync(CancellationToken cancellationToken = default)
+    private async Task CreateGeneralFullTextIndexesAsync(
+        SchemaSnapshot? existingSchema,
+        CancellationToken cancellationToken = default)
     {
         _logger.LogDebugNeo4jSchemaManager572();
 
@@ -666,7 +866,7 @@ internal class Neo4jSchemaManager
                 var labelList = string.Join("|", orderedLabels.Select(EscapedLabel));
                 var propList = string.Join(", ", orderedProperties.Select(property => $"n.{property}"));
 
-                await CreateSchemaObjectAsync(
+                var createdNodeIndex = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
                         new Neo4jSchemaObjectDescriptor(
                             "node_fulltext_index",
@@ -675,8 +875,13 @@ internal class Neo4jSchemaManager
                             orderedLabels,
                             orderedProperties),
                         $"CREATE FULLTEXT INDEX node_fulltext_index FOR (n:{labelList}) ON EACH [{propList}]"),
-                    cancellationToken).ConfigureAwait(false);
-                _logger.LogDebugNeo4jSchemaManager609(nodeLabels.Count, nodeStringProps.Count);
+                    existingSchema,
+                    cancellationToken,
+                    recreateIncompatibleIndex: true).ConfigureAwait(false);
+                if (createdNodeIndex)
+                {
+                    _logger.LogDebugNeo4jSchemaManager609(nodeLabels.Count, nodeStringProps.Count);
+                }
             }
             else
             {
@@ -710,7 +915,7 @@ internal class Neo4jSchemaManager
                 var typeList = string.Join("|", orderedTypes.Select(EscapedType));
                 var propList = string.Join(", ", orderedProperties.Select(property => $"r.{property}"));
 
-                await CreateSchemaObjectAsync(
+                var createdRelationshipIndex = await CreateSchemaObjectAsync(
                     new Neo4jSchemaObjectCreation(
                         new Neo4jSchemaObjectDescriptor(
                             "rel_fulltext_index",
@@ -719,8 +924,13 @@ internal class Neo4jSchemaManager
                             orderedTypes,
                             orderedProperties),
                         $"CREATE FULLTEXT INDEX rel_fulltext_index FOR ()-[r:{typeList}]-() ON EACH [{propList}]"),
-                    cancellationToken).ConfigureAwait(false);
-                _logger.LogDebugNeo4jSchemaManager644(relTypes.Count, relStringProps.Count);
+                    existingSchema,
+                    cancellationToken,
+                    recreateIncompatibleIndex: true).ConfigureAwait(false);
+                if (createdRelationshipIndex)
+                {
+                    _logger.LogDebugNeo4jSchemaManager644(relTypes.Count, relStringProps.Count);
+                }
             }
             else
             {

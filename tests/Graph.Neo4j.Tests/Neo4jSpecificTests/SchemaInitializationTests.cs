@@ -134,6 +134,27 @@ public sealed class SchemaInitializationTests : Neo4jTest
     }
 
     [Fact]
+    public async Task Initialization_OutdatedGeneralFullTextIndex_RecreatesIndexForCurrentModel()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await DropManagedSchemaAsync();
+
+        // Simulate a database initialized by an older model version: the provider-owned
+        // general full-text index exists but covers a different label/property set.
+        await ExecuteSchemaCommandAsync(
+            "CREATE FULLTEXT INDEX node_fulltext_index FOR (n:StaleLabel) ON EACH [n.StaleProperty]");
+
+        await using var driver = Neo4jHarness.CreateIndependentDriver();
+        await using var store = new Neo4jGraphStore(driver, harness.CurrentDatabaseName);
+
+        await store.Graph.CreateNodeAsync(new Class1(), null, cancellationToken);
+
+        var labels = await GetIndexLabelsOrTypesAsync("node_fulltext_index");
+        Assert.DoesNotContain("StaleLabel", labels);
+        Assert.Contains("Class1", labels);
+    }
+
+    [Fact]
     public async Task Initialization_IncompatibleNamedIndex_PreservesOriginalNeo4jError()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -210,6 +231,22 @@ public sealed class SchemaInitializationTests : Neo4jTest
         var records = await result.ToListAsync(TestContext.Current.CancellationToken);
 
         return records.Select(record => record["name"].As<string>()).ToArray();
+    }
+
+    private async Task<string[]> GetIndexLabelsOrTypesAsync(string indexName)
+    {
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
+        var neo4jTransaction = (GraphTransaction)transaction;
+
+        const string cypher = """
+            SHOW INDEXES YIELD name, labelsOrTypes
+            WHERE name = $name
+            RETURN labelsOrTypes
+            """;
+        var result = await neo4jTransaction.Transaction.RunAsync(cypher, new { name = indexName });
+        var record = await result.SingleAsync(TestContext.Current.CancellationToken);
+
+        return [.. record["labelsOrTypes"].As<List<string>>()];
     }
 
     private async Task<string[]> GetManagedConstraintNamesAsync()
