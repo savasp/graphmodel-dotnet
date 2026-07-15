@@ -17,7 +17,7 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        var rewriter = new ClauseRewriter(AliasCollector.Collect(input.Clauses));
+        var rewriter = new ClauseRewriter();
         var clauses = rewriter.RewriteClauses(input.Clauses);
         return rewriter.Changed
             ? new CypherStatement(clauses, input.Parameters, input.PathTypes)
@@ -51,37 +51,54 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
         }
     }
 
-    private sealed class ClauseRewriter(HashSet<string> statementAliases)
+    private sealed class ClauseRewriter
     {
+        private readonly HashSet<string> scope = new(StringComparer.Ordinal);
+
+        public ClauseRewriter(IReadOnlyList<string>? initialScope = null)
+        {
+            foreach (var alias in initialScope ?? [])
+            {
+                scope.Add(alias);
+            }
+        }
+
         public bool Changed { get; private set; }
 
         public ICypherClause[] RewriteClauses(IReadOnlyList<ICypherClause> clauses)
         {
             var rewritten = new List<ICypherClause>();
-            foreach (var clause in clauses)
+            for (var index = 0; index < clauses.Count; index++)
             {
-                switch (clause)
+                switch (clauses[index])
                 {
                     case WithClause { Wildcard: false } with:
                         RewriteProjectionClause(
                             rewritten,
+                            with,
                             with.Items,
+                            trailingExpressions: [],
                             items => new WithClause(items, with.Distinct));
+                        ProjectScope(with.Items);
                         break;
 
                     case ReturnClause @return:
                         RewriteProjectionClause(
                             rewritten,
+                            @return,
                             @return.Items,
+                            TrailingExpressions(clauses, index + 1),
                             items => new ReturnClause(items, @return.Distinct));
                         break;
 
                     case CallSubqueryClause subquery:
                         rewritten.Add(RewriteSubquery(subquery));
+                        BindSubqueryOutputs(subquery);
                         break;
 
-                    default:
+                    case var clause:
                         rewritten.Add(clause);
+                        BindClauseAliases(clause);
                         break;
                 }
             }
@@ -91,10 +108,11 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
 
         private void RewriteProjectionClause(
             List<ICypherClause> clauses,
+            ICypherClause original,
             IReadOnlyList<ReturnItem> items,
+            IEnumerable<CypherExpression> trailingExpressions,
             Func<IReadOnlyList<ReturnItem>, ICypherClause> createClause)
         {
-            var freeAliases = FreeAliasCollector.Collect(items.Select(item => item.Expression));
             var expressionRewriter = new ProjectionExpressionRewriter();
             var rewrittenItems = items
                 .Select(item => new ReturnItem(
@@ -103,7 +121,7 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
                 .ToArray();
             if (!expressionRewriter.Changed)
             {
-                clauses.Add(createClause(items));
+                clauses.Add(original);
                 return;
             }
 
@@ -113,7 +131,7 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
                 AppendHydrationClauses(
                     clauses,
                     expressionRewriter.HydrationAliases,
-                    BuildCarryAliases(freeAliases));
+                    BuildCarryAliases(items, trailingExpressions));
             }
 
             clauses.Add(createClause(rewrittenItems));
@@ -121,7 +139,7 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
 
         private CallSubqueryClause RewriteSubquery(CallSubqueryClause subquery)
         {
-            var nested = new ClauseRewriter(AliasCollector.Collect(subquery.Body, subquery.ImportedVariables));
+            var nested = new ClauseRewriter(subquery.ImportedVariables);
             var body = nested.RewriteClauses(subquery.Body);
             if (!nested.Changed)
             {
@@ -132,18 +150,22 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
             return new CallSubqueryClause(subquery.ImportedVariables, body);
         }
 
-        private List<string> BuildCarryAliases(IReadOnlyList<string> freeAliases)
+        private List<string> BuildCarryAliases(
+            IReadOnlyList<ReturnItem> items,
+            IEnumerable<CypherExpression> trailingExpressions)
         {
             var carry = new List<string>();
             foreach (var candidate in LegacyCarryCandidates())
             {
-                if (statementAliases.Contains(candidate))
+                if (scope.Contains(candidate))
                 {
                     carry.Add(candidate);
                 }
             }
 
-            foreach (var alias in freeAliases)
+            foreach (var alias in FreeAliasCollector.Collect(
+                items.Select(item => item.Expression),
+                scope))
             {
                 if (!carry.Contains(alias, StringComparer.Ordinal))
                 {
@@ -151,7 +173,121 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
                 }
             }
 
+            // ORDER BY/SKIP/LIMIT after a RETURN are evaluated against the pre-RETURN scope,
+            // so aliases they reference must survive the hydration pipes as well.
+            foreach (var alias in FreeAliasCollector.Collect(trailingExpressions, scope))
+            {
+                if (scope.Contains(alias) && !carry.Contains(alias, StringComparer.Ordinal))
+                {
+                    carry.Add(alias);
+                }
+            }
+
             return carry;
+        }
+
+        // Scope bookkeeping mirrors CypherAstValidator so the carried aliases are exactly the
+        // variables bound at the hydration insertion point.
+        private void BindClauseAliases(ICypherClause clause)
+        {
+            switch (clause)
+            {
+                case MatchClause match:
+                    foreach (var pattern in match.Patterns)
+                    {
+                        Bind(pattern.Alias);
+                        foreach (var element in pattern.Elements)
+                        {
+                            Bind(element switch
+                            {
+                                NodePattern node => node.Alias,
+                                RelationshipPattern relationship => relationship.Alias,
+                                _ => null,
+                            });
+                        }
+                    }
+
+                    break;
+
+                case UnwindClause unwind:
+                    Bind(unwind.Alias);
+                    break;
+
+                case CallClause call:
+                    foreach (var yield in call.Yields)
+                    {
+                        Bind(yield.Alias ?? yield.Name);
+                    }
+
+                    break;
+
+                case FullTextSearchClause search:
+                    Bind(search.Alias);
+                    if (search.Target == Cvoya.Graph.Querying.SearchRootTarget.Relationships)
+                    {
+                        Bind("src");
+                        Bind("tgt");
+                    }
+
+                    break;
+            }
+        }
+
+        private void BindSubqueryOutputs(CallSubqueryClause subquery)
+        {
+            if (subquery.Body[^1] is not ReturnClause @return)
+            {
+                return;
+            }
+
+            foreach (var item in @return.Items)
+            {
+                Bind(item.Alias ?? (item.Expression as VariableRef)?.Alias);
+            }
+        }
+
+        private void ProjectScope(IReadOnlyList<ReturnItem> items)
+        {
+            scope.Clear();
+            foreach (var item in items)
+            {
+                Bind(item.Alias ?? (item.Expression as VariableRef)?.Alias);
+            }
+        }
+
+        private void Bind(string? alias)
+        {
+            if (alias is not null)
+            {
+                scope.Add(alias);
+            }
+        }
+
+        private static IEnumerable<CypherExpression> TrailingExpressions(
+            IReadOnlyList<ICypherClause> clauses,
+            int start)
+        {
+            for (var index = start; index < clauses.Count; index++)
+            {
+                switch (clauses[index])
+                {
+                    case OrderByClause orderBy:
+                        foreach (var item in orderBy.Items)
+                        {
+                            yield return item.Expression;
+                        }
+
+                        break;
+
+                    case SkipClause skip:
+                        yield return skip.Count;
+                        break;
+
+                    case LimitClause limit:
+                        yield return limit.Count;
+                        break;
+                }
+            }
         }
 
         private static void AppendHydrationClauses(
@@ -317,121 +453,16 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
         }
     }
 
-    private static class AliasCollector
-    {
-        public static HashSet<string> Collect(
-            IReadOnlyList<ICypherClause> clauses,
-            IReadOnlyList<string>? initialAliases = null)
-        {
-            var aliases = initialAliases is null
-                ? new HashSet<string>(StringComparer.Ordinal)
-                : new HashSet<string>(initialAliases, StringComparer.Ordinal);
-            foreach (var clause in clauses)
-            {
-                switch (clause)
-                {
-                    case MatchClause match:
-                        foreach (var pattern in match.Patterns)
-                        {
-                            Add(pattern.Alias, aliases);
-                            foreach (var element in pattern.Elements)
-                            {
-                                Add(element switch
-                                {
-                                    NodePattern node => node.Alias,
-                                    RelationshipPattern relationship => relationship.Alias,
-                                    _ => null,
-                                }, aliases);
-                            }
-                        }
-
-                        break;
-
-                    case WhereClause where:
-                        AddFreeAliases(where.Predicate, aliases);
-                        break;
-
-                    case WithClause { Wildcard: false } with:
-                        AddItems(with.Items, aliases);
-                        break;
-
-                    case ReturnClause @return:
-                        AddItems(@return.Items, aliases);
-                        break;
-
-                    case UnwindClause unwind:
-                        AddFreeAliases(unwind.Source, aliases);
-                        Add(unwind.Alias, aliases);
-                        break;
-
-                    case CallClause call:
-                        foreach (var argument in call.Arguments)
-                        {
-                            AddFreeAliases(argument, aliases);
-                        }
-
-                        foreach (var yield in call.Yields)
-                        {
-                            Add(yield.Alias ?? yield.Name, aliases);
-                        }
-
-                        break;
-
-                    case OrderByClause orderBy:
-                        foreach (var item in orderBy.Items)
-                        {
-                            AddFreeAliases(item.Expression, aliases);
-                        }
-
-                        break;
-
-                    case SkipClause skip:
-                        AddFreeAliases(skip.Count, aliases);
-                        break;
-
-                    case LimitClause limit:
-                        AddFreeAliases(limit.Count, aliases);
-                        break;
-                }
-            }
-
-            return aliases;
-        }
-
-        private static void AddItems(IReadOnlyList<ReturnItem> items, HashSet<string> aliases)
-        {
-            foreach (var item in items)
-            {
-                AddFreeAliases(item.Expression, aliases);
-                Add(item.Alias, aliases);
-            }
-        }
-
-        private static void AddFreeAliases(CypherExpression expression, HashSet<string> aliases)
-        {
-            foreach (var alias in FreeAliasCollector.Collect([expression]))
-            {
-                aliases.Add(alias);
-            }
-        }
-
-        private static void Add(string? alias, HashSet<string> aliases)
-        {
-            if (alias is not null)
-            {
-                aliases.Add(alias);
-            }
-        }
-    }
-
-    private sealed class FreeAliasCollector
+    private sealed class FreeAliasCollector(IReadOnlySet<string> scope)
     {
         private readonly List<string> aliases = [];
         private readonly HashSet<string> bound = new(StringComparer.Ordinal);
 
-        public static List<string> Collect(IEnumerable<CypherExpression> expressions)
+        public static List<string> Collect(
+            IEnumerable<CypherExpression> expressions,
+            IReadOnlySet<string> scope)
         {
-            var collector = new FreeAliasCollector();
+            var collector = new FreeAliasCollector(scope);
             foreach (var expression in expressions)
             {
                 collector.Visit(expression);
@@ -526,11 +557,7 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
                     break;
 
                 case PatternSubqueryExpression subquery:
-                    if (subquery.Predicate is not null)
-                    {
-                        VisitPatternBound(subquery.Pattern, subquery.Predicate);
-                    }
-
+                    VisitPatternBound(subquery.Pattern, subquery.Predicate);
                     break;
 
                 case PatternComprehensionExpression comprehension:
@@ -552,13 +579,26 @@ internal sealed class AgeInlineComplexPropertyProjectionPass : ICypherPass
 
         private void VisitPatternBound(PathPattern pattern, params CypherExpression?[] expressions)
         {
-            var aliases = pattern.Elements.Select(element => element switch
+            var patternAliases = pattern.Elements.Select(element => element switch
             {
                 NodePattern node => node.Alias,
                 RelationshipPattern relationship => relationship.Alias,
                 _ => null,
             }).Append(pattern.Alias).OfType<string>().ToArray();
-            VisitBound(aliases, expressions);
+
+            // A pattern alias that is already bound in the enclosing scope references that
+            // variable; only the remaining aliases introduce local bindings.
+            foreach (var alias in patternAliases)
+            {
+                if (scope.Contains(alias))
+                {
+                    Add(alias);
+                }
+            }
+
+            VisitBound(
+                patternAliases.Where(alias => !scope.Contains(alias)).ToArray(),
+                expressions);
         }
 
         private void VisitBound(IReadOnlyList<string> aliasesToBind, params CypherExpression?[] expressions)

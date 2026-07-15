@@ -206,6 +206,107 @@ public sealed class AgeInlineComplexPropertyProjectionPassTests
     }
 
     [Fact]
+    public void CarriesOnlyAliasesInScopeAfterNarrowingWith()
+    {
+        var statement = Statement(
+            MatchPath(),
+            new WithClause([Variable("src")], distinct: false),
+            new ReturnClause(
+            [
+                new ReturnItem(new EntityProjectionExpression("src", loadComplexProperties: true), "Owner"),
+            ], distinct: false));
+
+        var lowered = entityPass.Run(pass.Run(statement));
+        new CypherAstValidator().Run(lowered);
+        var rendered = renderer.Render(lowered);
+
+        Assert.Contains(
+            "WITH src, CASE WHEN src_inline_relationships IS NULL",
+            rendered.Text,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "WITH src, collect(src_inline_path) AS src_inline_properties",
+            rendered.Text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CarriesOuterAliasReferencedInsidePatternComprehension()
+    {
+        var statement = Statement(
+            new MatchClause(
+            [
+                new PathPattern(
+                [
+                    new NodePattern("a", []),
+                    new RelationshipPattern("b", null, CypherDirection.Outgoing, depth: null),
+                    new NodePattern("c", []),
+                ]),
+            ], optional: false),
+            new ReturnClause(
+            [
+                new ReturnItem(
+                    new MapExpression(
+                    [
+                        new MapEntry(
+                            "Entity",
+                            new EntityProjectionExpression("a", loadComplexProperties: true)),
+                        new MapEntry(
+                            "Others",
+                            new PatternComprehensionExpression(
+                                new PathPattern(
+                                [
+                                    new NodePattern("c", []),
+                                    new RelationshipPattern("d", null, CypherDirection.Outgoing, depth: null),
+                                    new NodePattern("e", []),
+                                ]),
+                                new VariableRef("e"),
+                                predicate: null)),
+                    ]),
+                    "Row"),
+            ], distinct: false));
+
+        var lowered = entityPass.Run(pass.Run(statement));
+        new CypherAstValidator().Run(lowered);
+        var rendered = renderer.Render(lowered);
+
+        Assert.Contains(
+            "WITH a, c, CASE WHEN a_inline_relationships IS NULL",
+            rendered.Text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CarriesAliasReferencedByOrderByAfterReturn()
+    {
+        var statement = Statement(
+            new MatchClause(
+            [
+                new PathPattern(
+                [
+                    new NodePattern("a", []),
+                    new RelationshipPattern("b", null, CypherDirection.Outgoing, depth: null),
+                    new NodePattern("c", []),
+                ]),
+            ], optional: false),
+            new ReturnClause(
+            [
+                new ReturnItem(new EntityProjectionExpression("a", loadComplexProperties: true), "Owner"),
+            ], distinct: false),
+            new OrderByClause([new OrderByItem(new PropertyAccess(new VariableRef("c"), "Name"), descending: false)]));
+
+        var lowered = entityPass.Run(pass.Run(statement));
+        new CypherAstValidator().Run(lowered);
+        var rendered = renderer.Render(lowered);
+
+        Assert.Contains(
+            "WITH a, c, CASE WHEN a_inline_relationships IS NULL",
+            rendered.Text,
+            StringComparison.Ordinal);
+        Assert.EndsWith("ORDER BY c.Name", rendered.Text.TrimEnd(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReturnsSameStatementWhenNoInlineEntityProjectionExists()
     {
         var statement = Statement(
