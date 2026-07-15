@@ -179,6 +179,49 @@ public sealed class AgeLabelPatternPassTests
     }
 
     [Fact]
+    public void LowersSingleLabelToUnwrappedInheritancePredicate()
+    {
+        var statement = Statement(
+            Match(
+                optional: false,
+                new NodePattern("src", ["Person"])),
+            Return("src"));
+
+        var rendered = renderer.Render(pass.Run(statement));
+
+        Assert.Equal(
+            """
+            MATCH (src)
+            WHERE 'Person' IN coalesce(src.inheritance_labels, [])
+            RETURN src
+            """,
+            rendered.Text);
+    }
+
+    [Fact]
+    public void CollectsPredicatesAcrossCommaSeparatedPatternsInOneMatch()
+    {
+        var statement = Statement(
+            new MatchClause(
+                [
+                    new PathPattern([new NodePattern("a", ["Person"])]),
+                    new PathPattern([new NodePattern("b", ["Company"])]),
+                ],
+                optional: false),
+            Return("a"));
+
+        var rendered = renderer.Render(pass.Run(statement));
+
+        Assert.Equal(
+            """
+            MATCH (a), (b)
+            WHERE 'Person' IN coalesce(a.inheritance_labels, []) AND 'Company' IN coalesce(b.inheritance_labels, [])
+            RETURN a
+            """,
+            rendered.Text);
+    }
+
+    [Fact]
     public void ReturnsSameStatementWhenNoLabelsOrTypesExist()
     {
         var statement = Statement(
