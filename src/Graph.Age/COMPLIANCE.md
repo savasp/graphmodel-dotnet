@@ -5,7 +5,7 @@
 | Provider | `Cvoya.Graph.Age` (issue #86 implementation) |
 | Compliance suite | `Cvoya.Graph.CompatibilityTests` 1.0.0-alpha.20251014.0 |
 | Backing store | Apache AGE 1.7.0 / PostgreSQL 18 |
-| Date / run | 2026-07-14 / local strict certifying run; CI uses the same lane |
+| Date / run | 2026-07-15 / local strict certifying run; CI uses the same lane |
 
 ## Declared capabilities
 
@@ -15,8 +15,8 @@
 | Transactions | Yes | One PostgreSQL connection and transaction per graph transaction. |
 | NestedTransactions | No | |
 | ComplexPropertyCascade | Yes | Owned value nodes are deleted transactionally. |
-| CallSubqueries | No | |
-| PatternSizeProjection | No | |
+| CallSubqueries | Yes | Correlated collection shapes are lowered to grouped matches and projections. |
+| PatternSizeProjection | Yes | Pattern counts are lowered to sequential optional matches and grouped counts. |
 | MultiLabelMatch | Yes | An AGE AST pass lowers logical inheritance labels to AGE-compatible predicates. |
 | OrderByEntity | Yes | An AGE AST pass lowers entity ordering to the stable public `Id` key. |
 | ShortestPath | No | |
@@ -25,8 +25,11 @@
 ## Structured Cypher lowering
 
 After the shared planner produces a `CypherStatement`, the AGE query adapter runs an ordered
-`CypherPassRunner` before rendering. `AgeLabelPatternPass` removes node labels and relationship
-types from match patterns and adds equivalent `inheritance_labels` predicates;
+`CypherPassRunner` before rendering. `AgeCorrelatedProjectionPass` replaces AGE-unsupported pattern
+comprehensions and `CALL {}` clauses with one correlated match plus grouped `collect`/aggregate
+projections; independent pattern counts become sequential optional matches, preserving zero-count
+owners without multiplying sibling counts. `AgeLabelPatternPass` then removes node labels and
+relationship types from those and other match patterns and adds equivalent `inheritance_labels` predicates;
 `AgeClauseOrderPass` moves ordering and paging without parsing rendered Cypher (including the
 path-decomposition and aggregate exceptions), while
 `AgeTemporalParameterArithmeticPass` unwraps AGE-unsupported temporal constructors and folds
@@ -88,13 +91,13 @@ Semantics (the contract floor the shared TCK pins):
 
 | Inventory test methods | Executed | Capability-skipped | Statically skipped | Failed |
 |---|---|---|---|---|
-| 410 | 379 | 31 | 1 | 0 |
+| 410 | 399 | 11 | 1 | 0 |
 
 The compatibility inventory contains 410 runnable test methods. For this capability set (which now
-declares `FullTextSearch`), `ComplianceInventory.MinimumExecuted(declared)` is 379 methods and the
-strict compliance guard passes; the remaining 31 capability skips are the `CallSubqueries` /
-`PatternSizeProjection` tests (tracked by #308) plus the `GroupByAggregation` suite (tracked by
-#330). Theory data rows make the runtime case count
+declares `FullTextSearch`, `CallSubqueries`, and `PatternSizeProjection`),
+`ComplianceInventory.MinimumExecuted(declared)` is 399 methods and the strict compliance guard
+passes; the remaining 11 capability skips are the `GroupByAggregation` suite (tracked by #330).
+Theory data rows make the runtime case count
 slightly larger than the method inventory. The suite also contains one statically skipped,
 issue-tracked test; the inventory deliberately excludes it, so it is not counted as a capability
 skip above. The provider-specific adapter, dialect, SQL-envelope, full-text, and security tests are

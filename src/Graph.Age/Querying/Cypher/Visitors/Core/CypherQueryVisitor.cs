@@ -19,6 +19,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
 {
     private static readonly CypherPassRunner LoweringPasses = new(
     [
+        new AgeCorrelatedProjectionPass(),
         new AgeLabelPatternPass(),
         new AgeClauseOrderPass(),
         new AgeTemporalParameterArithmeticPass(),

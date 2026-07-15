@@ -41,7 +41,8 @@ internal sealed class AgeEntityProjectionPass : ICypherPass
 
     private static bool IsReservedAlias(string alias) =>
         string.Equals(alias, "exists", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(alias, "contains", StringComparison.OrdinalIgnoreCase);
+        string.Equals(alias, "contains", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(alias, "count", StringComparison.OrdinalIgnoreCase);
 
     private static string EscapeReservedAlias(string alias) =>
         IsReservedAlias(alias) ? $"`{alias}`" : alias;

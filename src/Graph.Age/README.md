@@ -44,13 +44,26 @@ An application that already owns its connection pool can pass an AGE-enabled
 - ACID transactions on a dedicated PostgreSQL connection;
 - complex-property persistence and cascading cleanup;
 - inheritance queries through one physical AGE label plus `inheritance_labels`;
-- full-text search, lowered to a two-phase Postgres text-search query (see below); and
+- full-text search, lowered to a two-phase Postgres text-search query (see below);
+- correlated collection projections and relationship/complex-collection counts, lowered to
+  AGE-supported grouped matches (see below); and
 - agtype adaptation for vertices, edges, paths, maps, arrays, large integers, decimals, and
   ISO-8601 temporal values.
 
-The provider does not declare nested transactions, call subqueries, pattern-size projections, or
-shortest path. Unsupported operations fail during translation or are capability-skipped by the
-provider compatibility suite.
+The provider does not declare nested transactions, scalar-key grouped aggregation, or shortest
+path. Unsupported operations fail during translation or are capability-skipped by the provider
+compatibility suite.
+
+### Correlated collections and pattern counts
+
+Apache AGE 1.7 cannot execute Cypher pattern comprehensions, `COUNT { MATCH ... }`, or `CALL {}`
+subqueries directly. The provider implements the corresponding shared capabilities through an
+AGE-local structured AST pass before rendering. Correlated collection queries match the traversal
+once and group by its source node, using `collect`, conditional `count`, ordinary aggregates, and
+ordered/nested `WITH` stages as required. Independent relationship-degree and complex-collection
+counts use sequential `OPTIONAL MATCH` stages so owners with no match return zero and multiple
+counts in one projection do not multiply each other. The resulting nested lists and maps continue
+through the provider-neutral result wire model and shared materializer.
 
 ### Full-text search
 
