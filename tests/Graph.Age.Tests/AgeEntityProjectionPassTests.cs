@@ -303,6 +303,50 @@ public sealed class AgeEntityProjectionPassTests
     }
 
     [Fact]
+    public void ExpandsPathSegmentPropertyLoadsToStructuredLegacyGoldenOutput()
+    {
+        var statement = Statement(
+            new MatchClause(
+            [
+                new PathPattern(
+                [
+                    new NodePattern("src", []),
+                    new RelationshipPattern("r", null, CypherDirection.Outgoing, depth: null),
+                    new NodePattern("tgt", []),
+                ]),
+            ], optional: false),
+            new EntityProjectionClause(
+                EntityProjectionShape.PathSegment,
+                "src",
+                "r",
+                "tgt",
+                loadSourceProperties: true,
+                loadTargetProperties: true));
+
+        var lowered = pass.Run(statement);
+        var rendered = renderer.Render(lowered);
+
+        Assert.Equal(
+            """
+            MATCH (src)-[r]->(tgt)
+            OPTIONAL MATCH (src)-[rels*1..5]->(prop)
+            WHERE coalesce(rels[toInteger(0)].__graphModelComplexProperty, false) = true
+            WITH src, r, tgt, CASE WHEN rels IS NULL THEN [] ELSE [i IN range(0, size(rels) - 1) | { ParentNode: CASE WHEN i = 0 THEN src ELSE startNode(rels[toInteger(i)]) END, Relationship: rels[toInteger(i)], SequenceNumber: rels[toInteger(i)].SequenceNumber, Property: endNode(rels[toInteger(i)]) }] END AS src_property_path
+            WITH src, r, tgt, collect(src_property_path) AS src_properties
+            OPTIONAL MATCH (tgt)-[trels*1..5]->(tprop)
+            WHERE coalesce(trels[toInteger(0)].__graphModelComplexProperty, false) = true
+            WITH src, r, tgt, src_properties, CASE WHEN trels IS NULL THEN [] ELSE [i IN range(0, size(trels) - 1) | { ParentNode: CASE WHEN i = 0 THEN tgt ELSE startNode(trels[toInteger(i)]) END, Relationship: trels[toInteger(i)], SequenceNumber: trels[toInteger(i)].SequenceNumber, Property: endNode(trels[toInteger(i)]) }] END AS tgt_property_path
+            WITH src, r, tgt, src_properties, collect(tgt_property_path) AS tgt_properties
+            RETURN { StartNode: { Node: src, ComplexProperties: src_properties }, Relationship: r, EndNode: { Node: tgt, ComplexProperties: tgt_properties } } AS PathSegment
+            """,
+            rendered.Text);
+        Assert.DoesNotContain(lowered.Clauses, clause => clause is EntityProjectionClause);
+        Assert.DoesNotContain("ALL(", rendered.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("reduce(", rendered.Text, StringComparison.Ordinal);
+        Assert.Equal(["PathSegment"], rendered.ProjectionColumns);
+    }
+
+    [Fact]
     public void LowersEntityProjectionInsideCallSubquery()
     {
         var statement = Statement(

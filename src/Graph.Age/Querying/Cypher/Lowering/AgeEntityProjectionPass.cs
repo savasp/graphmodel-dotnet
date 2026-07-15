@@ -259,9 +259,8 @@ internal sealed class AgeEntityProjectionPass : ICypherPass
             else
             {
                 clauses.Add(new WithClause(
-                    aliases.Select(Variable)
+                    CarryItems(aliases, projection.Ordering)
                         .Append(Variable("src_properties"))
-                        .Concat(ProjectionOrderItems(projection.Ordering))
                         .Append(new ReturnItem(new ListExpression([]), "tgt_properties"))
                         .ToArray(),
                     distinct: false));
