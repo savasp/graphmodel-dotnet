@@ -29,7 +29,7 @@ public sealed class AgeScalarGroupByTranslationTests
 
         Assert.Contains("MATCH (src)", translated.Text);
         Assert.Contains("WHERE", translated.Text);
-        Assert.Contains("WITH src.LastName AS __key", translated.Text);
+        Assert.Contains("src.Age >= $p0\nWITH src.LastName AS __key", translated.Text);
         Assert.Contains("count(src) AS __a0", translated.Text);
         Assert.Contains("coalesce(sum(src.Age), 0) AS __a1", translated.Text);
         Assert.Contains("avg(src.Age) AS __a2", translated.Text);
