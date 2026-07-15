@@ -54,6 +54,19 @@ columns for `Count`, `Sum`, `Average`, `Min`, and `Max`; key-only projections us
 The normal AGE label, alias, and empty-sum passes operate on that AST before rendering. Unsupported
 grouping shapes retain the provider-neutral validation message and fail before execution.
 
+## Atomic subgraph creation
+
+`CreateAsync(source, relationship, target, options)` sends its existence and schema-uniqueness
+probes, conditional endpoint writes, breadth-first complex-property levels, relationship write, and
+transient-marker cleanup through one `NpgsqlBatch.ExecuteReaderAsync` call. Value-node and
+complex-property relationship IDs are assigned before execution, so no batch command depends on a
+client read from an earlier result set. Create-only mode gates both roots together; create-missing
+mode gates each root independently and never updates or extends a matched endpoint. Failures found
+in later result sets roll back the provider-owned transaction or the operation savepoint inside a
+caller-owned transaction. This shape is covered against the pinned Apache AGE 1.7.0 / PostgreSQL 18
+runtime in both endpoint modes, with nested complex properties on both endpoints and an internal
+execution-boundary counter asserting one batch round-trip.
+
 ## Full-text search
 
 AGE cannot express full-text matching in its Cypher subset, so the provider lowers it to Postgres

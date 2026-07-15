@@ -42,6 +42,8 @@ An application that already owns its connection pool can pass an AGE-enabled
 - typed and dynamic node/relationship CRUD;
 - shared LINQ-to-Cypher translation and streaming queries;
 - ACID transactions on a dedicated PostgreSQL connection;
+- atomic endpoint–relationship–endpoint creation in one Npgsql batch round-trip, including nested
+  complex-property subtrees and create-missing endpoint semantics;
 - complex-property persistence and cascading cleanup;
 - inheritance queries through one physical AGE label plus `inheritance_labels`;
 - full-text search, lowered to a two-phase Postgres text-search query (see below);

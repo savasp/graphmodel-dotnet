@@ -111,7 +111,12 @@ internal sealed class AgeGraphTransaction : IGraphTransaction
                 await readOnly.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            runner = new AgeQueryRunner(context.GraphName, connection, transaction, context.LoggerFactory);
+            runner = new AgeQueryRunner(
+                context.GraphName,
+                connection,
+                transaction,
+                context.LoggerFactory,
+                context.Store.BatchExecutionObserver);
         }
         catch
         {

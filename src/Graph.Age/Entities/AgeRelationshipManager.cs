@@ -209,12 +209,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             _ => throw new GraphException($"Unsupported relationship direction '{direction}'.")
         };
 
-        var properties = SerializationHelpers.SerializeSimpleProperties(entity)
-            .Where(kv => !_ignoredProperties.Contains(kv.Key))
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
-
-        properties[nameof(Graph.IRelationship.Type)] = entity.Label;
-        properties["inheritance_labels"] = GetInheritanceLabels(entity.ActualType);
+        var properties = BuildRelationshipProperties(entity);
         var parameters = new Dictionary<string, object?>
         {
             ["sourceNodeId"] = sourceNodeId,
@@ -253,11 +248,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         AgeQueryRunner transaction,
         CancellationToken cancellationToken)
     {
-        var properties = SerializationHelpers.SerializeSimpleProperties(entity)
-            .Where(kv => !_ignoredProperties.Contains(kv.Key))
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
-        properties[nameof(Graph.IRelationship.Type)] = entity.Label;
-        properties["inheritance_labels"] = GetInheritanceLabels(entity.ActualType);
+        var properties = BuildRelationshipProperties(entity);
         var lookup = await transaction.RunAsync(
             "MATCH ()-[r {Id: $relId}]->() RETURN r.Direction AS storedDirection",
             new { relId = relationshipId }, cancellationToken).ConfigureAwait(false);
@@ -304,7 +295,17 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 : RelationshipDirection.Outgoing;
     }
 
-    private static string[] GetInheritanceLabels(Type actualType)
+    internal static Dictionary<string, object?> BuildRelationshipProperties(EntityInfo entity)
+    {
+        var properties = SerializationHelpers.SerializeSimpleProperties(entity)
+            .Where(kv => !_ignoredProperties.Contains(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+        properties[nameof(Graph.IRelationship.Type)] = entity.Label;
+        properties["inheritance_labels"] = GetInheritanceLabels(entity.ActualType);
+        return properties;
+    }
+
+    internal static string[] GetInheritanceLabels(Type actualType)
     {
         var labels = new List<string>();
         for (var type = actualType; type is not null && typeof(Graph.IRelationship).IsAssignableFrom(type); type = type.BaseType)
@@ -320,7 +321,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         return labels.Distinct(StringComparer.Ordinal).ToArray();
     }
 
-    private void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Graph.IRelationship
+    internal void ValidateRelationshipProperties<TRelationship>(TRelationship relationship) where TRelationship : class, Graph.IRelationship
     {
         // For DynamicRelationship, validate against existing schemas if any
         if (relationship is DynamicRelationship dynamicRelationship)
@@ -366,38 +367,58 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         CancellationToken cancellationToken)
         where TRelationship : class, Graph.IRelationship
     {
+        foreach (var check in BuildRelationshipUniquenessChecks(relationship, excludeId))
+        {
+            var result = await transaction.RunAsync(
+                check.Cypher,
+                check.Parameters,
+                cancellationToken).ConfigureAwait(false);
+            var count = (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["duplicateCount"].As<long>();
+            if (count > 0)
+            {
+                throw new GraphException(check.ErrorMessage);
+            }
+        }
+    }
+
+    internal IReadOnlyList<AgeUniquenessCheck> BuildRelationshipUniquenessChecks<TRelationship>(
+        TRelationship relationship,
+        string? excludeId)
+        where TRelationship : class, Graph.IRelationship
+    {
         if (relationship is DynamicRelationship)
         {
-            return;
+            return [];
         }
 
         var type = Labels.GetLabelFromType(relationship.GetType());
         var schema = context.SchemaManager.GetSchemaRegistry().GetRelationshipSchema(type);
         if (schema is null)
         {
-            return;
+            return [];
         }
 
+        var checks = new List<AgeUniquenessCheck>();
         var keyProperties = schema.GetKeyProperties().ToArray();
         if (keyProperties.Length > 0)
         {
-            await AssertNoMatchingRelationshipAsync(keyProperties, "composite key", type).ConfigureAwait(false);
+            checks.Add(BuildCheck(keyProperties, "composite key"));
         }
 
         foreach (var property in schema.Properties.Values.Where(property => property.IsUnique && !property.IsKey))
         {
-            await AssertNoMatchingRelationshipAsync([property], $"unique property '{property.Name}'", type)
-                .ConfigureAwait(false);
+            checks.Add(BuildCheck([property], $"unique property '{property.Name}'"));
         }
 
-        async Task AssertNoMatchingRelationshipAsync(
+        return checks;
+
+        AgeUniquenessCheck BuildCheck(
             IReadOnlyList<PropertySchemaInfo> properties,
-            string constraint,
-            string relationshipType)
+            string constraint)
         {
             var parameters = new Dictionary<string, object?>
             {
-                ["relationshipType"] = relationshipType,
+                ["relationshipType"] = type,
                 ["excludeId"] = excludeId,
             };
             var predicates = new List<string>
@@ -409,23 +430,23 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 predicates.Add("r.Id <> $excludeId");
             }
 
+            var values = new List<object?>(properties.Count);
             for (var index = 0; index < properties.Count; index++)
             {
                 var property = properties[index];
                 var parameterName = $"uniqueValue{index}";
-                parameters[parameterName] = SerializationBridge.ToAgeValue(property.PropertyInfo.GetValue(relationship));
+                var value = SerializationBridge.ToAgeValue(property.PropertyInfo.GetValue(relationship));
+                parameters[parameterName] = value;
+                values.Add(value);
                 predicates.Add($"r.{CypherIdentifier.Escape(property.Name, "property name")} = ${parameterName}");
             }
 
-            var result = await transaction.RunAsync(
+            var constraintKey = $"{type}\u001f{constraint}\u001f{System.Text.Json.JsonSerializer.Serialize(values)}";
+            return new AgeUniquenessCheck(
                 $"MATCH ()-[r]->() WHERE {string.Join(" AND ", predicates)} RETURN count(r) AS duplicateCount",
                 parameters,
-                cancellationToken).ConfigureAwait(false);
-            var count = (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["duplicateCount"].As<long>();
-            if (count > 0)
-            {
-                throw new GraphException($"Relationship '{relationshipType}' violates {constraint} uniqueness.");
-            }
+                $"Relationship '{type}' violates {constraint} uniqueness.",
+                constraintKey);
         }
     }
 

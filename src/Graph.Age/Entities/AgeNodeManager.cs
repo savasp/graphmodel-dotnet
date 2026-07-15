@@ -281,9 +281,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         AgeQueryRunner transaction,
         CancellationToken cancellationToken)
     {
-        var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
-        simpleProperties[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
-        simpleProperties["inheritance_labels"] = GetInheritanceLabels(entity);
+        var simpleProperties = BuildNodeProperties(entity);
         var parameters = new Dictionary<string, object?>();
         var setClause = AgeCypherProperties.BuildSetClause("n", simpleProperties, parameters, "nodeProperty");
         var cypher = $"CREATE (n:{SerializationBridge.PhysicalNodeLabel}) {setClause} RETURN id(n) AS nodeId";
@@ -325,9 +323,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         AgeQueryRunner transaction,
         CancellationToken cancellationToken)
     {
-        var simpleProperties = SerializationHelpers.SerializeSimpleProperties(entity);
-        simpleProperties[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
-        simpleProperties["inheritance_labels"] = GetInheritanceLabels(entity);
+        var simpleProperties = BuildNodeProperties(entity);
         var parameters = new Dictionary<string, object?> { ["nodeId"] = nodeId };
         var setClause = AgeCypherProperties.BuildSetClause("n", simpleProperties, parameters, "nodeProperty");
         var cypher = $"MATCH (n {{Id: $nodeId}}) {setClause} RETURN id(n) AS elementId";
@@ -344,7 +340,15 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         return records.Count > 0 ? records[0]["elementId"].As<string>() : null;
     }
 
-    private static IReadOnlyList<string> GetInheritanceLabels(EntityInfo entity)
+    internal static Dictionary<string, object?> BuildNodeProperties(EntityInfo entity)
+    {
+        var properties = SerializationHelpers.SerializeSimpleProperties(entity);
+        properties[SerializationBridge.EntityKindPropertyName] = SerializationBridge.NodeEntityKind;
+        properties["inheritance_labels"] = GetInheritanceLabels(entity);
+        return properties;
+    }
+
+    internal static IReadOnlyList<string> GetInheritanceLabels(EntityInfo entity)
     {
         if (entity.ActualType == typeof(Graph.DynamicNode))
         {
@@ -365,7 +369,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         return labels.Distinct(StringComparer.Ordinal).ToArray();
     }
 
-    private void ValidateNodeProperties<TNode>(TNode node) where TNode : class, Graph.INode
+    internal void ValidateNodeProperties<TNode>(TNode node) where TNode : class, Graph.INode
     {
         // For DynamicNode, validate against existing schemas if any
         if (node is DynamicNode dynamicNode)
@@ -415,37 +419,58 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         CancellationToken cancellationToken)
         where TNode : class, Graph.INode
     {
+        foreach (var check in BuildNodeUniquenessChecks(node, excludeId))
+        {
+            var result = await transaction.RunAsync(
+                check.Cypher,
+                check.Parameters,
+                cancellationToken).ConfigureAwait(false);
+            var count = (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["duplicateCount"].As<long>();
+            if (count > 0)
+            {
+                throw new GraphException(check.ErrorMessage);
+            }
+        }
+    }
+
+    internal IReadOnlyList<AgeUniquenessCheck> BuildNodeUniquenessChecks<TNode>(
+        TNode node,
+        string? excludeId)
+        where TNode : class, Graph.INode
+    {
         if (node is DynamicNode)
         {
-            return;
+            return [];
         }
 
         var label = Labels.GetLabelFromType(node.GetType());
         var schema = context.SchemaManager.GetSchemaRegistry().GetNodeSchema(label);
         if (schema is null)
         {
-            return;
+            return [];
         }
 
+        var checks = new List<AgeUniquenessCheck>();
         var keyProperties = schema.GetKeyProperties().ToArray();
         if (keyProperties.Length > 0)
         {
-            await AssertNoMatchingNodeAsync(keyProperties, "composite key", label).ConfigureAwait(false);
+            checks.Add(BuildCheck(keyProperties, "composite key"));
         }
 
         foreach (var property in schema.Properties.Values.Where(property => property.IsUnique && !property.IsKey))
         {
-            await AssertNoMatchingNodeAsync([property], $"unique property '{property.Name}'", label).ConfigureAwait(false);
+            checks.Add(BuildCheck([property], $"unique property '{property.Name}'"));
         }
 
-        async Task AssertNoMatchingNodeAsync(
+        return checks;
+
+        AgeUniquenessCheck BuildCheck(
             IReadOnlyList<PropertySchemaInfo> properties,
-            string constraint,
-            string entityLabel)
+            string constraint)
         {
             var parameters = new Dictionary<string, object?>
             {
-                ["entityLabel"] = entityLabel,
+                ["entityLabel"] = label,
                 ["excludeId"] = excludeId,
             };
             var predicates = new List<string>
@@ -457,23 +482,23 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
                 predicates.Add("n.Id <> $excludeId");
             }
 
+            var values = new List<object?>(properties.Count);
             for (var index = 0; index < properties.Count; index++)
             {
                 var property = properties[index];
                 var parameterName = $"uniqueValue{index}";
-                parameters[parameterName] = SerializationBridge.ToAgeValue(property.PropertyInfo.GetValue(node));
+                var value = SerializationBridge.ToAgeValue(property.PropertyInfo.GetValue(node));
+                parameters[parameterName] = value;
+                values.Add(value);
                 predicates.Add($"n.{CypherIdentifier.Escape(property.Name, "property name")} = ${parameterName}");
             }
 
-            var result = await transaction.RunAsync(
+            var constraintKey = $"{label}\u001f{constraint}\u001f{System.Text.Json.JsonSerializer.Serialize(values)}";
+            return new AgeUniquenessCheck(
                 $"MATCH (n) WHERE {string.Join(" AND ", predicates)} RETURN count(n) AS duplicateCount",
                 parameters,
-                cancellationToken).ConfigureAwait(false);
-            var count = (await result.SingleAsync(cancellationToken).ConfigureAwait(false))["duplicateCount"].As<long>();
-            if (count > 0)
-            {
-                throw new GraphException($"Node '{entityLabel}' violates {constraint} uniqueness.");
-            }
+                $"Node '{label}' violates {constraint} uniqueness.",
+                constraintKey);
         }
     }
 

@@ -268,17 +268,17 @@ internal class AgeGraph : IGraph
             // Ensure schema is created before any transaction (to avoid mixing schema and data operations)
             await _graphContext.SchemaManager.InitializeSchemaAsync(cancellationToken).ConfigureAwait(false);
 
-            // Both endpoint nodes (with their complex-property subtrees) and the edge are created
-            // within one AGE transaction, so any failure rolls back the whole subgraph.
+            // Both endpoint nodes (with their complex-property subtrees) and the edge cross the
+            // Npgsql execution boundary in one batch. Any validation or creation guard failure is
+            // surfaced after the batch and rolls back the whole operation.
             await TransactionHelpers.ExecuteInTransactionAsync(
                 _graphContext,
                 transaction,
                 async tx =>
                 {
-                    // The provider implementation is intentionally multi-statement. When the caller
-                    // owns the surrounding transaction, isolate this operation behind a savepoint so
-                    // a later endpoint/relationship failure cannot leave partial writes that the caller
-                    // could subsequently commit.
+                    // When the caller owns the surrounding transaction, isolate the batch behind a
+                    // savepoint so a post-execution validation failure cannot leave its writes for the
+                    // caller to commit.
                     var savepoint = transaction is null ? null : $"cvoya_subgraph_{Guid.NewGuid():N}";
                     if (savepoint is not null)
                     {
@@ -287,18 +287,13 @@ internal class AgeGraph : IGraph
 
                     try
                     {
-                        if (createMissingEndpoints)
-                        {
-                            await _graphContext.NodeManager.CreateNodeIfMissingAsync(source, tx, cancellationToken).ConfigureAwait(false);
-                            await _graphContext.NodeManager.CreateNodeIfMissingAsync(target, tx, cancellationToken).ConfigureAwait(false);
-                        }
-                        else
-                        {
-                            await _graphContext.NodeManager.CreateNodeAsync(source, tx, cancellationToken).ConfigureAwait(false);
-                            await _graphContext.NodeManager.CreateNodeAsync(target, tx, cancellationToken).ConfigureAwait(false);
-                        }
-
-                        await _graphContext.RelationshipManager.CreateRelationshipAsync(relationship, tx, cancellationToken).ConfigureAwait(false);
+                        await _graphContext.SubgraphManager.CreateSubgraphAsync(
+                            source,
+                            relationship,
+                            target,
+                            createMissingEndpoints,
+                            tx,
+                            cancellationToken).ConfigureAwait(false);
 
                         if (savepoint is not null)
                         {

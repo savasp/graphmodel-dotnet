@@ -31,6 +31,19 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         Dictionary<string, object?> NodeProperties,
         Dictionary<string, object?> RelationshipProperties);
 
+    /// <summary>
+    /// A deterministically-addressed value node used by subgraph batching. Root and parent IDs are
+    /// domain IDs precomputed before execution, so no result from one batch command must be fed to
+    /// another by the client.
+    /// </summary>
+    internal sealed record SubgraphValueNode(
+        string RootId,
+        string ParentId,
+        string RelationshipType,
+        EntityInfo Entity,
+        Dictionary<string, object?> NodeProperties,
+        Dictionary<string, object?> RelationshipProperties);
+
     public async Task CreateComplexPropertiesAsync(
         AgeQueryRunner transaction,
         string parentId,
@@ -46,6 +59,46 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             var pending = CollectPendingValueNodes(currentLevel, depth);
             currentLevel = await CreateLevelAsync(transaction, pending, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    internal IReadOnlyList<IReadOnlyList<SubgraphValueNode>> PlanSubgraphValueNodes(
+        params (string RootId, EntityInfo Entity)[] roots)
+    {
+        var levels = new List<IReadOnlyList<SubgraphValueNode>>();
+        var currentLevel = roots
+            .Select(root => (root.RootId, ParentId: root.RootId, root.Entity))
+            .ToList();
+
+        for (var depth = 0; currentLevel.Count > 0; depth++)
+        {
+            var pending = new List<SubgraphValueNode>();
+            foreach (var (rootId, parentId, entity) in currentLevel)
+            {
+                var children = CollectPendingValueNodes([(parentId, entity)], depth);
+                pending.AddRange(children.Select(child => new SubgraphValueNode(
+                    rootId,
+                    child.ParentElementId,
+                    child.RelationshipType,
+                    child.Entity,
+                    child.NodeProperties,
+                    child.RelationshipProperties)));
+            }
+
+            if (pending.Count == 0)
+            {
+                break;
+            }
+
+            levels.Add(pending);
+            currentLevel = pending.Select(child =>
+            {
+                var id = child.NodeProperties[nameof(Graph.IEntity.Id)] as string
+                    ?? throw new GraphException("A planned complex property node has no domain ID.");
+                return (child.RootId, ParentId: id, child.Entity);
+            }).ToList();
+        }
+
+        return levels;
     }
 
     private List<PendingValueNode> CollectPendingValueNodes(
@@ -206,7 +259,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
         return nextLevel;
     }
 
-    private static Dictionary<string, object?> ExpandProperties(
+    internal static Dictionary<string, object?> ExpandProperties(
         Dictionary<string, object?> properties,
         IReadOnlyList<string> propertyNames)
     {
@@ -216,7 +269,7 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
             StringComparer.Ordinal);
     }
 
-    private static string BuildSetClauseFromRowMap(
+    internal static string BuildSetClauseFromRowMap(
         string alias,
         string rowMap,
         IReadOnlyList<string> propertyNames)
