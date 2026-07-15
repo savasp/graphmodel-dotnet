@@ -4,6 +4,10 @@ title: Conceptual Documentation
 
 # Conceptual Documentation
 
+CVOYA Graph is downloadable open-source software from [CVOYA](https://cvoya.com). [Download the
+current source (.zip)](https://github.com/cvoya-com/graph/archive/refs/heads/main.zip), visit the
+[repository](https://github.com/cvoya-com/graph), or see the [CVOYA software catalog](https://cvoya.com/software).
+
 ## Use CVOYA Graph
 
 - [Core concepts]({{ "/docs/core-concepts.html" | relative_url }})
