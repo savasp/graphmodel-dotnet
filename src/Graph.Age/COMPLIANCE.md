@@ -27,8 +27,13 @@
 After the shared planner produces a `CypherStatement`, the AGE query adapter runs an ordered
 `CypherPassRunner` before rendering. `AgeCorrelatedProjectionPass` replaces AGE-unsupported pattern
 comprehensions and `CALL {}` clauses with one correlated match plus grouped `collect`/aggregate
-projections; independent pattern counts become sequential optional matches, preserving zero-count
-owners without multiplying sibling counts. `AgeLabelPatternPass` then removes node labels and
+projections — per-projection filters become conditional aggregation so one filtered projection
+cannot narrow its siblings, and the anchoring existence filter becomes a grouped row-count guard;
+independent pattern counts and `EXISTS`/`COUNT` predicates in `WHERE` become sequential optional
+matches, preserving zero-count owners without multiplying sibling counts (AGE parses `EXISTS { }`
+and `COUNT { }` but silently matches nothing, so nothing is left for the renderer to emit natively).
+Two correlated shapes have no equivalent staging and are rejected at translation time: a filtered
+nested grouping and multiple ordered collections in one projection. `AgeLabelPatternPass` then removes node labels and
 relationship types from those and other match patterns and adds equivalent `inheritance_labels` predicates;
 `AgeClauseOrderPass` moves ordering and paging without parsing rendered Cypher (including the
 path-decomposition and aggregate exceptions), while
