@@ -7,7 +7,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' != 'Release'">
+    <ProjectReference Include="../../src/Graph.Neo4j/Graph.Neo4j.csproj" />
+    <ProjectReference Include="../../src/Graph.Analyzers/Graph.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
     <PackageReference Include="Cvoya.Graph.Neo4j" />
     <PackageReference Include="Cvoya.Graph.Analyzers" />
   </ItemGroup>
