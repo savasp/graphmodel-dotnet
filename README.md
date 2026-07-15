@@ -5,7 +5,10 @@
 
 # CVOYA Graph
 
-**A [CVOYA](https://cvoya.com) project.** Part of [the code CVOYA publishes](https://oss.cvoya.com/).
+**Downloadable open-source software from [CVOYA](https://cvoya.com).** See the
+[CVOYA software catalog](https://cvoya.com/software).
+
+**[Download the current CVOYA Graph source (.zip)](https://github.com/cvoya-com/graph/archive/refs/heads/main.zip)**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![.NET](https://img.shields.io/badge/.NET-10.0+-purple.svg)](https://dotnet.microsoft.com/download)
@@ -48,7 +51,8 @@ To get started, install the provider package for your graph database:
 | `Cvoya.Graph.Serialization`         | Serialization-related functionality                     | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Serialization.svg)         |
 | `Cvoya.Graph.CompatibilityTests`    | Provider compatibility test suite (**optional, provider authors**) | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.CompatibilityTests.svg) |
 
-All packages are published by CVOYA on NuGet: <https://www.nuget.org/profiles/cvoya>.
+The `Cvoya.Graph.*` package IDs will be published by CVOYA with the next release. Earlier
+`Cvoya.Graph.Model.*` packages remain available on the [CVOYA NuGet profile](https://www.nuget.org/profiles/cvoya).
 
 Building your own provider? See [Certifying a provider](docs/provider-implementers-guide.md#certifying-a-provider) for how to run the shared compatibility suite against it.
 
