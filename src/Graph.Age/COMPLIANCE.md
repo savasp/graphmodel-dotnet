@@ -30,8 +30,12 @@ types from match patterns and adds equivalent `inheritance_labels` predicates;
 `AgeClauseOrderPass` moves ordering and paging without parsing rendered Cypher (including the
 path-decomposition and aggregate exceptions), while
 `AgeTemporalParameterArithmeticPass` unwraps AGE-unsupported temporal constructors and folds
-parameter-only duration arithmetic into bound values. These passes replace the former post-render
-regex rewrites without changing the emitted query semantics.
+parameter-only duration arithmetic into bound values. `AgeEntityProjectionPass` expands entity
+hydration into typed match, predicate, projection, and ordering clauses, then structurally lowers
+named optional paths, `ALL`/`reduce` compatibility, temporal members, string containment, path
+indexes, reserved aliases, and empty sums. `AgeQueryRunner` no longer applies rendered-text regexes
+for any of those shapes; the remaining inline complex-property projection rewrite is tracked by
+#293's final PR. These passes preserve the former query semantics without parsing rendered Cypher.
 
 ## Full-text search
 

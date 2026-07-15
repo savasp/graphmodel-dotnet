@@ -22,6 +22,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         new AgeLabelPatternPass(),
         new AgeClauseOrderPass(),
         new AgeTemporalParameterArithmeticPass(),
+        new AgeEntityProjectionPass(),
     ]);
 
     private readonly Type _rootType;
@@ -56,10 +57,13 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         }
 
         var rendered = new CypherRenderer(AgeDialect.Instance).Render(statement);
+        var projectionColumns = rendered.ProjectionColumns
+            .Select(AgeEntityProjectionPass.NormalizeProjectionColumn)
+            .ToArray();
         (Type Source, Type Relationship, Type Target)? pathTypes = statement.PathTypes is null
             ? null
             : (statement.PathTypes.Source, statement.PathTypes.Relationship, statement.PathTypes.Target);
-        Query = new CypherQuery(rendered.Text, rendered.Parameters, pathTypes, rendered.ProjectionColumns);
+        Query = new CypherQuery(rendered.Text, rendered.Parameters, pathTypes, projectionColumns);
         if (_logger?.IsEnabled(LogLevel.Debug) == true)
         {
             _logger.LogDebugCypherQueryVisitor53(Query.Parameters.Keys.ToArray(), Query.Parameters.Count);
