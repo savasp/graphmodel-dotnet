@@ -45,14 +45,24 @@ An application that already owns its connection pool can pass an AGE-enabled
 - complex-property persistence and cascading cleanup;
 - inheritance queries through one physical AGE label plus `inheritance_labels`;
 - full-text search, lowered to a two-phase Postgres text-search query (see below);
+- scalar-key grouped aggregation through AGE-native `WITH` grouping and aggregate functions;
 - correlated collection projections and relationship/complex-collection counts, lowered to
   AGE-supported grouped matches (see below); and
 - agtype adaptation for vertices, edges, paths, maps, arrays, large integers, decimals, and
   ISO-8601 temporal values.
 
-The provider does not declare nested transactions, scalar-key grouped aggregation, or shortest
-path. Unsupported operations fail during translation or are capability-skipped by the provider
-compatibility suite.
+The provider does not declare nested transactions or shortest path. Unsupported operations fail
+during translation or are capability-skipped by the provider compatibility suite.
+
+### Scalar-key grouped aggregation
+
+The shared planner represents scalar-key `GroupBy` as a structured `WITH` stage: the non-aggregate
+key establishes AGE's implicit grouping key, while `Count`, `Sum`, `Average`, `Min`, and `Max`
+become aggregate columns consumed by the final projection. Key-only projections use `WITH DISTINCT`.
+The existing AGE AST passes then lower labels, reserved aliases, and empty sums without inspecting or
+rewriting rendered Cypher. The supported and rejected shapes therefore match the provider-neutral
+`GroupByAggregation` contract; unsupported entity keys, element selectors, collection projections,
+and filters inside a group fail before database execution with the shared actionable diagnostic.
 
 ### Correlated collections and pattern counts
 
