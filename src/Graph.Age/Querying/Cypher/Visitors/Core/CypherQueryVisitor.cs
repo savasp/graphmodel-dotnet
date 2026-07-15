@@ -22,6 +22,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         new AgeLabelPatternPass(),
         new AgeClauseOrderPass(),
         new AgeTemporalParameterArithmeticPass(),
+        new AgeInlineComplexPropertyProjectionPass(),
         new AgeEntityProjectionPass(),
     ]);
 

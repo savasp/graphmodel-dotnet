@@ -33,9 +33,11 @@ path-decomposition and aggregate exceptions), while
 parameter-only duration arithmetic into bound values. `AgeEntityProjectionPass` expands entity
 hydration into typed match, predicate, projection, and ordering clauses, then structurally lowers
 named optional paths, `ALL`/`reduce` compatibility, temporal members, string containment, path
-indexes, reserved aliases, and empty sums. `AgeQueryRunner` no longer applies rendered-text regexes
-for any of those shapes; the remaining inline complex-property projection rewrite is tracked by
-#293's final PR. These passes preserve the former query semantics without parsing rendered Cypher.
+indexes, reserved aliases, and empty sums. `AgeInlineComplexPropertyProjectionPass` expands inline
+node hydration into typed optional matches, list comprehensions, and collection clauses before the
+entity pass applies AGE compatibility lowering. `AgeQueryRunner` no longer performs any of #293's
+compatibility rewrites after rendering; these passes preserve the former query semantics without
+parsing rendered text.
 
 ## Full-text search
 

@@ -6,10 +6,8 @@ namespace Cvoya.Graph.Age.Querying.Cypher.Execution;
 using System.Collections;
 using System.Data.Common;
 using System.Reflection;
-using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Cvoya.Graph.Age.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -252,7 +250,6 @@ internal sealed partial class AgeQueryRunner
         IReadOnlyDictionary<string, object?> parameters,
         IReadOnlyList<string> projectionColumns)
     {
-        cypher = NormalizeInlineComplexPropertyProjections(cypher);
         var quoteTag = ChooseDollarQuoteTag(cypher);
         var columnDefinitions = string.Join(", ", projectionColumns.Select(column =>
             $"{AgeSqlIdentifier.Quote(column, "projection column")} agtype"));
@@ -321,75 +318,6 @@ internal sealed partial class AgeQueryRunner
     {
         if (string.IsNullOrEmpty(value) || (!char.IsAsciiLetter(value[0]) && value[0] != '_')) return false;
         return value.Skip(1).All(character => char.IsAsciiLetterOrDigit(character) || character == '_');
-    }
-
-    private static string NormalizeInlineComplexPropertyProjections(string cypher)
-    {
-        var aliases = new List<string>();
-        cypher = InlineComplexPropertyProjectionRegex().Replace(cypher, match =>
-        {
-            var alias = match.Groups["alias"].Value;
-            if (!aliases.Contains(alias, StringComparer.Ordinal))
-            {
-                aliases.Add(alias);
-            }
-
-            return $"{alias}_inline_properties";
-        });
-        if (aliases.Count == 0)
-        {
-            return cypher;
-        }
-
-        var returnMatch = ReturnRegex().Matches(cypher).Cast<Match>().LastOrDefault();
-        if (returnMatch is null)
-        {
-            return cypher;
-        }
-
-        // pathIndex/hopIndex are the planner's TraversePaths decomposition variables; they must
-        // survive the generated WITH pipes or the final RETURN/ORDER BY loses them from scope.
-        var candidateAliases = new List<string> { "pathIndex", "hopIndex", "src", "r", "tgt" };
-        for (var suffix = 2; suffix <= GraphDataModel.DefaultDepthAllowed; suffix++)
-        {
-            candidateAliases.Add($"r_{suffix}");
-            candidateAliases.Add($"tgt_{suffix}");
-        }
-
-        var carry = candidateAliases
-            .Where(candidate => Regex.IsMatch(cypher, $@"\b{candidate}\b", RegexOptions.CultureInvariant))
-            .ToList();
-
-        var clauses = new StringBuilder();
-        foreach (var alias in aliases)
-        {
-            var relationships = $"{alias}_inline_relationships";
-            var property = $"{alias}_inline_property";
-            var path = $"{alias}_inline_path";
-            var properties = $"{alias}_inline_properties";
-            // First-hop-only marker check: comprehensions in an OPTIONAL MATCH WHERE drop the
-            // unmatched row in AGE 1.7, and the storage model guarantees marker-first-hop paths
-            // stay inside the complex-property subtree (see AgeEntityProjectionPass).
-            clauses.Append("OPTIONAL MATCH (").Append(alias).Append(")-[")
-                .Append(relationships).Append("*1..").Append(GraphDataModel.DefaultDepthAllowed)
-                .Append("]->(").Append(property).AppendLine(")")
-                .Append("WHERE coalesce(").Append(relationships)
-                .Append("[toInteger(0)].").Append(ComplexPropertyStorage.RelationshipMarkerProperty)
-                .AppendLine(", false) = true")
-                .Append("WITH ").Append(string.Join(", ", carry)).Append(", CASE WHEN ")
-                .Append(relationships).Append(" IS NULL THEN [] ELSE [i IN range(0, size(")
-                .Append(relationships).Append(") - 1) | { ParentNode: startNode(")
-                .Append(relationships).Append("[toInteger(i)]), Relationship: ")
-                .Append(relationships).Append("[toInteger(i)], SequenceNumber: ")
-                .Append(relationships).Append("[toInteger(i)].SequenceNumber, Property: endNode(")
-                .Append(relationships).Append("[toInteger(i)]) }] END AS ").AppendLine(path)
-                .Append("WITH ").Append(string.Join(", ", carry)).Append(", collect(")
-                .Append(path).Append(") AS ").AppendLine(properties);
-            carry.Add(properties);
-        }
-
-        var returnStart = returnMatch.Index;
-        return $"{cypher[..returnStart]}{clauses}{cypher[returnStart..]}";
     }
 
     internal static string ChooseDollarQuoteTag(string cypher)
@@ -545,8 +473,6 @@ internal sealed partial class AgeQueryRunner
     [GeneratedRegex(@"\bRETURN\s+DISTINCT\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ReturnDistinctRegex();
 
-    [GeneratedRegex(@"reduce\(flat\s*=\s*\[\],\s*propertyPath\s+IN\s*\[\s*\((?<alias>[A-Za-z_][A-Za-z0-9_]*)\)-\[propertyRelationships\*1\.\.[0-9]+\]->\(propertyNode\).*?\]\s*\|\s*flat\s*\+\s*propertyPath\)", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant)]
-    private static partial Regex InlineComplexPropertyProjectionRegex();
 }
 
 internal sealed record AgeRecord(IReadOnlyDictionary<string, object?> Values)
