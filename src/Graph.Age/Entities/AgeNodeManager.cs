@@ -348,7 +348,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
         return properties;
     }
 
-    internal static IReadOnlyList<string> GetInheritanceLabels(EntityInfo entity)
+    private static IReadOnlyList<string> GetInheritanceLabels(EntityInfo entity)
     {
         if (entity.ActualType == typeof(Graph.DynamicNode))
         {
@@ -493,7 +493,7 @@ internal sealed class AgeNodeManager(AgeGraphContext context)
                 predicates.Add($"n.{CypherIdentifier.Escape(property.Name, "property name")} = ${parameterName}");
             }
 
-            var constraintKey = $"{label}\u001f{constraint}\u001f{System.Text.Json.JsonSerializer.Serialize(values)}";
+            var constraintKey = AgeUniquenessCheck.BuildConstraintKey(label, constraint, values);
             return new AgeUniquenessCheck(
                 $"MATCH (n) WHERE {string.Join(" AND ", predicates)} RETURN count(n) AS duplicateCount",
                 parameters,

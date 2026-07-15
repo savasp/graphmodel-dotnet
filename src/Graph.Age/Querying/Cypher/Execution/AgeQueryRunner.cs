@@ -126,17 +126,7 @@ internal sealed partial class AgeQueryRunner
             await using var readerLease = reader.ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                var values = new Dictionary<string, object?>(reader.FieldCount, StringComparer.Ordinal);
-                for (var index = 0; index < reader.FieldCount; index++)
-                {
-                    values.Add(
-                        reader.GetName(index),
-                        await reader.IsDBNullAsync(index, cancellationToken).ConfigureAwait(false)
-                            ? null
-                            : ParseTextAgtype(reader.GetString(index)));
-                }
-
-                records.Add(new AgeRecord(values));
+                records.Add(await ReadRecordAsync(reader, cancellationToken).ConfigureAwait(false));
             }
 
             if (distinct)
@@ -176,6 +166,14 @@ internal sealed partial class AgeQueryRunner
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        foreach (var command in commands)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(command.Name);
+            ArgumentException.ThrowIfNullOrWhiteSpace(command.Cypher);
+            ArgumentNullException.ThrowIfNull(command.Parameters);
+            ArgumentNullException.ThrowIfNull(command.ProjectionColumns);
+        }
+
         var duplicateName = commands
             .GroupBy(command => command.Name, StringComparer.Ordinal)
             .FirstOrDefault(group => group.Count() > 1)?.Key;
@@ -185,23 +183,14 @@ internal sealed partial class AgeQueryRunner
         }
 
         using var batch = new NpgsqlBatch(connection, transaction);
+        var distinctFlags = new bool[commands.Count];
 
-        foreach (var command in commands)
+        for (var commandIndex = 0; commandIndex < commands.Count; commandIndex++)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(command.Name);
-            ArgumentException.ThrowIfNullOrWhiteSpace(command.Cypher);
-            ArgumentNullException.ThrowIfNull(command.Parameters);
-            ArgumentNullException.ThrowIfNull(command.ProjectionColumns);
-
-            var projectionColumns = command.ProjectionColumns.Count == 0
-                ? InferProjectionColumns(command.Cypher)
-                : command.ProjectionColumns;
-            var normalizedProjection = NormalizeProjectionAliases(command.Cypher, projectionColumns);
-            var effectiveColumns = normalizedProjection.Columns.Count == 0 ? ["result"] : normalizedProjection.Columns;
-            var definition = CreateCommandDefinition(
-                normalizedProjection.Cypher,
-                command.Parameters,
-                effectiveColumns);
+            var command = commands[commandIndex];
+            var (cypher, effectiveColumns, distinct) = NormalizeCommand(command.Cypher, command.ProjectionColumns);
+            distinctFlags[commandIndex] = distinct;
+            var definition = CreateCommandDefinition(cypher, command.Parameters, effectiveColumns);
             var batchCommand = new NpgsqlBatchCommand(definition.CommandText);
             batchCommand.Parameters.Add(definition.AgtypeParameter);
             batch.BatchCommands.Add(batchCommand);
@@ -220,6 +209,11 @@ internal sealed partial class AgeQueryRunner
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
                     records.Add(await ReadRecordAsync(reader, cancellationToken).ConfigureAwait(false));
+                }
+
+                if (distinctFlags[commandIndex])
+                {
+                    records = records.DistinctBy(GetDistinctKey, StringComparer.Ordinal).ToList();
                 }
 
                 results.Add(new AgeBatchResult(commands[commandIndex].Name, records));
@@ -287,16 +281,8 @@ internal sealed partial class AgeQueryRunner
         IReadOnlyList<string> projectionColumns,
         bool streaming)
     {
-        if (projectionColumns.Count == 0)
-        {
-            projectionColumns = InferProjectionColumns(cypher);
-        }
-
-        var distinct = ReturnDistinctRegex().IsMatch(cypher);
-        cypher = ReturnDistinctRegex().Replace(cypher, "RETURN");
-        var normalizedProjection = NormalizeProjectionAliases(cypher, projectionColumns);
-        cypher = normalizedProjection.Cypher;
-        var effectiveColumns = normalizedProjection.Columns.Count == 0 ? ["result"] : normalizedProjection.Columns;
+        var (normalizedCypher, effectiveColumns, distinct) = NormalizeCommand(cypher, projectionColumns);
+        cypher = normalizedCypher;
         var command = CreateCommand(cypher, parameters, effectiveColumns);
         if (streaming)
         {
@@ -307,6 +293,27 @@ internal sealed partial class AgeQueryRunner
             logger.LogDebugAgeQueryRunner167(parameters.Count, effectiveColumns.Count, cypher);
         }
         return (command, distinct);
+    }
+
+    /// <summary>
+    /// Normalizes one Cypher command the same way for every execution path: infers projection
+    /// columns when none are supplied, strips <c>RETURN DISTINCT</c> (callers dedupe client-side
+    /// using the returned flag), and rewrites non-identifier projection aliases.
+    /// </summary>
+    private static (string Cypher, IReadOnlyList<string> Columns, bool Distinct) NormalizeCommand(
+        string cypher,
+        IReadOnlyList<string> projectionColumns)
+    {
+        if (projectionColumns.Count == 0)
+        {
+            projectionColumns = InferProjectionColumns(cypher);
+        }
+
+        var distinct = ReturnDistinctRegex().IsMatch(cypher);
+        cypher = ReturnDistinctRegex().Replace(cypher, "RETURN");
+        var normalizedProjection = NormalizeProjectionAliases(cypher, projectionColumns);
+        var effectiveColumns = normalizedProjection.Columns.Count == 0 ? ["result"] : normalizedProjection.Columns;
+        return (normalizedProjection.Cypher, effectiveColumns, distinct);
     }
 
     /// <summary>

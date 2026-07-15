@@ -305,7 +305,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         return properties;
     }
 
-    internal static string[] GetInheritanceLabels(Type actualType)
+    private static string[] GetInheritanceLabels(Type actualType)
     {
         var labels = new List<string>();
         for (var type = actualType; type is not null && typeof(Graph.IRelationship).IsAssignableFrom(type); type = type.BaseType)
@@ -441,7 +441,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
                 predicates.Add($"r.{CypherIdentifier.Escape(property.Name, "property name")} = ${parameterName}");
             }
 
-            var constraintKey = $"{type}\u001f{constraint}\u001f{System.Text.Json.JsonSerializer.Serialize(values)}";
+            var constraintKey = AgeUniquenessCheck.BuildConstraintKey(type, constraint, values);
             return new AgeUniquenessCheck(
                 $"MATCH ()-[r]->() WHERE {string.Join(" AND ", predicates)} RETURN count(r) AS duplicateCount",
                 parameters,

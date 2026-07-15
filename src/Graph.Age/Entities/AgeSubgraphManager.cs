@@ -41,6 +41,11 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
 
         var marker = $"{TransientCreatedMarkerPrefix}_{Guid.NewGuid():N}";
         var sameEndpoint = string.Equals(source.Id, target.Id, StringComparison.Ordinal);
+        if (!createMissingEndpoints && sameEndpoint)
+        {
+            throw new GraphException("Create-only subgraph endpoints must have distinct IDs.");
+        }
+
         var valueNodeLevels = createMissingEndpoints && sameEndpoint
             ? complexPropertyManager.PlanSubgraphValueNodes((source.Id, sourceEntity))
             : complexPropertyManager.PlanSubgraphValueNodes(
@@ -342,7 +347,6 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             ["relationshipId"] = relationship.Id,
             ["sourceNodeId"] = sourceNodeId,
             ["targetNodeId"] = targetNodeId,
-            ["createMissingEndpoints"] = createMissingEndpoints,
         };
         var properties = AgeRelationshipManager.BuildRelationshipProperties(entity);
         var setClause = AgeCypherProperties.BuildSetClause(
@@ -350,6 +354,17 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             properties,
             parameters,
             "relationshipProperty");
+
+        // In create-only mode both endpoints must carry this batch's transient marker: the roots
+        // command creates either both endpoints or neither, so the gate keeps the edge from
+        // attaching to pre-existing nodes. Merge mode attaches to matched endpoints by design.
+        var createdEndpointsGate = createMissingEndpoints
+            ? string.Empty
+            : $"""
+
+              WITH source, target
+              WHERE source.{marker} = true AND target.{marker} = true
+              """;
 
         return CountCommand(
             "relationship",
@@ -360,9 +375,7 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
             MATCH (source:{{SerializationBridge.PhysicalNodeLabel}})
             WHERE source.Id = $sourceNodeId
             MATCH (target:{{SerializationBridge.PhysicalNodeLabel}})
-            WHERE target.Id = $targetNodeId
-            WITH source, target
-            WHERE $createMissingEndpoints = true OR (source.{{marker}} = true AND target.{{marker}} = true)
+            WHERE target.Id = $targetNodeId{{createdEndpointsGate}}
             CREATE (source)-[relationship:{{SerializationBridge.PhysicalRelationshipType}}]->(target)
             {{setClause}}
             RETURN count(relationship) AS createdCount
@@ -427,11 +440,6 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
         if (relationshipExists)
         {
             throw new GraphException($"Relationship with ID '{relationship.Id}' already exists.");
-        }
-
-        if (!createMissingEndpoints && sameEndpoint)
-        {
-            throw new GraphException("Create-only subgraph endpoints must have distinct IDs.");
         }
 
         var expectedRootCount = createMissingEndpoints && sameEndpoint
@@ -500,7 +508,7 @@ internal sealed class AgeSubgraphManager(AgeGraphContext context)
     {
         if (!results.TryGetValue(resultName, out var result) || result.Records.Count != 1)
         {
-            throw new GraphException($"AGE batch result '{resultName}' did not return exactly one record.");
+            throw new GraphException($"AGE batch result '{resultName}' was missing or did not contain exactly one record.");
         }
 
         return result.Records[0][column].As<long>();

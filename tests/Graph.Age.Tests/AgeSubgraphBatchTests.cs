@@ -25,7 +25,7 @@ public sealed class AgeSubgraphBatchTests
             schemaRegistry: null,
             loggerFactory: null,
             () => Interlocked.Increment(ref batchExecutions));
-        await store.CreateGraphIfNotExistsAsync(TestContext.Current.CancellationToken);
+        await CreateGraphOrSkipAsync(store);
 
         // Warm lazy schema initialization and the measured graph path before resetting the seam.
         await CreateNestedSubgraphAsync(store.Graph, createMissingEndpoints);
@@ -53,7 +53,7 @@ public sealed class AgeSubgraphBatchTests
     {
         await using var dataSource = CreateDataSource();
         await using var store = new AgeGraphStore(dataSource, NewGraphName());
-        await store.CreateGraphIfNotExistsAsync(TestContext.Current.CancellationToken);
+        await CreateGraphOrSkipAsync(store);
         var graph = store.Graph;
         var cancellationToken = TestContext.Current.CancellationToken;
 
@@ -110,11 +110,34 @@ public sealed class AgeSubgraphBatchTests
     }
 
     [Fact]
+    public async Task CreateAsync_CreateOnly_SameEndpointIds_ThrowsAndCreatesNothing()
+    {
+        await using var dataSource = CreateDataSource();
+        await using var store = new AgeGraphStore(dataSource, NewGraphName());
+        await CreateGraphOrSkipAsync(store);
+        var node = new Person { FirstName = "Self" };
+        var relationship = new Knows(node, node);
+
+        var exception = await Assert.ThrowsAsync<GraphException>(() => store.Graph.CreateAsync(
+            node,
+            relationship,
+            node,
+            null,
+            null,
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal("Create-only subgraph endpoints must have distinct IDs.", exception.Message);
+        await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            store.Graph.GetNodeAsync<Person>(node.Id, null, TestContext.Current.CancellationToken));
+        Assert.Empty(await store.Graph.Nodes<Person>().ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task CreateAsync_CreateMissingEndpoints_SupportsSelfRelationship()
     {
         await using var dataSource = CreateDataSource();
         await using var store = new AgeGraphStore(dataSource, NewGraphName());
-        await store.CreateGraphIfNotExistsAsync(TestContext.Current.CancellationToken);
+        await CreateGraphOrSkipAsync(store);
         var node = new Person { FirstName = "Self" };
         var relationship = new Knows(node, node);
 
@@ -180,6 +203,25 @@ public sealed class AgeSubgraphBatchTests
         var builder = new NpgsqlDataSourceBuilder(ConnectionString);
         builder.UseAge();
         return builder.Build();
+    }
+
+    /// <summary>
+    /// Creates the store's graph, skipping the test when the pinned AGE runtime is unreachable -
+    /// the same unavailable-provider semantics as the compatibility harness, including the
+    /// <see cref="ComplianceGuard"/> strict mode that turns skips into hard failures on CI.
+    /// </summary>
+    private static async Task CreateGraphOrSkipAsync(AgeGraphStore store)
+    {
+        try
+        {
+            await store.CreateGraphIfNotExistsAsync(TestContext.Current.CancellationToken);
+        }
+        catch (NpgsqlException exception) when (!ComplianceGuard.IsStrict)
+        {
+            Assert.Skip(
+                "Apache AGE is unavailable. Set AGE_CONNECTION_STRING or run the repository AGE container. " +
+                $"({exception.Message})");
+        }
     }
 
     private static string NewGraphName() => $"cvoya_subgraph_batch_{Guid.NewGuid():N}";

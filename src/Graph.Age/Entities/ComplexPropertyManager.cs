@@ -39,7 +39,6 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
     internal sealed record SubgraphValueNode(
         string RootId,
         string ParentId,
-        string RelationshipType,
         EntityInfo Entity,
         Dictionary<string, object?> NodeProperties,
         Dictionary<string, object?> RelationshipProperties);
@@ -78,7 +77,6 @@ internal sealed class ComplexPropertyManager(AgeGraphContext context)
                 pending.AddRange(children.Select(child => new SubgraphValueNode(
                     rootId,
                     child.ParentElementId,
-                    child.RelationshipType,
                     child.Entity,
                     child.NodeProperties,
                     child.RelationshipProperties)));
