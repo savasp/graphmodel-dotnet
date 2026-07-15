@@ -375,8 +375,7 @@ internal sealed partial class AgeQueryRunner
         cypher = PathIndexRegex().Replace(cypher, "[toInteger(${index})]");
         cypher = ReservedProjectionAliasRegex().Replace(cypher, "AS `${alias}`");
         cypher = SumAggregateRegex().Replace(cypher, "coalesce(sum(${value}), 0)");
-        cypher = NormalizeInlineComplexPropertyProjections(cypher);
-        return NormalizeLabelPatterns(cypher);
+        return NormalizeInlineComplexPropertyProjections(cypher);
     }
 
     private static string NormalizeInlineComplexPropertyProjections(string cypher)
@@ -447,99 +446,6 @@ internal sealed partial class AgeQueryRunner
         var returnStart = returnMatch.Index;
         return $"{cypher[..returnStart]}{clauses}{cypher[returnStart..]}";
     }
-
-    private static string NormalizeLabelPatterns(string cypher)
-    {
-        var output = new List<string>();
-        var generatedRelationshipAlias = 0;
-        foreach (var originalLine in cypher.Split('\n'))
-        {
-            var line = originalLine;
-            var predicates = new List<string>();
-            var trimmedOriginal = originalLine.TrimStart();
-            var isOptionalMatchLine = trimmedOriginal.StartsWith("OPTIONAL MATCH ", StringComparison.OrdinalIgnoreCase);
-            var isMatchLine = isOptionalMatchLine ||
-                trimmedOriginal.StartsWith("MATCH ", StringComparison.OrdinalIgnoreCase);
-            if (!isMatchLine)
-            {
-                if (line.TrimStart().StartsWith("WHERE ", StringComparison.OrdinalIgnoreCase) &&
-                    output.Count > 0 &&
-                    output[^1].TrimStart().StartsWith("WHERE ", StringComparison.OrdinalIgnoreCase))
-                {
-                    output[^1] = $"{output[^1]} AND ({line.Trim()[6..]})";
-                }
-                else
-                {
-                    output.Add(line);
-                }
-
-                continue;
-            }
-
-            line = NodeLabelPatternRegex().Replace(line, match =>
-            {
-                var alias = match.Groups["alias"].Value;
-                var labels = SplitRenderedIdentifiers(match.Groups["identifiers"].Value);
-                predicates.Add($"({string.Join(" OR ", labels.Select(label =>
-                    $"{RenderCypherString(label)} IN coalesce({alias}.inheritance_labels, [])"))})");
-                return $"({alias})";
-            });
-            line = RelationshipTypePatternRegex().Replace(line, match =>
-            {
-                var alias = match.Groups["alias"].Value.Length > 0
-                    ? match.Groups["alias"].Value
-                    : $"age_relationship_{generatedRelationshipAlias++}";
-                var depth = match.Groups["depth"].Value;
-                var types = SplitRenderedIdentifiers(match.Groups["identifiers"].Value);
-                if (depth.Length == 0)
-                {
-                    predicates.Add($"({string.Join(" OR ", types.Select(type =>
-                        $"{RenderCypherString(type)} IN coalesce({alias}.inheritance_labels, [])"))})");
-                }
-                else if (isOptionalMatchLine)
-                {
-                    // A comprehension in an OPTIONAL MATCH WHERE drops the unmatched row in
-                    // AGE 1.7, so an optional variable-length pattern can only type-check its
-                    // first hop.
-                    var propertyTarget = $"{alias}[toInteger(0)]";
-                    predicates.Add($"({string.Join(" OR ", types.Select(type =>
-                        $"{RenderCypherString(type)} IN coalesce({propertyTarget}.inheritance_labels, [])"))})");
-                }
-                else
-                {
-                    // A variable-length pattern type-constrains every hop; AGE lacks ALL(...), so
-                    // the equivalent index-based comprehension checks each relationship in the list.
-                    var perHop = string.Join(" OR ", types.Select(type =>
-                        $"{RenderCypherString(type)} IN coalesce({alias}[toInteger(age_hop)].inheritance_labels, [])"));
-                    predicates.Add(
-                        $"(size([age_hop IN range(0, size({alias}) - 1) WHERE {perHop}]) = size({alias}))");
-                }
-
-                return $"[{alias}{depth}]";
-            });
-
-            if (predicates.Count > 0)
-            {
-                output.Add(line);
-                output.Add($"WHERE {string.Join(" AND ", predicates)}");
-            }
-            else
-            {
-                output.Add(line);
-            }
-        }
-
-        return string.Join('\n', output);
-    }
-
-    private static string[] SplitRenderedIdentifiers(string rendered) => rendered
-        .Split('|', StringSplitOptions.RemoveEmptyEntries)
-        .Select(identifier => identifier.StartsWith('`')
-            ? identifier[1..^1].Replace("``", "`", StringComparison.Ordinal)
-            : identifier)
-        .ToArray();
-
-    private static string RenderCypherString(string value) => $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
 
     internal static string ChooseDollarQuoteTag(string cypher)
     {
@@ -699,12 +605,6 @@ internal sealed partial class AgeQueryRunner
 
     [GeneratedRegex(@"reduce\(flat\s*=\s*\[\],\s*path\s+IN\s+collect\((?<path>[A-Za-z_][A-Za-z0-9_]*)\)\s*\|\s*flat\s*\+\s*path\)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ReduceCollectedPathsRegex();
-
-    [GeneratedRegex(@"\((?<alias>[A-Za-z_][A-Za-z0-9_]*):(?<identifiers>(?:`(?:``|[^`])+`|[A-Za-z_][A-Za-z0-9_]*)(?:\|(?:`(?:``|[^`])+`|[A-Za-z_][A-Za-z0-9_]*))*)\)", RegexOptions.CultureInvariant)]
-    private static partial Regex NodeLabelPatternRegex();
-
-    [GeneratedRegex(@"\[(?<alias>[A-Za-z_][A-Za-z0-9_]*)?:(?<identifiers>(?:`(?:``|[^`])+`|[A-Za-z_][A-Za-z0-9_]*)(?:\|(?:`(?:``|[^`])+`|[A-Za-z_][A-Za-z0-9_]*))*)(?<depth>\*[^\]]+)?\]", RegexOptions.CultureInvariant)]
-    private static partial Regex RelationshipTypePatternRegex();
 
     [GeneratedRegex(@"(?<value>[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*)\.(?<member>year|month|day|hour|minute|second)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TemporalMemberRegex();
