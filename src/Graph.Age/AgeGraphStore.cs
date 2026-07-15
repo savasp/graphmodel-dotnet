@@ -60,11 +60,22 @@ public sealed class AgeGraphStore : IAsyncDisposable
         string graphName,
         SchemaRegistry? schemaRegistry = null,
         ILoggerFactory? loggerFactory = null)
+        : this(dataSource, graphName, schemaRegistry, loggerFactory, batchExecutionObserver: null)
+    {
+    }
+
+    internal AgeGraphStore(
+        NpgsqlDataSource dataSource,
+        string graphName,
+        SchemaRegistry? schemaRegistry,
+        ILoggerFactory? loggerFactory,
+        Action? batchExecutionObserver)
     {
         this.dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
         ownsDataSource = false;
         GraphName = ResolveGraphName(graphName);
         LoggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
+        BatchExecutionObserver = batchExecutionObserver;
         Graph = new AgeGraph(this, GraphName, schemaRegistry ?? new SchemaRegistry(), LoggerFactory);
     }
 
@@ -98,6 +109,12 @@ public sealed class AgeGraphStore : IAsyncDisposable
     internal string GraphName { get; }
 
     internal ILoggerFactory LoggerFactory { get; }
+
+    /// <summary>
+    /// Test instrumentation invoked immediately before a graph batch crosses the Npgsql execution
+    /// boundary. It deliberately stays internal so measuring round trips does not expand the public API.
+    /// </summary>
+    internal Action? BatchExecutionObserver { get; }
 
     internal async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken cancellationToken)
     {

@@ -19,16 +19,19 @@ internal sealed partial class AgeQueryRunner
     private readonly NpgsqlConnection connection;
     private readonly NpgsqlTransaction transaction;
     private readonly ILogger<AgeQueryRunner> logger;
+    private readonly Action? batchExecutionObserver;
 
     public AgeQueryRunner(
         string graphName,
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
-        ILoggerFactory? loggerFactory)
+        ILoggerFactory? loggerFactory,
+        Action? batchExecutionObserver = null)
     {
         this.graphName = AgeSqlIdentifier.Validate(graphName, "graph name");
         this.connection = connection ?? throw new ArgumentNullException(nameof(connection));
         this.transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
+        this.batchExecutionObserver = batchExecutionObserver;
         logger = loggerFactory?.CreateLogger<AgeQueryRunner>() ?? NullLogger<AgeQueryRunner>.Instance;
     }
 
@@ -123,17 +126,7 @@ internal sealed partial class AgeQueryRunner
             await using var readerLease = reader.ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                var values = new Dictionary<string, object?>(reader.FieldCount, StringComparer.Ordinal);
-                for (var index = 0; index < reader.FieldCount; index++)
-                {
-                    values.Add(
-                        reader.GetName(index),
-                        await reader.IsDBNullAsync(index, cancellationToken).ConfigureAwait(false)
-                            ? null
-                            : ParseTextAgtype(reader.GetString(index)));
-                }
-
-                records.Add(new AgeRecord(values));
+                records.Add(await ReadRecordAsync(reader, cancellationToken).ConfigureAwait(false));
             }
 
             if (distinct)
@@ -145,6 +138,95 @@ internal sealed partial class AgeQueryRunner
 
             logger.LogDebugAgeQueryRunner87(records.Count);
             return new AgeResultCursor(records);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsQueryExecutionFailure(exception))
+        {
+            throw WrapQueryExecutionFailure(exception);
+        }
+    }
+
+    /// <summary>
+    /// Executes a sequence of AGE Cypher commands through one Npgsql batch execution and buffers
+    /// each command's result set in command order. No result is exposed until the whole batch has
+    /// crossed the single execution boundary.
+    /// </summary>
+    internal async Task<IReadOnlyList<AgeBatchResult>> RunBatchAsync(
+        IReadOnlyList<AgeBatchCommand> commands,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(commands);
+        if (commands.Count == 0)
+        {
+            throw new ArgumentException("At least one AGE batch command is required.", nameof(commands));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        foreach (var command in commands)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(command.Name);
+            ArgumentException.ThrowIfNullOrWhiteSpace(command.Cypher);
+            ArgumentNullException.ThrowIfNull(command.Parameters);
+            ArgumentNullException.ThrowIfNull(command.ProjectionColumns);
+        }
+
+        var duplicateName = commands
+            .GroupBy(command => command.Name, StringComparer.Ordinal)
+            .FirstOrDefault(group => group.Count() > 1)?.Key;
+        if (duplicateName is not null)
+        {
+            throw new ArgumentException($"AGE batch command name '{duplicateName}' is duplicated.", nameof(commands));
+        }
+
+        using var batch = new NpgsqlBatch(connection, transaction);
+        var distinctFlags = new bool[commands.Count];
+
+        for (var commandIndex = 0; commandIndex < commands.Count; commandIndex++)
+        {
+            var command = commands[commandIndex];
+            var (cypher, effectiveColumns, distinct) = NormalizeCommand(command.Cypher, command.ProjectionColumns);
+            distinctFlags[commandIndex] = distinct;
+            var definition = CreateCommandDefinition(cypher, command.Parameters, effectiveColumns);
+            var batchCommand = new NpgsqlBatchCommand(definition.CommandText);
+            batchCommand.Parameters.Add(definition.AgtypeParameter);
+            batch.BatchCommands.Add(batchCommand);
+        }
+
+        try
+        {
+            batchExecutionObserver?.Invoke();
+            var reader = await batch.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await using var readerLease = reader.ConfigureAwait(false);
+            var results = new List<AgeBatchResult>(commands.Count);
+
+            for (var commandIndex = 0; commandIndex < commands.Count; commandIndex++)
+            {
+                var records = new List<AgeRecord>();
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    records.Add(await ReadRecordAsync(reader, cancellationToken).ConfigureAwait(false));
+                }
+
+                if (distinctFlags[commandIndex])
+                {
+                    records = records.DistinctBy(GetDistinctKey, StringComparer.Ordinal).ToList();
+                }
+
+                results.Add(new AgeBatchResult(commands[commandIndex].Name, records));
+
+                if (commandIndex < commands.Count - 1 &&
+                    !await reader.NextResultAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    throw new GraphException(
+                        $"AGE batch ended after {commandIndex + 1} result sets; {commands.Count} were expected.");
+                }
+            }
+
+            return results;
         }
         catch (OperationCanceledException)
         {
@@ -199,16 +281,8 @@ internal sealed partial class AgeQueryRunner
         IReadOnlyList<string> projectionColumns,
         bool streaming)
     {
-        if (projectionColumns.Count == 0)
-        {
-            projectionColumns = InferProjectionColumns(cypher);
-        }
-
-        var distinct = ReturnDistinctRegex().IsMatch(cypher);
-        cypher = ReturnDistinctRegex().Replace(cypher, "RETURN");
-        var normalizedProjection = NormalizeProjectionAliases(cypher, projectionColumns);
-        cypher = normalizedProjection.Cypher;
-        var effectiveColumns = normalizedProjection.Columns.Count == 0 ? ["result"] : normalizedProjection.Columns;
+        var (normalizedCypher, effectiveColumns, distinct) = NormalizeCommand(cypher, projectionColumns);
+        cypher = normalizedCypher;
         var command = CreateCommand(cypher, parameters, effectiveColumns);
         if (streaming)
         {
@@ -219,6 +293,27 @@ internal sealed partial class AgeQueryRunner
             logger.LogDebugAgeQueryRunner167(parameters.Count, effectiveColumns.Count, cypher);
         }
         return (command, distinct);
+    }
+
+    /// <summary>
+    /// Normalizes one Cypher command the same way for every execution path: infers projection
+    /// columns when none are supplied, strips <c>RETURN DISTINCT</c> (callers dedupe client-side
+    /// using the returned flag), and rewrites non-identifier projection aliases.
+    /// </summary>
+    private static (string Cypher, IReadOnlyList<string> Columns, bool Distinct) NormalizeCommand(
+        string cypher,
+        IReadOnlyList<string> projectionColumns)
+    {
+        if (projectionColumns.Count == 0)
+        {
+            projectionColumns = InferProjectionColumns(cypher);
+        }
+
+        var distinct = ReturnDistinctRegex().IsMatch(cypher);
+        cypher = ReturnDistinctRegex().Replace(cypher, "RETURN");
+        var normalizedProjection = NormalizeProjectionAliases(cypher, projectionColumns);
+        var effectiveColumns = normalizedProjection.Columns.Count == 0 ? ["result"] : normalizedProjection.Columns;
+        return (normalizedProjection.Cypher, effectiveColumns, distinct);
     }
 
     /// <summary>
@@ -250,6 +345,19 @@ internal sealed partial class AgeQueryRunner
         IReadOnlyDictionary<string, object?> parameters,
         IReadOnlyList<string> projectionColumns)
     {
+        var definition = CreateCommandDefinition(cypher, parameters, projectionColumns);
+        var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = definition.CommandText;
+        command.Parameters.Add(definition.AgtypeParameter);
+        return command;
+    }
+
+    private (string CommandText, NpgsqlParameter AgtypeParameter) CreateCommandDefinition(
+        string cypher,
+        IReadOnlyDictionary<string, object?> parameters,
+        IReadOnlyList<string> projectionColumns)
+    {
         var quoteTag = ChooseDollarQuoteTag(cypher);
         var columnDefinitions = string.Join(", ", projectionColumns.Select(column =>
             $"{AgeSqlIdentifier.Quote(column, "projection column")} agtype"));
@@ -261,18 +369,33 @@ internal sealed partial class AgeQueryRunner
         var serializedParameters = JsonSerializer.Serialize(
             parameters.ToDictionary(pair => pair.Key, pair => NormalizeParameter(pair.Value), StringComparer.Ordinal));
 
-        var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText =
+        var commandText =
             $"SELECT {textColumns} FROM ag_catalog.cypher('{graphName}', {quoteTag}{cypher}{quoteTag}, @agtypeParams) " +
             $"AS age_result ({columnDefinitions})";
-        command.Parameters.Add(new NpgsqlParameter
+        var parameter = new NpgsqlParameter
         {
             ParameterName = "agtypeParams",
             Value = new Agtype(serializedParameters),
             DataTypeName = "ag_catalog.agtype",
-        });
-        return command;
+        };
+        return (commandText, parameter);
+    }
+
+    private static async Task<AgeRecord> ReadRecordAsync(
+        DbDataReader reader,
+        CancellationToken cancellationToken)
+    {
+        var values = new Dictionary<string, object?>(reader.FieldCount, StringComparer.Ordinal);
+        for (var index = 0; index < reader.FieldCount; index++)
+        {
+            values.Add(
+                reader.GetName(index),
+                await reader.IsDBNullAsync(index, cancellationToken).ConfigureAwait(false)
+                    ? null
+                    : ParseTextAgtype(reader.GetString(index)));
+        }
+
+        return new AgeRecord(values);
     }
 
     private static (string Cypher, IReadOnlyList<string> Columns) NormalizeProjectionAliases(
@@ -474,6 +597,14 @@ internal sealed partial class AgeQueryRunner
     private static partial Regex ReturnDistinctRegex();
 
 }
+
+internal sealed record AgeBatchCommand(
+    string Name,
+    string Cypher,
+    IReadOnlyDictionary<string, object?> Parameters,
+    IReadOnlyList<string> ProjectionColumns);
+
+internal sealed record AgeBatchResult(string Name, IReadOnlyList<AgeRecord> Records);
 
 internal sealed record AgeRecord(IReadOnlyDictionary<string, object?> Values)
 {

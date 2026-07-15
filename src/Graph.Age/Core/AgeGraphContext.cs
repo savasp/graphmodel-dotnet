@@ -12,6 +12,7 @@ internal sealed class AgeGraphContext
 {
     private AgeNodeManager? nodeManager;
     private AgeRelationshipManager? relationshipManager;
+    private AgeSubgraphManager? subgraphManager;
     private EntityFactory? entityFactory;
     private AgeSchemaManager? schemaManager;
 
@@ -40,6 +41,8 @@ internal sealed class AgeGraphContext
     internal AgeNodeManager NodeManager => nodeManager ??= new(this);
 
     internal AgeRelationshipManager RelationshipManager => relationshipManager ??= new(this);
+
+    internal AgeSubgraphManager SubgraphManager => subgraphManager ??= new(this);
 
     internal EntityFactory EntityFactory => entityFactory ??= new(LoggerFactory);
 
