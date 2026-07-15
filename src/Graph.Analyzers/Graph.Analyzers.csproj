@@ -8,7 +8,8 @@
 
         <!-- The rest of the package-related properties come from the Directory.Build.props file -->
         <PackageId>Cvoya.Graph.Analyzers</PackageId>
-        <Description>Roslyn analyzer for enforcing implementation constraints on INode and IRelationship interfaces.</Description>
+        <Title>Cvoya.Graph.Analyzers — CVOYA Graph</Title>
+        <Description>CVOYA Graph Roslyn analyzers for enforcing implementation constraints on INode and IRelationship interfaces.</Description>
         <PackageTags>roslyn;analyzer;graph;codeanalysis</PackageTags>
             <DevelopmentDependency Condition="'$(Configuration)' != 'LocalFeed'">true</DevelopmentDependency>
             <DevelopmentDependency Condition="'$(Configuration)' == 'LocalFeed'">false</DevelopmentDependency>

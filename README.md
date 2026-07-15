@@ -5,7 +5,7 @@
 
 # CVOYA Graph
 
-**Downloadable open-source software from [CVOYA](https://cvoya.com).** See the
+**Downloadable open-source computer software from [CVOYA](https://cvoya.com).** See the
 [CVOYA software catalog](https://cvoya.com/software).
 
 **[Download the current CVOYA Graph source (.zip)](https://github.com/cvoya-com/graph/archive/refs/heads/main.zip)**
@@ -45,7 +45,9 @@ To get started, install the provider package for your graph database:
 | ----------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `Cvoya.Graph.Neo4j`                 | Neo4j provider implementation                           | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Neo4j.svg)                 |
 | `Cvoya.Graph.Age`                   | PostgreSQL + Apache AGE provider implementation         | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Age.svg)                   |
+| `Cvoya.Graph.InMemory`              | In-memory reference provider and test double            | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.InMemory.svg)              |
 | `Cvoya.Graph`                       | Core abstractions and interfaces                        | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.svg)                       |
+| `Cvoya.Graph.Cypher`                | Shared typed Cypher model and rendering infrastructure  | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Cypher.svg)                |
 | `Cvoya.Graph.Analyzers`             | Compile-time code analyzers (**optional, recommended**) | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Analyzers.svg)             |
 | `Cvoya.Graph.Serialization.CodeGen` | Compile-time code generation                            | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Serialization.CodeGen.svg) |
 | `Cvoya.Graph.Serialization`         | Serialization-related functionality                     | ![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Serialization.svg)         |

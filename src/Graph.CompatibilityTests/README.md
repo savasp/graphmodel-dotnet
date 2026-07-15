@@ -1,3 +1,10 @@
+<p>
+  <a href="https://cvoya.com"><img src="https://cvoya.com/images/cvoya-logo-dark-blue.png" alt="CVOYA" width="160"></a>
+</p>
+
+**Downloadable open-source computer software from [CVOYA](https://cvoya.com).** See the
+[CVOYA software catalog](https://cvoya.com/software).
+
 # Cvoya.Graph.CompatibilityTests
 
 [![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.CompatibilityTests.svg)](https://www.nuget.org/packages/Cvoya.Graph.CompatibilityTests/)

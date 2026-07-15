@@ -11,7 +11,8 @@
         <!-- The rest of the package-related properties come from the Directory.Build.props file -->
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>Cvoya.Graph</PackageId>
-        <Description>A graph abstraction library with support for LINQ expressions.</Description>
+        <Title>Cvoya.Graph — CVOYA Graph</Title>
+        <Description>CVOYA Graph core abstractions for type-safe graph data and LINQ expressions.</Description>
         <PackageTags>graph;database;neo4j;linq</PackageTags>
     </PropertyGroup>
 
