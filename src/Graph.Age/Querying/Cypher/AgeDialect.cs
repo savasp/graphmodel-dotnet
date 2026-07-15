@@ -20,7 +20,8 @@ public sealed class AgeDialect : ICypherDialect
         GraphCapability.OptionalTraversal,
         GraphCapability.FullTextSearch,
         GraphCapability.CallSubqueries,
-        GraphCapability.PatternSizeProjection);
+        GraphCapability.PatternSizeProjection,
+        GraphCapability.GroupByAggregation);
 
     /// <summary>Initializes the Apache AGE dialect.</summary>
     public AgeDialect()
@@ -41,8 +42,9 @@ public sealed class AgeDialect : ICypherDialect
     /// filters, multi-label matches, entity ordering, and optional traversal before rendering. Full-text search is lowered
     /// earlier still, at the expression level, to a two-phase Postgres text-search query
     /// (<see cref="Querying.AgeFullTextSearch"/>).
-    /// Capabilities describe user-visible behavior, whether native or lowered, so both the planning and
-    /// public instances declare those features.
+    /// Scalar-key grouping uses AGE's native grouping and aggregate support through the shared
+    /// structured <c>WITH</c> plan. Capabilities describe user-visible behavior, whether native or
+    /// lowered, so both the planning and public instances declare those features.
     /// </remarks>
     public CapabilitySet Capabilities => SupportedCapabilities;
 

@@ -335,7 +335,7 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `MultiLabelMatch` | `IAdvancedQueryTests.CanQueryPolymorphicBaseTypeAcrossSubtypeLabels` | method | pass | pass | pass |
 | `OrderByEntity` | `IAdvancedQueryTests.CanOrderByBareEntity` | method | pass | skip | pass |
 | `OptionalTraversal` | `IQueryTests.Navigation{Equality,Projection}_MissingComplexProperty*` | method | pass | pass | pass |
-| `GroupByAggregation` | `IGroupByTests` (all methods) | interface | pass | pass | skip |
+| `GroupByAggregation` | `IGroupByTests` (all methods) | interface | pass | pass | pass |
 | `NestedTransactions` | _record only_ | — | — | — | — |
 | `ShortestPath` | _record only_ | — | — | — | — |
 

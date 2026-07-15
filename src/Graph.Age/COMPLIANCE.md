@@ -21,6 +21,7 @@
 | OrderByEntity | Yes | An AGE AST pass lowers entity ordering to the stable public `Id` key. |
 | ShortestPath | No | |
 | OptionalTraversal | Yes | Optional matches are lowered while preserving owners with absent paths. |
+| GroupByAggregation | Yes | The shared structured `WITH` plan uses AGE-native grouping and aggregate functions. |
 
 ## Structured Cypher lowering
 
@@ -46,6 +47,12 @@ node hydration into typed optional matches, list comprehensions, and collection 
 entity pass applies AGE compatibility lowering. `AgeQueryRunner` no longer performs any of #293's
 compatibility rewrites after rendering; these passes preserve the former query semantics without
 parsing rendered text.
+
+Scalar-key grouped aggregation needs no AGE-specific grouping pass: the shared planner emits a
+structured `WITH` stage whose non-aggregate key establishes AGE's implicit group, with aggregate
+columns for `Count`, `Sum`, `Average`, `Min`, and `Max`; key-only projections use `WITH DISTINCT`.
+The normal AGE label, alias, and empty-sum passes operate on that AST before rendering. Unsupported
+grouping shapes retain the provider-neutral validation message and fail before execution.
 
 ## Full-text search
 
@@ -96,12 +103,11 @@ Semantics (the contract floor the shared TCK pins):
 
 | Inventory test methods | Executed | Capability-skipped | Statically skipped | Failed |
 |---|---|---|---|---|
-| 410 | 399 | 11 | 1 | 0 |
+| 410 | 410 | 0 | 1 | 0 |
 
 The compatibility inventory contains 410 runnable test methods. For this capability set (which now
-declares `FullTextSearch`, `CallSubqueries`, and `PatternSizeProjection`),
-`ComplianceInventory.MinimumExecuted(declared)` is 399 methods and the strict compliance guard
-passes; the remaining 11 capability skips are the `GroupByAggregation` suite (tracked by #330).
+also declares `GroupByAggregation`), `ComplianceInventory.MinimumExecuted(declared)` is 410 methods
+and the strict compliance guard passes with no capability skips.
 Theory data rows make the runtime case count
 slightly larger than the method inventory. The suite also contains one statically skipped,
 issue-tracked test; the inventory deliberately excludes it, so it is not counted as a capability
