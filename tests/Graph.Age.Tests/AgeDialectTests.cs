@@ -20,7 +20,9 @@ public sealed class AgeDialectTests
                 GraphCapability.MultiLabelMatch,
                 GraphCapability.OrderByEntity,
                 GraphCapability.OptionalTraversal,
-                GraphCapability.FullTextSearch),
+                GraphCapability.FullTextSearch,
+                GraphCapability.CallSubqueries,
+                GraphCapability.PatternSizeProjection),
             capabilities);
     }
 

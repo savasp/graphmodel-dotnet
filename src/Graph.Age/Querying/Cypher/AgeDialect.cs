@@ -18,7 +18,9 @@ public sealed class AgeDialect : ICypherDialect
         GraphCapability.MultiLabelMatch,
         GraphCapability.OrderByEntity,
         GraphCapability.OptionalTraversal,
-        GraphCapability.FullTextSearch);
+        GraphCapability.FullTextSearch,
+        GraphCapability.CallSubqueries,
+        GraphCapability.PatternSizeProjection);
 
     /// <summary>Initializes the Apache AGE dialect.</summary>
     public AgeDialect()
@@ -35,9 +37,10 @@ public sealed class AgeDialect : ICypherDialect
 
     /// <inheritdoc/>
     /// <remarks>
-    /// AGE-compatible lowering implements multi-label matches, entity ordering, and optional
-    /// traversal before rendering. Full-text search is lowered earlier still, at the expression level,
-    /// to a two-phase Postgres text-search query (<see cref="Querying.AgeFullTextSearch"/>).
+    /// AGE-compatible lowering implements correlated collections, pattern counts and existence
+    /// filters, multi-label matches, entity ordering, and optional traversal before rendering. Full-text search is lowered
+    /// earlier still, at the expression level, to a two-phase Postgres text-search query
+    /// (<see cref="Querying.AgeFullTextSearch"/>).
     /// Capabilities describe user-visible behavior, whether native or lowered, so both the planning and
     /// public instances declare those features.
     /// </remarks>

@@ -44,13 +44,32 @@ An application that already owns its connection pool can pass an AGE-enabled
 - ACID transactions on a dedicated PostgreSQL connection;
 - complex-property persistence and cascading cleanup;
 - inheritance queries through one physical AGE label plus `inheritance_labels`;
-- full-text search, lowered to a two-phase Postgres text-search query (see below); and
+- full-text search, lowered to a two-phase Postgres text-search query (see below);
+- correlated collection projections and relationship/complex-collection counts, lowered to
+  AGE-supported grouped matches (see below); and
 - agtype adaptation for vertices, edges, paths, maps, arrays, large integers, decimals, and
   ISO-8601 temporal values.
 
-The provider does not declare nested transactions, call subqueries, pattern-size projections, or
-shortest path. Unsupported operations fail during translation or are capability-skipped by the
-provider compatibility suite.
+The provider does not declare nested transactions, scalar-key grouped aggregation, or shortest
+path. Unsupported operations fail during translation or are capability-skipped by the provider
+compatibility suite.
+
+### Correlated collections and pattern counts
+
+Apache AGE 1.7 cannot execute Cypher pattern comprehensions or `CALL {}` subqueries, and it parses
+`EXISTS { ... }` / `COUNT { ... }` pattern subqueries but silently matches nothing. The provider
+implements the corresponding shared capabilities through an AGE-local structured AST pass before
+rendering. Correlated collection queries match the traversal once and group by its source node,
+using `collect`, conditional `count`, ordinary aggregates, and ordered/nested `WITH` stages as
+required; a filter inside one projection (`group.Where(...).Average(...)`) becomes conditional
+aggregation so it cannot narrow the rows sibling projections aggregate over, and a segment filter
+becomes a grouped row-count guard so owners with no qualifying rows produce no result row.
+Independent relationship-degree and complex-collection counts — in projections, orderings, and
+`Where` filters (including `.Any(...)` existence checks) — use sequential `OPTIONAL MATCH` stages so
+owners with no match return zero and multiple counts in one projection do not multiply each other.
+Two correlated shapes have no equivalent staging and fail at translation time instead: a filtered
+nested grouping and multiple ordered collections in one projection. The resulting nested lists and
+maps continue through the provider-neutral result wire model and shared materializer.
 
 ### Full-text search
 

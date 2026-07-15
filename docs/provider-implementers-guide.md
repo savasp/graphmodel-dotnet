@@ -186,7 +186,11 @@ Declare only supported capabilities. The planner rejects reachable unsupported c
 
 `PatternSizeProjection` gates every relationship-count pattern subquery a projection can produce: both complex-property collection sizes (`.Offices.Count`) and the node relationship-count (degree) surface `CountRelationships<TRel>(direction)`, which lowers to a `COUNT { MATCH (src)-[:REL]->() }` / `size((src)-[:REL]->())` subquery. Relationship direction is physical (matching traversal), compatible derived relationship labels participate, and an undirected self-loop counts once. A provider that declines the capability rejects both at translation time.
 
-For example, an initial AGE dialect should decline at least `FullTextSearch`, `NestedTransactions`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, and `OrderByEntity` unless its renderer strategy genuinely supports them. Do not emulate unsupported full-text search with a semantically weaker regular-expression query while still declaring `FullTextSearch`.
+A provider should decline every capability its native dialect or structured lowering cannot preserve.
+AGE, for example, declares `CallSubqueries` and `PatternSizeProjection` only because its provider-local
+AST pass replaces the unsupported syntax with equivalent grouped matches; it still declines
+`NestedTransactions` and `ShortestPath`. Do not emulate unsupported full-text search with a
+semantically weaker regular-expression query while still declaring `FullTextSearch`.
 
 Declaring `FullTextSearch` guarantees: case-insensitive, exact-token (whole-word) matching; a multi-term query matches an entity iff ALL terms match, in any order and at any distance; the matched property set is exactly the entity's own `[Property(IncludeInFullTextSearch)]` string properties (string-only by construction; for dynamic entities, all string property values). Text on complex-property value nodes is NOT part of the owning entity's match set. Ranking, stemming, phrase adjacency, prefix/wildcard, and matching beyond the floor are provider-defined: the TCK asserts nothing about them and never asserts a non-match for near-tokens (only for sub-tokens, which must not match). Search result order is unspecified; ordering comes only from explicit `OrderBy`. Providers share one definition of a "term" via `FullTextQueryTokenizer` (split on any non-letter/non-digit, lowercase invariant, drop empties) and each lower it into their own engine syntax; the shared planner keeps the raw query string.
 
@@ -326,8 +330,8 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `FullTextSearch` | `IFullTextSearchTests` (all methods) | interface | pass | pass | pass |
 | `Transactions` | `ITransactionTests` (all methods) | interface | pass | pass | pass |
 | `ComplexPropertyCascade` | `IComplexObjectGraphSerializationTests` (all methods) | interface | pass | pass | pass |
-| `CallSubqueries` | `IAdvancedQueryTests` correlated-collection pattern comprehensions and grouped-projection rejection cases | method | pass | pass | skip |
-| `PatternSizeProjection` | `IAdvancedQueryTests.CanProjectComplexCollectionSize`, `IAdvancedQueryTests.CanProjectRelationshipCounts` (node degree via `CountRelationships<TRel>(direction)`) | method | pass | pass | skip |
+| `CallSubqueries` | `IAdvancedQueryTests` correlated-collection pattern comprehensions and grouped-projection rejection cases | method | pass | pass | pass |
+| `PatternSizeProjection` | `IAdvancedQueryTests.CanProjectComplexCollectionSize`, `IAdvancedQueryTests.CanProjectRelationshipCounts` (node degree via `CountRelationships<TRel>(direction)`) | method | pass | pass | pass |
 | `MultiLabelMatch` | `IAdvancedQueryTests.CanQueryPolymorphicBaseTypeAcrossSubtypeLabels` | method | pass | pass | pass |
 | `OrderByEntity` | `IAdvancedQueryTests.CanOrderByBareEntity` | method | pass | skip | pass |
 | `OptionalTraversal` | `IQueryTests.Navigation{Equality,Projection}_MissingComplexProperty*` | method | pass | pass | pass |
