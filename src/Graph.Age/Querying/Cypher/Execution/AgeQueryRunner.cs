@@ -252,7 +252,7 @@ internal sealed partial class AgeQueryRunner
         IReadOnlyDictionary<string, object?> parameters,
         IReadOnlyList<string> projectionColumns)
     {
-        cypher = NormalizeEntityProjection(cypher);
+        cypher = NormalizeInlineComplexPropertyProjections(cypher);
         var quoteTag = ChooseDollarQuoteTag(cypher);
         var columnDefinitions = string.Join(", ", projectionColumns.Select(column =>
             $"{AgeSqlIdentifier.Quote(column, "projection column")} agtype"));
@@ -323,61 +323,6 @@ internal sealed partial class AgeQueryRunner
         return value.Skip(1).All(character => char.IsAsciiLetterOrDigit(character) || character == '_');
     }
 
-    private static string NormalizeEntityProjection(string cypher)
-    {
-        // AGE 1.7 rejects a named path on OPTIONAL MATCH. The shared entity projection only uses
-        // that path to navigate the already-bound relationship list, so startNode/endNode are an
-        // equivalent AGE representation that avoids the unsupported named-path form.
-        foreach (Match match in NamedOptionalPathRegex().Matches(cypher))
-        {
-            var path = match.Groups["path"].Value;
-            var relationships = match.Groups["relationships"].Value;
-            cypher = cypher.Replace(
-                $"OPTIONAL MATCH {path} = (",
-                "OPTIONAL MATCH (",
-                StringComparison.Ordinal);
-            cypher = cypher.Replace($"{path} IS NULL", $"{relationships} IS NULL", StringComparison.Ordinal);
-            cypher = cypher.Replace(
-                $"nodes({path})[i + 1]",
-                $"endNode({relationships}[i])",
-                StringComparison.Ordinal);
-            cypher = cypher.Replace(
-                $"nodes({path})[i]",
-                $"startNode({relationships}[i])",
-                StringComparison.Ordinal);
-        }
-
-        // AGE 1.7 supports neither ALL(...) nor reduce(), and a list comprehension inside an
-        // OPTIONAL MATCH WHERE drops the unmatched row instead of yielding NULL bindings, so the
-        // shared every-hop marker predicate cannot be expressed here — these hydration paths check
-        // the first hop only. That is safe in the storage model: value nodes are reachable only
-        // through marker relationships and never own business relationships, so a marker first hop
-        // implies marker hops throughout. The delete paths, which would over-delete on that
-        // assumption, run in plain MATCH and enforce every hop (see AgeNodeManager and
-        // ComplexPropertyManager).
-        cypher = ComplexRelationshipAllPredicateRegex().Replace(
-            cypher,
-            "WHERE coalesce(${relationships}[toInteger(0)].${marker}, false) = true");
-        cypher = ReduceCollectedPathsRegex().Replace(cypher, "collect(${path})");
-        cypher = TemporalMemberRegex().Replace(cypher, match => match.Groups["member"].Value.ToLowerInvariant() switch
-        {
-            "year" => $"toInteger(substring({match.Groups["value"].Value}, 0, 4))",
-            "month" => $"toInteger(substring({match.Groups["value"].Value}, 5, 2))",
-            "day" => $"toInteger(substring({match.Groups["value"].Value}, 8, 2))",
-            "hour" => $"toInteger(substring({match.Groups["value"].Value}, 11, 2))",
-            "minute" => $"toInteger(substring({match.Groups["value"].Value}, 14, 2))",
-            "second" => $"toInteger(substring({match.Groups["value"].Value}, 17, 2))",
-            _ => match.Value,
-        });
-        cypher = StringContainsRegex().Replace(
-            cypher,
-            "${left} =~ ('.*' + ${right} + '.*')");
-        cypher = PathIndexRegex().Replace(cypher, "[toInteger(${index})]");
-        cypher = ReservedProjectionAliasRegex().Replace(cypher, "AS `${alias}`");
-        cypher = SumAggregateRegex().Replace(cypher, "coalesce(sum(${value}), 0)");
-        return NormalizeInlineComplexPropertyProjections(cypher);
-    }
-
     private static string NormalizeInlineComplexPropertyProjections(string cypher)
     {
         var aliases = new List<string>();
@@ -424,7 +369,7 @@ internal sealed partial class AgeQueryRunner
             var properties = $"{alias}_inline_properties";
             // First-hop-only marker check: comprehensions in an OPTIONAL MATCH WHERE drop the
             // unmatched row in AGE 1.7, and the storage model guarantees marker-first-hop paths
-            // stay inside the complex-property subtree (see NormalizeEntityProjection).
+            // stay inside the complex-property subtree (see AgeEntityProjectionPass).
             clauses.Append("OPTIONAL MATCH (").Append(alias).Append(")-[")
                 .Append(relationships).Append("*1..").Append(GraphDataModel.DefaultDepthAllowed)
                 .Append("]->(").Append(property).AppendLine(")")
@@ -597,32 +542,8 @@ internal sealed partial class AgeQueryRunner
     [GeneratedRegex(@"\bAS\s+(`?[A-Za-z_][A-Za-z0-9_]*`?)\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex AliasRegex();
 
-    [GeneratedRegex(@"OPTIONAL\s+MATCH\s+(?<path>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*\([^\r\n]+?\)-\[(?<relationships>[A-Za-z_][A-Za-z0-9_]*)\*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex NamedOptionalPathRegex();
-
-    [GeneratedRegex(@"^\s*WHERE\s+ALL\(rel\s+IN\s+(?<relationships>[A-Za-z_][A-Za-z0-9_]*)\s+WHERE\s+rel\.(?<marker>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*true\)\s*$", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.CultureInvariant)]
-    private static partial Regex ComplexRelationshipAllPredicateRegex();
-
-    [GeneratedRegex(@"reduce\(flat\s*=\s*\[\],\s*path\s+IN\s+collect\((?<path>[A-Za-z_][A-Za-z0-9_]*)\)\s*\|\s*flat\s*\+\s*path\)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex ReduceCollectedPathsRegex();
-
-    [GeneratedRegex(@"(?<value>[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*)\.(?<member>year|month|day|hour|minute|second)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex TemporalMemberRegex();
-
-    [GeneratedRegex(@"\[(?<index>i(?:\s*\+\s*1)?)\]", RegexOptions.CultureInvariant)]
-    private static partial Regex PathIndexRegex();
-
-    [GeneratedRegex(@"\bAS\s+(?<alias>exists|contains)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex ReservedProjectionAliasRegex();
-
     [GeneratedRegex(@"\bRETURN\s+DISTINCT\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ReturnDistinctRegex();
-
-    [GeneratedRegex(@"\bsum\((?<value>[^()]+)\)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex SumAggregateRegex();
-
-    [GeneratedRegex(@"(?<left>[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*|\$[A-Za-z_][A-Za-z0-9_]*)\s+CONTAINS\s+(?<right>[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*|\$[A-Za-z_][A-Za-z0-9_]*)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex StringContainsRegex();
 
     [GeneratedRegex(@"reduce\(flat\s*=\s*\[\],\s*propertyPath\s+IN\s*\[\s*\((?<alias>[A-Za-z_][A-Za-z0-9_]*)\)-\[propertyRelationships\*1\.\.[0-9]+\]->\(propertyNode\).*?\]\s*\|\s*flat\s*\+\s*propertyPath\)", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant)]
     private static partial Regex InlineComplexPropertyProjectionRegex();

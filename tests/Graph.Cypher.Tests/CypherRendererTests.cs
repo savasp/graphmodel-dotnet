@@ -168,6 +168,25 @@ public class CypherRendererTests
     }
 
     [Fact]
+    public void Render_MatchesParenthesizesConcatenatedPattern()
+    {
+        var expression = new BinaryExpression(
+            CypherBinaryOperator.Matches,
+            new PropertyAccess(new VariableRef("n"), "Name"),
+            new BinaryExpression(
+                CypherBinaryOperator.Add,
+                new BinaryExpression(
+                    CypherBinaryOperator.Add,
+                    new Literal(".*"),
+                    new QueryParameter("p0")),
+                new Literal(".*")));
+
+        var result = RenderExpression(expression);
+
+        Assert.Equal("n.Name =~ ('.*' + $p0 + '.*')", result);
+    }
+
+    [Fact]
     public void Render_FullTextClause_AgainstDialectWithoutSupport_ThrowsNamedTranslationException()
     {
         // TestCypherDialect declares no RenderFullTextSearch override, so it inherits the throwing

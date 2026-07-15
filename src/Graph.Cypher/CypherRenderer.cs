@@ -327,7 +327,8 @@ public sealed class CypherRenderer : ICypherRenderContext
 
         if (parentOperator is CypherBinaryOperator.Equal or CypherBinaryOperator.NotEqual or
             CypherBinaryOperator.LessThan or CypherBinaryOperator.LessThanOrEqual or
-            CypherBinaryOperator.GreaterThan or CypherBinaryOperator.GreaterThanOrEqual &&
+            CypherBinaryOperator.GreaterThan or CypherBinaryOperator.GreaterThanOrEqual or
+            CypherBinaryOperator.Matches &&
             binary.Op is CypherBinaryOperator.Add or CypherBinaryOperator.Subtract or
                 CypherBinaryOperator.Multiply or CypherBinaryOperator.Divide or CypherBinaryOperator.Modulo)
         {
