@@ -18,9 +18,18 @@
 | CallSubqueries | No | |
 | PatternSizeProjection | No | |
 | MultiLabelMatch | Yes | Logical inheritance labels are lowered to AGE-compatible predicates. |
-| OrderByEntity | Yes | Entity ordering is lowered to a stable AGE-compatible key. |
+| OrderByEntity | Yes | An AGE AST pass lowers entity ordering to the stable public `Id` key. |
 | ShortestPath | No | |
 | OptionalTraversal | Yes | Optional matches are lowered while preserving owners with absent paths. |
+
+## Structured Cypher lowering
+
+After the shared planner produces a `CypherStatement`, the AGE query adapter runs an ordered
+`CypherPassRunner` before rendering. `AgeClauseOrderPass` moves ordering and paging without parsing
+rendered Cypher (including the path-decomposition and aggregate exceptions), while
+`AgeTemporalParameterArithmeticPass` unwraps AGE-unsupported temporal constructors and folds
+parameter-only duration arithmetic into bound values. These passes replace the former post-render
+regex rewrites without changing the emitted query semantics.
 
 ## Full-text search
 
