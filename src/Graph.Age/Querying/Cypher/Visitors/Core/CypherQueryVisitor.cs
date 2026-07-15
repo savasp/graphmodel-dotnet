@@ -4,9 +4,11 @@
 namespace Cvoya.Graph.Age.Querying.Cypher.Visitors.Core;
 
 using System.Linq.Expressions;
+using Cvoya.Graph.Age.Querying.Cypher.Lowering;
 using Cvoya.Graph.Cypher;
 using Cvoya.Graph.Cypher.Ast;
 using Cvoya.Graph.Cypher.Planning;
+using Cvoya.Graph.Cypher.Validation;
 using Cvoya.Graph.Querying;
 using Microsoft.Extensions.Logging;
 
@@ -15,6 +17,12 @@ using Microsoft.Extensions.Logging;
 /// </summary>
 internal sealed class CypherQueryVisitor : ExpressionVisitor
 {
+    private static readonly CypherPassRunner LoweringPasses = new(
+    [
+        new AgeClauseOrderPass(),
+        new AgeTemporalParameterArithmeticPass(),
+    ]);
+
     private readonly Type _rootType;
     private readonly ILogger<CypherQueryVisitor>? _logger;
 
@@ -39,6 +47,7 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         {
             var model = GraphQueryModelBuilder.Build(node);
             statement = new CypherQueryPlanner(AgeDialect.PlanningInstance).Plan(model);
+            statement = LoweringPasses.Run(statement);
         }
         catch (GraphQueryTranslationException exception)
         {

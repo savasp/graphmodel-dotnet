@@ -201,9 +201,6 @@ internal sealed partial class AgeQueryRunner
         IReadOnlyList<string> projectionColumns,
         bool streaming)
     {
-        var temporalParameters = NormalizeTemporalParameterArithmetic(cypher, parameters);
-        cypher = temporalParameters.Cypher;
-        parameters = temporalParameters.Parameters;
         if (projectionColumns.Count == 0)
         {
             projectionColumns = InferProjectionColumns(cypher);
@@ -255,7 +252,7 @@ internal sealed partial class AgeQueryRunner
         IReadOnlyDictionary<string, object?> parameters,
         IReadOnlyList<string> projectionColumns)
     {
-        cypher = NormalizeClauseOrder(cypher);
+        cypher = NormalizeEntityProjection(cypher);
         var quoteTag = ChooseDollarQuoteTag(cypher);
         var columnDefinitions = string.Join(", ", projectionColumns.Select(column =>
             $"{AgeSqlIdentifier.Quote(column, "projection column")} agtype"));
@@ -326,154 +323,6 @@ internal sealed partial class AgeQueryRunner
         return value.Skip(1).All(character => char.IsAsciiLetterOrDigit(character) || character == '_');
     }
 
-    internal static string NormalizeClauseOrder(string cypher)
-    {
-        // The shared renderer carries post-paging sort keys through entity hydration and reapplies
-        // them before its final simple RETURN. That pipeline already has the WITH boundaries AGE
-        // requires; moving either ORDER BY would separate it from the row shape it orders and can
-        // leave multiple ORDER BY clauses after RETURN.
-        if (cypher.Contains(" AS __projectionOrder", StringComparison.Ordinal))
-        {
-            return NormalizeEntityProjection(cypher);
-        }
-
-        // The shared planner ordinarily places paging immediately after the root MATCH to reduce
-        // work before its entity-projection expansion. AGE requires WITH between MATCH and
-        // LIMIT/SKIP, so unscoped paging moves after the final projection. The first paging window
-        // already attached to an explicit WITH must stay in place: that WITH is a semantic
-        // sequence-stage boundary. Ordering/paging on a later continuation stage can move to the
-        // end, after AGE's entity-projection expansion, without crossing that primary boundary.
-        //
-        // The exception is the TraversePaths decomposition shape ("WITH collect(p) AS __paths"):
-        // there paging must stay ahead of the decomposition — it pages whole paths, and moving it
-        // after the final projection would page the exploded per-hop rows instead. Those clauses
-        // are folded into a "WITH p" pipe in place, which AGE accepts.
-        var pathCollectIndex = cypher.IndexOf(" AS __paths", StringComparison.Ordinal);
-        var trailing = new List<string>();
-        var retained = new List<string>();
-        var offset = 0;
-        var hasActiveWith = false;
-        var currentWithStage = 0;
-        int? primaryPagingWithStage = null;
-        foreach (var line in cypher.Split('\n'))
-        {
-            var beforePathCollect = pathCollectIndex >= 0 && offset < pathCollectIndex;
-            offset += line.Length + 1;
-            var trimmed = line.TrimStart();
-            if (trimmed.StartsWith("LIMIT ", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.StartsWith("SKIP ", StringComparison.OrdinalIgnoreCase))
-            {
-                if (beforePathCollect)
-                {
-                    if (retained.Count > 0 &&
-                        retained[^1].TrimStart().StartsWith("WITH ", StringComparison.OrdinalIgnoreCase))
-                    {
-                        retained[^1] = $"{retained[^1]} {trimmed}";
-                    }
-                    else
-                    {
-                        retained.Add($"WITH p {trimmed}");
-                    }
-                }
-                else if (hasActiveWith)
-                {
-                    primaryPagingWithStage ??= currentWithStage;
-                    if (primaryPagingWithStage == currentWithStage)
-                    {
-                        retained.Add(line);
-                    }
-                    else
-                    {
-                        trailing.Add(trimmed);
-                    }
-                }
-                else
-                {
-                    trailing.Add(trimmed);
-                }
-            }
-            else if (trimmed.StartsWith("ORDER BY ", StringComparison.OrdinalIgnoreCase))
-            {
-                if (hasActiveWith &&
-                    (primaryPagingWithStage is null || primaryPagingWithStage == currentWithStage))
-                {
-                    retained.Add(RewriteEntityOrdering(trimmed));
-                }
-                else
-                {
-                    trailing.Add(RewriteEntityOrdering(trimmed));
-                }
-            }
-            else
-            {
-                retained.Add(line);
-                if (trimmed.StartsWith("WITH ", StringComparison.OrdinalIgnoreCase))
-                {
-                    hasActiveWith = true;
-                    currentWithStage++;
-                }
-                else if (StartsCypherClause(trimmed))
-                {
-                    hasActiveWith = false;
-                }
-            }
-        }
-
-        string reordered;
-        if (trailing.Count == 0)
-        {
-            reordered = cypher;
-        }
-        else if (AggregateReturnRegex().IsMatch(cypher))
-        {
-            var returnIndex = retained.FindLastIndex(line =>
-                line.TrimStart().StartsWith("RETURN ", StringComparison.OrdinalIgnoreCase));
-            var withIndex = retained.FindLastIndex(returnIndex, line =>
-                line.TrimStart().StartsWith("WITH ", StringComparison.OrdinalIgnoreCase));
-            var insertionIndex = withIndex >= 0 ? withIndex + 1 : returnIndex;
-            retained.InsertRange(insertionIndex, trailing);
-            reordered = string.Join('\n', retained);
-        }
-        else
-        {
-            reordered = $"{string.Join('\n', retained)}\n{string.Join('\n', trailing)}";
-        }
-        return NormalizeEntityProjection(reordered);
-    }
-
-    private static bool StartsCypherClause(string value) =>
-        value.StartsWith("MATCH ", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("OPTIONAL MATCH ", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("WHERE ", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("RETURN ", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("UNWIND ", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("CALL ", StringComparison.OrdinalIgnoreCase);
-
-    private static string RewriteEntityOrdering(string orderBy)
-    {
-        var prefixLength = "ORDER BY ".Length;
-        var items = SplitTopLevel(orderBy[prefixLength..]).Select(item =>
-        {
-            var trimmed = item.Trim();
-            var suffix = string.Empty;
-            if (trimmed.EndsWith(" DESC", StringComparison.OrdinalIgnoreCase))
-            {
-                suffix = trimmed[^5..];
-                trimmed = trimmed[..^5].TrimEnd();
-            }
-            else if (trimmed.EndsWith(" ASC", StringComparison.OrdinalIgnoreCase))
-            {
-                suffix = trimmed[^4..];
-                trimmed = trimmed[..^4].TrimEnd();
-            }
-
-            return trimmed is "src" or "tgt" or "r"
-                ? $"{trimmed}.Id{suffix}"
-                : $"{trimmed}{suffix}";
-        });
-        return $"ORDER BY {string.Join(", ", items)}";
-    }
-
     private static string NormalizeEntityProjection(string cypher)
     {
         // AGE 1.7 rejects a named path on OPTIONAL MATCH. The shared entity projection only uses
@@ -510,7 +359,6 @@ internal sealed partial class AgeQueryRunner
             cypher,
             "WHERE coalesce(${relationships}[toInteger(0)].${marker}, false) = true");
         cypher = ReduceCollectedPathsRegex().Replace(cypher, "collect(${path})");
-        cypher = TemporalWrapperRegex().Replace(cypher, "${value}");
         cypher = TemporalMemberRegex().Replace(cypher, match => match.Groups["member"].Value.ToLowerInvariant() switch
         {
             "year" => $"toInteger(substring({match.Groups["value"].Value}, 0, 4))",
@@ -770,74 +618,6 @@ internal sealed partial class AgeQueryRunner
         return result;
     }
 
-    internal static (string Cypher, IReadOnlyDictionary<string, object?> Parameters) NormalizeTemporalParameterArithmetic(
-        string cypher,
-        IReadOnlyDictionary<string, object?> parameters)
-    {
-        var mutable = new Dictionary<string, object?>(parameters, StringComparer.Ordinal);
-        var index = 0;
-        cypher = TemporalNowRegex().Replace(cypher, match =>
-        {
-            var parameterName = $"age_temporal_{index++}";
-            mutable[parameterName] = match.Groups["function"].Value.ToLowerInvariant() switch
-            {
-                "localdatetime" => DateTime.Now,
-                "date" => DateTime.Today.ToString(
-                    "yyyy-MM-dd'T'00:00:00.0000000",
-                    System.Globalization.CultureInfo.InvariantCulture),
-                "time" => TimeOnly.FromDateTime(DateTime.Now),
-                _ => DateTime.UtcNow,
-            };
-            return $"${parameterName}";
-        });
-        cypher = DurationMapRegex().Replace(cypher, "${value}");
-        cypher = TemporalWrapperRegex().Replace(cypher, "${value}");
-        cypher = TemporalParameterArithmeticRegex().Replace(cypher, match =>
-        {
-            if (!mutable.TryGetValue(match.Groups["value"].Value, out var rawValue) ||
-                !mutable.TryGetValue(match.Groups["amount"].Value, out var rawAmount) ||
-                rawValue is null || rawAmount is null)
-            {
-                return match.Value;
-            }
-
-            var amount = Convert.ToDouble(rawAmount, System.Globalization.CultureInfo.InvariantCulture);
-            DateTimeOffset value;
-            if (rawValue is DateTime dateTime)
-            {
-                value = new DateTimeOffset(dateTime);
-            }
-            else if (rawValue is DateTimeOffset dateTimeOffset)
-            {
-                value = dateTimeOffset;
-            }
-            else if (!DateTimeOffset.TryParse(
-                Convert.ToString(rawValue, System.Globalization.CultureInfo.InvariantCulture),
-                System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.RoundtripKind,
-                out value))
-            {
-                return match.Value;
-            }
-
-            value = match.Groups["unit"].Value.ToLowerInvariant() switch
-            {
-                "days" => value.AddDays(amount),
-                "hours" => value.AddHours(amount),
-                "minutes" => value.AddMinutes(amount),
-                "seconds" => value.AddSeconds(amount),
-                "milliseconds" => value.AddMilliseconds(amount),
-                "months" => value.AddMonths(Convert.ToInt32(amount, System.Globalization.CultureInfo.InvariantCulture)),
-                "years" => value.AddYears(Convert.ToInt32(amount, System.Globalization.CultureInfo.InvariantCulture)),
-                _ => value,
-            };
-            var parameterName = $"age_temporal_{index++}";
-            mutable[parameterName] = value.ToUniversalTime();
-            return $"${parameterName}";
-        });
-        return (cypher, mutable);
-    }
-
     private static IReadOnlyDictionary<string, object?> ToParameterDictionary(object? parameters)
     {
         if (parameters is null)
@@ -926,20 +706,8 @@ internal sealed partial class AgeQueryRunner
     [GeneratedRegex(@"\[(?<alias>[A-Za-z_][A-Za-z0-9_]*)?:(?<identifiers>(?:`(?:``|[^`])+`|[A-Za-z_][A-Za-z0-9_]*)(?:\|(?:`(?:``|[^`])+`|[A-Za-z_][A-Za-z0-9_]*))*)(?<depth>\*[^\]]+)?\]", RegexOptions.CultureInvariant)]
     private static partial Regex RelationshipTypePatternRegex();
 
-    [GeneratedRegex(@"(?:datetime|localdatetime|date|time|duration)\((?<value>[^()]+)\)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex TemporalWrapperRegex();
-
     [GeneratedRegex(@"(?<value>[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*)\.(?<member>year|month|day|hour|minute|second)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TemporalMemberRegex();
-
-    [GeneratedRegex(@"\$(?<value>[A-Za-z_][A-Za-z0-9_]*)\s*[+]\s*[{]\s*(?<unit>days|hours|minutes|seconds|milliseconds|months|years)\s*:\s*\$(?<amount>[A-Za-z_][A-Za-z0-9_]*)\s*[}]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex TemporalParameterArithmeticRegex();
-
-    [GeneratedRegex(@"(?<function>datetime|localdatetime|date|time)\(\)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex TemporalNowRegex();
-
-    [GeneratedRegex(@"duration\((?<value>\{[^()]+\})\)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex DurationMapRegex();
 
     [GeneratedRegex(@"\[(?<index>i(?:\s*\+\s*1)?)\]", RegexOptions.CultureInvariant)]
     private static partial Regex PathIndexRegex();
@@ -949,9 +717,6 @@ internal sealed partial class AgeQueryRunner
 
     [GeneratedRegex(@"\bRETURN\s+DISTINCT\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ReturnDistinctRegex();
-
-    [GeneratedRegex(@"\bRETURN\s+(?:count|sum|min|max|avg)\s*\(", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex AggregateReturnRegex();
 
     [GeneratedRegex(@"\bsum\((?<value>[^()]+)\)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SumAggregateRegex();
