@@ -100,7 +100,6 @@ public sealed class AgeHarness : IGraphProviderTestHarness
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(values);
-        var escapedLabel = CypherIdentifier.EscapeIfNeeded(label, "node label");
         var escapedProperty = CypherIdentifier.EscapeIfNeeded(propertyName, "property name");
 
         await using var transaction = await graph.GetTransactionAsync(cancellationToken);
@@ -108,11 +107,12 @@ public sealed class AgeHarness : IGraphProviderTestHarness
             ?? throw new ArgumentException("The graph was not created by the AGE harness.", nameof(graph));
         var result = await ageTransaction.Runner.RunAsync(
             $"""
-            MATCH (n:{escapedLabel})
-            WHERE n.{escapedProperty} IN $values
+            MATCH (n)
+            WHERE $label IN coalesce(n.inheritance_labels, [])
+              AND n.{escapedProperty} IN $values
             RETURN count(n) AS node_count
             """,
-            new { values = values.ToArray() },
+            new { label, values = values.ToArray() },
             cancellationToken);
         await using var resultLease = result.ConfigureAwait(false);
         var record = await result.SingleAsync(cancellationToken);
