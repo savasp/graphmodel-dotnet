@@ -121,6 +121,24 @@ public sealed class AgeTemporalParameterArithmeticPassTests
         Assert.DoesNotContain("age_temporal_0", lowered.Parameters);
     }
 
+    [Fact]
+    public void ReturnsSameStatementWhenNoTemporalConstructsExist()
+    {
+        var statement = new CypherStatement(
+        [
+            new MatchClause(
+                [new PathPattern([new NodePattern("src", [])])],
+                optional: false),
+            new WhereClause(new BinaryExpression(
+                CypherBinaryOperator.GreaterThanOrEqual,
+                Function("size", new PropertyAccess(new VariableRef("src"), "Name")),
+                new QueryParameter("p0"))),
+            new ReturnClause([new ReturnItem(new VariableRef("src"), null)], distinct: false),
+        ], new Dictionary<string, object?>(StringComparer.Ordinal) { ["p0"] = 1 });
+
+        Assert.Same(statement, pass.Run(statement));
+    }
+
     private static CypherStatement Statement(
         CypherExpression expression,
         IReadOnlyDictionary<string, object?> parameters) => new(

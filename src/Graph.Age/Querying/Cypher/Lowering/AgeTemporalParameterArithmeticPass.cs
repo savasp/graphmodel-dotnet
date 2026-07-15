@@ -79,9 +79,11 @@ internal sealed class AgeTemporalParameterArithmeticPass : ICypherPass
             .Select(item => new ReturnItem(Rewrite(item.Expression), item.Alias))
             .ToArray();
 
-        private CypherExpression Rewrite(CypherExpression expression)
-        {
-            var rewritten = expression switch
+        // Rebuilds are unconditional; Changed is set only where a temporal construct is actually
+        // rewritten, so record equality over list-typed members (always reference-unequal after a
+        // rebuild) never forces a spurious statement copy.
+        private CypherExpression Rewrite(CypherExpression expression) =>
+            expression switch
             {
                 BinaryExpression binary => RewriteBinary(binary),
                 UnaryExpression unary => new UnaryExpression(unary.Op, Rewrite(unary.Operand)),
@@ -127,10 +129,6 @@ internal sealed class AgeTemporalParameterArithmeticPass : ICypherPass
                     comprehension.Predicate is null ? null : Rewrite(comprehension.Predicate)),
                 _ => expression,
             };
-
-            Changed |= rewritten != expression;
-            return rewritten;
-        }
 
         private CypherExpression RewriteBinary(BinaryExpression binary)
         {

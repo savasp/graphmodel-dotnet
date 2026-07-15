@@ -150,6 +150,67 @@ public sealed class AgeClauseOrderPassTests
     }
 
     [Fact]
+    public void ReusesExistingPipeForPathPagingAheadOfDecomposition()
+    {
+        var statement = Statement(
+            new MatchClause(
+            [
+                new PathPattern(
+                [
+                    new NodePattern("src", []),
+                    new RelationshipPattern("r", null, CypherDirection.Outgoing, new DepthRange(1, 3)),
+                    new NodePattern("tgt", []),
+                ], "p"),
+            ], optional: false),
+            new WithClause([new ReturnItem(new VariableRef("p"), null)], distinct: false),
+            new SkipClause(new Literal(2)),
+            new LimitClause(new Literal(4)),
+            new WithClause(
+                [new ReturnItem(Function("collect", new VariableRef("p")), "__paths")],
+                distinct: false),
+            new ReturnClause(
+                [new ReturnItem(new VariableRef("__paths"), null)],
+                distinct: false));
+
+        var lowered = pass.Run(statement);
+
+        Assert.Same(statement, lowered);
+    }
+
+    [Fact]
+    public void RewritesEveryEntityAliasAndKeepsOtherOrderingItems()
+    {
+        var statement = Statement(
+            new MatchClause(
+            [
+                new PathPattern(
+                [
+                    new NodePattern("src", []),
+                    new RelationshipPattern("r", null, CypherDirection.Outgoing, depth: null),
+                    new NodePattern("tgt", []),
+                ]),
+            ], optional: false),
+            new OrderByClause(
+            [
+                new OrderByItem(new VariableRef("src"), descending: false),
+                new OrderByItem(new VariableRef("tgt"), descending: true),
+                new OrderByItem(new VariableRef("r"), descending: false),
+                new OrderByItem(Property("src", "Name"), descending: false),
+            ]),
+            Return("src"));
+
+        var rendered = renderer.Render(pass.Run(statement));
+
+        Assert.Equal(
+            """
+            MATCH (src)-[r]->(tgt)
+            RETURN src
+            ORDER BY src.Id, tgt.Id DESC, r.Id, src.Name
+            """,
+            rendered.Text);
+    }
+
+    [Fact]
     public void PlacesPagingBeforeAggregateReturn()
     {
         var statement = Statement(
@@ -169,6 +230,31 @@ public sealed class AgeClauseOrderPassTests
             """
             MATCH (src)
             WITH src
+            ORDER BY src.Age
+            LIMIT 3
+            RETURN count(src)
+            """,
+            rendered.Text);
+    }
+
+    [Fact]
+    public void PlacesPagingAtAggregateReturnWhenNoPipeExists()
+    {
+        // The planner emits a WITH pipe before every aggregate RETURN it plans; this locks the
+        // FindLastIndex fallback (insert directly at the RETURN) against regressions.
+        var statement = Statement(
+            Match("src"),
+            OrderBy(Property("src", "Age")),
+            new LimitClause(new Literal(3)),
+            new ReturnClause(
+                [new ReturnItem(Function("count", new VariableRef("src")), null)],
+                distinct: false));
+
+        var rendered = renderer.Render(pass.Run(statement));
+
+        Assert.Equal(
+            """
+            MATCH (src)
             ORDER BY src.Age
             LIMIT 3
             RETURN count(src)
