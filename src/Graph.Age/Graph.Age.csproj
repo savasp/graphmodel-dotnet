@@ -8,7 +8,8 @@
 
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Age</PackageId>
-        <Description>A PostgreSQL Apache AGE graph provider with LINQ support for the Cvoya.Graph abstraction.</Description>
+        <Title>Cvoya.Graph.Age — CVOYA Graph</Title>
+        <Description>CVOYA Graph provider for PostgreSQL and Apache AGE, with LINQ support for the Cvoya.Graph abstraction.</Description>
         <PackageTags>graph;database;postgresql;apache-age;cypher;linq</PackageTags>
     </PropertyGroup>
 

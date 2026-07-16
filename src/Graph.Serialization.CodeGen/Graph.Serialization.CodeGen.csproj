@@ -9,7 +9,8 @@
     <!-- Package Information -->
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Serialization.CodeGen</PackageId>
-        <Description>Code generation for CVOYA graph serialization.</Description>
+        <Title>Cvoya.Graph.Serialization.CodeGen — CVOYA Graph</Title>
+        <Description>Source-code generation for CVOYA Graph serialization.</Description>
         <PackageTags>graph;database;codegen;serialization</PackageTags>
         <IsPackable Condition="'$(Configuration)' == 'LocalFeed'">true</IsPackable>
         <IsPackable Condition="'$(Configuration)' != 'LocalFeed'">false</IsPackable>

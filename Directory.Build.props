@@ -32,7 +32,7 @@
         <Company>CVOYA LLC</Company>
         <Copyright>Copyright 2025 CVOYA LLC</Copyright>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/cvoya-com/graph</PackageProjectUrl>
+        <PackageProjectUrl>https://cvoya.com/software</PackageProjectUrl>
         <RepositoryUrl>https://github.com/cvoya-com/graph</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageOutputPath>$(MSBuildThisFileDirectory)artifacts</PackageOutputPath>

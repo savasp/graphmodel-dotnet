@@ -294,10 +294,63 @@ jobs:
       - name: Test Neo4j Provider
         run: dotnet test --project tests/Graph.Neo4j.Tests/Graph.Neo4j.Tests.csproj --no-build --configuration Release --verbosity normal
         env:
+          GRAPHMODEL_COMPLIANCE_STRICT: "1"
           NEO4J_URI: bolt://localhost:7687
           NEO4J_USER: neo4j
           NEO4J_PASSWORD: password
           USE_NEO4J_CONTAINERS: false
+
+  test-age:
+    name: Test Apache AGE Provider
+    runs-on: ubuntu-latest
+    needs: verify-version
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    services:
+      age:
+        image: apache/age:release_PG18_1.7.0
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: "10.0.x"
+          cache: false
+          cache-dependency-path: |
+            **/*.csproj
+            global.json
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Set up local feed
+        run: dotnet build --configuration LocalFeed --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test Apache AGE Provider
+        run: dotnet test --project tests/Graph.Age.Tests/Graph.Age.Tests.csproj --no-build --configuration Release --verbosity normal
+        env:
+          AGE_CONNECTION_STRING: Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres
+          GRAPHMODEL_COMPLIANCE_STRICT: "1"
 
   pack:
     name: Pack
@@ -310,6 +363,7 @@ jobs:
       - test-translation
       - test-codegen
       - test-neo4j
+      - test-age
     timeout-minutes: 15
     permissions:
       contents: read
@@ -340,6 +394,7 @@ jobs:
           dotnet build --configuration Release --no-restore src/Graph.Serialization/Graph.Serialization.csproj
           dotnet build --configuration Release --no-restore src/Graph.Neo4j/Graph.Neo4j.csproj
           dotnet build --configuration Release --no-restore src/Graph.Age/Graph.Age.csproj
+          dotnet build --configuration Release --no-restore src/Graph.InMemory/Graph.InMemory.csproj
           dotnet build --configuration Release --no-restore src/Graph.CompatibilityTests/Graph.CompatibilityTests.csproj
           dotnet build --configuration Release --no-restore src/Graph.Analyzers/Graph.Analyzers.csproj
           dotnet build --configuration Release --no-restore src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj
@@ -351,6 +406,7 @@ jobs:
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Serialization/Graph.Serialization.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Neo4j/Graph.Neo4j.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.Age/Graph.Age.csproj
+          dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.InMemory/Graph.InMemory.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts src/Graph.CompatibilityTests/Graph.CompatibilityTests.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Analyzers/Graph.Analyzers.csproj
           dotnet pack --configuration Release --no-build -o ./artifacts -p:IsPackable=true src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj
@@ -375,10 +431,42 @@ jobs:
         env:
           NEEDS_VERIFY_VERSION_OUTPUTS_VERSION: ${{ needs.verify-version.outputs.version }}
 
+      - name: Verify a clean consumer can restore the release packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ./consumer-packages
+          dotnet restore examples/SimpleMovieExample/SimpleMovieExample.csproj \
+            --force \
+            --no-cache \
+            --packages ./consumer-packages \
+            --source "$PWD/artifacts" \
+            --source https://api.nuget.org/v3/index.json \
+            -p:Configuration=Release
+          dotnet build examples/SimpleMovieExample/SimpleMovieExample.csproj \
+            --configuration Release \
+            --no-restore \
+            -p:RestorePackagesPath="$PWD/consumer-packages"
+
+      - name: Create tagged source archive
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.verify-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git archive \
+            --format=zip \
+            --prefix="cvoya-graph-${RELEASE_VERSION}/" \
+            --output=./artifacts/cvoya-graph-source.zip \
+            HEAD
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
-          subject-path: "artifacts/*.nupkg"
+          subject-path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+            artifacts/cvoya-graph-source.zip
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -468,10 +556,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IS_PRERELEASE: ${{ needs.verify-version.outputs.is_prerelease }}
+          RELEASE_INTRO: |
+            <p><a href="https://cvoya.com"><img src="https://raw.githubusercontent.com/cvoya-com/.github/main/profile/cvoya-wordmark.png" alt="CVOYA" width="260"></a></p>
+
+            **CVOYA Graph is downloadable open-source computer software published by [CVOYA](https://cvoya.com).** Download the tagged source archive (`cvoya-graph-source.zip`) below, or install the packages from [NuGet](https://www.nuget.org/profiles/cvoya).
+
+            The current packages use the `Cvoya.Graph.*` IDs and replace the earlier `Cvoya.Graph.Model.*` package line. See the [CVOYA software catalog](https://cvoya.com/software) for the project overview and download links.
         run: |
           set -euo pipefail
           shopt -s nullglob
-          files=(./artifacts/*.nupkg ./artifacts/*.snupkg)
+          files=(./artifacts/*.nupkg ./artifacts/*.snupkg ./artifacts/cvoya-graph-source.zip)
           if [[ ${#files[@]} -eq 0 ]]; then
             echo "::error::No release packages were downloaded."
             exit 1
@@ -483,7 +577,7 @@ jobs:
             echo "Release $GITHUB_REF_NAME already exists; re-uploading assets."
             gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
           else
-            args=(release create "$GITHUB_REF_NAME" "${files[@]}" --title "$GITHUB_REF_NAME" --generate-notes)
+            args=(release create "$GITHUB_REF_NAME" "${files[@]}" --title "CVOYA Graph $GITHUB_REF_NAME" --generate-notes --notes "$RELEASE_INTRO")
             if [[ "$IS_PRERELEASE" == "true" ]]; then
               args+=(--prerelease)
             fi

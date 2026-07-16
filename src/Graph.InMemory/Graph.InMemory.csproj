@@ -8,7 +8,8 @@
 
     <PropertyGroup>
         <PackageId>Cvoya.Graph.InMemory</PackageId>
-        <Description>An in-memory reference provider for the Cvoya.Graph abstraction: a LINQ-to-objects execution engine over an in-process store, intended as a test double and executable specification, not a production database.</Description>
+        <Title>Cvoya.Graph.InMemory — CVOYA Graph</Title>
+        <Description>CVOYA Graph in-memory reference provider: a LINQ-to-objects execution engine intended as a test double and executable specification, not a production database.</Description>
         <PackageTags>graph;in-memory;linq;testing</PackageTags>
     </PropertyGroup>
 

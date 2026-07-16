@@ -1,3 +1,6 @@
+**Downloadable open-source computer software from [CVOYA](https://cvoya.com).** See the
+[CVOYA software catalog](https://cvoya.com/software).
+
 # Cvoya.Graph.Serialization.CodeGen
 
 [![NuGet](https://img.shields.io/nuget/v/Cvoya.Graph.Serialization.CodeGen.svg)](https://www.nuget.org/packages/Cvoya.Graph.Serialization.CodeGen/)

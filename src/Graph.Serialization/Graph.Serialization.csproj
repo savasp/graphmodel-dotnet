@@ -9,7 +9,8 @@
     <!-- Package Information -->
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Serialization</PackageId>
-        <Description>A serialization abstraction for CVOYA graph.</Description>
+        <Title>Cvoya.Graph.Serialization — CVOYA Graph</Title>
+        <Description>Serialization abstractions and materialization for CVOYA Graph.</Description>
         <PackageTags>graph;database;serialization;linq</PackageTags>
     </PropertyGroup>
 

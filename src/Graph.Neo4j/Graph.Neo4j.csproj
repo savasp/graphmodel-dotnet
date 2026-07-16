@@ -8,7 +8,8 @@
 
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Neo4j</PackageId>
-        <Description>A graph provider for the Neo4j database with support for LINQ and the Cvoya.Graph abstraction.</Description>
+        <Title>Cvoya.Graph.Neo4j — CVOYA Graph</Title>
+        <Description>CVOYA Graph provider for Neo4j, with LINQ support and the Cvoya.Graph abstraction.</Description>
         <PackageTags>graph;database;neo4j;linq</PackageTags>
     </PropertyGroup>
 

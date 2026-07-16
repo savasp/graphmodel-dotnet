@@ -8,7 +8,8 @@
 
     <PropertyGroup>
         <PackageId>Cvoya.Graph.Cypher</PackageId>
-        <Description>A typed Cypher AST and validation framework for CVOYA graph query generation.</Description>
+        <Title>Cvoya.Graph.Cypher — CVOYA Graph</Title>
+        <Description>CVOYA Graph typed Cypher AST and validation framework for graph query generation.</Description>
         <PackageTags>graph;database;cypher;ast;linq</PackageTags>
     </PropertyGroup>
 

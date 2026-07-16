@@ -1,3 +1,6 @@
+**Downloadable open-source computer software from [CVOYA](https://cvoya.com).** See the
+[CVOYA software catalog](https://cvoya.com/software).
+
 # Cvoya.Graph.InMemory
 
 An in-process, in-memory provider for the CVOYA graph abstraction. It exists for two audiences:
