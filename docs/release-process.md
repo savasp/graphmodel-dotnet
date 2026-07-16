@@ -77,6 +77,22 @@ Release steps. Use it to validate the pipeline end-to-end — including on a
 throwaway branch — without touching nuget.org or creating a release. Real
 publishing only ever happens from an actual `v*` tag push.
 
+### Promoting a prerelease to Latest
+
+For the active alpha line, follow the same GitHub Release convention as
+Spring Voyage:
+
+1. Let the tag-triggered workflow publish the semver prerelease and all of its
+   assets.
+2. Verify the NuGet packages, provenance attestations, and
+   `cvoya-graph-source.zip` download.
+3. Edit the GitHub Release manually so its release record is no longer marked
+   as a prerelease and mark it as **Latest**. The tag and NuGet package versions
+   remain semantic prereleases.
+4. Verify that `releases/latest` resolves to the promoted tag and that
+   `https://github.com/cvoya-com/graph/releases/latest/download/cvoya-graph-source.zip`
+   downloads the tagged archive before updating public links.
+
 ## NuGet Trusted Publishing — one-time portal setup
 
 Trusted Publishing exchanges a short-lived GitHub OIDC token for a temporary
