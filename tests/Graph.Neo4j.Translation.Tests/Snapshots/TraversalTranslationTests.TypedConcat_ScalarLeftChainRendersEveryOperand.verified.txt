@@ -1,0 +1,17 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WHERE src.Age >= $u0_u0_p0
+RETURN src.Id
+UNION ALL
+MATCH (src:Person|Manager)
+WHERE src.Age >= $u0_u1_p0
+RETURN src.Id
+UNION ALL
+MATCH (src:Person|Manager)
+WHERE src.Age >= $u1_p0
+RETURN src.Id
+
+== Parameters ==
+u0_u0_p0 = 18
+u0_u1_p0 = 30
+u1_p0 = 65

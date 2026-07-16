@@ -270,8 +270,15 @@ var auditIds = await activeIds.Concat(invitedIds).ToListAsync();
 `Union` removes duplicate projected rows. `Concat` is bag-preserving and lowers to `UNION ALL`, so
 an item present in both operands appears twice. Operand output types and projection shapes must be
 compatible; incompatible shapes fail in `GraphQueryModelValidator`. Apply each operand's filters,
-projection, ordering, and paging before combining it. Materialize the combined query before adding
-another sequence operator.
+projection, ordering, and paging before combining it. Repeated same-kind calls are supported:
+`a.Union(b).Union(c)` removes duplicates across the complete chain, while
+`a.Concat(b).Concat(c)` preserves duplicates and operand order. The shared model keeps these as
+recursive binary operations with disjoint parameter namespaces at every level.
+
+A flat mixed chain such as `a.Union(b).Concat(c)` is rejected because it does not state the intended
+grouping. Nest the second operand when mixing operations intentionally — for example,
+`a.Union(b.Concat(c))` — or materialize the first set operation. Other sequence operators still
+require materializing the combined query first.
 
 ### Label filters
 

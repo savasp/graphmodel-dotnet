@@ -53,6 +53,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     private bool _isGraphPathResult;
     private int _explicitTraversalCount;
     private int _lastExplicitTraversalIndex = -1;
+    private FilterPlacementBoundary? _lastFilterPlacementBoundary;
 
     private GraphQueryModelBuilder()
     {
@@ -138,12 +139,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         }
 
         ThrowIfUnsupportedAfterTraversePaths(op.Value, node.Method.Name);
-        if (_union is not null && op.Value != LinqOperator.ToListOrArray)
-        {
-            throw Unsupported(
-                node,
-                "operators after Union or Concat are not supported; materialize the combined query first.");
-        }
+        ThrowIfUnsupportedAfterSetOperation(op.Value, node);
 
         switch (op.Value)
         {
@@ -382,6 +378,9 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     {
         var selector = RequireLambda(node, 1, "Select");
         RejectIndexedLambda(node, selector, "Select");
+        _lastFilterPlacementBoundary = IsTraverseProjection(selector)
+            ? FilterPlacementBoundary.Traverse
+            : FilterPlacementBoundary.Select;
         AddComplexPropertyTraversals(selector);
         selector = _projection is { Kind: ProjectionKind.OptionalTraversal, Selector: { } optional }
             ? ComposeOptionalTraversalProjection(optional, selector)
@@ -443,6 +442,16 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
             optional.Parameters[1]).Visit(current.Body) ?? current.Body;
         return Expression.Lambda(body, optional.Parameters);
     }
+
+    private bool IsTraverseProjection(LambdaExpression selector) =>
+        _projection?.Kind == ProjectionKind.PathSegment &&
+        selector.Parameters.Count == 1 &&
+        StripConvert(selector.Body) is MemberExpression
+        {
+            Expression: ParameterExpression parameter,
+            Member.Name: nameof(IGraphPathSegment.EndNode),
+        } &&
+        parameter == selector.Parameters[0];
 
     private sealed class OptionalResultMemberReplacementVisitor(
         ParameterExpression result,
@@ -756,6 +765,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         {
             AppliedAfterProjection = _projection is not null,
             AppliedAfterPaging = _skip is not null || _take is not null || _hasPostPagingStage,
+            AppliedAfterBoundary = _lastFilterPlacementBoundary,
         });
     }
 
@@ -785,6 +795,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         {
             AppliedAfterProjection = _projection is not null,
             AppliedAfterPaging = _skip is not null || _take is not null || _hasPostPagingStage,
+            AppliedAfterBoundary = _lastFilterPlacementBoundary,
         });
     }
 
@@ -940,8 +951,6 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
 
     private void HandleUnion(MethodCallExpression node, SetOperationKind operation)
     {
-        // A chained set operation (a.Union(b).Union(c)) never reaches this handler: the generic
-        // after-set-operation guard in VisitMethodCall rejects the outer operator first.
         if (node.Arguments.Count < 2)
         {
             throw Unsupported(node, $"{operation} requires a second source.");
@@ -999,6 +1008,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     /// </summary>
     private void ComposeTake(int take)
     {
+        _lastFilterPlacementBoundary = FilterPlacementBoundary.Take;
         take = Math.Max(take, 0);
         if (_hasPostPagingStage)
         {
@@ -1017,6 +1027,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     /// </summary>
     private void ComposeSkip(int skip)
     {
+        _lastFilterPlacementBoundary = FilterPlacementBoundary.Skip;
         skip = Math.Max(skip, 0);
         if (_hasPostPagingStage)
         {
@@ -1056,6 +1067,38 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         }
 
         _hasPostPagingStage = _skip is not null || _take is not null;
+    }
+
+    private void ThrowIfUnsupportedAfterSetOperation(LinqOperator operation, MethodCallExpression node)
+    {
+        if (_union is null || operation == LinqOperator.ToListOrArray)
+        {
+            return;
+        }
+
+        SetOperationKind? nextSetOperation = operation switch
+        {
+            LinqOperator.Union => SetOperationKind.Union,
+            LinqOperator.Concat => SetOperationKind.Concat,
+            _ => null,
+        };
+        if (nextSetOperation == _union.Operation)
+        {
+            return;
+        }
+
+        if (nextSetOperation is { } mixedOperation)
+        {
+            throw Unsupported(
+                node,
+                $"a flat set-operation chain cannot apply {mixedOperation} after {_union.Operation}. " +
+                $"Nest the intended grouping in the second operand (for example, " +
+                $"a.{_union.Operation}(b.{mixedOperation}(c))) or materialize the first set operation.");
+        }
+
+        throw Unsupported(
+            node,
+            "operators after Union or Concat are not supported; materialize the combined query first.");
     }
 
     /// <summary>

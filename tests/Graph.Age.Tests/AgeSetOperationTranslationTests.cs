@@ -9,12 +9,14 @@ using Cvoya.Graph.CompatibilityTests;
 public sealed class AgeSetOperationTranslationTests
 {
     [Fact]
-    public async Task DeclinesTypedUnionAtTranslationTime()
+    public async Task DeclinesTypedUnionChainAtTranslationTime()
     {
         await using var store = new AgeGraphStore(
             "Host=localhost;Port=5455;Username=postgres;Password=postgres;Database=postgres",
             "translation");
-        var query = store.Graph.Nodes<Person>().Union(store.Graph.Nodes<Person>());
+        var query = store.Graph.Nodes<Person>()
+            .Union(store.Graph.Nodes<Person>())
+            .Union(store.Graph.Nodes<Person>());
 
         var exception = Assert.Throws<GraphQueryTranslationException>(() =>
         {

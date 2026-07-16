@@ -4,11 +4,12 @@
 namespace Cvoya.Graph.Querying;
 
 /// <summary>
-/// Describes a provider-independent set union between a graph query and a second graph query.
+/// Describes a provider-independent binary set operation between two graph queries.
 /// </summary>
 /// <remarks>
-/// The model can represent the union so that recognition does not lose the second source; whether
-/// a provider can execute it is a separate planning concern.
+/// Either operand can itself carry a <see cref="GraphQueryModel.Union"/> fragment, allowing
+/// same-kind chains to remain binary without introducing an N-ary public model. Whether a provider
+/// can execute the operation is a separate planning concern.
 /// </remarks>
 public sealed record UnionFragment
 {

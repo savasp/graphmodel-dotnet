@@ -256,6 +256,34 @@ public class CypherQueryPlannerTests
             name => Assert.Equal("u1_p0", name));
     }
 
+    [Theory]
+    [InlineData(SetOperationKind.Union, false)]
+    [InlineData(SetOperationKind.Concat, true)]
+    public void Plan_LeftChainedSetOperation_PlansEveryNestedBranchWithDisjointParameters(
+        SetOperationKind operation,
+        bool preserveDuplicates)
+    {
+        Expression<Func<Person, bool>> firstPredicate = person => person.Age >= 18;
+        Expression<Func<Person, bool>> secondPredicate = person => person.Age >= 30;
+        Expression<Func<Person, bool>> thirdPredicate = person => person.Age >= 65;
+        var first = Model(predicates: [new PredicateFragment(firstPredicate, "src")]);
+        var second = Model(predicates: [new PredicateFragment(secondPredicate, "src")]);
+        var third = Model(predicates: [new PredicateFragment(thirdPredicate, "src")]);
+        var firstPair = Model(union: new UnionFragment(first, second, typeof(Person), operation));
+
+        var statement = planner.Plan(Model(
+            union: new UnionFragment(firstPair, third, typeof(Person), operation)));
+
+        var outer = Assert.IsType<SetOperationClause>(Assert.Single(statement.Clauses));
+        Assert.Equal(preserveDuplicates, outer.PreserveDuplicates);
+        Assert.Equal(
+            preserveDuplicates,
+            Assert.IsType<SetOperationClause>(Assert.Single(outer.First)).PreserveDuplicates);
+        Assert.Equal(
+            ["u0_u0_p0", "u0_u1_p0", "u1_p0"],
+            statement.Parameters.Keys.Order(StringComparer.Ordinal));
+    }
+
     [Fact]
     public void Plan_MissingSetOperationsCapabilityFailsAtTranslation()
     {

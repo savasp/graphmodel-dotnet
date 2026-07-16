@@ -1714,11 +1714,16 @@ public interface IQueryTraversalTests : IGraphTest
         var marker = $"SetOperation-{Guid.NewGuid():N}";
         var first = new Person { FirstName = $"{marker}-first" };
         var overlap = new Person { FirstName = $"{marker}-overlap" };
+        var third = new Person { FirstName = $"{marker}-third" };
         await Graph.CreateNodeAsync(first, null, TestContext.Current.CancellationToken);
         await Graph.CreateNodeAsync(overlap, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(third, null, TestContext.Current.CancellationToken);
 
         var left = Graph.Nodes<Person>().Where(person => person.Id == first.Id || person.Id == overlap.Id);
         var right = Graph.Nodes<Person>().Where(person => person.Id == overlap.Id);
+        var firstOnly = Graph.Nodes<Person>().Where(person => person.Id == first.Id);
+        var overlapOnly = Graph.Nodes<Person>().Where(person => person.Id == overlap.Id);
+        var thirdOnly = Graph.Nodes<Person>().Where(person => person.Id == third.Id);
 
         var union = await left.Union(right).ToListAsync(TestContext.Current.CancellationToken);
         var concat = await left.Concat(right).ToListAsync(TestContext.Current.CancellationToken);
@@ -1728,6 +1733,32 @@ public interface IQueryTraversalTests : IGraphTest
         var scalarConcat = await left.Select(person => person.Id)
             .Concat(right.Select(person => person.Id))
             .ToListAsync(TestContext.Current.CancellationToken);
+        var chainedUnion = await firstOnly
+            .Union(overlapOnly)
+            .Union(thirdOnly)
+            .Union(overlapOnly)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var nestedUnion = await firstOnly
+            .Union(overlapOnly.Union(thirdOnly.Union(overlapOnly)))
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var chainedConcat = await firstOnly
+            .Concat(overlapOnly)
+            .Concat(thirdOnly)
+            .Concat(overlapOnly)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var nestedConcat = await firstOnly
+            .Concat(overlapOnly.Concat(thirdOnly.Concat(overlapOnly)))
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var scalarChainedUnion = await firstOnly.Select(person => person.Id)
+            .Union(overlapOnly.Select(person => person.Id))
+            .Union(thirdOnly.Select(person => person.Id))
+            .Union(overlapOnly.Select(person => person.Id))
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var scalarChainedConcat = await firstOnly.Select(person => person.Id)
+            .Concat(overlapOnly.Select(person => person.Id))
+            .Concat(thirdOnly.Select(person => person.Id))
+            .Concat(overlapOnly.Select(person => person.Id))
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, union.Count);
         Assert.Equal(3, concat.Count);
@@ -1735,6 +1766,20 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Equal(3, scalarConcat.Count);
         Assert.Equal(2, concat.Count(person => person.Id == overlap.Id));
         Assert.Equal(2, scalarConcat.Count(id => id == overlap.Id));
+        Assert.Equal(
+            nestedUnion.Select(person => person.Id).Order(),
+            chainedUnion.Select(person => person.Id).Order());
+        Assert.Equal(3, chainedUnion.Count);
+        Assert.Equal(
+            [first.Id, overlap.Id, third.Id, overlap.Id],
+            chainedConcat.Select(person => person.Id));
+        Assert.Equal(nestedConcat.Select(person => person.Id), chainedConcat.Select(person => person.Id));
+        Assert.Equal(
+            new[] { first.Id, overlap.Id, third.Id }.Order(),
+            scalarChainedUnion.Order());
+        Assert.Equal(
+            [first.Id, overlap.Id, third.Id, overlap.Id],
+            scalarChainedConcat);
     }
 
     [Fact]

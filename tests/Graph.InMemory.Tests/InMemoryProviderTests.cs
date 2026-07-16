@@ -105,6 +105,35 @@ public sealed class InMemoryProviderTests
     }
 
     [Fact]
+    public async Task LeftChainedSetOperations_ExecuteEveryOperandInOrder()
+    {
+        await using var store = new InMemoryGraphStore();
+        var marker = $"set-chain-{Guid.NewGuid():N}";
+        var first = new Person { FirstName = "First", LastName = marker };
+        var second = new Person { FirstName = "Second", LastName = marker };
+        var third = new Person { FirstName = "Third", LastName = marker };
+        await store.Graph.CreateNodeAsync(first, cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateNodeAsync(second, cancellationToken: TestContext.Current.CancellationToken);
+        await store.Graph.CreateNodeAsync(third, cancellationToken: TestContext.Current.CancellationToken);
+
+        var firstOnly = store.Graph.Nodes<Person>().Where(person => person.Id == first.Id);
+        var secondOnly = store.Graph.Nodes<Person>().Where(person => person.Id == second.Id);
+        var thirdOnly = store.Graph.Nodes<Person>().Where(person => person.Id == third.Id);
+
+        var concatenated = await firstOnly
+            .Concat(secondOnly)
+            .Concat(thirdOnly)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var union = await firstOnly.Select(person => person.Id)
+            .Union(secondOnly.Select(person => person.Id))
+            .Union(firstOnly.Select(person => person.Id))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal([first.Id, second.Id, third.Id], concatenated.Select(person => person.Id));
+        Assert.Equal(new[] { first.Id, second.Id }.Order(), union.Order());
+    }
+
+    [Fact]
     public void Harness_DeclaresOnlyImplementedOptionalCapabilities()
     {
         var capabilities = new InMemoryHarness().Capabilities;
