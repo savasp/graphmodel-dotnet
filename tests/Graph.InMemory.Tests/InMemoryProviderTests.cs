@@ -152,7 +152,7 @@ public sealed class InMemoryProviderTests
         // Scalar-key aggregation grouping runs natively over compiled grouping lambdas; see #306.
         Assert.True(capabilities.Has(GraphCapability.GroupByAggregation));
         Assert.False(capabilities.Has(GraphCapability.NestedTransactions));
-        Assert.False(capabilities.Has(GraphCapability.OrderByEntity));
+        Assert.True(capabilities.Has(GraphCapability.OrderByEntity));
         Assert.True(capabilities.Has(GraphCapability.ShortestPath));
         Assert.True(capabilities.Has(GraphCapability.SetOperations));
     }

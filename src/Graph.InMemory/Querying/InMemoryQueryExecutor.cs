@@ -1334,6 +1334,32 @@ internal sealed class InMemoryQueryExecutor(
         private static string PrimaryLabel(INode node) => node.Labels.Count == 0 ? string.Empty : node.Labels[0];
     }
 
+    private sealed class GraphOrderingComparer : Comparer<object?>
+    {
+        public static GraphOrderingComparer Instance { get; } = new();
+
+        public override int Compare(object? x, object? y)
+        {
+            if (ReferenceEquals(x, y))
+            {
+                return 0;
+            }
+
+            return (x, y) switch
+            {
+                (null, _) => -1,
+                (_, null) => 1,
+                (INode left, INode right) =>
+                    StringComparer.Ordinal.Compare(left.Id, right.Id),
+                (IRelationship left, IRelationship right) =>
+                    StringComparer.Ordinal.Compare(left.Id, right.Id),
+                (INode, IRelationship) => -1,
+                (IRelationship, INode) => 1,
+                _ => Comparer<object?>.Default.Compare(x, y),
+            };
+        }
+    }
+
     private IEnumerable<(Row Row, object? Value)> ApplyOrdering(
         IEnumerable<(Row Row, object? Value)> pairs,
         IReadOnlyList<OrderingKey> ordering)
@@ -1360,10 +1386,10 @@ internal sealed class InMemoryQueryExecutor(
 
             ordered = (ordered, key.Descending) switch
             {
-                (null, false) => pairs.OrderBy(KeyOf, Comparer<object?>.Default),
-                (null, true) => pairs.OrderByDescending(KeyOf, Comparer<object?>.Default),
-                ({ } previous, false) => previous.ThenBy(KeyOf, Comparer<object?>.Default),
-                ({ } previous, true) => previous.ThenByDescending(KeyOf, Comparer<object?>.Default),
+                (null, false) => pairs.OrderBy(KeyOf, GraphOrderingComparer.Instance),
+                (null, true) => pairs.OrderByDescending(KeyOf, GraphOrderingComparer.Instance),
+                ({ } previous, false) => previous.ThenBy(KeyOf, GraphOrderingComparer.Instance),
+                ({ } previous, true) => previous.ThenByDescending(KeyOf, GraphOrderingComparer.Instance),
             };
         }
 
