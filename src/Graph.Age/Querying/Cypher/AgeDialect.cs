@@ -16,6 +16,7 @@ public sealed class AgeDialect : ICypherDialect
         GraphCapability.Transactions,
         GraphCapability.ComplexPropertyCascade,
         GraphCapability.MultiLabelMatch,
+        GraphCapability.LabelFiltering,
         GraphCapability.OrderByEntity,
         GraphCapability.OptionalTraversal,
         GraphCapability.FullTextSearch,

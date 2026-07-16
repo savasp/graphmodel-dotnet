@@ -42,7 +42,9 @@ public sealed class ComplianceInventoryTests
     // pins that an unsupported correlated grouped-projection member (Take over the group) is rejected
     // with the same GraphQueryTranslationException on every provider.
     // +5 for #318: three correlated-composition cases and two scalar-projection parity cases.
-    private const int ExpectedTotalTestMethods = 410;
+    // +6 for #96: relationship expansion/existence (2), shortest paths, public optional traversal,
+    // typed set operations, and label filtering capability contracts.
+    private const int ExpectedTotalTestMethods = 416;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

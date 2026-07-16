@@ -18,6 +18,7 @@ public sealed class AgeDialectTests
                 GraphCapability.Transactions,
                 GraphCapability.ComplexPropertyCascade,
                 GraphCapability.MultiLabelMatch,
+                GraphCapability.LabelFiltering,
                 GraphCapability.OrderByEntity,
                 GraphCapability.OptionalTraversal,
                 GraphCapability.FullTextSearch,

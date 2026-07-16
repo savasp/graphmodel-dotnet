@@ -323,6 +323,24 @@ public static class GraphQueryModelValidator
                     $"Relationship-existence filter {i} source alias '{alias}' is not bound by the query.");
             }
         }
+
+        for (var i = 0; i < model.LabelFilters.Count; i++)
+        {
+            var filter = model.LabelFilters[i];
+            var alias = filter.Alias;
+            if (!bound.Contains(alias))
+            {
+                throw new GraphException(
+                    $"Label filter {i} alias '{alias}' is not bound by the query.");
+            }
+
+            if (filter.AppliedAfterProjection || filter.AppliedAfterPaging)
+            {
+                throw new GraphException(
+                    "OfLabel and OfLabels must be applied before Select, Skip, or Take so label filtering " +
+                    "cannot be silently moved across a projection or paging boundary.");
+            }
+        }
     }
 
     private static HashSet<string> CollectRootAliases(GraphQueryModel model)

@@ -102,6 +102,8 @@ internal static class LinqOperatorDispatch
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.OptionalTraverse), LinqOperator.OptionalTraverse);
         AddAll(typeof(GraphTraversalExtensions), "WithRelationshipPredicate", LinqOperator.RelationshipPredicate);
         AddAll(typeof(GraphRelationshipPredicateExtensions), nameof(GraphRelationshipPredicateExtensions.WhereHasRelationship), LinqOperator.WhereHasRelationship);
+        AddAll(typeof(GraphLabelExtensions), nameof(GraphLabelExtensions.OfLabel), LinqOperator.LabelFilter);
+        AddAll(typeof(GraphLabelExtensions), nameof(GraphLabelExtensions.OfLabels), LinqOperator.LabelFilter);
 
         return table;
     }

@@ -43,4 +43,5 @@ internal enum LinqOperator
     Search,
     RelationshipPredicate,
     WhereHasRelationship,
+    LabelFilter,
 }

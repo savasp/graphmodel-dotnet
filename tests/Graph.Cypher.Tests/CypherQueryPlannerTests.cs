@@ -212,6 +212,41 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_MissingLabelFilteringCapabilityFailsAtTranslation()
+    {
+        var model = Model() with
+        {
+            LabelFilters = [new LabelFilterFragment("src", ["Manager"], GraphLabelMatch.All)],
+        };
+
+        AssertMissingCapability(GraphCapability.LabelFiltering, model);
+    }
+
+    [Fact]
+    public void Plan_LabelFilters_LowerExplicitAnyAndAllSemantics()
+    {
+        var model = Model() with
+        {
+            LabelFilters =
+            [
+                new LabelFilterFragment("src", ["Manager", "Contractor"], GraphLabelMatch.Any),
+                new LabelFilterFragment("src", ["Active", "Verified"], GraphLabelMatch.All),
+            ],
+        };
+
+        var statement = planner.Plan(model);
+
+        var where = Assert.Single(statement.Clauses.OfType<WhereClause>());
+        var tests = Descendants(where.Predicate).OfType<LabelTest>().ToArray();
+        Assert.Collection(
+            tests,
+            test => Assert.Equal(["Manager", "Contractor"], test.Labels),
+            test => Assert.Equal(["Active"], test.Labels),
+            test => Assert.Equal(["Verified"], test.Labels));
+        Assert.All(tests, test => Assert.Equal("src", Assert.IsType<VariableRef>(test.Target).Alias));
+    }
+
+    [Fact]
     public void Plan_VariableTraversalRelationshipPredicate_LowersToAllQuantifier()
     {
         Expression<Func<Knows, bool>> predicate = relationship => relationship.Id != "blocked";

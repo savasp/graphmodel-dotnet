@@ -20,6 +20,7 @@ public sealed class Neo4jDialect : ICypherDialect
         GraphCapability.CallSubqueries,
         GraphCapability.PatternSizeProjection,
         GraphCapability.MultiLabelMatch,
+        GraphCapability.LabelFiltering,
         GraphCapability.OrderByEntity,
         GraphCapability.OptionalTraversal,
         GraphCapability.GroupByAggregation,

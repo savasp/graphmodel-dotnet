@@ -1706,5 +1706,50 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Equal(2, scalarConcat.Count(id => id == overlap.Id));
     }
 
+    [Fact]
+    [RequiresCapability(GraphCapability.LabelFiltering)]
+    public async Task LabelFilters_PinSubtypeDynamicAnyAllEmptyCompositionAndSafetySemantics()
+    {
+        var marker = $"LabelFilter-{Guid.NewGuid():N}";
+        var person = new Person { FirstName = $"{marker}-person" };
+        var manager = new Manager { FirstName = $"{marker}-manager", Department = "Ops" };
+        var dynamicNode = new DynamicNode(
+            labels: [marker, "Active"],
+            properties: new Dictionary<string, object?> { ["marker"] = marker });
+
+        await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(manager, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(dynamicNode, null, TestContext.Current.CancellationToken);
+
+        var subtype = await Graph.Nodes<Person>()
+            .Where(node => node.Id == person.Id || node.Id == manager.Id)
+            .OfLabel(nameof(Manager))
+            .OrderBy(node => node.Id)
+            .Take(5)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var any = await Graph.DynamicNodes()
+            .Where(node => node.Id == dynamicNode.Id)
+            .OfLabels(GraphLabelMatch.Any, "Missing", marker)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var all = await Graph.DynamicNodes()
+            .Where(node => node.Id == dynamicNode.Id)
+            .OfLabels(GraphLabelMatch.All, marker, "Active")
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var empty = await Graph.DynamicNodes()
+            .Where(node => node.Id == dynamicNode.Id)
+            .OfLabels(GraphLabelMatch.All)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var hostile = await Graph.DynamicNodes()
+            .Where(node => node.Id == dynamicNode.Id)
+            .OfLabel("Active') OR true //")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(manager.Id, Assert.Single(subtype).Id);
+        Assert.Equal(dynamicNode.Id, Assert.Single(any).Id);
+        Assert.Equal(dynamicNode.Id, Assert.Single(all).Id);
+        Assert.Equal(dynamicNode.Id, Assert.Single(empty).Id);
+        Assert.Empty(hostile);
+    }
+
     #endregion
 }

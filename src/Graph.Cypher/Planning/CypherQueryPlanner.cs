@@ -56,6 +56,11 @@ public sealed class CypherQueryPlanner
             RequireCapability(GraphCapability.RelationshipPredicates, "RelationshipPredicates");
         }
 
+        if (model.LabelFilters.Count > 0)
+        {
+            RequireCapability(GraphCapability.LabelFiltering, "LabelFiltering");
+        }
+
         if (model.Traversal.Any(step => step.PathSelection != TraversalPathSelection.All))
         {
             RequireCapability(GraphCapability.ShortestPath, "ShortestPath");
@@ -1240,6 +1245,20 @@ public sealed class CypherQueryPlanner
             var alias = ResolveLambdaAlias(model, state, predicate.Alias);
 
             predicates.Add(lowerer.LowerLambda(predicate.Predicate, alias));
+        }
+
+        foreach (var filter in model.LabelFilters)
+        {
+            var target = new VariableRef(ResolveLambdaAlias(model, state, filter.Alias));
+            if (filter.Match == GraphLabelMatch.Any)
+            {
+                predicates.Add(new LabelTest(target, filter.Labels));
+            }
+            else
+            {
+                predicates.AddRange(filter.Labels.Select(label =>
+                    (CypherExpression)new LabelTest(target, [label])));
+            }
         }
 
         var explicitTraversal = model.Traversal.Where(step => !step.IsComplexPropertyTraversal).ToArray();

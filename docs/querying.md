@@ -268,6 +268,32 @@ compatible; incompatible shapes fail in `GraphQueryModelValidator`. Apply each o
 projection, ordering, and paging before combining it. Materialize the combined query before adding
 another sequence operator.
 
+### Label filters
+
+`OfLabel` and `OfLabels` filter the current typed or dynamic node scope by its stored labels. Use
+`GraphLabelMatch.Any` to require at least one requested label, or `GraphLabelMatch.All` to require
+every requested label:
+
+```csharp
+var reviewers = await graph.Nodes<Person>()
+    .OfLabel("Manager")
+    .OfLabels(GraphLabelMatch.All, "Active", "SecurityReviewer")
+    .Where(person => person.Region == "Northwest")
+    .OrderBy(person => person.LastName)
+    .Take(25)
+    .ToListAsync();
+
+var tagged = await graph.DynamicNodes()
+    .OfLabels(GraphLabelMatch.Any, "Imported", "Verified")
+    .ToListAsync();
+```
+
+An empty label list is an identity operation. Label arguments are values, not query identifiers;
+the Cypher dialect renders them as escaped literals, so caller-supplied labels cannot change the
+query structure. Apply label filters before `Select`, `Skip`, or `Take`; the shared validator rejects
+the reverse order instead of silently moving a label predicate across that boundary. Providers that
+do not declare `GraphCapability.LabelFiltering` reject a non-empty label filter during translation.
+
 ## Projection and Results
 
 ### Anonymous Types

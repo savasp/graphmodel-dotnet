@@ -54,6 +54,12 @@ public enum GraphCapability
     MultiLabelMatch,
 
     /// <summary>
+    /// Filtering node query scopes by caller-supplied stored labels with explicit any/all
+    /// semantics.
+    /// </summary>
+    LabelFiltering,
+
+    /// <summary>
     /// Ordering results by an entire node or relationship variable, rather than by one of its
     /// properties.
     /// </summary>

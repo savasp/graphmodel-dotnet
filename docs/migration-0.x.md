@@ -552,6 +552,20 @@ Custom providers must declare `GraphCapability.SetOperations` only after impleme
 distinct and bag-preserving behavior with isolated operand parameters. AGE deliberately declines
 the new capability. No stored-data migration is required.
 
+## 28. Typed and dynamic label filters
+
+Node queries now expose `OfLabel(label)` and `OfLabels(match, labels)`. `GraphLabelMatch.Any`
+requires at least one requested stored label; `GraphLabelMatch.All` requires every requested label.
+Passing no labels to `OfLabels` leaves the query unchanged. Both operators preserve the
+`IGraphQueryable<TNode>` chain and compose with node predicates, ordering, projection, and paging
+when applied before those stages. A label filter after `Select`, `Skip`, or `Take` is rejected at the
+shared model boundary rather than being silently reordered.
+
+Custom providers must declare `GraphCapability.LabelFiltering` only after implementing value-safe
+label tests over typed and dynamic node scopes. Label strings must never be interpolated as query
+identifiers. A provider that does not declare the capability rejects non-empty label filters during
+translation. No stored-data migration is required.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

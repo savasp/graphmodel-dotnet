@@ -13,6 +13,7 @@ namespace Cvoya.Graph.Querying;
 public sealed record GraphQueryModel
 {
     private IReadOnlyList<RelationshipExistenceFragment> relationshipExistence = [];
+    private IReadOnlyList<LabelFilterFragment> labelFilters = [];
     /// <summary>
     /// Initializes a new instance of the <see cref="GraphQueryModel"/> record.
     /// </summary>
@@ -301,5 +302,12 @@ public sealed record GraphQueryModel
     {
         get => relationshipExistence;
         init => relationshipExistence = QueryModelGuard.CopyRequiredList(value, nameof(RelationshipExistence));
+    }
+
+    /// <summary>Gets label filters applied to their declared node scopes.</summary>
+    public IReadOnlyList<LabelFilterFragment> LabelFilters
+    {
+        get => labelFilters;
+        init => labelFilters = QueryModelGuard.CopyRequiredList(value, nameof(LabelFilters));
     }
 }

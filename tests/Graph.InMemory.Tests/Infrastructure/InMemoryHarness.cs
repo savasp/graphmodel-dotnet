@@ -32,6 +32,7 @@ public sealed class InMemoryHarness : IGraphProviderTestHarness
         // Polymorphic base queries and null-propagating navigation have the same user-visible
         // semantics as their Cypher counterparts even though the interpreter uses CLR objects.
         GraphCapability.MultiLabelMatch,
+        GraphCapability.LabelFiltering,
         GraphCapability.OptionalTraversal,
         GraphCapability.RelationshipPredicates,
         GraphCapability.ShortestPath,

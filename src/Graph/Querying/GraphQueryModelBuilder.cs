@@ -29,6 +29,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     private readonly List<OrderingKey> _ordering = [];
     private readonly List<OrderingKey> _postPagingOrdering = [];
     private readonly List<RelationshipExistenceFragment> _relationshipExistence = [];
+    private readonly List<LabelFilterFragment> _labelFilters = [];
     private readonly HashSet<string> _complexNavigationPaths = new(StringComparer.Ordinal);
     private QueryRoot? _root;
     private ProjectionShape? _projection;
@@ -105,6 +106,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                 : null)
         {
             RelationshipExistence = builder._relationshipExistence,
+            LabelFilters = builder._labelFilters,
         };
     }
 
@@ -252,6 +254,9 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                 break;
             case LinqOperator.WhereHasRelationship:
                 HandleWhereHasRelationship(node);
+                break;
+            case LinqOperator.LabelFilter:
+                HandleLabelFilter(node);
                 break;
             case LinqOperator.SelectMany:
                 HandleSelectMany(node);
@@ -748,6 +753,35 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
             direction,
             _currentAlias ?? "src",
             predicate)
+        {
+            AppliedAfterProjection = _projection is not null,
+            AppliedAfterPaging = _skip is not null || _take is not null || _hasPostPagingStage,
+        });
+    }
+
+    private void HandleLabelFilter(MethodCallExpression node)
+    {
+        if (_currentType is null || !typeof(INode).IsAssignableFrom(_currentType))
+        {
+            throw Unsupported(node, "label filters require a node query scope.");
+        }
+
+        GraphLabelMatch match;
+        string[] labels;
+        if (node.Method.Name == nameof(GraphLabelExtensions.OfLabel))
+        {
+            match = GraphLabelMatch.All;
+            labels = [EvaluateArgument<string>(node, 1, "node label")];
+        }
+        else
+        {
+            match = EvaluateArgument<GraphLabelMatch>(node, 1, "label match mode");
+            labels = EvaluateArgument<string[]>(node, 2, "node labels");
+        }
+
+        if (labels.Length == 0)
+            return;
+        _labelFilters.Add(new LabelFilterFragment(_currentAlias ?? "src", labels, match)
         {
             AppliedAfterProjection = _projection is not null,
             AppliedAfterPaging = _skip is not null || _take is not null || _hasPostPagingStage,

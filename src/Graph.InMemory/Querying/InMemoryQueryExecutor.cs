@@ -50,6 +50,7 @@ internal sealed class InMemoryQueryExecutor(
 
         var rows = RootRows(model.Root);
         rows = ApplyTraversal(rows, model);
+        rows = ApplyLabelFilters(rows, model.LabelFilters);
         rows = ApplyRelationshipExistence(rows, model.RelationshipExistence);
         rows = ApplyJoin(rows, model);
 
@@ -628,6 +629,45 @@ internal sealed class InMemoryQueryExecutor(
 
     private IEnumerable<NodeRecord> NodeRecordsById(string id) =>
         _state.Nodes.Values.Where(n => n.Id == id);
+
+    private IEnumerable<Row> ApplyLabelFilters(
+        IEnumerable<Row> rows,
+        IReadOnlyList<LabelFilterFragment> filters)
+    {
+        foreach (var filter in filters)
+        {
+            rows = rows.Where(row => MatchesLabelFilter(row, filter));
+        }
+
+        return rows;
+    }
+
+    private bool MatchesLabelFilter(Row row, LabelFilterFragment filter)
+    {
+        var node = (row.Bindings.TryGetValue(filter.Alias, out var bound)
+            ? bound as INode
+            : null) ?? row.Current as INode;
+        if (node is null)
+        {
+            return false;
+        }
+
+        var records = NodeRecordsById(node.Id)
+            .Where(record => !record.IsComplexValue &&
+                (node is DynamicNode || record.ActualType == node.GetType()));
+        return records.Any(record =>
+        {
+            IReadOnlyList<string> storedLabels = record.ActualType == typeof(DynamicNode)
+                ? record.Labels
+                : [record.Label];
+            return filter.Match switch
+            {
+                GraphLabelMatch.Any => filter.Labels.Any(label => storedLabels.Contains(label, StringComparer.Ordinal)),
+                GraphLabelMatch.All => filter.Labels.All(label => storedLabels.Contains(label, StringComparer.Ordinal)),
+                _ => false,
+            };
+        });
+    }
 
     private static bool RelationshipMatches(RelationshipRecord relationship, TraversalStep step)
     {

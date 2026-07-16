@@ -54,6 +54,65 @@ public class GraphQueryModelBuilderTests
         GraphQueryModelValidator.Validate(model);
     }
 
+    [Fact]
+    public void LabelFilters_ProduceScopedAnyAndAllFragments()
+    {
+        var query = Root<Person>()
+            .OfLabel("Employee")
+            .OfLabels(GraphLabelMatch.Any, "Manager", "Contractor");
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Collection(
+            model.LabelFilters,
+            filter =>
+            {
+                Assert.Equal("src", filter.Alias);
+                Assert.Equal(GraphLabelMatch.All, filter.Match);
+                Assert.Equal(["Employee"], filter.Labels);
+            },
+            filter =>
+            {
+                Assert.Equal("src", filter.Alias);
+                Assert.Equal(GraphLabelMatch.Any, filter.Match);
+                Assert.Equal(["Manager", "Contractor"], filter.Labels);
+            });
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void EmptyLabelFilter_IsAnIdentityOperation()
+    {
+        var source = Root<Person>();
+
+        var query = source.OfLabels(GraphLabelMatch.All);
+
+        Assert.Same(source, query);
+    }
+
+    [Fact]
+    public void LabelFilters_RejectInvalidLabelsAndMatchModes()
+    {
+        var source = Root<Person>();
+
+        Assert.Throws<ArgumentException>(() => source.OfLabel(" "));
+        Assert.Throws<ArgumentException>(() => source.OfLabels(GraphLabelMatch.Any, "Person", ""));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            source.OfLabels((GraphLabelMatch)int.MaxValue, "Person"));
+    }
+
+    [Fact]
+    public void LabelFilter_AfterProjectionOrPaging_IsRejectedAtTheSharedBoundary()
+    {
+        var afterProjection = Root<Person>().Select(person => person).OfLabel("Person");
+        var afterPaging = Root<Person>().Take(5).OfLabel("Person");
+
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(afterProjection.Expression)));
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(afterPaging.Expression)));
+    }
+
     [Theory]
     [InlineData("Identity", ProjectionKind.Identity)]
     [InlineData("Scalar", ProjectionKind.Scalar)]

@@ -66,6 +66,7 @@ public class LinqOperatorDispatchTests
         LinqOperator.Search,
         LinqOperator.RelationshipPredicate,
         LinqOperator.WhereHasRelationship,
+        LinqOperator.LabelFilter,
     ];
 
     [Fact]
