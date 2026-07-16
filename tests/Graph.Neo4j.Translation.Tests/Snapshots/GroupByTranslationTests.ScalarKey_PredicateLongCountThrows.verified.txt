@@ -1,0 +1,1 @@
+System.NotSupportedException: GroupBy is not supported for this query shape: LongCount(predicate) over a scalar group is not supported; filter before GroupBy.

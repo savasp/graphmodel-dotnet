@@ -216,6 +216,32 @@ public class GroupByTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task ScalarKey_LongCount()
+    {
+        var query = Root.Nodes<Person>()
+            .GroupBy(p => p.LastName)
+            .Select(g => new { LastName = g.Key, Total = g.LongCount() });
+        return VerifyTranslation((IQueryable<object>)query);
+    }
+
+    [Fact]
+    public Task ScalarKey_LongCountResultSelectorOverload()
+    {
+        var query = Root.Nodes<Person>()
+            .GroupBy(p => p.LastName, (last, group) => new { LastName = last, Total = group.LongCount() });
+        return VerifyTranslation((IQueryable<object>)query);
+    }
+
+    [Fact]
+    public Task ScalarKey_PredicateLongCountThrows()
+    {
+        var query = Root.Nodes<Person>()
+            .GroupBy(p => p.LastName)
+            .Select(g => new { LastName = g.Key, Seniors = g.LongCount(p => p.Age >= 40) });
+        return VerifyTranslationThrows((IQueryable<object>)query);
+    }
+
+    [Fact]
     public Task ScalarKey_ComputedKeyExpression()
     {
         var query = Root.Nodes<Person>()

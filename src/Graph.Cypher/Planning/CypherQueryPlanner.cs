@@ -346,8 +346,8 @@ public sealed class CypherQueryPlanner
     /// <c>WITH &lt;key&gt; AS __key, &lt;agg&gt;(...) AS __aN … RETURN __key AS &lt;alias&gt;, __aN AS
     /// &lt;alias&gt; …</c>. Cypher groups by every non-aggregated <c>WITH</c> term, so <c>__key</c> is
     /// the grouping key; when the projection has no aggregate, <c>WITH DISTINCT</c> yields the
-    /// distinct keys. Only <c>Key</c> references and the <c>Count/Sum/Average/Min/Max</c> aggregates
-    /// are supported; other per-group shapes are rejected.
+    /// distinct keys. Only <c>Key</c> references and the <c>Count/LongCount/Sum/Average/Min/Max</c>
+    /// aggregates are supported; other per-group shapes are rejected.
     /// </summary>
     private CypherStatement PlanScalarGroupBy(GraphQueryModel model)
     {
@@ -453,9 +453,9 @@ public sealed class CypherQueryPlanner
 
     /// <summary>
     /// Lowers one member of a scalar grouping's projection: an aggregate over the group
-    /// (<c>Count/Sum/Average/Min/Max</c>) becomes a <c>WITH</c> aggregation column referenced from
-    /// <c>RETURN</c>; anything else must read the grouping key, which is rewritten to the
-    /// <c>__key</c> variable.
+    /// (<c>Count/LongCount/Sum/Average/Min/Max</c>) becomes a <c>WITH</c> aggregation column
+    /// referenced from <c>RETURN</c>; anything else must read the grouping key, which is rewritten
+    /// to the <c>__key</c> variable.
     /// </summary>
     private static CypherExpression LowerScalarGroupItem(
         Expression argument,
@@ -485,7 +485,7 @@ public sealed class CypherQueryPlanner
                         ? lowerer.LowerLambda(selector, "src")
                         : new VariableRef("src")),
                 _ => throw NotSupportedGroupBy(
-                    "only the Count, Sum, Average, Min, and Max aggregates are supported over a scalar group"),
+                    "only the Count, LongCount, Sum, Average, Min, and Max aggregates are supported over a scalar group"),
             };
 
             withItems.Add(new ReturnItem(aggregate, column));
@@ -898,6 +898,10 @@ public sealed class CypherQueryPlanner
                     }
 
                     break;
+                case nameof(Queryable.AsQueryable):
+                    // IGrouping is enumerable rather than queryable. Treat its standard adapter as
+                    // transparent so Queryable aggregate overloads share the same lowering.
+                    break;
                 case nameof(Enumerable.Where):
                     predicate = predicate is null
                         ? ExtractRequiredLambda(call.Arguments[^1], "Where")
@@ -933,6 +937,18 @@ public sealed class CypherQueryPlanner
                             : throw NotSupportedGroupBy(
                                 "Count(predicate) cannot be combined with a separate Where filter");
                         operationAfterProjection = selector is null;
+                    }
+
+                    kind = GroupOperationKind.Count;
+                    hasTerminal = true;
+                    break;
+                case nameof(Enumerable.LongCount) when !hasTerminal:
+                    // Only the parameterless form is part of the group grammar (#341); the shared
+                    // validators reject the predicate form before planning, so this throw is a backstop.
+                    if (call.Arguments.Count > 1)
+                    {
+                        throw NotSupportedGroupBy(
+                            "LongCount(predicate) over a group is not supported; filter before GroupBy");
                     }
 
                     kind = GroupOperationKind.Count;

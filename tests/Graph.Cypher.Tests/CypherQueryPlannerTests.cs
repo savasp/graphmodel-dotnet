@@ -1002,6 +1002,81 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_ScalarGroupByLongCount_LowersToCountAggregate()
+    {
+        Expression<Func<Person, string>> key = person => person.Name;
+        Expression<Func<IGrouping<string, Person>, object>> projection =
+            g => new { Name = g.Key, Total = g.LongCount() };
+        var model = Model(
+            groupBy: new GroupByFragment(key, null, null),
+            projection: new ProjectionShape(ProjectionKind.Anonymous, projection));
+
+        var statement = planner.Plan(model);
+
+        var with = Assert.Single(statement.Clauses.OfType<WithClause>());
+        Assert.False(with.Distinct);
+        Assert.Equal("__key", with.Items[0].Alias);
+        Assert.Equal("__a0", with.Items[1].Alias);
+        Assert.Equal("count", Assert.IsType<FunctionCall>(with.Items[1].Expression).Name);
+
+        var @return = Assert.Single(statement.Clauses.OfType<ReturnClause>());
+        Assert.Equal(["Name", "Total"], @return.Items.Select(item => item.Alias!).ToArray());
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_ScalarGroupByLongCountResultSelector_LowersToCountAggregate()
+    {
+        Expression<Func<Person, string>> key = person => person.Name;
+        Expression<Func<string, IEnumerable<Person>, object>> resultSelector =
+            (name, people) => new { Name = name, Total = people.LongCount() };
+        var model = Model(groupBy: new GroupByFragment(key, null, resultSelector));
+
+        var statement = planner.Plan(model);
+
+        var with = Assert.Single(statement.Clauses.OfType<WithClause>());
+        Assert.Equal("count", Assert.IsType<FunctionCall>(with.Items[1].Expression).Name);
+        var @return = Assert.Single(statement.Clauses.OfType<ReturnClause>());
+        Assert.Equal(["Name", "Total"], @return.Items.Select(item => item.Alias!).ToArray());
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_ScalarGroupByQueryableLongCount_LowersToCountAggregate()
+    {
+        Expression<Func<Person, string>> key = person => person.Name;
+        Expression<Func<IGrouping<string, Person>, object>> projection =
+            g => new { Name = g.Key, Total = g.AsQueryable().LongCount() };
+        var model = Model(
+            groupBy: new GroupByFragment(key, null, null),
+            projection: new ProjectionShape(ProjectionKind.Anonymous, projection));
+
+        var statement = planner.Plan(model);
+
+        var with = Assert.Single(statement.Clauses.OfType<WithClause>());
+        Assert.Equal("count", Assert.IsType<FunctionCall>(with.Items[1].Expression).Name);
+        var @return = Assert.Single(statement.Clauses.OfType<ReturnClause>());
+        Assert.Equal(["Name", "Total"], @return.Items.Select(item => item.Alias!).ToArray());
+        new CypherAstValidator().Run(statement);
+    }
+
+    [Fact]
+    public void Plan_ScalarGroupByLongCountPredicate_ThrowsDefinedTranslationError()
+    {
+        Expression<Func<Person, string>> key = person => person.Name;
+        Expression<Func<IGrouping<string, Person>, object>> projection =
+            g => new { Name = g.Key, Seniors = g.LongCount(person => person.Age >= 40) };
+        var model = Model(
+            groupBy: new GroupByFragment(key, null, null),
+            projection: new ProjectionShape(ProjectionKind.Anonymous, projection));
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+
+        Assert.Contains("LongCount(predicate)", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("filter before GroupBy", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CorrelatedGroupProjection_AcceptsSupportedCollectionAndAggregateMembers()
     {
         Expression<Func<IGrouping<Person, IGraphPathSegment<Person, Knows, Person>>, object>> projection = group =>
@@ -1059,6 +1134,25 @@ public class CypherQueryPlannerTests
 
         var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(GroupedModel(projection)));
         Assert.Equal(message, exception.Message);
+    }
+
+    [Fact]
+    public void CorrelatedGroupProjection_LongCount_RemainsOutsideTheSupportedGrammar()
+    {
+        Expression<Func<IGrouping<Person, IGraphPathSegment<Person, Knows, Person>>, object>> projection = group =>
+            new
+            {
+                Name = group.Key.Name,
+                FriendCount = group.LongCount(),
+            };
+        var model = GroupedModel(projection);
+
+        var reason = CorrelatedGroupProjectionValidation.Validate(model);
+
+        Assert.NotNull(reason);
+        Assert.Contains("LongCount", reason, StringComparison.Ordinal);
+        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
+        Assert.Equal(CorrelatedGroupProjectionValidation.BuildMessage(reason!), exception.Message);
     }
 
     private static GraphQueryModel GroupedModel(LambdaExpression projection)

@@ -202,7 +202,11 @@ public static class ScalarGroupByValidation
 
                     hasSelector = true;
                     break;
-                case nameof(Enumerable.Count):
+                case nameof(Queryable.AsQueryable):
+                    // IGrouping implements IEnumerable, so AsQueryable is the adapter required to
+                    // express the Queryable aggregate overloads inside a group projection.
+                    break;
+                case nameof(Enumerable.Count) or nameof(Enumerable.LongCount):
                     if (hasAggregate)
                     {
                         return "multiple terminal aggregates over a scalar group are not supported";
@@ -210,7 +214,8 @@ public static class ScalarGroupByValidation
 
                     if (call.Arguments.Count > 1)
                     {
-                        return "Count(predicate) over a scalar group is not supported; filter before GroupBy";
+                        return $"{call.Method.Name}(predicate) over a scalar group is not supported; " +
+                            "filter before GroupBy";
                     }
 
                     hasAggregate = true;
@@ -244,14 +249,14 @@ public static class ScalarGroupByValidation
         {
             return hasAggregate
                 ? null
-                : "the scalar group may only be referenced through Key, Count, Sum, Average, Min, or Max";
+                : "the scalar group may only be referenced through Key, Count, LongCount, Sum, Average, Min, or Max";
         }
 
         var rewritten = keyParameter is null
             ? new ScalarGroupKeyRewriter(groupParameter).Visit(item)!
             : item;
         return ReferencesParameter(rewritten, groupParameter)
-            ? "the projection references the scalar group outside Key, Count, Sum, Average, Min, or Max"
+            ? "the projection references the scalar group outside Key, Count, LongCount, Sum, Average, Min, or Max"
             : null;
     }
 

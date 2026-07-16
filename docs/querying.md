@@ -491,10 +491,12 @@ var departments = await graph.Nodes<Employee>()
 
 Scalar-key grouping requires the provider to declare the `GroupByAggregation` capability. The
 supported surface is deliberately minimal: a node root (optionally with a `Where` before `GroupBy`),
-a scalar key, and a projection that reads `g.Key` and/or the `Count`/`Sum`/`Average`/`Min`/`Max`
-aggregates. Everything else — entity or composite keys, element selectors, grouping after a
-traversal, collection projections such as `g.Select(...).ToList()`, filtered aggregates such as
-`g.Count(predicate)`, and `Distinct`/`OrderBy`/`Skip`/`Take` applied to the grouped result — is
+a scalar key, and a projection that reads `g.Key` and/or the
+`Count`/`LongCount`/`Sum`/`Average`/`Min`/`Max` aggregates. `g.LongCount()` is the `long`-returning
+form of `g.Count()` and lowers to the same provider count aggregate. Everything else — entity or
+composite keys, element selectors, grouping after a traversal, collection projections such as
+`g.Select(...).ToList()`, filtered aggregates such as `g.Count(predicate)` or
+`g.LongCount(predicate)`, and `Distinct`/`OrderBy`/`Skip`/`Take` applied to the grouped result — is
 declined at translation time with a `NotSupportedException`; materialize the grouped query first and
 continue client-side.
 

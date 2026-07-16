@@ -46,7 +46,9 @@ public sealed class ComplianceInventoryTests
     // typed set operations, and label filtering capability contracts.
     // +1 for the #348 review: a source label filter eliminates rows through an optional traversal
     // instead of degrading into a preserved null-target row.
-    private const int ExpectedTotalTestMethods = 417;
+    // +5 for #341: parameterless LongCount over a scalar group — Enumerable and Queryable forms,
+    // both projection forms, the empty-source contract, and the LongCount(predicate) rejection.
+    private const int ExpectedTotalTestMethods = 422;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()
