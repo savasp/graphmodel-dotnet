@@ -85,6 +85,265 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_MissingRelationshipPredicateCapabilityFailsAtTranslation()
+    {
+        Expression<Func<Knows, bool>> predicate = relationship => relationship.Id != "blocked";
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 3),
+            [new PredicateFragment(predicate, null)],
+            typeof(Person),
+            typeof(Knows));
+
+        AssertMissingCapability(
+            GraphCapability.RelationshipPredicates,
+            Model(traversal: [step]));
+    }
+
+    [Fact]
+    public void Plan_MissingShortestPathCapabilityFailsAtTranslation()
+    {
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, int.MaxValue),
+            [],
+            typeof(Person),
+            typeof(Knows))
+        {
+            PathSelection = TraversalPathSelection.Shortest,
+        };
+
+        AssertMissingCapability(
+            GraphCapability.ShortestPath,
+            Model(
+                traversal: [step],
+                pathShape: new QueryPathShape(typeof(Person), typeof(Knows), typeof(Person))));
+    }
+
+    [Fact]
+    public void Plan_AllShortestPaths_CarriesSelectionAndEndpointPredicateIntoAst()
+    {
+        Expression<Func<Person, bool>> endpoint = person => person.Age >= 18;
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Both,
+            new Cvoya.Graph.Querying.DepthRange(1, int.MaxValue),
+            [],
+            typeof(Person),
+            typeof(Knows))
+        {
+            PathSelection = TraversalPathSelection.AllShortest,
+            TargetPredicates = [new PredicateFragment(endpoint, null)],
+        };
+
+        var statement = planner.Plan(Model(
+            traversal: [step],
+            pathShape: new QueryPathShape(typeof(Person), typeof(Knows), typeof(Person))));
+
+        var match = Assert.IsType<MatchClause>(statement.Clauses[0]);
+        Assert.Equal(PathSelection.AllShortest, Assert.Single(match.Patterns).Selection);
+        var where = Assert.IsType<WhereClause>(statement.Clauses[1]);
+        Assert.Contains(Descendants(where.Predicate), expression => expression is PropertyAccess { Target: VariableRef { Alias: "tgt" } });
+    }
+
+    [Fact]
+    public void Plan_OptionalTraversal_UsesSeparateRootAndOptionalMatch()
+    {
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows),
+            false,
+            "src",
+            "tgt")
+        {
+            IsOptional = true,
+        };
+        var source = Expression.Parameter(typeof(Person), "source");
+        var target = Expression.Parameter(typeof(Person), "target");
+        var selector = Expression.Lambda(
+            Expression.New(
+                typeof(OptionalTraversalResult<Person>).GetConstructors().Single(),
+                Expression.Convert(source, typeof(INode)),
+                target),
+            source,
+            target);
+
+        var statement = planner.Plan(Model(
+            traversal: [step],
+            projection: new ProjectionShape(ProjectionKind.OptionalTraversal, selector)));
+
+        Assert.False(Assert.IsType<MatchClause>(statement.Clauses[0]).Optional);
+        Assert.True(Assert.IsType<MatchClause>(statement.Clauses[1]).Optional);
+    }
+
+    [Fact]
+    public void Plan_OptionalTraversal_AppliesEverySourceFilterBeforeTheOptionalMatch()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 18;
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows),
+            false,
+            "src",
+            "tgt")
+        {
+            IsOptional = true,
+        };
+        var source = Expression.Parameter(typeof(Person), "source");
+        var target = Expression.Parameter(typeof(Person), "target");
+        var selector = Expression.Lambda(
+            Expression.New(
+                typeof(OptionalTraversalResult<Person>).GetConstructors().Single(),
+                Expression.Convert(source, typeof(INode)),
+                target),
+            source,
+            target);
+
+        var statement = planner.Plan(Model(
+            predicates: [new PredicateFragment(predicate, "src")],
+            traversal: [step],
+            projection: new ProjectionShape(ProjectionKind.OptionalTraversal, selector)) with
+        {
+            LabelFilters = [new LabelFilterFragment("src", ["Manager"], GraphLabelMatch.All)],
+            RelationshipExistence =
+            [
+                new RelationshipExistenceFragment(
+                    typeof(Knows),
+                    GraphTraversalDirection.Both,
+                    "src",
+                    predicate: null),
+            ],
+        });
+
+        // A filter placed after the OPTIONAL MATCH would attach to it and null the target instead
+        // of eliminating the source row, so every source-scoped filter must precede the left match.
+        Assert.False(Assert.IsType<MatchClause>(statement.Clauses[0]).Optional);
+        var where = Assert.IsType<WhereClause>(statement.Clauses[1]);
+        Assert.True(Assert.IsType<MatchClause>(statement.Clauses[2]).Optional);
+        var parts = Descendants(where.Predicate).ToArray();
+        Assert.Contains(parts, expression => expression is LabelTest);
+        Assert.Contains(
+            parts,
+            expression => expression is PatternSubqueryExpression { Kind: PatternSubqueryKind.Exists });
+    }
+
+    [Fact]
+    public void Plan_Concat_UsesUnionAllAndDisjointBranchParameters()
+    {
+        Expression<Func<Person, bool>> firstPredicate = person => person.Age >= 18;
+        Expression<Func<Person, bool>> secondPredicate = person => person.Age >= 65;
+        var first = Model(predicates: [new PredicateFragment(firstPredicate, "src")]);
+        var second = Model(predicates: [new PredicateFragment(secondPredicate, "src")]);
+
+        var statement = planner.Plan(Model(
+            union: new UnionFragment(first, second, typeof(Person), SetOperationKind.Concat)));
+
+        var setOperation = Assert.IsType<SetOperationClause>(Assert.Single(statement.Clauses));
+        Assert.True(setOperation.PreserveDuplicates);
+        Assert.Collection(
+            statement.Parameters.Keys.Order(),
+            name => Assert.Equal("u0_p0", name),
+            name => Assert.Equal("u1_p0", name));
+    }
+
+    [Fact]
+    public void Plan_MissingSetOperationsCapabilityFailsAtTranslation()
+    {
+        var operand = Model();
+
+        AssertMissingCapability(
+            GraphCapability.SetOperations,
+            Model(union: new UnionFragment(operand, operand, typeof(Person))));
+    }
+
+    [Fact]
+    public void Plan_MissingLabelFilteringCapabilityFailsAtTranslation()
+    {
+        var model = Model() with
+        {
+            LabelFilters = [new LabelFilterFragment("src", ["Manager"], GraphLabelMatch.All)],
+        };
+
+        AssertMissingCapability(GraphCapability.LabelFiltering, model);
+    }
+
+    [Fact]
+    public void Plan_LabelFilters_LowerExplicitAnyAndAllSemantics()
+    {
+        var model = Model() with
+        {
+            LabelFilters =
+            [
+                new LabelFilterFragment("src", ["Manager", "Contractor"], GraphLabelMatch.Any),
+                new LabelFilterFragment("src", ["Active", "Verified"], GraphLabelMatch.All),
+            ],
+        };
+
+        var statement = planner.Plan(model);
+
+        var where = Assert.Single(statement.Clauses.OfType<WhereClause>());
+        var tests = Descendants(where.Predicate).OfType<LabelTest>().ToArray();
+        Assert.Collection(
+            tests,
+            test => Assert.Equal(["Manager", "Contractor"], test.Labels),
+            test => Assert.Equal(["Active"], test.Labels),
+            test => Assert.Equal(["Verified"], test.Labels));
+        Assert.All(tests, test => Assert.Equal("src", Assert.IsType<VariableRef>(test.Target).Alias));
+    }
+
+    [Fact]
+    public void Plan_VariableTraversalRelationshipPredicate_LowersToAllQuantifier()
+    {
+        Expression<Func<Knows, bool>> predicate = relationship => relationship.Id != "blocked";
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 3),
+            [new PredicateFragment(predicate, null)],
+            typeof(Person),
+            typeof(Knows));
+
+        var statement = planner.Plan(Model(traversal: [step]));
+
+        var where = Assert.IsType<WhereClause>(statement.Clauses[1]);
+        Assert.Contains(Descendants(where.Predicate), expression => expression is AllExpression);
+    }
+
+    [Fact]
+    public void Plan_RelationshipExistence_LowersToExistsPattern()
+    {
+        Expression<Func<Knows, bool>> predicate = relationship => relationship.Id != "blocked";
+        var model = Model() with
+        {
+            RelationshipExistence =
+            [
+                new RelationshipExistenceFragment(
+                    typeof(Knows),
+                    GraphTraversalDirection.Both,
+                    "src",
+                    new PredicateFragment(predicate, null)),
+            ],
+        };
+
+        var statement = planner.Plan(model);
+
+        var where = Assert.IsType<WhereClause>(statement.Clauses[1]);
+        Assert.Contains(
+            Descendants(where.Predicate),
+            expression => expression is PatternSubqueryExpression { Kind: PatternSubqueryKind.Exists });
+    }
+
+    [Fact]
     public void Plan_MissingMultiLabelCapabilityFailsAtTranslation()
     {
         AssertMissingCapability(
@@ -806,17 +1065,6 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
-    public void Plan_UnionModel_ThrowsDefinedTranslationError()
-    {
-        var operand = Model();
-        var model = Model(union: new UnionFragment(operand, operand, typeof(Person)));
-
-        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
-
-        Assert.Contains("Union is not supported by graph query translation yet.", exception.Message);
-    }
-
-    [Fact]
     public void Plan_DistinctScalarAggregate_PipesDistinctProjectionBeforeAggregate()
     {
         Expression<Func<Person, string>> selector = person => person.Name;
@@ -998,6 +1246,13 @@ public class CypherQueryPlannerTests
                     foreach (var item in Descendants(predicate)) yield return item;
                 }
 
+                break;
+            case AllExpression all:
+                foreach (var item in Descendants(all.Source)) yield return item;
+                foreach (var item in Descendants(all.Predicate)) yield return item;
+                break;
+            case PatternSubqueryExpression subquery when subquery.Predicate is not null:
+                foreach (var item in Descendants(subquery.Predicate)) yield return item;
                 break;
         }
     }

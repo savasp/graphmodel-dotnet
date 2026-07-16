@@ -1468,5 +1468,319 @@ public interface IQueryTraversalTests : IGraphTest
         }
     }
 
+    [Fact]
+    [RequiresCapability(GraphCapability.RelationshipPredicates)]
+    public async Task VariableTraversal_RelationshipPredicateFiltersEveryExpandedHop()
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-7);
+        var alice = new Person { FirstName = $"RelPredicateStart-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"RelPredicateRecent-{Guid.NewGuid():N}" };
+        var charlie = new Person { FirstName = $"RelPredicateOldTail-{Guid.NewGuid():N}" };
+        var david = new Person { FirstName = $"RelPredicateRecentTail-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(david, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(alice, bob) { Since = cutoff.AddDays(1) },
+            null,
+            TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(bob, charlie) { Since = cutoff.AddDays(-1) },
+            null,
+            TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(bob, david) { Since = cutoff.AddDays(1) },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var results = await Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .Traverse<Knows, Person>(options => options
+                .Depth(1, 2)
+                .WhereRelationship<Knows>(relationship => relationship.Since >= cutoff))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains(results, person => person.Id == bob.Id);
+        Assert.Contains(results, person => person.Id == david.Id);
+        Assert.DoesNotContain(results, person => person.Id == charlie.Id);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.RelationshipPredicates)]
+    public async Task WhereHasRelationship_RespectsDirectionPredicateAndSelfRelationships()
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-7);
+        var alice = new Person { FirstName = $"ExistenceAlice-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"ExistenceBob-{Guid.NewGuid():N}" };
+        var charlie = new Person { FirstName = $"ExistenceCharlie-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(alice, bob) { Since = cutoff.AddDays(1) },
+            null,
+            TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(charlie, alice) { Since = cutoff.AddDays(-1) },
+            null,
+            TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(bob, bob) { Since = cutoff.AddDays(1) },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var outgoing = await Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id || person.Id == bob.Id || person.Id == charlie.Id)
+            .WhereHasRelationship<Person, Knows>(
+                GraphTraversalDirection.Outgoing,
+                relationship => relationship.Since >= cutoff)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var incoming = await Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id || person.Id == bob.Id || person.Id == charlie.Id)
+            .WhereHasRelationship<Person, Knows>(
+                GraphTraversalDirection.Incoming,
+                relationship => relationship.Since >= cutoff)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            new[] { alice.Id, bob.Id }.Order().ToArray(),
+            outgoing.Select(person => person.Id).Order().ToArray());
+        Assert.Equal([bob.Id], incoming.Select(person => person.Id).Order().ToArray());
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.ShortestPath)]
+    public async Task ShortestPaths_PinSelectionEndpointDirectionNoPathAndSameNodeSemantics()
+    {
+        var marker = $"Shortest-{Guid.NewGuid():N}";
+        var start = new Person { FirstName = $"{marker}-start" };
+        var left = new Person { FirstName = $"{marker}-left" };
+        var right = new Person { FirstName = $"{marker}-right" };
+        var detour = new Person { FirstName = $"{marker}-detour" };
+        var end = new Person { FirstName = $"{marker}-end" };
+        var missing = new Person { FirstName = $"{marker}-missing" };
+
+        foreach (var person in new[] { start, left, right, detour, end, missing })
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        foreach (var (from, to) in new[]
+        {
+            (start, left),
+            (left, end),
+            (start, right),
+            (right, end),
+            (start, detour),
+            (detour, left),
+            (end, start),
+            (start, start),
+        })
+        {
+            await Graph.CreateRelationshipAsync(
+                new Knows(from, to),
+                null,
+                TestContext.Current.CancellationToken);
+        }
+
+        var oneShortest = await Graph.Nodes<Person>()
+            .Where(person => person.Id == start.Id)
+            .ShortestPath<Knows, Person>(person => person.Id == end.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var allShortest = await Graph.Nodes<Person>()
+            .Where(person => person.Id == start.Id)
+            .AllShortestPaths<Knows, Person>(person => person.Id == end.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var incoming = await Graph.Nodes<Person>()
+            .Where(person => person.Id == end.Id)
+            .ShortestPath<Knows, Person>(
+                person => person.Id == start.Id,
+                GraphTraversalDirection.Incoming)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var noPath = await Graph.Nodes<Person>()
+            .Where(person => person.Id == start.Id)
+            .ShortestPath<Knows, Person>(person => person.Id == missing.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var sameNode = await Graph.Nodes<Person>()
+            .Where(person => person.Id == start.Id)
+            .ShortestPath<Knows, Person>(person => person.Id == start.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(oneShortest);
+        Assert.Equal(2, oneShortest[0].Segments.Count);
+        Assert.Equal(2, allShortest.Count);
+        Assert.All(allShortest, path => Assert.Equal(2, path.Segments.Count));
+        Assert.Single(incoming);
+        Assert.Equal(2, incoming[0].Segments.Count);
+        Assert.Empty(noPath);
+        Assert.Empty(sameNode); // shortest-path queries require at least one hop and exclude the source endpoint.
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.OptionalTraversal)]
+    public async Task OptionalTraverse_PreservesUnmatchedRowsAndPinsMatchDirectionAndProjectionSemantics()
+    {
+        var marker = $"Optional-{Guid.NewGuid():N}";
+        var unmatched = new Person { FirstName = $"{marker}-unmatched" };
+        var one = new Person { FirstName = $"{marker}-one" };
+        var many = new Person { FirstName = $"{marker}-many" };
+        var self = new Person { FirstName = $"{marker}-self" };
+        var target1 = new Person { FirstName = $"{marker}-target1" };
+        var target2 = new Person { FirstName = $"{marker}-target2" };
+
+        foreach (var person in new[] { unmatched, one, many, self, target1, target2 })
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        foreach (var (from, to) in new[] { (one, target1), (many, target1), (many, target2), (self, self) })
+        {
+            await Graph.CreateRelationshipAsync(
+                new Knows(from, to),
+                null,
+                TestContext.Current.CancellationToken);
+        }
+
+        var results = await Graph.Nodes<Person>()
+            .Where(person =>
+                person.Id == unmatched.Id || person.Id == one.Id || person.Id == many.Id || person.Id == self.Id)
+            .OptionalTraverse<Knows, Person>()
+            .Take(10)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var incoming = await Graph.Nodes<Person>()
+            .Where(person => person.Id == target1.Id)
+            .OptionalTraverse<Knows, Person>(GraphTraversalDirection.Incoming)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var projected = await Graph.Nodes<Person>()
+            .Where(person => person.Id == unmatched.Id)
+            .OptionalTraverse<Knows, Person>()
+            .Select(result => new
+            {
+                SourceId = result.Source.Id,
+                TargetId = result.Target == null ? null : result.Target.Id,
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(5, results.Count);
+        Assert.Contains(results, result => result.Source.Id == unmatched.Id && result.Target is null);
+        Assert.Contains(results, result => result.Source.Id == one.Id && result.Target?.Id == target1.Id);
+        Assert.Equal(2, results.Count(result => result.Source.Id == many.Id && result.Target is not null));
+        Assert.Contains(results, result => result.Source.Id == self.Id && result.Target?.Id == self.Id);
+        Assert.Equal(
+            new[] { one.Id, many.Id }.Order().ToArray(),
+            incoming.Select(result => result.Target!.Id).Order().ToArray());
+        Assert.Equal(unmatched.Id, Assert.Single(projected).SourceId);
+        Assert.Null(projected[0].TargetId);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.OptionalTraversal)]
+    [RequiresCapability(GraphCapability.LabelFiltering)]
+    public async Task OptionalTraverse_SourceLabelFilterEliminatesRowsBeforeTheLeftMatch()
+    {
+        var marker = $"OptionalFilter-{Guid.NewGuid():N}";
+        var manager = new Manager { FirstName = $"{marker}-manager", Department = "Ops" };
+        var person = new Person { FirstName = $"{marker}-person" };
+        var target = new Person { FirstName = $"{marker}-target" };
+
+        await Graph.CreateNodeAsync(manager, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(target, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(person, target),
+            null,
+            TestContext.Current.CancellationToken);
+
+        var results = await Graph.Nodes<Person>()
+            .Where(node => node.Id == manager.Id || node.Id == person.Id)
+            .OfLabel(nameof(Manager))
+            .OptionalTraverse<Knows, Person>()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // The label filter must eliminate the non-manager source entirely - even though it has a
+        // matching relationship - instead of degrading into a preserved row with a null target.
+        var result = Assert.Single(results);
+        Assert.Equal(manager.Id, result.Source.Id);
+        Assert.Null(result.Target);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.SetOperations)]
+    public async Task TypedUnionAndConcat_PinDistinctBagAndScalarProjectionSemantics()
+    {
+        var marker = $"SetOperation-{Guid.NewGuid():N}";
+        var first = new Person { FirstName = $"{marker}-first" };
+        var overlap = new Person { FirstName = $"{marker}-overlap" };
+        await Graph.CreateNodeAsync(first, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(overlap, null, TestContext.Current.CancellationToken);
+
+        var left = Graph.Nodes<Person>().Where(person => person.Id == first.Id || person.Id == overlap.Id);
+        var right = Graph.Nodes<Person>().Where(person => person.Id == overlap.Id);
+
+        var union = await left.Union(right).ToListAsync(TestContext.Current.CancellationToken);
+        var concat = await left.Concat(right).ToListAsync(TestContext.Current.CancellationToken);
+        var scalarUnion = await left.Select(person => person.Id)
+            .Union(right.Select(person => person.Id))
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var scalarConcat = await left.Select(person => person.Id)
+            .Concat(right.Select(person => person.Id))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, union.Count);
+        Assert.Equal(3, concat.Count);
+        Assert.Equal(2, scalarUnion.Count);
+        Assert.Equal(3, scalarConcat.Count);
+        Assert.Equal(2, concat.Count(person => person.Id == overlap.Id));
+        Assert.Equal(2, scalarConcat.Count(id => id == overlap.Id));
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.LabelFiltering)]
+    public async Task LabelFilters_PinSubtypeDynamicAnyAllEmptyCompositionAndSafetySemantics()
+    {
+        var marker = $"LabelFilter-{Guid.NewGuid():N}";
+        var person = new Person { FirstName = $"{marker}-person" };
+        var manager = new Manager { FirstName = $"{marker}-manager", Department = "Ops" };
+        var dynamicNode = new DynamicNode(
+            labels: [marker, "Active"],
+            properties: new Dictionary<string, object?> { ["marker"] = marker });
+
+        await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(manager, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(dynamicNode, null, TestContext.Current.CancellationToken);
+
+        var subtype = await Graph.Nodes<Person>()
+            .Where(node => node.Id == person.Id || node.Id == manager.Id)
+            .OfLabel(nameof(Manager))
+            .OrderBy(node => node.Id)
+            .Take(5)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var any = await Graph.DynamicNodes()
+            .Where(node => node.Id == dynamicNode.Id)
+            .OfLabels(GraphLabelMatch.Any, "Missing", marker)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var all = await Graph.DynamicNodes()
+            .Where(node => node.Id == dynamicNode.Id)
+            .OfLabels(GraphLabelMatch.All, marker, "Active")
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var empty = await Graph.DynamicNodes()
+            .Where(node => node.Id == dynamicNode.Id)
+            .OfLabels(GraphLabelMatch.All)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var hostile = await Graph.DynamicNodes()
+            .Where(node => node.Id == dynamicNode.Id)
+            .OfLabel("Active') OR true //")
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(manager.Id, Assert.Single(subtype).Id);
+        Assert.Equal(dynamicNode.Id, Assert.Single(any).Id);
+        Assert.Equal(dynamicNode.Id, Assert.Single(all).Id);
+        Assert.Equal(dynamicNode.Id, Assert.Single(empty).Id);
+        Assert.Empty(hostile);
+    }
+
     #endregion
 }

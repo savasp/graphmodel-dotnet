@@ -16,6 +16,7 @@ public sealed class AgeDialect : ICypherDialect
         GraphCapability.Transactions,
         GraphCapability.ComplexPropertyCascade,
         GraphCapability.MultiLabelMatch,
+        GraphCapability.LabelFiltering,
         GraphCapability.OrderByEntity,
         GraphCapability.OptionalTraversal,
         GraphCapability.FullTextSearch,
@@ -126,7 +127,9 @@ public sealed class AgeDialect : ICypherDialect
     public string RenderDepth(DepthRange depth)
     {
         ArgumentNullException.ThrowIfNull(depth);
-        return $"*{depth.Min}..{depth.Max}";
+        return depth.Max == int.MaxValue
+            ? $"*{depth.Min}.."
+            : $"*{depth.Min}..{depth.Max}";
     }
 
     /// <inheritdoc/>

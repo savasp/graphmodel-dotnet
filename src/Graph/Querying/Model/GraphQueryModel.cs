@@ -12,6 +12,8 @@ namespace Cvoya.Graph.Querying;
 /// </remarks>
 public sealed record GraphQueryModel
 {
+    private IReadOnlyList<RelationshipExistenceFragment> relationshipExistence = [];
+    private IReadOnlyList<LabelFilterFragment> labelFilters = [];
     /// <summary>
     /// Initializes a new instance of the <see cref="GraphQueryModel"/> record.
     /// </summary>
@@ -294,4 +296,18 @@ public sealed record GraphQueryModel
 
     /// <summary>Gets sequence operations applied after the primary paging window, when present.</summary>
     public PostPagingStage? PostPaging { get; }
+
+    /// <summary>Gets relationship-existence filters applied to their declared source scopes.</summary>
+    public IReadOnlyList<RelationshipExistenceFragment> RelationshipExistence
+    {
+        get => relationshipExistence;
+        init => relationshipExistence = QueryModelGuard.CopyRequiredList(value, nameof(RelationshipExistence));
+    }
+
+    /// <summary>Gets label filters applied to their declared node scopes.</summary>
+    public IReadOnlyList<LabelFilterFragment> LabelFilters
+    {
+        get => labelFilters;
+        init => labelFilters = QueryModelGuard.CopyRequiredList(value, nameof(LabelFilters));
+    }
 }

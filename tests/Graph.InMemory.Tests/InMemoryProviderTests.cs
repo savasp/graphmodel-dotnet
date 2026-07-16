@@ -116,6 +116,7 @@ public sealed class InMemoryProviderTests
         Assert.True(capabilities.Has(GraphCapability.CallSubqueries));
         Assert.True(capabilities.Has(GraphCapability.PatternSizeProjection));
         Assert.True(capabilities.Has(GraphCapability.MultiLabelMatch));
+        Assert.True(capabilities.Has(GraphCapability.LabelFiltering));
         Assert.True(capabilities.Has(GraphCapability.OptionalTraversal));
         // Naive whole-word matching over each entity's own searchable string properties; see #289.
         Assert.True(capabilities.Has(GraphCapability.FullTextSearch));
@@ -123,6 +124,7 @@ public sealed class InMemoryProviderTests
         Assert.True(capabilities.Has(GraphCapability.GroupByAggregation));
         Assert.False(capabilities.Has(GraphCapability.NestedTransactions));
         Assert.False(capabilities.Has(GraphCapability.OrderByEntity));
-        Assert.False(capabilities.Has(GraphCapability.ShortestPath));
+        Assert.True(capabilities.Has(GraphCapability.ShortestPath));
+        Assert.True(capabilities.Has(GraphCapability.SetOperations));
     }
 }

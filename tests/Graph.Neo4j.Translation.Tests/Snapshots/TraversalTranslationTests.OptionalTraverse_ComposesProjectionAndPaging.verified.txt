@@ -1,0 +1,9 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+WHERE src.FirstName = $p0
+OPTIONAL MATCH (src:Person|Manager)-[r:KNOWS]->(tgt:Person|Manager)
+LIMIT 5
+RETURN src.Id AS SourceId, CASE WHEN tgt IS NULL THEN null ELSE tgt.Id END AS TargetId
+
+== Parameters ==
+p0 = "Alice"

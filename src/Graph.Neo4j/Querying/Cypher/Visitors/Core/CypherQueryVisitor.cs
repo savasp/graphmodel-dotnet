@@ -134,9 +134,6 @@ internal sealed class CypherQueryVisitor : ExpressionVisitor
         if (exception.Message.Contains("GroupBy", StringComparison.Ordinal))
             return new NotSupportedException(exception.Message);
 
-        if (exception.Message.Contains("Union", StringComparison.Ordinal))
-            return new GraphException("Union operations are not yet fully implemented in the refactored architecture");
-
         if (exception.Message.Contains("requires an explicit OrderBy", StringComparison.Ordinal))
             return new GraphException(exception.Message);
 

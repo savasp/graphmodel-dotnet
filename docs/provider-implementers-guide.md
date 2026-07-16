@@ -52,10 +52,10 @@ Marker overload families to support:
 
 The current Neo4j visitor dispatch table covers:
 
-- Standard LINQ (both `System.Linq.Queryable`'s methods, reached when a chain degrades to plain `IQueryable<T>`, and `GraphQueryableExtensions`'s own graph-typed-chain-preserving equivalents): `Where`, `Select`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Take`, `Skip`, `Distinct`, `SelectMany`, `GroupBy`, `Join`, `Union`.
+- Standard LINQ (both `System.Linq.Queryable`'s methods, reached when a chain degrades to plain `IQueryable<T>`, and `GraphQueryableExtensions`'s own graph-typed-chain-preserving equivalents): `Where`, `Select`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Take`, `Skip`, `Distinct`, `SelectMany`, `GroupBy`, `Join`, `Union`, `Concat`.
 - Async marker terminals: `ToListAsyncMarker`, `ToArrayAsyncMarker`, `FirstAsyncMarker`, `FirstOrDefaultAsyncMarker`, `SingleAsyncMarker`, `SingleOrDefaultAsyncMarker`, `LastAsyncMarker`, `LastOrDefaultAsyncMarker`, `AnyAsyncMarker`, `AllAsyncMarker`, `CountAsyncMarker`, `LongCountAsyncMarker`, `SumAsyncMarker`, `AverageAsyncMarker`, `MinAsyncMarker`, `MaxAsyncMarker`, `ContainsAsyncMarker`, `ElementAtAsyncMarker`, `ElementAtOrDefaultAsyncMarker`.
 - Direct async names accepted by Neo4j (built by `QueryableAsyncExtensions.SumAsync`/`AverageAsync` alongside the marker path): `SumAsync`, `AverageAsync`.
-- Graph extensions: `PathSegments`, `TraversePaths`, `Direction`, `WithDepth` (the last two are `[Obsolete]` free-floating modifiers, still dispatched for backward compatibility — new code should use the depth/direction overloads on `Traverse`/`TraversePaths` or an options lambda), `Search`.
+- Graph extensions: `PathSegments`, `TraversePaths`, `ShortestPath`, `AllShortestPaths`, `OptionalTraverse`, `WhereHasRelationship`, `OfLabel`, `OfLabels`, `Direction`, `WithDepth` (the last two are `[Obsolete]` free-floating modifiers, still dispatched for backward compatibility — new code should use the depth/direction overloads on `Traverse`/`TraversePaths` or an options lambda), `Search`.
 - Synchronous fallbacks currently accepted for a subset: `First`, `FirstOrDefault`.
 
 Note: `ReverseTraverse` is intentionally *not* in the dispatch table. It is a client-side extension method that eagerly composes `PathSegments().Direction(Incoming).Select(ps => ps.EndNode)` and calls `source.Provider.CreateQuery<T>` immediately rather than deferring, so the literal method call never reaches the visitor as a `MethodCallExpression` node — registering a handler for it would be dead code (this was a finding from the #80 characterization work).
@@ -182,7 +182,34 @@ Implement `ICypherDialect` from `Cvoya.Graph.Cypher`. The interface owns every s
 
 `GetFunctionBehavior` distinguishes functions rendered by the backend, parameter-free functions evaluated on the client, and unsupported functions. Client evaluation binds a query parameter; it never inlines the value. A function marked `EvaluateOnClient` fails translation if its arguments depend on a server-side expression. AGE can therefore client-evaluate zero-argument temporal constructors without pretending to support temporal arithmetic over stored properties.
 
-Declare only supported capabilities. The planner rejects reachable unsupported constructs before execution with `GraphQueryTranslationException`; the message names the construct, the exact `GraphCapability` member, and the dialect. Current translation-time checks cover `FullTextSearch`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, `OrderByEntity`, `OptionalTraversal`, and `GroupByAggregation`. Transaction capabilities remain execution/store concerns.
+Declare only supported capabilities. The planner rejects reachable unsupported constructs before execution with `GraphQueryTranslationException`; the message names the construct, the exact `GraphCapability` member, and the dialect. Current translation-time checks cover `FullTextSearch`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, `LabelFiltering`, `OrderByEntity`, `OptionalTraversal`, `GroupByAggregation`, `RelationshipPredicates`, `ShortestPath`, and `SetOperations`. Transaction capabilities remain execution/store concerns.
+
+`LabelFiltering` gates non-empty `OfLabel` and `OfLabels` operations over typed or dynamic node
+scopes. `Any` is a disjunction over requested labels; `All` is a conjunction. An empty request is
+an identity operation and reaches no provider. Treat labels as values, never identifiers: lower
+them through the dialect's label-test/literal rendering path, validate their bound node alias, and
+apply them before projection and paging. All in-tree providers implement the contract.
+
+`RelationshipPredicates` gates both traversal-option `WhereRelationship` predicates and
+`WhereHasRelationship` existence patterns. A variable-length traversal applies its predicate to
+every relationship while expanding a candidate path; an existence filter lowers directly to an
+anchored relationship pattern. Providers must implement those semantics or decline the capability—
+post-hoc client filtering and silently ignoring the predicate are not conforming implementations.
+Neo4j and in-memory implement the contract; AGE declines it because its supported openCypher subset
+cannot preserve both variable-path and existence-pattern semantics.
+
+`ShortestPath` gates both `ShortestPath<TRel, TEnd>` and `AllShortestPaths<TRel, TEnd>`.
+Implementations select paths independently for every source/endpoint pair, evaluate the endpoint
+predicate before selection, exclude the source as an endpoint, and return one or all ties at the
+minimum positive hop count. Neo4j lowers these to `shortestPath(...)` and
+`allShortestPaths(...)`; in-memory performs the equivalent expansion-time selection. AGE declines
+the capability because its supported openCypher subset does not preserve these semantics.
+
+`SetOperations` gates typed and standard-LINQ `Union` plus typed `Concat`. Both operands are planned
+independently with disjoint parameter namespaces. `Union` uses distinct row semantics; `Concat`
+uses `UNION ALL` and must not acquire implicit distinctness. Providers validate compatible entity
+or scalar projection shapes at the shared model boundary. Neo4j and in-memory implement the
+contract; AGE declines it at translation time.
 
 `PatternSizeProjection` gates every relationship-count pattern subquery a projection can produce: both complex-property collection sizes (`.Offices.Count`) and the node relationship-count (degree) surface `CountRelationships<TRel>(direction)`, which lowers to a `COUNT { MATCH (src)-[:REL]->() }` / `size((src)-[:REL]->())` subquery. Relationship direction is physical (matching traversal), compatible derived relationship labels participate, and an undirected self-loop counts once. A provider that declines the capability rejects both at translation time.
 
@@ -333,11 +360,14 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `CallSubqueries` | `IAdvancedQueryTests` correlated-collection pattern comprehensions and grouped-projection rejection cases | method | pass | pass | pass |
 | `PatternSizeProjection` | `IAdvancedQueryTests.CanProjectComplexCollectionSize`, `IAdvancedQueryTests.CanProjectRelationshipCounts` (node degree via `CountRelationships<TRel>(direction)`) | method | pass | pass | pass |
 | `MultiLabelMatch` | `IAdvancedQueryTests.CanQueryPolymorphicBaseTypeAcrossSubtypeLabels` | method | pass | pass | pass |
+| `LabelFiltering` | `IQueryTraversalTests.LabelFilters_PinSubtypeDynamicAnyAllEmptyCompositionAndSafetySemantics` | method | pass | pass | pass |
 | `OrderByEntity` | `IAdvancedQueryTests.CanOrderByBareEntity` | method | pass | skip | pass |
-| `OptionalTraversal` | `IQueryTests.Navigation{Equality,Projection}_MissingComplexProperty*` | method | pass | pass | pass |
+| `OptionalTraversal` | `IQueryTests.Navigation{Equality,Projection}_MissingComplexProperty*`, `IQueryTraversalTests.OptionalTraverse_PreservesUnmatchedRowsAndPinsMatchDirectionAndProjectionSemantics`, `IQueryTraversalTests.OptionalTraverse_SourceLabelFilterEliminatesRowsBeforeTheLeftMatch` (also gated on `LabelFiltering`) | method | pass | pass | pass |
 | `GroupByAggregation` | `IGroupByTests` (all methods) | interface | pass | pass | pass |
 | `NestedTransactions` | _record only_ | — | — | — | — |
-| `ShortestPath` | _record only_ | — | — | — | — |
+| `RelationshipPredicates` | `IQueryTraversalTests.VariableTraversal_RelationshipPredicateFiltersEveryExpandedHop`, `IQueryTraversalTests.WhereHasRelationship_RespectsDirectionPredicateAndSelfRelationships` | method | pass | pass | skip |
+| `ShortestPath` | `IQueryTraversalTests.ShortestPaths_PinSelectionEndpointDirectionNoPathAndSameNodeSemantics` | method | pass | pass | skip |
+| `SetOperations` | `IQueryTraversalTests.TypedUnionAndConcat_PinDistinctBagAndScalarProjectionSemantics` | method | pass | pass | skip |
 
 The correlated grouped-projection grammar (`GroupBy(seg => seg.StartNode).Select(g => new { … })`)
 is a shared contract, not a per-provider concern: the recognized per-member operations (`Select`,
@@ -350,7 +380,6 @@ operation-after-`Select` composition so a provider does not silently execute a s
 `ScalarGroupByValidation` provides the corresponding shared boundary for scalar grouping: key and
 aggregate projections only, without collection projections or filtering inside a group.
 
-Two capabilities are records rather than gated tests because they have no user-drivable surface to certify:
+One capability is recorded rather than gated because it has no user-drivable surface to certify:
 
 - **`NestedTransactions`** — the public transaction API takes no parent transaction or savepoint, so there is no nested operation to drive. No in-tree provider declares it. When the API gains that surface, add a gated test with the feature.
-- **`ShortestPath`** — reserved; no query construct references it and no in-tree provider declares it, so there is nothing to exercise yet.

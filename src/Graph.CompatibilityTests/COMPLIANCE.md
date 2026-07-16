@@ -20,10 +20,13 @@ A provider is **compliant** when its compatibility run reports N passed / M skip
 | CallSubqueries | Yes / No | |
 | PatternSizeProjection | Yes / No | |
 | MultiLabelMatch | Yes / No | |
+| LabelFiltering | Yes / No | |
 | OrderByEntity | Yes / No | |
 | ShortestPath | Yes / No | |
 | OptionalTraversal | Yes / No | |
 | GroupByAggregation | Yes / No | |
+| RelationshipPredicates | Yes / No | |
+| SetOperations | Yes / No | |
 
 ## Results
 

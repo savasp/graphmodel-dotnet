@@ -32,7 +32,11 @@ public sealed class InMemoryHarness : IGraphProviderTestHarness
         // Polymorphic base queries and null-propagating navigation have the same user-visible
         // semantics as their Cypher counterparts even though the interpreter uses CLR objects.
         GraphCapability.MultiLabelMatch,
+        GraphCapability.LabelFiltering,
         GraphCapability.OptionalTraversal,
+        GraphCapability.RelationshipPredicates,
+        GraphCapability.ShortestPath,
+        GraphCapability.SetOperations,
         // The interpreter groups rows by any scalar key and runs the real projection lambda over
         // each IGrouping, so scalar-key aggregation grouping executes natively; see #306.
         GraphCapability.GroupByAggregation);

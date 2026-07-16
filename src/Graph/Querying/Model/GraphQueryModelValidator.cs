@@ -23,6 +23,24 @@ public static class GraphQueryModelValidator
         ValidateTerminalOperand(model);
         ValidateAliasBindings(model);
 
+        foreach (var existence in model.RelationshipExistence)
+        {
+            if (existence.AppliedAfterProjection || existence.AppliedAfterPaging)
+            {
+                throw new GraphException(
+                    "WhereHasRelationship must be applied before Select, Skip, or Take so relationship " +
+                    "existence cannot be silently moved across a projection or paging boundary.");
+            }
+
+            if (existence.Predicate is { } predicate)
+            {
+                ValidateLambdaReferences(
+                    predicate.Predicate,
+                    existence.RelationshipType,
+                    "Relationship-existence predicate");
+            }
+        }
+
         var currentType = ResolveRootType(model.Root);
         var possibleScopeTypes = new List<Type?> { currentType };
 
@@ -40,6 +58,43 @@ public static class GraphQueryModelValidator
             }
 
             ValidatePredicateList(step.RelationshipPredicates, typeof(IRelationship), $"Traversal step {i} relationship predicate");
+            ValidatePredicateList(
+                step.TargetPredicates,
+                step.TargetType ?? typeof(INode),
+                $"Traversal step {i} endpoint predicate");
+
+            if (!Enum.IsDefined(step.PathSelection))
+            {
+                throw new GraphException($"Traversal step {i} has an invalid path selection.");
+            }
+
+            if (step.PathSelection != TraversalPathSelection.All &&
+                (step.IsComplexPropertyTraversal || step.Depth.Min < 1))
+            {
+                throw new GraphException(
+                    $"Traversal step {i} uses shortest-path selection but is not a positive-depth explicit traversal.");
+            }
+
+            if (step.PathSelection != TraversalPathSelection.All && model.PathShape is null)
+            {
+                throw new GraphException(
+                    $"Traversal step {i} uses shortest-path selection but the query does not produce paths.");
+            }
+
+            if (step.IsOptional &&
+                (step.IsComplexPropertyTraversal || step.PathSelection != TraversalPathSelection.All ||
+                 step.Depth is not { Min: 1, Max: 1 }))
+            {
+                throw new GraphException(
+                    $"Traversal step {i} is optional but is not a single-hop explicit traversal.");
+            }
+
+            if (step.IsOptional && model.Traversal.Count(other => !other.IsComplexPropertyTraversal) > 1)
+            {
+                throw new GraphException(
+                    $"Traversal step {i} is optional but does not operate directly on the query root; " +
+                    "an optional traversal cannot be combined with other traversal operators.");
+            }
 
             if (!step.IsComplexPropertyTraversal)
             {
@@ -51,6 +106,53 @@ public static class GraphQueryModelValidator
         if (model.PathShape is not null)
         {
             possibleScopeTypes.Add(typeof(IGraphPath));
+        }
+
+        if (model.Traversal.Any(step => step.IsOptional) &&
+            model.Projection?.Selector?.Parameters.Count != 2)
+        {
+            throw new GraphException("An optional traversal must retain its source/nullable-target projection.");
+        }
+
+        if (model.Traversal.Any(step => step.IsOptional) &&
+            model.Predicates.Any(predicate =>
+                predicate.Predicate.Parameters.Any(parameter =>
+                    parameter.Type.IsGenericType &&
+                    parameter.Type.GetGenericTypeDefinition() == typeof(OptionalTraversalResult<>))))
+        {
+            throw new GraphException(
+                "Where after OptionalTraverse is not supported; filter source rows before the optional traversal " +
+                "or project the nullable target and continue client-side.");
+        }
+
+        if (model.Traversal.Any(step => step.IsOptional) &&
+            model.Ordering.Concat(model.PostPaging?.Ordering ?? []).Any(key =>
+                key.KeySelector.Parameters.Any(parameter =>
+                    parameter.Type.IsGenericType &&
+                    parameter.Type.GetGenericTypeDefinition() == typeof(OptionalTraversalResult<>))))
+        {
+            throw new GraphException(
+                "OrderBy after OptionalTraverse is not supported; order source rows before the optional traversal " +
+                "or materialize the results first.");
+        }
+
+        if (model.Projection?.Kind == ProjectionKind.OptionalTraversal &&
+            (model.Distinct || model.PostPaging?.Distinct == true))
+        {
+            throw new GraphException(
+                "Distinct after OptionalTraverse is not supported; project the source and target first " +
+                "or materialize the results.");
+        }
+
+        if (model.Projection?.Kind == ProjectionKind.OptionalTraversal &&
+            model.Terminal is TerminalOperation.Count or TerminalOperation.Any or TerminalOperation.All or
+                TerminalOperation.Sum or TerminalOperation.Average or TerminalOperation.Min or
+                TerminalOperation.Max or TerminalOperation.Contains)
+        {
+            throw new GraphException(
+                $"The terminal operation '{model.Terminal}' after OptionalTraverse is not supported because " +
+                "providers cannot aggregate over an unprojected nullable target; project the source and " +
+                "target first or materialize the results.");
         }
 
         for (var i = 0; i < model.Predicates.Count; i++)
@@ -252,6 +354,34 @@ public static class GraphQueryModelValidator
             {
                 throw new GraphException(
                     $"Ordering key {i} alias '{alias}' is not bound by the root scope or a traversal target.");
+            }
+        }
+
+        for (var i = 0; i < model.RelationshipExistence.Count; i++)
+        {
+            var alias = model.RelationshipExistence[i].SourceAlias;
+            if (!bound.Contains(alias))
+            {
+                throw new GraphException(
+                    $"Relationship-existence filter {i} source alias '{alias}' is not bound by the query.");
+            }
+        }
+
+        for (var i = 0; i < model.LabelFilters.Count; i++)
+        {
+            var filter = model.LabelFilters[i];
+            var alias = filter.Alias;
+            if (!bound.Contains(alias))
+            {
+                throw new GraphException(
+                    $"Label filter {i} alias '{alias}' is not bound by the query.");
+            }
+
+            if (filter.AppliedAfterProjection || filter.AppliedAfterPaging)
+            {
+                throw new GraphException(
+                    "OfLabel and OfLabels must be applied before Select, Skip, or Take so label filtering " +
+                    "cannot be silently moved across a projection or paging boundary.");
             }
         }
     }

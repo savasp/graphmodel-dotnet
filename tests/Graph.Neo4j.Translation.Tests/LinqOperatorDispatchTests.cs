@@ -55,11 +55,18 @@ public class LinqOperatorDispatchTests
         LinqOperator.GroupBy,
         LinqOperator.Join,
         LinqOperator.Union,
+        LinqOperator.Concat,
         LinqOperator.PathSegments,
         LinqOperator.TraversePaths,
+        LinqOperator.ShortestPath,
+        LinqOperator.AllShortestPaths,
+        LinqOperator.OptionalTraverse,
         LinqOperator.Direction,
         LinqOperator.WithDepth,
         LinqOperator.Search,
+        LinqOperator.RelationshipPredicate,
+        LinqOperator.WhereHasRelationship,
+        LinqOperator.LabelFilter,
     ];
 
     [Fact]

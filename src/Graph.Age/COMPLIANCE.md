@@ -18,10 +18,13 @@
 | CallSubqueries | Yes | Correlated collection shapes are lowered to grouped matches and projections. |
 | PatternSizeProjection | Yes | Pattern counts are lowered to sequential optional matches and grouped counts. |
 | MultiLabelMatch | Yes | An AGE AST pass lowers logical inheritance labels to AGE-compatible predicates. |
+| LabelFiltering | Yes | Caller-supplied labels lower to escaped literal membership tests over physical and logical inheritance labels. |
 | OrderByEntity | Yes | An AGE AST pass lowers entity ordering to the stable public `Id` key. |
 | ShortestPath | No | |
 | OptionalTraversal | Yes | Optional matches are lowered while preserving owners with absent paths. |
 | GroupByAggregation | Yes | The shared structured `WITH` plan uses AGE-native grouping and aggregate functions. |
+| RelationshipPredicates | No | AGE declines variable-path relationship predicates and anchored relationship-existence patterns at translation time. |
+| SetOperations | No | AGE rejects typed `Union` and `Concat` at translation time. |
 
 ## Structured Cypher lowering
 

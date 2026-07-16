@@ -51,6 +51,7 @@ internal static class LinqOperatorDispatch
         AddAll(typeof(Queryable), nameof(Queryable.GroupBy), LinqOperator.GroupBy);
         AddAll(typeof(Queryable), nameof(Queryable.Join), LinqOperator.Join);
         AddAll(typeof(Queryable), nameof(Queryable.Union), LinqOperator.Union);
+        AddAll(typeof(Queryable), nameof(Queryable.Concat), LinqOperator.Concat);
 
         AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.Where), LinqOperator.Where);
         AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.Select), LinqOperator.Select);
@@ -63,6 +64,8 @@ internal static class LinqOperatorDispatch
         AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.Take), LinqOperator.Take);
         AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.Distinct), LinqOperator.Distinct);
         AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.GroupBy), LinqOperator.GroupBy);
+        AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.Union), LinqOperator.Union);
+        AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.Concat), LinqOperator.Concat);
 
         AddAll(typeof(QueryTerminals), nameof(QueryTerminals.ToListAsyncMarker), LinqOperator.ToListOrArray);
         AddAll(typeof(QueryTerminals), nameof(QueryTerminals.ToArrayAsyncMarker), LinqOperator.ToListOrArray);
@@ -94,6 +97,13 @@ internal static class LinqOperatorDispatch
 #pragma warning restore CS0618
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.PathSegments), LinqOperator.PathSegments);
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.TraversePaths), LinqOperator.TraversePaths);
+        AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.ShortestPath), LinqOperator.ShortestPath);
+        AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.AllShortestPaths), LinqOperator.AllShortestPaths);
+        AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.OptionalTraverse), LinqOperator.OptionalTraverse);
+        AddAll(typeof(GraphTraversalExtensions), "WithRelationshipPredicate", LinqOperator.RelationshipPredicate);
+        AddAll(typeof(GraphRelationshipPredicateExtensions), nameof(GraphRelationshipPredicateExtensions.WhereHasRelationship), LinqOperator.WhereHasRelationship);
+        AddAll(typeof(GraphLabelExtensions), nameof(GraphLabelExtensions.OfLabel), LinqOperator.LabelFilter);
+        AddAll(typeof(GraphLabelExtensions), nameof(GraphLabelExtensions.OfLabels), LinqOperator.LabelFilter);
 
         return table;
     }

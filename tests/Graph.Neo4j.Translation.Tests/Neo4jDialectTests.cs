@@ -24,9 +24,13 @@ public class Neo4jDialectTests
                 GraphCapability.CallSubqueries,
                 GraphCapability.PatternSizeProjection,
                 GraphCapability.MultiLabelMatch,
+                GraphCapability.LabelFiltering,
                 GraphCapability.OrderByEntity,
                 GraphCapability.OptionalTraversal,
-                GraphCapability.GroupByAggregation),
+                GraphCapability.GroupByAggregation,
+                GraphCapability.RelationshipPredicates,
+                GraphCapability.ShortestPath,
+                GraphCapability.SetOperations),
             capabilities);
     }
 

@@ -27,4 +27,7 @@ public enum ProjectionKind
     /// The projection returns a path segment or path-segment component.
     /// </summary>
     PathSegment,
+
+    /// <summary>The projection returns a source node with a nullable optional-traversal target.</summary>
+    OptionalTraversal,
 }

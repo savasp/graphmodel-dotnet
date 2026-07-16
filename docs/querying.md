@@ -175,15 +175,131 @@ var friendsOfFriends = await graph.Nodes<Person>()
     .Where(p => p.Age > 25) // Filter target nodes
     .ToListAsync();
 
-// To filter on the relationship itself (e.g. recent friendships only), use PathSegments instead -
-// it exposes the relationship alongside the start/end nodes for a single hop.
+// Relationship predicates run while paths expand. On a variable-length traversal every hop must
+// satisfy the predicate; this is not a client-side filter over already-produced target nodes.
 var recentFriends = await graph.Nodes<Person>()
     .Where(p => p.FirstName == "Alice")
-    .PathSegments<Person, Knows, Person>()
-    .Where(ps => ps.Relationship.Since > DateTime.Now.AddYears(-1))
-    .Select(ps => ps.EndNode)
+    .Traverse<Knows, Person>(options => options
+        .Depth(1, 3)
+        .WhereRelationship<Knows>(relationship => relationship.Since > DateTime.UtcNow.AddYears(-1)))
+    .ToListAsync();
+
+// Existence sugar lowers directly to an EXISTS relationship pattern. It does not traverse and
+// de-duplicate target rows. Spell both types to preserve Person in the static query chain.
+var sociallyActive = await graph.Nodes<Person>()
+    .WhereHasRelationship<Person, Knows>(
+        GraphTraversalDirection.Both,
+        relationship => relationship.Since > DateTime.UtcNow.AddYears(-1))
+    .OrderBy(person => person.LastName)
     .ToListAsync();
 ```
+
+`WhereRelationship` supports outgoing, incoming, and bidirectional traversal, including
+self-relationships. `WhereHasRelationship` has a one-type-argument convenience overload when the
+common `INode` result shape is sufficient; the two-type-argument overload above retains the concrete
+node type for later filters, ordering, and projections. Providers that do not declare
+`GraphCapability.RelationshipPredicates` reject either operator during translation. Apply
+`WhereHasRelationship` before `Select`, `Skip`, or `Take`; the shared validator rejects the reverse
+order rather than moving the existence test across that boundary. Neo4j and the in-memory provider
+implement this capability; AGE declines it.
+
+### Shortest paths
+
+`ShortestPath<TRel, TEnd>` returns one minimum-hop path for each source/endpoint pair;
+`AllShortestPaths<TRel, TEnd>` returns every path tied at that minimum length. Both use the
+canonical two-type-argument traversal surface and return `IGraphPath`:
+
+```csharp
+var routes = await graph.Nodes<Person>()
+    .Where(person => person.Id == aliceId)
+    .AllShortestPaths<Knows, Person>(
+        endpoint => endpoint.Active,
+        GraphTraversalDirection.Both)
+    .Take(10)
+    .ToListAsync();
+```
+
+The endpoint predicate participates in path matching, not client-side filtering. Paths contain at
+least one relationship; the source node is excluded as an endpoint, including when a cycle or
+self-relationship could lead back to it. Selection is partitioned by source/endpoint pair, so one
+source can return shortest paths to several endpoints. Providers must declare
+`GraphCapability.ShortestPath`; Neo4j and the in-memory provider implement it, while AGE rejects it
+during translation.
+
+### Optional traversal
+
+`OptionalTraverse<TRel, TEnd>` performs a one-hop left traversal. Each result contains the
+preserved `Source` and a nullable `Target`; an unmatched source produces exactly one row:
+
+```csharp
+var assignments = await graph.Nodes<Person>()
+    .Where(person => person.Active)
+    .OptionalTraverse<WorksAt, Company>()
+    .Select(result => new
+    {
+        PersonId = result.Source.Id,
+        CompanyId = result.Target == null ? null : result.Target.Id,
+    })
+    .Take(100)
+    .ToListAsync();
+```
+
+Zero, one, and many matches therefore produce one, one, and many rows respectively;
+self-relationships are normal matches. Filter source rows before `OptionalTraverse` — predicates,
+label filters, relationship-existence filters, and full-text search applied before the operator all
+keep their row-elimination semantics. A composed projection and paging are supported, but `Where`,
+`OrderBy`, `Distinct`, and aggregate terminals over `OptionalTraversalResult<TEnd>` are rejected at
+the shared model boundary because moving them around the left match changes null-preserving
+semantics; materialize the results to continue client-side. The operator applies directly to a node
+scope: combining it with another traversal operator in the same query is rejected rather than
+silently losing the left match.
+
+### Typed union and concatenation
+
+The graph-typed overloads keep the result as `IGraphQueryable<T>` and support both entity and
+compatible scalar projections:
+
+```csharp
+var activeIds = graph.Nodes<Person>().Where(person => person.Active).Select(person => person.Id);
+var invitedIds = graph.Nodes<Person>().Where(person => person.Invited).Select(person => person.Id);
+
+var uniqueIds = await activeIds.Union(invitedIds).ToListAsync();
+var auditIds = await activeIds.Concat(invitedIds).ToListAsync();
+```
+
+`Union` removes duplicate projected rows. `Concat` is bag-preserving and lowers to `UNION ALL`, so
+an item present in both operands appears twice. Operand output types and projection shapes must be
+compatible; incompatible shapes fail in `GraphQueryModelValidator`. Apply each operand's filters,
+projection, ordering, and paging before combining it. Materialize the combined query before adding
+another sequence operator.
+
+### Label filters
+
+`OfLabel` and `OfLabels` filter the current typed or dynamic node scope by its stored labels. Use
+`GraphLabelMatch.Any` to require at least one requested label, or `GraphLabelMatch.All` to require
+every requested label:
+
+```csharp
+var reviewers = await graph.Nodes<Person>()
+    .OfLabel("Manager")
+    .OfLabels(GraphLabelMatch.All, "Active", "SecurityReviewer")
+    .Where(person => person.Region == "Northwest")
+    .OrderBy(person => person.LastName)
+    .Take(25)
+    .ToListAsync();
+
+var tagged = await graph.DynamicNodes()
+    .OfLabels(GraphLabelMatch.Any, "Imported", "Verified")
+    .ToListAsync();
+```
+
+An empty label list is an identity operation. Label arguments are values, not query identifiers;
+the Cypher dialect renders them as escaped literals, so caller-supplied labels cannot change the
+query structure. Apply label filters before `Select`, `Skip`, or `Take`; the shared validator rejects
+the reverse order instead of silently moving a label predicate across that boundary. Because
+`Traverse` composes an implicit projection, a label filter also cannot follow it — filter the
+traversal source before traversing instead. Providers that do not declare
+`GraphCapability.LabelFiltering` reject a non-empty label filter during translation.
 
 ## Projection and Results
 

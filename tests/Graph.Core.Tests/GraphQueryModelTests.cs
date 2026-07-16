@@ -148,6 +148,30 @@ public class GraphQueryModelTests
     }
 
     [Fact]
+    public void Validator_RejectsShortestPathSelectionWithoutAPathShape()
+    {
+        var model = CreateValidModel(
+            traversal:
+            [
+                new TraversalStep(
+                    relationshipType: "KNOWS",
+                    GraphTraversalDirection.Outgoing,
+                    new DepthRange(1, int.MaxValue),
+                    [],
+                    typeof(Person))
+                {
+                    PathSelection = TraversalPathSelection.Shortest,
+                },
+            ],
+            projection: null,
+            ordering: []);
+
+        var exception = Assert.Throws<GraphException>(() => GraphQueryModelValidator.Validate(model));
+
+        Assert.Contains("does not produce paths", exception.Message);
+    }
+
+    [Fact]
     public void Validator_RejectsTraversalFromRelationshipScope()
     {
         var model = CreateValidModel(

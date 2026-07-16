@@ -35,8 +35,23 @@ internal sealed class InMemoryQueryExecutor(
     {
         _cancellationToken.ThrowIfCancellationRequested();
 
+        if (model.Union is { } setOperation)
+        {
+            var first = (IEnumerable<object?>)(Execute(setOperation.First, new TerminalHints(false)) ?? Array.Empty<object?>());
+            var second = (IEnumerable<object?>)(Execute(setOperation.Second, new TerminalHints(false)) ?? Array.Empty<object?>());
+            var combined = first.Concat(second);
+            if (setOperation.Operation == SetOperationKind.Union)
+            {
+                combined = combined.Distinct(GraphValueComparer.Instance);
+            }
+
+            return ApplyTerminal(combined.ToList(), model, hints, allPredicate: null);
+        }
+
         var rows = RootRows(model.Root);
         rows = ApplyTraversal(rows, model);
+        rows = ApplyLabelFilters(rows, model.LabelFilters);
+        rows = ApplyRelationshipExistence(rows, model.RelationshipExistence);
         rows = ApplyJoin(rows, model);
 
         var predicates = model.Predicates.ToList();
@@ -465,22 +480,32 @@ internal sealed class InMemoryQueryExecutor(
             yield return zeroRow;
         }
 
-        foreach (var path in ExpandPaths(sourceNode.Id, step, maxDepth))
+        // Selection over all candidates only materializes for shortest-path grouping; a plain
+        // traversal streams so a bounded terminal can stop the expansion early.
+        IEnumerable<(List<Hop> Path, NodeRecord TargetRecord, INode TargetEntity)> selected =
+            step.PathSelection switch
+            {
+                TraversalPathSelection.All => Candidates(),
+                TraversalPathSelection.Shortest => Candidates()
+                    .GroupBy(candidate => candidate.TargetRecord.Key)
+                    .Select(group => group.OrderBy(candidate => candidate.Path.Count).First()),
+                TraversalPathSelection.AllShortest => Candidates()
+                    .GroupBy(candidate => candidate.TargetRecord.Key)
+                    .SelectMany(group =>
+                    {
+                        var minimum = group.Min(candidate => candidate.Path.Count);
+                        return group.Where(candidate => candidate.Path.Count == minimum);
+                    }),
+                _ => throw new GraphException($"Path selection '{step.PathSelection}' is not supported."),
+            };
+
+        var matched = false;
+        foreach (var candidate in selected)
         {
-            _cancellationToken.ThrowIfCancellationRequested();
-            if (path.Count < Math.Max(minDepth, 1))
-            {
-                continue;
-            }
-
-            var finalRecord = path[^1].Target;
-            var resolved = EntityReader.ResolveNodeType(finalRecord, step.TargetType ?? typeof(INode));
-            if (step.TargetType is { } targetType && !targetType.IsAssignableFrom(resolved))
-            {
-                continue;
-            }
-
-            var targetEntity = (INode)_reader.MaterializeNode(finalRecord, _state, step.TargetType ?? typeof(INode));
+            matched = true;
+            var path = candidate.Path;
+            var finalRecord = candidate.TargetRecord;
+            var targetEntity = candidate.TargetEntity;
             var lastRelationship = (IRelationship)_reader.MaterializeRelationship(
                 path[^1].Relationship,
                 step.RelationshipClrType ?? typeof(IRelationship));
@@ -500,6 +525,51 @@ internal sealed class InMemoryQueryExecutor(
             }
 
             yield return newRow;
+        }
+
+        if (step.IsOptional && !matched)
+        {
+            var optionalRow = row.Clone();
+            optionalRow.Bindings[targetAlias] = null;
+            optionalRow.Current = null;
+            yield return optionalRow;
+        }
+
+        IEnumerable<(List<Hop> Path, NodeRecord TargetRecord, INode TargetEntity)> Candidates()
+        {
+            // Shortest-path selection never returns the source itself, matching the shared contract.
+            var sourceRecordKey = step.PathSelection == TraversalPathSelection.All
+                ? null
+                : NodeRecordsById(sourceNode.Id)
+                    .FirstOrDefault(record => record.ActualType == sourceNode.GetType())?.Key;
+            foreach (var path in ExpandPaths(sourceNode.Id, step, maxDepth))
+            {
+                _cancellationToken.ThrowIfCancellationRequested();
+                if (path.Count < Math.Max(minDepth, 1))
+                {
+                    continue;
+                }
+
+                var finalRecord = path[^1].Target;
+                if (step.PathSelection != TraversalPathSelection.All && finalRecord.Key == sourceRecordKey)
+                {
+                    continue;
+                }
+
+                var resolved = EntityReader.ResolveNodeType(finalRecord, step.TargetType ?? typeof(INode));
+                if (step.TargetType is { } targetType && !targetType.IsAssignableFrom(resolved))
+                {
+                    continue;
+                }
+
+                var targetEntity = (INode)_reader.MaterializeNode(finalRecord, _state, step.TargetType ?? typeof(INode));
+                if (step.TargetPredicates.Any(predicate => !EvaluatePredicate(predicate.Predicate, targetEntity)))
+                {
+                    continue;
+                }
+
+                yield return (path, finalRecord, targetEntity);
+            }
         }
     }
 
@@ -543,6 +613,11 @@ internal sealed class InMemoryQueryExecutor(
                     continue;
                 }
 
+                if (!RelationshipPredicatesMatch(relationship, step.RelationshipPredicates, step.RelationshipClrType))
+                {
+                    continue;
+                }
+
                 if (path.Any(h => h.Relationship.Id == relationship.Id))
                 {
                     continue;
@@ -563,6 +638,45 @@ internal sealed class InMemoryQueryExecutor(
 
     private IEnumerable<NodeRecord> NodeRecordsById(string id) =>
         _state.Nodes.Values.Where(n => n.Id == id);
+
+    private IEnumerable<Row> ApplyLabelFilters(
+        IEnumerable<Row> rows,
+        IReadOnlyList<LabelFilterFragment> filters)
+    {
+        foreach (var filter in filters)
+        {
+            rows = rows.Where(row => MatchesLabelFilter(row, filter));
+        }
+
+        return rows;
+    }
+
+    private bool MatchesLabelFilter(Row row, LabelFilterFragment filter)
+    {
+        var node = (row.Bindings.TryGetValue(filter.Alias, out var bound)
+            ? bound as INode
+            : null) ?? row.Current as INode;
+        if (node is null)
+        {
+            return false;
+        }
+
+        var records = NodeRecordsById(node.Id)
+            .Where(record => !record.IsComplexValue &&
+                (node is DynamicNode || record.ActualType == node.GetType()));
+        return records.Any(record =>
+        {
+            IReadOnlyList<string> storedLabels = record.ActualType == typeof(DynamicNode)
+                ? record.Labels
+                : [record.Label];
+            return filter.Match switch
+            {
+                GraphLabelMatch.Any => filter.Labels.Any(label => storedLabels.Contains(label, StringComparer.Ordinal)),
+                GraphLabelMatch.All => filter.Labels.All(label => storedLabels.Contains(label, StringComparer.Ordinal)),
+                _ => false,
+            };
+        });
+    }
 
     private static bool RelationshipMatches(RelationshipRecord relationship, TraversalStep step)
     {
@@ -596,6 +710,54 @@ internal sealed class InMemoryQueryExecutor(
 
         return clrType is null ||
             (relationship.ActualType is not null && clrType.IsAssignableFrom(relationship.ActualType));
+    }
+
+    private bool RelationshipPredicatesMatch(
+        RelationshipRecord relationship,
+        IReadOnlyList<PredicateFragment> predicates,
+        Type? relationshipType)
+    {
+        if (predicates.Count == 0)
+            return true;
+
+        var entity = _reader.MaterializeRelationship(
+            relationship,
+            relationshipType ?? relationship.ActualType ?? typeof(IRelationship));
+        return predicates.All(predicate => EvaluatePredicate(predicate.Predicate, entity));
+    }
+
+    private IEnumerable<Row> ApplyRelationshipExistence(
+        IEnumerable<Row> rows,
+        IReadOnlyList<RelationshipExistenceFragment> filters)
+    {
+        foreach (var filter in filters)
+        {
+            rows = rows.Where(row => HasMatchingRelationship(row, filter));
+        }
+
+        return rows;
+    }
+
+    private bool HasMatchingRelationship(Row row, RelationshipExistenceFragment filter)
+    {
+        var sourceNode = (row.Bindings.TryGetValue(filter.SourceAlias, out var source)
+            ? source as INode
+            : null) ?? row.Current as INode;
+
+        if (sourceNode is null)
+            return false;
+
+        var step = new TraversalStep(
+            Labels.GetLabelFromType(filter.RelationshipType),
+            filter.Direction,
+            new DepthRange(1, 1),
+            filter.Predicate is null ? [] : [filter.Predicate],
+            targetType: null,
+            relationshipClrType: filter.RelationshipType);
+        return _state.Relationships.Values.Any(relationship =>
+            RelationshipMatches(relationship, step) &&
+            RelationshipPredicatesMatch(relationship, step.RelationshipPredicates, filter.RelationshipType) &&
+            Neighbors(relationship, sourceNode.Id, filter.Direction).Any());
     }
 
     private static IEnumerable<string> Neighbors(
@@ -1067,6 +1229,14 @@ internal sealed class InMemoryQueryExecutor(
         if (projection?.Selector is not { } selector)
         {
             return model.PathShape is not null ? BuildGraphPath(row) : row.Current;
+        }
+
+        if (model.Traversal.Any(item => item.IsOptional) && selector.Parameters.Count == 2)
+        {
+            var step = model.Traversal.Last(item => item.IsOptional);
+            row.Bindings.TryGetValue(step.SourceAlias ?? "src", out var optionalSource);
+            row.Bindings.TryGetValue(step.TargetAlias ?? "tgt", out var target);
+            return Invoke(Compile(selector), optionalSource, target);
         }
 
         // A two-parameter selector is the Join result selector, already applied at the join.

@@ -54,14 +54,19 @@ public enum GraphCapability
     MultiLabelMatch,
 
     /// <summary>
+    /// Filtering node query scopes by caller-supplied stored labels with explicit any/all
+    /// semantics.
+    /// </summary>
+    LabelFiltering,
+
+    /// <summary>
     /// Ordering results by an entire node or relationship variable, rather than by one of its
     /// properties.
     /// </summary>
     OrderByEntity,
 
     /// <summary>
-    /// Shortest-path traversal queries. Reserved for future use: no query construct references it
-    /// yet, so there is no user-drivable surface to certify.
+    /// Typed shortest-path and all-shortest-path traversal queries.
     /// </summary>
     ShortestPath,
 
@@ -82,5 +87,14 @@ public enum GraphCapability
     /// which backs the correlated collection-projection shape (grouping path segments by their start
     /// node); this member backs scalar-key aggregation grouping.
     /// </summary>
-    GroupByAggregation
+    GroupByAggregation,
+
+    /// <summary>
+    /// Relationship predicates evaluated as part of traversal expansion and relationship-existence
+    /// pattern matching.
+    /// </summary>
+    RelationshipPredicates,
+
+    /// <summary>Typed distinct union and bag-preserving concatenation of compatible query shapes.</summary>
+    SetOperations
 }

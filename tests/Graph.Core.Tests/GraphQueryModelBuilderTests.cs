@@ -54,6 +54,65 @@ public class GraphQueryModelBuilderTests
         GraphQueryModelValidator.Validate(model);
     }
 
+    [Fact]
+    public void LabelFilters_ProduceScopedAnyAndAllFragments()
+    {
+        var query = Root<Person>()
+            .OfLabel("Employee")
+            .OfLabels(GraphLabelMatch.Any, "Manager", "Contractor");
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Collection(
+            model.LabelFilters,
+            filter =>
+            {
+                Assert.Equal("src", filter.Alias);
+                Assert.Equal(GraphLabelMatch.All, filter.Match);
+                Assert.Equal(["Employee"], filter.Labels);
+            },
+            filter =>
+            {
+                Assert.Equal("src", filter.Alias);
+                Assert.Equal(GraphLabelMatch.Any, filter.Match);
+                Assert.Equal(["Manager", "Contractor"], filter.Labels);
+            });
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void EmptyLabelFilter_IsAnIdentityOperation()
+    {
+        var source = Root<Person>();
+
+        var query = source.OfLabels(GraphLabelMatch.All);
+
+        Assert.Same(source, query);
+    }
+
+    [Fact]
+    public void LabelFilters_RejectInvalidLabelsAndMatchModes()
+    {
+        var source = Root<Person>();
+
+        Assert.Throws<ArgumentException>(() => source.OfLabel(" "));
+        Assert.Throws<ArgumentException>(() => source.OfLabels(GraphLabelMatch.Any, "Person", ""));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            source.OfLabels((GraphLabelMatch)int.MaxValue, "Person"));
+    }
+
+    [Fact]
+    public void LabelFilter_AfterProjectionOrPaging_IsRejectedAtTheSharedBoundary()
+    {
+        var afterProjection = Root<Person>().Select(person => person).OfLabel("Person");
+        var afterPaging = Root<Person>().Take(5).OfLabel("Person");
+
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(afterProjection.Expression)));
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(afterPaging.Expression)));
+    }
+
     [Theory]
     [InlineData("Identity", ProjectionKind.Identity)]
     [InlineData("Scalar", ProjectionKind.Scalar)]
@@ -108,6 +167,146 @@ public class GraphQueryModelBuilderTests
         var step = Assert.Single(model.Traversal);
         Assert.Equal(new DepthRange(1, 3), step.Depth);
         Assert.Equal(typeof(Company), step.TargetType);
+    }
+
+    [Fact]
+    public void ShortestPaths_ProduceUnboundedPathTraversalAndEndpointPredicate()
+    {
+        var query = Root<Person>().AllShortestPaths<Knows, Company>(
+            company => company.Id != "closed",
+            GraphTraversalDirection.Both);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var step = Assert.Single(model.Traversal);
+        Assert.Equal(new DepthRange(1, int.MaxValue), step.Depth);
+        Assert.Equal(GraphTraversalDirection.Both, step.Direction);
+        Assert.Equal(TraversalPathSelection.AllShortest, step.PathSelection);
+        Assert.Equal(typeof(Company), Assert.Single(step.TargetPredicates).Predicate.Parameters[0].Type);
+        Assert.Equal(
+            new QueryPathShape(typeof(Person), typeof(Knows), typeof(Company)),
+            model.PathShape);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void OptionalTraverse_ProducesOptionalStepAndNullableTargetProjection()
+    {
+        var query = Root<Person>()
+            .OptionalTraverse<Knows, Company>(GraphTraversalDirection.Incoming);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var step = Assert.Single(model.Traversal);
+        Assert.True(step.IsOptional);
+        Assert.Equal(GraphTraversalDirection.Incoming, step.Direction);
+        Assert.Equal(ProjectionKind.OptionalTraversal, model.Projection?.Kind);
+        Assert.Equal(2, model.Projection?.Selector?.Parameters.Count);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void OptionalTraverse_Select_ComposesOverSourceAndNullableTarget()
+    {
+        var query = Root<Person>()
+            .OptionalTraverse<Knows, Company>()
+            .Select(result => new { SourceId = result.Source.Id, TargetId = result.Target == null ? null : result.Target.Id });
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal(ProjectionKind.Anonymous, model.Projection?.Kind);
+        Assert.Equal(2, model.Projection?.Selector?.Parameters.Count);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void OptionalTraverse_AfterAnotherTraversal_IsRejectedAtTheSharedBoundary()
+    {
+        var query = Root<Person>()
+            .Traverse<Knows, Person>()
+            .OptionalTraverse<Knows, Company>();
+
+        var exception = Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(query.Expression)));
+
+        Assert.Contains("optional", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void OptionalTraverse_OrderByOverOptionalResult_IsRejectedAtTheSharedBoundary()
+    {
+        var query = Root<Person>()
+            .OptionalTraverse<Knows, Company>()
+            .OrderBy(result => result.Source.Id);
+
+        var exception = Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(query.Expression)));
+
+        Assert.Contains("OrderBy after OptionalTraverse", exception.Message);
+    }
+
+    [Fact]
+    public void OptionalTraverse_DistinctAndAggregateTerminals_AreRejectedAtTheSharedBoundary()
+    {
+        var distinct = Root<Person>().OptionalTraverse<Knows, Company>().Distinct();
+        var count = MarkerCall(
+            "CountAsyncMarker",
+            [typeof(OptionalTraversalResult<Company>)],
+            Root<Person>().OptionalTraverse<Knows, Company>().Expression,
+            []);
+
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(distinct.Expression)));
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(count)));
+    }
+
+    [Fact]
+    public void TraversalOptions_RelationshipPredicateIsCarriedByTraversalStep()
+    {
+        var query = Root<Person>().TraversePaths<Knows, Company>(options => options
+            .Depth(1, 3)
+            .WhereRelationship<Knows>(relationship => relationship.Id != "blocked"));
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var predicate = Assert.Single(Assert.Single(model.Traversal).RelationshipPredicates);
+        Assert.Equal(typeof(Knows), predicate.Predicate.Parameters[0].Type);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void WhereHasRelationship_ProducesExistenceFragmentWithoutTraversal()
+    {
+        var query = Root<Person>().WhereHasRelationship<Person, Knows>(
+            GraphTraversalDirection.Incoming,
+            relationship => relationship.Id != "blocked");
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Empty(model.Traversal);
+        var existence = Assert.Single(model.RelationshipExistence);
+        Assert.Equal(typeof(Knows), existence.RelationshipType);
+        Assert.Equal(GraphTraversalDirection.Incoming, existence.Direction);
+        Assert.Equal("src", existence.SourceAlias);
+        Assert.NotNull(existence.Predicate);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void WhereHasRelationship_AfterProjectionOrPaging_IsRejectedAtTheSharedBoundary()
+    {
+        var afterProjection = Root<Person>()
+            .Select(person => person)
+            .WhereHasRelationship<Person, Knows>(GraphTraversalDirection.Outgoing);
+        var afterPaging = Root<Person>()
+            .Take(5)
+            .WhereHasRelationship<Person, Knows>(GraphTraversalDirection.Outgoing);
+
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(afterProjection.Expression)));
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(afterPaging.Expression)));
     }
 
     [Fact]
@@ -622,6 +821,18 @@ public class GraphQueryModelBuilderTests
         Assert.Equal(typeof(Person), Assert.IsType<NodeRoot>(model.Union.Second.Root).ElementType);
         Assert.Equal(typeof(Person), model.Union.ElementType);
         Assert.Single(model.Union.Second.Predicates);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void TypedConcat_ProducesBagPreservingSetOperationAndGraphQueryableResult()
+    {
+        IGraphQueryable<Person> query = Root<Person>().Concat(Root<Person>().Where(person => person.Age > 30));
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal(SetOperationKind.Concat, model.Union?.Operation);
+        Assert.Equal(typeof(Person), model.Union?.ElementType);
         GraphQueryModelValidator.Validate(model);
     }
 

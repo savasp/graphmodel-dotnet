@@ -59,6 +59,126 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task TraversePaths_WithRelationshipPredicate()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.FirstName == "Alice")
+            .TraversePaths<Knows, Person>(options => options
+                .Depth(1, 3)
+                .WhereRelationship<Knows>(relationship => relationship.Since >= 2020));
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task WhereHasRelationship_WithPredicate()
+    {
+        var query = Root.Nodes<Person>().WhereHasRelationship<Person, Knows>(
+            GraphTraversalDirection.Both,
+            relationship => relationship.Since >= 2020);
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task ShortestPath_WithEndpointPredicateAndDirection()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.FirstName == "Alice")
+            .ShortestPath<Knows, Person>(
+                person => person.FirstName == "Bob",
+                GraphTraversalDirection.Both);
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task AllShortestPaths_ReturnsPath()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.FirstName == "Alice")
+            .AllShortestPaths<Knows, Person>(person => person.FirstName == "Bob");
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task OptionalTraverse_ProjectsPreservedSourceAndNullableTarget()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.FirstName == "Alice")
+            .OptionalTraverse<Knows, Person>(GraphTraversalDirection.Both);
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task OptionalTraverse_ComposesProjectionAndPaging()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.FirstName == "Alice")
+            .OptionalTraverse<Knows, Person>()
+            .Select(result => new
+            {
+                SourceId = result.Source.Id,
+                TargetId = result.Target == null ? null : result.Target.Id,
+            })
+            .Take(5);
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task OptionalTraverse_AppliesLabelAndExistenceFiltersBeforeTheOptionalMatch()
+    {
+        var query = Root.Nodes<Person>()
+            .OfLabel("Manager")
+            .WhereHasRelationship<Person, WorksAt>(GraphTraversalDirection.Outgoing)
+            .Where(person => person.Age >= 18)
+            .OptionalTraverse<Knows, Person>();
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task OptionalTraverse_ComplexPropertyPredicateFiltersRowsBeforeTheOptionalMatch()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.HomeAddress!.City == "Seattle")
+            .OptionalTraverse<Knows, Person>();
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task OptionalTraverse_AfterFullTextSearchRoot_PreservesTheSearchScope()
+    {
+        var query = Root.Nodes<Person>()
+            .Search("Alice")
+            .OptionalTraverse<Knows, Person>();
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task TypedUnion_RendersDistinctSetOperation()
+    {
+        var first = Root.Nodes<Person>().Where(person => person.Age >= 18);
+        var second = Root.Nodes<Person>().Where(person => person.Age >= 65);
+
+        return VerifyTranslation(first.Union(second));
+    }
+
+    [Fact]
+    public Task TypedConcat_ScalarProjectionRendersUnionAll()
+    {
+        var first = Root.Nodes<Person>().Where(person => person.Age >= 18).Select(person => person.Id);
+        var second = Root.Nodes<Person>().Where(person => person.Age >= 65).Select(person => person.Id);
+
+        return VerifyTranslation(first.Concat(second));
+    }
+
+    [Fact]
     public Task Traverse_ToDifferentNodeType()
     {
         var query = Root.Nodes<Person>().Traverse<WorksAt, Company>();

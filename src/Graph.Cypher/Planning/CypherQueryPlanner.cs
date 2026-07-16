@@ -9,6 +9,7 @@ using Cvoya.Graph.Querying;
 using AstBinaryExpression = Cvoya.Graph.Cypher.Ast.Expressions.BinaryExpression;
 using AstDepthRange = Cvoya.Graph.Cypher.Ast.DepthRange;
 using AstIndexExpression = Cvoya.Graph.Cypher.Ast.Expressions.IndexExpression;
+using AstPathSelection = Cvoya.Graph.Cypher.Ast.PathSelection;
 using AstUnaryExpression = Cvoya.Graph.Cypher.Ast.Expressions.UnaryExpression;
 
 namespace Cvoya.Graph.Cypher.Planning;
@@ -19,12 +20,19 @@ namespace Cvoya.Graph.Cypher.Planning;
 public sealed class CypherQueryPlanner
 {
     private readonly ICypherDialect dialect;
+    private readonly string parameterPrefix;
 
     /// <summary>Initializes a planner for a specific Cypher dialect.</summary>
     /// <param name="dialect">The dialect whose capabilities constrain translation.</param>
     public CypherQueryPlanner(ICypherDialect dialect)
+        : this(dialect, "")
+    {
+    }
+
+    private CypherQueryPlanner(ICypherDialect dialect, string parameterPrefix)
     {
         this.dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
+        this.parameterPrefix = parameterPrefix;
         ArgumentException.ThrowIfNullOrWhiteSpace(dialect.Name);
     }
 
@@ -42,6 +50,22 @@ public sealed class CypherQueryPlanner
             RequireCapability(GraphCapability.FullTextSearch, "FullTextSearch");
         }
 
+        if (model.RelationshipExistence.Count > 0 ||
+            model.Traversal.Any(step => step.RelationshipPredicates.Count > 0))
+        {
+            RequireCapability(GraphCapability.RelationshipPredicates, "RelationshipPredicates");
+        }
+
+        if (model.LabelFilters.Count > 0)
+        {
+            RequireCapability(GraphCapability.LabelFiltering, "LabelFiltering");
+        }
+
+        if (model.Traversal.Any(step => step.PathSelection != TraversalPathSelection.All))
+        {
+            RequireCapability(GraphCapability.ShortestPath, "ShortestPath");
+        }
+
         // Representation and support are distinct: the model can carry these operations, but this
         // planner cannot lower them yet. Reject before validation so the error is stable.
         if (model.SelectMany is not null)
@@ -57,10 +81,21 @@ public sealed class CypherQueryPlanner
                 : PlanScalarGroupBy(model);
         }
 
-        if (model.Union is not null)
+        if (model.Union is { } setOperation)
         {
-            throw new GraphQueryTranslationException(
-                "Cannot plan the query: Union is not supported by graph query translation yet.");
+            RequireCapability(GraphCapability.SetOperations, setOperation.Operation.ToString());
+            GraphQueryModelValidator.Validate(model);
+            var first = new CypherQueryPlanner(dialect, $"{parameterPrefix}u0_").Plan(setOperation.First);
+            var second = new CypherQueryPlanner(dialect, $"{parameterPrefix}u1_").Plan(setOperation.Second);
+            var mergedParameters = first.Parameters
+                .Concat(second.Parameters)
+                .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
+            return new CypherStatement(
+                [new SetOperationClause(
+                    first.Clauses,
+                    second.Clauses,
+                    setOperation.Operation == SetOperationKind.Concat)],
+                mergedParameters);
         }
 
         // Unconditional: the model validator guards user-reachable semantic errors that Cypher cannot
@@ -68,7 +103,7 @@ public sealed class CypherQueryPlanner
         // query is negligible next to the network round-trip.
         GraphQueryModelValidator.Validate(model);
 
-        var parameters = new CypherParameterRegistry();
+        var parameters = new CypherParameterRegistry(parameterPrefix);
         var state = CreateState(model, parameters);
         var pathSegmentSourceAlias = model.Root is SearchRoot { Target: SearchRootTarget.Nodes }
             ? state.RootAlias
@@ -113,7 +148,17 @@ public sealed class CypherQueryPlanner
             : [];
 
         var clauses = new List<ICypherClause>();
-        AddRootAndTraversalClauses(clauses, model, state);
+        var optionalStep = state.ExplicitTraversal is [{ IsOptional: true } single] ? single : null;
+
+        // For an optional traversal, lower the root scope as if the query had no traversal, filter
+        // source rows with every lowered predicate (the validator guarantees an optional step
+        // carries no step-scoped predicates), and only then attach the left match. A predicate
+        // placed after the OPTIONAL MATCH would bind to it and null the target instead of
+        // eliminating the row.
+        AddRootAndTraversalClauses(
+            clauses,
+            model,
+            optionalStep is null ? state : state with { ExplicitTraversal = [] });
         AddSearchFilterClause(clauses, model.SearchFilter, state.SearchFilterParameter);
         clauses.AddRange(lowerer.NavigationMatches);
 
@@ -128,6 +173,11 @@ public sealed class CypherQueryPlanner
             clauses.Add(new WhereClause(predicates.Count == 1
                 ? predicates[0]
                 : new ConjunctionExpression(predicates)));
+        }
+
+        if (optionalStep is not null)
+        {
+            clauses.Add(BuildTraversalMatch(model.Root, [optionalStep], pathAlias: null, optional: true));
         }
 
         if (model.PathShape is not null)
@@ -210,7 +260,7 @@ public sealed class CypherQueryPlanner
 
         GraphQueryModelValidator.Validate(model);
 
-        var parameters = new CypherParameterRegistry();
+        var parameters = new CypherParameterRegistry(parameterPrefix);
         var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
 
         var rootPredicates = new List<CypherExpression>();
@@ -331,7 +381,7 @@ public sealed class CypherQueryPlanner
 
         GraphQueryModelValidator.Validate(model);
 
-        var parameters = new CypherParameterRegistry();
+        var parameters = new CypherParameterRegistry(parameterPrefix);
         var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
 
         var clauses = new List<ICypherClause> { BuildRootMatch(model.Root, "src") };
@@ -1193,6 +1243,67 @@ public sealed class CypherQueryPlanner
             predicates.Add(lowerer.LowerLambda(predicate.Predicate, alias));
         }
 
+        foreach (var filter in model.LabelFilters)
+        {
+            var target = new VariableRef(ResolveLambdaAlias(model, state, filter.Alias));
+            if (filter.Match == GraphLabelMatch.Any)
+            {
+                predicates.Add(new LabelTest(target, filter.Labels));
+            }
+            else
+            {
+                predicates.AddRange(filter.Labels.Select(label =>
+                    (CypherExpression)new LabelTest(target, [label])));
+            }
+        }
+
+        var explicitTraversal = model.Traversal.Where(step => !step.IsComplexPropertyTraversal).ToArray();
+        for (var index = 0; index < explicitTraversal.Length; index++)
+        {
+            var step = explicitTraversal[index];
+            var relationshipAlias = index == 0 ? "r" : $"r_{index + 1}";
+            foreach (var predicate in step.RelationshipPredicates)
+            {
+                if (step.Depth is { Min: 1, Max: 1 })
+                {
+                    predicates.Add(LowerRelationshipPredicate(lowerer, predicate.Predicate, relationshipAlias));
+                    continue;
+                }
+
+                var iteratorAlias = $"__relationship_{index}";
+                predicates.Add(new AllExpression(
+                    iteratorAlias,
+                    new VariableRef(relationshipAlias),
+                    LowerRelationshipPredicate(lowerer, predicate.Predicate, iteratorAlias)));
+            }
+
+            var targetAlias = step.TargetAlias ?? (index == 0 ? "tgt" : $"tgt_{index + 1}");
+            if (step.PathSelection != TraversalPathSelection.All)
+            {
+                var sourceAlias = step.SourceAlias ??
+                    (index == 0 ? state.RootAlias : index == 1 ? "tgt" : $"tgt_{index}");
+                predicates.Add(new AstBinaryExpression(
+                    CypherBinaryOperator.NotEqual,
+                    new VariableRef(sourceAlias),
+                    new VariableRef(targetAlias)));
+            }
+
+            foreach (var predicate in step.TargetPredicates)
+            {
+                predicates.Add(lowerer.LowerLambda(predicate.Predicate, targetAlias));
+            }
+        }
+
+        for (var index = 0; index < model.RelationshipExistence.Count; index++)
+        {
+            predicates.Add(LowerRelationshipExistence(
+                model,
+                state,
+                model.RelationshipExistence[index],
+                lowerer,
+                index));
+        }
+
         if (model.Join is not null)
         {
             predicates.Add(LowerJoinCondition(model.Join, lowerer));
@@ -1200,6 +1311,51 @@ public sealed class CypherQueryPlanner
 
         return predicates;
     }
+
+    private static PatternSubqueryExpression LowerRelationshipExistence(
+        GraphQueryModel model,
+        PlanningState state,
+        RelationshipExistenceFragment existence,
+        ExpressionToCypherAstLowerer lowerer,
+        int index)
+    {
+        var relationshipAlias = $"__existsRelationship_{index}";
+        var targetAlias = $"__existsTarget_{index}";
+        var sourceAlias = ResolveLambdaAlias(model, state, existence.SourceAlias);
+        var pattern = new PathPattern(
+        [
+            new NodePattern(sourceAlias, []),
+            new RelationshipPattern(
+                relationshipAlias,
+                existence.Direction switch
+                {
+                    GraphTraversalDirection.Outgoing => CypherDirection.Outgoing,
+                    GraphTraversalDirection.Incoming => CypherDirection.Incoming,
+                    GraphTraversalDirection.Both => CypherDirection.Both,
+                    _ => throw new GraphQueryTranslationException(
+                        $"Relationship direction '{existence.Direction}' is not supported."),
+                },
+                depth: null,
+                Labels.GetCompatibleLabels(existence.RelationshipType)),
+            new NodePattern(targetAlias, []),
+        ]);
+        var predicate = existence.Predicate is null
+            ? null
+            : LowerRelationshipPredicate(lowerer, existence.Predicate.Predicate, relationshipAlias);
+        return new PatternSubqueryExpression(PatternSubqueryKind.Exists, pattern, predicate);
+    }
+
+    private static CypherExpression LowerRelationshipPredicate(
+        ExpressionToCypherAstLowerer lowerer,
+        LambdaExpression predicate,
+        string relationshipAlias) =>
+        lowerer.LowerLambda(
+            predicate,
+            relationshipAlias,
+            new Dictionary<ParameterExpression, string>
+            {
+                [predicate.Parameters[0]] = relationshipAlias,
+            });
 
     private static string ResolveLambdaAlias(
         GraphQueryModel model,
@@ -1359,6 +1515,49 @@ public sealed class CypherQueryPlanner
         PlanningState state,
         ExpressionToCypherAstLowerer lowerer)
     {
+        if (model.Traversal.Any(step => step.IsOptional) &&
+            model.Projection is { Selector: { } optionalSelector })
+        {
+            var aliases = new Dictionary<ParameterExpression, string>
+            {
+                [optionalSelector.Parameters[0]] = state.CurrentTraversalSourceAlias,
+                [optionalSelector.Parameters[1]] = state.TargetAlias,
+            };
+            if (model.Projection.Kind == ProjectionKind.OptionalTraversal)
+            {
+                return ProjectionPlan.Scalar(
+                [
+                    new ReturnItem(
+                        new EntityProjectionExpression(
+                            state.CurrentTraversalSourceAlias,
+                            HasComplexProperties(optionalSelector.Parameters[0].Type)),
+                        nameof(OptionalTraversalResult<INode>.Source)),
+                    new ReturnItem(
+                        new CaseExpression(
+                            new AstUnaryExpression(
+                                CypherUnaryOperator.IsNull,
+                                new VariableRef(state.TargetAlias)),
+                            new Literal(null),
+                            new EntityProjectionExpression(
+                                state.TargetAlias,
+                                HasComplexProperties(optionalSelector.Parameters[1].Type))),
+                        nameof(OptionalTraversalResult<INode>.Target)),
+                ]);
+            }
+
+            var optionalBody = StripConvert(optionalSelector.Body);
+            if (optionalBody is NewExpression optionalNew)
+            {
+                var items = optionalNew.Arguments.Select((argument, index) => new ReturnItem(
+                    LowerOptionalProjectionItem(argument, aliases, lowerer),
+                    optionalNew.Members?[index].Name ?? $"Property{index}"));
+                return ProjectionPlan.Scalar(items.ToArray());
+            }
+
+            return ProjectionPlan.Scalar(
+                [new ReturnItem(lowerer.Lower(optionalBody, aliases), null)]);
+        }
+
         if (model.Join is { } join)
         {
             var joinBody = StripConvert(join.ResultSelector.Body);
@@ -1490,6 +1689,20 @@ public sealed class CypherQueryPlanner
         return lowerer.LowerLambda(Expression.Lambda(argument, selector.Parameters), state.CurrentAlias);
     }
 
+    private static CypherExpression LowerOptionalProjectionItem(
+        Expression argument,
+        Dictionary<ParameterExpression, string> aliases,
+        ExpressionToCypherAstLowerer lowerer)
+    {
+        var item = StripConvert(argument);
+        if (item is ParameterExpression parameter && typeof(INode).IsAssignableFrom(parameter.Type))
+        {
+            return new EntityProjectionExpression(aliases[parameter], HasComplexProperties(parameter.Type));
+        }
+
+        return lowerer.Lower(argument, aliases);
+    }
+
     private static MapExpression RelationshipMap(PlanningState state) => new(
     [
         new MapEntry("StartNode", new VariableRef(state.CurrentTraversalSourceAlias)),
@@ -1618,7 +1831,8 @@ public sealed class CypherQueryPlanner
     private static MatchClause BuildTraversalMatch(
         QueryRoot root,
         IReadOnlyList<TraversalStep> traversal,
-        string? pathAlias)
+        string? pathAlias,
+        bool optional = false)
     {
         var rootType = GetRootType(root);
         var rootAlias = root switch
@@ -1664,10 +1878,19 @@ public sealed class CypherQueryPlanner
                 new NodePattern(
                     targetAlias,
                     step.TargetType is null ? [] : Labels.GetCompatibleLabels(step.TargetType))
-            ], index == traversal.Count - 1 ? pathAlias : null));
+            ],
+            index == traversal.Count - 1 ? pathAlias : null,
+            step.PathSelection switch
+            {
+                TraversalPathSelection.All => AstPathSelection.All,
+                TraversalPathSelection.Shortest => AstPathSelection.Shortest,
+                TraversalPathSelection.AllShortest => AstPathSelection.AllShortest,
+                _ => throw new GraphQueryTranslationException(
+                    $"Traversal path selection '{step.PathSelection}' is not supported."),
+            }));
         }
 
-        return new MatchClause(patterns, optional: false);
+        return new MatchClause(patterns, optional);
     }
 
     private static void AddTerminalAndProjection(

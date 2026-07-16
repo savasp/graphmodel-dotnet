@@ -20,9 +20,13 @@ public sealed class Neo4jDialect : ICypherDialect
         GraphCapability.CallSubqueries,
         GraphCapability.PatternSizeProjection,
         GraphCapability.MultiLabelMatch,
+        GraphCapability.LabelFiltering,
         GraphCapability.OrderByEntity,
         GraphCapability.OptionalTraversal,
-        GraphCapability.GroupByAggregation);
+        GraphCapability.GroupByAggregation,
+        GraphCapability.RelationshipPredicates,
+        GraphCapability.ShortestPath,
+        GraphCapability.SetOperations);
 
     /// <summary>Gets the shared Neo4j dialect instance.</summary>
     public static Neo4jDialect Instance { get; } = new();
@@ -103,7 +107,9 @@ public sealed class Neo4jDialect : ICypherDialect
     public string RenderDepth(DepthRange depth)
     {
         ArgumentNullException.ThrowIfNull(depth);
-        return $"*{depth.Min}..{depth.Max}";
+        return depth.Max == int.MaxValue
+            ? $"*{depth.Min}.."
+            : $"*{depth.Min}..{depth.Max}";
     }
 
     /// <inheritdoc/>

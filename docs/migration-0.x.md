@@ -505,6 +505,70 @@ support full-text search moves its procedure/index names and its clause shape in
 a pure relocation of where the clause is rendered, completing the dialect-abstraction work begun in
 #215.
 
+## 24. Relationship predicates and existence filters are server-side graph operators
+
+Relationship filtering no longer requires exposing a one-hop `PathSegments` result and filtering it
+afterward. Configure `Traverse` or `TraversePaths` with
+`options.WhereRelationship<TRel>(predicate)`; every relationship in a variable-length path must
+match. Use `WhereHasRelationship<TNode, TRel>(direction, predicate?)` when only relationship
+existence matters and the concrete node type should remain in the query chain. The
+`WhereHasRelationship<TRel>` convenience overload returns `IGraphQueryable<INode>`.
+
+Custom providers must declare `GraphCapability.RelationshipPredicates` only after implementing both
+expansion-time predicates and anchored existence patterns. A provider that does not declare the
+capability now rejects these operators during translation rather than ignoring them or filtering
+materialized results on the client. Apply `WhereHasRelationship` before `Select`, `Skip`, or `Take`;
+the shared validator rejects the reverse order. AGE deliberately declines this capability. No
+stored-data migration is required.
+
+## 25. Typed shortest-path traversal
+
+Use `ShortestPath<TRel, TEnd>(endpointPredicate?, direction?)` to return one minimum-hop path per
+source/endpoint pair, or `AllShortestPaths<TRel, TEnd>(endpointPredicate?, direction?)` to retain
+all equal-length ties. Both return `IGraphQueryable<IGraphPath>`, infer the start type from the
+source, require at least one hop, and exclude the source itself as an endpoint.
+
+Custom providers must declare `GraphCapability.ShortestPath` only after implementing the gated
+compatibility contract. A provider that does not declare it rejects either operator at translation
+time. No stored-data migration is required.
+
+## 26. Public optional traversal
+
+`OptionalTraverse<TRel, TEnd>(direction?)` now exposes the provider-neutral left-traversal surface.
+It returns `OptionalTraversalResult<TEnd>` with the preserved `INode Source` and nullable
+`TEnd Target`. Filter source rows before the operator (predicates, label filters,
+relationship-existence filters, and full-text search all compose there); projection and paging may
+follow it. `Where`, `OrderBy`, `Distinct`, and aggregate terminals over the optional result are
+rejected at the shared model boundary, as is combining the operator with another traversal.
+
+Providers already declaring `GraphCapability.OptionalTraversal` must implement this public shape in
+addition to complex-property null propagation. Providers that cannot preserve an unmatched source
+row must stop declaring the capability. No stored-data migration is required.
+
+## 27. Typed `Union` and bag-preserving `Concat`
+
+`IGraphQueryable<T>` now has graph-typed `Union` and `Concat` overloads. `Union` removes duplicate
+rows; `Concat` preserves them and lowers to `UNION ALL`. Compatible node and scalar projection
+operands are supported. Materialize a combined query before applying another sequence operator.
+
+Custom providers must declare `GraphCapability.SetOperations` only after implementing both
+distinct and bag-preserving behavior with isolated operand parameters. AGE deliberately declines
+the new capability. No stored-data migration is required.
+
+## 28. Typed and dynamic label filters
+
+Node queries now expose `OfLabel(label)` and `OfLabels(match, labels)`. `GraphLabelMatch.Any`
+requires at least one requested stored label; `GraphLabelMatch.All` requires every requested label.
+Passing no labels to `OfLabels` leaves the query unchanged. Both operators preserve the
+`IGraphQueryable<TNode>` chain and compose with node predicates, ordering, projection, and paging
+when applied before those stages. A label filter after `Select`, `Skip`, or `Take` is rejected at the
+shared model boundary rather than being silently reordered.
+
+Custom providers must declare `GraphCapability.LabelFiltering` only after implementing value-safe
+label tests over typed and dynamic node scopes. Label strings must never be interpolated as query
+identifiers. A provider that does not declare the capability rejects non-empty label filters during
+translation. No stored-data migration is required.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.
