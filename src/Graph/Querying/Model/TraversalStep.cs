@@ -207,4 +207,7 @@ public sealed record TraversalStep
         get => targetPredicates;
         init => targetPredicates = QueryModelGuard.CopyRequiredList(value, nameof(TargetPredicates));
     }
+
+    /// <summary>Gets or initializes whether a missing hop preserves the source row.</summary>
+    public bool IsOptional { get; init; }
 }

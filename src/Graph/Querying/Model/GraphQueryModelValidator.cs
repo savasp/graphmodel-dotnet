@@ -75,6 +75,14 @@ public static class GraphQueryModelValidator
                     $"Traversal step {i} uses shortest-path selection but is not a positive-depth explicit traversal.");
             }
 
+            if (step.IsOptional &&
+                (step.IsComplexPropertyTraversal || step.PathSelection != TraversalPathSelection.All ||
+                 step.Depth is not { Min: 1, Max: 1 }))
+            {
+                throw new GraphException(
+                    $"Traversal step {i} is optional but is not a single-hop explicit traversal.");
+            }
+
             if (!step.IsComplexPropertyTraversal)
             {
                 currentType = step.TargetType ?? typeof(INode);
@@ -85,6 +93,23 @@ public static class GraphQueryModelValidator
         if (model.PathShape is not null)
         {
             possibleScopeTypes.Add(typeof(IGraphPath));
+        }
+
+        if (model.Traversal.Any(step => step.IsOptional) &&
+            model.Projection?.Selector?.Parameters.Count != 2)
+        {
+            throw new GraphException("An optional traversal must retain its source/nullable-target projection.");
+        }
+
+        if (model.Traversal.Any(step => step.IsOptional) &&
+            model.Predicates.Any(predicate =>
+                predicate.Predicate.Parameters.Any(parameter =>
+                    parameter.Type.IsGenericType &&
+                    parameter.Type.GetGenericTypeDefinition() == typeof(OptionalTraversalResult<>))))
+        {
+            throw new GraphException(
+                "Where after OptionalTraverse is not supported; filter source rows before the optional traversal " +
+                "or project the nullable target and continue client-side.");
         }
 
         for (var i = 0; i < model.Predicates.Count; i++)

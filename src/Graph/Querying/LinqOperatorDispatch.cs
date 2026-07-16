@@ -96,6 +96,7 @@ internal static class LinqOperatorDispatch
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.TraversePaths), LinqOperator.TraversePaths);
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.ShortestPath), LinqOperator.ShortestPath);
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.AllShortestPaths), LinqOperator.AllShortestPaths);
+        AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.OptionalTraverse), LinqOperator.OptionalTraverse);
         AddAll(typeof(GraphTraversalExtensions), "WithRelationshipPredicate", LinqOperator.RelationshipPredicate);
         AddAll(typeof(GraphRelationshipPredicateExtensions), nameof(GraphRelationshipPredicateExtensions.WhereHasRelationship), LinqOperator.WhereHasRelationship);
 

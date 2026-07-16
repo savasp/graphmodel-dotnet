@@ -59,6 +59,7 @@ public class LinqOperatorDispatchTests
         LinqOperator.TraversePaths,
         LinqOperator.ShortestPath,
         LinqOperator.AllShortestPaths,
+        LinqOperator.OptionalTraverse,
         LinqOperator.Direction,
         LinqOperator.WithDepth,
         LinqOperator.Search,

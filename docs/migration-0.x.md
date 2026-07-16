@@ -532,6 +532,16 @@ Custom providers must declare `GraphCapability.ShortestPath` only after implemen
 compatibility contract. A provider that does not declare it rejects either operator at translation
 time. No stored-data migration is required.
 
+## 26. Public optional traversal
+
+`OptionalTraverse<TRel, TEnd>(direction?)` now exposes the provider-neutral left-traversal surface.
+It returns `OptionalTraversalResult<TEnd>` with the preserved `INode Source` and nullable
+`TEnd Target`. Filter source rows before the operator; projection and paging may follow it.
+
+Providers already declaring `GraphCapability.OptionalTraversal` must implement this public shape in
+addition to complex-property null propagation. Providers that cannot preserve an unmatched source
+row must stop declaring the capability. No stored-data migration is required.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

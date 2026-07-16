@@ -1619,5 +1619,62 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Empty(sameNode); // shortest-path queries require at least one hop and exclude the source endpoint.
     }
 
+    [Fact]
+    [RequiresCapability(GraphCapability.OptionalTraversal)]
+    public async Task OptionalTraverse_PreservesUnmatchedRowsAndPinsMatchDirectionAndProjectionSemantics()
+    {
+        var marker = $"Optional-{Guid.NewGuid():N}";
+        var unmatched = new Person { FirstName = $"{marker}-unmatched" };
+        var one = new Person { FirstName = $"{marker}-one" };
+        var many = new Person { FirstName = $"{marker}-many" };
+        var self = new Person { FirstName = $"{marker}-self" };
+        var target1 = new Person { FirstName = $"{marker}-target1" };
+        var target2 = new Person { FirstName = $"{marker}-target2" };
+
+        foreach (var person in new[] { unmatched, one, many, self, target1, target2 })
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        foreach (var (from, to) in new[] { (one, target1), (many, target1), (many, target2), (self, self) })
+        {
+            await Graph.CreateRelationshipAsync(
+                new Knows(from, to),
+                null,
+                TestContext.Current.CancellationToken);
+        }
+
+        var results = await Graph.Nodes<Person>()
+            .Where(person =>
+                person.Id == unmatched.Id || person.Id == one.Id || person.Id == many.Id || person.Id == self.Id)
+            .OptionalTraverse<Knows, Person>()
+            .Take(10)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var incoming = await Graph.Nodes<Person>()
+            .Where(person => person.Id == target1.Id)
+            .OptionalTraverse<Knows, Person>(GraphTraversalDirection.Incoming)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var projected = await Graph.Nodes<Person>()
+            .Where(person => person.Id == unmatched.Id)
+            .OptionalTraverse<Knows, Person>()
+            .Select(result => new
+            {
+                SourceId = result.Source.Id,
+                TargetId = result.Target == null ? null : result.Target.Id,
+            })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(5, results.Count);
+        Assert.Contains(results, result => result.Source.Id == unmatched.Id && result.Target is null);
+        Assert.Contains(results, result => result.Source.Id == one.Id && result.Target?.Id == target1.Id);
+        Assert.Equal(2, results.Count(result => result.Source.Id == many.Id && result.Target is not null));
+        Assert.Contains(results, result => result.Source.Id == self.Id && result.Target?.Id == self.Id);
+        Assert.Equal(
+            new[] { one.Id, many.Id }.Order().ToArray(),
+            incoming.Select(result => result.Target!.Id).Order().ToArray());
+        Assert.Equal(unmatched.Id, Assert.Single(projected).SourceId);
+        Assert.Null(projected[0].TargetId);
+    }
+
     #endregion
 }

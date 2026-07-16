@@ -36,6 +36,7 @@ internal enum LinqOperator
     TraversePaths,
     ShortestPath,
     AllShortestPaths,
+    OptionalTraverse,
     Direction,
     WithDepth,
     Search,

@@ -349,7 +349,7 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `PatternSizeProjection` | `IAdvancedQueryTests.CanProjectComplexCollectionSize`, `IAdvancedQueryTests.CanProjectRelationshipCounts` (node degree via `CountRelationships<TRel>(direction)`) | method | pass | pass | pass |
 | `MultiLabelMatch` | `IAdvancedQueryTests.CanQueryPolymorphicBaseTypeAcrossSubtypeLabels` | method | pass | pass | pass |
 | `OrderByEntity` | `IAdvancedQueryTests.CanOrderByBareEntity` | method | pass | skip | pass |
-| `OptionalTraversal` | `IQueryTests.Navigation{Equality,Projection}_MissingComplexProperty*` | method | pass | pass | pass |
+| `OptionalTraversal` | `IQueryTests.Navigation{Equality,Projection}_MissingComplexProperty*`, `IQueryTraversalTests.OptionalTraverse_PreservesUnmatchedRowsAndPinsMatchDirectionAndProjectionSemantics` | method | pass | pass | pass |
 | `GroupByAggregation` | `IGroupByTests` (all methods) | interface | pass | pass | pass |
 | `NestedTransactions` | _record only_ | — | — | — | — |
 | `RelationshipPredicates` | `IQueryTraversalTests.VariableTraversal_RelationshipPredicateFiltersEveryExpandedHop`, `IQueryTraversalTests.WhereHasRelationship_RespectsDirectionPredicateAndSelfRelationships` | method | pass | pass | skip |

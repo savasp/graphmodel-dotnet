@@ -103,6 +103,32 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task OptionalTraverse_ProjectsPreservedSourceAndNullableTarget()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.FirstName == "Alice")
+            .OptionalTraverse<Knows, Person>(GraphTraversalDirection.Both);
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task OptionalTraverse_ComposesProjectionAndPaging()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.FirstName == "Alice")
+            .OptionalTraverse<Knows, Person>()
+            .Select(result => new
+            {
+                SourceId = result.Source.Id,
+                TargetId = result.Target == null ? null : result.Target.Id,
+            })
+            .Take(5);
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task Traverse_ToDifferentNodeType()
     {
         var query = Root.Nodes<Person>().Traverse<WorksAt, Company>();

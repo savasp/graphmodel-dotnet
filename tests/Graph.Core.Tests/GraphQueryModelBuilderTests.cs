@@ -131,6 +131,36 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
+    public void OptionalTraverse_ProducesOptionalStepAndNullableTargetProjection()
+    {
+        var query = Root<Person>()
+            .OptionalTraverse<Knows, Company>(GraphTraversalDirection.Incoming);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var step = Assert.Single(model.Traversal);
+        Assert.True(step.IsOptional);
+        Assert.Equal(GraphTraversalDirection.Incoming, step.Direction);
+        Assert.Equal(ProjectionKind.OptionalTraversal, model.Projection?.Kind);
+        Assert.Equal(2, model.Projection?.Selector?.Parameters.Count);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void OptionalTraverse_Select_ComposesOverSourceAndNullableTarget()
+    {
+        var query = Root<Person>()
+            .OptionalTraverse<Knows, Company>()
+            .Select(result => new { SourceId = result.Source.Id, TargetId = result.Target == null ? null : result.Target.Id });
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal(ProjectionKind.Anonymous, model.Projection?.Kind);
+        Assert.Equal(2, model.Projection?.Selector?.Parameters.Count);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
     public void TraversalOptions_RelationshipPredicateIsCarriedByTraversalStep()
     {
         var query = Root<Person>().TraversePaths<Knows, Company>(options => options

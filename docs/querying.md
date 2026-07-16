@@ -226,6 +226,29 @@ source can return shortest paths to several endpoints. Providers must declare
 `GraphCapability.ShortestPath`; Neo4j and the in-memory provider implement it, while AGE rejects it
 during translation.
 
+### Optional traversal
+
+`OptionalTraverse<TRel, TEnd>` performs a one-hop left traversal. Each result contains the
+preserved `Source` and a nullable `Target`; an unmatched source produces exactly one row:
+
+```csharp
+var assignments = await graph.Nodes<Person>()
+    .Where(person => person.Active)
+    .OptionalTraverse<WorksAt, Company>()
+    .Select(result => new
+    {
+        PersonId = result.Source.Id,
+        CompanyId = result.Target == null ? null : result.Target.Id,
+    })
+    .Take(100)
+    .ToListAsync();
+```
+
+Zero, one, and many matches therefore produce one, one, and many rows respectively;
+self-relationships are normal matches. Filter source rows before `OptionalTraverse`. A composed
+projection and paging are supported, but `Where` over `OptionalTraversalResult<TEnd>` is rejected at
+the shared model boundary because moving it around the left match changes null-preserving semantics.
+
 ## Projection and Results
 
 ### Anonymous Types

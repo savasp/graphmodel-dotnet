@@ -515,6 +515,14 @@ internal sealed class InMemoryQueryExecutor(
                 _ => throw new GraphException($"Path selection '{step.PathSelection}' is not supported."),
             };
 
+        if (step.IsOptional && candidates.Count == 0)
+        {
+            var optionalRow = row.Clone();
+            optionalRow.Bindings[targetAlias] = null;
+            optionalRow.Current = null;
+            yield return optionalRow;
+        }
+
         foreach (var candidate in selected)
         {
             var path = candidate.Path;
@@ -1159,6 +1167,14 @@ internal sealed class InMemoryQueryExecutor(
         if (projection?.Selector is not { } selector)
         {
             return model.PathShape is not null ? BuildGraphPath(row) : row.Current;
+        }
+
+        if (model.Traversal.Any(item => item.IsOptional) && selector.Parameters.Count == 2)
+        {
+            var step = model.Traversal.Last(item => item.IsOptional);
+            row.Bindings.TryGetValue(step.SourceAlias ?? "src", out var optionalSource);
+            row.Bindings.TryGetValue(step.TargetAlias ?? "tgt", out var target);
+            return Invoke(Compile(selector), optionalSource, target);
         }
 
         // A two-parameter selector is the Join result selector, already applied at the join.

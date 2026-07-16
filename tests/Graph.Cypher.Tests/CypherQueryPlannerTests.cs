@@ -149,6 +149,40 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_OptionalTraversal_UsesSeparateRootAndOptionalMatch()
+    {
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows),
+            false,
+            "src",
+            "tgt")
+        {
+            IsOptional = true,
+        };
+        var source = Expression.Parameter(typeof(Person), "source");
+        var target = Expression.Parameter(typeof(Person), "target");
+        var selector = Expression.Lambda(
+            Expression.New(
+                typeof(OptionalTraversalResult<Person>).GetConstructors().Single(),
+                Expression.Convert(source, typeof(INode)),
+                target),
+            source,
+            target);
+
+        var statement = planner.Plan(Model(
+            traversal: [step],
+            projection: new ProjectionShape(ProjectionKind.OptionalTraversal, selector)));
+
+        Assert.False(Assert.IsType<MatchClause>(statement.Clauses[0]).Optional);
+        Assert.True(Assert.IsType<MatchClause>(statement.Clauses[1]).Optional);
+    }
+
+    [Fact]
     public void Plan_VariableTraversalRelationshipPredicate_LowersToAllQuantifier()
     {
         Expression<Func<Knows, bool>> predicate = relationship => relationship.Id != "blocked";

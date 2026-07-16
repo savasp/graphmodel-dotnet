@@ -229,6 +229,9 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
             case LinqOperator.AllShortestPaths:
                 HandleShortestPaths(node, TraversalPathSelection.AllShortest);
                 break;
+            case LinqOperator.OptionalTraverse:
+                HandleOptionalTraverse(node);
+                break;
             case LinqOperator.Direction:
                 UpdateLastTraversal(direction: EvaluateArgument<GraphTraversalDirection>(node, 1, "traversal direction"));
                 break;
@@ -366,7 +369,9 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         var selector = RequireLambda(node, 1, "Select");
         RejectIndexedLambda(node, selector, "Select");
         AddComplexPropertyTraversals(selector);
-        selector = ComposeProjection(_projection?.Selector, selector);
+        selector = _projection is { Kind: ProjectionKind.OptionalTraversal, Selector: { } optional }
+            ? ComposeOptionalTraversalProjection(optional, selector)
+            : ComposeProjection(_projection?.Selector, selector);
 
         var body = StripConvert(selector.Body);
         var kind = selector.Parameters.Any(parameter => typeof(IGraphPathSegment).IsAssignableFrom(parameter.Type))
@@ -404,6 +409,45 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         else
         {
             _currentType = selector.ReturnType;
+        }
+    }
+
+    private static LambdaExpression ComposeOptionalTraversalProjection(
+        LambdaExpression optional,
+        LambdaExpression current)
+    {
+        if (optional.Parameters.Count != 2 || current.Parameters.Count != 1 ||
+            current.Parameters[0].Type != optional.ReturnType)
+        {
+            throw new GraphQueryTranslationException(
+                "Cannot compose a projection after optional traversal: the selector does not consume the optional result.");
+        }
+
+        var body = new OptionalResultMemberReplacementVisitor(
+            current.Parameters[0],
+            optional.Parameters[0],
+            optional.Parameters[1]).Visit(current.Body) ?? current.Body;
+        return Expression.Lambda(body, optional.Parameters);
+    }
+
+    private sealed class OptionalResultMemberReplacementVisitor(
+        ParameterExpression result,
+        ParameterExpression source,
+        ParameterExpression target) : ExpressionVisitor
+    {
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            if (node.Expression == result)
+            {
+                return node.Member.Name switch
+                {
+                    nameof(OptionalTraversalResult<INode>.Source) => source,
+                    nameof(OptionalTraversalResult<INode>.Target) => target,
+                    _ => base.VisitMember(node),
+                };
+            }
+
+            return base.VisitMember(node);
         }
     }
 
@@ -592,6 +636,37 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         _projection = null;
     }
 
+    private void HandleOptionalTraverse(MethodCallExpression node)
+    {
+        if (!node.Method.IsGenericMethod || node.Method.GetGenericArguments() is not { Length: 2 } types)
+        {
+            throw Unsupported(node, "optional traversal must have relationship and target type arguments.");
+        }
+
+        var sourceType = _currentType ?? typeof(INode);
+        var relationshipType = types[0];
+        var targetType = types[1];
+        var direction = EvaluateArgument<GraphTraversalDirection>(node, 1, "traversal direction");
+        AddExplicitTraversal(relationshipType, targetType, new DepthRange(1, 1));
+        var current = _traversal[_lastExplicitTraversalIndex];
+        _traversal[_lastExplicitTraversalIndex] = CopyTraversal(current, direction: direction) with
+        {
+            IsOptional = true,
+        };
+
+        var source = Expression.Parameter(sourceType, "source");
+        var target = Expression.Parameter(targetType, "target");
+        var resultType = typeof(OptionalTraversalResult<>).MakeGenericType(targetType);
+        var constructor = resultType.GetConstructor([typeof(INode), targetType])
+            ?? throw Unsupported(node, "optional traversal result constructor is unavailable.");
+        var body = Expression.New(constructor, Expression.Convert(source, typeof(INode)), target);
+        _projection = new ProjectionShape(
+            ProjectionKind.OptionalTraversal,
+            Expression.Lambda(body, source, target));
+        _currentType = resultType;
+        _currentAlias = null;
+    }
+
     private void AddExplicitTraversal(Type relationshipType, Type targetType, DepthRange depth)
     {
         var sourceAlias = _currentAlias ?? (_explicitTraversalCount == 0 ? "src" : CurrentTargetAlias);
@@ -756,6 +831,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         {
             PathSelection = current.PathSelection,
             TargetPredicates = current.TargetPredicates,
+            IsOptional = current.IsOptional,
         };
 
     private void AddComplexPropertyTraversals(LambdaExpression lambda)

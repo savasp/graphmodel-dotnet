@@ -125,11 +125,30 @@ public sealed class CypherQueryPlanner
             : [];
 
         var clauses = new List<ICypherClause>();
-        AddRootAndTraversalClauses(clauses, model, state);
-        AddSearchFilterClause(clauses, model.SearchFilter, state.SearchFilterParameter);
-        clauses.AddRange(lowerer.NavigationMatches);
+        IReadOnlyList<CypherExpression> finalPredicates = predicates;
+        if (state.ExplicitTraversal is [{ IsOptional: true } optionalStep])
+        {
+            clauses.Add(BuildRootMatch(model.Root, state.RootAlias));
+            clauses.AddRange(lowerer.NavigationMatches);
+            var sourcePredicates = predicates.Take(model.Predicates.Count).ToArray();
+            if (sourcePredicates.Length > 0)
+            {
+                clauses.Add(new WhereClause(sourcePredicates.Length == 1
+                    ? sourcePredicates[0]
+                    : new ConjunctionExpression(sourcePredicates)));
+            }
 
-        if (predicates.Count > 0)
+            clauses.Add(BuildTraversalMatch(model.Root, [optionalStep], pathAlias: null, optional: true));
+            finalPredicates = predicates.Skip(model.Predicates.Count).ToArray();
+        }
+        else
+        {
+            AddRootAndTraversalClauses(clauses, model, state);
+            AddSearchFilterClause(clauses, model.SearchFilter, state.SearchFilterParameter);
+            clauses.AddRange(lowerer.NavigationMatches);
+        }
+
+        if (finalPredicates.Count > 0)
         {
             if (lowerer.NavigationMatches.Count > 0)
             {
@@ -137,9 +156,9 @@ public sealed class CypherQueryPlanner
                 clauses.Add(WithClause.All);
             }
 
-            clauses.Add(new WhereClause(predicates.Count == 1
-                ? predicates[0]
-                : new ConjunctionExpression(predicates)));
+            clauses.Add(new WhereClause(finalPredicates.Count == 1
+                ? finalPredicates[0]
+                : new ConjunctionExpression(finalPredicates)));
         }
 
         if (model.PathShape is not null)
@@ -1463,6 +1482,49 @@ public sealed class CypherQueryPlanner
         PlanningState state,
         ExpressionToCypherAstLowerer lowerer)
     {
+        if (model.Traversal.Any(step => step.IsOptional) &&
+            model.Projection is { Selector: { } optionalSelector })
+        {
+            var aliases = new Dictionary<ParameterExpression, string>
+            {
+                [optionalSelector.Parameters[0]] = state.CurrentTraversalSourceAlias,
+                [optionalSelector.Parameters[1]] = state.TargetAlias,
+            };
+            if (model.Projection.Kind == ProjectionKind.OptionalTraversal)
+            {
+                return ProjectionPlan.Scalar(
+                [
+                    new ReturnItem(
+                        new EntityProjectionExpression(
+                            state.CurrentTraversalSourceAlias,
+                            HasComplexProperties(optionalSelector.Parameters[0].Type)),
+                        nameof(OptionalTraversalResult<INode>.Source)),
+                    new ReturnItem(
+                        new CaseExpression(
+                            new AstUnaryExpression(
+                                CypherUnaryOperator.IsNull,
+                                new VariableRef(state.TargetAlias)),
+                            new Literal(null),
+                            new EntityProjectionExpression(
+                                state.TargetAlias,
+                                HasComplexProperties(optionalSelector.Parameters[1].Type))),
+                        nameof(OptionalTraversalResult<INode>.Target)),
+                ]);
+            }
+
+            var optionalBody = StripConvert(optionalSelector.Body);
+            if (optionalBody is NewExpression optionalNew)
+            {
+                var items = optionalNew.Arguments.Select((argument, index) => new ReturnItem(
+                    LowerOptionalProjectionItem(argument, aliases, lowerer),
+                    optionalNew.Members?[index].Name ?? $"Property{index}"));
+                return ProjectionPlan.Scalar(items.ToArray());
+            }
+
+            return ProjectionPlan.Scalar(
+                [new ReturnItem(lowerer.Lower(optionalBody, aliases), null)]);
+        }
+
         if (model.Join is { } join)
         {
             var joinBody = StripConvert(join.ResultSelector.Body);
@@ -1594,6 +1656,20 @@ public sealed class CypherQueryPlanner
         return lowerer.LowerLambda(Expression.Lambda(argument, selector.Parameters), state.CurrentAlias);
     }
 
+    private static CypherExpression LowerOptionalProjectionItem(
+        Expression argument,
+        Dictionary<ParameterExpression, string> aliases,
+        ExpressionToCypherAstLowerer lowerer)
+    {
+        var item = StripConvert(argument);
+        if (item is ParameterExpression parameter && typeof(INode).IsAssignableFrom(parameter.Type))
+        {
+            return new EntityProjectionExpression(aliases[parameter], HasComplexProperties(parameter.Type));
+        }
+
+        return lowerer.Lower(argument, aliases);
+    }
+
     private static MapExpression RelationshipMap(PlanningState state) => new(
     [
         new MapEntry("StartNode", new VariableRef(state.CurrentTraversalSourceAlias)),
@@ -1657,6 +1733,17 @@ public sealed class CypherQueryPlanner
 
         if (state.ExplicitTraversal.Count > 0 && model.Root is NodeRoot or DynamicRoot)
         {
+            if (state.ExplicitTraversal is [{ IsOptional: true }])
+            {
+                clauses.Add(BuildRootMatch(model.Root, state.RootAlias));
+                clauses.Add(BuildTraversalMatch(
+                    model.Root,
+                    state.ExplicitTraversal,
+                    pathAlias: null,
+                    optional: true));
+                return;
+            }
+
             clauses.Add(BuildTraversalMatch(model.Root, state.ExplicitTraversal, model.PathShape is null ? null : "p"));
             return;
         }
@@ -1722,7 +1809,8 @@ public sealed class CypherQueryPlanner
     private static MatchClause BuildTraversalMatch(
         QueryRoot root,
         IReadOnlyList<TraversalStep> traversal,
-        string? pathAlias)
+        string? pathAlias,
+        bool optional = false)
     {
         var rootType = GetRootType(root);
         var rootAlias = root switch
@@ -1780,7 +1868,7 @@ public sealed class CypherQueryPlanner
             }));
         }
 
-        return new MatchClause(patterns, optional: false);
+        return new MatchClause(patterns, optional);
     }
 
     private static void AddTerminalAndProjection(

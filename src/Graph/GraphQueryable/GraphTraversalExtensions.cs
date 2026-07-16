@@ -426,6 +426,39 @@ public static class GraphTraversalExtensions
     }
 
     /// <summary>
+    /// Traverses one relationship while preserving every source row. A source with no matching
+    /// relationship produces one result whose <see cref="OptionalTraversalResult{TEnd}.Target"/>
+    /// is <see langword="null"/>.
+    /// </summary>
+    /// <typeparam name="TRel">The relationship type to traverse.</typeparam>
+    /// <typeparam name="TEnd">The target node type.</typeparam>
+    /// <param name="source">The source queryable of starting nodes.</param>
+    /// <param name="direction">The traversal direction.</param>
+    /// <returns>One result per match, or one null-target result for an unmatched source.</returns>
+    public static IGraphQueryable<OptionalTraversalResult<TEnd>> OptionalTraverse<TRel, TEnd>(
+        this IGraphQueryable<INode> source,
+        GraphTraversalDirection direction = GraphTraversalDirection.Outgoing)
+        where TRel : class, IRelationship
+        where TEnd : class, INode
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (!Enum.IsDefined(direction))
+            throw new ArgumentOutOfRangeException(nameof(direction));
+
+        var method = GetGenericExtensionMethod(
+            typeof(GraphTraversalExtensions),
+            nameof(OptionalTraverse),
+            genericArgCount: 2,
+            paramCount: 2).MakeGenericMethod(typeof(TRel), typeof(TEnd));
+        var expression = Expression.Call(
+            null,
+            method,
+            source.Expression,
+            Expression.Constant(direction));
+        return source.Provider.CreateQuery<OptionalTraversalResult<TEnd>>(expression);
+    }
+
+    /// <summary>
     /// Traverses a variable-length path of relationships of the specified type, configured via
     /// an options lambda (depth range and/or direction), and returns the resulting
     /// <see cref="IGraphPath"/> instances.
