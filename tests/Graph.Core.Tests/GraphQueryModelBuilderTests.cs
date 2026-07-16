@@ -952,6 +952,22 @@ public class GraphQueryModelBuilderTests
         GraphQueryModelValidator.Validate(model);
     }
 
+    [Fact]
+    public void StandardQueryableConcat_LeftChainUsesTheSameRecursiveModel()
+    {
+        IQueryable<Person> first = Root<Person>();
+        IQueryable<Person> second = Root<Person>().Where(person => person.Age >= 18);
+        IQueryable<Person> third = Root<Person>().Where(person => person.Age >= 65);
+        var query = first.Concat(second).Concat(third);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var outer = Assert.IsType<UnionFragment>(model.Union);
+        Assert.Equal(SetOperationKind.Concat, outer.Operation);
+        Assert.Equal(SetOperationKind.Concat, Assert.IsType<UnionFragment>(outer.First.Union).Operation);
+        GraphQueryModelValidator.Validate(model);
+    }
+
     [Theory]
     [InlineData(SetOperationKind.Union, SetOperationKind.Concat)]
     [InlineData(SetOperationKind.Concat, SetOperationKind.Union)]
