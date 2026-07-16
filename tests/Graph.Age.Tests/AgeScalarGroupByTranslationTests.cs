@@ -62,6 +62,22 @@ public sealed class AgeScalarGroupByTranslationTests
     }
 
     [Fact]
+    public async Task RendersLongCountThroughTheCountAggregate()
+    {
+        await using var store = CreateStore();
+        var query = store.Graph.Nodes<Person>()
+            .GroupBy(person => person.LastName)
+            .Select(group => new { LastName = group.Key, Total = group.LongCount() });
+
+        var translated = Translate(query);
+
+        Assert.Contains("WITH src.LastName AS __key", translated.Text);
+        Assert.Contains("count(src) AS __a0", translated.Text);
+        Assert.EndsWith("RETURN __key AS LastName, __a0 AS Total", translated.Text, StringComparison.Ordinal);
+        Assert.Equal(["LastName", "Total"], translated.ProjectionColumns);
+    }
+
+    [Fact]
     public async Task RendersKeyOnlyProjectionAsDistinctGroupingKey()
     {
         await using var store = CreateStore();

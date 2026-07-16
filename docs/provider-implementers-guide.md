@@ -382,7 +382,9 @@ the group) must be rejected with the same `GraphQueryTranslationException` and m
 the TCK rejection cases also pin collection-without-`Select`, multiple-`Select`, and
 operation-after-`Select` composition so a provider does not silently execute a shape it cannot lower.
 `ScalarGroupByValidation` provides the corresponding shared boundary for scalar grouping: key and
-aggregate projections only, without collection projections or filtering inside a group.
+aggregate projections only (`Count`/`LongCount`/`Sum`/`Average`/`Min`/`Max`, all lowered to the
+provider's aggregation stage, with `LongCount` mapping to the same count aggregate as `Count`),
+without collection projections or filtering inside a group.
 
 One capability is recorded rather than gated because it has no user-drivable surface to certify:
 

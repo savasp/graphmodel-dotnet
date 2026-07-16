@@ -5,8 +5,8 @@ namespace Cvoya.Graph.CompatibilityTests;
 
 /// <summary>
 /// Contract for scalar-key grouping with per-group aggregation (#306): grouping a node set by a
-/// scalar key and projecting <c>Key</c> and/or <c>Count/Sum/Average/Min/Max</c> aggregates, via
-/// both a <c>Select</c> over the <see cref="IGrouping{TKey,TElement}"/> and the result-selector
+/// scalar key and projecting <c>Key</c> and/or <c>Count/LongCount/Sum/Average/Min/Max</c> aggregates,
+/// via both a <c>Select</c> over the <see cref="IGrouping{TKey,TElement}"/> and the result-selector
 /// <c>GroupBy</c> overload. Providers that do not declare <see cref="GraphCapability.GroupByAggregation"/>
 /// skip the whole interface.
 /// </summary>
@@ -58,6 +58,71 @@ public interface IGroupByTests : IGraphTest
         Assert.Equal(2, byDepartment[$"{group}:Sales"]);
         Assert.Equal(3, byDepartment[$"{group}:Engineering"]);
         Assert.Equal(1, byDepartment[$"{group}:Marketing"]);
+    }
+
+    [Fact]
+    public async Task GroupByScalarKey_LongCountPerGroup()
+    {
+        var group = $"gb-longcount-{Guid.NewGuid():N}";
+        await SeedAsync(group);
+
+        var counts = await Graph.Nodes<DepartmentMember>()
+            .Where(e => e.Name.StartsWith(group))
+            .GroupBy(e => e.Department)
+            .Select(g => new { Department = g.Key, Count = g.LongCount() })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var byDepartment = counts.ToDictionary(row => row.Department, row => row.Count);
+        Assert.Equal(3, byDepartment.Count);
+        Assert.Equal(2L, byDepartment[$"{group}:Sales"]);
+        Assert.Equal(3L, byDepartment[$"{group}:Engineering"]);
+        Assert.Equal(1L, byDepartment[$"{group}:Marketing"]);
+    }
+
+    [Fact]
+    public async Task GroupByScalarKey_LongCountResultSelectorOverload()
+    {
+        var group = $"gb-longcount-result-{Guid.NewGuid():N}";
+        await SeedAsync(group);
+
+        var summaries = await Graph.Nodes<DepartmentMember>()
+            .Where(e => e.Name.StartsWith(group))
+            .GroupBy(
+                e => e.Department,
+                (department, employees) => new { Department = department, Count = employees.LongCount() })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var byDepartment = summaries.ToDictionary(row => row.Department, row => row.Count);
+        Assert.Equal(2L, byDepartment[$"{group}:Sales"]);
+        Assert.Equal(3L, byDepartment[$"{group}:Engineering"]);
+        Assert.Equal(1L, byDepartment[$"{group}:Marketing"]);
+    }
+
+    [Fact]
+    public async Task GroupByScalarKey_LongCountEmptySource_YieldsNoGroups()
+    {
+        var group = $"gb-longcount-empty-{Guid.NewGuid():N}";
+
+        var counts = await Graph.Nodes<DepartmentMember>()
+            .Where(e => e.Name.StartsWith(group))
+            .GroupBy(e => e.Department)
+            .Select(g => new { Department = g.Key, Count = g.LongCount() })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(counts);
+    }
+
+    [Fact]
+    public async Task GroupByScalarKey_PredicateLongCount_Throws()
+    {
+        var exception = await Assert.ThrowsAsync<NotSupportedException>(async () =>
+            await Graph.Nodes<DepartmentMember>()
+                .GroupBy(employee => employee.Department)
+                .Select(group => new { group.Key, Seniors = group.LongCount(employee => employee.Age >= 40) })
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("LongCount(predicate)", exception.Message);
+        Assert.Contains("filter before GroupBy", exception.Message);
     }
 
     [Fact]
