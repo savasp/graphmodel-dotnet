@@ -46,20 +46,7 @@ public abstract class CompatibilityTest(
             return;
         }
 
-        try
-        {
-            graph = await harness.GetGraphAsync(isolation, TestContext.Current.CancellationToken);
-        }
-        catch (GraphProviderUnavailableException ex)
-        {
-            if (ComplianceGuard.IsStrict)
-            {
-                throw;
-            }
-
-            Assert.Skip(ex.Message);
-            return;
-        }
+        graph = await harness.GetGraphAsync(isolation, TestContext.Current.CancellationToken);
 
         ComplianceGuard.RecordExecution(harness.Capabilities);
     }

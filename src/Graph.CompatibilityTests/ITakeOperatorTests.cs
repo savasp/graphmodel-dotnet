@@ -187,17 +187,12 @@ public interface ITakeOperatorTests : IGraphTest
         await Graph.CreateRelationshipAsync(rel3, null, TestContext.Current.CancellationToken);
 
         // Act - This is the type of query that was failing before the fix
-        // PathSegments has no options-lambda direction overload; Direction() is the only way to
-        // express this today.
-#pragma warning disable CS0618
         var query = Graph.Nodes<Memory>()
-            .PathSegments<Memory, UserMemory, User>()
-            .Direction(GraphTraversalDirection.Incoming)
+            .PathSegments<Memory, UserMemory, User>(GraphTraversalDirection.Incoming)
             .Where(s => s.EndNode.GoogleId == user.GoogleId)
             .Select(s => s.StartNode)
             .OrderByDescending(m => m.CreatedAt)
             .Take(2);
-#pragma warning restore CS0618
 
         var results = await query.ToListAsync(TestContext.Current.CancellationToken);
 
@@ -444,18 +439,13 @@ public interface ITakeOperatorTests : IGraphTest
         await Graph.CreateRelationshipAsync(rel6, null, TestContext.Current.CancellationToken);
 
         // Act - Get only 2 most recent memories for user1
-        // PathSegments has no options-lambda direction overload; Direction() is the only way to
-        // express this today.
-#pragma warning disable CS0618
         var results = await Graph.Nodes<Memory>()
-            .PathSegments<Memory, UserMemory, User>()
-            .Direction(GraphTraversalDirection.Incoming)
+            .PathSegments<Memory, UserMemory, User>(GraphTraversalDirection.Incoming)
             .Where(s => s.EndNode.GoogleId == user1.GoogleId)
             .Select(s => s.StartNode)
             .OrderByDescending(m => m.CreatedAt)
             .Take(2)
             .ToListAsync(TestContext.Current.CancellationToken);
-#pragma warning restore CS0618
 
         // Assert
         Assert.Equal(2, results.Count);
@@ -489,19 +479,14 @@ public interface ITakeOperatorTests : IGraphTest
         }
 
         // Act - Skip first 2, take next 2
-        // PathSegments has no options-lambda direction overload; Direction() is the only way to
-        // express this today.
-#pragma warning disable CS0618
         var results = await Graph.Nodes<Memory>()
-            .PathSegments<Memory, UserMemory, User>()
-            .Direction(GraphTraversalDirection.Incoming)
+            .PathSegments<Memory, UserMemory, User>(GraphTraversalDirection.Incoming)
             .Where(s => s.EndNode.GoogleId == user.GoogleId)
             .Select(s => s.StartNode)
             .OrderByDescending(m => m.CreatedAt)
             .Skip(2)
             .Take(2)
             .ToListAsync(TestContext.Current.CancellationToken);
-#pragma warning restore CS0618
 
         // Assert
         Assert.Equal(2, results.Count);
@@ -558,19 +543,14 @@ public interface ITakeOperatorTests : IGraphTest
         await Graph.CreateRelationshipAsync(rel3, null, TestContext.Current.CancellationToken);
 
         // Act - Project to just content and take 2
-        // PathSegments has no options-lambda direction overload; Direction() is the only way to
-        // express this today.
-#pragma warning disable CS0618
         var results = await Graph.Nodes<Memory>()
-            .PathSegments<Memory, UserMemory, User>()
-            .Direction(GraphTraversalDirection.Incoming)
+            .PathSegments<Memory, UserMemory, User>(GraphTraversalDirection.Incoming)
             .Where(s => s.EndNode.GoogleId == user.GoogleId)
             .Select(s => s.StartNode)
             .Select(m => m.Text)
             .OrderByDescending(content => content)
             .Take(2)
             .ToListAsync(TestContext.Current.CancellationToken);
-#pragma warning restore CS0618
 
         // Assert
         Assert.Equal(2, results.Count);
@@ -599,17 +579,12 @@ public interface ITakeOperatorTests : IGraphTest
         await Graph.CreateRelationshipAsync(rel, null, TestContext.Current.CancellationToken);
 
         // Act
-        // PathSegments has no options-lambda direction overload; Direction() is the only way to
-        // express this today.
-#pragma warning disable CS0618
         var results = await Graph.Nodes<Memory>()
-            .PathSegments<Memory, UserMemory, User>()
-            .Direction(GraphTraversalDirection.Incoming)
+            .PathSegments<Memory, UserMemory, User>(GraphTraversalDirection.Incoming)
             .Where(s => s.EndNode.GoogleId == user.GoogleId)
             .Select(s => s.StartNode)
             .Take(0)
             .ToListAsync(TestContext.Current.CancellationToken);
-#pragma warning restore CS0618
 
         // Assert
         Assert.Empty(results);

@@ -25,22 +25,10 @@ public sealed class SubgraphRoundTripTests
             infrastructure.ConnectionString,
             AuthTokens.Basic(infrastructure.Username, infrastructure.Password));
 
-        try
-        {
-            if (!await innerDriver.TryVerifyConnectivityAsync())
-            {
-                Assert.Skip($"Neo4j is not reachable at {infrastructure.ConnectionString}.");
-                return;
-            }
-        }
-        catch (Exception ex) when (ex is Neo4jException or System.Net.Sockets.SocketException)
-        {
-            await innerDriver.DisposeAsync();
-            Assert.Skip($"Neo4j is not reachable at {infrastructure.ConnectionString}: {ex.Message}");
-            return;
-        }
-
         await using var _ = innerDriver.ConfigureAwait(false);
+        Assert.True(
+            await innerDriver.TryVerifyConnectivityAsync(),
+            $"Neo4j is not reachable at {infrastructure.ConnectionString}.");
         var countingDriver = new CountingDriver(innerDriver, counter);
         await using var store = new Neo4jGraphStore(countingDriver, databaseName: "neo4j");
         var graph = store.Graph;

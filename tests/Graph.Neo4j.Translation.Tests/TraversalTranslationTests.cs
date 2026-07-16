@@ -19,9 +19,7 @@ public class TraversalTranslationTests : TranslationTestBase
     public Task Traverse_NoDepthOrDirection()
     {
         // Two-arg surface (issue #94, "Option C"): TStart is recovered from the source expression
-        // chain's element type at translation time, not spelled as a type argument. The generated
-        // Cypher must be identical to the pre-reshape three-arg call (see
-        // Traverse_NoDepthOrDirection_ObsoleteThreeArgShim_ProducesSameCypher below) - the reshape
+        // chain's element type at translation time, not spelled as a type argument. The reshape
         // only changes the C# call-site type-argument count, not the translated query.
         var query = Root.Nodes<Person>().Traverse<Knows, Person>();
         return VerifyTranslation(query);
@@ -207,13 +205,13 @@ public class TraversalTranslationTests : TranslationTestBase
 
     /// <summary>
     /// NOTE (characterization): <c>ReverseTraverse&lt;TRel, TEnd&gt;</c> is a client-side extension
-    /// method that eagerly composes
-    /// <c>PathSegments().Direction(Incoming).Select(ps => ps.EndNode)</c> and calls
+    /// method that eagerly composes <c>PathSegments</c>, the private incoming traversal-options
+    /// marker, and <c>Select(ps => ps.EndNode)</c>, then calls
     /// <c>source.Provider.CreateQuery&lt;T&gt;</c> immediately rather than deferring - so the
     /// literal method name "ReverseTraverse" never appears in an expression tree passed to
     /// <c>CypherQueryVisitor</c>. The "ReverseTraverse" case in
     /// <c>CypherQueryVisitor.HandleLinqMethod</c> is therefore dead code; this test snapshots the
-    /// resulting Cypher, which is identical in shape to <c>PathSegments().Direction(Incoming)</c>.
+    /// resulting Cypher, which is a <c>PathSegments</c> traversal configured as incoming.
     /// </summary>
     [Fact]
     public Task ReverseTraverse_ProducesPathSegmentsDirectionSelectShape()
@@ -229,43 +227,13 @@ public class TraversalTranslationTests : TranslationTestBase
         return VerifyTranslation(query);
     }
 
-#pragma warning disable CS0618 // These tests deliberately snapshot the obsolete free-floating traversal modifiers.
     [Fact]
-    public Task Direction_Outgoing_OnPathSegments()
+    public Task PathSegments_WithBothDirection()
     {
         var query = Root.Nodes<Person>()
-            .PathSegments<Person, Knows, Person>()
-            .Direction(GraphTraversalDirection.Outgoing);
+            .PathSegments<Person, Knows, Person>(GraphTraversalDirection.Both);
         return VerifyTranslation(query);
     }
-
-    [Fact]
-    public Task Direction_Both_OnPathSegments()
-    {
-        var query = Root.Nodes<Person>()
-            .PathSegments<Person, Knows, Person>()
-            .Direction(GraphTraversalDirection.Both);
-        return VerifyTranslation(query);
-    }
-
-    [Fact]
-    public Task WithDepth_MaxOnly_OnPathSegments()
-    {
-        var query = Root.Nodes<Person>()
-            .PathSegments<Person, Knows, Person>()
-            .WithDepth(4);
-        return VerifyTranslation(query);
-    }
-
-    [Fact]
-    public Task WithDepth_MinAndMax_OnPathSegments()
-    {
-        var query = Root.Nodes<Person>()
-            .PathSegments<Person, Knows, Person>()
-            .WithDepth(2, 4);
-        return VerifyTranslation(query);
-    }
-#pragma warning restore CS0618
 
     [Fact]
     public Task PathSegments_WithWhereOnEndNode()
@@ -470,37 +438,15 @@ public class TraversalTranslationTests : TranslationTestBase
         TraversePaths_MinAndMaxDepth();
 
     [Fact]
-#pragma warning disable CS0618 // Direction is the obsolete-but-still-functional free-floating modifier; exercising it directly is the point of this test.
     public Task DirectionAfterTraversePaths_StillTranslatesSuccessfully()
     {
-        // Direction/WithDepth are the sanctioned wrappers the TraversePaths(configure) options-
-        // lambda overload itself builds (see GraphTraversalExtensions.TraversePaths); they mutate
-        // builder state describing the traversal that produces the paths, not the shape of a
-        // result row, so the choke point allows them through unlike Where/Select/OrderBy/Take
-        // above. This is the translated equivalent of TraversePaths_OptionsLambda_AppliesDepthAndDirection's
-        // shape (see ExpressionShapeTests), snapshotted here for the actual generated Cypher.
+        // The options-lambda overload emits a private marker that updates the traversal producing
+        // the paths, not the shape of a result row, so the choke point allows it through unlike
+        // Where/Select/OrderBy/Take above.
         var query = Root.Nodes<Person>()
-            .TraversePaths<Knows, Person>(1, 3)
-            .Direction(GraphTraversalDirection.Incoming);
+            .TraversePaths<Knows, Person>(options => options
+                .Depth(1, 3)
+                .Direction(GraphTraversalDirection.Incoming));
         return VerifyTranslation(query);
     }
-#pragma warning restore CS0618
-
-    // ---- Obsolete three-arg shims: prove the generated Cypher is unchanged by the reshape ----
-
-    [Fact]
-#pragma warning disable CS0618 // exercising the obsolete three-arg shim directly is the point of this test.
-    public Task Traverse_NoDepthOrDirection_ObsoleteThreeArgShim_ProducesSameCypher()
-    {
-        var query = Root.Nodes<Person>().Traverse<Person, Knows, Person>();
-        return VerifyTranslation(query);
-    }
-
-    [Fact]
-    public Task TraversePaths_MinAndMaxDepth_ObsoleteThreeArgShim_ProducesSameCypher()
-    {
-        var query = Root.Nodes<Person>().TraversePaths<Person, Knows, Person>(1, 3);
-        return VerifyTranslation(query);
-    }
-#pragma warning restore CS0618
 }

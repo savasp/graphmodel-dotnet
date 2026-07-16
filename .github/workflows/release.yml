@@ -131,6 +131,12 @@ jobs:
       - name: Test Core Libraries
         run: dotnet test --project tests/Graph.Core.Tests/Graph.Core.Tests.csproj --no-build --configuration Release --verbosity normal
 
+      - name: Test Cypher IR
+        run: dotnet test --project tests/Graph.Cypher.Tests/Graph.Cypher.Tests.csproj --no-build --configuration Release --verbosity normal
+
+      - name: Test Query Surface Compilation
+        run: dotnet test --project tests/Graph.QuerySurface.CompilationTests/Graph.QuerySurface.CompilationTests.csproj --no-build --configuration Release --verbosity normal
+
       - name: Test In-Memory Provider (strict compliance)
         env:
           GRAPHMODEL_COMPLIANCE_STRICT: "1"

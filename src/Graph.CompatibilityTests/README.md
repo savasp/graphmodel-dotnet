@@ -54,7 +54,7 @@ skeleton.
 ## 📦 What's in the package
 
 - **Harness SPI** - `IGraphProviderTestHarness`, `StoreIsolation`, `GraphProviderUnavailableException`
-- **`CompatibilityTest`** - the shared base class that runs the skip/acquire/dispose choreography once
+- **`CompatibilityTest`** - the shared base class that runs the capability-skip/acquire/dispose choreography once; infrastructure failures always fail
 - **`RequiresCapabilityAttribute`** - marks tests/interfaces that need an optional `GraphCapability`
 - **`ComplianceGuard`** / **`ComplianceInventory`** - the executed-count guard (`GRAPHMODEL_COMPLIANCE_STRICT=1`) that catches a mis-wired 0-tests-discovered project
 - The `I*Tests` interfaces themselves - the actual contract, as default-implemented xUnit test methods

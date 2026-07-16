@@ -18,17 +18,12 @@ namespace Cvoya.Graph.CompatibilityTests;
 /// project that discovers and executes zero (or too few) tests: without it, "0 tests ran" and "N
 /// tests ran and all passed" would both report success.
 /// </para>
-/// <para>
-/// Unarmed outside strict mode, so a local run with no backing infrastructure (every test skips)
-/// stays a skip rather than a failure - see <see cref="GraphProviderUnavailableException"/>.
-/// </para>
 /// </remarks>
 public sealed class ComplianceGuard : IAsyncDisposable
 {
     /// <summary>
-    /// The environment variable that arms strict compliance enforcement: guard failures and
-    /// <see cref="GraphProviderUnavailableException"/> both become hard failures instead of skips
-    /// when this is set to <c>"1"</c>.
+    /// The environment variable that arms strict executed-count compliance enforcement when set
+    /// to <c>"1"</c>. Infrastructure failures are hard failures in every mode.
     /// </summary>
     public const string StrictModeEnvironmentVariable = "GRAPHMODEL_COMPLIANCE_STRICT";
 

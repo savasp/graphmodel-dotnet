@@ -317,15 +317,10 @@ public interface IQueryTraversalTests : IGraphTest
         await Graph.CreateRelationshipAsync(new Knows { StartNodeId = charlie.Id, EndNodeId = alice.Id, Since = DateTime.UtcNow }, null, TestContext.Current.CancellationToken);
 
         // Act: Use PathSegments with incoming direction to find who knows Alice
-        // PathSegments has no options-lambda direction overload (only Traverse/TraverseRelationships/
-        // TraversePaths do); the free-floating Direction() modifier is the only way to express this.
-#pragma warning disable CS0618
         var pathSegments = await Graph.Nodes<Person>()
             .Where(p => p.FirstName == "Alice")
-            .PathSegments<Person, Knows, Person>()
-            .Direction(GraphTraversalDirection.Incoming)
+            .PathSegments<Person, Knows, Person>(GraphTraversalDirection.Incoming)
             .ToListAsync(TestContext.Current.CancellationToken);
-#pragma warning restore CS0618
 
         // Assert
         Assert.Single(pathSegments);
@@ -1162,18 +1157,13 @@ public interface IQueryTraversalTests : IGraphTest
 
         // Act: Use multiple PathSegments with incoming direction
         // This should generate: (tgt_2:MemorySourceNode)<-[r_1:MemoryToMemorySourceNode]-(src:MemoryWithoutSourceProperty)<-[r:MEMORY]-(tgt:User)
-        // PathSegments has no options-lambda direction overload; Direction() is the only way to
-        // express this today.
-#pragma warning disable CS0618
         var results = await Graph.Nodes<MemoryWithoutSourceProperty>()
-            .PathSegments<MemoryWithoutSourceProperty, UserMemory, User>()
-            .Direction(GraphTraversalDirection.Incoming)
+            .PathSegments<MemoryWithoutSourceProperty, UserMemory, User>(GraphTraversalDirection.Incoming)
             .Where(ps => ps.EndNode.Name == "Alice")
             .Select(ps => ps.StartNode)
             .PathSegments<MemoryWithoutSourceProperty, MemoryToMemorySourceNode, MemorySourceNode>()
             .Select(ps => new { Memory = ps.StartNode, MemorySource = ps.EndNode })
             .ToListAsync(TestContext.Current.CancellationToken);
-#pragma warning restore CS0618
 
         // Assert
         Assert.Single(results);

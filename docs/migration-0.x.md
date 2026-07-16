@@ -7,6 +7,32 @@ CVOYA graph is pre-1.0 alpha; breaking changes are expected between releases. Th
 every breaking (and near-breaking) change from the "query surface v2" rework (issue #94). If
 you're upgrading, work through the sections in order — later sections build on earlier ones.
 
+## Final compatibility cleanup (issue #240)
+
+The one-release compatibility window is closed. The following members are removed; migrate every
+call site to the canonical replacement before upgrading:
+
+| Removed member | Replacement |
+|---|---|
+| `IGraphNodeQueryable` | `IGraphQueryable` |
+| `IGraphNodeQueryable<T>` | `IGraphQueryable<T>` |
+| `IOrderedGraphNodeQueryable<T>` | `IOrderedGraphQueryable<T>` |
+| `IGraphRelationshipQueryable` | `IGraphQueryable` |
+| `IGraphRelationshipQueryable<T>` | `IGraphQueryable<T>` |
+| `IOrderedGraphRelationshipQueryable<T>` | `IOrderedGraphQueryable<T>` |
+| `WithDepth<T>(source, maxDepth)` | `Traverse<TRel, TEnd>(maxDepth)` or a traversal options lambda |
+| `WithDepth<T>(source, minDepth, maxDepth)` | `Traverse<TRel, TEnd>(minDepth, maxDepth)`, `TraversePaths<TRel, TEnd>(minDepth, maxDepth)`, or a traversal options lambda |
+| `Direction<T>(source, direction)` | `Traverse<TRel, TEnd>(direction)`, `PathSegments<TStart, TRel, TEnd>(direction)`, or a traversal options lambda |
+| `Traverse<TStart, TRel, TEnd>()` | `Traverse<TRel, TEnd>()` |
+| `Traverse<TStart, TRel, TEnd>(maxDepth)` | `Traverse<TRel, TEnd>(maxDepth)` |
+| `Traverse<TStart, TRel, TEnd>(minDepth, maxDepth)` | `Traverse<TRel, TEnd>(minDepth, maxDepth)` |
+| `Traverse<TStart, TRel, TEnd>(direction)` | `Traverse<TRel, TEnd>(direction)` |
+| `Traverse<TStart, TRel, TEnd>(configure)` | `Traverse<TRel, TEnd>(configure)` |
+| `ReverseTraverse<TStart, TRel, TEnd>()` | `ReverseTraverse<TRel, TEnd>()` |
+| `TraverseRelationships<TStart, TRel, TEnd>()` | `TraverseRelationships<TRel, TEnd>()` |
+| `TraversePaths<TStart, TRel, TEnd>(minDepth, maxDepth)` | `TraversePaths<TRel, TEnd>(minDepth, maxDepth)` |
+| `TraversePaths<TStart, TRel, TEnd>(configure)` | `TraversePaths<TRel, TEnd>(configure)` |
+
 ## 1. Query roots are synchronous
 
 `IGraph.NodesAsync<N>`, `RelationshipsAsync<R>`, `DynamicNodesAsync`, and `DynamicRelationshipsAsync`
@@ -37,8 +63,7 @@ construction stopped pretending to be async.
 ## 2. Single `IGraphQueryable<T>` — no more `IGraphNodeQueryable<T>`/`IGraphRelationshipQueryable<T>`
 
 `IGraphNodeQueryable<T>` and `IGraphRelationshipQueryable<T>` (and their non-generic and ordered
-counterparts) are `[Obsolete]` empty aliases for `IGraphQueryable<T>` / `IOrderedGraphQueryable<T>`
-and will be removed in a future release. Node-only and relationship-only operators (traversal,
+counterparts) have been removed. Node-only and relationship-only operators (traversal,
 `TraversePaths`, etc.) are now gated by generic constraints on the *operator*
 (`where TStart : INode`), not by the receiver's static type:
 
@@ -89,10 +114,10 @@ It was a no-op (`DisposeAsync() => ValueTask.CompletedTask`) — nothing ever ne
 Remove any `await using`/`DisposeAsync()` calls on queryables; there is nothing to migrate to,
 because there was nothing being disposed.
 
-## 5. `WithDepth`/`Direction` are obsolete free-floating modifiers — fold them into the traversal call
+## 5. `WithDepth`/`Direction` free-floating modifiers are removed — fold them into the traversal call
 
 `WithDepth(...)` and `Direction(...)` as standalone postfix operators on any `IGraphQueryable<T>`
-are `[Obsolete]` (still functional for one release, but will be removed). Their problem: nothing in
+have been removed. Their problem: nothing in
 the type system enforced that they followed a traversal operator — `graph.Nodes<Person>().WithDepth(3)`
 compiled and did nothing. Use the depth/direction overloads on `Traverse`/`TraversePaths` instead,
 or the options-lambda overload:
@@ -104,10 +129,9 @@ or the options-lambda overload:
 +graph.Nodes<Person>().Traverse<Knows, Person>(o => o.Depth(1, 3).Direction(GraphTraversalDirection.Incoming))
 ```
 
-`PathSegments<TStart, TRel, TEnd>()` (the single-hop primitive) still accepts `.WithDepth(...)`/
-`.Direction(...)` directly — that combination is unchanged and not part of this deprecation, since
-it is the one place those modifiers unambiguously apply to the query that immediately precedes
-them.
+`PathSegments<TStart, TRel, TEnd>(direction)` is the canonical replacement when a directed
+single-hop result must retain its start node, relationship, and end node. Use `Traverse` when only
+the endpoint is needed, or `TraversePaths` when the result must retain a variable-length path.
 
 ## 6. Multi-hop traversal: `TraversePaths` returns `IGraphPath`, not more `IGraphPathSegment`s
 
@@ -199,15 +223,13 @@ appear in the result type. `Traverse`/`TraverseRelationships`/`TraversePaths` re
 `TEnd`/`TRel`/`IGraphPath` — none mention the start type — so they go two-arg.
 
 **Migration is mechanical:** drop the first (start node) type argument from every
-`Traverse`/`TraverseRelationships`/`TraversePaths`/`ReverseTraverse` call. The three-arg forms
-remain available as `[Obsolete]` shims for one release (generic arity disambiguates them from the
-two-arg forms) and delegate to the two-arg implementation, so existing code keeps compiling (with a
-`CS0618` warning) during the migration window.
+`Traverse`/`TraverseRelationships`/`TraversePaths`/`ReverseTraverse` call. The three-arg forms are
+removed after their one-release migration window.
 
 **Caveat — struct entity types.** Variance conversions don't apply to value types, so a `struct`
 implementing `INode` cannot call the two-arg form (`IGraphQueryable<StructNode>` does not convert to
 `IGraphQueryable<INode>`). This is not expected to affect real usage: entity types are expected to be
-reference types (see §7a below), and the three-arg shims remain available regardless.
+reference types (see §7a below).
 
 ## 7a. Entity type parameters now require `class`
 
@@ -233,7 +255,7 @@ element type is the start type, recovered by covariance rather than named at all
 
 Call sites did not change syntactically (`source.ReverseTraverse<Knows, Person>()` reads the same
 either way when start and end are the same type), but if you had a three-arg call with distinct
-start/end types, double-check which one you're passing when you migrate off the obsolete shim — the
+start/end types, double-check which one you're passing when you migrate from the removed shim — the
 roles are no longer swapped.
 
 ## 8. `Search` unification: `IGraph.Search*Async` are now synchronous, renamed, and delegate to `.Search()`
@@ -575,9 +597,9 @@ translation. No stored-data migration is required.
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.
-- `PathSegments<TStart, TRel, TEnd>()` (the single-hop primitive), its three type arguments, and its
-  `.Direction()`/`.WithDepth()` combination — unchanged (see §7 for why `PathSegments` keeps
-  `TStart` while `Traverse` and friends drop it).
+- `PathSegments<TStart, TRel, TEnd>()` (the single-hop primitive) and its three type arguments —
+  unchanged; use its new `direction` overload instead of the removed free-floating modifier (see
+  §7 for why `PathSegments` keeps `TStart` while `Traverse` and friends drop it).
 - The depth/direction overload *shapes* on `Traverse`/`TraversePaths` (no-args, `maxDepth`,
   `minDepth, maxDepth`, `direction`, options-lambda) — unchanged; only the type-argument count
   changed (§7), not which overloads exist.

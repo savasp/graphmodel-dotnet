@@ -61,8 +61,7 @@ public class LinqOperatorDispatchTests
         LinqOperator.ShortestPath,
         LinqOperator.AllShortestPaths,
         LinqOperator.OptionalTraverse,
-        LinqOperator.Direction,
-        LinqOperator.WithDepth,
+        LinqOperator.TraversalOptions,
         LinqOperator.Search,
         LinqOperator.RelationshipPredicate,
         LinqOperator.WhereHasRelationship,
@@ -203,28 +202,18 @@ public class LinqOperatorDispatchTests
     [Fact]
     public void ReverseTraverseIsIntentionallyUnregistered()
     {
-        // ReverseTraverse eagerly composes PathSegments().Direction(Incoming).Select(...) and
+        // ReverseTraverse eagerly composes PathSegments(), a private traversal-options marker,
+        // and Select(...) and
         // calls source.Provider.CreateQuery<T> immediately - the method call itself never reaches
         // the visitor, so it must not be in the dispatch table (registering it would be dead code;
         // see the #80 characterization finding referenced in LinqOperatorDispatch and the #94
-        // migration guide). Checked for both the current two-arg form (TRel, TEnd) and the
-        // obsolete three-arg shim (TStart, TRel, TEnd) - neither reaches the visitor as a
-        // "ReverseTraverse" MethodCallExpression.
+        // migration guide).
         var twoArgMethod = typeof(GraphTraversalExtensions).GetMethods()
             .First(m => m.Name == nameof(GraphTraversalExtensions.ReverseTraverse) && m.GetGenericArguments().Length == 2)
             .MakeGenericMethod(typeof(Knows), typeof(Person));
 
         Assert.Null(LinqOperatorDispatch.Resolve(twoArgMethod));
         Assert.DoesNotContain(twoArgMethod, LinqOperatorDispatch.AllRegisteredMethods.Keys);
-
-#pragma warning disable CS0618 // exercising the obsolete three-arg shim directly is the point of this assertion.
-        var threeArgMethod = typeof(GraphTraversalExtensions).GetMethods()
-            .First(m => m.Name == nameof(GraphTraversalExtensions.ReverseTraverse) && m.GetGenericArguments().Length == 3)
-            .MakeGenericMethod(typeof(Person), typeof(Knows), typeof(Person));
-#pragma warning restore CS0618
-
-        Assert.Null(LinqOperatorDispatch.Resolve(threeArgMethod));
-        Assert.DoesNotContain(threeArgMethod, LinqOperatorDispatch.AllRegisteredMethods.Keys);
     }
 
     [Fact]

@@ -308,61 +308,6 @@ public class ExpressionShapeTests
         AssertSameLambda(keySelector, call.Arguments[1]);
     }
 
-    // ---- WithDepth / Direction (obsolete, still functional) ----
-
-    [Fact]
-#pragma warning disable CS0618 // exercising the obsolete-but-still-functional operator directly.
-    public void WithDepth_MaxOnly_CapturesDepthAsConstant()
-    {
-        var source = Root.Nodes<Person>().PathSegments<Person, Knows, Person>();
-
-        var result = source.WithDepth(4);
-
-        var call = AsCall(result.Expression);
-        var expectedMethod = typeof(GraphQueryableExtensions).GetMethods()
-            .Single(m => m.Name == nameof(GraphQueryableExtensions.WithDepth) && m.GetParameters().Length == 2)
-            .MakeGenericMethod(typeof(IGraphPathSegment<Person, Knows, Person>));
-
-        Assert.Equal(expectedMethod, call.Method);
-        Assert.Equal(2, call.Arguments.Count);
-        Assert.Equal(4, AsConstant(call.Arguments[1]).Value);
-    }
-
-    [Fact]
-    public void WithDepth_MinAndMax_CapturesBothAsConstants()
-    {
-        var source = Root.Nodes<Person>().PathSegments<Person, Knows, Person>();
-
-        var result = source.WithDepth(1, 3);
-
-        var call = AsCall(result.Expression);
-        var expectedMethod = typeof(GraphQueryableExtensions).GetMethods()
-            .Single(m => m.Name == nameof(GraphQueryableExtensions.WithDepth) && m.GetParameters().Length == 3)
-            .MakeGenericMethod(typeof(IGraphPathSegment<Person, Knows, Person>));
-
-        Assert.Equal(expectedMethod, call.Method);
-        Assert.Equal(3, call.Arguments.Count);
-        Assert.Equal(1, AsConstant(call.Arguments[1]).Value);
-        Assert.Equal(3, AsConstant(call.Arguments[2]).Value);
-    }
-
-    [Fact]
-    public void Direction_CapturesDirectionAsConstant()
-    {
-        var source = Root.Nodes<Person>().PathSegments<Person, Knows, Person>();
-
-        var result = source.Direction(GraphTraversalDirection.Incoming);
-
-        var call = AsCall(result.Expression);
-        var expectedMethod = typeof(GraphQueryableExtensions).GetMethods()
-            .Single(m => m.Name == nameof(GraphQueryableExtensions.Direction))
-            .MakeGenericMethod(typeof(IGraphPathSegment<Person, Knows, Person>));
-
-        Assert.Equal(expectedMethod, call.Method);
-        Assert.Equal(GraphTraversalDirection.Incoming, AsConstant(call.Arguments[1]).Value);
-    }
-#pragma warning restore CS0618
-
     // ---- Search ----
 
     [Fact]
@@ -392,12 +337,27 @@ public class ExpressionShapeTests
 
         var call = AsCall(result.Expression);
         var expectedMethod = typeof(GraphTraversalExtensions).GetMethods()
-            .Single(m => m.Name == nameof(GraphTraversalExtensions.PathSegments))
+            .Single(m => m.Name == nameof(GraphTraversalExtensions.PathSegments)
+                && m.GetParameters().Length == 1)
             .MakeGenericMethod(typeof(Person), typeof(Knows), typeof(Person));
 
         Assert.Equal(expectedMethod, call.Method);
         Assert.Single(call.Arguments);
         Assert.Same(source.Expression, call.Arguments[0]);
+    }
+
+    [Fact]
+    public void PathSegments_DirectionOverload_UsesTraversalOptionsMarker()
+    {
+        var source = Root.Nodes<Person>();
+
+        var result = source.PathSegments<Person, Knows, Person>(GraphTraversalDirection.Both);
+
+        var optionsCall = AsCall(result.Expression);
+        Assert.Equal("WithTraversalOptions", optionsCall.Method.Name);
+        Assert.Equal(GraphTraversalDirection.Both, AsConstant(optionsCall.Arguments[3]).Value);
+        var pathSegmentsCall = AsCall(optionsCall.Arguments[0]);
+        Assert.Equal(ExpectedPathSegmentsMethod(typeof(Person), typeof(Knows), typeof(Person)), pathSegmentsCall.Method);
     }
 
     // ---- Traverse (5 overloads: no-arg, maxDepth, min+max depth, direction, options lambda) ----
@@ -410,7 +370,8 @@ public class ExpressionShapeTests
 
     private static MethodInfo ExpectedPathSegmentsMethod(Type start, Type rel, Type end) =>
         typeof(GraphTraversalExtensions).GetMethods()
-            .Single(m => m.Name == nameof(GraphTraversalExtensions.PathSegments))
+            .Single(m => m.Name == nameof(GraphTraversalExtensions.PathSegments)
+                && m.GetParameters().Length == 1)
             .MakeGenericMethod(start, rel, end);
 
     [Fact]
@@ -453,12 +414,12 @@ public class ExpressionShapeTests
         var result = source.Traverse<Knows, Person>(3);
 
         var selectCall = AsCall(result.Expression);
-        var withDepthCall = AsCall(selectCall.Arguments[0]);
-#pragma warning disable CS0618
-        Assert.Equal(nameof(GraphQueryableExtensions.WithDepth), withDepthCall.Method.Name);
-#pragma warning restore CS0618
-        Assert.Equal(2, withDepthCall.Arguments.Count);
-        Assert.Equal(3, AsConstant(withDepthCall.Arguments[1]).Value);
+        var optionsCall = AsCall(selectCall.Arguments[0]);
+        Assert.Equal("WithTraversalOptions", optionsCall.Method.Name);
+        Assert.Equal(4, optionsCall.Arguments.Count);
+        Assert.Null(AsConstant(optionsCall.Arguments[1]).Value);
+        Assert.Equal(3, AsConstant(optionsCall.Arguments[2]).Value);
+        Assert.Null(AsConstant(optionsCall.Arguments[3]).Value);
     }
 
     [Fact]
@@ -469,13 +430,12 @@ public class ExpressionShapeTests
         var result = source.Traverse<Knows, Person>(1, 4);
 
         var selectCall = AsCall(result.Expression);
-        var withDepthCall = AsCall(selectCall.Arguments[0]);
-#pragma warning disable CS0618
-        Assert.Equal(nameof(GraphQueryableExtensions.WithDepth), withDepthCall.Method.Name);
-#pragma warning restore CS0618
-        Assert.Equal(3, withDepthCall.Arguments.Count);
-        Assert.Equal(1, AsConstant(withDepthCall.Arguments[1]).Value);
-        Assert.Equal(4, AsConstant(withDepthCall.Arguments[2]).Value);
+        var optionsCall = AsCall(selectCall.Arguments[0]);
+        Assert.Equal("WithTraversalOptions", optionsCall.Method.Name);
+        Assert.Equal(4, optionsCall.Arguments.Count);
+        Assert.Equal(1, AsConstant(optionsCall.Arguments[1]).Value);
+        Assert.Equal(4, AsConstant(optionsCall.Arguments[2]).Value);
+        Assert.Null(AsConstant(optionsCall.Arguments[3]).Value);
     }
 
     [Fact]
@@ -486,11 +446,11 @@ public class ExpressionShapeTests
         var result = source.Traverse<Knows, Person>(GraphTraversalDirection.Incoming);
 
         var selectCall = AsCall(result.Expression);
-        var directionCall = AsCall(selectCall.Arguments[0]);
-#pragma warning disable CS0618
-        Assert.Equal(nameof(GraphQueryableExtensions.Direction), directionCall.Method.Name);
-#pragma warning restore CS0618
-        Assert.Equal(GraphTraversalDirection.Incoming, AsConstant(directionCall.Arguments[1]).Value);
+        var optionsCall = AsCall(selectCall.Arguments[0]);
+        Assert.Equal("WithTraversalOptions", optionsCall.Method.Name);
+        Assert.Null(AsConstant(optionsCall.Arguments[1]).Value);
+        Assert.Null(AsConstant(optionsCall.Arguments[2]).Value);
+        Assert.Equal(GraphTraversalDirection.Incoming, AsConstant(optionsCall.Arguments[3]).Value);
     }
 
     [Fact]
@@ -501,22 +461,13 @@ public class ExpressionShapeTests
         var result = source.Traverse<Knows, Person>(o => o.Depth(1, 2).Direction(GraphTraversalDirection.Both));
 
         // The options-lambda overload is evaluated eagerly at call time (it's a plain Func, not an
-        // Expression<Func<...>>) and composes Direction then WithDepth (in that order - see
-        // GraphTraversalExtensions.Traverse's options-lambda overload), so WithDepth is the
-        // outermost call, wrapping Direction, wrapping PathSegments.
+        // Expression<Func<...>>) and emits one private marker carrying all configured values.
         var selectCall = AsCall(result.Expression);
-        var withDepthCall = AsCall(selectCall.Arguments[0]);
-#pragma warning disable CS0618
-        Assert.Equal(nameof(GraphQueryableExtensions.WithDepth), withDepthCall.Method.Name);
-#pragma warning restore CS0618
-        Assert.Equal(1, AsConstant(withDepthCall.Arguments[1]).Value);
-        Assert.Equal(2, AsConstant(withDepthCall.Arguments[2]).Value);
-
-        var directionCall = AsCall(withDepthCall.Arguments[0]);
-#pragma warning disable CS0618
-        Assert.Equal(nameof(GraphQueryableExtensions.Direction), directionCall.Method.Name);
-#pragma warning restore CS0618
-        Assert.Equal(GraphTraversalDirection.Both, AsConstant(directionCall.Arguments[1]).Value);
+        var optionsCall = AsCall(selectCall.Arguments[0]);
+        Assert.Equal("WithTraversalOptions", optionsCall.Method.Name);
+        Assert.Equal(1, AsConstant(optionsCall.Arguments[1]).Value);
+        Assert.Equal(2, AsConstant(optionsCall.Arguments[2]).Value);
+        Assert.Equal(GraphTraversalDirection.Both, AsConstant(optionsCall.Arguments[3]).Value);
     }
 
     // ---- ReverseTraverse ----
@@ -531,13 +482,11 @@ public class ExpressionShapeTests
         var selectCall = AsCall(result.Expression);
         Assert.Equal(nameof(GraphQueryableExtensions.Select), selectCall.Method.Name);
 
-        var directionCall = AsCall(selectCall.Arguments[0]);
-#pragma warning disable CS0618
-        Assert.Equal(nameof(GraphQueryableExtensions.Direction), directionCall.Method.Name);
-#pragma warning restore CS0618
-        Assert.Equal(GraphTraversalDirection.Incoming, AsConstant(directionCall.Arguments[1]).Value);
+        var optionsCall = AsCall(selectCall.Arguments[0]);
+        Assert.Equal("WithTraversalOptions", optionsCall.Method.Name);
+        Assert.Equal(GraphTraversalDirection.Incoming, AsConstant(optionsCall.Arguments[3]).Value);
 
-        var pathSegmentsCall = AsCall(directionCall.Arguments[0]);
+        var pathSegmentsCall = AsCall(optionsCall.Arguments[0]);
         Assert.Equal(ExpectedPathSegmentsMethod(typeof(Person), typeof(Knows), typeof(Person)), pathSegmentsCall.Method);
     }
 
@@ -592,15 +541,12 @@ public class ExpressionShapeTests
         var result = source.TraversePaths<Knows, Person>(o => o.Depth(2, 5).Direction(GraphTraversalDirection.Incoming));
 
         // The options-lambda overload evaluates eagerly and delegates to the min/max-depth
-        // overload, then wraps in a Direction call - so the outer node is Direction, wrapping
-        // TraversePaths(min, max).
-        var directionCall = AsCall(result.Expression);
-#pragma warning disable CS0618
-        Assert.Equal(nameof(GraphQueryableExtensions.Direction), directionCall.Method.Name);
-#pragma warning restore CS0618
-        Assert.Equal(GraphTraversalDirection.Incoming, AsConstant(directionCall.Arguments[1]).Value);
+        // overload, then wraps it in the private traversal-options marker.
+        var optionsCall = AsCall(result.Expression);
+        Assert.Equal("WithTraversalOptions", optionsCall.Method.Name);
+        Assert.Equal(GraphTraversalDirection.Incoming, AsConstant(optionsCall.Arguments[3]).Value);
 
-        var traversePathsCall = AsCall(directionCall.Arguments[0]);
+        var traversePathsCall = AsCall(optionsCall.Arguments[0]);
         var expectedMethod = typeof(GraphTraversalExtensions).GetMethods()
             .Single(m => m.Name == nameof(GraphTraversalExtensions.TraversePaths)
                 && m.GetGenericArguments().Length == 2
@@ -622,86 +568,39 @@ public class ExpressionShapeTests
         Assert.Contains("depth", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---- Obsolete three-arg shims (issue #94, "Option C"): prove delegation to the two-arg forms ----
-    //
-    // Generic arity (3 vs 2) disambiguates the obsolete shims from the reshaped operators above.
-    // Each shim must produce the exact same expression shape as calling the two-arg form directly
-    // (proving it truly delegates, rather than independently re-implementing the same behavior) -
-    // asserted here by structural equality of the resulting Cypher-relevant shape: same outermost
-    // method name, same MethodInfo one level down (the PathSegments call), same constants.
-
     [Fact]
-#pragma warning disable CS0618 // exercising the obsolete three-arg shim directly is the point of this test.
-    public void ObsoleteTraverse_ThreeArgShim_DelegatesToTwoArgForm()
+    public void RemovedCompatibilitySurface_IsAbsent()
     {
-        var viaShim = Root.Nodes<Person>().Traverse<Person, Knows, Person>();
-        var viaTwoArg = Root.Nodes<Person>().Traverse<Knows, Person>();
+        var queryableMethods = typeof(GraphQueryableExtensions)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static);
+        Assert.DoesNotContain(queryableMethods, method => method.Name is "WithDepth" or "Direction");
 
-        var shimSelect = AsCall(viaShim.Expression);
-        var twoArgSelect = AsCall(viaTwoArg.Expression);
-        Assert.Equal(twoArgSelect.Method, shimSelect.Method);
+        var traversalMethods = typeof(GraphTraversalExtensions)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static);
+        Assert.DoesNotContain(
+            traversalMethods,
+            method => method.Name is nameof(GraphTraversalExtensions.Traverse)
+                or nameof(GraphTraversalExtensions.ReverseTraverse)
+                or nameof(GraphTraversalExtensions.TraverseRelationships)
+                or nameof(GraphTraversalExtensions.TraversePaths)
+                && method.GetGenericArguments().Length == 3);
 
-        var shimPathSegments = AsCall(shimSelect.Arguments[0]);
-        var twoArgPathSegments = AsCall(twoArgSelect.Arguments[0]);
-        Assert.Equal(twoArgPathSegments.Method, shimPathSegments.Method);
+        var exportedTypeNames = typeof(IGraph).Assembly
+            .GetExportedTypes()
+            .Select(type => type.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        var removedTypes = new[]
+        {
+            "IGraphNodeQueryable",
+            "IGraphNodeQueryable`1",
+            "IOrderedGraphNodeQueryable`1",
+            "IGraphRelationshipQueryable",
+            "IGraphRelationshipQueryable`1",
+            "IOrderedGraphRelationshipQueryable`1",
+        };
+
+        Assert.DoesNotContain(removedTypes, exportedTypeNames.Contains);
     }
-
-    [Fact]
-    public void ObsoleteTraverse_ThreeArgShim_WithMaxDepth_DelegatesToTwoArgForm()
-    {
-        var viaShim = Root.Nodes<Person>().Traverse<Person, Knows, Person>(3);
-        var viaTwoArg = Root.Nodes<Person>().Traverse<Knows, Person>(3);
-
-        var shimWithDepth = AsCall(AsCall(viaShim.Expression).Arguments[0]);
-        var twoArgWithDepth = AsCall(AsCall(viaTwoArg.Expression).Arguments[0]);
-        Assert.Equal(twoArgWithDepth.Method, shimWithDepth.Method);
-        Assert.Equal(AsConstant(twoArgWithDepth.Arguments[1]).Value, AsConstant(shimWithDepth.Arguments[1]).Value);
-    }
-
-    [Fact]
-    public void ObsoleteReverseTraverse_ThreeArgShim_DelegatesToTwoArgForm()
-    {
-        var viaShim = Root.Nodes<Person>().ReverseTraverse<Person, Knows, Person>();
-        var viaTwoArg = Root.Nodes<Person>().ReverseTraverse<Knows, Person>();
-
-        var shimSelect = AsCall(viaShim.Expression);
-        var twoArgSelect = AsCall(viaTwoArg.Expression);
-        Assert.Equal(twoArgSelect.Method, shimSelect.Method);
-
-        var shimDirection = AsCall(shimSelect.Arguments[0]);
-        var twoArgDirection = AsCall(twoArgSelect.Arguments[0]);
-        Assert.Equal(twoArgDirection.Method, shimDirection.Method);
-        Assert.Equal(GraphTraversalDirection.Incoming, AsConstant(shimDirection.Arguments[1]).Value);
-    }
-
-    [Fact]
-    public void ObsoleteTraverseRelationships_ThreeArgShim_DelegatesToTwoArgForm()
-    {
-        var viaShim = Root.Nodes<Person>().TraverseRelationships<Person, Knows, Person>();
-        var viaTwoArg = Root.Nodes<Person>().TraverseRelationships<Knows, Person>();
-
-        var shimSelect = AsCall(viaShim.Expression);
-        var twoArgSelect = AsCall(viaTwoArg.Expression);
-        Assert.Equal(twoArgSelect.Method, shimSelect.Method);
-
-        var shimPathSegments = AsCall(shimSelect.Arguments[0]);
-        var twoArgPathSegments = AsCall(twoArgSelect.Arguments[0]);
-        Assert.Equal(twoArgPathSegments.Method, shimPathSegments.Method);
-    }
-
-    [Fact]
-    public void ObsoleteTraversePaths_ThreeArgShim_DelegatesToTwoArgForm()
-    {
-        var viaShim = Root.Nodes<Person>().TraversePaths<Person, Knows, Person>(1, 3);
-        var viaTwoArg = Root.Nodes<Person>().TraversePaths<Knows, Person>(1, 3);
-
-        var shimCall = AsCall(viaShim.Expression);
-        var twoArgCall = AsCall(viaTwoArg.Expression);
-        Assert.Equal(twoArgCall.Method, shimCall.Method);
-        Assert.Equal(AsConstant(twoArgCall.Arguments[1]).Value, AsConstant(shimCall.Arguments[1]).Value);
-        Assert.Equal(AsConstant(twoArgCall.Arguments[2]).Value, AsConstant(shimCall.Arguments[2]).Value);
-    }
-#pragma warning restore CS0618
 
     /// <summary>
     /// Reflection-driven completeness guard: every public static method on
@@ -734,8 +633,6 @@ public class ExpressionShapeTests
             nameof(GraphQueryableExtensions.Take),
             nameof(GraphQueryableExtensions.Distinct),
             nameof(GraphQueryableExtensions.GroupBy),
-            nameof(GraphQueryableExtensions.WithDepth),
-            nameof(GraphQueryableExtensions.Direction),
             nameof(GraphQueryableExtensions.Search),
             nameof(GraphTraversalExtensions.PathSegments),
             nameof(GraphTraversalExtensions.Traverse),

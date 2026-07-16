@@ -20,7 +20,9 @@ public sealed class AgeFullTextSearchRewriterTests
 
     private static readonly MethodInfo PathSegmentsDefinition = typeof(GraphTraversalExtensions)
         .GetMethods(BindingFlags.Public | BindingFlags.Static)
-        .Single(m => m.Name == nameof(GraphTraversalExtensions.PathSegments) && m.IsGenericMethodDefinition);
+        .Single(m => m.Name == nameof(GraphTraversalExtensions.PathSegments)
+            && m.IsGenericMethodDefinition
+            && m.GetParameters().Length == 1);
 
     private static MethodCallExpression Search<T>(Expression source, string query) =>
         Expression.Call(SearchDefinition.MakeGenericMethod(typeof(T)), source, Expression.Constant(query));
