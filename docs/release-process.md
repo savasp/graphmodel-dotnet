@@ -57,9 +57,9 @@ version, and the workflow fails loudly if the pushed tag doesn't match it.
      compatibility-test packages.
    - Verifies a clean example consumer can restore and build against the exact
      package set assembled for publication.
-   - Generates a build provenance attestation for every package
-     (`actions/attest-build-provenance`), verifiable with
-     `gh attestation verify <file> --repo cvoya-com/graph`.
+   - Generates a build provenance attestation for every package, symbol
+     package, and the source archive (`actions/attest-build-provenance`),
+     verifiable with `gh attestation verify <file> --repo cvoya-com/graph`.
    - Publishes to nuget.org using **Trusted Publishing** (OIDC) — no API key
      is stored anywhere, long-lived or otherwise.
    - Creates a fixed-name `cvoya-graph-source.zip` archive from the tagged

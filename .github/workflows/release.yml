@@ -442,13 +442,11 @@ jobs:
             --packages ./consumer-packages \
             --source "$PWD/artifacts" \
             --source https://api.nuget.org/v3/index.json \
-            -p:Configuration=Release \
-            -p:UsePackageReferences=true
+            -p:Configuration=Release
           dotnet build examples/SimpleMovieExample/SimpleMovieExample.csproj \
             --configuration Release \
             --no-restore \
-            -p:RestorePackagesPath="$PWD/consumer-packages" \
-            -p:UsePackageReferences=true
+            -p:RestorePackagesPath="$PWD/consumer-packages"
 
       - name: Create tagged source archive
         shell: bash
@@ -465,7 +463,10 @@ jobs:
       - name: Attest build provenance
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
-          subject-path: "artifacts/*.nupkg"
+          subject-path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+            artifacts/cvoya-graph-source.zip
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
