@@ -202,14 +202,12 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
-    public void PathSegmentsAndModifiers_ProduceTraversalAndPathProjection()
+    public void TraverseOptions_ProduceTraversalAndPathProjection()
     {
-#pragma warning disable CS0618
         var query = Root<Person>()
-            .PathSegments<Person, Knows, Company>()
-            .Direction(GraphTraversalDirection.Incoming)
-            .WithDepth(2, 4);
-#pragma warning restore CS0618
+            .Traverse<Knows, Company>(options => options
+                .Direction(GraphTraversalDirection.Incoming)
+                .Depth(2, 4));
 
         var model = GraphQueryModelBuilder.Build(query.Expression);
 
@@ -377,14 +375,11 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
-    public void TraversalModifier_UpdatesGraphTraversalWhenComplexNavigationFollowsIt()
+    public void TraversalOptions_AreAppliedBeforeComplexNavigationFollows()
     {
-#pragma warning disable CS0618
         var query = Root<Person>()
-            .PathSegments<Person, Knows, Company>()
-            .Where(segment => segment.EndNode.Headquarters.City == "Seattle")
-            .WithDepth(2, 4);
-#pragma warning restore CS0618
+            .Traverse<Knows, Company>(options => options.Depth(2, 4))
+            .Where(company => company.Headquarters.City == "Seattle");
 
         var model = GraphQueryModelBuilder.Build(query.Expression);
 
@@ -1147,13 +1142,10 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
-    public void WithDepth_InvalidRange_ThrowsTranslationException()
+    public void Traverse_InvalidDepthRange_ThrowsTranslationException()
     {
-#pragma warning disable CS0618
         var query = Root<Person>()
-            .PathSegments<Person, Knows, Company>()
-            .WithDepth(0);
-#pragma warning restore CS0618
+            .Traverse<Knows, Company>(0);
 
         var exception = Assert.Throws<GraphQueryTranslationException>(() =>
             GraphQueryModelBuilder.Build(query.Expression));
@@ -1164,11 +1156,9 @@ public class GraphQueryModelBuilderTests
     [Fact]
     public void SearchAfterTraversal_ProducesSearchFilterOnCurrentScope()
     {
-#pragma warning disable CS0618
         var query = Root<Person>()
             .PathSegments<Person, Knows, Company>()
             .Search("engineer");
-#pragma warning restore CS0618
 
         var model = GraphQueryModelBuilder.Build(query.Expression);
 

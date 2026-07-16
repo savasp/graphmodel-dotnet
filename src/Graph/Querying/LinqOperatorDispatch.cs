@@ -91,15 +91,12 @@ internal static class LinqOperatorDispatch
         AddAll(typeof(QueryableAsyncExtensions), nameof(QueryableAsyncExtensions.AverageAsync), LinqOperator.Average);
 
         AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.Search), LinqOperator.Search);
-#pragma warning disable CS0618
-        AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.Direction), LinqOperator.Direction);
-        AddAll(typeof(GraphQueryableExtensions), nameof(GraphQueryableExtensions.WithDepth), LinqOperator.WithDepth);
-#pragma warning restore CS0618
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.PathSegments), LinqOperator.PathSegments);
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.TraversePaths), LinqOperator.TraversePaths);
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.ShortestPath), LinqOperator.ShortestPath);
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.AllShortestPaths), LinqOperator.AllShortestPaths);
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.OptionalTraverse), LinqOperator.OptionalTraverse);
+        AddAll(typeof(GraphTraversalExtensions), "WithTraversalOptions", LinqOperator.TraversalOptions);
         AddAll(typeof(GraphTraversalExtensions), "WithRelationshipPredicate", LinqOperator.RelationshipPredicate);
         AddAll(typeof(GraphRelationshipPredicateExtensions), nameof(GraphRelationshipPredicateExtensions.WhereHasRelationship), LinqOperator.WhereHasRelationship);
         AddAll(typeof(GraphLabelExtensions), nameof(GraphLabelExtensions.OfLabel), LinqOperator.LabelFilter);

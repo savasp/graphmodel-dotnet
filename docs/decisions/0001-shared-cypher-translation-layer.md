@@ -50,7 +50,7 @@ convention (see [README.md](README.md)).
 1. **Single queryable interface, operators gated by constraints.** The public surface collapses to
    `IGraphQueryable<T>` + `IOrderedGraphQueryable<T>`. Graph operators are gated by generic constraints
    (`where TStart : INode`, `where T : IRelationship`), not receiver interfaces. The node/relationship
-   interface hierarchy is retired (kept one release as `[Obsolete]` aliases). This deletes the triple-shadowed
+   interface hierarchy is retired (kept for one release as aliases, then removed by #240). This deletes the triple-shadowed
    operator layers and fixes the ordering-degradation bug by construction. Rationale: the hierarchy's only
    job was operator gating, which constraints do with zero shadowing (#93 §C1). Implementation: #94.
 

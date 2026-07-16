@@ -33,13 +33,12 @@ using static Cvoya.Graph.ExtensionUtils;
 /// (<c>people.Traverse&lt;Knows, Person&gt;()</c>), and the actual start type is recovered from the
 /// source expression chain's element type at translation time (see the Neo4j provider's
 /// <c>CypherQueryVisitor</c>), not from a generic argument a caller could mismatch under variance
-/// widening. <see cref="PathSegments{TStartNode, TRelationship, TEndNode}"/> is the one exception:
+/// widening. <see cref="PathSegments{TStartNode, TRelationship, TEndNode}(IGraphQueryable{TStartNode})"/> is the one exception:
 /// its result type is <c>IGraphPathSegment&lt;TStart,TRel,TEnd&gt;</c>, which does name the start
 /// type, so <c>TStart</c> remains a required, explicit type argument there. The principle is: you
 /// spell exactly the types that appear in the result.
 /// </para>
 /// </remarks>
-#pragma warning disable CS0618 // These operators are the sanctioned internal users of the now-obsolete free-floating WithDepth/Direction modifiers.
 public static class GraphTraversalExtensions
 {
     /// <summary>
@@ -80,10 +79,34 @@ public static class GraphTraversalExtensions
     }
 
     /// <summary>
-    /// Builds the <see cref="PathSegments{TStartNode, TRelationship, TEndNode}"/> call expression
+    /// Gets single-hop path segments in the specified traversal direction.
+    /// </summary>
+    /// <typeparam name="TStartNode">The type of the starting nodes.</typeparam>
+    /// <typeparam name="TRelationship">The type of relationships to traverse.</typeparam>
+    /// <typeparam name="TEndNode">The type of the target nodes.</typeparam>
+    /// <param name="source">The source queryable of starting nodes.</param>
+    /// <param name="direction">The direction to traverse.</param>
+    /// <returns>A queryable of path segments representing the directed traversal.</returns>
+    public static IGraphQueryable<IGraphPathSegment<TStartNode, TRelationship, TEndNode>> PathSegments<TStartNode, TRelationship, TEndNode>(
+        this IGraphQueryable<TStartNode> source,
+        GraphTraversalDirection direction)
+        where TStartNode : class, INode
+        where TRelationship : class, IRelationship
+        where TEndNode : class, INode
+    {
+        var segments = source.PathSegments<TStartNode, TRelationship, TEndNode>();
+        return ApplyTraversalOptions(
+            segments,
+            minDepth: null,
+            maxDepth: null,
+            direction);
+    }
+
+    /// <summary>
+    /// Builds the <see cref="PathSegments{TStartNode, TRelationship, TEndNode}(IGraphQueryable{TStartNode})"/> call expression
     /// for a source whose element type is only known at runtime (the two-arg
     /// <see cref="Traverse{TRel, TEnd}(IGraphQueryable{INode})"/> family): reflectively closes the
-    /// generic <see cref="PathSegments{TStartNode, TRelationship, TEndNode}"/> method definition
+    /// generic <see cref="PathSegments{TStartNode, TRelationship, TEndNode}(IGraphQueryable{TStartNode})"/> method definition
     /// over the source's actual start type (recovered from its expression tree's static element
     /// type, not a caller-supplied generic argument) plus the statically-known
     /// <typeparamref name="TRel"/>/<typeparamref name="TEnd"/>.
@@ -91,13 +114,13 @@ public static class GraphTraversalExtensions
     /// <remarks>
     /// Returns the plain <see cref="MethodCallExpression"/> call node (typed
     /// <c>IGraphQueryable&lt;IGraphPathSegment&lt;startType,TRel,TEnd&gt;&gt;</c>) rather than a
-    /// materialized <c>IGraphQueryable&lt;T&gt;</c>: everything downstream (<c>WithDepth</c>,
-    /// <c>Direction</c>, the final <c>Select</c>) is likewise built as a raw expression node via
+    /// materialized <c>IGraphQueryable&lt;T&gt;</c>: everything downstream (the private traversal-options
+    /// marker and the final <c>Select</c>) is likewise built as a raw expression node via
     /// <see cref="ReflectiveTraversalChain"/> and only materialized into a real queryable once, at
     /// the very end - materializing an intermediate <c>IGraphQueryable&lt;object&gt;</c> would lose
     /// the real path-segment type from the expression tree (generic operators like
-    /// <c>Direction&lt;TSource&gt;</c> would then close over <c>object</c> instead of the real
-    /// path-segment type when called through that C#-typed intermediate).
+    /// the private marker would then close over <c>object</c> instead of the real path-segment type
+    /// when called through that C#-typed intermediate).
     /// </remarks>
     private static MethodCallExpression BuildPathSegmentsCall<TRel, TEnd>(IGraphQueryable<INode> source, out Type startType)
         where TRel : class, IRelationship
@@ -281,7 +304,7 @@ public static class GraphTraversalExtensions
     /// <summary>
     /// Traverses a variable-length path of relationships of the specified type and returns the
     /// resulting <see cref="IGraphPath"/> instances (start node, end node, and the ordered
-    /// single-hop segments in between). Use this instead of <see cref="PathSegments{TStartNode, TRelationship, TEndNode}"/>
+    /// single-hop segments in between). Use this instead of <see cref="PathSegments{TStartNode, TRelationship, TEndNode}(IGraphQueryable{TStartNode})"/>
     /// when the depth range spans more than a single hop, since a single
     /// <see cref="IGraphPathSegment{S,R,T}"/> cannot represent more than one hop.
     /// </summary>
@@ -489,9 +512,11 @@ public static class GraphTraversalExtensions
         foreach (var predicate in options.GetRelationshipPredicates(typeof(TRel)))
             paths = WithRelationshipPredicate<IGraphPath, TRel>(paths, predicate);
 
-        return options.TraversalDirection is { } direction
-            ? paths.Direction(direction)
-            : paths;
+        return ApplyTraversalOptions(
+            paths,
+            minDepth: null,
+            maxDepth: null,
+            options.TraversalDirection);
     }
 
     private static IGraphQueryable<TSource> WithRelationshipPredicate<TSource, TRel>(
@@ -523,8 +548,58 @@ public static class GraphTraversalExtensions
         where TRel : class, IRelationship =>
         throw new InvalidOperationException("Relationship-predicate markers are expression-tree only.");
 
+    private static IGraphQueryable<TSource> ApplyTraversalOptions<TSource>(
+        IGraphQueryable<TSource> source,
+        int? minDepth,
+        int? maxDepth,
+        GraphTraversalDirection? direction)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        var expression = BuildTraversalOptionsExpression(
+            source.Expression,
+            typeof(TSource),
+            minDepth,
+            maxDepth,
+            direction);
+        return ReferenceEquals(expression, source.Expression)
+            ? source
+            : source.Provider.CreateQuery<TSource>(expression);
+    }
+
+    private static Expression BuildTraversalOptionsExpression(
+        Expression source,
+        Type elementType,
+        int? minDepth,
+        int? maxDepth,
+        GraphTraversalDirection? direction)
+    {
+        if (minDepth is null && maxDepth is null && direction is null)
+            return source;
+
+        var method = typeof(GraphTraversalExtensions)
+            .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .Single(candidate => candidate.Name == nameof(WithTraversalOptions) &&
+                candidate.IsGenericMethodDefinition)
+            .MakeGenericMethod(elementType);
+        return Expression.Call(
+            null,
+            method,
+            source,
+            Expression.Constant(minDepth, typeof(int?)),
+            Expression.Constant(maxDepth, typeof(int?)),
+            Expression.Constant(direction, typeof(GraphTraversalDirection?)));
+    }
+
+    private static IGraphQueryable<TSource> WithTraversalOptions<TSource>(
+        IGraphQueryable<TSource> source,
+        int? minDepth,
+        int? maxDepth,
+        GraphTraversalDirection? direction) =>
+        throw new InvalidOperationException("Traversal-options markers are expression-tree only.");
+
     /// <summary>
-    /// Builds the "PathSegments, then optionally WithDepth/Direction, then Select" expression
+    /// Builds the "PathSegments, then optionally traversal options, then Select" expression
     /// chain for the two-arg <see cref="Traverse{TRel, TEnd}(IGraphQueryable{INode})"/> family, as
     /// a single raw <see cref="Expression"/> tree - never materializing an intermediate
     /// <c>IGraphQueryable&lt;T&gt;</c> along the way.
@@ -533,41 +608,52 @@ public static class GraphTraversalExtensions
     /// <c>TStart</c> is not a compile-time generic argument on the two-arg operators (it is
     /// recovered at runtime from the source expression chain's element type - see
     /// <see cref="BuildPathSegmentsCall{TRel, TEnd}"/>), so every step of the chain
-    /// (<c>WithDepth</c>, <c>Direction</c>, the final <c>Select</c>) must close its own generic
+    /// (the private traversal-options marker and the final <c>Select</c>) must close its own generic
     /// method definition reflectively over that runtime-resolved <c>startType</c> instead of
     /// going through the statically-typed <see cref="GraphQueryableExtensions"/> extension
     /// methods. Materializing an intermediate <c>IGraphQueryable&lt;object&gt;</c> partway through
-    /// (an earlier approach) does not work: those extension methods are themselves generic
-    /// (<c>WithDepth&lt;TSource&gt;</c>, <c>Direction&lt;TSource&gt;</c>), so calling them through
-    /// an <c>object</c>-typed C# receiver would close them over <c>object</c> instead of the real
+    /// (an earlier approach) does not work: the marker is generic, so calling it through an
+    /// <c>object</c>-typed C# receiver would close it over <c>object</c> instead of the real
     /// path-segment type, corrupting the expression tree the provider needs to translate.
     /// </remarks>
     private readonly struct ReflectiveTraversalChain
     {
         private readonly Expression _expression;
-        private readonly Type _startType;
         private readonly Type _relType;
+        private readonly int? _minDepth;
+        private readonly int? _maxDepth;
+        private readonly GraphTraversalDirection? _direction;
 
-        private ReflectiveTraversalChain(Expression expression, Type startType, Type relType)
+        private ReflectiveTraversalChain(
+            Expression expression,
+            Type relType,
+            int? minDepth = null,
+            int? maxDepth = null,
+            GraphTraversalDirection? direction = null)
         {
             _expression = expression;
-            _startType = startType;
             _relType = relType;
+            _minDepth = minDepth;
+            _maxDepth = maxDepth;
+            _direction = direction;
         }
 
         public static ReflectiveTraversalChain FromPathSegments<TRel, TEnd>(IGraphQueryable<INode> source)
             where TRel : class, IRelationship
             where TEnd : class, INode
         {
-            var call = BuildPathSegmentsCall<TRel, TEnd>(source, out var startType);
-            return new ReflectiveTraversalChain(call, startType, typeof(TRel));
+            var call = BuildPathSegmentsCall<TRel, TEnd>(source, out _);
+            return new ReflectiveTraversalChain(call, typeof(TRel));
         }
 
-        public ReflectiveTraversalChain WithDepth(int maxDepth) => AppendCall(nameof(GraphQueryableExtensions.WithDepth), 2, Expression.Constant(maxDepth));
+        public ReflectiveTraversalChain WithDepth(int maxDepth) =>
+            new(_expression, _relType, minDepth: null, maxDepth, _direction);
 
-        public ReflectiveTraversalChain WithDepth(int minDepth, int maxDepth) => AppendCall(nameof(GraphQueryableExtensions.WithDepth), 3, Expression.Constant(minDepth), Expression.Constant(maxDepth));
+        public ReflectiveTraversalChain WithDepth(int minDepth, int maxDepth) =>
+            new(_expression, _relType, minDepth, maxDepth, _direction);
 
-        public ReflectiveTraversalChain WithDirection(GraphTraversalDirection direction) => AppendCall(nameof(GraphQueryableExtensions.Direction), 2, Expression.Constant(direction));
+        public ReflectiveTraversalChain WithDirection(GraphTraversalDirection direction) =>
+            new(_expression, _relType, _minDepth, _maxDepth, direction);
 
         public ReflectiveTraversalChain WithRelationshipPredicate(LambdaExpression predicate)
         {
@@ -579,27 +665,12 @@ public static class GraphTraversalExtensions
                     candidate.GetParameters()[1].ParameterType.IsGenericType)
                 .MakeGenericMethod(currentSegmentType, _relType);
             var expression = Expression.Call(null, methodInfo, _expression, predicate);
-            return new ReflectiveTraversalChain(expression, _startType, _relType);
-        }
-
-        private ReflectiveTraversalChain AppendCall(string methodName, int paramCount, params Expression[] extraArgs)
-        {
-            // The generic argument of WithDepth/Direction is the *segment* type - resolved from
-            // the current expression's own static type (always
-            // IGraphQueryable<IGraphPathSegment<start,rel,end>> at this point in the chain, since
-            // only PathSegments/WithDepth/Direction precede the final Select), rather than from
-            // TEnd, which this type doesn't carry.
-            var currentSegmentType = ExtensionUtils.GetQueryableElementType(_expression.Type);
-
-            var methodInfo = GetGenericExtensionMethod(
-                typeof(GraphQueryableExtensions),
-                methodName,
-                1, // TSource
-                paramCount
-            ).MakeGenericMethod(currentSegmentType);
-
-            var expression = Expression.Call(null, methodInfo, [_expression, .. extraArgs]);
-            return new ReflectiveTraversalChain(expression, _startType, _relType);
+            return new ReflectiveTraversalChain(
+                expression,
+                _relType,
+                _minDepth,
+                _maxDepth,
+                _direction);
         }
 
         public IGraphQueryable<TEnd> SelectEndNode<TEnd>(IGraphQueryable<INode> source)
@@ -614,6 +685,12 @@ public static class GraphTraversalExtensions
         {
             var segmentType = ExtensionUtils.GetQueryableElementType(_expression.Type);
             var property = segmentType.GetProperty(propertyName)!;
+            var configuredExpression = BuildTraversalOptionsExpression(
+                _expression,
+                segmentType,
+                _minDepth,
+                _maxDepth,
+                _direction);
 
             var parameter = Expression.Parameter(segmentType, "ps");
             var selector = Expression.Lambda(Expression.Property(parameter, property), parameter);
@@ -625,124 +702,10 @@ public static class GraphTraversalExtensions
                     && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)
                 .MakeGenericMethod(segmentType, typeof(TResult));
 
-            var expression = Expression.Call(null, selectMethod, _expression, selector);
+            var expression = Expression.Call(null, selectMethod, configuredExpression, selector);
 
             return source.Provider.CreateQuery<TResult>(expression);
         }
     }
 
-    // ==================================================================================
-    // Obsolete three-arg shims. Generic arity (3 vs 2) disambiguates these overloads from
-    // the reshaped two-arg forms above; each delegates to the two-arg implementation by
-    // relying on the covariant IGraphQueryable<out T> conversion from IGraphQueryable<TStartNode>
-    // to IGraphQueryable<INode>. Kept for one release to ease migration (issue #94, "Option C").
-    // ==================================================================================
-
-    /// <summary>
-    /// Obsolete three-arg form of <see cref="Traverse{TRel, TEnd}(IGraphQueryable{INode})"/>.
-    /// </summary>
-    [Obsolete("Use Traverse<TRel, TEnd>() instead - TStartNode is inferred from the source via covariance and no longer needs to be spelled out. This overload will be removed in a future release.")]
-    public static IGraphQueryable<TEndNode> Traverse<TStartNode, TRelationship, TEndNode>(
-        this IGraphQueryable<TStartNode> source)
-        where TStartNode : class, INode
-        where TRelationship : class, IRelationship
-        where TEndNode : class, INode
-        => source.Traverse<TRelationship, TEndNode>();
-
-    /// <summary>
-    /// Obsolete three-arg form of <see cref="Traverse{TRel, TEnd}(IGraphQueryable{INode}, int)"/>.
-    /// </summary>
-    [Obsolete("Use Traverse<TRel, TEnd>(maxDepth) instead - TStartNode is inferred from the source via covariance and no longer needs to be spelled out. This overload will be removed in a future release.")]
-    public static IGraphQueryable<TEndNode> Traverse<TStartNode, TRelationship, TEndNode>(
-        this IGraphQueryable<TStartNode> source,
-        int maxDepth)
-        where TStartNode : class, INode
-        where TRelationship : class, IRelationship
-        where TEndNode : class, INode
-        => source.Traverse<TRelationship, TEndNode>(maxDepth);
-
-    /// <summary>
-    /// Obsolete three-arg form of <see cref="Traverse{TRel, TEnd}(IGraphQueryable{INode}, int, int)"/>.
-    /// </summary>
-    [Obsolete("Use Traverse<TRel, TEnd>(minDepth, maxDepth) instead - TStartNode is inferred from the source via covariance and no longer needs to be spelled out. This overload will be removed in a future release.")]
-    public static IGraphQueryable<TEndNode> Traverse<TStartNode, TRelationship, TEndNode>(
-        this IGraphQueryable<TStartNode> source,
-        int minDepth,
-        int maxDepth)
-        where TStartNode : class, INode
-        where TRelationship : class, IRelationship
-        where TEndNode : class, INode
-        => source.Traverse<TRelationship, TEndNode>(minDepth, maxDepth);
-
-    /// <summary>
-    /// Obsolete three-arg form of <see cref="Traverse{TRel, TEnd}(IGraphQueryable{INode}, GraphTraversalDirection)"/>.
-    /// </summary>
-    [Obsolete("Use Traverse<TRel, TEnd>(direction) instead - TStartNode is inferred from the source via covariance and no longer needs to be spelled out. This overload will be removed in a future release.")]
-    public static IGraphQueryable<TEndNode> Traverse<TStartNode, TRelationship, TEndNode>(
-        this IGraphQueryable<TStartNode> source,
-        GraphTraversalDirection direction)
-        where TStartNode : class, INode
-        where TRelationship : class, IRelationship
-        where TEndNode : class, INode
-        => source.Traverse<TRelationship, TEndNode>(direction);
-
-    /// <summary>
-    /// Obsolete three-arg form of <see cref="Traverse{TRel, TEnd}(IGraphQueryable{INode}, Func{GraphTraversalOptions, GraphTraversalOptions})"/>.
-    /// </summary>
-    [Obsolete("Use Traverse<TRel, TEnd>(configure) instead - TStartNode is inferred from the source via covariance and no longer needs to be spelled out. This overload will be removed in a future release.")]
-    public static IGraphQueryable<TEndNode> Traverse<TStartNode, TRelationship, TEndNode>(
-        this IGraphQueryable<TStartNode> source,
-        Func<GraphTraversalOptions, GraphTraversalOptions> configure)
-        where TStartNode : class, INode
-        where TRelationship : class, IRelationship
-        where TEndNode : class, INode
-        => source.Traverse<TRelationship, TEndNode>(configure);
-
-    /// <summary>
-    /// Obsolete three-arg form of <see cref="ReverseTraverse{TRel, TEnd}(IGraphQueryable{INode})"/>.
-    /// </summary>
-    [Obsolete("Use ReverseTraverse<TRel, TEnd>() instead - TStartNode is inferred from the source via covariance and no longer needs to be spelled out. This overload will be removed in a future release.")]
-    public static IGraphQueryable<TEndNode> ReverseTraverse<TStartNode, TRelationship, TEndNode>(
-        this IGraphQueryable<TStartNode> source)
-        where TStartNode : class, INode
-        where TRelationship : class, IRelationship
-        where TEndNode : class, INode
-        => source.ReverseTraverse<TRelationship, TEndNode>();
-
-    /// <summary>
-    /// Obsolete three-arg form of <see cref="TraverseRelationships{TRel, TEnd}(IGraphQueryable{INode})"/>.
-    /// </summary>
-    [Obsolete("Use TraverseRelationships<TRel, TEnd>() instead - TStartNode is inferred from the source via covariance and no longer needs to be spelled out. This overload will be removed in a future release.")]
-    public static IGraphQueryable<TRelationship> TraverseRelationships<TStartNode, TRelationship, TEndNode>(
-        this IGraphQueryable<TStartNode> source)
-        where TStartNode : class, INode
-        where TRelationship : class, IRelationship
-        where TEndNode : class, INode
-        => source.TraverseRelationships<TRelationship, TEndNode>();
-
-    /// <summary>
-    /// Obsolete three-arg form of <see cref="TraversePaths{TRel, TEnd}(IGraphQueryable{INode}, int, int)"/>.
-    /// </summary>
-    [Obsolete("Use TraversePaths<TRel, TEnd>(minDepth, maxDepth) instead - TStartNode is inferred from the source via covariance and no longer needs to be spelled out. This overload will be removed in a future release.")]
-    public static IGraphQueryable<IGraphPath> TraversePaths<TStartNode, TRelationship, TEndNode>(
-        this IGraphQueryable<TStartNode> source,
-        int minDepth,
-        int maxDepth)
-        where TStartNode : class, INode
-        where TRelationship : class, IRelationship
-        where TEndNode : class, INode
-        => source.TraversePaths<TRelationship, TEndNode>(minDepth, maxDepth);
-
-    /// <summary>
-    /// Obsolete three-arg form of <see cref="TraversePaths{TRel, TEnd}(IGraphQueryable{INode}, Func{GraphTraversalOptions, GraphTraversalOptions})"/>.
-    /// </summary>
-    [Obsolete("Use TraversePaths<TRel, TEnd>(configure) instead - TStartNode is inferred from the source via covariance and no longer needs to be spelled out. This overload will be removed in a future release.")]
-    public static IGraphQueryable<IGraphPath> TraversePaths<TStartNode, TRelationship, TEndNode>(
-        this IGraphQueryable<TStartNode> source,
-        Func<GraphTraversalOptions, GraphTraversalOptions> configure)
-        where TStartNode : class, INode
-        where TRelationship : class, IRelationship
-        where TEndNode : class, INode
-        => source.TraversePaths<TRelationship, TEndNode>(configure);
 }
-#pragma warning restore CS0618

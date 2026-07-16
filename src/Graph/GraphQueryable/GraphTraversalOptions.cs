@@ -9,7 +9,7 @@ using System.Linq.Expressions;
 /// Options that configure a graph traversal operator (depth range and direction). Built via the
 /// fluent <see cref="Depth(int)"/>/<see cref="Depth(int, int)"/>/<see cref="Direction"/> methods
 /// and passed as an options lambda to traversal operators, e.g.
-/// <c>source.Traverse&lt;S, R, T&gt;(o =&gt; o.Depth(1, 3).Direction(GraphTraversalDirection.Incoming))</c>.
+/// <c>source.Traverse&lt;R, T&gt;(o =&gt; o.Depth(1, 3).Direction(GraphTraversalDirection.Incoming))</c>.
 /// </summary>
 public sealed class GraphTraversalOptions
 {

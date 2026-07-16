@@ -12,8 +12,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     private static readonly HashSet<LinqOperator> SupportedAfterTraversePaths =
     [
         LinqOperator.ToListOrArray,
-        LinqOperator.Direction,
-        LinqOperator.WithDepth,
+        LinqOperator.TraversalOptions,
         LinqOperator.Where,
         LinqOperator.Select,
         LinqOperator.Take,
@@ -236,11 +235,8 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
             case LinqOperator.OptionalTraverse:
                 HandleOptionalTraverse(node);
                 break;
-            case LinqOperator.Direction:
-                UpdateLastTraversal(direction: EvaluateArgument<GraphTraversalDirection>(node, 1, "traversal direction"));
-                break;
-            case LinqOperator.WithDepth:
-                HandleWithDepth(node);
+            case LinqOperator.TraversalOptions:
+                HandleTraversalOptions(node);
                 break;
             case LinqOperator.Search:
                 HandleSearch(node);
@@ -710,19 +706,25 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         _currentAlias = CurrentTargetAlias;
     }
 
-    private void HandleWithDepth(MethodCallExpression node)
+    private void HandleTraversalOptions(MethodCallExpression node)
     {
-        var depth = node.Arguments.Count switch
+        var minDepth = EvaluateArgument<int?>(node, 1, "minimum traversal depth");
+        var maxDepth = EvaluateArgument<int?>(node, 2, "maximum traversal depth");
+        var direction = EvaluateArgument<GraphTraversalDirection?>(node, 3, "traversal direction");
+        DepthRange? depth = (minDepth, maxDepth) switch
         {
-            2 => CreateDepthRange(node, 1, EvaluateArgument<int>(node, 1, "maximum traversal depth")),
-            3 => CreateDepthRange(
-                node,
-                EvaluateArgument<int>(node, 1, "minimum traversal depth"),
-                EvaluateArgument<int>(node, 2, "maximum traversal depth")),
-            _ => throw Unsupported(node, "WithDepth must have one or two depth arguments."),
+            (null, null) => null,
+            (null, int max) => CreateDepthRange(node, 1, max),
+            (int min, int max) => CreateDepthRange(node, min, max),
+            _ => throw Unsupported(node, "traversal options cannot specify a minimum depth without a maximum depth."),
         };
 
-        UpdateLastTraversal(depth: depth);
+        if (depth is null && direction is null)
+        {
+            throw Unsupported(node, "traversal options must specify a depth or direction.");
+        }
+
+        UpdateLastTraversal(direction, depth);
     }
 
     private void AddRelationshipPredicate(MethodCallExpression node)

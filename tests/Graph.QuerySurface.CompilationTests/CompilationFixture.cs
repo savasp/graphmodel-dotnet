@@ -17,21 +17,12 @@ internal static class CompilationFixture
     private static readonly Lazy<MetadataReference[]> References = new(BuildReferences);
 
     /// <summary>
-    /// Compiles <paramref name="source"/> with the given <paramref name="warningsAsErrors"/>
-    /// setting (mirroring the repository's <c>WarningsAsErrors</c> build setting, which is what
-    /// turns the <c>[Obsolete]</c> free-floating <c>WithDepth</c>/<c>Direction</c> modifiers into a
-    /// hard compile failure for the "misuse that must not compile" fixtures) and returns the
-    /// resulting diagnostics.
+    /// Compiles <paramref name="source"/> and returns the resulting diagnostics.
     /// </summary>
-    public static CompilationFixtureResult Compile(string source, bool warningsAsErrors = false)
+    public static CompilationFixtureResult Compile(string source)
     {
         var options = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
             .WithNullableContextOptions(NullableContextOptions.Enable);
-
-        if (warningsAsErrors)
-        {
-            options = options.WithGeneralDiagnosticOption(ReportDiagnostic.Error);
-        }
 
         var syntaxTree = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest));
 

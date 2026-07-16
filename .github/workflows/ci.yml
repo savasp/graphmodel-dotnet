@@ -189,8 +189,10 @@ jobs:
           run_covered test-core tests/Graph.CompatibilityTests.Tests/Graph.CompatibilityTests.Tests.csproj
           dotnet test --project tests/Graph.Core.Tests/Graph.Core.Tests.csproj \
             --no-build --configuration Release --verbosity normal || status=1
+          run_covered test-cypher tests/Graph.Cypher.Tests/Graph.Cypher.Tests.csproj
           run_covered test-analyzers tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj
           run_covered test-translation tests/Graph.Neo4j.Translation.Tests/Graph.Neo4j.Translation.Tests.csproj
+          run_covered test-query-surface tests/Graph.QuerySurface.CompilationTests/Graph.QuerySurface.CompilationTests.csproj
           run_covered test-codegen tests/Graph.Serialization.CodeGen.Tests/Graph.Serialization.CodeGen.Tests.csproj
           export GRAPHMODEL_COMPLIANCE_STRICT=1
           run_covered test-neo4j tests/Graph.Neo4j.Tests/Graph.Neo4j.Tests.csproj

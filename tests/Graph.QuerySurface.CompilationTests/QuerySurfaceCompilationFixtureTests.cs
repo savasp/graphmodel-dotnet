@@ -11,9 +11,8 @@ namespace Cvoya.Graph.QuerySurface.CompilationTests;
 /// <c>IOrderedGraphQueryable&lt;TSource&gt;</c>, not an <c>IGraphNodeQueryable&lt;TSource&gt;</c>)
 /// and mixed composability chains (traversal -&gt; where -&gt; order -&gt; take -&gt; traversal
 /// -&gt; projection, per the 2026-07-03 addendum) - and misuse that MUST NOT compile (graph
-/// traversal on a non-node source; the free-floating <c>WithDepth</c>/<c>Direction</c> modifiers,
-/// which are <c>[Obsolete]</c>, becoming hard errors under <c>WarningsAsErrors</c> - matching the
-/// repository's own build setting).
+/// traversal on a non-node source, removed three-type-argument traversal overloads, removed
+/// free-floating traversal modifiers, and removed per-kind queryable aliases).
 /// </summary>
 public class QuerySurfaceCompilationFixtureTests
 {
@@ -136,25 +135,19 @@ public class QuerySurfaceCompilationFixtureTests
     }
 
     [Fact]
-    public void ObsoleteThreeArgTraverse_StillCompiles_ButWarns()
+    public void RemovedThreeArgTraverse_DoesNotCompile()
     {
-        // The three-arg shim must remain callable for one release (generic arity disambiguates it
-        // from the two-arg form) - functional, but obsolete (CS0618), not a hard error, unless the
-        // consuming project opts into WarningsAsErrors (see the WithDepth/Direction fixtures below
-        // for that case applied to the free-floating modifiers).
         var source = WithDomainModel("""
             public static class Queries
             {
-            #pragma warning disable CS0618
                 public static IGraphQueryable<Person> Run(IGraphQueryable<Person> people) =>
                     people.Traverse<Person, Knows, Person>();
-            #pragma warning restore CS0618
             }
             """);
 
         var result = CompilationFixture.Compile(source);
 
-        Assert.False(result.HasErrors, result.DescribeErrors());
+        Assert.True(result.HasErrors, "Expected the removed three-argument Traverse overload to fail to compile.");
     }
 
     [Fact]
@@ -271,23 +264,19 @@ public class QuerySurfaceCompilationFixtureTests
     }
 
     [Fact]
-    public void ObsoleteThreeArgTraverseOnNonNodeSource_DoesNotCompile()
+    public void RemovedThreeArgTraverseWithDepth_DoesNotCompile()
     {
-        // Same "must not compile" case as above, but through the obsolete three-arg shim: its
-        // 'where TStartNode : class, INode' constraint must still reject a relationship source.
         var source = WithDomainModel("""
             public static class Queries
             {
-            #pragma warning disable CS0618
-                public static IGraphQueryable<Person> Run(IGraphQueryable<Knows> knows) =>
-                    knows.Traverse<Knows, Knows, Person>();
-            #pragma warning restore CS0618
+                public static IGraphQueryable<Person> Run(IGraphQueryable<Person> people) =>
+                    people.Traverse<Person, Knows, Person>(3);
             }
             """);
 
         var result = CompilationFixture.Compile(source);
 
-        Assert.True(result.HasErrors, "Expected the obsolete three-arg Traverse<TStartNode,...> to fail to compile when TStartNode does not satisfy 'where TStartNode : class, INode'.");
+        Assert.True(result.HasErrors, "Expected the removed three-argument Traverse depth overload to fail to compile.");
     }
 
     [Fact]
@@ -337,12 +326,8 @@ public class QuerySurfaceCompilationFixtureTests
     }
 
     [Fact]
-    public void FreeFloatingWithDepth_UnderWarningsAsErrors_DoesNotCompile()
+    public void RemovedFreeFloatingWithDepth_DoesNotCompile()
     {
-        // WithDepth/Direction as free-floating postfix modifiers are [Obsolete] (CS0618, a
-        // warning by default). Under WarningsAsErrors (the repository's own build setting), that
-        // warning becomes a hard compile failure - which is the point: new code should not be
-        // able to silently keep using the deprecated free-floating form.
         var source = WithDomainModel("""
             public static class Queries
             {
@@ -351,14 +336,13 @@ public class QuerySurfaceCompilationFixtureTests
             }
             """);
 
-        var result = CompilationFixture.Compile(source, warningsAsErrors: true);
+        var result = CompilationFixture.Compile(source);
 
-        Assert.True(result.HasErrors, "Expected the obsolete free-floating WithDepth to fail to compile under WarningsAsErrors.");
-        Assert.Contains(result.Errors, e => e.Id == "CS0618");
+        Assert.True(result.HasErrors, "Expected the removed free-floating WithDepth method to fail to compile.");
     }
 
     [Fact]
-    public void FreeFloatingDirection_UnderWarningsAsErrors_DoesNotCompile()
+    public void RemovedFreeFloatingDirection_DoesNotCompile()
     {
         var source = WithDomainModel("""
             public static class Queries
@@ -368,63 +352,32 @@ public class QuerySurfaceCompilationFixtureTests
             }
             """);
 
-        var result = CompilationFixture.Compile(source, warningsAsErrors: true);
+        var result = CompilationFixture.Compile(source);
 
-        Assert.True(result.HasErrors, "Expected the obsolete free-floating Direction to fail to compile under WarningsAsErrors.");
-        Assert.Contains(result.Errors, e => e.Id == "CS0618");
+        Assert.True(result.HasErrors, "Expected the removed free-floating Direction method to fail to compile.");
     }
 
     [Fact]
-    public void FreeFloatingWithDepth_WithoutWarningsAsErrors_StillCompilesButWarns()
+    public void RemovedQueryableAliases_DoNotCompile()
     {
-        // Control case: without WarningsAsErrors, the obsolete call is still just a warning (this
-        // PR keeps it functional for one release), not an error - proving the previous test's
-        // failure is specifically attributable to WarningsAsErrors, not something else about the
-        // free-floating form.
         var source = WithDomainModel("""
             public static class Queries
             {
-                public static IGraphQueryable<Person> Run(IGraphQueryable<Person> people) =>
-                    people.WithDepth(3);
+                public static void Run(
+                    IGraphNodeQueryable node,
+                    IGraphNodeQueryable<Person> nodes,
+                    IOrderedGraphNodeQueryable<Person> orderedNodes,
+                    IGraphRelationshipQueryable relationship,
+                    IGraphRelationshipQueryable<Knows> relationships,
+                    IOrderedGraphRelationshipQueryable<Knows> orderedRelationships)
+                {
+                }
             }
             """);
 
-        var result = CompilationFixture.Compile(source, warningsAsErrors: false);
+        var result = CompilationFixture.Compile(source);
 
-        Assert.False(result.HasErrors, result.DescribeErrors());
-    }
-
-    [Fact]
-    public void IGraphNodeQueryableUsage_UnderWarningsAsErrors_DoesNotCompile()
-    {
-        // IGraphNodeQueryable<T>/IGraphRelationshipQueryable<T> are [Obsolete] aliases; under
-        // WarningsAsErrors, declaring a variable/parameter of that type must fail to compile
-        // unless explicitly suppressed.
-        var suppressedSource = WithDomainModel("""
-            public static class Queries
-            {
-            #pragma warning disable CS0618
-                public static IGraphNodeQueryable<Person> Run(IGraphNodeQueryable<Person> people) => people;
-            #pragma warning restore CS0618
-            }
-            """);
-
-        // Control: with the pragma suppressing CS0618 locally, this compiles even under
-        // WarningsAsErrors - proving the next assertion's failure is attributable to the obsolete
-        // usage itself once the suppression is removed.
-        var suppressedResult = CompilationFixture.Compile(suppressedSource, warningsAsErrors: true);
-        Assert.False(suppressedResult.HasErrors, suppressedResult.DescribeErrors());
-
-        var unsuppressedSource = WithDomainModel("""
-            public static class Queries
-            {
-                public static IGraphNodeQueryable<Person> Run(IGraphNodeQueryable<Person> people) => people;
-            }
-            """);
-
-        var result = CompilationFixture.Compile(unsuppressedSource, warningsAsErrors: true);
-
-        Assert.True(result.HasErrors, "Expected IGraphNodeQueryable<T> usage to fail to compile under WarningsAsErrors.");
-        Assert.Contains(result.Errors, e => e.Id == "CS0618");
+        Assert.True(result.HasErrors, "Expected every removed per-kind queryable alias to fail to compile.");
+        Assert.True(result.Errors.Count >= 6, result.DescribeErrors());
     }
 }
