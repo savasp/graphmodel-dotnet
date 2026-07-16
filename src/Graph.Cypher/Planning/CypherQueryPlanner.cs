@@ -42,6 +42,12 @@ public sealed class CypherQueryPlanner
             RequireCapability(GraphCapability.FullTextSearch, "FullTextSearch");
         }
 
+        if (model.RelationshipExistence.Count > 0 ||
+            model.Traversal.Any(step => step.RelationshipPredicates.Count > 0))
+        {
+            RequireCapability(GraphCapability.RelationshipPredicates, "RelationshipPredicates");
+        }
+
         // Representation and support are distinct: the model can carry these operations, but this
         // planner cannot lower them yet. Reject before validation so the error is stable.
         if (model.SelectMany is not null)
@@ -1193,6 +1199,37 @@ public sealed class CypherQueryPlanner
             predicates.Add(lowerer.LowerLambda(predicate.Predicate, alias));
         }
 
+        var explicitTraversal = model.Traversal.Where(step => !step.IsComplexPropertyTraversal).ToArray();
+        for (var index = 0; index < explicitTraversal.Length; index++)
+        {
+            var step = explicitTraversal[index];
+            var relationshipAlias = index == 0 ? "r" : $"r_{index + 1}";
+            foreach (var predicate in step.RelationshipPredicates)
+            {
+                if (step.Depth is { Min: 1, Max: 1 })
+                {
+                    predicates.Add(LowerRelationshipPredicate(lowerer, predicate.Predicate, relationshipAlias));
+                    continue;
+                }
+
+                var iteratorAlias = $"__relationship_{index}";
+                predicates.Add(new AllExpression(
+                    iteratorAlias,
+                    new VariableRef(relationshipAlias),
+                    LowerRelationshipPredicate(lowerer, predicate.Predicate, iteratorAlias)));
+            }
+        }
+
+        for (var index = 0; index < model.RelationshipExistence.Count; index++)
+        {
+            predicates.Add(LowerRelationshipExistence(
+                model,
+                state,
+                model.RelationshipExistence[index],
+                lowerer,
+                index));
+        }
+
         if (model.Join is not null)
         {
             predicates.Add(LowerJoinCondition(model.Join, lowerer));
@@ -1200,6 +1237,51 @@ public sealed class CypherQueryPlanner
 
         return predicates;
     }
+
+    private static PatternSubqueryExpression LowerRelationshipExistence(
+        GraphQueryModel model,
+        PlanningState state,
+        RelationshipExistenceFragment existence,
+        ExpressionToCypherAstLowerer lowerer,
+        int index)
+    {
+        var relationshipAlias = $"__existsRelationship_{index}";
+        var targetAlias = $"__existsTarget_{index}";
+        var sourceAlias = ResolveLambdaAlias(model, state, existence.SourceAlias);
+        var pattern = new PathPattern(
+        [
+            new NodePattern(sourceAlias, []),
+            new RelationshipPattern(
+                relationshipAlias,
+                existence.Direction switch
+                {
+                    GraphTraversalDirection.Outgoing => CypherDirection.Outgoing,
+                    GraphTraversalDirection.Incoming => CypherDirection.Incoming,
+                    GraphTraversalDirection.Both => CypherDirection.Both,
+                    _ => throw new GraphQueryTranslationException(
+                        $"Relationship direction '{existence.Direction}' is not supported."),
+                },
+                depth: null,
+                Labels.GetCompatibleLabels(existence.RelationshipType)),
+            new NodePattern(targetAlias, []),
+        ]);
+        var predicate = existence.Predicate is null
+            ? null
+            : LowerRelationshipPredicate(lowerer, existence.Predicate.Predicate, relationshipAlias);
+        return new PatternSubqueryExpression(PatternSubqueryKind.Exists, pattern, predicate);
+    }
+
+    private static CypherExpression LowerRelationshipPredicate(
+        ExpressionToCypherAstLowerer lowerer,
+        LambdaExpression predicate,
+        string relationshipAlias) =>
+        lowerer.LowerLambda(
+            predicate,
+            relationshipAlias,
+            new Dictionary<ParameterExpression, string>
+            {
+                [predicate.Parameters[0]] = relationshipAlias,
+            });
 
     private static string ResolveLambdaAlias(
         GraphQueryModel model,

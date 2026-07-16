@@ -23,6 +23,24 @@ public static class GraphQueryModelValidator
         ValidateTerminalOperand(model);
         ValidateAliasBindings(model);
 
+        foreach (var existence in model.RelationshipExistence)
+        {
+            if (existence.AppliedAfterProjection || existence.AppliedAfterPaging)
+            {
+                throw new GraphException(
+                    "WhereHasRelationship must be applied before Select, Skip, or Take so relationship " +
+                    "existence cannot be silently moved across a projection or paging boundary.");
+            }
+
+            if (existence.Predicate is { } predicate)
+            {
+                ValidateLambdaReferences(
+                    predicate.Predicate,
+                    existence.RelationshipType,
+                    "Relationship-existence predicate");
+            }
+        }
+
         var currentType = ResolveRootType(model.Root);
         var possibleScopeTypes = new List<Type?> { currentType };
 
@@ -252,6 +270,16 @@ public static class GraphQueryModelValidator
             {
                 throw new GraphException(
                     $"Ordering key {i} alias '{alias}' is not bound by the root scope or a traversal target.");
+            }
+        }
+
+        for (var i = 0; i < model.RelationshipExistence.Count; i++)
+        {
+            var alias = model.RelationshipExistence[i].SourceAlias;
+            if (!bound.Contains(alias))
+            {
+                throw new GraphException(
+                    $"Relationship-existence filter {i} source alias '{alias}' is not bound by the query.");
             }
         }
     }

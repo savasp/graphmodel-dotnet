@@ -111,6 +111,54 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
+    public void TraversalOptions_RelationshipPredicateIsCarriedByTraversalStep()
+    {
+        var query = Root<Person>().TraversePaths<Knows, Company>(options => options
+            .Depth(1, 3)
+            .WhereRelationship<Knows>(relationship => relationship.Id != "blocked"));
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var predicate = Assert.Single(Assert.Single(model.Traversal).RelationshipPredicates);
+        Assert.Equal(typeof(Knows), predicate.Predicate.Parameters[0].Type);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void WhereHasRelationship_ProducesExistenceFragmentWithoutTraversal()
+    {
+        var query = Root<Person>().WhereHasRelationship<Person, Knows>(
+            GraphTraversalDirection.Incoming,
+            relationship => relationship.Id != "blocked");
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Empty(model.Traversal);
+        var existence = Assert.Single(model.RelationshipExistence);
+        Assert.Equal(typeof(Knows), existence.RelationshipType);
+        Assert.Equal(GraphTraversalDirection.Incoming, existence.Direction);
+        Assert.Equal("src", existence.SourceAlias);
+        Assert.NotNull(existence.Predicate);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void WhereHasRelationship_AfterProjectionOrPaging_IsRejectedAtTheSharedBoundary()
+    {
+        var afterProjection = Root<Person>()
+            .Select(person => person)
+            .WhereHasRelationship<Person, Knows>(GraphTraversalDirection.Outgoing);
+        var afterPaging = Root<Person>()
+            .Take(5)
+            .WhereHasRelationship<Person, Knows>(GraphTraversalDirection.Outgoing);
+
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(afterProjection.Expression)));
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(afterPaging.Expression)));
+    }
+
+    [Fact]
     public void TraversalModifier_UpdatesGraphTraversalWhenComplexNavigationFollowsIt()
     {
 #pragma warning disable CS0618

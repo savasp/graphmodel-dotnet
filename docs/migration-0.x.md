@@ -505,6 +505,22 @@ support full-text search moves its procedure/index names and its clause shape in
 a pure relocation of where the clause is rendered, completing the dialect-abstraction work begun in
 #215.
 
+## 24. Relationship predicates and existence filters are server-side graph operators
+
+Relationship filtering no longer requires exposing a one-hop `PathSegments` result and filtering it
+afterward. Configure `Traverse` or `TraversePaths` with
+`options.WhereRelationship<TRel>(predicate)`; every relationship in a variable-length path must
+match. Use `WhereHasRelationship<TNode, TRel>(direction, predicate?)` when only relationship
+existence matters and the concrete node type should remain in the query chain. The
+`WhereHasRelationship<TRel>` convenience overload returns `IGraphQueryable<INode>`.
+
+Custom providers must declare `GraphCapability.RelationshipPredicates` only after implementing both
+expansion-time predicates and anchored existence patterns. A provider that does not declare the
+capability now rejects these operators during translation rather than ignoring them or filtering
+materialized results on the client. Apply `WhereHasRelationship` before `Select`, `Skip`, or `Take`;
+the shared validator rejects the reverse order. AGE deliberately declines this capability. No
+stored-data migration is required.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

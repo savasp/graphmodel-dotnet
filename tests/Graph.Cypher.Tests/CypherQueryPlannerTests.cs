@@ -85,6 +85,65 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_MissingRelationshipPredicateCapabilityFailsAtTranslation()
+    {
+        Expression<Func<Knows, bool>> predicate = relationship => relationship.Id != "blocked";
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 3),
+            [new PredicateFragment(predicate, null)],
+            typeof(Person),
+            typeof(Knows));
+
+        AssertMissingCapability(
+            GraphCapability.RelationshipPredicates,
+            Model(traversal: [step]));
+    }
+
+    [Fact]
+    public void Plan_VariableTraversalRelationshipPredicate_LowersToAllQuantifier()
+    {
+        Expression<Func<Knows, bool>> predicate = relationship => relationship.Id != "blocked";
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 3),
+            [new PredicateFragment(predicate, null)],
+            typeof(Person),
+            typeof(Knows));
+
+        var statement = planner.Plan(Model(traversal: [step]));
+
+        var where = Assert.IsType<WhereClause>(statement.Clauses[1]);
+        Assert.Contains(Descendants(where.Predicate), expression => expression is AllExpression);
+    }
+
+    [Fact]
+    public void Plan_RelationshipExistence_LowersToExistsPattern()
+    {
+        Expression<Func<Knows, bool>> predicate = relationship => relationship.Id != "blocked";
+        var model = Model() with
+        {
+            RelationshipExistence =
+            [
+                new RelationshipExistenceFragment(
+                    typeof(Knows),
+                    GraphTraversalDirection.Both,
+                    "src",
+                    new PredicateFragment(predicate, null)),
+            ],
+        };
+
+        var statement = planner.Plan(model);
+
+        var where = Assert.IsType<WhereClause>(statement.Clauses[1]);
+        Assert.Contains(
+            Descendants(where.Predicate),
+            expression => expression is PatternSubqueryExpression { Kind: PatternSubqueryKind.Exists });
+    }
+
+    [Fact]
     public void Plan_MissingMultiLabelCapabilityFailsAtTranslation()
     {
         AssertMissingCapability(
@@ -998,6 +1057,13 @@ public class CypherQueryPlannerTests
                     foreach (var item in Descendants(predicate)) yield return item;
                 }
 
+                break;
+            case AllExpression all:
+                foreach (var item in Descendants(all.Source)) yield return item;
+                foreach (var item in Descendants(all.Predicate)) yield return item;
+                break;
+            case PatternSubqueryExpression subquery when subquery.Predicate is not null:
+                foreach (var item in Descendants(subquery.Predicate)) yield return item;
                 break;
         }
     }

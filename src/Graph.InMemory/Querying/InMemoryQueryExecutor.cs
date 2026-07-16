@@ -37,6 +37,7 @@ internal sealed class InMemoryQueryExecutor(
 
         var rows = RootRows(model.Root);
         rows = ApplyTraversal(rows, model);
+        rows = ApplyRelationshipExistence(rows, model.RelationshipExistence);
         rows = ApplyJoin(rows, model);
 
         var predicates = model.Predicates.ToList();
@@ -543,6 +544,11 @@ internal sealed class InMemoryQueryExecutor(
                     continue;
                 }
 
+                if (!RelationshipPredicatesMatch(relationship, step.RelationshipPredicates, step.RelationshipClrType))
+                {
+                    continue;
+                }
+
                 if (path.Any(h => h.Relationship.Id == relationship.Id))
                 {
                     continue;
@@ -596,6 +602,54 @@ internal sealed class InMemoryQueryExecutor(
 
         return clrType is null ||
             (relationship.ActualType is not null && clrType.IsAssignableFrom(relationship.ActualType));
+    }
+
+    private bool RelationshipPredicatesMatch(
+        RelationshipRecord relationship,
+        IReadOnlyList<PredicateFragment> predicates,
+        Type? relationshipType)
+    {
+        if (predicates.Count == 0)
+            return true;
+
+        var entity = _reader.MaterializeRelationship(
+            relationship,
+            relationshipType ?? relationship.ActualType ?? typeof(IRelationship));
+        return predicates.All(predicate => EvaluatePredicate(predicate.Predicate, entity));
+    }
+
+    private IEnumerable<Row> ApplyRelationshipExistence(
+        IEnumerable<Row> rows,
+        IReadOnlyList<RelationshipExistenceFragment> filters)
+    {
+        foreach (var filter in filters)
+        {
+            rows = rows.Where(row => HasMatchingRelationship(row, filter));
+        }
+
+        return rows;
+    }
+
+    private bool HasMatchingRelationship(Row row, RelationshipExistenceFragment filter)
+    {
+        var sourceNode = (row.Bindings.TryGetValue(filter.SourceAlias, out var source)
+            ? source as INode
+            : null) ?? row.Current as INode;
+
+        if (sourceNode is null)
+            return false;
+
+        var step = new TraversalStep(
+            Labels.GetLabelFromType(filter.RelationshipType),
+            filter.Direction,
+            new DepthRange(1, 1),
+            filter.Predicate is null ? [] : [filter.Predicate],
+            targetType: null,
+            relationshipClrType: filter.RelationshipType);
+        return _state.Relationships.Values.Any(relationship =>
+            RelationshipMatches(relationship, step) &&
+            RelationshipPredicatesMatch(relationship, step.RelationshipPredicates, filter.RelationshipType) &&
+            Neighbors(relationship, sourceNode.Id, filter.Direction).Any());
     }
 
     private static IEnumerable<string> Neighbors(

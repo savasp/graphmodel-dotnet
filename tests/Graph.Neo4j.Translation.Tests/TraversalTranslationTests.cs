@@ -59,6 +59,28 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task TraversePaths_WithRelationshipPredicate()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.FirstName == "Alice")
+            .TraversePaths<Knows, Person>(options => options
+                .Depth(1, 3)
+                .WhereRelationship<Knows>(relationship => relationship.Since >= 2020));
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task WhereHasRelationship_WithPredicate()
+    {
+        var query = Root.Nodes<Person>().WhereHasRelationship<Person, Knows>(
+            GraphTraversalDirection.Both,
+            relationship => relationship.Since >= 2020);
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task Traverse_ToDifferentNodeType()
     {
         var query = Root.Nodes<Person>().Traverse<WorksAt, Company>();

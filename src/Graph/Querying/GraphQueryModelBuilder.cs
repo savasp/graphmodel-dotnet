@@ -20,6 +20,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         LinqOperator.Skip,
         LinqOperator.Count,
         LinqOperator.Any,
+        LinqOperator.RelationshipPredicate,
     ];
 
     private readonly List<PredicateFragment> _predicates = [];
@@ -27,6 +28,7 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
     private readonly List<TraversalStep> _traversal = [];
     private readonly List<OrderingKey> _ordering = [];
     private readonly List<OrderingKey> _postPagingOrdering = [];
+    private readonly List<RelationshipExistenceFragment> _relationshipExistence = [];
     private readonly HashSet<string> _complexNavigationPaths = new(StringComparer.Ordinal);
     private QueryRoot? _root;
     private ProjectionShape? _projection;
@@ -100,7 +102,10 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                     builder._postPagingOrdering,
                     new Paging(builder._postPagingSkip, builder._postPagingTake),
                     builder._postPagingDistinct)
-                : null);
+                : null)
+        {
+            RelationshipExistence = builder._relationshipExistence,
+        };
     }
 
     private static void RejectMixedEntitySearchAsTraversalSource(GraphQueryModelBuilder builder)
@@ -226,6 +231,12 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                 break;
             case LinqOperator.Search:
                 HandleSearch(node);
+                break;
+            case LinqOperator.RelationshipPredicate:
+                AddRelationshipPredicate(node);
+                break;
+            case LinqOperator.WhereHasRelationship:
+                HandleWhereHasRelationship(node);
                 break;
             case LinqOperator.SelectMany:
                 HandleSelectMany(node);
@@ -580,6 +591,49 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         UpdateLastTraversal(depth: depth);
     }
 
+    private void AddRelationshipPredicate(MethodCallExpression node)
+    {
+        if (_lastExplicitTraversalIndex < 0)
+        {
+            throw Unsupported(node, "a relationship predicate requires a preceding traversal operator.");
+        }
+
+        var predicate = RequireLambda(node, 1, "relationship predicate");
+        var relationshipType = node.Method.GetGenericArguments().LastOrDefault()
+            ?? throw Unsupported(node, "a relationship predicate must declare its relationship type.");
+        if (predicate.Parameters.Count != 1 || predicate.Parameters[0].Type != relationshipType)
+        {
+            throw Unsupported(
+                node,
+                $"the relationship predicate must accept '{relationshipType.FullName}'.");
+        }
+
+        var current = _traversal[_lastExplicitTraversalIndex];
+        _traversal[_lastExplicitTraversalIndex] = CopyTraversal(
+            current,
+            relationshipPredicates: [.. current.RelationshipPredicates, new PredicateFragment(predicate, null)]);
+    }
+
+    private void HandleWhereHasRelationship(MethodCallExpression node)
+    {
+        var relationshipType = node.Method.GetGenericArguments().LastOrDefault()
+            ?? throw Unsupported(node, "WhereHasRelationship must declare a relationship type.");
+        var direction = EvaluateArgument<GraphTraversalDirection>(node, 1, "relationship direction");
+        var predicate = node.Arguments.Count > 2 &&
+            QueryExpressionEvaluator.Evaluate<object?>(node.Arguments[2], "relationship predicate") is LambdaExpression lambda
+                ? new PredicateFragment(lambda, null)
+                : null;
+        _relationshipExistence.Add(new RelationshipExistenceFragment(
+            relationshipType,
+            direction,
+            _currentAlias ?? "src",
+            predicate)
+        {
+            AppliedAfterProjection = _projection is not null,
+            AppliedAfterPaging = _skip is not null || _take is not null || _hasPostPagingStage,
+        });
+    }
+
     private static DepthRange CreateDepthRange(MethodCallExpression node, int min, int max)
     {
         if (min < 0 || max < min)
@@ -642,17 +696,27 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         }
 
         var current = _traversal[_lastExplicitTraversalIndex];
-        _traversal[_lastExplicitTraversalIndex] = new TraversalStep(
+        _traversal[_lastExplicitTraversalIndex] = CopyTraversal(
+            current,
+            direction: direction,
+            depth: depth);
+    }
+
+    private static TraversalStep CopyTraversal(
+        TraversalStep current,
+        GraphTraversalDirection? direction = null,
+        DepthRange? depth = null,
+        IReadOnlyList<PredicateFragment>? relationshipPredicates = null) =>
+        new(
             current.RelationshipType,
             direction ?? current.Direction,
             depth ?? current.Depth,
-            current.RelationshipPredicates,
+            relationshipPredicates ?? current.RelationshipPredicates,
             current.TargetType,
             current.RelationshipClrType,
             current.IsComplexPropertyTraversal,
             current.SourceAlias,
             current.TargetAlias);
-    }
 
     private void AddComplexPropertyTraversals(LambdaExpression lambda)
     {

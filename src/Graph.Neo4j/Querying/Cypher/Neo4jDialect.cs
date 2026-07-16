@@ -22,7 +22,8 @@ public sealed class Neo4jDialect : ICypherDialect
         GraphCapability.MultiLabelMatch,
         GraphCapability.OrderByEntity,
         GraphCapability.OptionalTraversal,
-        GraphCapability.GroupByAggregation);
+        GraphCapability.GroupByAggregation,
+        GraphCapability.RelationshipPredicates);
 
     /// <summary>Gets the shared Neo4j dialect instance.</summary>
     public static Neo4jDialect Instance { get; } = new();

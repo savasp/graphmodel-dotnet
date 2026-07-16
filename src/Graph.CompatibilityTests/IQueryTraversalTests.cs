@@ -1468,5 +1468,88 @@ public interface IQueryTraversalTests : IGraphTest
         }
     }
 
+    [Fact]
+    [RequiresCapability(GraphCapability.RelationshipPredicates)]
+    public async Task VariableTraversal_RelationshipPredicateFiltersEveryExpandedHop()
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-7);
+        var alice = new Person { FirstName = $"RelPredicateStart-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"RelPredicateRecent-{Guid.NewGuid():N}" };
+        var charlie = new Person { FirstName = $"RelPredicateOldTail-{Guid.NewGuid():N}" };
+        var david = new Person { FirstName = $"RelPredicateRecentTail-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(david, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(alice, bob) { Since = cutoff.AddDays(1) },
+            null,
+            TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(bob, charlie) { Since = cutoff.AddDays(-1) },
+            null,
+            TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(bob, david) { Since = cutoff.AddDays(1) },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var results = await Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id)
+            .Traverse<Knows, Person>(options => options
+                .Depth(1, 2)
+                .WhereRelationship<Knows>(relationship => relationship.Since >= cutoff))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains(results, person => person.Id == bob.Id);
+        Assert.Contains(results, person => person.Id == david.Id);
+        Assert.DoesNotContain(results, person => person.Id == charlie.Id);
+    }
+
+    [Fact]
+    [RequiresCapability(GraphCapability.RelationshipPredicates)]
+    public async Task WhereHasRelationship_RespectsDirectionPredicateAndSelfRelationships()
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-7);
+        var alice = new Person { FirstName = $"ExistenceAlice-{Guid.NewGuid():N}" };
+        var bob = new Person { FirstName = $"ExistenceBob-{Guid.NewGuid():N}" };
+        var charlie = new Person { FirstName = $"ExistenceCharlie-{Guid.NewGuid():N}" };
+
+        await Graph.CreateNodeAsync(alice, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(bob, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(charlie, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(alice, bob) { Since = cutoff.AddDays(1) },
+            null,
+            TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(charlie, alice) { Since = cutoff.AddDays(-1) },
+            null,
+            TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(bob, bob) { Since = cutoff.AddDays(1) },
+            null,
+            TestContext.Current.CancellationToken);
+
+        var outgoing = await Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id || person.Id == bob.Id || person.Id == charlie.Id)
+            .WhereHasRelationship<Person, Knows>(
+                GraphTraversalDirection.Outgoing,
+                relationship => relationship.Since >= cutoff)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var incoming = await Graph.Nodes<Person>()
+            .Where(person => person.Id == alice.Id || person.Id == bob.Id || person.Id == charlie.Id)
+            .WhereHasRelationship<Person, Knows>(
+                GraphTraversalDirection.Incoming,
+                relationship => relationship.Since >= cutoff)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            new[] { alice.Id, bob.Id }.Order().ToArray(),
+            outgoing.Select(person => person.Id).Order().ToArray());
+        Assert.Equal([bob.Id], incoming.Select(person => person.Id).Order().ToArray());
+    }
+
     #endregion
 }

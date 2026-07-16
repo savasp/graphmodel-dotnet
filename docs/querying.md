@@ -175,15 +175,33 @@ var friendsOfFriends = await graph.Nodes<Person>()
     .Where(p => p.Age > 25) // Filter target nodes
     .ToListAsync();
 
-// To filter on the relationship itself (e.g. recent friendships only), use PathSegments instead -
-// it exposes the relationship alongside the start/end nodes for a single hop.
+// Relationship predicates run while paths expand. On a variable-length traversal every hop must
+// satisfy the predicate; this is not a client-side filter over already-produced target nodes.
 var recentFriends = await graph.Nodes<Person>()
     .Where(p => p.FirstName == "Alice")
-    .PathSegments<Person, Knows, Person>()
-    .Where(ps => ps.Relationship.Since > DateTime.Now.AddYears(-1))
-    .Select(ps => ps.EndNode)
+    .Traverse<Knows, Person>(options => options
+        .Depth(1, 3)
+        .WhereRelationship<Knows>(relationship => relationship.Since > DateTime.UtcNow.AddYears(-1)))
+    .ToListAsync();
+
+// Existence sugar lowers directly to an EXISTS relationship pattern. It does not traverse and
+// de-duplicate target rows. Spell both types to preserve Person in the static query chain.
+var sociallyActive = await graph.Nodes<Person>()
+    .WhereHasRelationship<Person, Knows>(
+        GraphTraversalDirection.Both,
+        relationship => relationship.Since > DateTime.UtcNow.AddYears(-1))
+    .OrderBy(person => person.LastName)
     .ToListAsync();
 ```
+
+`WhereRelationship` supports outgoing, incoming, and bidirectional traversal, including
+self-relationships. `WhereHasRelationship` has a one-type-argument convenience overload when the
+common `INode` result shape is sufficient; the two-type-argument overload above retains the concrete
+node type for later filters, ordering, and projections. Providers that do not declare
+`GraphCapability.RelationshipPredicates` reject either operator during translation. Apply
+`WhereHasRelationship` before `Select`, `Skip`, or `Take`; the shared validator rejects the reverse
+order rather than moving the existence test across that boundary. Neo4j and the in-memory provider
+implement this capability; AGE declines it.
 
 ## Projection and Results
 

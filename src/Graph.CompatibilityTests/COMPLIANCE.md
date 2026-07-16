@@ -24,6 +24,7 @@ A provider is **compliant** when its compatibility run reports N passed / M skip
 | ShortestPath | Yes / No | |
 | OptionalTraversal | Yes / No | |
 | GroupByAggregation | Yes / No | |
+| RelationshipPredicates | Yes / No | |
 
 ## Results
 

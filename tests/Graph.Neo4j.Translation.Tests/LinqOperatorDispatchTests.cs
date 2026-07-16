@@ -60,6 +60,8 @@ public class LinqOperatorDispatchTests
         LinqOperator.Direction,
         LinqOperator.WithDepth,
         LinqOperator.Search,
+        LinqOperator.RelationshipPredicate,
+        LinqOperator.WhereHasRelationship,
     ];
 
     [Fact]

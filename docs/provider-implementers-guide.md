@@ -182,7 +182,15 @@ Implement `ICypherDialect` from `Cvoya.Graph.Cypher`. The interface owns every s
 
 `GetFunctionBehavior` distinguishes functions rendered by the backend, parameter-free functions evaluated on the client, and unsupported functions. Client evaluation binds a query parameter; it never inlines the value. A function marked `EvaluateOnClient` fails translation if its arguments depend on a server-side expression. AGE can therefore client-evaluate zero-argument temporal constructors without pretending to support temporal arithmetic over stored properties.
 
-Declare only supported capabilities. The planner rejects reachable unsupported constructs before execution with `GraphQueryTranslationException`; the message names the construct, the exact `GraphCapability` member, and the dialect. Current translation-time checks cover `FullTextSearch`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, `OrderByEntity`, `OptionalTraversal`, and `GroupByAggregation`. Transaction capabilities remain execution/store concerns.
+Declare only supported capabilities. The planner rejects reachable unsupported constructs before execution with `GraphQueryTranslationException`; the message names the construct, the exact `GraphCapability` member, and the dialect. Current translation-time checks cover `FullTextSearch`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, `OrderByEntity`, `OptionalTraversal`, `GroupByAggregation`, and `RelationshipPredicates`. Transaction capabilities remain execution/store concerns.
+
+`RelationshipPredicates` gates both traversal-option `WhereRelationship` predicates and
+`WhereHasRelationship` existence patterns. A variable-length traversal applies its predicate to
+every relationship while expanding a candidate path; an existence filter lowers directly to an
+anchored relationship pattern. Providers must implement those semantics or decline the capability—
+post-hoc client filtering and silently ignoring the predicate are not conforming implementations.
+Neo4j and in-memory implement the contract; AGE declines it because its supported openCypher subset
+cannot preserve both variable-path and existence-pattern semantics.
 
 `PatternSizeProjection` gates every relationship-count pattern subquery a projection can produce: both complex-property collection sizes (`.Offices.Count`) and the node relationship-count (degree) surface `CountRelationships<TRel>(direction)`, which lowers to a `COUNT { MATCH (src)-[:REL]->() }` / `size((src)-[:REL]->())` subquery. Relationship direction is physical (matching traversal), compatible derived relationship labels participate, and an undirected self-loop counts once. A provider that declines the capability rejects both at translation time.
 
@@ -337,6 +345,7 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `OptionalTraversal` | `IQueryTests.Navigation{Equality,Projection}_MissingComplexProperty*` | method | pass | pass | pass |
 | `GroupByAggregation` | `IGroupByTests` (all methods) | interface | pass | pass | pass |
 | `NestedTransactions` | _record only_ | — | — | — | — |
+| `RelationshipPredicates` | `IQueryTraversalTests.VariableTraversal_RelationshipPredicateFiltersEveryExpandedHop`, `IQueryTraversalTests.WhereHasRelationship_RespectsDirectionPredicateAndSelfRelationships` | method | pass | pass | skip |
 | `ShortestPath` | _record only_ | — | — | — | — |
 
 The correlated grouped-projection grammar (`GroupBy(seg => seg.StartNode).Select(g => new { … })`)

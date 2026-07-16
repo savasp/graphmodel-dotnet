@@ -37,4 +37,6 @@ internal enum LinqOperator
     Direction,
     WithDepth,
     Search,
+    RelationshipPredicate,
+    WhereHasRelationship,
 }

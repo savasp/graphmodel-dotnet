@@ -223,6 +223,9 @@ public static class GraphTraversalExtensions
         var options = configure(new GraphTraversalOptions());
         var chain = ReflectiveTraversalChain.FromPathSegments<TRel, TEnd>(source);
 
+        foreach (var predicate in options.GetRelationshipPredicates(typeof(TRel)))
+            chain = chain.WithRelationshipPredicate(predicate);
+
         if (options.TraversalDirection is { } direction)
             chain = chain.WithDirection(direction);
 
@@ -354,10 +357,42 @@ public static class GraphTraversalExtensions
 
         var paths = source.TraversePaths<TRel, TEnd>(minDepth, maxDepth);
 
+        foreach (var predicate in options.GetRelationshipPredicates(typeof(TRel)))
+            paths = WithRelationshipPredicate<IGraphPath, TRel>(paths, predicate);
+
         return options.TraversalDirection is { } direction
             ? paths.Direction(direction)
             : paths;
     }
+
+    private static IGraphQueryable<TSource> WithRelationshipPredicate<TSource, TRel>(
+        IGraphQueryable<TSource> source,
+        LambdaExpression predicate)
+        where TRel : class, IRelationship
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(predicate);
+
+        var method = typeof(GraphTraversalExtensions)
+            .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .Single(candidate => candidate.Name == nameof(WithRelationshipPredicate) &&
+                candidate.IsGenericMethodDefinition &&
+                candidate.GetParameters()[1].ParameterType.IsGenericType)
+            .MakeGenericMethod(typeof(TSource), typeof(TRel));
+        var typedPredicate = predicate.Type == typeof(Func<TRel, bool>)
+            ? predicate
+            : throw new ArgumentException(
+                $"The relationship predicate must have type Expression<Func<{typeof(TRel).Name}, bool>>.",
+                nameof(predicate));
+        var expression = Expression.Call(null, method, source.Expression, typedPredicate);
+        return source.Provider.CreateQuery<TSource>(expression);
+    }
+
+    private static IGraphQueryable<TSource> WithRelationshipPredicate<TSource, TRel>(
+        IGraphQueryable<TSource> source,
+        Expression<Func<TRel, bool>> predicate)
+        where TRel : class, IRelationship =>
+        throw new InvalidOperationException("Relationship-predicate markers are expression-tree only.");
 
     /// <summary>
     /// Builds the "PathSegments, then optionally WithDepth/Direction, then Select" expression
@@ -404,6 +439,19 @@ public static class GraphTraversalExtensions
         public ReflectiveTraversalChain WithDepth(int minDepth, int maxDepth) => AppendCall(nameof(GraphQueryableExtensions.WithDepth), 3, Expression.Constant(minDepth), Expression.Constant(maxDepth));
 
         public ReflectiveTraversalChain WithDirection(GraphTraversalDirection direction) => AppendCall(nameof(GraphQueryableExtensions.Direction), 2, Expression.Constant(direction));
+
+        public ReflectiveTraversalChain WithRelationshipPredicate(LambdaExpression predicate)
+        {
+            var currentSegmentType = ExtensionUtils.GetQueryableElementType(_expression.Type);
+            var methodInfo = typeof(GraphTraversalExtensions)
+                .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                .Single(candidate => candidate.Name == nameof(WithRelationshipPredicate) &&
+                    candidate.IsGenericMethodDefinition &&
+                    candidate.GetParameters()[1].ParameterType.IsGenericType)
+                .MakeGenericMethod(currentSegmentType, _relType);
+            var expression = Expression.Call(null, methodInfo, _expression, predicate);
+            return new ReflectiveTraversalChain(expression, _startType, _relType);
+        }
 
         private ReflectiveTraversalChain AppendCall(string methodName, int paramCount, params Expression[] extraArgs)
         {

@@ -22,6 +22,7 @@
 | ShortestPath | No | |
 | OptionalTraversal | Yes | Optional matches are lowered while preserving owners with absent paths. |
 | GroupByAggregation | Yes | The shared structured `WITH` plan uses AGE-native grouping and aggregate functions. |
+| RelationshipPredicates | No | AGE declines variable-path relationship predicates and anchored relationship-existence patterns at translation time. |
 
 ## Structured Cypher lowering
 

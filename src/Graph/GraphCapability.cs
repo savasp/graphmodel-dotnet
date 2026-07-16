@@ -82,5 +82,11 @@ public enum GraphCapability
     /// which backs the correlated collection-projection shape (grouping path segments by their start
     /// node); this member backs scalar-key aggregation grouping.
     /// </summary>
-    GroupByAggregation
+    GroupByAggregation,
+
+    /// <summary>
+    /// Relationship predicates evaluated as part of traversal expansion and relationship-existence
+    /// pattern matching.
+    /// </summary>
+    RelationshipPredicates
 }

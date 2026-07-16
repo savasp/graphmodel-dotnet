@@ -3,6 +3,8 @@
 
 namespace Cvoya.Graph;
 
+using System.Linq.Expressions;
+
 /// <summary>
 /// Options that configure a graph traversal operator (depth range and direction). Built via the
 /// fluent <see cref="Depth(int)"/>/<see cref="Depth(int, int)"/>/<see cref="Direction"/> methods
@@ -11,6 +13,8 @@ namespace Cvoya.Graph;
 /// </summary>
 public sealed class GraphTraversalOptions
 {
+    private readonly List<(Type RelationshipType, LambdaExpression Predicate)> relationshipPredicates = [];
+
     /// <summary>
     /// Gets the minimum traversal depth, or <see langword="null"/> if unspecified (defaults to 1).
     /// </summary>
@@ -71,5 +75,36 @@ public sealed class GraphTraversalOptions
     {
         TraversalDirection = direction;
         return this;
+    }
+
+    /// <summary>
+    /// Restricts expansion to relationships that satisfy <paramref name="predicate"/>. For a
+    /// variable-length traversal every relationship in the path must satisfy the predicate.
+    /// </summary>
+    /// <typeparam name="TRel">The relationship type traversed by the configured operator.</typeparam>
+    /// <param name="predicate">The predicate evaluated while expanding candidate paths.</param>
+    /// <returns>This instance, for chaining.</returns>
+    public GraphTraversalOptions WhereRelationship<TRel>(Expression<Func<TRel, bool>> predicate)
+        where TRel : class, IRelationship
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        relationshipPredicates.Add((typeof(TRel), predicate));
+        return this;
+    }
+
+    internal IReadOnlyList<LambdaExpression> GetRelationshipPredicates(Type relationshipType)
+    {
+        ArgumentNullException.ThrowIfNull(relationshipType);
+
+        var mismatched = relationshipPredicates
+            .FirstOrDefault(item => item.RelationshipType != relationshipType);
+        if (mismatched.Predicate is not null)
+        {
+            throw new ArgumentException(
+                $"The traversal is over '{relationshipType.FullName}', but its relationship predicate " +
+                $"was declared for '{mismatched.RelationshipType.FullName}'.");
+        }
+
+        return relationshipPredicates.Select(item => item.Predicate).ToArray();
     }
 }
