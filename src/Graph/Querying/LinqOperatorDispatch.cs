@@ -94,6 +94,8 @@ internal static class LinqOperatorDispatch
 #pragma warning restore CS0618
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.PathSegments), LinqOperator.PathSegments);
         AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.TraversePaths), LinqOperator.TraversePaths);
+        AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.ShortestPath), LinqOperator.ShortestPath);
+        AddAll(typeof(GraphTraversalExtensions), nameof(GraphTraversalExtensions.AllShortestPaths), LinqOperator.AllShortestPaths);
         AddAll(typeof(GraphTraversalExtensions), "WithRelationshipPredicate", LinqOperator.RelationshipPredicate);
         AddAll(typeof(GraphRelationshipPredicateExtensions), nameof(GraphRelationshipPredicateExtensions.WhereHasRelationship), LinqOperator.WhereHasRelationship);
 

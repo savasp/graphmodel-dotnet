@@ -182,7 +182,7 @@ Implement `ICypherDialect` from `Cvoya.Graph.Cypher`. The interface owns every s
 
 `GetFunctionBehavior` distinguishes functions rendered by the backend, parameter-free functions evaluated on the client, and unsupported functions. Client evaluation binds a query parameter; it never inlines the value. A function marked `EvaluateOnClient` fails translation if its arguments depend on a server-side expression. AGE can therefore client-evaluate zero-argument temporal constructors without pretending to support temporal arithmetic over stored properties.
 
-Declare only supported capabilities. The planner rejects reachable unsupported constructs before execution with `GraphQueryTranslationException`; the message names the construct, the exact `GraphCapability` member, and the dialect. Current translation-time checks cover `FullTextSearch`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, `OrderByEntity`, `OptionalTraversal`, `GroupByAggregation`, and `RelationshipPredicates`. Transaction capabilities remain execution/store concerns.
+Declare only supported capabilities. The planner rejects reachable unsupported constructs before execution with `GraphQueryTranslationException`; the message names the construct, the exact `GraphCapability` member, and the dialect. Current translation-time checks cover `FullTextSearch`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, `OrderByEntity`, `OptionalTraversal`, `GroupByAggregation`, `RelationshipPredicates`, and `ShortestPath`. Transaction capabilities remain execution/store concerns.
 
 `RelationshipPredicates` gates both traversal-option `WhereRelationship` predicates and
 `WhereHasRelationship` existence patterns. A variable-length traversal applies its predicate to
@@ -191,6 +191,13 @@ anchored relationship pattern. Providers must implement those semantics or decli
 post-hoc client filtering and silently ignoring the predicate are not conforming implementations.
 Neo4j and in-memory implement the contract; AGE declines it because its supported openCypher subset
 cannot preserve both variable-path and existence-pattern semantics.
+
+`ShortestPath` gates both `ShortestPath<TRel, TEnd>` and `AllShortestPaths<TRel, TEnd>`.
+Implementations select paths independently for every source/endpoint pair, evaluate the endpoint
+predicate before selection, exclude the source as an endpoint, and return one or all ties at the
+minimum positive hop count. Neo4j lowers these to `shortestPath(...)` and
+`allShortestPaths(...)`; in-memory performs the equivalent expansion-time selection. AGE declines
+the capability because its supported openCypher subset does not preserve these semantics.
 
 `PatternSizeProjection` gates every relationship-count pattern subquery a projection can produce: both complex-property collection sizes (`.Offices.Count`) and the node relationship-count (degree) surface `CountRelationships<TRel>(direction)`, which lowers to a `COUNT { MATCH (src)-[:REL]->() }` / `size((src)-[:REL]->())` subquery. Relationship direction is physical (matching traversal), compatible derived relationship labels participate, and an undirected self-loop counts once. A provider that declines the capability rejects both at translation time.
 
@@ -346,7 +353,7 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `GroupByAggregation` | `IGroupByTests` (all methods) | interface | pass | pass | pass |
 | `NestedTransactions` | _record only_ | — | — | — | — |
 | `RelationshipPredicates` | `IQueryTraversalTests.VariableTraversal_RelationshipPredicateFiltersEveryExpandedHop`, `IQueryTraversalTests.WhereHasRelationship_RespectsDirectionPredicateAndSelfRelationships` | method | pass | pass | skip |
-| `ShortestPath` | _record only_ | — | — | — | — |
+| `ShortestPath` | `IQueryTraversalTests.ShortestPaths_PinSelectionEndpointDirectionNoPathAndSameNodeSemantics` | method | pass | pass | skip |
 
 The correlated grouped-projection grammar (`GroupBy(seg => seg.StartNode).Select(g => new { … })`)
 is a shared contract, not a per-provider concern: the recognized per-member operations (`Select`,
@@ -359,7 +366,6 @@ operation-after-`Select` composition so a provider does not silently execute a s
 `ScalarGroupByValidation` provides the corresponding shared boundary for scalar grouping: key and
 aggregate projections only, without collection projections or filtering inside a group.
 
-Two capabilities are records rather than gated tests because they have no user-drivable surface to certify:
+One capability is recorded rather than gated because it has no user-drivable surface to certify:
 
 - **`NestedTransactions`** — the public transaction API takes no parent transaction or savepoint, so there is no nested operation to drive. No in-tree provider declares it. When the API gains that surface, add a gated test with the feature.
-- **`ShortestPath`** — reserved; no query construct references it and no in-tree provider declares it, so there is nothing to exercise yet.

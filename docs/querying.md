@@ -203,6 +203,29 @@ node type for later filters, ordering, and projections. Providers that do not de
 order rather than moving the existence test across that boundary. Neo4j and the in-memory provider
 implement this capability; AGE declines it.
 
+### Shortest paths
+
+`ShortestPath<TRel, TEnd>` returns one minimum-hop path for each source/endpoint pair;
+`AllShortestPaths<TRel, TEnd>` returns every path tied at that minimum length. Both use the
+canonical two-type-argument traversal surface and return `IGraphPath`:
+
+```csharp
+var routes = await graph.Nodes<Person>()
+    .Where(person => person.Id == aliceId)
+    .AllShortestPaths<Knows, Person>(
+        endpoint => endpoint.Active,
+        GraphTraversalDirection.Both)
+    .Take(10)
+    .ToListAsync();
+```
+
+The endpoint predicate participates in path matching, not client-side filtering. Paths contain at
+least one relationship; the source node is excluded as an endpoint, including when a cycle or
+self-relationship could lead back to it. Selection is partitioned by source/endpoint pair, so one
+source can return shortest paths to several endpoints. Providers must declare
+`GraphCapability.ShortestPath`; Neo4j and the in-memory provider implement it, while AGE rejects it
+during translation.
+
 ## Projection and Results
 
 ### Anonymous Types

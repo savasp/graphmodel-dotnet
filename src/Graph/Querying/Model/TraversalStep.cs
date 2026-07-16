@@ -8,6 +8,8 @@ namespace Cvoya.Graph.Querying;
 /// </summary>
 public sealed record TraversalStep
 {
+    private IReadOnlyList<PredicateFragment> targetPredicates = [];
+
     /// <summary>
     /// Initializes a new instance of the <see cref="TraversalStep"/> record.
     /// </summary>
@@ -195,4 +197,14 @@ public sealed record TraversalStep
     /// whose alias equals this value apply to the traversal target.
     /// </summary>
     public string? TargetAlias { get; }
+
+    /// <summary>Gets or initializes which paths are retained for each source-target pair.</summary>
+    public TraversalPathSelection PathSelection { get; init; }
+
+    /// <summary>Gets or initializes predicates that candidate endpoint nodes must satisfy.</summary>
+    public IReadOnlyList<PredicateFragment> TargetPredicates
+    {
+        get => targetPredicates;
+        init => targetPredicates = QueryModelGuard.CopyRequiredList(value, nameof(TargetPredicates));
+    }
 }

@@ -38,7 +38,9 @@ internal sealed class TestCypherDialect(
 
     public string RenderRelationshipTypes(IReadOnlyList<string> types) => string.Join('|', types);
 
-    public string RenderDepth(DepthRange depth) => $"*{depth.Min}..{depth.Max}";
+    public string RenderDepth(DepthRange depth) => depth.Max == int.MaxValue
+        ? $"*{depth.Min}.."
+        : $"*{depth.Min}..{depth.Max}";
 
     public string RenderLabelTest(string target, IReadOnlyList<string> labels, Func<string, string> renderLiteral) =>
         string.Join(" OR ", labels.Select(label => $"{renderLiteral(label)} IN labels({target})"));

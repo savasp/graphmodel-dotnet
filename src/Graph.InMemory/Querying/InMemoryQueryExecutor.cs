@@ -466,6 +466,9 @@ internal sealed class InMemoryQueryExecutor(
             yield return zeroRow;
         }
 
+        var candidates = new List<(List<Hop> Path, NodeRecord TargetRecord, INode TargetEntity)>();
+        var sourceRecordKey = NodeRecordsById(sourceNode.Id)
+            .FirstOrDefault(record => record.ActualType == sourceNode.GetType())?.Key;
         foreach (var path in ExpandPaths(sourceNode.Id, step, maxDepth))
         {
             _cancellationToken.ThrowIfCancellationRequested();
@@ -475,6 +478,11 @@ internal sealed class InMemoryQueryExecutor(
             }
 
             var finalRecord = path[^1].Target;
+            if (step.PathSelection != TraversalPathSelection.All && finalRecord.Key == sourceRecordKey)
+            {
+                continue;
+            }
+
             var resolved = EntityReader.ResolveNodeType(finalRecord, step.TargetType ?? typeof(INode));
             if (step.TargetType is { } targetType && !targetType.IsAssignableFrom(resolved))
             {
@@ -482,6 +490,36 @@ internal sealed class InMemoryQueryExecutor(
             }
 
             var targetEntity = (INode)_reader.MaterializeNode(finalRecord, _state, step.TargetType ?? typeof(INode));
+            if (step.TargetPredicates.Any(predicate => !EvaluatePredicate(predicate.Predicate, targetEntity)))
+            {
+                continue;
+            }
+
+            candidates.Add((path, finalRecord, targetEntity));
+        }
+
+        IEnumerable<(List<Hop> Path, NodeRecord TargetRecord, INode TargetEntity)> selected =
+            step.PathSelection switch
+            {
+                TraversalPathSelection.All => candidates,
+                TraversalPathSelection.Shortest => candidates
+                    .GroupBy(candidate => candidate.TargetRecord.Key)
+                    .Select(group => group.OrderBy(candidate => candidate.Path.Count).First()),
+                TraversalPathSelection.AllShortest => candidates
+                    .GroupBy(candidate => candidate.TargetRecord.Key)
+                    .SelectMany(group =>
+                    {
+                        var minimum = group.Min(candidate => candidate.Path.Count);
+                        return group.Where(candidate => candidate.Path.Count == minimum);
+                    }),
+                _ => throw new GraphException($"Path selection '{step.PathSelection}' is not supported."),
+            };
+
+        foreach (var candidate in selected)
+        {
+            var path = candidate.Path;
+            var finalRecord = candidate.TargetRecord;
+            var targetEntity = candidate.TargetEntity;
             var lastRelationship = (IRelationship)_reader.MaterializeRelationship(
                 path[^1].Relationship,
                 step.RelationshipClrType ?? typeof(IRelationship));

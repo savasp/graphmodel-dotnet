@@ -81,6 +81,28 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task ShortestPath_WithEndpointPredicateAndDirection()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.FirstName == "Alice")
+            .ShortestPath<Knows, Person>(
+                person => person.FirstName == "Bob",
+                GraphTraversalDirection.Both);
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task AllShortestPaths_ReturnsPath()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.FirstName == "Alice")
+            .AllShortestPaths<Knows, Person>(person => person.FirstName == "Bob");
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task Traverse_ToDifferentNodeType()
     {
         var query = Root.Nodes<Person>().Traverse<WorksAt, Company>();

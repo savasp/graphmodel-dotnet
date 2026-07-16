@@ -60,8 +60,7 @@ public enum GraphCapability
     OrderByEntity,
 
     /// <summary>
-    /// Shortest-path traversal queries. Reserved for future use: no query construct references it
-    /// yet, so there is no user-drivable surface to certify.
+    /// Typed shortest-path and all-shortest-path traversal queries.
     /// </summary>
     ShortestPath,
 

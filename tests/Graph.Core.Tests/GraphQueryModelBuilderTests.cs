@@ -111,6 +111,26 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
+    public void ShortestPaths_ProduceUnboundedPathTraversalAndEndpointPredicate()
+    {
+        var query = Root<Person>().AllShortestPaths<Knows, Company>(
+            company => company.Id != "closed",
+            GraphTraversalDirection.Both);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var step = Assert.Single(model.Traversal);
+        Assert.Equal(new DepthRange(1, int.MaxValue), step.Depth);
+        Assert.Equal(GraphTraversalDirection.Both, step.Direction);
+        Assert.Equal(TraversalPathSelection.AllShortest, step.PathSelection);
+        Assert.Equal(typeof(Company), Assert.Single(step.TargetPredicates).Predicate.Parameters[0].Type);
+        Assert.Equal(
+            new QueryPathShape(typeof(Person), typeof(Knows), typeof(Company)),
+            model.PathShape);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
     public void TraversalOptions_RelationshipPredicateIsCarriedByTraversalStep()
     {
         var query = Root<Person>().TraversePaths<Knows, Company>(options => options

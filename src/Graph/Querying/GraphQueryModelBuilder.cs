@@ -223,6 +223,12 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
             case LinqOperator.TraversePaths:
                 HandleTraversePaths(node);
                 break;
+            case LinqOperator.ShortestPath:
+                HandleShortestPaths(node, TraversalPathSelection.Shortest);
+                break;
+            case LinqOperator.AllShortestPaths:
+                HandleShortestPaths(node, TraversalPathSelection.AllShortest);
+                break;
             case LinqOperator.Direction:
                 UpdateLastTraversal(direction: EvaluateArgument<GraphTraversalDirection>(node, 1, "traversal direction"));
                 break;
@@ -556,6 +562,36 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         _projection = null;
     }
 
+    private void HandleShortestPaths(MethodCallExpression node, TraversalPathSelection selection)
+    {
+        if (!node.Method.IsGenericMethod || node.Method.GetGenericArguments() is not { Length: 2 } types)
+        {
+            throw Unsupported(node, "shortest-path traversal must have relationship and target type arguments.");
+        }
+
+        var relationshipType = types[0];
+        var targetType = types[1];
+        var directionArgument = node.Arguments.Count == 2 ? 1 : 2;
+        var direction = EvaluateArgument<GraphTraversalDirection>(node, directionArgument, "traversal direction");
+        var targetPredicates = node.Arguments.Count == 3
+            ? new[] { new PredicateFragment(RequireLambda(node, 1, "endpoint predicate"), null) }
+            : [];
+        var sourceType = _currentType ?? typeof(INode);
+
+        AddExplicitTraversal(relationshipType, targetType, new DepthRange(1, int.MaxValue));
+        var current = _traversal[_lastExplicitTraversalIndex];
+        _traversal[_lastExplicitTraversalIndex] = CopyTraversal(current, direction: direction) with
+        {
+            PathSelection = selection,
+            TargetPredicates = targetPredicates,
+        };
+        _isGraphPathResult = true;
+        _pathShape = new QueryPathShape(sourceType, relationshipType, targetType);
+        _currentType = typeof(IGraphPath);
+        _currentAlias = "p";
+        _projection = null;
+    }
+
     private void AddExplicitTraversal(Type relationshipType, Type targetType, DepthRange depth)
     {
         var sourceAlias = _currentAlias ?? (_explicitTraversalCount == 0 ? "src" : CurrentTargetAlias);
@@ -716,7 +752,11 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
             current.RelationshipClrType,
             current.IsComplexPropertyTraversal,
             current.SourceAlias,
-            current.TargetAlias);
+            current.TargetAlias)
+        {
+            PathSelection = current.PathSelection,
+            TargetPredicates = current.TargetPredicates,
+        };
 
     private void AddComplexPropertyTraversals(LambdaExpression lambda)
     {

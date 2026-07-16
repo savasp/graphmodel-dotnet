@@ -123,6 +123,6 @@ public sealed class InMemoryProviderTests
         Assert.True(capabilities.Has(GraphCapability.GroupByAggregation));
         Assert.False(capabilities.Has(GraphCapability.NestedTransactions));
         Assert.False(capabilities.Has(GraphCapability.OrderByEntity));
-        Assert.False(capabilities.Has(GraphCapability.ShortestPath));
+        Assert.True(capabilities.Has(GraphCapability.ShortestPath));
     }
 }

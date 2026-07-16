@@ -27,7 +27,8 @@ public class Neo4jDialectTests
                 GraphCapability.OrderByEntity,
                 GraphCapability.OptionalTraversal,
                 GraphCapability.GroupByAggregation,
-                GraphCapability.RelationshipPredicates),
+                GraphCapability.RelationshipPredicates,
+                GraphCapability.ShortestPath),
             capabilities);
     }
 

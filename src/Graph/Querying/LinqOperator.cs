@@ -34,6 +34,8 @@ internal enum LinqOperator
     Union,
     PathSegments,
     TraversePaths,
+    ShortestPath,
+    AllShortestPaths,
     Direction,
     WithDepth,
     Search,

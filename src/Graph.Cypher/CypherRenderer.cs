@@ -140,6 +140,13 @@ public sealed class CypherRenderer : ICypherRenderContext
             builder.Append(pattern.Alias).Append(" = ");
         }
 
+        if (pattern.Selection != PathSelection.All)
+        {
+            builder.Append(pattern.Selection == PathSelection.Shortest
+                ? "shortestPath("
+                : "allShortestPaths(");
+        }
+
         for (var index = 0; index < pattern.Elements.Count; index++)
         {
             switch (pattern.Elements[index])
@@ -163,6 +170,11 @@ public sealed class CypherRenderer : ICypherRenderContext
                     RenderRelationship(builder, relationship);
                     break;
             }
+        }
+
+        if (pattern.Selection != PathSelection.All)
+        {
+            builder.Append(')');
         }
 
         return builder.ToString();

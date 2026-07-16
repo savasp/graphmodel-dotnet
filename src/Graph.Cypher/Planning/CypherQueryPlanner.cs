@@ -9,6 +9,7 @@ using Cvoya.Graph.Querying;
 using AstBinaryExpression = Cvoya.Graph.Cypher.Ast.Expressions.BinaryExpression;
 using AstDepthRange = Cvoya.Graph.Cypher.Ast.DepthRange;
 using AstIndexExpression = Cvoya.Graph.Cypher.Ast.Expressions.IndexExpression;
+using AstPathSelection = Cvoya.Graph.Cypher.Ast.PathSelection;
 using AstUnaryExpression = Cvoya.Graph.Cypher.Ast.Expressions.UnaryExpression;
 
 namespace Cvoya.Graph.Cypher.Planning;
@@ -46,6 +47,11 @@ public sealed class CypherQueryPlanner
             model.Traversal.Any(step => step.RelationshipPredicates.Count > 0))
         {
             RequireCapability(GraphCapability.RelationshipPredicates, "RelationshipPredicates");
+        }
+
+        if (model.Traversal.Any(step => step.PathSelection != TraversalPathSelection.All))
+        {
+            RequireCapability(GraphCapability.ShortestPath, "ShortestPath");
         }
 
         // Representation and support are distinct: the model can carry these operations, but this
@@ -1218,6 +1224,22 @@ public sealed class CypherQueryPlanner
                     new VariableRef(relationshipAlias),
                     LowerRelationshipPredicate(lowerer, predicate.Predicate, iteratorAlias)));
             }
+
+
+            var targetAlias = step.TargetAlias ?? (index == 0 ? "tgt" : $"tgt_{index + 1}");
+            if (step.PathSelection != TraversalPathSelection.All)
+            {
+                var sourceAlias = step.SourceAlias ?? (index == 0 ? state.RootAlias : $"tgt_{index}");
+                predicates.Add(new AstBinaryExpression(
+                    CypherBinaryOperator.NotEqual,
+                    new VariableRef(sourceAlias),
+                    new VariableRef(targetAlias)));
+            }
+
+            foreach (var predicate in step.TargetPredicates)
+            {
+                predicates.Add(lowerer.LowerLambda(predicate.Predicate, targetAlias));
+            }
         }
 
         for (var index = 0; index < model.RelationshipExistence.Count; index++)
@@ -1746,7 +1768,16 @@ public sealed class CypherQueryPlanner
                 new NodePattern(
                     targetAlias,
                     step.TargetType is null ? [] : Labels.GetCompatibleLabels(step.TargetType))
-            ], index == traversal.Count - 1 ? pathAlias : null));
+            ],
+            index == traversal.Count - 1 ? pathAlias : null,
+            step.PathSelection switch
+            {
+                TraversalPathSelection.All => AstPathSelection.All,
+                TraversalPathSelection.Shortest => AstPathSelection.Shortest,
+                TraversalPathSelection.AllShortest => AstPathSelection.AllShortest,
+                _ => throw new GraphQueryTranslationException(
+                    $"Traversal path selection '{step.PathSelection}' is not supported."),
+            }));
         }
 
         return new MatchClause(patterns, optional: false);

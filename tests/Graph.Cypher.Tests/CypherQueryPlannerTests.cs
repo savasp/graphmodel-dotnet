@@ -102,6 +102,53 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_MissingShortestPathCapabilityFailsAtTranslation()
+    {
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, int.MaxValue),
+            [],
+            typeof(Person),
+            typeof(Knows))
+        {
+            PathSelection = TraversalPathSelection.Shortest,
+        };
+
+        AssertMissingCapability(
+            GraphCapability.ShortestPath,
+            Model(
+                traversal: [step],
+                pathShape: new QueryPathShape(typeof(Person), typeof(Knows), typeof(Person))));
+    }
+
+    [Fact]
+    public void Plan_AllShortestPaths_CarriesSelectionAndEndpointPredicateIntoAst()
+    {
+        Expression<Func<Person, bool>> endpoint = person => person.Age >= 18;
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Both,
+            new Cvoya.Graph.Querying.DepthRange(1, int.MaxValue),
+            [],
+            typeof(Person),
+            typeof(Knows))
+        {
+            PathSelection = TraversalPathSelection.AllShortest,
+            TargetPredicates = [new PredicateFragment(endpoint, null)],
+        };
+
+        var statement = planner.Plan(Model(
+            traversal: [step],
+            pathShape: new QueryPathShape(typeof(Person), typeof(Knows), typeof(Person))));
+
+        var match = Assert.IsType<MatchClause>(statement.Clauses[0]);
+        Assert.Equal(PathSelection.AllShortest, Assert.Single(match.Patterns).Selection);
+        var where = Assert.IsType<WhereClause>(statement.Clauses[1]);
+        Assert.Contains(Descendants(where.Predicate), expression => expression is PropertyAccess { Target: VariableRef { Alias: "tgt" } });
+    }
+
+    [Fact]
     public void Plan_VariableTraversalRelationshipPredicate_LowersToAllQuantifier()
     {
         Expression<Func<Knows, bool>> predicate = relationship => relationship.Id != "blocked";

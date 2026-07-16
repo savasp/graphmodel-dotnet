@@ -58,6 +58,22 @@ public static class GraphQueryModelValidator
             }
 
             ValidatePredicateList(step.RelationshipPredicates, typeof(IRelationship), $"Traversal step {i} relationship predicate");
+            ValidatePredicateList(
+                step.TargetPredicates,
+                step.TargetType ?? typeof(INode),
+                $"Traversal step {i} endpoint predicate");
+
+            if (!Enum.IsDefined(step.PathSelection))
+            {
+                throw new GraphException($"Traversal step {i} has an invalid path selection.");
+            }
+
+            if (step.PathSelection != TraversalPathSelection.All &&
+                (step.IsComplexPropertyTraversal || step.Depth.Min < 1))
+            {
+                throw new GraphException(
+                    $"Traversal step {i} uses shortest-path selection but is not a positive-depth explicit traversal.");
+            }
 
             if (!step.IsComplexPropertyTraversal)
             {

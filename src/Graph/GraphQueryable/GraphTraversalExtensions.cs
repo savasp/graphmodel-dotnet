@@ -330,6 +330,102 @@ public static class GraphTraversalExtensions
     }
 
     /// <summary>
+    /// Returns one minimum-hop path from each source node to each reachable endpoint of type
+    /// <typeparamref name="TEnd"/>. At least one relationship must be traversed.
+    /// </summary>
+    /// <typeparam name="TRel">The relationship type to traverse.</typeparam>
+    /// <typeparam name="TEnd">The endpoint node type.</typeparam>
+    /// <param name="source">The source queryable of starting nodes.</param>
+    /// <param name="direction">The traversal direction.</param>
+    /// <returns>A queryable of minimum-hop paths.</returns>
+    public static IGraphQueryable<IGraphPath> ShortestPath<TRel, TEnd>(
+        this IGraphQueryable<INode> source,
+        GraphTraversalDirection direction = GraphTraversalDirection.Outgoing)
+        where TRel : class, IRelationship
+        where TEnd : class, INode => BuildShortestPath<TRel, TEnd>(source, direction, null, nameof(ShortestPath));
+
+    /// <summary>
+    /// Returns one minimum-hop path from each source node to each endpoint satisfying
+    /// <paramref name="endpointPredicate"/>. At least one relationship must be traversed.
+    /// </summary>
+    /// <typeparam name="TRel">The relationship type to traverse.</typeparam>
+    /// <typeparam name="TEnd">The endpoint node type.</typeparam>
+    /// <param name="source">The source queryable of starting nodes.</param>
+    /// <param name="endpointPredicate">A predicate applied to candidate endpoint nodes.</param>
+    /// <param name="direction">The traversal direction.</param>
+    /// <returns>A queryable of minimum-hop paths.</returns>
+    public static IGraphQueryable<IGraphPath> ShortestPath<TRel, TEnd>(
+        this IGraphQueryable<INode> source,
+        Expression<Func<TEnd, bool>> endpointPredicate,
+        GraphTraversalDirection direction = GraphTraversalDirection.Outgoing)
+        where TRel : class, IRelationship
+        where TEnd : class, INode
+    {
+        ArgumentNullException.ThrowIfNull(endpointPredicate);
+        return BuildShortestPath<TRel, TEnd>(source, direction, endpointPredicate, nameof(ShortestPath));
+    }
+
+    /// <summary>
+    /// Returns every path tied for the minimum hop count from each source node to each reachable
+    /// endpoint of type <typeparamref name="TEnd"/>. At least one relationship must be traversed.
+    /// </summary>
+    /// <typeparam name="TRel">The relationship type to traverse.</typeparam>
+    /// <typeparam name="TEnd">The endpoint node type.</typeparam>
+    /// <param name="source">The source queryable of starting nodes.</param>
+    /// <param name="direction">The traversal direction.</param>
+    /// <returns>A queryable containing all equally short paths.</returns>
+    public static IGraphQueryable<IGraphPath> AllShortestPaths<TRel, TEnd>(
+        this IGraphQueryable<INode> source,
+        GraphTraversalDirection direction = GraphTraversalDirection.Outgoing)
+        where TRel : class, IRelationship
+        where TEnd : class, INode => BuildShortestPath<TRel, TEnd>(source, direction, null, nameof(AllShortestPaths));
+
+    /// <summary>
+    /// Returns every path tied for the minimum hop count from each source node to each endpoint
+    /// satisfying <paramref name="endpointPredicate"/>. At least one relationship must be traversed.
+    /// </summary>
+    /// <typeparam name="TRel">The relationship type to traverse.</typeparam>
+    /// <typeparam name="TEnd">The endpoint node type.</typeparam>
+    /// <param name="source">The source queryable of starting nodes.</param>
+    /// <param name="endpointPredicate">A predicate applied to candidate endpoint nodes.</param>
+    /// <param name="direction">The traversal direction.</param>
+    /// <returns>A queryable containing all equally short paths.</returns>
+    public static IGraphQueryable<IGraphPath> AllShortestPaths<TRel, TEnd>(
+        this IGraphQueryable<INode> source,
+        Expression<Func<TEnd, bool>> endpointPredicate,
+        GraphTraversalDirection direction = GraphTraversalDirection.Outgoing)
+        where TRel : class, IRelationship
+        where TEnd : class, INode
+    {
+        ArgumentNullException.ThrowIfNull(endpointPredicate);
+        return BuildShortestPath<TRel, TEnd>(source, direction, endpointPredicate, nameof(AllShortestPaths));
+    }
+
+    private static IGraphQueryable<IGraphPath> BuildShortestPath<TRel, TEnd>(
+        IGraphQueryable<INode> source,
+        GraphTraversalDirection direction,
+        Expression<Func<TEnd, bool>>? endpointPredicate,
+        string methodName)
+        where TRel : class, IRelationship
+        where TEnd : class, INode
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (!Enum.IsDefined(direction))
+            throw new ArgumentOutOfRangeException(nameof(direction));
+
+        var parameterCount = endpointPredicate is null ? 2 : 3;
+        var method = GetGenericExtensionMethod(
+            typeof(GraphTraversalExtensions),
+            methodName,
+            genericArgCount: 2,
+            parameterCount).MakeGenericMethod(typeof(TRel), typeof(TEnd));
+        var arguments = endpointPredicate is null
+            ? new Expression[] { source.Expression, Expression.Constant(direction) }
+            : [source.Expression, Expression.Quote(endpointPredicate), Expression.Constant(direction)];
+        return source.Provider.CreateQuery<IGraphPath>(Expression.Call(null, method, arguments));
+    }
+
+    /// <summary>
     /// Traverses a variable-length path of relationships of the specified type, configured via
     /// an options lambda (depth range and/or direction), and returns the resulting
     /// <see cref="IGraphPath"/> instances.

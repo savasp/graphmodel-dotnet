@@ -1551,5 +1551,73 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Equal([bob.Id], incoming.Select(person => person.Id).Order().ToArray());
     }
 
+    [Fact]
+    [RequiresCapability(GraphCapability.ShortestPath)]
+    public async Task ShortestPaths_PinSelectionEndpointDirectionNoPathAndSameNodeSemantics()
+    {
+        var marker = $"Shortest-{Guid.NewGuid():N}";
+        var start = new Person { FirstName = $"{marker}-start" };
+        var left = new Person { FirstName = $"{marker}-left" };
+        var right = new Person { FirstName = $"{marker}-right" };
+        var detour = new Person { FirstName = $"{marker}-detour" };
+        var end = new Person { FirstName = $"{marker}-end" };
+        var missing = new Person { FirstName = $"{marker}-missing" };
+
+        foreach (var person in new[] { start, left, right, detour, end, missing })
+        {
+            await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        }
+
+        foreach (var (from, to) in new[]
+        {
+            (start, left),
+            (left, end),
+            (start, right),
+            (right, end),
+            (start, detour),
+            (detour, left),
+            (end, start),
+            (start, start),
+        })
+        {
+            await Graph.CreateRelationshipAsync(
+                new Knows(from, to),
+                null,
+                TestContext.Current.CancellationToken);
+        }
+
+        var oneShortest = await Graph.Nodes<Person>()
+            .Where(person => person.Id == start.Id)
+            .ShortestPath<Knows, Person>(person => person.Id == end.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var allShortest = await Graph.Nodes<Person>()
+            .Where(person => person.Id == start.Id)
+            .AllShortestPaths<Knows, Person>(person => person.Id == end.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var incoming = await Graph.Nodes<Person>()
+            .Where(person => person.Id == end.Id)
+            .ShortestPath<Knows, Person>(
+                person => person.Id == start.Id,
+                GraphTraversalDirection.Incoming)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var noPath = await Graph.Nodes<Person>()
+            .Where(person => person.Id == start.Id)
+            .ShortestPath<Knows, Person>(person => person.Id == missing.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var sameNode = await Graph.Nodes<Person>()
+            .Where(person => person.Id == start.Id)
+            .ShortestPath<Knows, Person>(person => person.Id == start.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(oneShortest);
+        Assert.Equal(2, oneShortest[0].Segments.Count);
+        Assert.Equal(2, allShortest.Count);
+        Assert.All(allShortest, path => Assert.Equal(2, path.Segments.Count));
+        Assert.Single(incoming);
+        Assert.Equal(2, incoming[0].Segments.Count);
+        Assert.Empty(noPath);
+        Assert.Empty(sameNode); // shortest-path queries require at least one hop and exclude the source endpoint.
+    }
+
     #endregion
 }

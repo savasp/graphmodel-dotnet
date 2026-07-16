@@ -521,6 +521,17 @@ materialized results on the client. Apply `WhereHasRelationship` before `Select`
 the shared validator rejects the reverse order. AGE deliberately declines this capability. No
 stored-data migration is required.
 
+## 25. Typed shortest-path traversal
+
+Use `ShortestPath<TRel, TEnd>(endpointPredicate?, direction?)` to return one minimum-hop path per
+source/endpoint pair, or `AllShortestPaths<TRel, TEnd>(endpointPredicate?, direction?)` to retain
+all equal-length ties. Both return `IGraphQueryable<IGraphPath>`, infer the start type from the
+source, require at least one hop, and exclude the source itself as an endpoint.
+
+Custom providers must declare `GraphCapability.ShortestPath` only after implementing the gated
+compatibility contract. A provider that does not declare it rejects either operator at translation
+time. No stored-data migration is required.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

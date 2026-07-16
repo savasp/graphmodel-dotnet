@@ -15,7 +15,7 @@ public sealed record PathPattern
     /// </summary>
     /// <param name="elements">The alternating node and relationship elements in the path.</param>
     public PathPattern(IReadOnlyList<PatternElement> elements)
-        : this(elements, null)
+        : this(elements, null, PathSelection.All)
     {
     }
 
@@ -25,9 +25,28 @@ public sealed record PathPattern
     /// <param name="elements">The alternating node and relationship elements in the path.</param>
     /// <param name="alias">The optional alias bound to the complete path.</param>
     public PathPattern(IReadOnlyList<PatternElement> elements, string? alias)
+        : this(elements, alias, PathSelection.All)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PathPattern"/> class.
+    /// </summary>
+    /// <param name="elements">The alternating node and relationship elements in the path.</param>
+    /// <param name="alias">The optional alias bound to the complete path.</param>
+    /// <param name="selection">The path selection applied to the pattern.</param>
+    public PathPattern(
+        IReadOnlyList<PatternElement> elements,
+        string? alias,
+        PathSelection selection)
     {
         Elements = ArgumentValidation.RequiredList(elements, nameof(elements));
         Alias = ArgumentValidation.OptionalName(alias, nameof(alias));
+        if (!Enum.IsDefined(selection))
+            throw new ArgumentOutOfRangeException(nameof(selection));
+        if (selection != PathSelection.All && Alias is null)
+            throw new ArgumentException("A shortest-path pattern must bind a path alias.", nameof(alias));
+        Selection = selection;
         ValidateShape(Elements, nameof(elements));
     }
 
@@ -38,6 +57,9 @@ public sealed record PathPattern
 
     /// <summary>Gets the optional alias bound to the complete path.</summary>
     public string? Alias { get; }
+
+    /// <summary>Gets the path selection applied to this pattern.</summary>
+    public PathSelection Selection { get; }
 
     private static void ValidateShape(IReadOnlyList<PatternElement> elements, string parameterName)
     {

@@ -69,7 +69,6 @@ public sealed class ComplianceInventoryTests
         GraphCapability[] recordOnly =
         [
             GraphCapability.NestedTransactions,
-            GraphCapability.ShortestPath,
         ];
 
         var covered = typeof(IGraphTest).Assembly.GetTypes()

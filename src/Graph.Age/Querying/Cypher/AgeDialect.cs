@@ -126,7 +126,9 @@ public sealed class AgeDialect : ICypherDialect
     public string RenderDepth(DepthRange depth)
     {
         ArgumentNullException.ThrowIfNull(depth);
-        return $"*{depth.Min}..{depth.Max}";
+        return depth.Max == int.MaxValue
+            ? $"*{depth.Min}.."
+            : $"*{depth.Min}..{depth.Max}";
     }
 
     /// <inheritdoc/>
