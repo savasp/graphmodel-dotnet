@@ -208,8 +208,12 @@ the capability because its supported openCypher subset does not preserve these s
 `SetOperations` gates typed and standard-LINQ `Union` plus typed `Concat`. Both operands are planned
 independently with disjoint parameter namespaces. `Union` uses distinct row semantics; `Concat`
 uses `UNION ALL` and must not acquire implicit distinctness. Providers validate compatible entity
-or scalar projection shapes at the shared model boundary. Neo4j and in-memory implement the
-contract; AGE declines it at translation time.
+or scalar projection shapes at the shared model boundary. Repeated same-kind left chains are
+represented as recursive binary `UnionFragment` models: `Union` removes duplicates across the
+complete tree, while `Concat` preserves operand order and duplicates. Parameter prefixes must remain
+disjoint recursively. Flat mixed chains are rejected by the builder; explicitly nested mixed trees
+retain their declared grouping. Neo4j and in-memory implement the contract; AGE declines it at
+translation time.
 
 `PatternSizeProjection` gates every relationship-count pattern subquery a projection can produce: both complex-property collection sizes (`.Offices.Count`) and the node relationship-count (degree) surface `CountRelationships<TRel>(direction)`, which lowers to a `COUNT { MATCH (src)-[:REL]->() }` / `size((src)-[:REL]->())` subquery. Relationship direction is physical (matching traversal), compatible derived relationship labels participate, and an undirected self-loop counts once. A provider that declines the capability rejects both at translation time.
 

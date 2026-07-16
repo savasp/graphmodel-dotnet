@@ -101,16 +101,83 @@ public class GraphQueryModelBuilderTests
             source.OfLabels((GraphLabelMatch)int.MaxValue, "Person"));
     }
 
-    [Fact]
-    public void LabelFilter_AfterProjectionOrPaging_IsRejectedAtTheSharedBoundary()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LabelFilter_AfterTraverse_ReportsTheImplicitTraversalBoundary(bool useMultipleLabels)
     {
-        var afterProjection = Root<Person>().Select(person => person).OfLabel("Person");
-        var afterPaging = Root<Person>().Take(5).OfLabel("Person");
+        var traversed = Root<Person>().Traverse<Knows, Person>();
+        var query = useMultipleLabels
+            ? traversed.OfLabels(GraphLabelMatch.Any, "Person", "Manager")
+            : traversed.OfLabel("Person");
 
-        Assert.Throws<GraphException>(() =>
-            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(afterProjection.Expression)));
-        Assert.Throws<GraphException>(() =>
-            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(afterPaging.Expression)));
+        var exception = Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(query.Expression)));
+
+        Assert.Equal(
+            "OfLabel and OfLabels cannot be applied after Traverse. Apply label filters to the source before traversal.",
+            exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Select")]
+    [InlineData("Skip")]
+    [InlineData("Take")]
+    public void LabelFilter_AfterExplicitSequenceBoundary_ReportsThatBoundary(string boundary)
+    {
+        var source = Root<Person>();
+        var query = boundary switch
+        {
+            "Select" => source.Select(person => person),
+            "Skip" => source.Skip(5),
+            "Take" => source.Take(5),
+            _ => throw new InvalidOperationException($"Unknown boundary '{boundary}'."),
+        };
+
+        var exception = Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(query.OfLabel("Person").Expression)));
+
+        var semanticBoundary = boundary == "Select" ? "projection" : "paging";
+        Assert.Equal(
+            $"OfLabel and OfLabels must be applied before {boundary} so label filtering cannot be silently " +
+            $"moved across a {semanticBoundary} boundary.",
+            exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Traverse")]
+    [InlineData("Select")]
+    [InlineData("Skip")]
+    [InlineData("Take")]
+    public void WhereHasRelationship_AfterSequenceBoundary_ReportsThatBoundary(string boundary)
+    {
+        var source = Root<Person>();
+        var query = boundary switch
+        {
+            "Traverse" => source.Traverse<Knows, Person>(),
+            "Select" => source.Select(person => person),
+            "Skip" => source.Skip(5),
+            "Take" => source.Take(5),
+            _ => throw new InvalidOperationException($"Unknown boundary '{boundary}'."),
+        };
+        var filtered = query.WhereHasRelationship<Person, Knows>(GraphTraversalDirection.Outgoing);
+
+        var exception = Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(filtered.Expression)));
+
+        var expected = boundary switch
+        {
+            "Traverse" =>
+                "WhereHasRelationship cannot be applied after Traverse. Apply the relationship-existence filter " +
+                "to the source before traversal.",
+            "Select" =>
+                "WhereHasRelationship must be applied before Select so relationship existence cannot be silently " +
+                "moved across a projection boundary.",
+            _ =>
+                $"WhereHasRelationship must be applied before {boundary} so relationship existence cannot be " +
+                "silently moved across a paging boundary.",
+        };
+        Assert.Equal(expected, exception.Message);
     }
 
     [Theory]
@@ -848,17 +915,94 @@ public class GraphQueryModelBuilderTests
         GraphQueryModelValidator.Validate(model);
     }
 
-    [Fact]
-    public void ChainedUnion_ThrowsInsteadOfProducingLossyModel()
+    [Theory]
+    [InlineData(SetOperationKind.Union)]
+    [InlineData(SetOperationKind.Concat)]
+    public void SameKindLeftChainedSetOperation_ProducesRecursiveBinaryModel(SetOperationKind operation)
     {
-        var query = Root<Person>().AsQueryable()
-            .Union(Root<Person>())
-            .Union(Root<Person>());
+        var first = Root<Person>();
+        var second = Root<Person>().Where(person => person.Age >= 18);
+        var third = Root<Person>().Where(person => person.Age >= 65);
+        var query = operation == SetOperationKind.Union
+            ? first.Union(second).Union(third)
+            : first.Concat(second).Concat(third);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var outer = Assert.IsType<UnionFragment>(model.Union);
+        Assert.Equal(operation, outer.Operation);
+        Assert.Equal(operation, Assert.IsType<UnionFragment>(outer.First.Union).Operation);
+        Assert.Null(outer.Second.Union);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void StandardQueryableUnion_LeftChainUsesTheSameRecursiveModel()
+    {
+        IQueryable<Person> first = Root<Person>();
+        IQueryable<Person> second = Root<Person>().Where(person => person.Age >= 18);
+        IQueryable<Person> third = Root<Person>().Where(person => person.Age >= 65);
+        var query = first.Union(second).Union(third);
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var outer = Assert.IsType<UnionFragment>(model.Union);
+        Assert.Equal(SetOperationKind.Union, outer.Operation);
+        Assert.Equal(SetOperationKind.Union, Assert.IsType<UnionFragment>(outer.First.Union).Operation);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Theory]
+    [InlineData(SetOperationKind.Union, SetOperationKind.Concat)]
+    [InlineData(SetOperationKind.Concat, SetOperationKind.Union)]
+    public void MixedFlatSetOperationChain_ReportsHowToSupplyGrouping(
+        SetOperationKind firstOperation,
+        SetOperationKind secondOperation)
+    {
+        var first = Root<Person>();
+        var second = Root<Person>();
+        var third = Root<Person>();
+        var firstPair = Combine(first, second, firstOperation);
+        var query = Combine(firstPair, third, secondOperation);
 
         var exception = Assert.Throws<GraphQueryTranslationException>(() =>
             GraphQueryModelBuilder.Build(query.Expression));
 
-        Assert.Contains("Union", exception.Message);
+        Assert.Equal(
+            $"Cannot translate 'GraphQueryableExtensions.{secondOperation}': a flat set-operation chain cannot " +
+            $"apply {secondOperation} after {firstOperation}. Nest the intended grouping in the second operand " +
+            $"(for example, a.{firstOperation}(b.{secondOperation}(c))) or materialize the first set operation.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void ExplicitlyNestedMixedSetOperations_RetainTheirGrouping()
+    {
+        var first = Root<Person>();
+        var second = Root<Person>();
+        var third = Root<Person>();
+        var query = first.Union(second.Concat(third));
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        var outer = Assert.IsType<UnionFragment>(model.Union);
+        Assert.Equal(SetOperationKind.Union, outer.Operation);
+        Assert.Equal(SetOperationKind.Concat, Assert.IsType<UnionFragment>(outer.Second.Union).Operation);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
+    public void NonSetOperatorAfterSetOperation_RemainsRejected()
+    {
+        var query = Root<Person>().Union(Root<Person>()).Where(person => person.Age >= 18);
+
+        var exception = Assert.Throws<GraphQueryTranslationException>(() =>
+            GraphQueryModelBuilder.Build(query.Expression));
+
+        Assert.Equal(
+            "Cannot translate 'GraphQueryableExtensions.Where': operators after Union or Concat are not " +
+            "supported; materialize the combined query first.",
+            exception.Message);
     }
 
     [Fact]
@@ -1117,6 +1261,16 @@ public class GraphQueryModelBuilderTests
 #pragma warning disable CA1859
     private static IGraphQueryable<T> Root<T>() => new TestGraphQueryable<T>();
 #pragma warning restore CA1859
+
+    private static IGraphQueryable<T> Combine<T>(
+        IGraphQueryable<T> first,
+        IGraphQueryable<T> second,
+        SetOperationKind operation) => operation switch
+        {
+            SetOperationKind.Union => first.Union(second),
+            SetOperationKind.Concat => first.Concat(second),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+        };
 
     private static MethodCallExpression MarkerCall(
         string markerName,

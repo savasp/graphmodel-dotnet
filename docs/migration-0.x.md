@@ -549,7 +549,10 @@ row must stop declaring the capability. No stored-data migration is required.
 
 `IGraphQueryable<T>` now has graph-typed `Union` and `Concat` overloads. `Union` removes duplicate
 rows; `Concat` preserves them and lowers to `UNION ALL`. Compatible node and scalar projection
-operands are supported. Materialize a combined query before applying another sequence operator.
+operands are supported. Same-kind left chains such as `a.Union(b).Union(c)` and
+`a.Concat(b).Concat(c)` are supported. A flat chain cannot mix `Union` and `Concat`; nest the second
+operand to declare grouping or materialize the first operation. Other sequence operators still
+require materializing the combined query first.
 
 Custom providers must declare `GraphCapability.SetOperations` only after implementing both
 distinct and bag-preserving behavior with isolated operand parameters. AGE deliberately declines

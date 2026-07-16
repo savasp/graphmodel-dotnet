@@ -15,6 +15,10 @@ using static Cvoya.Graph.ExtensionUtils;
 public static class GraphQueryableExtensions
 {
     /// <summary>Combines two compatible graph queries and removes duplicate results.</summary>
+    /// <remarks>
+    /// Repeated <c>Union</c> calls compose as a recursive binary set operation. A flat chain cannot
+    /// mix <c>Union</c> and <c>Concat</c>; nest the second operand to supply explicit grouping.
+    /// </remarks>
     public static IGraphQueryable<TSource> Union<TSource>(
         this IGraphQueryable<TSource> source,
         IGraphQueryable<TSource> second)
@@ -26,7 +30,11 @@ public static class GraphQueryableExtensions
         return source.Provider.CreateQuery<TSource>(Expression.Call(null, method, source.Expression, second.Expression));
     }
 
-    /// <summary>Appends a compatible graph query while preserving duplicate results.</summary>
+    /// <summary>Appends a compatible graph query while preserving duplicate results and operand order.</summary>
+    /// <remarks>
+    /// Repeated <c>Concat</c> calls compose as a recursive binary set operation. A flat chain cannot
+    /// mix <c>Concat</c> and <c>Union</c>; nest the second operand to supply explicit grouping.
+    /// </remarks>
     public static IGraphQueryable<TSource> Concat<TSource>(
         this IGraphQueryable<TSource> source,
         IGraphQueryable<TSource> second)

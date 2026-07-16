@@ -27,9 +27,7 @@ public static class GraphQueryModelValidator
         {
             if (existence.AppliedAfterProjection || existence.AppliedAfterPaging)
             {
-                throw new GraphException(
-                    "WhereHasRelationship must be applied before Select, Skip, or Take so relationship " +
-                    "existence cannot be silently moved across a projection or paging boundary.");
+                throw new GraphException(RelationshipExistencePlacementMessage(existence.AppliedAfterBoundary));
             }
 
             if (existence.Predicate is { } predicate)
@@ -379,12 +377,47 @@ public static class GraphQueryModelValidator
 
             if (filter.AppliedAfterProjection || filter.AppliedAfterPaging)
             {
-                throw new GraphException(
-                    "OfLabel and OfLabels must be applied before Select, Skip, or Take so label filtering " +
-                    "cannot be silently moved across a projection or paging boundary.");
+                throw new GraphException(LabelFilterPlacementMessage(filter.AppliedAfterBoundary));
             }
         }
     }
+
+    private static string LabelFilterPlacementMessage(FilterPlacementBoundary? boundary) => boundary switch
+    {
+        FilterPlacementBoundary.Traverse =>
+            "OfLabel and OfLabels cannot be applied after Traverse. Apply label filters to the source before traversal.",
+        FilterPlacementBoundary.Select =>
+            "OfLabel and OfLabels must be applied before Select so label filtering cannot be silently moved " +
+            "across a projection boundary.",
+        FilterPlacementBoundary.Skip =>
+            "OfLabel and OfLabels must be applied before Skip so label filtering cannot be silently moved " +
+            "across a paging boundary.",
+        FilterPlacementBoundary.Take =>
+            "OfLabel and OfLabels must be applied before Take so label filtering cannot be silently moved " +
+            "across a paging boundary.",
+        _ =>
+            "OfLabel and OfLabels must be applied before Select, Skip, or Take so label filtering cannot be " +
+            "silently moved across a projection or paging boundary.",
+    };
+
+    private static string RelationshipExistencePlacementMessage(FilterPlacementBoundary? boundary) => boundary switch
+    {
+        FilterPlacementBoundary.Traverse =>
+            "WhereHasRelationship cannot be applied after Traverse. Apply the relationship-existence filter " +
+            "to the source before traversal.",
+        FilterPlacementBoundary.Select =>
+            "WhereHasRelationship must be applied before Select so relationship existence cannot be silently " +
+            "moved across a projection boundary.",
+        FilterPlacementBoundary.Skip =>
+            "WhereHasRelationship must be applied before Skip so relationship existence cannot be silently " +
+            "moved across a paging boundary.",
+        FilterPlacementBoundary.Take =>
+            "WhereHasRelationship must be applied before Take so relationship existence cannot be silently " +
+            "moved across a paging boundary.",
+        _ =>
+            "WhereHasRelationship must be applied before Select, Skip, or Take so relationship existence cannot " +
+            "be silently moved across a projection or paging boundary.",
+    };
 
     private static HashSet<string> CollectRootAliases(GraphQueryModel model)
     {

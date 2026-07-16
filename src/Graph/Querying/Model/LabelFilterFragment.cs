@@ -32,4 +32,7 @@ public sealed record LabelFilterFragment
 
     /// <summary>Gets whether the operator appeared after paging in the LINQ chain.</summary>
     public bool AppliedAfterPaging { get; init; }
+
+    /// <summary>Gets the most recent sequence boundary crossed by this filter.</summary>
+    internal FilterPlacementBoundary? AppliedAfterBoundary { get; init; }
 }
