@@ -202,6 +202,10 @@ public static class ScalarGroupByValidation
 
                     hasSelector = true;
                     break;
+                case nameof(Queryable.AsQueryable):
+                    // IGrouping implements IEnumerable, so AsQueryable is the adapter required to
+                    // express the Queryable aggregate overloads inside a group projection.
+                    break;
                 case nameof(Enumerable.Count) or nameof(Enumerable.LongCount):
                     if (hasAggregate)
                     {

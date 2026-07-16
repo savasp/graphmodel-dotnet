@@ -898,6 +898,10 @@ public sealed class CypherQueryPlanner
                     }
 
                     break;
+                case nameof(Queryable.AsQueryable):
+                    // IGrouping is enumerable rather than queryable. Treat its standard adapter as
+                    // transparent so Queryable aggregate overloads share the same lowering.
+                    break;
                 case nameof(Enumerable.Where):
                     predicate = predicate is null
                         ? ExtractRequiredLambda(call.Arguments[^1], "Where")

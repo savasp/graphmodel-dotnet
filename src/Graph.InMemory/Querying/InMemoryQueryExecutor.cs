@@ -1144,8 +1144,9 @@ internal sealed class InMemoryQueryExecutor(
     /// <summary>
     /// Groups the post-traversal/post-filter rows by the compiled key selector and yields one row
     /// per group whose <see cref="Row.Current"/> is an <see cref="IGrouping{TKey,TElement}"/> (or the
-    /// result-selector output). Nested <c>group.Select/Where/OrderBy/Count/LongCount/Average/Max/Min</c>
-    /// then materialize natively when the projection lambda runs.
+    /// result-selector output). Nested
+    /// <c>group.Select/Where/OrderBy/GroupBy/Count/LongCount/Sum/Average/Min/Max</c> operations then
+    /// materialize natively when the projection lambda runs.
     /// </summary>
     private IEnumerable<Row> GroupRows(IEnumerable<Row> rows, GroupByFragment groupBy)
     {

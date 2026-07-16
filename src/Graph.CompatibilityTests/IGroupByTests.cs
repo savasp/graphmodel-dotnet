@@ -99,6 +99,39 @@ public interface IGroupByTests : IGraphTest
     }
 
     [Fact]
+    public async Task GroupByScalarKey_QueryableLongCountProjectionForms()
+    {
+        var group = $"gb-queryable-longcount-{Guid.NewGuid():N}";
+        await SeedAsync(group);
+
+        var selectCounts = await Graph.Nodes<DepartmentMember>()
+            .Where(e => e.Name.StartsWith(group))
+            .GroupBy(e => e.Department)
+            .Select(g => new { Department = g.Key, Count = g.AsQueryable().LongCount() })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var resultSelectorCounts = await Graph.Nodes<DepartmentMember>()
+            .Where(e => e.Name.StartsWith(group))
+            .GroupBy(
+                e => e.Department,
+                (department, employees) => new
+                {
+                    Department = department,
+                    Count = employees.AsQueryable().LongCount(),
+                })
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        foreach (var counts in new[] { selectCounts, resultSelectorCounts })
+        {
+            var byDepartment = counts.ToDictionary(row => row.Department, row => row.Count);
+            Assert.Equal(3, byDepartment.Count);
+            Assert.Equal(2L, byDepartment[$"{group}:Sales"]);
+            Assert.Equal(3L, byDepartment[$"{group}:Engineering"]);
+            Assert.Equal(1L, byDepartment[$"{group}:Marketing"]);
+        }
+    }
+
+    [Fact]
     public async Task GroupByScalarKey_LongCountEmptySource_YieldsNoGroups()
     {
         var group = $"gb-longcount-empty-{Guid.NewGuid():N}";

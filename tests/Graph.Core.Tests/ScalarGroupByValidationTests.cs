@@ -41,6 +41,37 @@ public class ScalarGroupByValidationTests
         Assert.Null(reason);
     }
 
+    [Fact]
+    public void ParameterlessQueryableLongCount_SelectOverGrouping_IsSupported()
+    {
+        Expression<Func<Person, string>> key = person => person.Department;
+        Expression<Func<IGrouping<string, Person>, object>> projection =
+            g => new { Department = g.Key, Count = g.AsQueryable().LongCount() };
+
+        var reason = ScalarGroupByValidation.DescribeUnsupported(Model(
+            groupBy: new GroupByFragment(key, null, null),
+            projection: new ProjectionShape(ProjectionKind.Anonymous, projection)));
+
+        Assert.Null(reason);
+    }
+
+    [Fact]
+    public void ParameterlessQueryableLongCount_ResultSelector_IsSupported()
+    {
+        Expression<Func<Person, string>> key = person => person.Department;
+        Expression<Func<string, IEnumerable<Person>, object>> resultSelector =
+            (department, people) => new
+            {
+                Department = department,
+                Count = people.AsQueryable().LongCount(),
+            };
+
+        var reason = ScalarGroupByValidation.DescribeUnsupported(Model(
+            groupBy: new GroupByFragment(key, null, resultSelector)));
+
+        Assert.Null(reason);
+    }
+
     [Theory]
     [InlineData("Count")]
     [InlineData("LongCount")]
