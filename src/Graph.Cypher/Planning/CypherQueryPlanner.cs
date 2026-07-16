@@ -148,30 +148,21 @@ public sealed class CypherQueryPlanner
             : [];
 
         var clauses = new List<ICypherClause>();
-        IReadOnlyList<CypherExpression> finalPredicates = predicates;
-        if (state.ExplicitTraversal is [{ IsOptional: true } optionalStep])
-        {
-            clauses.Add(BuildRootMatch(model.Root, state.RootAlias));
-            clauses.AddRange(lowerer.NavigationMatches);
-            var sourcePredicates = predicates.Take(model.Predicates.Count).ToArray();
-            if (sourcePredicates.Length > 0)
-            {
-                clauses.Add(new WhereClause(sourcePredicates.Length == 1
-                    ? sourcePredicates[0]
-                    : new ConjunctionExpression(sourcePredicates)));
-            }
+        var optionalStep = state.ExplicitTraversal is [{ IsOptional: true } single] ? single : null;
 
-            clauses.Add(BuildTraversalMatch(model.Root, [optionalStep], pathAlias: null, optional: true));
-            finalPredicates = predicates.Skip(model.Predicates.Count).ToArray();
-        }
-        else
-        {
-            AddRootAndTraversalClauses(clauses, model, state);
-            AddSearchFilterClause(clauses, model.SearchFilter, state.SearchFilterParameter);
-            clauses.AddRange(lowerer.NavigationMatches);
-        }
+        // For an optional traversal, lower the root scope as if the query had no traversal, filter
+        // source rows with every lowered predicate (the validator guarantees an optional step
+        // carries no step-scoped predicates), and only then attach the left match. A predicate
+        // placed after the OPTIONAL MATCH would bind to it and null the target instead of
+        // eliminating the row.
+        AddRootAndTraversalClauses(
+            clauses,
+            model,
+            optionalStep is null ? state : state with { ExplicitTraversal = [] });
+        AddSearchFilterClause(clauses, model.SearchFilter, state.SearchFilterParameter);
+        clauses.AddRange(lowerer.NavigationMatches);
 
-        if (finalPredicates.Count > 0)
+        if (predicates.Count > 0)
         {
             if (lowerer.NavigationMatches.Count > 0)
             {
@@ -179,9 +170,14 @@ public sealed class CypherQueryPlanner
                 clauses.Add(WithClause.All);
             }
 
-            clauses.Add(new WhereClause(finalPredicates.Count == 1
-                ? finalPredicates[0]
-                : new ConjunctionExpression(finalPredicates)));
+            clauses.Add(new WhereClause(predicates.Count == 1
+                ? predicates[0]
+                : new ConjunctionExpression(predicates)));
+        }
+
+        if (optionalStep is not null)
+        {
+            clauses.Add(BuildTraversalMatch(model.Root, [optionalStep], pathAlias: null, optional: true));
         }
 
         if (model.PathShape is not null)
@@ -1281,11 +1277,11 @@ public sealed class CypherQueryPlanner
                     LowerRelationshipPredicate(lowerer, predicate.Predicate, iteratorAlias)));
             }
 
-
             var targetAlias = step.TargetAlias ?? (index == 0 ? "tgt" : $"tgt_{index + 1}");
             if (step.PathSelection != TraversalPathSelection.All)
             {
-                var sourceAlias = step.SourceAlias ?? (index == 0 ? state.RootAlias : $"tgt_{index}");
+                var sourceAlias = step.SourceAlias ??
+                    (index == 0 ? state.RootAlias : index == 1 ? "tgt" : $"tgt_{index}");
                 predicates.Add(new AstBinaryExpression(
                     CypherBinaryOperator.NotEqual,
                     new VariableRef(sourceAlias),
@@ -1770,17 +1766,6 @@ public sealed class CypherQueryPlanner
 
         if (state.ExplicitTraversal.Count > 0 && model.Root is NodeRoot or DynamicRoot)
         {
-            if (state.ExplicitTraversal is [{ IsOptional: true }])
-            {
-                clauses.Add(BuildRootMatch(model.Root, state.RootAlias));
-                clauses.Add(BuildTraversalMatch(
-                    model.Root,
-                    state.ExplicitTraversal,
-                    pathAlias: null,
-                    optional: true));
-                return;
-            }
-
             clauses.Add(BuildTraversalMatch(model.Root, state.ExplicitTraversal, model.PathShape is null ? null : "p"));
             return;
         }

@@ -1,0 +1,26 @@
+== Cypher ==
+CALL db.index.fulltext.queryNodes('node_fulltext_index', $p0) YIELD node AS n
+WHERE ('Person' IN labels(n) OR 'Manager' IN labels(n))
+OPTIONAL MATCH (n)-[r:KNOWS]->(tgt:Person|Manager)
+RETURN { Node: n, ComplexProperties: reduce(flat = [], propertyPath IN [
+            (n)-[propertyRelationships*1..5]->(propertyNode)
+            WHERE ALL(propertyRelationship IN propertyRelationships WHERE propertyRelationship.__graphModelComplexProperty = true) |
+            [i IN range(0, size(propertyRelationships) - 1) | {
+                ParentNode: startNode(propertyRelationships[i]),
+                Relationship: propertyRelationships[i],
+                SequenceNumber: propertyRelationships[i].SequenceNumber,
+                Property: endNode(propertyRelationships[i])
+            }]
+        ] | flat + propertyPath) } AS Source, CASE WHEN tgt IS NULL THEN null ELSE { Node: tgt, ComplexProperties: reduce(flat = [], propertyPath IN [
+            (tgt)-[propertyRelationships*1..5]->(propertyNode)
+            WHERE ALL(propertyRelationship IN propertyRelationships WHERE propertyRelationship.__graphModelComplexProperty = true) |
+            [i IN range(0, size(propertyRelationships) - 1) | {
+                ParentNode: startNode(propertyRelationships[i]),
+                Relationship: propertyRelationships[i],
+                SequenceNumber: propertyRelationships[i].SequenceNumber,
+                Property: endNode(propertyRelationships[i])
+            }]
+        ] | flat + propertyPath) } END AS Target
+
+== Parameters ==
+p0 = "alice"

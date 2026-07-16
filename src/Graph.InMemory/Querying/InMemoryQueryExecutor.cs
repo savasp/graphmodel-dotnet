@@ -480,46 +480,16 @@ internal sealed class InMemoryQueryExecutor(
             yield return zeroRow;
         }
 
-        var candidates = new List<(List<Hop> Path, NodeRecord TargetRecord, INode TargetEntity)>();
-        var sourceRecordKey = NodeRecordsById(sourceNode.Id)
-            .FirstOrDefault(record => record.ActualType == sourceNode.GetType())?.Key;
-        foreach (var path in ExpandPaths(sourceNode.Id, step, maxDepth))
-        {
-            _cancellationToken.ThrowIfCancellationRequested();
-            if (path.Count < Math.Max(minDepth, 1))
-            {
-                continue;
-            }
-
-            var finalRecord = path[^1].Target;
-            if (step.PathSelection != TraversalPathSelection.All && finalRecord.Key == sourceRecordKey)
-            {
-                continue;
-            }
-
-            var resolved = EntityReader.ResolveNodeType(finalRecord, step.TargetType ?? typeof(INode));
-            if (step.TargetType is { } targetType && !targetType.IsAssignableFrom(resolved))
-            {
-                continue;
-            }
-
-            var targetEntity = (INode)_reader.MaterializeNode(finalRecord, _state, step.TargetType ?? typeof(INode));
-            if (step.TargetPredicates.Any(predicate => !EvaluatePredicate(predicate.Predicate, targetEntity)))
-            {
-                continue;
-            }
-
-            candidates.Add((path, finalRecord, targetEntity));
-        }
-
+        // Selection over all candidates only materializes for shortest-path grouping; a plain
+        // traversal streams so a bounded terminal can stop the expansion early.
         IEnumerable<(List<Hop> Path, NodeRecord TargetRecord, INode TargetEntity)> selected =
             step.PathSelection switch
             {
-                TraversalPathSelection.All => candidates,
-                TraversalPathSelection.Shortest => candidates
+                TraversalPathSelection.All => Candidates(),
+                TraversalPathSelection.Shortest => Candidates()
                     .GroupBy(candidate => candidate.TargetRecord.Key)
                     .Select(group => group.OrderBy(candidate => candidate.Path.Count).First()),
-                TraversalPathSelection.AllShortest => candidates
+                TraversalPathSelection.AllShortest => Candidates()
                     .GroupBy(candidate => candidate.TargetRecord.Key)
                     .SelectMany(group =>
                     {
@@ -529,16 +499,10 @@ internal sealed class InMemoryQueryExecutor(
                 _ => throw new GraphException($"Path selection '{step.PathSelection}' is not supported."),
             };
 
-        if (step.IsOptional && candidates.Count == 0)
-        {
-            var optionalRow = row.Clone();
-            optionalRow.Bindings[targetAlias] = null;
-            optionalRow.Current = null;
-            yield return optionalRow;
-        }
-
+        var matched = false;
         foreach (var candidate in selected)
         {
+            matched = true;
             var path = candidate.Path;
             var finalRecord = candidate.TargetRecord;
             var targetEntity = candidate.TargetEntity;
@@ -561,6 +525,51 @@ internal sealed class InMemoryQueryExecutor(
             }
 
             yield return newRow;
+        }
+
+        if (step.IsOptional && !matched)
+        {
+            var optionalRow = row.Clone();
+            optionalRow.Bindings[targetAlias] = null;
+            optionalRow.Current = null;
+            yield return optionalRow;
+        }
+
+        IEnumerable<(List<Hop> Path, NodeRecord TargetRecord, INode TargetEntity)> Candidates()
+        {
+            // Shortest-path selection never returns the source itself, matching the shared contract.
+            var sourceRecordKey = step.PathSelection == TraversalPathSelection.All
+                ? null
+                : NodeRecordsById(sourceNode.Id)
+                    .FirstOrDefault(record => record.ActualType == sourceNode.GetType())?.Key;
+            foreach (var path in ExpandPaths(sourceNode.Id, step, maxDepth))
+            {
+                _cancellationToken.ThrowIfCancellationRequested();
+                if (path.Count < Math.Max(minDepth, 1))
+                {
+                    continue;
+                }
+
+                var finalRecord = path[^1].Target;
+                if (step.PathSelection != TraversalPathSelection.All && finalRecord.Key == sourceRecordKey)
+                {
+                    continue;
+                }
+
+                var resolved = EntityReader.ResolveNodeType(finalRecord, step.TargetType ?? typeof(INode));
+                if (step.TargetType is { } targetType && !targetType.IsAssignableFrom(resolved))
+                {
+                    continue;
+                }
+
+                var targetEntity = (INode)_reader.MaterializeNode(finalRecord, _state, step.TargetType ?? typeof(INode));
+                if (step.TargetPredicates.Any(predicate => !EvaluatePredicate(predicate.Predicate, targetEntity)))
+                {
+                    continue;
+                }
+
+                yield return (path, finalRecord, targetEntity);
+            }
         }
     }
 

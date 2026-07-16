@@ -8,11 +8,11 @@ namespace Cvoya.Graph.Cypher.Planning;
 internal sealed class CypherParameterRegistry
 {
     private readonly Dictionary<string, object?> _parameters = new(StringComparer.Ordinal);
-    private readonly string prefix;
+    private readonly string _prefix;
 
     public CypherParameterRegistry(string prefix = "")
     {
-        this.prefix = prefix ?? throw new ArgumentNullException(nameof(prefix));
+        _prefix = prefix ?? throw new ArgumentNullException(nameof(prefix));
     }
 
     public IReadOnlyDictionary<string, object?> Parameters => _parameters;
@@ -28,7 +28,7 @@ internal sealed class CypherParameterRegistry
             }
         }
 
-        var parameterName = $"{prefix}p{_parameters.Count}";
+        var parameterName = $"{_prefix}p{_parameters.Count}";
         _parameters.Add(parameterName, normalized);
         return new QueryParameter(parameterName);
     }

@@ -220,6 +220,48 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
+    public void OptionalTraverse_AfterAnotherTraversal_IsRejectedAtTheSharedBoundary()
+    {
+        var query = Root<Person>()
+            .Traverse<Knows, Person>()
+            .OptionalTraverse<Knows, Company>();
+
+        var exception = Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(query.Expression)));
+
+        Assert.Contains("optional", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void OptionalTraverse_OrderByOverOptionalResult_IsRejectedAtTheSharedBoundary()
+    {
+        var query = Root<Person>()
+            .OptionalTraverse<Knows, Company>()
+            .OrderBy(result => result.Source.Id);
+
+        var exception = Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(query.Expression)));
+
+        Assert.Contains("OrderBy after OptionalTraverse", exception.Message);
+    }
+
+    [Fact]
+    public void OptionalTraverse_DistinctAndAggregateTerminals_AreRejectedAtTheSharedBoundary()
+    {
+        var distinct = Root<Person>().OptionalTraverse<Knows, Company>().Distinct();
+        var count = MarkerCall(
+            "CountAsyncMarker",
+            [typeof(OptionalTraversalResult<Company>)],
+            Root<Person>().OptionalTraverse<Knows, Company>().Expression,
+            []);
+
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(distinct.Expression)));
+        Assert.Throws<GraphException>(() =>
+            GraphQueryModelValidator.Validate(GraphQueryModelBuilder.Build(count)));
+    }
+
+    [Fact]
     public void TraversalOptions_RelationshipPredicateIsCarriedByTraversalStep()
     {
         var query = Root<Person>().TraversePaths<Knows, Company>(options => options

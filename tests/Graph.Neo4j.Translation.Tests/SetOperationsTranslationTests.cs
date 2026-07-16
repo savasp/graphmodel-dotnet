@@ -32,7 +32,7 @@ public class SetOperationsTranslationTests : TranslationTestBase
     /// uses the same shared set-operation model as the graph-typed overload.
     /// </summary>
     [Fact]
-    public Task Union_ThrowsNotImplemented()
+    public Task Union_RendersDistinctSetOperation()
     {
         IQueryable<Person> first = Root.Nodes<Person>().Where(p => p.Age > 30);
         IQueryable<Person> second = Root.Nodes<Person>().Where(p => p.LastName == "Smith");

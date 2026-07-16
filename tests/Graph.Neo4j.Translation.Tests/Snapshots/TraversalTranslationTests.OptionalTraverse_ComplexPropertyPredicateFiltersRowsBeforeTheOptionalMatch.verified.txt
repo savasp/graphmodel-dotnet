@@ -1,0 +1,28 @@
+== Cypher ==
+MATCH (src:Person|Manager)
+OPTIONAL MATCH (src)-[:HomeAddress]->(src_homeaddress:Address)
+WITH *
+WHERE src_homeaddress.City = $p0
+OPTIONAL MATCH (src:Person|Manager)-[r:KNOWS]->(tgt:Person|Manager)
+RETURN { Node: src, ComplexProperties: reduce(flat = [], propertyPath IN [
+            (src)-[propertyRelationships*1..5]->(propertyNode)
+            WHERE ALL(propertyRelationship IN propertyRelationships WHERE propertyRelationship.__graphModelComplexProperty = true) |
+            [i IN range(0, size(propertyRelationships) - 1) | {
+                ParentNode: startNode(propertyRelationships[i]),
+                Relationship: propertyRelationships[i],
+                SequenceNumber: propertyRelationships[i].SequenceNumber,
+                Property: endNode(propertyRelationships[i])
+            }]
+        ] | flat + propertyPath) } AS Source, CASE WHEN tgt IS NULL THEN null ELSE { Node: tgt, ComplexProperties: reduce(flat = [], propertyPath IN [
+            (tgt)-[propertyRelationships*1..5]->(propertyNode)
+            WHERE ALL(propertyRelationship IN propertyRelationships WHERE propertyRelationship.__graphModelComplexProperty = true) |
+            [i IN range(0, size(propertyRelationships) - 1) | {
+                ParentNode: startNode(propertyRelationships[i]),
+                Relationship: propertyRelationships[i],
+                SequenceNumber: propertyRelationships[i].SequenceNumber,
+                Property: endNode(propertyRelationships[i])
+            }]
+        ] | flat + propertyPath) } END AS Target
+
+== Parameters ==
+p0 = "Seattle"

@@ -44,7 +44,9 @@ public sealed class ComplianceInventoryTests
     // +5 for #318: three correlated-composition cases and two scalar-projection parity cases.
     // +6 for #96: relationship expansion/existence (2), shortest paths, public optional traversal,
     // typed set operations, and label filtering capability contracts.
-    private const int ExpectedTotalTestMethods = 416;
+    // +1 for the #348 review: a source label filter eliminates rows through an optional traversal
+    // instead of degrading into a preserved null-target row.
+    private const int ExpectedTotalTestMethods = 417;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

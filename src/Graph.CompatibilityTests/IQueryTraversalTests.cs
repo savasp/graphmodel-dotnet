@@ -1677,6 +1677,37 @@ public interface IQueryTraversalTests : IGraphTest
     }
 
     [Fact]
+    [RequiresCapability(GraphCapability.OptionalTraversal)]
+    [RequiresCapability(GraphCapability.LabelFiltering)]
+    public async Task OptionalTraverse_SourceLabelFilterEliminatesRowsBeforeTheLeftMatch()
+    {
+        var marker = $"OptionalFilter-{Guid.NewGuid():N}";
+        var manager = new Manager { FirstName = $"{marker}-manager", Department = "Ops" };
+        var person = new Person { FirstName = $"{marker}-person" };
+        var target = new Person { FirstName = $"{marker}-target" };
+
+        await Graph.CreateNodeAsync(manager, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(person, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(target, null, TestContext.Current.CancellationToken);
+        await Graph.CreateRelationshipAsync(
+            new Knows(person, target),
+            null,
+            TestContext.Current.CancellationToken);
+
+        var results = await Graph.Nodes<Person>()
+            .Where(node => node.Id == manager.Id || node.Id == person.Id)
+            .OfLabel(nameof(Manager))
+            .OptionalTraverse<Knows, Person>()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // The label filter must eliminate the non-manager source entirely - even though it has a
+        // matching relationship - instead of degrading into a preserved row with a null target.
+        var result = Assert.Single(results);
+        Assert.Equal(manager.Id, result.Source.Id);
+        Assert.Null(result.Target);
+    }
+
+    [Fact]
     [RequiresCapability(GraphCapability.SetOperations)]
     public async Task TypedUnionAndConcat_PinDistinctBagAndScalarProjectionSemantics()
     {

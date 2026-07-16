@@ -4,7 +4,7 @@
 namespace Cvoya.Graph;
 
 using System.Linq.Expressions;
-using System.Reflection;
+using static ExtensionUtils;
 
 /// <summary>Graph-query filters based on the existence of typed relationships.</summary>
 public static class GraphRelationshipPredicateExtensions
@@ -58,12 +58,11 @@ public static class GraphRelationshipPredicateExtensions
         if (!Enum.IsDefined(direction))
             throw new ArgumentOutOfRangeException(nameof(direction));
 
-        var method = ((MethodInfo)MethodBase.GetCurrentMethod()!)
-            .DeclaringType!
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Single(candidate => candidate.Name == nameof(WhereHasRelationship) &&
-                candidate.GetGenericArguments().Length == 2)
-            .MakeGenericMethod(typeof(TNode), typeof(TRel));
+        var method = GetGenericExtensionMethod(
+            typeof(GraphRelationshipPredicateExtensions),
+            nameof(WhereHasRelationship),
+            genericArgCount: 2,
+            paramCount: 3).MakeGenericMethod(typeof(TNode), typeof(TRel));
         var expression = Expression.Call(
             null,
             method,

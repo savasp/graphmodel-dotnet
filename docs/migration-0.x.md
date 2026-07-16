@@ -536,7 +536,10 @@ time. No stored-data migration is required.
 
 `OptionalTraverse<TRel, TEnd>(direction?)` now exposes the provider-neutral left-traversal surface.
 It returns `OptionalTraversalResult<TEnd>` with the preserved `INode Source` and nullable
-`TEnd Target`. Filter source rows before the operator; projection and paging may follow it.
+`TEnd Target`. Filter source rows before the operator (predicates, label filters,
+relationship-existence filters, and full-text search all compose there); projection and paging may
+follow it. `Where`, `OrderBy`, `Distinct`, and aggregate terminals over the optional result are
+rejected at the shared model boundary, as is combining the operator with another traversal.
 
 Providers already declaring `GraphCapability.OptionalTraversal` must implement this public shape in
 addition to complex-property null propagation. Providers that cannot preserve an unmatched source

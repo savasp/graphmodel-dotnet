@@ -75,12 +75,25 @@ public static class GraphQueryModelValidator
                     $"Traversal step {i} uses shortest-path selection but is not a positive-depth explicit traversal.");
             }
 
+            if (step.PathSelection != TraversalPathSelection.All && model.PathShape is null)
+            {
+                throw new GraphException(
+                    $"Traversal step {i} uses shortest-path selection but the query does not produce paths.");
+            }
+
             if (step.IsOptional &&
                 (step.IsComplexPropertyTraversal || step.PathSelection != TraversalPathSelection.All ||
                  step.Depth is not { Min: 1, Max: 1 }))
             {
                 throw new GraphException(
                     $"Traversal step {i} is optional but is not a single-hop explicit traversal.");
+            }
+
+            if (step.IsOptional && model.Traversal.Count(other => !other.IsComplexPropertyTraversal) > 1)
+            {
+                throw new GraphException(
+                    $"Traversal step {i} is optional but does not operate directly on the query root; " +
+                    "an optional traversal cannot be combined with other traversal operators.");
             }
 
             if (!step.IsComplexPropertyTraversal)
@@ -110,6 +123,36 @@ public static class GraphQueryModelValidator
             throw new GraphException(
                 "Where after OptionalTraverse is not supported; filter source rows before the optional traversal " +
                 "or project the nullable target and continue client-side.");
+        }
+
+        if (model.Traversal.Any(step => step.IsOptional) &&
+            model.Ordering.Concat(model.PostPaging?.Ordering ?? []).Any(key =>
+                key.KeySelector.Parameters.Any(parameter =>
+                    parameter.Type.IsGenericType &&
+                    parameter.Type.GetGenericTypeDefinition() == typeof(OptionalTraversalResult<>))))
+        {
+            throw new GraphException(
+                "OrderBy after OptionalTraverse is not supported; order source rows before the optional traversal " +
+                "or materialize the results first.");
+        }
+
+        if (model.Projection?.Kind == ProjectionKind.OptionalTraversal &&
+            (model.Distinct || model.PostPaging?.Distinct == true))
+        {
+            throw new GraphException(
+                "Distinct after OptionalTraverse is not supported; project the source and target first " +
+                "or materialize the results.");
+        }
+
+        if (model.Projection?.Kind == ProjectionKind.OptionalTraversal &&
+            model.Terminal is TerminalOperation.Count or TerminalOperation.Any or TerminalOperation.All or
+                TerminalOperation.Sum or TerminalOperation.Average or TerminalOperation.Min or
+                TerminalOperation.Max or TerminalOperation.Contains)
+        {
+            throw new GraphException(
+                $"The terminal operation '{model.Terminal}' after OptionalTraverse is not supported because " +
+                "providers cannot aggregate over an unprojected nullable target; project the source and " +
+                "target first or materialize the results.");
         }
 
         for (var i = 0; i < model.Predicates.Count; i++)

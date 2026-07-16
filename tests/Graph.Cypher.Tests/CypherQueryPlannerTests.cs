@@ -183,6 +183,61 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_OptionalTraversal_AppliesEverySourceFilterBeforeTheOptionalMatch()
+    {
+        Expression<Func<Person, bool>> predicate = person => person.Age >= 18;
+        var step = new TraversalStep(
+            "KNOWS",
+            GraphTraversalDirection.Outgoing,
+            new Cvoya.Graph.Querying.DepthRange(1, 1),
+            [],
+            typeof(Person),
+            typeof(Knows),
+            false,
+            "src",
+            "tgt")
+        {
+            IsOptional = true,
+        };
+        var source = Expression.Parameter(typeof(Person), "source");
+        var target = Expression.Parameter(typeof(Person), "target");
+        var selector = Expression.Lambda(
+            Expression.New(
+                typeof(OptionalTraversalResult<Person>).GetConstructors().Single(),
+                Expression.Convert(source, typeof(INode)),
+                target),
+            source,
+            target);
+
+        var statement = planner.Plan(Model(
+            predicates: [new PredicateFragment(predicate, "src")],
+            traversal: [step],
+            projection: new ProjectionShape(ProjectionKind.OptionalTraversal, selector)) with
+        {
+            LabelFilters = [new LabelFilterFragment("src", ["Manager"], GraphLabelMatch.All)],
+            RelationshipExistence =
+            [
+                new RelationshipExistenceFragment(
+                    typeof(Knows),
+                    GraphTraversalDirection.Both,
+                    "src",
+                    predicate: null),
+            ],
+        });
+
+        // A filter placed after the OPTIONAL MATCH would attach to it and null the target instead
+        // of eliminating the source row, so every source-scoped filter must precede the left match.
+        Assert.False(Assert.IsType<MatchClause>(statement.Clauses[0]).Optional);
+        var where = Assert.IsType<WhereClause>(statement.Clauses[1]);
+        Assert.True(Assert.IsType<MatchClause>(statement.Clauses[2]).Optional);
+        var parts = Descendants(where.Predicate).ToArray();
+        Assert.Contains(parts, expression => expression is LabelTest);
+        Assert.Contains(
+            parts,
+            expression => expression is PatternSubqueryExpression { Kind: PatternSubqueryKind.Exists });
+    }
+
+    [Fact]
     public void Plan_Concat_UsesUnionAllAndDisjointBranchParameters()
     {
         Expression<Func<Person, bool>> firstPredicate = person => person.Age >= 18;

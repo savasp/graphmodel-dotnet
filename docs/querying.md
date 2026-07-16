@@ -245,9 +245,14 @@ var assignments = await graph.Nodes<Person>()
 ```
 
 Zero, one, and many matches therefore produce one, one, and many rows respectively;
-self-relationships are normal matches. Filter source rows before `OptionalTraverse`. A composed
-projection and paging are supported, but `Where` over `OptionalTraversalResult<TEnd>` is rejected at
-the shared model boundary because moving it around the left match changes null-preserving semantics.
+self-relationships are normal matches. Filter source rows before `OptionalTraverse` — predicates,
+label filters, relationship-existence filters, and full-text search applied before the operator all
+keep their row-elimination semantics. A composed projection and paging are supported, but `Where`,
+`OrderBy`, `Distinct`, and aggregate terminals over `OptionalTraversalResult<TEnd>` are rejected at
+the shared model boundary because moving them around the left match changes null-preserving
+semantics; materialize the results to continue client-side. The operator applies directly to a node
+scope: combining it with another traversal operator in the same query is rejected rather than
+silently losing the left match.
 
 ### Typed union and concatenation
 
@@ -291,8 +296,10 @@ var tagged = await graph.DynamicNodes()
 An empty label list is an identity operation. Label arguments are values, not query identifiers;
 the Cypher dialect renders them as escaped literals, so caller-supplied labels cannot change the
 query structure. Apply label filters before `Select`, `Skip`, or `Take`; the shared validator rejects
-the reverse order instead of silently moving a label predicate across that boundary. Providers that
-do not declare `GraphCapability.LabelFiltering` reject a non-empty label filter during translation.
+the reverse order instead of silently moving a label predicate across that boundary. Because
+`Traverse` composes an implicit projection, a label filter also cannot follow it — filter the
+traversal source before traversing instead. Providers that do not declare
+`GraphCapability.LabelFiltering` reject a non-empty label filter during translation.
 
 ## Projection and Results
 

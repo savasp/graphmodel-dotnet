@@ -129,6 +129,38 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task OptionalTraverse_AppliesLabelAndExistenceFiltersBeforeTheOptionalMatch()
+    {
+        var query = Root.Nodes<Person>()
+            .OfLabel("Manager")
+            .WhereHasRelationship<Person, WorksAt>(GraphTraversalDirection.Outgoing)
+            .Where(person => person.Age >= 18)
+            .OptionalTraverse<Knows, Person>();
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task OptionalTraverse_ComplexPropertyPredicateFiltersRowsBeforeTheOptionalMatch()
+    {
+        var query = Root.Nodes<Person>()
+            .Where(person => person.HomeAddress!.City == "Seattle")
+            .OptionalTraverse<Knows, Person>();
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
+    public Task OptionalTraverse_AfterFullTextSearchRoot_PreservesTheSearchScope()
+    {
+        var query = Root.Nodes<Person>()
+            .Search("Alice")
+            .OptionalTraverse<Knows, Person>();
+
+        return VerifyTranslation(query);
+    }
+
+    [Fact]
     public Task TypedUnion_RendersDistinctSetOperation()
     {
         var first = Root.Nodes<Person>().Where(person => person.Age >= 18);

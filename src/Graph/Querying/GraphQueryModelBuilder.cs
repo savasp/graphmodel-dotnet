@@ -940,11 +940,8 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
 
     private void HandleUnion(MethodCallExpression node, SetOperationKind operation)
     {
-        if (_union is not null)
-        {
-            throw Unsupported(node, "chained set operations cannot be represented by a single query model.");
-        }
-
+        // A chained set operation (a.Union(b).Union(c)) never reaches this handler: the generic
+        // after-set-operation guard in VisitMethodCall rejects the outer operator first.
         if (node.Arguments.Count < 2)
         {
             throw Unsupported(node, $"{operation} requires a second source.");
