@@ -557,7 +557,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           IS_PRERELEASE: ${{ needs.verify-version.outputs.is_prerelease }}
           RELEASE_INTRO: |
-            <p><a href="https://cvoya.com"><img src="https://cvoya.com/images/cvoya-logo-dark-blue.png" alt="CVOYA" width="180"></a></p>
+            <p><a href="https://cvoya.com"><img src="https://avatars.githubusercontent.com/u/275377123?s=200&v=4" alt="CVOYA" width="180"></a></p>
 
             **CVOYA Graph is downloadable open-source computer software published by [CVOYA](https://cvoya.com).** Download the tagged source archive (`cvoya-graph-source.zip`) below, or install the packages from [NuGet](https://www.nuget.org/profiles/cvoya).
 
