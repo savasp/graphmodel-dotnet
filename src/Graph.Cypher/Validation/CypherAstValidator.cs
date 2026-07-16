@@ -31,6 +31,17 @@ public sealed class CypherAstValidator : ICypherPass
         {
             switch (clause)
             {
+                case SetOperationClause setOperation:
+                    ValidateClauses(
+                        setOperation.First,
+                        new HashSet<string>(StringComparer.Ordinal),
+                        parameters);
+                    ValidateClauses(
+                        setOperation.Second,
+                        new HashSet<string>(StringComparer.Ordinal),
+                        parameters);
+                    break;
+
                 case CallSubqueryClause subquery:
                     foreach (var imported in subquery.ImportedVariables)
                     {

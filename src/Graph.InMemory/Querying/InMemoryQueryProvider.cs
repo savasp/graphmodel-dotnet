@@ -142,11 +142,6 @@ internal sealed class InMemoryQueryProvider : IGraphQueryProvider
                 CorrelatedGroupProjectionValidation.BuildMessage(correlatedReason));
         }
 
-        if (model.Union is not null)
-        {
-            throw new GraphException(
-                "Union operations are not yet fully implemented in the refactored architecture");
-        }
     }
 
     /// <summary>

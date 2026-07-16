@@ -20,12 +20,19 @@ namespace Cvoya.Graph.Cypher.Planning;
 public sealed class CypherQueryPlanner
 {
     private readonly ICypherDialect dialect;
+    private readonly string parameterPrefix;
 
     /// <summary>Initializes a planner for a specific Cypher dialect.</summary>
     /// <param name="dialect">The dialect whose capabilities constrain translation.</param>
     public CypherQueryPlanner(ICypherDialect dialect)
+        : this(dialect, "")
+    {
+    }
+
+    private CypherQueryPlanner(ICypherDialect dialect, string parameterPrefix)
     {
         this.dialect = dialect ?? throw new ArgumentNullException(nameof(dialect));
+        this.parameterPrefix = parameterPrefix;
         ArgumentException.ThrowIfNullOrWhiteSpace(dialect.Name);
     }
 
@@ -69,10 +76,21 @@ public sealed class CypherQueryPlanner
                 : PlanScalarGroupBy(model);
         }
 
-        if (model.Union is not null)
+        if (model.Union is { } setOperation)
         {
-            throw new GraphQueryTranslationException(
-                "Cannot plan the query: Union is not supported by graph query translation yet.");
+            RequireCapability(GraphCapability.SetOperations, setOperation.Operation.ToString());
+            GraphQueryModelValidator.Validate(model);
+            var first = new CypherQueryPlanner(dialect, $"{parameterPrefix}u0_").Plan(setOperation.First);
+            var second = new CypherQueryPlanner(dialect, $"{parameterPrefix}u1_").Plan(setOperation.Second);
+            var mergedParameters = first.Parameters
+                .Concat(second.Parameters)
+                .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
+            return new CypherStatement(
+                [new SetOperationClause(
+                    first.Clauses,
+                    second.Clauses,
+                    setOperation.Operation == SetOperationKind.Concat)],
+                mergedParameters);
         }
 
         // Unconditional: the model validator guards user-reachable semantic errors that Cypher cannot
@@ -80,7 +98,7 @@ public sealed class CypherQueryPlanner
         // query is negligible next to the network round-trip.
         GraphQueryModelValidator.Validate(model);
 
-        var parameters = new CypherParameterRegistry();
+        var parameters = new CypherParameterRegistry(parameterPrefix);
         var state = CreateState(model, parameters);
         var pathSegmentSourceAlias = model.Root is SearchRoot { Target: SearchRootTarget.Nodes }
             ? state.RootAlias
@@ -241,7 +259,7 @@ public sealed class CypherQueryPlanner
 
         GraphQueryModelValidator.Validate(model);
 
-        var parameters = new CypherParameterRegistry();
+        var parameters = new CypherParameterRegistry(parameterPrefix);
         var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
 
         var rootPredicates = new List<CypherExpression>();
@@ -362,7 +380,7 @@ public sealed class CypherQueryPlanner
 
         GraphQueryModelValidator.Validate(model);
 
-        var parameters = new CypherParameterRegistry();
+        var parameters = new CypherParameterRegistry(parameterPrefix);
         var lowerer = new ExpressionToCypherAstLowerer(parameters, dialect);
 
         var clauses = new List<ICypherClause> { BuildRootMatch(model.Root, "src") };

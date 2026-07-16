@@ -724,6 +724,18 @@ public class GraphQueryModelBuilderTests
     }
 
     [Fact]
+    public void TypedConcat_ProducesBagPreservingSetOperationAndGraphQueryableResult()
+    {
+        IGraphQueryable<Person> query = Root<Person>().Concat(Root<Person>().Where(person => person.Age > 30));
+
+        var model = GraphQueryModelBuilder.Build(query.Expression);
+
+        Assert.Equal(SetOperationKind.Concat, model.Union?.Operation);
+        Assert.Equal(typeof(Person), model.Union?.ElementType);
+        GraphQueryModelValidator.Validate(model);
+    }
+
+    [Fact]
     public void Union_WithProjectedUnrelatedRoots_ValidatesAtStringElementBoundary()
     {
         var query = Root<Person>().Select(person => person.Id)

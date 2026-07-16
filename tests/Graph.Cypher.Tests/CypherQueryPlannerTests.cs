@@ -183,6 +183,35 @@ public class CypherQueryPlannerTests
     }
 
     [Fact]
+    public void Plan_Concat_UsesUnionAllAndDisjointBranchParameters()
+    {
+        Expression<Func<Person, bool>> firstPredicate = person => person.Age >= 18;
+        Expression<Func<Person, bool>> secondPredicate = person => person.Age >= 65;
+        var first = Model(predicates: [new PredicateFragment(firstPredicate, "src")]);
+        var second = Model(predicates: [new PredicateFragment(secondPredicate, "src")]);
+
+        var statement = planner.Plan(Model(
+            union: new UnionFragment(first, second, typeof(Person), SetOperationKind.Concat)));
+
+        var setOperation = Assert.IsType<SetOperationClause>(Assert.Single(statement.Clauses));
+        Assert.True(setOperation.PreserveDuplicates);
+        Assert.Collection(
+            statement.Parameters.Keys.Order(),
+            name => Assert.Equal("u0_p0", name),
+            name => Assert.Equal("u1_p0", name));
+    }
+
+    [Fact]
+    public void Plan_MissingSetOperationsCapabilityFailsAtTranslation()
+    {
+        var operand = Model();
+
+        AssertMissingCapability(
+            GraphCapability.SetOperations,
+            Model(union: new UnionFragment(operand, operand, typeof(Person))));
+    }
+
+    [Fact]
     public void Plan_VariableTraversalRelationshipPredicate_LowersToAllQuantifier()
     {
         Expression<Func<Knows, bool>> predicate = relationship => relationship.Id != "blocked";
@@ -943,17 +972,6 @@ public class CypherQueryPlannerTests
         var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
 
         Assert.Contains("SelectMany is not supported by graph query translation yet; see #100.", exception.Message);
-    }
-
-    [Fact]
-    public void Plan_UnionModel_ThrowsDefinedTranslationError()
-    {
-        var operand = Model();
-        var model = Model(union: new UnionFragment(operand, operand, typeof(Person)));
-
-        var exception = Assert.Throws<GraphQueryTranslationException>(() => planner.Plan(model));
-
-        Assert.Contains("Union is not supported by graph query translation yet.", exception.Message);
     }
 
     [Fact]

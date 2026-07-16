@@ -19,10 +19,26 @@ public sealed record UnionFragment
     /// <param name="second">The second query model at the union boundary.</param>
     /// <param name="elementType">The element type shared by both operands at the union boundary.</param>
     public UnionFragment(GraphQueryModel first, GraphQueryModel second, Type elementType)
+        : this(first, second, elementType, SetOperationKind.Union)
+    {
+    }
+
+    /// <summary>Initializes a set-operation description.</summary>
+    /// <param name="first">The first query model at the operation boundary.</param>
+    /// <param name="second">The second query model at the operation boundary.</param>
+    /// <param name="elementType">The element type shared by both operands.</param>
+    /// <param name="operation">The distinct or bag-preserving operation.</param>
+    public UnionFragment(
+        GraphQueryModel first,
+        GraphQueryModel second,
+        Type elementType,
+        SetOperationKind operation)
     {
         First = first ?? throw new ArgumentNullException(nameof(first));
         Second = second ?? throw new ArgumentNullException(nameof(second));
         ElementType = elementType ?? throw new ArgumentNullException(nameof(elementType));
+        QueryModelGuard.RequireDefinedEnum(operation, nameof(operation));
+        Operation = operation;
     }
 
     /// <summary>Gets the first query model at the union boundary.</summary>
@@ -33,4 +49,7 @@ public sealed record UnionFragment
 
     /// <summary>Gets the element type shared by both operands at the union boundary.</summary>
     public Type ElementType { get; }
+
+    /// <summary>Gets the distinct or bag-preserving operation.</summary>
+    public SetOperationKind Operation { get; }
 }

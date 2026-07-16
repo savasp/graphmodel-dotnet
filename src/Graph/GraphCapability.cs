@@ -87,5 +87,8 @@ public enum GraphCapability
     /// Relationship predicates evaluated as part of traversal expansion and relationship-existence
     /// pattern matching.
     /// </summary>
-    RelationshipPredicates
+    RelationshipPredicates,
+
+    /// <summary>Typed distinct union and bag-preserving concatenation of compatible query shapes.</summary>
+    SetOperations
 }

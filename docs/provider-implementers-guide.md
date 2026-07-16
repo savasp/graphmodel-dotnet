@@ -52,7 +52,7 @@ Marker overload families to support:
 
 The current Neo4j visitor dispatch table covers:
 
-- Standard LINQ (both `System.Linq.Queryable`'s methods, reached when a chain degrades to plain `IQueryable<T>`, and `GraphQueryableExtensions`'s own graph-typed-chain-preserving equivalents): `Where`, `Select`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Take`, `Skip`, `Distinct`, `SelectMany`, `GroupBy`, `Join`, `Union`.
+- Standard LINQ (both `System.Linq.Queryable`'s methods, reached when a chain degrades to plain `IQueryable<T>`, and `GraphQueryableExtensions`'s own graph-typed-chain-preserving equivalents): `Where`, `Select`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Take`, `Skip`, `Distinct`, `SelectMany`, `GroupBy`, `Join`, `Union`, `Concat`.
 - Async marker terminals: `ToListAsyncMarker`, `ToArrayAsyncMarker`, `FirstAsyncMarker`, `FirstOrDefaultAsyncMarker`, `SingleAsyncMarker`, `SingleOrDefaultAsyncMarker`, `LastAsyncMarker`, `LastOrDefaultAsyncMarker`, `AnyAsyncMarker`, `AllAsyncMarker`, `CountAsyncMarker`, `LongCountAsyncMarker`, `SumAsyncMarker`, `AverageAsyncMarker`, `MinAsyncMarker`, `MaxAsyncMarker`, `ContainsAsyncMarker`, `ElementAtAsyncMarker`, `ElementAtOrDefaultAsyncMarker`.
 - Direct async names accepted by Neo4j (built by `QueryableAsyncExtensions.SumAsync`/`AverageAsync` alongside the marker path): `SumAsync`, `AverageAsync`.
 - Graph extensions: `PathSegments`, `TraversePaths`, `Direction`, `WithDepth` (the last two are `[Obsolete]` free-floating modifiers, still dispatched for backward compatibility — new code should use the depth/direction overloads on `Traverse`/`TraversePaths` or an options lambda), `Search`.
@@ -182,7 +182,7 @@ Implement `ICypherDialect` from `Cvoya.Graph.Cypher`. The interface owns every s
 
 `GetFunctionBehavior` distinguishes functions rendered by the backend, parameter-free functions evaluated on the client, and unsupported functions. Client evaluation binds a query parameter; it never inlines the value. A function marked `EvaluateOnClient` fails translation if its arguments depend on a server-side expression. AGE can therefore client-evaluate zero-argument temporal constructors without pretending to support temporal arithmetic over stored properties.
 
-Declare only supported capabilities. The planner rejects reachable unsupported constructs before execution with `GraphQueryTranslationException`; the message names the construct, the exact `GraphCapability` member, and the dialect. Current translation-time checks cover `FullTextSearch`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, `OrderByEntity`, `OptionalTraversal`, `GroupByAggregation`, `RelationshipPredicates`, and `ShortestPath`. Transaction capabilities remain execution/store concerns.
+Declare only supported capabilities. The planner rejects reachable unsupported constructs before execution with `GraphQueryTranslationException`; the message names the construct, the exact `GraphCapability` member, and the dialect. Current translation-time checks cover `FullTextSearch`, `CallSubqueries`, `PatternSizeProjection`, `MultiLabelMatch`, `OrderByEntity`, `OptionalTraversal`, `GroupByAggregation`, `RelationshipPredicates`, `ShortestPath`, and `SetOperations`. Transaction capabilities remain execution/store concerns.
 
 `RelationshipPredicates` gates both traversal-option `WhereRelationship` predicates and
 `WhereHasRelationship` existence patterns. A variable-length traversal applies its predicate to
@@ -198,6 +198,12 @@ predicate before selection, exclude the source as an endpoint, and return one or
 minimum positive hop count. Neo4j lowers these to `shortestPath(...)` and
 `allShortestPaths(...)`; in-memory performs the equivalent expansion-time selection. AGE declines
 the capability because its supported openCypher subset does not preserve these semantics.
+
+`SetOperations` gates typed and standard-LINQ `Union` plus typed `Concat`. Both operands are planned
+independently with disjoint parameter namespaces. `Union` uses distinct row semantics; `Concat`
+uses `UNION ALL` and must not acquire implicit distinctness. Providers validate compatible entity
+or scalar projection shapes at the shared model boundary. Neo4j and in-memory implement the
+contract; AGE declines it at translation time.
 
 `PatternSizeProjection` gates every relationship-count pattern subquery a projection can produce: both complex-property collection sizes (`.Offices.Count`) and the node relationship-count (degree) surface `CountRelationships<TRel>(direction)`, which lowers to a `COUNT { MATCH (src)-[:REL]->() }` / `size((src)-[:REL]->())` subquery. Relationship direction is physical (matching traversal), compatible derived relationship labels participate, and an undirected self-loop counts once. A provider that declines the capability rejects both at translation time.
 
@@ -354,6 +360,7 @@ Every optional `GraphCapability` is either certified by a `[RequiresCapability]`
 | `NestedTransactions` | _record only_ | — | — | — | — |
 | `RelationshipPredicates` | `IQueryTraversalTests.VariableTraversal_RelationshipPredicateFiltersEveryExpandedHop`, `IQueryTraversalTests.WhereHasRelationship_RespectsDirectionPredicateAndSelfRelationships` | method | pass | pass | skip |
 | `ShortestPath` | `IQueryTraversalTests.ShortestPaths_PinSelectionEndpointDirectionNoPathAndSameNodeSemantics` | method | pass | pass | skip |
+| `SetOperations` | `IQueryTraversalTests.TypedUnionAndConcat_PinDistinctBagAndScalarProjectionSemantics` | method | pass | pass | skip |
 
 The correlated grouped-projection grammar (`GroupBy(seg => seg.StartNode).Select(g => new { … })`)
 is a shared contract, not a per-provider concern: the recognized per-member operations (`Select`,

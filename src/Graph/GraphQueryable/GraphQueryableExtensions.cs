@@ -14,6 +14,30 @@ using static Cvoya.Graph.ExtensionUtils;
 /// </summary>
 public static class GraphQueryableExtensions
 {
+    /// <summary>Combines two compatible graph queries and removes duplicate results.</summary>
+    public static IGraphQueryable<TSource> Union<TSource>(
+        this IGraphQueryable<TSource> source,
+        IGraphQueryable<TSource> second)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(second);
+        var method = GetGenericExtensionMethod(
+            typeof(GraphQueryableExtensions), nameof(Union), 1, 2).MakeGenericMethod(typeof(TSource));
+        return source.Provider.CreateQuery<TSource>(Expression.Call(null, method, source.Expression, second.Expression));
+    }
+
+    /// <summary>Appends a compatible graph query while preserving duplicate results.</summary>
+    public static IGraphQueryable<TSource> Concat<TSource>(
+        this IGraphQueryable<TSource> source,
+        IGraphQueryable<TSource> second)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(second);
+        var method = GetGenericExtensionMethod(
+            typeof(GraphQueryableExtensions), nameof(Concat), 1, 2).MakeGenericMethod(typeof(TSource));
+        return source.Provider.CreateQuery<TSource>(Expression.Call(null, method, source.Expression, second.Expression));
+    }
+
     /// <summary>
     /// Filters a sequence of values based on a predicate.
     /// </summary>

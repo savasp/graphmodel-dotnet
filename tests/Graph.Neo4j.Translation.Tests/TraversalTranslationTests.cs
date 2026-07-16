@@ -129,6 +129,24 @@ public class TraversalTranslationTests : TranslationTestBase
     }
 
     [Fact]
+    public Task TypedUnion_RendersDistinctSetOperation()
+    {
+        var first = Root.Nodes<Person>().Where(person => person.Age >= 18);
+        var second = Root.Nodes<Person>().Where(person => person.Age >= 65);
+
+        return VerifyTranslation(first.Union(second));
+    }
+
+    [Fact]
+    public Task TypedConcat_ScalarProjectionRendersUnionAll()
+    {
+        var first = Root.Nodes<Person>().Where(person => person.Age >= 18).Select(person => person.Id);
+        var second = Root.Nodes<Person>().Where(person => person.Age >= 65).Select(person => person.Id);
+
+        return VerifyTranslation(first.Concat(second));
+    }
+
+    [Fact]
     public Task Traverse_ToDifferentNodeType()
     {
         var query = Root.Nodes<Person>().Traverse<WorksAt, Company>();

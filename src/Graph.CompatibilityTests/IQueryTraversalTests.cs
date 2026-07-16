@@ -1676,5 +1676,35 @@ public interface IQueryTraversalTests : IGraphTest
         Assert.Null(projected[0].TargetId);
     }
 
+    [Fact]
+    [RequiresCapability(GraphCapability.SetOperations)]
+    public async Task TypedUnionAndConcat_PinDistinctBagAndScalarProjectionSemantics()
+    {
+        var marker = $"SetOperation-{Guid.NewGuid():N}";
+        var first = new Person { FirstName = $"{marker}-first" };
+        var overlap = new Person { FirstName = $"{marker}-overlap" };
+        await Graph.CreateNodeAsync(first, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(overlap, null, TestContext.Current.CancellationToken);
+
+        var left = Graph.Nodes<Person>().Where(person => person.Id == first.Id || person.Id == overlap.Id);
+        var right = Graph.Nodes<Person>().Where(person => person.Id == overlap.Id);
+
+        var union = await left.Union(right).ToListAsync(TestContext.Current.CancellationToken);
+        var concat = await left.Concat(right).ToListAsync(TestContext.Current.CancellationToken);
+        var scalarUnion = await left.Select(person => person.Id)
+            .Union(right.Select(person => person.Id))
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var scalarConcat = await left.Select(person => person.Id)
+            .Concat(right.Select(person => person.Id))
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, union.Count);
+        Assert.Equal(3, concat.Count);
+        Assert.Equal(2, scalarUnion.Count);
+        Assert.Equal(3, scalarConcat.Count);
+        Assert.Equal(2, concat.Count(person => person.Id == overlap.Id));
+        Assert.Equal(2, scalarConcat.Count(id => id == overlap.Id));
+    }
+
     #endregion
 }

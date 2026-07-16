@@ -35,6 +35,19 @@ internal sealed class InMemoryQueryExecutor(
     {
         _cancellationToken.ThrowIfCancellationRequested();
 
+        if (model.Union is { } setOperation)
+        {
+            var first = (IEnumerable<object?>)(Execute(setOperation.First, new TerminalHints(false)) ?? Array.Empty<object?>());
+            var second = (IEnumerable<object?>)(Execute(setOperation.Second, new TerminalHints(false)) ?? Array.Empty<object?>());
+            var combined = first.Concat(second);
+            if (setOperation.Operation == SetOperationKind.Union)
+            {
+                combined = combined.Distinct(GraphValueComparer.Instance);
+            }
+
+            return ApplyTerminal(combined.ToList(), model, hints, allPredicate: null);
+        }
+
         var rows = RootRows(model.Root);
         rows = ApplyTraversal(rows, model);
         rows = ApplyRelationshipExistence(rows, model.RelationshipExistence);

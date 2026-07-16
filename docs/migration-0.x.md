@@ -542,6 +542,16 @@ Providers already declaring `GraphCapability.OptionalTraversal` must implement t
 addition to complex-property null propagation. Providers that cannot preserve an unmatched source
 row must stop declaring the capability. No stored-data migration is required.
 
+## 27. Typed `Union` and bag-preserving `Concat`
+
+`IGraphQueryable<T>` now has graph-typed `Union` and `Concat` overloads. `Union` removes duplicate
+rows; `Concat` preserves them and lowers to `UNION ALL`. Compatible node and scalar projection
+operands are supported. Materialize a combined query before applying another sequence operator.
+
+Custom providers must declare `GraphCapability.SetOperations` only after implementing both
+distinct and bag-preserving behavior with isolated operand parameters. AGE deliberately declines
+the new capability. No stored-data migration is required.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

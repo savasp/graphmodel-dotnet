@@ -127,8 +127,26 @@ public sealed class CypherRenderer : ICypherRenderContext
                 RenderEntityProjection(builder, projection);
                 break;
 
+            case SetOperationClause setOperation:
+                RenderClauseSequence(builder, setOperation.First);
+                builder.AppendLine()
+                    .Append(setOperation.PreserveDuplicates ? "UNION ALL" : "UNION")
+                    .AppendLine();
+                RenderClauseSequence(builder, setOperation.Second);
+                break;
+
             default:
                 throw new GraphException($"Unsupported Cypher clause '{clause.GetType().Name}'.");
+        }
+    }
+
+    private void RenderClauseSequence(StringBuilder builder, IReadOnlyList<ICypherClause> clauses)
+    {
+        for (var index = 0; index < clauses.Count; index++)
+        {
+            if (index > 0)
+                builder.AppendLine();
+            RenderClause(builder, clauses[index]);
         }
     }
 
@@ -490,6 +508,8 @@ public sealed class CypherRenderer : ICypherRenderContext
             EntityProjectionClause { Shape: EntityProjectionShape.Node } => ["Node"],
             EntityProjectionClause { IncludePathCoordinates: true } => ["pathIndex", "hopIndex", "PathSegment"],
             EntityProjectionClause => ["PathSegment"],
+            SetOperationClause setOperation => GetProjectionColumns(
+                new CypherStatement(setOperation.First, statement.Parameters)),
             _ => [],
         };
     }

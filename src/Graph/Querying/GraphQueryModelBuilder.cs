@@ -136,6 +136,12 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         }
 
         ThrowIfUnsupportedAfterTraversePaths(op.Value, node.Method.Name);
+        if (_union is not null && op.Value != LinqOperator.ToListOrArray)
+        {
+            throw Unsupported(
+                node,
+                "operators after Union or Concat are not supported; materialize the combined query first.");
+        }
 
         switch (op.Value)
         {
@@ -257,7 +263,10 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
                 HandleJoin(node);
                 break;
             case LinqOperator.Union:
-                HandleUnion(node);
+                HandleUnion(node, SetOperationKind.Union);
+                break;
+            case LinqOperator.Concat:
+                HandleUnion(node, SetOperationKind.Concat);
                 break;
             default:
                 throw Unsupported(node, $"Operator '{op}' is not supported by graph query translation.");
@@ -895,16 +904,16 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         _selectMany = new SelectManyFragment(collectionSelector, TryGetLambda(node, 2));
     }
 
-    private void HandleUnion(MethodCallExpression node)
+    private void HandleUnion(MethodCallExpression node, SetOperationKind operation)
     {
         if (_union is not null)
         {
-            throw Unsupported(node, "chained Union operations cannot be represented by a single query model.");
+            throw Unsupported(node, "chained set operations cannot be represented by a single query model.");
         }
 
         if (node.Arguments.Count < 2)
         {
-            throw Unsupported(node, "Union requires a second source.");
+            throw Unsupported(node, $"{operation} requires a second source.");
         }
 
         var elementType = node.Method.IsGenericMethod
@@ -913,7 +922,8 @@ public sealed class GraphQueryModelBuilder : ExpressionVisitor
         _union = new UnionFragment(
             Build(node.Arguments[0]),
             Build(node.Arguments[1]),
-            elementType);
+            elementType,
+            operation);
     }
 
     private void HandleJoin(MethodCallExpression node)

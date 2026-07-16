@@ -55,6 +55,7 @@ public class LinqOperatorDispatchTests
         LinqOperator.GroupBy,
         LinqOperator.Join,
         LinqOperator.Union,
+        LinqOperator.Concat,
         LinqOperator.PathSegments,
         LinqOperator.TraversePaths,
         LinqOperator.ShortestPath,

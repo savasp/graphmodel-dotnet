@@ -249,6 +249,25 @@ self-relationships are normal matches. Filter source rows before `OptionalTraver
 projection and paging are supported, but `Where` over `OptionalTraversalResult<TEnd>` is rejected at
 the shared model boundary because moving it around the left match changes null-preserving semantics.
 
+### Typed union and concatenation
+
+The graph-typed overloads keep the result as `IGraphQueryable<T>` and support both entity and
+compatible scalar projections:
+
+```csharp
+var activeIds = graph.Nodes<Person>().Where(person => person.Active).Select(person => person.Id);
+var invitedIds = graph.Nodes<Person>().Where(person => person.Invited).Select(person => person.Id);
+
+var uniqueIds = await activeIds.Union(invitedIds).ToListAsync();
+var auditIds = await activeIds.Concat(invitedIds).ToListAsync();
+```
+
+`Union` removes duplicate projected rows. `Concat` is bag-preserving and lowers to `UNION ALL`, so
+an item present in both operands appears twice. Operand output types and projection shapes must be
+compatible; incompatible shapes fail in `GraphQueryModelValidator`. Apply each operand's filters,
+projection, ordering, and paging before combining it. Materialize the combined query before adding
+another sequence operator.
+
 ## Projection and Results
 
 ### Anonymous Types

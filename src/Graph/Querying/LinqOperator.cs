@@ -32,6 +32,7 @@ internal enum LinqOperator
     GroupBy,
     Join,
     Union,
+    Concat,
     PathSegments,
     TraversePaths,
     ShortestPath,

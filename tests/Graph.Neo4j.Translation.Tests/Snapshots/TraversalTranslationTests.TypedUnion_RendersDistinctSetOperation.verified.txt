@@ -1,6 +1,6 @@
 == Cypher ==
 MATCH (src:Person|Manager)
-WHERE src.Age > $u0_p0
+WHERE src.Age >= $u0_p0
 OPTIONAL MATCH src_path = (src)-[rels*1..5]->(prop)
 WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)
 WITH src,
@@ -17,7 +17,7 @@ RETURN {
 } AS Node
 UNION
 MATCH (src:Person|Manager)
-WHERE src.LastName = $u1_p0
+WHERE src.Age >= $u1_p0
 OPTIONAL MATCH src_path = (src)-[rels*1..5]->(prop)
 WHERE ALL(rel IN rels WHERE rel.__graphModelComplexProperty = true)
 WITH src,
@@ -34,5 +34,5 @@ RETURN {
 } AS Node
 
 == Parameters ==
-u0_p0 = 30
-u1_p0 = "Smith"
+u0_p0 = 18
+u1_p0 = 65
