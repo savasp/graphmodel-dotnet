@@ -57,6 +57,25 @@ internal enum SerializableTypeKind
     Relationship,
 }
 
+/// <summary>
+/// How the code generator must construct a value for a collection-shaped property so the result is
+/// assignable to the declared type. See <c>GraphDataModel.GetCollectionConstructionKind</c>.
+/// </summary>
+internal enum CollectionConstructionKind
+{
+    /// <summary>Not a collection, or a collection shape the generator cannot construct.</summary>
+    None,
+
+    /// <summary>An array (<c>T[]</c>); constructed with <c>.ToArray()</c>.</summary>
+    Array,
+
+    /// <summary><c>List&lt;T&gt;</c> or a list-compatible interface; constructed with <c>.ToList()</c>.</summary>
+    List,
+
+    /// <summary><c>HashSet&lt;T&gt;</c> or a set-compatible interface; constructed with <c>.ToHashSet()</c>.</summary>
+    Set,
+}
+
 internal sealed class TypeReferenceModel : IEquatable<TypeReferenceModel>
 {
     public TypeReferenceModel(
@@ -77,6 +96,7 @@ internal sealed class TypeReferenceModel : IEquatable<TypeReferenceModel>
         bool isEnum,
         TypeKind typeKind,
         SpecialType specialType,
+        CollectionConstructionKind collectionConstructionKind,
         TypeReferenceModel? elementType)
     {
         Identity = identity;
@@ -96,6 +116,7 @@ internal sealed class TypeReferenceModel : IEquatable<TypeReferenceModel>
         IsEnum = isEnum;
         TypeKind = typeKind;
         SpecialType = specialType;
+        CollectionConstructionKind = collectionConstructionKind;
         ElementType = elementType;
     }
 
@@ -133,6 +154,8 @@ internal sealed class TypeReferenceModel : IEquatable<TypeReferenceModel>
 
     public SpecialType SpecialType { get; }
 
+    public CollectionConstructionKind CollectionConstructionKind { get; }
+
     public TypeReferenceModel? ElementType { get; }
 
     public bool Equals(TypeReferenceModel? other)
@@ -155,6 +178,7 @@ internal sealed class TypeReferenceModel : IEquatable<TypeReferenceModel>
             IsEnum == other.IsEnum &&
             TypeKind == other.TypeKind &&
             SpecialType == other.SpecialType &&
+            CollectionConstructionKind == other.CollectionConstructionKind &&
             EqualityComparer<TypeReferenceModel?>.Default.Equals(ElementType, other.ElementType);
     }
 
@@ -185,6 +209,7 @@ internal sealed class TypeReferenceModel : IEquatable<TypeReferenceModel>
             hash = (hash * 31) + IsEnum.GetHashCode();
             hash = (hash * 31) + TypeKind.GetHashCode();
             hash = (hash * 31) + SpecialType.GetHashCode();
+            hash = (hash * 31) + CollectionConstructionKind.GetHashCode();
             hash = (hash * 31) + (ElementType?.GetHashCode() ?? 0);
             return hash;
         }
@@ -201,7 +226,8 @@ internal sealed class SerializablePropertyModel : IEquatable<SerializablePropert
         TypeReferenceModel type,
         bool hasSetter,
         bool setterIsInitOnly,
-        bool setterDeclaredPublic)
+        bool setterDeclaredPublic,
+        bool isRequired)
     {
         Name = name;
         Label = label;
@@ -211,6 +237,7 @@ internal sealed class SerializablePropertyModel : IEquatable<SerializablePropert
         HasSetter = hasSetter;
         SetterIsInitOnly = setterIsInitOnly;
         SetterDeclaredPublic = setterDeclaredPublic;
+        IsRequired = isRequired;
     }
 
     public string Name { get; }
@@ -229,6 +256,8 @@ internal sealed class SerializablePropertyModel : IEquatable<SerializablePropert
 
     public bool SetterDeclaredPublic { get; }
 
+    public bool IsRequired { get; }
+
     public bool Equals(SerializablePropertyModel? other)
     {
         return other is not null &&
@@ -239,7 +268,8 @@ internal sealed class SerializablePropertyModel : IEquatable<SerializablePropert
             Type.Equals(other.Type) &&
             HasSetter == other.HasSetter &&
             SetterIsInitOnly == other.SetterIsInitOnly &&
-            SetterDeclaredPublic == other.SetterDeclaredPublic;
+            SetterDeclaredPublic == other.SetterDeclaredPublic &&
+            IsRequired == other.IsRequired;
     }
 
     public override bool Equals(object? obj)
@@ -260,6 +290,7 @@ internal sealed class SerializablePropertyModel : IEquatable<SerializablePropert
             hash = (hash * 31) + HasSetter.GetHashCode();
             hash = (hash * 31) + SetterIsInitOnly.GetHashCode();
             hash = (hash * 31) + SetterDeclaredPublic.GetHashCode();
+            hash = (hash * 31) + IsRequired.GetHashCode();
             return hash;
         }
     }

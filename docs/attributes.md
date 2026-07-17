@@ -92,9 +92,18 @@ Supported property types:
 - `Guid`
 - `Uri`
 - Enums
-- Arrays and lists of primitive types
+- Collections of simple or complex element types, declared as a one-dimensional array, `List<T>`, or `HashSet<T>`,
+  or as an interface they satisfy: `IEnumerable<T>`, `ICollection<T>`, `IList<T>`,
+  `IReadOnlyCollection<T>`, `IReadOnlyList<T>`, `ISet<T>`, or `IReadOnlySet<T>`. A set-typed
+  declaration round-trips as a `HashSet<T>`; every other shape as a `List<T>` (or an array). Other
+  concrete collection types (for example `Queue<T>`, `SortedSet<T>`, `ObservableCollection<T>`) are
+  not supported and are reported by CG004/CG005.
+- Relationship collections may contain only simple element types; complex values and collections of
+  complex values are supported on nodes only.
 - Spatial types (with provider support): `Point`
-- "Complex" (as defined by the Graph Model)
+- "Complex" (as defined by the Graph Model): a user-defined `class` or `struct` composed of supported
+  properties. A `struct` is valid only as a nested complex value; graph entities themselves
+  (`INode`/`IRelationship`) must be reference types (CG014).
 
 ```csharp
 public record Person : Node
@@ -106,6 +115,7 @@ public record Person : Node
     public DateTime CreatedAt { get; set; }
     public string[] Tags { get; set; }
     public List<string> Emails { get; set; }
+    public HashSet<string> Interests { get; set; }
     public Point Location { get; set; } // Spatial data
 }
 ```

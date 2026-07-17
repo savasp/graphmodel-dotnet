@@ -519,4 +519,3 @@ internal sealed class PhoneNumberSerializer : IEntitySerializer
         }
     }
 }
-

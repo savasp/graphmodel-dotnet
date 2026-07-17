@@ -10,6 +10,7 @@ internal sealed class CodeGenModelBuilder
 {
     private readonly Dictionary<INamedTypeSymbol, SerializableTypeModel> models = new(SymbolEqualityComparer.Default);
     private readonly List<SerializableTypeModel> orderedModels = [];
+    private bool hasUnsupportedTypeShape;
 
     private CodeGenModelBuilder()
     {
@@ -20,6 +21,11 @@ internal sealed class CodeGenModelBuilder
         var builder = new CodeGenModelBuilder();
         var rootModel = builder.BuildType(root);
 
+        if (builder.hasUnsupportedTypeShape)
+        {
+            return TypeDiscoverySet.Empty;
+        }
+
         return new TypeDiscoverySet(
             EquatableArray<SerializableTypeModel>.From([rootModel]),
             EquatableArray<SerializableTypeModel>.From(builder.orderedModels));
@@ -27,16 +33,13 @@ internal sealed class CodeGenModelBuilder
 
     public static TypeDiscoverySet Build(IEnumerable<INamedTypeSymbol> roots)
     {
-        var builder = new CodeGenModelBuilder();
-        var seenRoots = new HashSet<string>(StringComparer.Ordinal);
-        var rootModels = roots
-            .Select(builder.BuildType)
-            .Where(rootModel => seenRoots.Add(rootModel.Type.Identity))
-            .ToList();
+        var result = TypeDiscoverySet.Empty;
+        foreach (var root in roots)
+        {
+            result = TypeDiscoverySet.Merge(result, Build(root));
+        }
 
-        return new TypeDiscoverySet(
-            EquatableArray<SerializableTypeModel>.From(rootModels),
-            EquatableArray<SerializableTypeModel>.From(builder.orderedModels));
+        return result;
     }
 
     private SerializableTypeModel BuildType(INamedTypeSymbol type)
@@ -67,15 +70,25 @@ internal sealed class CodeGenModelBuilder
             .ToList();
 
         var constructorOnlyProperties = deserializationProperties
-            .Where(property => !property.HasSetter || property.SetterIsInitOnly)
+            .Where(property => !property.SetterDeclaredPublic || property.SetterIsInitOnly)
             .ToList();
 
-        var needsConstructor = constructorOnlyProperties.Count > 0 || type.IsRecord;
-        var constructor = constructors.Count == 0
+        var needsConstructor = constructorOnlyProperties.Count > 0 ||
+            deserializationProperties.Any(property => property.IsRequired) ||
+            type.IsRecord;
+        var selectedConstructor = constructors.Count == 0
             ? null
-            : BuildConstructor(
-                FindBestConstructor(constructors, deserializationProperties) ?? constructors[0],
-                deserializationProperties);
+            : FindBestConstructor(constructors, deserializationProperties) ?? constructors[0];
+        var constructor = selectedConstructor is null
+            ? null
+            : BuildConstructor(selectedConstructor, deserializationProperties);
+
+        if (type.TypeKind == TypeKind.Struct &&
+            GetKind(type) == SerializableTypeKind.Complex &&
+            !CanDeserializeComplexStruct(type, deserializationProperties, selectedConstructor))
+        {
+            hasUnsupportedTypeShape = true;
+        }
 
         var complexPropertyTypes = DiscoverComplexPropertyTypes(type).ToList();
 
@@ -108,7 +121,7 @@ internal sealed class CodeGenModelBuilder
         return model;
     }
 
-    private static SerializablePropertyModel BuildProperty(IPropertySymbol property)
+    private SerializablePropertyModel BuildProperty(IPropertySymbol property)
     {
         return new SerializablePropertyModel(
             property.Name,
@@ -118,36 +131,51 @@ internal sealed class CodeGenModelBuilder
             BuildTypeReference(property.Type),
             property.SetMethod is not null,
             property.SetMethod?.IsInitOnly == true,
-            property.SetMethod?.DeclaredAccessibility == Accessibility.Public);
+            property.SetMethod?.DeclaredAccessibility == Accessibility.Public,
+            property.IsRequired);
     }
 
-    private static TypeReferenceModel BuildTypeReference(ITypeSymbol type)
+    private TypeReferenceModel BuildTypeReference(ITypeSymbol type)
     {
         var elementType = GraphDataModel.GetCollectionElementType(type);
         var namedType = type as INamedTypeSymbol;
+        var isSimple = GraphDataModel.IsSimple(type);
+        var isCollectionOfSimple = GraphDataModel.IsCollectionOfSimple(type);
+        var isCollectionOfComplex = GraphDataModel.IsCollectionOfComplex(type);
+        var collectionConstructionKind = GraphDataModel.GetCollectionConstructionKind(type);
+        var serializerNamedType = !isSimple && UnwrapNullableValueType(type) is INamedTypeSymbol underlyingType
+            ? underlyingType
+            : namedType;
+
+        if ((isCollectionOfSimple || isCollectionOfComplex) &&
+            collectionConstructionKind == CollectionConstructionKind.None)
+        {
+            hasUnsupportedTypeShape = true;
+        }
 
         return new TypeReferenceModel(
             GetTypeIdentity(type),
             type.ToDisplayString(),
             Utils.GetTypeOfName(type),
             type.Name,
-            namedType is null ? string.Empty : Utils.GetNamespaceName(namedType),
-            namedType is null ? string.Empty : Utils.GetUniqueSerializerClassName(namedType),
+            serializerNamedType is null ? string.Empty : Utils.GetNamespaceName(serializerNamedType),
+            serializerNamedType is null ? string.Empty : Utils.GetUniqueSerializerClassName(serializerNamedType),
             type.IsReferenceType,
             type.IsValueType,
             IsNullableType(type),
             type.NullableAnnotation == NullableAnnotation.Annotated || (type.CanBeReferencedByName && !type.IsValueType),
             type.TypeKind == TypeKind.Array,
-            GraphDataModel.IsSimple(type),
-            GraphDataModel.IsCollectionOfSimple(type),
-            GraphDataModel.IsCollectionOfComplex(type),
+            isSimple,
+            isCollectionOfSimple,
+            isCollectionOfComplex,
             type.TypeKind == TypeKind.Enum,
             type.TypeKind,
             type.SpecialType,
+            collectionConstructionKind,
             elementType is null ? null : BuildTypeReference(elementType));
     }
 
-    private static ConstructorModel BuildConstructor(
+    private ConstructorModel BuildConstructor(
         IMethodSymbol constructor,
         IReadOnlyCollection<SerializablePropertyModel> properties)
     {
@@ -273,20 +301,36 @@ internal sealed class CodeGenModelBuilder
         if (GraphDataModel.IsCollectionOfComplex(propertyType))
         {
             var elementType = GraphDataModel.GetCollectionElementType(propertyType);
-            return elementType is INamedTypeSymbol namedElementType && IsSerializableComplexType(namedElementType)
+            var unwrappedElementType = elementType is null ? null : UnwrapNullableValueType(elementType);
+            return unwrappedElementType is INamedTypeSymbol namedElementType && IsSerializableComplexType(namedElementType)
                 ? namedElementType
                 : null;
         }
 
-        return propertyType is INamedTypeSymbol namedPropertyType && IsSerializableComplexType(namedPropertyType)
+        var unwrappedPropertyType = UnwrapNullableValueType(propertyType);
+        return unwrappedPropertyType is INamedTypeSymbol namedPropertyType && IsSerializableComplexType(namedPropertyType)
             ? namedPropertyType
             : null;
     }
 
     private static bool IsSerializableComplexType(INamedTypeSymbol type)
     {
+        if (type.IsAbstract)
+        {
+            return false;
+        }
+
+        // Structs are always constructible via `new T()` (the C#-guaranteed parameterless
+        // constructor), so a struct complex-property value is discoverable and gets its own
+        // generated serializer - closing the gap where the analyzer accepts a nested struct but no
+        // serializer was ever emitted for it. INode/IRelationship structs are rejected separately by
+        // CG014 and never reach here as an entity root.
+        if (type.TypeKind == TypeKind.Struct)
+        {
+            return true;
+        }
+
         return type.TypeKind == TypeKind.Class &&
-               !type.IsAbstract &&
                type.InstanceConstructors.Any(constructor =>
                    constructor.DeclaredAccessibility == Accessibility.Public &&
                    constructor.Parameters.Length == 0);
@@ -300,23 +344,50 @@ internal sealed class CodeGenModelBuilder
         {
             var matchingProperties = constructor.Parameters
                 .Select(parameter => allProperties.FirstOrDefault(property =>
-                    string.Equals(property.Name, parameter.Name, StringComparison.OrdinalIgnoreCase)))
+                    string.Equals(property.Name, parameter.Name, StringComparison.OrdinalIgnoreCase) &&
+                    property.Type.Identity == GetTypeIdentity(parameter.Type)))
                 .Where(property => property != null)
                 .ToList();
 
             return new
             {
                 Constructor = constructor,
+                ConstructorOnlyMatches = matchingProperties.Count(property =>
+                    property is not null && !property.SetterDeclaredPublic),
                 TotalMatches = matchingProperties.Count,
                 ExtraParams = constructor.Parameters.Length - matchingProperties.Count,
             };
         }).ToList();
 
         return constructorScores
-            .OrderByDescending(score => score.TotalMatches)
+            .OrderByDescending(score => score.ConstructorOnlyMatches)
+            .ThenByDescending(score => score.TotalMatches)
             .ThenBy(score => score.ExtraParams)
             .Select(score => score.Constructor)
             .FirstOrDefault();
+    }
+
+    private static bool CanDeserializeComplexStruct(
+        INamedTypeSymbol type,
+        IReadOnlyCollection<SerializablePropertyModel> properties,
+        IMethodSymbol? constructor)
+    {
+        if (type.GetMembers().OfType<IFieldSymbol>().Any(field => field.IsRequired))
+            return false;
+
+        return properties.All(property =>
+            property.SetterDeclaredPublic ||
+            constructor?.Parameters.Any(parameter =>
+                string.Equals(parameter.Name, property.Name, StringComparison.OrdinalIgnoreCase) &&
+                property.Type.Identity == GetTypeIdentity(parameter.Type)) == true);
+    }
+
+    private static ITypeSymbol UnwrapNullableValueType(ITypeSymbol type)
+    {
+        return type is INamedTypeSymbol { IsGenericType: true } namedType &&
+               namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T
+            ? namedType.TypeArguments[0]
+            : type;
     }
 
     private static IEnumerable<string> GetBaseTypeIdentities(INamedTypeSymbol type)

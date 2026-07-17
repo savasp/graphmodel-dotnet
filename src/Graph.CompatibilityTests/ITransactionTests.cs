@@ -94,6 +94,59 @@ public interface ITransactionTests : IGraphTest
     }
 
     [Fact]
+    public async Task RelationshipTypeChange_DoesNotCorruptStagedUpdateAndRollbackRestoresOriginal()
+    {
+        var p1 = new Person { FirstName = "A" };
+        var p2 = new Person { FirstName = "B" };
+        await Graph.CreateNodeAsync(p1, null, TestContext.Current.CancellationToken);
+        await Graph.CreateNodeAsync(p2, null, TestContext.Current.CancellationToken);
+
+        var originalSince = DateTime.UtcNow;
+        var knows = new Knows(p1.Id, p2.Id) { Since = originalSince };
+        await Graph.CreateRelationshipAsync(knows, null, TestContext.Current.CancellationToken);
+
+        var stagedSince = originalSince.AddDays(1);
+        await using var transaction = await Graph.GetTransactionAsync(TestContext.Current.CancellationToken);
+        var stagedKnows = knows with { Since = stagedSince };
+        await Graph.UpdateRelationshipAsync(stagedKnows, transaction, TestContext.Current.CancellationToken);
+
+        var friend = new Friend(p1.Id, p2.Id)
+        {
+            Id = knows.Id,
+            Direction = RelationshipDirection.Outgoing,
+            Since = originalSince.AddDays(2)
+        };
+        var exception = await Assert.ThrowsAsync<GraphException>(() =>
+            Graph.UpdateRelationshipAsync(friend, transaction, TestContext.Current.CancellationToken));
+
+        Assert.StartsWith(
+            "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.",
+            exception.Message);
+
+        var fetchedInTransaction = await Graph.GetRelationshipAsync<Knows>(
+            knows.Id,
+            transaction,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(Labels.GetLabelFromType(typeof(Knows)), fetchedInTransaction.Type);
+        Assert.Equal(p1.Id, fetchedInTransaction.StartNodeId);
+        Assert.Equal(p2.Id, fetchedInTransaction.EndNodeId);
+        Assert.Equal(RelationshipDirection.Outgoing, fetchedInTransaction.Direction);
+        Assert.Equal(stagedSince, fetchedInTransaction.Since);
+
+        await transaction.RollbackAsync();
+
+        var fetchedAfterRollback = await Graph.GetRelationshipAsync<Knows>(
+            knows.Id,
+            null,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(Labels.GetLabelFromType(typeof(Knows)), fetchedAfterRollback.Type);
+        Assert.Equal(p1.Id, fetchedAfterRollback.StartNodeId);
+        Assert.Equal(p2.Id, fetchedAfterRollback.EndNodeId);
+        Assert.Equal(RelationshipDirection.Outgoing, fetchedAfterRollback.Direction);
+        Assert.Equal(originalSince, fetchedAfterRollback.Since);
+    }
+
+    [Fact]
     public async Task TransactionDelete_CommitsChanges()
     {
         var person = new Person { FirstName = "ToDelete", LastName = "InTransaction" };

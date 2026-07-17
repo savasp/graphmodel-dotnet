@@ -54,7 +54,7 @@
     <value>Property '{0}' in INode type '{1}' has invalid type '{2}'. Properties must be simple types, complex types, collections of simple types, or collections of complex types</value>
   </data>
   <data name="CG004_Description" xml:space="preserve">
-    <value>Properties of INode implementations must be simple types, complex types, collections of simple types, or collections of complex types, applied recursively.</value>
+    <value>Properties of INode implementations must be simple types, complex types, collections of simple types, or collections of complex types, applied recursively. A collection must be declared as a one-dimensional array, List&lt;T&gt;, or HashSet&lt;T&gt;, or as an interface they satisfy (IEnumerable&lt;T&gt;, ICollection&lt;T&gt;, IList&lt;T&gt;, IReadOnlyCollection&lt;T&gt;, IReadOnlyList&lt;T&gt;, ISet&lt;T&gt;, IReadOnlySet&lt;T&gt;); other collection types such as multidimensional arrays, Queue&lt;T&gt;, or SortedSet&lt;T&gt; are not supported.</value>
   </data>
 
   <!-- CG005: Invalid property type for IRelationship implementation -->
@@ -65,7 +65,7 @@
     <value>Property '{0}' in IRelationship type '{1}' has invalid type '{2}'. Properties must be simple types or collections of simple types</value>
   </data>
   <data name="CG005_Description" xml:space="preserve">
-    <value>Properties of IRelationship implementations must be simple types or collections of simple types.</value>
+    <value>Properties of IRelationship implementations must be simple types or collections of simple types. A collection must be declared as a one-dimensional array, List&lt;T&gt;, or HashSet&lt;T&gt;, or as an interface they satisfy (IEnumerable&lt;T&gt;, ICollection&lt;T&gt;, IList&lt;T&gt;, IReadOnlyCollection&lt;T&gt;, IReadOnlyList&lt;T&gt;, ISet&lt;T&gt;, IReadOnlySet&lt;T&gt;); other collection types such as multidimensional arrays, Queue&lt;T&gt;, or SortedSet&lt;T&gt; are not supported.</value>
   </data>
 
   <!-- CG006: Complex type property contains graph interface types -->

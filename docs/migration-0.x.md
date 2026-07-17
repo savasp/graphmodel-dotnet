@@ -602,6 +602,20 @@ label tests over typed and dynamic node scopes. Label strings must never be inte
 identifiers. A provider that does not declare the capability rejects non-empty label filters during
 translation. No stored-data migration is required.
 
+## 29. Relationship type and concrete CLR type are immutable during update
+
+`UpdateRelationshipAsync` now rejects an incoming relationship when its storage/logical type or
+concrete CLR/materialization type differs from the persisted relationship with the same ID. This
+includes changing `DynamicRelationship.Type` and supplying another CLR relationship class whose
+runtime `Type` value resolves to the same storage type. The operation throws `GraphException` before
+properties are changed. Delete and recreate the relationship when changing identity is intentional.
+
+Neo4j and AGE persist an exact, version-independent CLR discriminator for newly created
+relationships. For an older non-generic row without that discriminator, the providers validate the
+canonical CLR label that earlier releases persisted separately from the storage type; a successful
+same-type update backfills the exact discriminator. Constructed generic rows require exact metadata
+because their canonical label does not encode generic arguments.
+
 ## Non-changes (things that look related but aren't)
 
 - `.Search(query)` as a LINQ operator on `IGraphQueryable<T>` — unchanged.

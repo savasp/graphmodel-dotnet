@@ -124,7 +124,21 @@ the normal path-segment projection.
 
 ### Type Metadata
 
-The metadata convention is a property named `__metadata__` containing a `type` key with the assembly-qualified CLR type name when runtime type recovery is needed. `GraphResultProcessor` reads this shape from neutral wire values before falling back to node labels or relationship type for polymorphic resolution. Providers must preserve the shape on writes and adapt the metadata map like any other result map.
+The neutral metadata convention is a property named `__metadata__` containing a `type` key with the
+version-independent assembly-qualified CLR type name when runtime type recovery is needed. The
+identity retains the assembly name but omits assembly-version components so ordinary package
+upgrades do not change a model type's identity. `GraphResultProcessor` reads
+this shape from neutral wire values before falling back to node labels or relationship type for
+polymorphic resolution. Providers must preserve the shape on writes and adapt the metadata map like
+any other result map. A backend that cannot persist a map-valued entity property may store the
+assembly-qualified name as a scalar under the same reserved property; the materializer accepts both
+forms.
+
+Relationship updates must treat the authoritative storage/logical type and exact concrete CLR type
+as immutable identity. Compare both before replacing any properties, and keep the comparison in the
+same guarded mutation as the write (or repeat it in the write predicate after a lookup). A failed
+identity check must leave properties, endpoints, direction, and all type metadata unchanged. Changing
+identity is an explicit delete-and-recreate operation, never an implicit update.
 
 ## Behavioral Contracts
 

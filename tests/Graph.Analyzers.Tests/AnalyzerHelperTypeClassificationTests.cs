@@ -112,6 +112,7 @@ public class AnalyzerHelperTypeClassificationTests
             "Point" => Point(),
             "byte[]" => Array(Special(SpecialType.System_Byte)),
             "int[]" => Array(Int32()),
+            "int[,]" => compilation.CreateArrayTypeSymbol(Int32(), rank: 2),
             "string[]" => Array(String()),
             "object[]" => Array(Object()),
             "TestEnum" => TestEnum(),
@@ -128,6 +129,17 @@ public class AnalyzerHelperTypeClassificationTests
             "List<List<int>>" => Named("System.Collections.Generic.List`1", Named("System.Collections.Generic.List`1", Int32())),
             "List<List<FlatValueObject>>" => Named("System.Collections.Generic.List`1", Named("System.Collections.Generic.List`1", FlatValueObject())),
             "IReadOnlyList<FlatValueObject>" => Named("System.Collections.Generic.IReadOnlyList`1", FlatValueObject()),
+            "IEnumerable<int>" => Named("System.Collections.Generic.IEnumerable`1", Int32()),
+            "ICollection<int>" => Named("System.Collections.Generic.ICollection`1", Int32()),
+            "IList<int>" => Named("System.Collections.Generic.IList`1", Int32()),
+            "IReadOnlyCollection<int>" => Named("System.Collections.Generic.IReadOnlyCollection`1", Int32()),
+            "IReadOnlyList<int>" => Named("System.Collections.Generic.IReadOnlyList`1", Int32()),
+            "HashSet<int>" => Named("System.Collections.Generic.HashSet`1", Int32()),
+            "ISet<int>" => Named("System.Collections.Generic.ISet`1", Int32()),
+            "IReadOnlySet<int>" => Named("System.Collections.Generic.IReadOnlySet`1", Int32()),
+            "Queue<int>" => Named("System.Collections.Generic.Queue`1", Int32()),
+            "Stack<int>" => Named("System.Collections.Generic.Stack`1", Int32()),
+            "SortedSet<int>" => Named("System.Collections.Generic.SortedSet`1", Int32()),
             "ArrayList" => Named("System.Collections.ArrayList"),
             "Dictionary<string,int>" => Named("System.Collections.Generic.Dictionary`2", String(), Int32()),
             "Dictionary<string,FlatValueObject>" => Named("System.Collections.Generic.Dictionary`2", String(), FlatValueObject()),
@@ -221,6 +233,42 @@ public class AnalyzerHelperTypeClassificationTests
         { "SimpleStruct", true },
     };
 
+    /// <summary>
+    /// The construction matrix shared with the source generator
+    /// (<c>Cvoya.Graph.Serialization.CodeGen.GraphDataModel.GetCollectionConstructionKind</c>): only
+    /// arrays, <c>List&lt;T&gt;</c>/list-compatible interfaces, and <c>HashSet&lt;T&gt;</c>/set-compatible
+    /// interfaces are constructible. Non-collection shapes and any other concrete/custom collection
+    /// are not. Kept as a truth table so the analyzer's CG004/CG005 narrowing cannot drift from what
+    /// the generator can actually emit.
+    /// </summary>
+    public static TheoryData<string, bool> ConstructibleCollectionCases => new()
+    {
+        { "int[]", true },
+        { "int[,]", false },
+        { "string[]", true },
+        { "byte[]", true },
+        { "FlatValueObject[]", true },
+        { "List<int>", true },
+        { "List<FlatValueObject>", true },
+        { "IEnumerable<int>", true },
+        { "ICollection<int>", true },
+        { "IList<int>", true },
+        { "IReadOnlyCollection<int>", true },
+        { "IReadOnlyList<int>", true },
+        { "IReadOnlyList<FlatValueObject>", true },
+        { "HashSet<int>", true },
+        { "ISet<int>", true },
+        { "IReadOnlySet<int>", true },
+        { "Queue<int>", false },
+        { "Stack<int>", false },
+        { "SortedSet<int>", false },
+        { "ArrayList", false },
+        { "Dictionary<string,int>", false },
+        { "int", false },
+        { "string", false },
+        { "FlatValueObject", false },
+    };
+
     public static TheoryData<string, bool> DictionaryCases => new()
     {
         { "Dictionary<string,int>", true },
@@ -267,6 +315,13 @@ public class AnalyzerHelperTypeClassificationTests
     public void IsDictionaryType_ReturnsExpectedResult(string shape, bool expected)
     {
         AssertEqual(expected, AnalyzerHelper.IsDictionaryType(Resolve(shape)), shape);
+    }
+
+    [Theory]
+    [MemberData(nameof(ConstructibleCollectionCases))]
+    public void IsConstructibleCollectionType_ReturnsExpectedResult(string shape, bool expected)
+    {
+        AssertEqual(expected, AnalyzerHelper.IsConstructibleCollectionType(Resolve(shape)), shape);
     }
 
     /// <summary>

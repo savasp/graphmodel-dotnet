@@ -55,7 +55,7 @@ Package testing before publishing: `dotnet msbuild eng/PackageValidation.proj -t
 
 - C#/.NET conventions per [CONTRIBUTING.md](CONTRIBUTING.md); match the style of surrounding code, don't reformat.
 - One public type per file; XML documentation on all new public APIs.
-- Apache 2.0 copyright header on new source files: `// Copyright CVOYA. Licensed under the Apache License, Version 2.0.`
+- Apache 2.0 copyright header on new source files, matching `.editorconfig`: `// Copyright CVOYA LLC. Licensed under the Apache License, Version 2.0.` followed by `// See LICENSE in the project root for full license terms.`
 - Conventional commit messages: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`.
 - Async: public async APIs take a `CancellationToken` and have an `Async` suffix.
 - Analyzer diagnostics use the `CG###` series. Check `src/Graph.Analyzers/AnalyzerReleases.*.md` before allocating an unused ID; suppress a diagnostic via `.editorconfig` or `#pragma warning disable CG###`.

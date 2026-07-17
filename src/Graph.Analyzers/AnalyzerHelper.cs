@@ -94,9 +94,11 @@ internal class AnalyzerHelper
         if (IsSimpleType(type))
             return true;
 
-        // Check if it's a collection of simple types
+        // Check if it's a collection of simple types. Only shapes the generator can construct
+        // (arrays, List<T>/list interfaces, HashSet<T>/set interfaces) are valid; anything else
+        // would pass analysis and then fail to compile in generated source.
         if (IsCollectionOfSimpleTypes(type))
-            return true;
+            return IsConstructibleCollectionType(type);
 
         // Check if it's a complex type
         if (IsComplexType(type))
@@ -112,7 +114,7 @@ internal class AnalyzerHelper
             if (elementType != null && IsComplexType(elementType))
             {
                 var result = ValidateComplexType(elementType);
-                return result.IsValid;
+                return result.IsValid && IsConstructibleCollectionType(type);
             }
         }
 
@@ -170,9 +172,10 @@ internal class AnalyzerHelper
         if (IsSimpleType(type))
             return true;
 
-        // Check if it's a collection of simple types
+        // Check if it's a collection of simple types the generator can construct (see
+        // IsConstructibleCollectionType); non-constructible shapes would fail to compile downstream.
         if (IsCollectionOfSimpleTypes(type))
-            return true;
+            return IsConstructibleCollectionType(type);
 
         return false;
     }
@@ -230,6 +233,8 @@ internal class AnalyzerHelper
 
     public bool IsComplexType(ITypeSymbol type)
     {
+        type = UnwrapNullableValueType(type);
+
         // object itself (and collections/dictionaries of it) is never complex - it carries no
         // discoverable property shape to serialize.
         if (type.SpecialType == SpecialType.System_Object)
@@ -259,6 +264,76 @@ internal class AnalyzerHelper
     public bool IsCollectionType(ITypeSymbol type)
     {
         return IsCollectionOfSimpleTypes(type) || IsCollectionOfComplexTypes(type);
+    }
+
+    /// <summary>
+    /// Whether a collection-shaped type is one the serialization source generator can construct so
+    /// the deserialized value is assignable to the declared type: one-dimensional arrays, <c>List&lt;T&gt;</c> and
+    /// list-compatible interfaces, and <c>HashSet&lt;T&gt;</c> and set-compatible interfaces.
+    /// Concrete/custom collections (for example <c>Queue&lt;T&gt;</c>, <c>SortedSet&lt;T&gt;</c>,
+    /// <c>ObservableCollection&lt;T&gt;</c>) are not constructible and are rejected by CG004/CG005 so
+    /// the analyzer and generator agree. Mirrors
+    /// <c>Cvoya.Graph.Serialization.CodeGen.GraphDataModel.GetCollectionConstructionKind</c>.
+    /// </summary>
+    public static bool IsConstructibleCollectionType(ITypeSymbol type)
+    {
+        if (type.SpecialType == SpecialType.System_String)
+            return false;
+
+        if (type is IArrayTypeSymbol arrayType)
+            return arrayType.Rank == 1;
+
+        if (type is not INamedTypeSymbol { IsGenericType: true } namedType)
+            return false;
+
+        var definition = namedType.ConstructedFrom;
+
+        // Interfaces a List<T> instance is assignable to.
+        switch (definition.SpecialType)
+        {
+            case SpecialType.System_Collections_Generic_IEnumerable_T:
+            case SpecialType.System_Collections_Generic_ICollection_T:
+            case SpecialType.System_Collections_Generic_IList_T:
+            case SpecialType.System_Collections_Generic_IReadOnlyCollection_T:
+            case SpecialType.System_Collections_Generic_IReadOnlyList_T:
+                return true;
+        }
+
+        // Concrete List<T>/HashSet<T> and the set interfaces have no SpecialType. Match their
+        // metadata identity and require them to come from the same runtime assembly as the
+        // IEnumerable<T> they implement, so a source-defined lookalike cannot be misclassified.
+        return IsRuntimeCollectionDefinition(definition, "List`1") ||
+               IsRuntimeCollectionDefinition(definition, "HashSet`1") ||
+               IsRuntimeCollectionDefinition(definition, "ISet`1") ||
+               IsRuntimeCollectionDefinition(definition, "IReadOnlySet`1");
+    }
+
+    private static bool IsRuntimeCollectionDefinition(INamedTypeSymbol definition, string metadataName)
+    {
+        if (definition.MetadataName != metadataName ||
+            definition.ContainingNamespace?.ToDisplayString() != "System.Collections.Generic")
+        {
+            return false;
+        }
+
+        return IsFrameworkAssembly(definition.ContainingAssembly);
+    }
+
+    private static bool IsFrameworkAssembly(IAssemblySymbol assembly)
+    {
+        return assembly.Identity.Name switch
+        {
+            "System.Private.CoreLib" => HasPublicKeyToken(assembly, [0x7c, 0xec, 0x85, 0xd7, 0xbe, 0xa7, 0x79, 0x8e]),
+            "System.Runtime" or "System.Collections" => HasPublicKeyToken(assembly, [0xb0, 0x3f, 0x5f, 0x7f, 0x11, 0xd5, 0x0a, 0x3a]),
+            "mscorlib" => HasPublicKeyToken(assembly, [0xb7, 0x7a, 0x5c, 0x56, 0x19, 0x34, 0xe0, 0x89]),
+            "netstandard" => HasPublicKeyToken(assembly, [0xcc, 0x7b, 0x13, 0xff, 0xcd, 0x2d, 0xdd, 0x51]),
+            _ => false,
+        };
+    }
+
+    private static bool HasPublicKeyToken(IAssemblySymbol assembly, byte[] expected)
+    {
+        return assembly.Identity.PublicKeyToken.SequenceEqual(expected);
     }
 
     /// <summary>
@@ -400,8 +475,10 @@ internal class AnalyzerHelper
 
     public ComplexTypeValidationResult ValidateComplexType(ITypeSymbol type)
     {
+        type = UnwrapNullableValueType(type);
+
         if (type is not INamedTypeSymbol namedType)
-            return new ComplexTypeValidationResult(false, "Type is not a named type");
+            return new ComplexTypeValidationResult(false, "Type is not a named type", false);
 
         // Check all properties recursively
         var visited = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
@@ -410,34 +487,72 @@ internal class AnalyzerHelper
 
     private ComplexTypeValidationResult ValidateComplexTypeRecursive(INamedTypeSymbol type, HashSet<ITypeSymbol> visited)
     {
+        type = (INamedTypeSymbol)UnwrapNullableValueType(type);
+
         if (visited.Contains(type))
-            return new ComplexTypeValidationResult(true, null); // Avoid infinite recursion
+            return new ComplexTypeValidationResult(true, null, false); // Avoid infinite recursion
 
         visited.Add(type);
 
-        var properties = type.GetMembers().OfType<IPropertySymbol>();
+        if (type.TypeKind == TypeKind.Struct && !CanDeserializeComplexStruct(type))
+        {
+            return new ComplexTypeValidationResult(
+                false,
+                $"Struct {type.Name} has serialized properties that cannot be reconstructed",
+                false);
+        }
+
+        var properties = type.GetMembers()
+            .OfType<IPropertySymbol>()
+            .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
+                property.GetMethod is not null &&
+                !property.IsStatic &&
+                !SerializationShouldIgnoreProperty(property));
         foreach (var property in properties)
         {
             // Check if property is a graph interface type
             if (IsGraphInterfaceType(property.Type))
             {
-                return new ComplexTypeValidationResult(false, $"Property {property.Name} is a graph interface type");
+                return new ComplexTypeValidationResult(
+                    false,
+                    $"Property {property.Name} is a graph interface type",
+                    true);
             }
 
             // Check collections recursively
             if (IsCollectionType(property.Type))
             {
+                if (!IsConstructibleCollectionType(property.Type))
+                {
+                    return new ComplexTypeValidationResult(
+                        false,
+                        $"Property {property.Name} uses an unsupported collection declaration",
+                        false);
+                }
+
                 var elementType = GetCollectionElementType(property.Type);
                 if (elementType != null && IsGraphInterfaceType(elementType))
                 {
-                    return new ComplexTypeValidationResult(false, $"Property {property.Name} is a collection of graph interface types");
+                    return new ComplexTypeValidationResult(
+                        false,
+                        $"Property {property.Name} is a collection of graph interface types",
+                        true);
                 }
             }
 
             // Check nested complex types recursively
             if (IsComplexType(property.Type))
             {
-                var result = ValidateComplexTypeRecursive((INamedTypeSymbol)property.Type, visited);
+                var complexType = UnwrapNullableValueType(property.Type) as INamedTypeSymbol;
+                if (complexType is null)
+                {
+                    return new ComplexTypeValidationResult(
+                        false,
+                        $"Property {property.Name} is not a named type",
+                        false);
+                }
+
+                var result = ValidateComplexTypeRecursive(complexType, visited);
                 if (!result.IsValid)
                 {
                     return result;
@@ -446,7 +561,8 @@ internal class AnalyzerHelper
             else if (IsCollectionOfComplexTypes(property.Type))
             {
                 var elementType = GetCollectionElementType(property.Type);
-                if (elementType is INamedTypeSymbol namedElementType)
+                if (elementType is not null &&
+                    UnwrapNullableValueType(elementType) is INamedTypeSymbol namedElementType)
                 {
                     var result = ValidateComplexTypeRecursive(namedElementType, visited);
                     if (!result.IsValid)
@@ -457,7 +573,50 @@ internal class AnalyzerHelper
             }
         }
 
-        return new ComplexTypeValidationResult(true, null);
+        return new ComplexTypeValidationResult(true, null, false);
+    }
+
+    private static bool CanDeserializeComplexStruct(INamedTypeSymbol type)
+    {
+        if (type.GetMembers().OfType<IFieldSymbol>().Any(field => field.IsRequired))
+            return false;
+
+        var constructorOnlyProperties = type.GetMembers()
+            .OfType<IPropertySymbol>()
+            .Where(property => property.DeclaredAccessibility == Accessibility.Public &&
+                property.GetMethod is not null &&
+                !property.IsStatic &&
+                !SerializationShouldIgnoreProperty(property) &&
+                property.SetMethod?.DeclaredAccessibility != Accessibility.Public)
+            .ToList();
+
+        if (constructorOnlyProperties.Count == 0)
+            return true;
+
+        return type.InstanceConstructors
+            .Where(constructor => constructor.DeclaredAccessibility == Accessibility.Public)
+            .Any(constructor => constructorOnlyProperties.All(property =>
+                constructor.Parameters.Any(parameter =>
+                    string.Equals(parameter.Name, property.Name, StringComparison.OrdinalIgnoreCase) &&
+                    SymbolEqualityComparer.Default.Equals(parameter.Type, property.Type))));
+    }
+
+    private static bool SerializationShouldIgnoreProperty(IPropertySymbol property)
+    {
+        var attribute = property.GetAttributes().FirstOrDefault(candidate =>
+            candidate.AttributeClass?.Name == "PropertyAttribute" &&
+            candidate.AttributeClass.ContainingNamespace?.ToDisplayString() == "Cvoya.Graph");
+
+        return attribute?.NamedArguments.Any(argument =>
+            argument.Key == "Ignore" && argument.Value.Value is true) == true;
+    }
+
+    private static ITypeSymbol UnwrapNullableValueType(ITypeSymbol type)
+    {
+        return type is INamedTypeSymbol { IsGenericType: true } namedType &&
+               namedType.ConstructedFrom.SpecialType == SpecialType.System_Nullable_T
+            ? namedType.TypeArguments[0]
+            : type;
     }
 
     public static bool IsNullableType(ITypeSymbol type)
@@ -474,10 +633,12 @@ internal class ComplexTypeValidationResult
 {
     public bool IsValid { get; }
     public string? ErrorMessage { get; }
+    public bool ContainsGraphInterface { get; }
 
-    public ComplexTypeValidationResult(bool isValid, string? errorMessage)
+    public ComplexTypeValidationResult(bool isValid, string? errorMessage, bool containsGraphInterface)
     {
         IsValid = isValid;
         ErrorMessage = errorMessage;
+        ContainsGraphInterface = containsGraphInterface;
     }
 }

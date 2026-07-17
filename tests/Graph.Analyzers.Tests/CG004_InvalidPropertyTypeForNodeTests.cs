@@ -174,6 +174,227 @@ public class CG004_InvalidPropertyTypeForNodeTests
     }
 
     [Fact]
+    public async Task NodeWithNonConstructibleSimpleCollection_ProducesDiagnostic()
+    {
+        // Queue<int> is a collection of simple values, but the serializer can only construct arrays,
+        // List<T>/list interfaces, and HashSet<T>/set interfaces - so it is rejected rather than
+        // silently generating source that fails to compile (#362).
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Queue<int> {|#0:Pending|} { get; set; } = new();
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Pending", "TestNode", "Queue<Int32>");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithConcreteSetOtherThanHashSet_ProducesDiagnostic()
+    {
+        // SortedSet<int> implements ISet<int>, but a generated HashSet<int> is not assignable to it,
+        // so the concrete non-HashSet set type is not constructible and must be rejected.
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public SortedSet<int> {|#0:Ranks|} { get; set; } = new();
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Ranks", "TestNode", "SortedSet<Int32>");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithNonConstructibleComplexCollection_ProducesDiagnostic()
+    {
+        // The element type is a valid complex type, but Queue<T> is not a constructible collection
+        // shape - the property is rejected on the collection shape alone.
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class Address
+            {
+                public string Street { get; set; } = string.Empty;
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Queue<Address> {|#0:History|} { get; set; } = new();
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("History", "TestNode", "Queue<Address>");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithComplexTypeContainingNonConstructibleCollection_ProducesDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class Address
+            {
+                public Queue<int> Pending { get; set; } = new();
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Address {|#0:Location|} { get; set; } = new();
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Location", "TestNode", "Address");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithMultidimensionalArray_ProducesDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public int[,] {|#0:Grid|} { get; set; } = new int[0, 0];
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Grid", "TestNode", "Int32[,]");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithFrameworkCollectionLookalike_ProducesDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            namespace System.Collections.Generic
+            {
+                public interface ISet<TItem, TTag> : global::System.Collections.Generic.IEnumerable<TItem>
+                {
+                }
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public System.Collections.Generic.ISet<int, string> {|#0:Values|} { get; set; } = null!;
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Values", "TestNode", "ISet<Int32, String>");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithUnconstructibleReadonlyStruct_ProducesDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public readonly struct Address
+            {
+                public string Street { get; }
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Address {|#0:Location|} { get; set; }
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Location", "TestNode", "Address");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithConstructorBoundStruct_NoDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public readonly struct Address
+            {
+                public Address(string street) => Street = street;
+                public string Street { get; }
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Address Location { get; set; }
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NodeWithWrongTypedStructConstructor_ProducesDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public readonly struct Address
+            {
+                public Address(int street) => Street = street.ToString();
+                public string Street { get; }
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Address {|#0:Location|} { get; set; }
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Location", "TestNode", "Address");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task NodeWithComplexTypeContainingGraphInterface_ProducesDiagnostic()
     {
         var test = """

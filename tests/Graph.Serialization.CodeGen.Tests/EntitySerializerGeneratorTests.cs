@@ -178,6 +178,61 @@ public class EntitySerializerGeneratorTests
             Assert.IsType<List<Guid?>>(nodeType.GetProperty("RelatedIds")!.GetValue(roundTripped)));
     }
 
+    /// <summary>
+    /// Pins that set-shaped collections deserialize via <c>.ToHashSet()</c> (never <c>.ToList()</c>,
+    /// which is not assignable to a <c>HashSet&lt;T&gt;</c>/<c>ISet&lt;T&gt;</c>), and that a missing
+    /// set property defaults to an empty <c>HashSet&lt;T&gt;</c> (see #362).
+    /// </summary>
+    [Fact]
+    public Task NodeWithSetCollections()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            namespace TestNamespace;
+
+            [Node("Tagged")]
+            public record Tagged : Node
+            {
+                public HashSet<int> Numbers { get; set; } = new();
+                public ISet<string> Names { get; set; } = new HashSet<string>();
+            }
+            """;
+
+        return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
+    }
+
+    /// <summary>
+    /// Pins that a struct used as a complex property gets its own generated serializer, is registered,
+    /// serializes without a <c>value is null</c> test (a compile error on a non-nullable value type),
+    /// and is referenced by the owning type's schema (see #363).
+    /// </summary>
+    [Fact]
+    public Task NodeWithStructComplexProperty()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            namespace TestNamespace;
+
+            public struct Address
+            {
+                public string Street { get; set; }
+                public int Unit { get; set; }
+            }
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public string FirstName { get; set; } = string.Empty;
+                public Address HomeAddress { get; set; }
+            }
+            """;
+
+        return Verifier.Verify(GeneratorTestHelpers.RunGenerator(source));
+    }
+
     [Fact]
     public Task Relationship()
     {
