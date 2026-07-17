@@ -22,7 +22,15 @@ path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')"
 
 # Normalize to a repo-relative path so patterns anchor at the repo root
 # instead of substring-matching anywhere in the path.
+#
+# CLAUDE_PROJECT_DIR is the session's working directory, which is NOT always the
+# repo root — a session started in scripts/ sets it to scripts/, leaving every
+# path below the root unstripped and matching nothing, so the guard silently
+# allowed everything. Anchor on the real root instead, and keep the env var as
+# the fallback so a non-git tree still gets the old behaviour.
 root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+git_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null || true)"
+[ -n "$git_root" ] && root="$git_root"
 rel="${path#"$root"/}"
 
 case "$rel" in

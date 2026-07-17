@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-files.sh"
+            "command": "\"$(git -C \"${CLAUDE_PROJECT_DIR:-.}\" rev-parse --show-toplevel)\"/.claude/hooks/protect-files.sh"
           }
         ]
       }
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/verify-build.sh"
+            "command": "\"$(git -C \"${CLAUDE_PROJECT_DIR:-.}\" rev-parse --show-toplevel)\"/.claude/hooks/verify-build.sh"
           }
         ]
       }
