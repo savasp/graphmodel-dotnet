@@ -217,7 +217,10 @@ public interface IGraph
     /// If null, a new transaction will be automatically created and used.</param>
     /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
     /// <exception cref="EntityNotFoundException">Thrown when the relationship is not found.</exception>
-    /// <exception cref="GraphException">Thrown when the relationship cannot be updated or there is another issue</exception>
+    /// <exception cref="GraphException">
+    /// Thrown when the relationship cannot be updated, including when its persisted relationship
+    /// type, concrete CLR type, or direction differs from the incoming relationship.
+    /// </exception>
     Task UpdateRelationshipAsync<TRelationship>(TRelationship relationship, IGraphTransaction? transaction = null, CancellationToken cancellationToken = default)
         where TRelationship : class, IRelationship;
 

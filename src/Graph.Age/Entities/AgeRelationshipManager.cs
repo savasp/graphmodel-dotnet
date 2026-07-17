@@ -19,6 +19,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 /// </summary>
 internal sealed class AgeRelationshipManager(AgeGraphContext context)
 {
+    private const string RelationshipIdentityChangeMessage =
+        "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship.";
+
     private readonly ILogger<AgeRelationshipManager> _logger = context.LoggerFactory?.CreateLogger<AgeRelationshipManager>()
         ?? NullLogger<AgeRelationshipManager>.Instance;
     private readonly EntityFactory _serializer = new();
@@ -249,8 +252,15 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
         CancellationToken cancellationToken)
     {
         var properties = BuildRelationshipProperties(entity);
+        var incomingMetadata = SerializationBridge.CreateScalarMetadata(entity.ActualType);
+        var incomingCanonicalType = Labels.GetLabelFromType(entity.ActualType);
         var lookup = await transaction.RunAsync(
-            "MATCH ()-[r {Id: $relId}]->() RETURN r.Direction AS storedDirection",
+            $@"
+            MATCH ()-[r:{SerializationBridge.PhysicalRelationshipType} {{Id: $relId}}]->()
+            RETURN r.Type AS storedType,
+                   r.Direction AS storedDirection,
+                   r.{SerializationBridge.MetadataPropertyName} AS storedMetadata,
+                   head(r.inheritance_labels) AS storedCanonicalType",
             new { relId = relationshipId }, cancellationToken).ConfigureAwait(false);
         var lookupRecords = await lookup.ToListAsync(cancellationToken).ConfigureAwait(false);
         if (lookupRecords.Count == 0)
@@ -266,20 +276,99 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             return (true, false, storedDirection);
         }
 
+        var storedType = lookupRecord["storedType"].As<string>();
+        var storedCanonicalType = lookupRecord["storedCanonicalType"].As<string>();
+        string? storedMetadata;
+        try
+        {
+            storedMetadata = lookupRecord["storedMetadata"].As<string>();
+        }
+        catch (Exception ex) when (ex is InvalidCastException or FormatException)
+        {
+            throw RelationshipIdentityChanged(
+                storedType,
+                storedMetadata: "<invalid>",
+                storedCanonicalType,
+                entity.Label,
+                incomingMetadata);
+        }
+
+        if (!string.Equals(storedType, entity.Label, StringComparison.Ordinal))
+        {
+            throw RelationshipIdentityChanged(
+                storedType,
+                storedMetadata,
+                storedCanonicalType,
+                entity.Label,
+                incomingMetadata);
+        }
+
+        var allowLegacyClrLabel = !entity.ActualType.IsConstructedGenericType;
+        if (storedMetadata is null)
+        {
+            if (!allowLegacyClrLabel ||
+                !string.Equals(storedCanonicalType, incomingCanonicalType, StringComparison.Ordinal))
+            {
+                throw RelationshipIdentityChanged(
+                    storedType,
+                    storedMetadata,
+                    storedCanonicalType,
+                    entity.Label,
+                    incomingMetadata);
+            }
+        }
+        else if (!string.Equals(storedMetadata, incomingMetadata, StringComparison.Ordinal))
+        {
+            throw RelationshipIdentityChanged(
+                storedType,
+                storedMetadata,
+                storedCanonicalType,
+                entity.Label,
+                incomingMetadata);
+        }
+
         var parameters = new Dictionary<string, object?>
         {
             ["relId"] = relationshipId,
+            ["incomingType"] = entity.Label,
+            ["incomingDirection"] = incomingDirection.ToString(),
+            ["defaultDirection"] = RelationshipDirection.Outgoing.ToString(),
+            ["incomingMetadata"] = incomingMetadata,
+            ["incomingCanonicalType"] = incomingCanonicalType,
+            ["allowLegacyClrLabel"] = allowLegacyClrLabel,
         };
         var setClause = AgeCypherProperties.BuildSetClause("r", properties, parameters, "relationshipProperty");
         var cypher = $@"
-            MATCH ()-[r {{Id: $relId}}]->()
+            MATCH ()-[r:{SerializationBridge.PhysicalRelationshipType} {{Id: $relId}}]->()
+            WHERE r.Type = $incomingType
+              AND (r.Direction = $incomingDirection OR (r.Direction IS NULL AND $incomingDirection = $defaultDirection))
+              AND (r.{SerializationBridge.MetadataPropertyName} = $incomingMetadata
+                   OR (r.{SerializationBridge.MetadataPropertyName} IS NULL
+                       AND $allowLegacyClrLabel
+                       AND head(r.inheritance_labels) = $incomingCanonicalType))
             {setClause}
             RETURN true AS updated";
 
         var result = await transaction.RunAsync(cypher, parameters, cancellationToken).ConfigureAwait(false);
-        _ = await GetSingleRecordAsync(result, cancellationToken).ConfigureAwait(false);
+        var updateRecords = await result.ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (updateRecords.Count == 0)
+        {
+            throw new GraphException($"{RelationshipIdentityChangeMessage} The stored relationship identity changed before the update could be applied.");
+        }
+
         return (true, true, storedDirection);
     }
+
+    private static GraphException RelationshipIdentityChanged(
+        string? storedType,
+        string? storedMetadata,
+        string? storedCanonicalType,
+        string incomingType,
+        string incomingMetadata) => new(
+            $"{RelationshipIdentityChangeMessage} " +
+            $"Stored logical type is '{storedType ?? "<null>"}', CLR metadata is '{storedMetadata ?? "<missing>"}', " +
+            $"and legacy CLR label is '{storedCanonicalType ?? "<missing>"}'; " +
+            $"incoming logical type is '{incomingType}' and CLR metadata is '{incomingMetadata}'.");
 
     private static RelationshipDirection ToRelationshipDirection(object? value)
     {
@@ -301,6 +390,7 @@ internal sealed class AgeRelationshipManager(AgeGraphContext context)
             .Where(kv => !_ignoredProperties.Contains(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
         properties[nameof(Graph.IRelationship.Type)] = entity.Label;
+        properties[SerializationBridge.MetadataPropertyName] = SerializationBridge.CreateScalarMetadata(entity.ActualType);
         properties["inheritance_labels"] = GetInheritanceLabels(entity.ActualType);
         return properties;
     }

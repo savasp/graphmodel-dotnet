@@ -32,12 +32,6 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
     /// </summary>
     private const string TransientCreatedMarkerPrefix = "__graphModelSubgraphCreated";
 
-    private static readonly string[] _ignoredRelationshipProperties =
-    [
-        nameof(Graph.IRelationship.StartNodeId),
-        nameof(Graph.IRelationship.EndNodeId)
-    ];
-
     /// <summary>The composed single statement plus its parameters.</summary>
     internal sealed record SubgraphStatement(string Cypher, IDictionary<string, object> Parameters);
 
@@ -244,12 +238,7 @@ internal sealed class Neo4jSubgraphManager(GraphContext context)
             _ => throw new GraphException($"Unsupported relationship direction '{direction}'.")
         };
 
-        var properties = SerializationHelpers.SerializeSimpleProperties(entity)
-            .Where(kv => !_ignoredRelationshipProperties.Contains(kv.Key))
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
-        properties[nameof(Graph.IRelationship.Type)] = entity.Label;
-
-        parameters["rel_props"] = properties;
+        parameters["rel_props"] = Neo4jRelationshipManager.BuildRelationshipProperties(entity);
 
         builder.Append("CREATE (").Append(sourceVariable).Append(")-[r:").Append(relationshipType)
             .Append(" $rel_props]->(").Append(targetVariable).Append(")\n");

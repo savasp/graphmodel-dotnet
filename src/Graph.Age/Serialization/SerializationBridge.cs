@@ -75,26 +75,64 @@ internal static class SerializationBridge
         return Convert.ChangeType(value, effectiveType, CultureInfo.InvariantCulture);
     }
 
+    public static string CreateScalarMetadata(Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        var assemblyQualifiedName = type.AssemblyQualifiedName ?? type.FullName ?? type.Name;
+        return RemoveAssemblyVersions(assemblyQualifiedName);
+    }
+
     public static Dictionary<string, object> CreateMetadata(Type type) => new()
     {
         [MetadataPropertyName] = new Dictionary<string, object>
         {
-            [TypeNameKey] = type.AssemblyQualifiedName ?? type.FullName ?? type.Name,
+            [TypeNameKey] = CreateScalarMetadata(type),
         },
     };
 
     public static Type? GetTypeFromMetadata(IReadOnlyDictionary<string, object>? properties)
     {
-        if (properties is null ||
-            !properties.TryGetValue(MetadataPropertyName, out var metadata) ||
-            metadata is not IReadOnlyDictionary<string, object> values ||
-            !values.TryGetValue(TypeNameKey, out var typeName) ||
-            typeName is not string text)
+        if (properties is null || !properties.TryGetValue(MetadataPropertyName, out var metadata))
         {
             return null;
         }
 
-        return Type.GetType(text);
+        var typeName = metadata switch
+        {
+            string scalar => scalar,
+            IReadOnlyDictionary<string, object> values when values.TryGetValue(TypeNameKey, out var value) => value as string,
+            _ => null,
+        };
+
+        return typeName is null ? null : Type.GetType(typeName);
+    }
+
+    private static string RemoveAssemblyVersions(string assemblyQualifiedName)
+    {
+        const string marker = ", Version=";
+        var versionStart = assemblyQualifiedName.IndexOf(marker, StringComparison.Ordinal);
+        if (versionStart < 0)
+        {
+            return assemblyQualifiedName;
+        }
+
+        var result = new System.Text.StringBuilder(assemblyQualifiedName.Length);
+        var copyStart = 0;
+        while (versionStart >= 0)
+        {
+            result.Append(assemblyQualifiedName, copyStart, versionStart - copyStart);
+            var versionEnd = assemblyQualifiedName.IndexOfAny([',', ']'], versionStart + marker.Length);
+            if (versionEnd < 0)
+            {
+                return result.ToString();
+            }
+
+            copyStart = versionEnd;
+            versionStart = assemblyQualifiedName.IndexOf(marker, copyStart, StringComparison.Ordinal);
+        }
+
+        result.Append(assemblyQualifiedName, copyStart, assemblyQualifiedName.Length - copyStart);
+        return result.ToString();
     }
 
     private static Dictionary<string, object?> ConvertDictionary(IDictionary source)

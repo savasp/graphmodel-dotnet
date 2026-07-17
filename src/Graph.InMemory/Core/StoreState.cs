@@ -175,8 +175,9 @@ internal sealed record StoreState(
 
     /// <summary>
     /// Replaces the properties of the user relationship with the given id. The stored endpoints,
-    /// type, and direction are identity: a direction change throws, and endpoints are kept as
-    /// stored. Throws <see cref="EntityNotFoundException"/> when no such relationship exists.
+    /// type, concrete CLR type, and direction are identity: an identity change throws, and
+    /// endpoints are kept as stored. Throws <see cref="EntityNotFoundException"/> when no such
+    /// relationship exists.
     /// </summary>
     public StoreState UpdateRelationship(RelationshipRecord replacement)
     {
@@ -192,7 +193,16 @@ internal sealed record StoreState(
                 $"Stored direction is {existing.Direction}; incoming direction is {replacement.Direction}.");
         }
 
-        var updated = existing with { Properties = replacement.Properties, ActualType = replacement.ActualType };
+        if (!string.Equals(existing.Type, replacement.Type, StringComparison.Ordinal) ||
+            existing.ActualType != replacement.ActualType)
+        {
+            throw new GraphException(
+                "Relationship type or concrete CLR type cannot be changed on update; delete and recreate the relationship. " +
+                $"Stored relationship type is '{existing.Type}' and CLR type is '{existing.ActualType?.FullName}'; " +
+                $"incoming relationship type is '{replacement.Type}' and CLR type is '{replacement.ActualType?.FullName}'.");
+        }
+
+        var updated = existing with { Properties = replacement.Properties };
         return this with { Relationships = Relationships.SetItem(existing.Id, updated) };
     }
 

@@ -349,9 +349,12 @@ Traversal direction is a query-time choice. Use `GraphTraversalDirection.Outgoin
 `GraphTraversalDirection.Incoming`, or `GraphTraversalDirection.Both` on traversal operators when
 you want to choose which stored arrows a query follows.
 
-`Direction` is immutable once a relationship has been persisted. Updating relationship properties
-with the same `Direction` succeeds, but changing `Direction` during an update throws
-`GraphException`; delete and recreate the relationship when you need to reverse the stored edge.
+Relationship identity is immutable once persisted. Updating properties succeeds only when the
+incoming relationship has the same storage type, concrete CLR/materialization type, and `Direction`.
+Changing any of those identity fields during an update throws `GraphException` before properties are
+mutated. Delete and recreate the relationship when you need a different type or stored direction;
+providers do not perform that operation implicitly because recreation can affect endpoints, schemas,
+and constraints.
 
 ### Relationship Implementation Patterns
 

@@ -174,6 +174,17 @@ internal static class SerializationBridge
     }
 
     /// <summary>
+    /// Gets the version-independent, assembly-qualified scalar name used to persist a concrete CLR
+    /// type in Neo4j.
+    /// </summary>
+    public static string GetAssemblyQualifiedTypeName(Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        var assemblyQualifiedName = type.AssemblyQualifiedName ?? type.FullName ?? type.Name;
+        return RemoveAssemblyVersions(assemblyQualifiedName);
+    }
+
+    /// <summary>
     /// Creates metadata dictionary for a node or relationship.
     /// </summary>
     public static Dictionary<string, object> CreateMetadata(Type type)
@@ -182,7 +193,7 @@ internal static class SerializationBridge
         {
             [MetadataPropertyName] = new Dictionary<string, object>
             {
-                [TypeNameKey] = type.AssemblyQualifiedName ?? type.FullName ?? type.Name
+                [TypeNameKey] = GetAssemblyQualifiedTypeName(type)
             }
         };
     }
@@ -198,13 +209,43 @@ internal static class SerializationBridge
         if (!properties.TryGetValue(MetadataPropertyName, out var metadata))
             return null;
 
-        if (metadata is not IReadOnlyDictionary<string, object> metaDict)
-            return null;
+        var typeName = metadata switch
+        {
+            string scalar => scalar,
+            IReadOnlyDictionary<string, object> metaDict
+                when metaDict.TryGetValue(TypeNameKey, out var value) => value as string,
+            _ => null
+        };
 
-        if (!metaDict.TryGetValue(TypeNameKey, out var typeName) || typeName is not string typeNameStr)
-            return null;
+        return typeName is null ? null : Type.GetType(typeName);
+    }
 
-        return Type.GetType(typeNameStr);
+    private static string RemoveAssemblyVersions(string assemblyQualifiedName)
+    {
+        const string marker = ", Version=";
+        var versionStart = assemblyQualifiedName.IndexOf(marker, StringComparison.Ordinal);
+        if (versionStart < 0)
+        {
+            return assemblyQualifiedName;
+        }
+
+        var result = new System.Text.StringBuilder(assemblyQualifiedName.Length);
+        var copyStart = 0;
+        while (versionStart >= 0)
+        {
+            result.Append(assemblyQualifiedName, copyStart, versionStart - copyStart);
+            var versionEnd = assemblyQualifiedName.IndexOfAny([',', ']'], versionStart + marker.Length);
+            if (versionEnd < 0)
+            {
+                return result.ToString();
+            }
+
+            copyStart = versionEnd;
+            versionStart = assemblyQualifiedName.IndexOf(marker, copyStart, StringComparison.Ordinal);
+        }
+
+        result.Append(assemblyQualifiedName, copyStart, assemblyQualifiedName.Length - copyStart);
+        return result.ToString();
     }
 
     private static DateTime ConvertToDateTime(object value)

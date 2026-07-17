@@ -103,16 +103,22 @@ internal static class GraphValueConverter
 
     public static Type? GetTypeFromMetadata(IReadOnlyDictionary<string, object>? properties)
     {
-        if (properties is null ||
-            !properties.TryGetValue(MetadataPropertyName, out var metadata) ||
-            metadata is not IReadOnlyDictionary<string, object> map ||
-            !map.TryGetValue(TypeNameKey, out var typeName) ||
-            typeName is not string text)
+        if (properties is null || !properties.TryGetValue(MetadataPropertyName, out var metadata))
         {
             return null;
         }
 
-        return Type.GetType(text);
+        // The provider-neutral wire convention is { "type": "assembly-qualified name" }.
+        // Backends such as Neo4j cannot persist map-valued entity properties, so providers may
+        // store the assembly-qualified name as a scalar under the same reserved property instead.
+        var typeName = metadata switch
+        {
+            string scalar => scalar,
+            IReadOnlyDictionary<string, object> map when map.TryGetValue(TypeNameKey, out var value) => value as string,
+            _ => null,
+        };
+
+        return typeName is null ? null : Type.GetType(typeName);
     }
 
     private static bool TryConvertCollection(object value, Type targetType, out object? result)
