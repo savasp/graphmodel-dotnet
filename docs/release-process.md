@@ -5,49 +5,55 @@
 
 CVOYA graph releases are tag-triggered and fully automated by
 [`.github/workflows/release.yml`](https://github.com/cvoya-com/graph/blob/main/.github/workflows/release.yml). There is
-no manual publish step and no CI stamping of version numbers: the `VERSION`
-file at the repository root is the single source of truth for the package
-version, and the workflow fails loudly if the pushed tag doesn't match it.
+no manual publish step and no CI stamping of version numbers: releases are
+**tag-authoritative** — the tag *is* the version. `release.yml` only ever reads
+it, and rejects any tag that doesn't match the version scheme below.
+
+`./scripts/release.sh` is the operator entry point and the only supported way to
+cut a tag. It computes the version, runs the pre-flight safety checks, pushes the
+tag, watches the workflow to completion, and verifies the published packages are
+actually resolvable on nuget.org.
+
+## Version scheme
+
+```text
+MAJOR.MINOR.PATCH[-(alpha|beta|rc).YYYYMMDD[.N]]
+```
+
+Stable releases are plain `MAJOR.MINOR.PATCH`. Pre-releases are date-anchored, and
+a second pre-release cut on the same day gets a `.1`, `.2`, … counter — so
+`1.0.0-alpha.20260716` is followed by `1.0.0-alpha.20260716.1`. These order
+correctly under SemVer pre-release precedence. This matches the scheme Spring
+Voyage uses.
 
 ## Cutting a release
 
-1. **Update `VERSION`.**
+1. **Preview the plan.** `--plan` computes the tag and prints what would happen
+   without pushing anything.
 
    ```bash
-   ./scripts/create-release.sh -v 1.2.3
-   # or, for a pre-release:
-   ./scripts/create-release.sh -v 1.2.3-alpha
+   ./scripts/release.sh 1.2.3 --pre alpha --plan
    ```
 
-   This updates `VERSION` (the semantic package version) and `VERSION.ASSEMBLY`
-   (a separate numeric `Major.Minor.YYDDD.HHMM` stamp used for the .NET
-   `AssemblyVersion`/`FileVersion`, which cannot carry a semver prerelease
-   suffix). Use `--dry-run` to preview without writing, and `--commit` to
-   update and commit in one step.
-
-2. **Verify locally before tagging** (optional but recommended):
+2. **Cut it.** One command does the rest — the base version is positional, and
+   pre-release suffixes come from `--pre`, never typed by hand.
 
    ```bash
-   dotnet build --configuration Release
-   dotnet test --configuration Release
-   dotnet pack --configuration Release --no-build -o ./artifacts src/Graph/Cvoya.Graph.csproj
+   ./scripts/release.sh 1.2.3               # stable  -> v1.2.3
+   ./scripts/release.sh 1.2.3 --pre alpha   # alpha   -> v1.2.3-alpha.20260716
+   ./scripts/release.sh 1.2.3 --pre rc      # rc      -> v1.2.3-rc.20260716
    ```
 
-3. **Commit and tag.** The tag must be `v` followed by the exact `VERSION`
-   file content.
+   Before pushing anything, the script verifies its tools and GitHub
+   authentication, checks that both fetch and push URLs for `origin` resolve to
+   `cvoya-com/graph`, requires a clean checkout exactly at the current
+   `origin/main` commit, and performs a dry-run push. Existing tags are immutable:
+   rerun their workflow after a transient failure, or choose a new version.
 
-   ```bash
-   git add VERSION VERSION.ASSEMBLY
-   git commit -m "chore: release 1.2.3"
-   git tag v1.2.3
-   git push origin main
-   git push origin v1.2.3
-   ```
-
-4. **Pushing the tag triggers the release workflow**, which:
-   - Verifies the tag matches `VERSION` exactly (fails loudly on any
-     mismatch — this is what prevents the double-date-suffix class of bugs;
-     the workflow never writes to `VERSION` itself).
+3. **Pushing the tag triggers the release workflow**, which:
+   - Reads the version off the tag and verifies it matches the scheme above
+     (the workflow never writes a version anywhere — that is what prevents the
+     double-date-suffix class of bugs).
    - Runs the full release-relevant test suite, including the Neo4j and Apache
      AGE provider tests against service containers (the same pattern as
      `ci.yml`).
@@ -55,6 +61,10 @@ version, and the workflow fails loudly if the pushed tag doesn't match it.
      `Cvoya.Graph.Age`, `Cvoya.Graph.InMemory`, `Cvoya.Graph`,
      `Cvoya.Graph.Cypher`, serialization, analyzer, code-generation, and
      compatibility-test packages.
+   - Verifies the exact package inventory and inspects every packaged
+     `Cvoya.Graph*.dll`: the NuGet manifest, filename, `AssemblyVersion`,
+     `FileVersion`, and `InformationalVersion` must all match the tag-derived
+     version before anything can publish.
    - Verifies a clean example consumer can restore and build against the exact
      package set assembled for publication.
    - Generates a build provenance attestation for every package, symbol
@@ -68,6 +78,14 @@ version, and the workflow fails loudly if the pushed tag doesn't match it.
      publisher, download, and package-ID migration information to GitHub's
      auto-generated notes.
 
+4. **`release.sh` then verifies the release is real.** A green workflow only
+   means `dotnet nuget push` was accepted — nuget.org indexes asynchronously, and
+   a package can be accepted but held by validation. The script reads the `.nupkg`
+   asset names off the GitHub Release and polls nuget.org until every one of those
+   package IDs resolves anonymously at that exact version. Reading the IDs off the
+   release rather than hardcoding them means this can never drift from what
+   `release.yml` packs.
+
 ### Dry runs
 
 Running `release.yml` manually via `workflow_dispatch` (Actions tab → Release
@@ -77,21 +95,27 @@ Release steps. Use it to validate the pipeline end-to-end — including on a
 throwaway branch — without touching nuget.org or creating a release. Real
 publishing only ever happens from an actual `v*` tag push.
 
+With no tag to read, a dispatched run versions itself from the `VERSION` file's
+development default.
+
 ### Promoting a prerelease to Latest
 
-For the active alpha line, follow the same GitHub Release convention as
-Spring Voyage:
+`release.yml` marks any semver prerelease as a GitHub prerelease, which keeps it
+off `releases/latest`. During a prerelease line there is still a "current" build
+that public download links should resolve to, so pass `--latest` to promote it:
 
-1. Let the tag-triggered workflow publish the semver prerelease and all of its
-   assets.
-2. Verify the NuGet packages, provenance attestations, and
-   `cvoya-graph-source.zip` download.
-3. Edit the GitHub Release manually so its release record is no longer marked
-   as a prerelease and mark it as **Latest**. The tag and NuGet package versions
-   remain semantic prereleases.
-4. Verify that `releases/latest` resolves to the promoted tag and that
-   `https://github.com/cvoya-com/graph/releases/latest/download/cvoya-graph-source.zip`
-   downloads the tagged archive before updating public links.
+```bash
+./scripts/release.sh 1.2.3 --pre alpha --latest
+```
+
+Once the workflow succeeds and the packages verify, the script clears the
+prerelease flag on the GitHub Release record and marks it **Latest**. The tag and
+the NuGet package version remain semantic prereleases — only the GitHub Release
+badge moves. `--latest` is redundant for a stable release, which is always Latest.
+
+Afterwards, confirm that
+`https://github.com/cvoya-com/graph/releases/latest/download/cvoya-graph-source.zip`
+downloads the tagged archive before updating public links.
 
 ## NuGet Trusted Publishing — one-time portal setup
 
@@ -110,8 +134,8 @@ the account/org that will own them):
      `.github/workflows/` path)
    - **Environment:** leave empty (the workflow does not use a GitHub
      Environment)
-3. Repeat step 2 for each package owner scope if the five package IDs aren't
-   all covered by a single policy (a policy applies to all packages owned by
+3. Repeat step 2 for each package owner scope if the package IDs aren't all
+   covered by a single policy (a policy applies to all packages owned by
    the selected owner).
 4. The policy is valid for 7 days pending its first successful publish (this
    is a GitHub anti-resurrection safeguard for the repository identity), after
@@ -127,15 +151,33 @@ push.
 
 ## Design decisions
 
-- **`VERSION` is authoritative; nothing stamps it in CI.** The old, disabled
-  `release.yml` produced the mangled
-  `1.0.0-alpha.20251014.0.20251014.0` version because a workflow step
-  appended a date suffix to an already-suffixed `VERSION`. The new workflow
-  only *reads* `VERSION` and *verifies* the tag against it.
+- **The tag is authoritative; nothing stamps a version in CI.** An old,
+  disabled `release.yml` produced the mangled
+  `1.0.0-alpha.20251014.0.20251014.0` version because a workflow step appended a
+  date suffix to an already-suffixed `VERSION`. No step writes a version now:
+  `release.sh` computes it once, the tag carries it, and `release.yml` only reads
+  and validates it.
+- **`VERSION` is a development default, not the release source of truth.**
+  Untagged local and CI builds version themselves from it. `release.yml` passes
+  the tag's version to the pack job as `GRAPH_RELEASE_VERSION`, which
+  `Directory.Build.props` prefers over the file. Editing `VERSION` does not cut a
+  release, and cutting a release does not edit `VERSION`.
+- **`AssemblyVersion`/`FileVersion` are derived, not tracked.** They must be four
+  numeric parts and cannot carry a semver prerelease suffix, so
+  `Directory.Build.props` strips the suffix and appends `.0`
+  (`1.2.3-rc.20260716` → `1.2.3.0`). This replaced a checked-in `VERSION.ASSEMBLY`
+  file holding a `Major.Minor.YYDDD.HHMM` stamp, which embedded the build *minute*
+  — so rebuilding one tag produced a different `FileVersion`. The full version,
+  prerelease suffix and commit sha included, still ships via
+  `InformationalVersion` (e.g. `1.2.3-rc.20260716+cba4d4f…`), which is what to
+  inspect for provenance.
+- **Release builds and packing are separate.** `dotnet pack -c Release` follows
+  the standard SDK contract and builds before packing; only an explicit
+  `--no-build` reuses earlier output. The release workflow deliberately builds
+  once and then packs with `--no-build`, while the package verifier checks the
+  DLL metadata so stale or mismatched output cannot publish.
 - **No `CHANGELOG.md`.** A short CVOYA-branded release introduction is
   prepended to GitHub's auto-generated notes (derived from merged PR titles
-  since the previous tag). Adopting
-  [Keep a Changelog](https://keepachangelog.com/) can be a follow-up if
-  hand-curated release notes become worth the maintenance cost.
+  since the previous tag).
 - **No NuGet API key anywhere**, cleartext or secret-stored — Trusted
   Publishing is the only supported publish mechanism.

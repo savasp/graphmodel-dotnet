@@ -256,8 +256,8 @@ dotnet build --configuration Debug
 # Local package-reference validation before publishing
 dotnet msbuild eng/PackageValidation.proj -target:Validate
 
-# Production package build (requires VERSION file)
-dotnet build --configuration Release
+# Production package build (pack builds first by default)
+dotnet pack src/Graph/Graph.csproj --configuration Release
 ```
 
 For testing package references locally before publishing to NuGet:

@@ -17,22 +17,35 @@ This directory contains utility scripts for the CVOYA graph project.
 ./scripts/validate-build.sh --codeql
 ```
 
-### Version Management
+### Releasing
+
+Releases are tag-authoritative — the tag is the version, and `release.sh` is the
+only supported way to cut one. It pushes the tag, watches
+`.github/workflows/release.yml` (build, test, pack, attest, publish to NuGet,
+create the GitHub Release), then verifies every package resolves on nuget.org.
 
 ```bash
-# Create a new release version (updates VERSION and VERSION.ASSEMBLY)
-./scripts/create-release.sh -v 1.2.3
+# Preview the computed tag without pushing anything
+./scripts/release.sh 1.2.3 --pre alpha --plan
 
-# Preview without writing any files
-./scripts/create-release.sh -v 1.2.3 --dry-run
+# Cut a stable release  -> v1.2.3
+./scripts/release.sh 1.2.3
 
-# Show current version
+# Cut a date-anchored pre-release  -> v1.2.3-alpha.20260716
+./scripts/release.sh 1.2.3 --pre alpha
+
+# ...and make it the current Latest on GitHub
+./scripts/release.sh 1.2.3 --pre alpha --latest
+
+# Run the release script's isolated command-flow tests
+bash ./scripts/release.test.sh
+
+# Show the version the current tree would build as
 dotnet msbuild -target:ShowVersion
 ```
 
-Pushing a `v1.2.3` tag (matching the `VERSION` file) triggers `.github/workflows/release.yml`,
-which builds, tests, packs, publishes to NuGet, and creates the GitHub Release. See
-[docs/release-process.md](../docs/release-process.md) for the full process.
+See [docs/release-process.md](../docs/release-process.md) for the version scheme
+and the full process.
 
 ### Build Commands
 
@@ -46,8 +59,8 @@ dotnet build --configuration Benchmark
 # Local package-reference validation
 dotnet msbuild eng/PackageValidation.proj -target:Validate
 
-# Production package build
-dotnet build --configuration Release
+# Production package build (pack builds first by default)
+dotnet pack src/Graph/Graph.csproj --configuration Release
 ```
 
 ### Testing
@@ -113,7 +126,7 @@ For comprehensive build system documentation, see: **[docs/graph-model-developer
 | **Debug**     | ✅ Yes       | ❌ No         | ❌ No    | ❌ No            | Development           |
 | **Benchmark** | ✅ Yes       | ✅ Yes        | ❌ No    | ❌ No            | Performance testing   |
 | **LocalFeed** | ✅ Yes       | ✅ Yes        | ✅ Yes   | ❌ No            | Local package testing |
-| **Release**   | ✅ Default   | ✅ Yes        | ✅ Yes   | ✅ Yes           | Production package builds |
+| **Release**   | ✅ Default   | ✅ Yes        | Via `pack` | ✅ Yes         | Production package builds |
 
 ## Local NuGet Feed Scripts
 
@@ -134,7 +147,7 @@ dotnet msbuild eng/PackageValidation.proj -target:PrepareLocalFeed
 dotnet msbuild eng/PackageValidation.proj -target:Clean
 ```
 
-It uses `eng/package-validation.NuGet.config`, maps `Cvoya.*` exclusively to the generated feed, verifies all nine expected packages with `scripts/verify-package-set.sh`, and isolates packages, HTTP cache, scratch, and plugin cache under `artifacts/package-validation/`. It never registers a user-level source or clears global NuGet state.
+It uses `eng/package-validation.NuGet.config`, maps `Cvoya.*` exclusively to the generated feed, verifies the exact nine-package inventory and all packaged assembly version metadata with `scripts/verify-package-set.sh`, and isolates packages, HTTP cache, scratch, and plugin cache under `artifacts/package-validation/`. It never registers a user-level source or clears global NuGet state.
 
 The inventory check requires `bash` and `jq`; path handling in the MSBuild orchestrator is OS-native on Windows, Linux, and macOS.
 

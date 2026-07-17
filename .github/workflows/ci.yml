@@ -58,7 +58,6 @@ jobs:
               - 'global.json'
               - '.config/dotnet-tools.json'
               - 'VERSION'
-              - 'VERSION.ASSEMBLY'
               - '.github/workflows/ci.yml'
             workflow_files:
               - '.github/workflows/**'
@@ -89,6 +88,12 @@ jobs:
           persona: regular
           advanced-security: false
           annotations: true
+
+      - name: Test repository hooks and release orchestration
+        shell: bash
+        run: |
+          bash .claude/hooks/hooks.test.sh
+          bash scripts/release.test.sh
 
   validation:
     name: Build, format, and test

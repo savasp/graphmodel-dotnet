@@ -49,7 +49,7 @@ The test projects have different requirements — get this right:
 | `tests/Graph.Serialization.CodeGen.Tests` | Incremental serialization generator tests. | nothing — runs anywhere; the fast no-Docker lane |
 | `tests/Graph.Performance.Tests` | Benchmarks. | not part of the normal gate |
 
-Package testing before publishing: `dotnet msbuild eng/PackageValidation.proj -target:Validate`. The orchestrator packs the complete LocalFeed set, verifies it with `scripts/verify-package-set.sh`, and restores/builds package references using repository-scoped NuGet state. Release builds require the `VERSION` file; the release process (tag-triggered, `VERSION` as the source of truth) is described in [docs/release-process.md](docs/release-process.md).
+Package testing before publishing: `dotnet msbuild eng/PackageValidation.proj -target:Validate`. The orchestrator packs the complete LocalFeed set, verifies its inventory and assembly version metadata with `scripts/verify-package-set.sh`, and restores/builds package references using repository-scoped NuGet state. Untagged builds use `VERSION` as their development default; published releases are tag-authoritative and override it. See [docs/release-process.md](docs/release-process.md).
 
 ## Conventions
 
