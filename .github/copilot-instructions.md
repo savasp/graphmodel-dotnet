@@ -4,7 +4,7 @@ Read **[AGENTS.md](../AGENTS.md)** at the repository root — it is the canonica
 
 Quick anchors:
 
-- The project layout and what each `src/` and `tests/` project is for: AGENTS.md § "Layout" and § "Build and test". Note that `src/Cvoya.Graph.CompatibilityTests` is the shippable provider compatibility (TCK) suite of abstract contract tests — it executes through a provider test project such as `tests/Cvoya.Graph.Neo4j.Tests`, which needs a running Neo4j.
+- The project layout and test/provider-service semantics: AGENTS.md § "Layout" and § "Build and test". The compatibility suite under `src/` executes through provider test projects; use `scripts/run-tests.sh` rather than maintaining a second project inventory.
 - Coding conventions (one public type per file, XML docs on public APIs, Apache 2.0 header, async rules, conventional commits): AGENTS.md § "Conventions" and [CONTRIBUTING.md](../CONTRIBUTING.md).
 - Never build Cypher by interpolating values into query strings — values go through parameters.
 

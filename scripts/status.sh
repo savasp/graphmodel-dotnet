@@ -76,12 +76,12 @@ else
     print_warning "⚠️  No artifacts directory"
 fi
 
-# Check local feed
-if [ -d "local-nuget-feed" ]; then
-    FEED_COUNT=$(find local-nuget-feed -name "*.nupkg" 2>/dev/null | wc -l)
+# Check repository-scoped local feed
+if [ -d "artifacts/package-validation/feed" ]; then
+    FEED_COUNT=$(find artifacts/package-validation/feed -name "*.nupkg" 2>/dev/null | wc -l)
     print_status "✅ Local feed exists ($FEED_COUNT packages)"
 else
-    print_warning "⚠️  No local feed directory"
+    print_warning "⚠️  No package-validation feed"
 fi
 
 # Check build directories
@@ -182,7 +182,7 @@ if [ -f "VERSION" ]; then
     if dotnet build --configuration Release --no-restore --verbosity quiet 2>/dev/null; then
         print_status "✅ Release build works"
     else
-        print_warning "⚠️  Release build failed (may need local feed setup)"
+        print_warning "⚠️  Release build failed"
     fi
 else
     print_warning "⚠️  Skipping Release build test (no VERSION file)"
@@ -197,8 +197,8 @@ if [ ! -f "VERSION" ]; then
     print_warning "• Create a VERSION file for Release builds"
 fi
 
-if [ ! -d "local-nuget-feed" ]; then
-    print_warning "• Set up local feed for Release testing: ./scripts/setup-local-feed-msbuild.sh"
+if [ ! -d "artifacts/package-validation/feed" ]; then
+    print_warning "• Validate local packages: dotnet msbuild eng/PackageValidation.proj -target:Validate"
 fi
 
 if ! podman ps --format "table {{.Names}}" | grep -q "neo4j"; then
@@ -217,4 +217,4 @@ echo "  Validate build system: ./scripts/validate-build.sh"
 echo "  Run all tests:        ./scripts/run-tests.sh"
 echo "  Clean everything:     ./scripts/clean-all.sh --all"
 echo "  Start containers:     ./scripts/containers/start-neo4j.sh"
-echo "  Create release:       ./scripts/create-release.sh -v 1.2.3" 
+echo "  Create release:       ./scripts/create-release.sh -v 1.2.3"

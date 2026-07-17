@@ -5,7 +5,7 @@
 
 This repository is set up so AI coding agents can discover project context, build and test commands, and tool-specific configuration.
 
-**The single source of truth is [AGENTS.md](https://github.com/cvoya-com/graph/blob/main/AGENTS.md)** at the repo root: layout, build/test requirements (including which test projects need a live Neo4j), conventions, multi-agent workflow, and issue-tracking rules. Tool-specific files layer on top of it:
+**The single source of truth is [AGENTS.md](https://github.com/cvoya-com/graph/blob/main/AGENTS.md)** at the repo root: layout, build/test and provider-service requirements, conventions, multi-agent workflow, and issue-tracking rules. Tool-specific files layer on top of it:
 
 | Tool | What to use |
 |------|-------------|
@@ -32,4 +32,4 @@ The **lead session** owns isolation: it creates a worktree and branch per task a
 
 - **Protected files** (`VERSION`, `.github/`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `.claude/`, `.codex/`): a PreToolUse hook blocks direct edits and tells the agent to ask the user first. This is advisory, not a security boundary. Self-test: `bash .claude/hooks/hooks.test.sh`.
 - **Build feedback**: a PostToolUse hook builds the affected project after `.cs` edits and feeds compile errors back to the agent.
-- **Permissions**: `.claude/settings.json` pre-approves common development commands (`dotnet build`, `dotnet test`, `git`, `gh`, etc.) so agents can work without manual approval prompts.
+- **Permissions**: `.claude/settings.json` pre-approves the repository test runner and common development commands (`dotnet`, `git`, `gh`, etc.) so agents can work without manual approval prompts.

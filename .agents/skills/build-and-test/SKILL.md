@@ -2,35 +2,40 @@
 name: build-and-test
 description: Build the solution and run the test suite. Use after implementing features, fixing bugs, or before committing.
 user-invocable: true
-allowed-tools: Bash(dotnet *)
 argument-hint: "[configuration]"
 ---
 
 # Build and Test
 
-Build and test the CVOYA graph solution. Configuration defaults to `Debug`; pass one as `$1` to override (e.g. `/build-and-test Release`).
+Build and test the CVOYA graph solution. Configuration defaults to `Debug`; pass one as `$1` to override (for example, `/build-and-test Release`). Use the repository test runner so new test projects are picked up without duplicating an inventory in this skill.
 
 ## Steps
 
-1. Build the solution (use `Debug` if `$1` is empty):
+1. Run the fast lane. It builds the solution, discovers all test projects under `tests/`, excludes benchmarks and external-service projects, and includes the in-memory provider contract suite:
+
    ```bash
-   dotnet build --configuration $1
+   configuration="${1:-Debug}"
+   ./scripts/run-tests.sh --configuration "$configuration" --lane fast --disable-diff-engine
    ```
 
-2. Run the analyzer tests — these always run, no external dependencies:
+2. Run each relevant database-backed lane after starting its repository container or configuring an existing service. Reuse the build from step 1:
+
    ```bash
-   dotnet test tests/Cvoya.Graph.Analyzers.Tests --configuration $1 --no-build
+   configuration="${1:-Debug}"
+   ./scripts/run-tests.sh --configuration "$configuration" --lane neo4j --no-build --disable-diff-engine
+   ./scripts/run-tests.sh --configuration "$configuration" --lane age --no-build --disable-diff-engine
    ```
 
-3. Run the full suite, which includes the Neo4j-bound contract tests:
+   `scripts/containers/start-neo4j.sh` prepares the default Neo4j endpoint. `scripts/containers/start-age.sh` prints the `AGE_CONNECTION_STRING` to export. The runner can start either service itself with `--neo4j` or `--age`.
+
+3. When both services are available, `--lane all` is the single full-suite command. Run package-reference validation separately when build or packaging behavior changes:
+
    ```bash
-   dotnet test --configuration $1 --no-build
+   configuration="${1:-Debug}"
+   ./scripts/run-tests.sh --configuration "$configuration" --lane all --disable-diff-engine
+   dotnet msbuild eng/PackageValidation.proj -target:Validate
    ```
-   This requires a running Neo4j (`NEO4J_URI`, or the default `bolt://localhost:7687` with `neo4j/password`). Start one with `scripts/containers/start-neo4j.sh`; it tries Podman first and Docker second unless `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` is set. **There is no automatic container startup.** If no Neo4j is reachable after trying the script and any configured `NEO4J_*` endpoint, skip this step and say so explicitly in your report — an analyzers-only pass is not full validation.
 
-4. Report results — failing test names and error messages with file paths, plus which steps ran.
+4. Report the project and test counts printed by the runner, failing test names and errors, and any database-backed lane that could not run. A fast-lane pass is not full provider validation.
 
-## Notes
-
-- `tests/Cvoya.Graph.Tests` is an abstract contract suite — running it directly executes ~no tests. The contract tests execute through `tests/Cvoya.Graph.Neo4j.Tests`.
-- For package testing, use `LocalFeed` then `Release` configuration. See [docs/graph-model-developers.md](../../../docs/graph-model-developers.md).
+The provider/service matrix and compatibility-suite semantics are canonical in [AGENTS.md](../../../AGENTS.md).

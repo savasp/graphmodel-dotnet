@@ -34,12 +34,12 @@ for project in src/*/*.csproj; do
         -getProperty:PackageVersion \
         -p:Configuration=LocalFeed)
 
-    if [ "$(jq -r '.Properties.IsPackable' <<< "$metadata")" != "true" ]; then
+    if [ "$(jq -r '.Properties.IsPackable' <<< "$metadata" | tr -d '\r')" != "true" ]; then
         continue
     fi
 
-    package_id=$(jq -r '.Properties.PackageId' <<< "$metadata")
-    package_version=$(jq -r '.Properties.PackageVersion' <<< "$metadata")
+    package_id=$(jq -r '.Properties.PackageId' <<< "$metadata" | tr -d '\r')
+    package_version=$(jq -r '.Properties.PackageVersion' <<< "$metadata" | tr -d '\r')
     expected_package_ids="${expected_package_ids}${package_id}"$'\n'
     expected_package_count=$((expected_package_count + 1))
 
@@ -60,7 +60,8 @@ for project in src/*/*.csproj; do
         -getItem:PackageReference \
         -p:Configuration=Release \
         -p:UsePackageReferences=true \
-        | jq -r '.Items.PackageReference[]?.Identity | select(startswith("Cvoya."))')
+        | jq -r '.Items.PackageReference[]?.Identity | select(startswith("Cvoya."))' \
+        | tr -d '\r')
 
     while IFS= read -r package_reference; do
         if [ -z "$package_reference" ]; then

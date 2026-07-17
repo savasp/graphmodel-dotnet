@@ -1,0 +1,82 @@
+<Project DefaultTargets="Validate">
+    <PropertyGroup>
+        <RepositoryRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..'))</RepositoryRoot>
+        <SolutionPath>$([MSBuild]::NormalizePath('$(RepositoryRoot)', 'cvoya-graph.sln'))</SolutionPath>
+        <VersionFile>$([MSBuild]::NormalizePath('$(RepositoryRoot)', 'VERSION'))</VersionFile>
+        <NuGetConfigPath>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', 'package-validation.NuGet.config'))</NuGetConfigPath>
+        <!-- Command-line paths must not end in a directory separator: a trailing
+             backslash escapes the closing quote under Windows argument parsing. -->
+        <ValidationRoot>$([MSBuild]::NormalizePath('$(RepositoryRoot)', 'artifacts', 'package-validation'))</ValidationRoot>
+        <PackageOutputPath>$([MSBuild]::NormalizePath('$(ValidationRoot)', 'packages'))</PackageOutputPath>
+        <LocalFeedPath>$([MSBuild]::NormalizePath('$(ValidationRoot)', 'feed'))</LocalFeedPath>
+        <GlobalPackagesPath>$([MSBuild]::NormalizePath('$(ValidationRoot)', 'global-packages'))</GlobalPackagesPath>
+        <HttpCachePath>$([MSBuild]::NormalizePath('$(ValidationRoot)', 'http-cache'))</HttpCachePath>
+        <ScratchPath>$([MSBuild]::NormalizePath('$(ValidationRoot)', 'scratch'))</ScratchPath>
+        <PluginsCachePath>$([MSBuild]::NormalizePath('$(ValidationRoot)', 'plugins-cache'))</PluginsCachePath>
+        <VerifyPackageSetScript>$([MSBuild]::NormalizePath('$(RepositoryRoot)', 'scripts', 'verify-package-set.sh'))</VerifyPackageSetScript>
+        <ExpectedVersion Condition="'$(ExpectedVersion)' == '' And Exists('$(VersionFile)')">$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</ExpectedVersion>
+        <BashExecutable Condition="'$(BashExecutable)' == ''">bash</BashExecutable>
+        <UseSharedCompilation Condition="'$(UseSharedCompilation)' == ''">true</UseSharedCompilation>
+        <NuGetEnvironment>NUGET_PACKAGES=$(GlobalPackagesPath);NUGET_HTTP_CACHE_PATH=$(HttpCachePath);NUGET_SCRATCH=$(ScratchPath);NUGET_PLUGINS_CACHE_PATH=$(PluginsCachePath)</NuGetEnvironment>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- These single-target analyzer projects do not run pack-on-build from the
+             solution's cross-targeting build, so the repository orchestrator packs them explicitly. -->
+        <ExplicitPackageProject Include="$(RepositoryRoot)src/Graph.Analyzers/Graph.Analyzers.csproj" />
+        <ExplicitPackageProject Include="$(RepositoryRoot)src/Graph.Serialization.CodeGen/Graph.Serialization.CodeGen.csproj" />
+    </ItemGroup>
+
+    <Target Name="Clean">
+        <Message Text="Cleaning repository-scoped package-validation state..." Importance="high" />
+        <RemoveDir Directories="$(ValidationRoot)" Condition="Exists('$(ValidationRoot)')" />
+    </Target>
+
+    <Target Name="PrepareDirectories" DependsOnTargets="Clean">
+        <Error Condition="'$(ExpectedVersion)' == ''" Text="VERSION is required for package-reference validation." />
+        <MakeDir Directories="$(PackageOutputPath);$(LocalFeedPath);$(GlobalPackagesPath);$(HttpCachePath);$(ScratchPath);$(PluginsCachePath)" />
+    </Target>
+
+    <Target Name="PrepareLocalFeed" DependsOnTargets="PrepareDirectories">
+        <Message Text="Restoring and packing LocalFeed packages into repository-scoped state..." Importance="high" />
+        <Exec
+            Command="dotnet restore &quot;$(SolutionPath)&quot; --configfile &quot;$(NuGetConfigPath)&quot; --packages &quot;$(GlobalPackagesPath)&quot; --force --no-http-cache --verbosity minimal -p:Configuration=LocalFeed -p:UseProjectReferences=true"
+            WorkingDirectory="$(RepositoryRoot)"
+            EnvironmentVariables="$(NuGetEnvironment)" />
+        <Exec
+            Command="dotnet build &quot;$(SolutionPath)&quot; --configuration LocalFeed --no-restore --no-incremental --verbosity minimal -p:UseProjectReferences=true -p:PackageOutputPath=&quot;$(PackageOutputPath)&quot; -p:RestorePackagesPath=&quot;$(GlobalPackagesPath)&quot; -p:UseSharedCompilation=$(UseSharedCompilation)"
+            WorkingDirectory="$(RepositoryRoot)"
+            EnvironmentVariables="$(NuGetEnvironment)" />
+        <Exec
+            Command="dotnet pack &quot;%(ExplicitPackageProject.Identity)&quot; --configuration LocalFeed --no-build --no-restore --verbosity minimal -p:TargetFramework=netstandard2.0 -p:PackageOutputPath=&quot;$(PackageOutputPath)&quot; -p:RestorePackagesPath=&quot;$(GlobalPackagesPath)&quot;"
+            WorkingDirectory="$(RepositoryRoot)"
+            EnvironmentVariables="$(NuGetEnvironment)" />
+        <Exec
+            Command="&quot;$(BashExecutable)&quot; &quot;$(VerifyPackageSetScript)&quot; &quot;$(PackageOutputPath)&quot; &quot;$(ExpectedVersion)&quot;"
+            WorkingDirectory="$(RepositoryRoot)"
+            EnvironmentVariables="$(NuGetEnvironment)" />
+
+        <ItemGroup>
+            <LocalPackages Include="$(PackageOutputPath)/*.nupkg" />
+        </ItemGroup>
+        <Error Condition="'@(LocalPackages)' == ''" Text="The LocalFeed build produced no packages in $(PackageOutputPath)." />
+        <Copy SourceFiles="@(LocalPackages)" DestinationFolder="$(LocalFeedPath)" />
+        <Message Text="Prepared @(LocalPackages->Count()) package(s) in $(LocalFeedPath)." Importance="high" />
+    </Target>
+
+    <Target Name="BuildWithPackageReferences" DependsOnTargets="PrepareLocalFeed">
+        <Message Text="Restoring and building the solution with locally produced package references..." Importance="high" />
+        <Exec
+            Command="dotnet restore &quot;$(SolutionPath)&quot; --configfile &quot;$(NuGetConfigPath)&quot; --packages &quot;$(GlobalPackagesPath)&quot; --force --no-http-cache --verbosity minimal -p:Configuration=Release -p:UsePackageReferences=true -p:GeneratePackageOnBuild=false"
+            WorkingDirectory="$(RepositoryRoot)"
+            EnvironmentVariables="$(NuGetEnvironment)" />
+        <Exec
+            Command="dotnet build &quot;$(SolutionPath)&quot; --configuration Release --no-restore --no-incremental --verbosity minimal -p:UsePackageReferences=true -p:GeneratePackageOnBuild=false -p:RestorePackagesPath=&quot;$(GlobalPackagesPath)&quot; -p:UseSharedCompilation=$(UseSharedCompilation)"
+            WorkingDirectory="$(RepositoryRoot)"
+            EnvironmentVariables="$(NuGetEnvironment)" />
+    </Target>
+
+    <Target Name="Validate" DependsOnTargets="BuildWithPackageReferences">
+        <Message Text="Package-reference validation completed successfully." Importance="high" />
+    </Target>
+</Project>

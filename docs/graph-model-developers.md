@@ -28,7 +28,7 @@ dotnet add package Cvoya.Graph.Analyzers
 dotnet build --configuration Debug
 
 # Test package references locally
-dotnet build --configuration LocalFeed
+dotnet msbuild eng/PackageValidation.proj -target:Validate
 
 # Create a release version
 ./scripts/create-release.sh -v 1.2.3
@@ -52,7 +52,7 @@ CVOYA graph uses **four distinct build configurations** optimized for different 
 | **Debug**     | ✅ Yes       | ❌ No         | ❌ No    | ❌ No            | Development & debugging |
 | **Benchmark** | ✅ Yes       | ✅ Yes        | ❌ No    | ❌ No            | Performance testing     |
 | **LocalFeed** | ✅ Yes       | ✅ Yes        | ✅ Yes   | ❌ No            | Local package testing   |
-| **Release**   | ❌ No        | ✅ Yes        | ✅ Yes   | ✅ Yes           | Production builds       |
+| **Release**   | ✅ Default   | ✅ Yes        | ✅ Yes   | ✅ Yes           | Production package builds |
 
 ### Configuration Details
 
@@ -74,17 +74,17 @@ CVOYA graph uses **four distinct build configurations** optimized for different 
 
 #### LocalFeed Configuration
 
-- **Purpose**: Testing package references locally before publishing
+- **Purpose**: Building the local package set before package-reference validation
 - **Speed**: Optimized builds with fast project references
 - **Dependencies**: Direct project references (fast builds)
-- **Packages**: Generated and published to local NuGet feed
+- **Packages**: Generated in the configured package output directory
 - **Usage**: `dotnet build --configuration LocalFeed`
 
 #### Release Configuration
 
 - **Purpose**: Production builds and publishing
 - **Speed**: Fully optimized
-- **Dependencies**: NuGet package references only
+- **Dependencies**: Project references by default; the package-validation orchestrator explicitly sets `UsePackageReferences=true`
 - **Packages**: Generated for publishing
 - **Usage**: `dotnet build --configuration Release`
 
@@ -231,48 +231,23 @@ git push origin v1.2.3
 
 ### Package Testing Workflow
 
-For testing package references locally before publishing to NuGet.org:
-
-#### Method 1: Using LocalFeed Configuration (Recommended)
+Package-reference validation has one repository-level owner:
 
 ```bash
-# 1. Build packages and set up local feed
-dotnet build --configuration LocalFeed
-
-# 2. Test Release configuration with package references
-dotnet build --configuration Release
-
-# 3. Run tests with package references
-dotnet test --configuration Release
-
-# 4. Clean up when done
-dotnet msbuild -target:CleanLocalFeed
+dotnet msbuild eng/PackageValidation.proj -target:Validate
 ```
 
-#### Method 2: Using Helper Script
+The orchestrator starts from clean repository-owned state, restores and builds the `LocalFeed` package set, explicitly packs the analyzer projects, verifies all nine expected packages with `scripts/verify-package-set.sh`, and then restores/builds the solution with `UsePackageReferences=true`. `eng/package-validation.NuGet.config` maps `Cvoya.*` to the generated feed and everything else to NuGet.org.
+
+All package, feed, global-packages, HTTP-cache, scratch, and plugin-cache paths live under `artifacts/package-validation/`. The workflow does not add or remove user-level NuGet sources and does not read, clear, or write the user's global NuGet caches.
+
+The inventory check requires `bash` and `jq` on `PATH`; this is the same toolchain used by the repository scripts on Linux, macOS, and Git-for-Windows/GitHub-hosted Windows environments. All path construction and project classification inside MSBuild use OS-native normalized paths.
+
+The compatibility wrappers delegate to the same orchestrator:
 
 ```bash
-# 1. Set up local feed using script
 ./scripts/setup-local-feed-msbuild.sh
-
-# 2. Test Release configuration
-dotnet build --configuration Release
-
-# 3. Clean up
-dotnet msbuild -target:CleanLocalFeed
-```
-
-#### Method 3: Legacy Manual Testing
-
-```bash
-# 1. Create test version
-./scripts/create-release.sh -v 1.2.3-test
-
-# 2. Build and test packages
-dotnet build --configuration Release
-
-# 3. Test in examples/tests
-dotnet test --configuration Release
+./scripts/cleanup-local-feed.sh
 ```
 
 ## 🛠️ Available MSBuild Targets
@@ -299,14 +274,17 @@ dotnet build --configuration Release
 ### Local Package Testing
 
 ```bash
-# Set up local NuGet feed (builds LocalFeed configuration)
-dotnet build --configuration LocalFeed
+# Pack and verify the repository-scoped local feed
+dotnet msbuild eng/PackageValidation.proj -target:PrepareLocalFeed
 
-# Test complete workflow (LocalFeed + Release)
-dotnet msbuild -target:TestLocalFeed
+# Build the solution with locally produced package references
+dotnet msbuild eng/PackageValidation.proj -target:BuildWithPackageReferences
 
-# Clean up local feed
-dotnet msbuild -target:CleanLocalFeed
+# Run the complete required gate
+dotnet msbuild eng/PackageValidation.proj -target:Validate
+
+# Remove only repository-scoped validation state
+dotnet msbuild eng/PackageValidation.proj -target:Clean
 ```
 
 ### Cleanup Commands
@@ -314,9 +292,6 @@ dotnet msbuild -target:CleanLocalFeed
 ```bash
 # Clean build outputs
 dotnet clean
-
-# Clear NuGet cache
-dotnet nuget locals all --clear
 ```
 
 ## 📁 Directory Structure
@@ -326,7 +301,10 @@ graphmodel/
 ├── VERSION                    # Current release version (single source of truth)
 ├── VERSION.ASSEMBLY           # Numeric AssemblyVersion/FileVersion stamp
 ├── Directory.Build.props      # MSBuild configuration
-├── artifacts/                # Built packages
+├── eng/
+│   ├── PackageValidation.proj        # Local package-validation orchestrator
+│   └── package-validation.NuGet.config
+├── artifacts/package-validation/     # Repository-scoped feed, packages, and caches
 └── scripts/
     ├── create-release.sh     # Release creation helper
     ├── run-benchmarks.sh     # Benchmark runner
@@ -347,8 +325,8 @@ graphmodel/
 #### "Package reference could not be resolved"
 
 ```bash
-# Solution: Ensure packages are built and available
-dotnet build --configuration Release
+# Recreate the isolated feed and package-reference restore
+dotnet msbuild eng/PackageValidation.proj -target:Validate
 ```
 
 #### Build cache issues
@@ -406,15 +384,15 @@ CI step that stamps a version. See [docs/release-process.md](release-process.md)
 
 ### Build Issues
 
-1. Check if VERSION file exists for Release builds
-2. Clean and rebuild: `dotnet clean && dotnet build`
-3. Clear NuGet cache: `dotnet nuget locals all --clear`
+1. Check if VERSION exists for Release/package-validation builds.
+2. Clean and rebuild: `dotnet clean && dotnet build`.
+3. For package-reference failures, run `dotnet msbuild eng/PackageValidation.proj -target:Clean`, then rerun `-target:Validate`.
 
 ### Package Issues
 
-1. Clean build outputs: `dotnet clean`
-2. Clear NuGet cache: `dotnet nuget locals all --clear`
-3. Rebuild packages: `dotnet build --configuration Release`
+1. Remove repository package-validation state: `dotnet msbuild eng/PackageValidation.proj -target:Clean`.
+2. Rerun the complete package gate: `dotnet msbuild eng/PackageValidation.proj -target:Validate`.
+3. Inspect `artifacts/package-validation/`; do not clear user-level NuGet caches.
 
 ### Version Issues
 

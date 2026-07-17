@@ -23,10 +23,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="buildTransitive\Cvoya.Graph.Serialization.CodeGen.targets" Pack="true" PackagePath="buildTransitive/" />
-    </ItemGroup>
-
-    <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
     </ItemGroup>

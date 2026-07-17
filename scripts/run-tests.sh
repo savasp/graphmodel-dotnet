@@ -1,16 +1,15 @@
 #!/bin/bash
 
 # CVOYA graph Test Runner
-# Runs all tests with proper configuration and reporting
+# Discovers repository test projects and runs the requested test lane.
 
-set -e
+set -euo pipefail
 
-# Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 print_status() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -28,26 +27,69 @@ print_header() {
     echo -e "${BLUE}[HEADER]${NC} $1"
 }
 
-# Default values
-CONFIGURATION="Release"
+usage() {
+    cat <<'EOF'
+CVOYA graph Test Runner
+
+Usage: ./scripts/run-tests.sh [options]
+
+Options:
+  -c, --configuration <config>  Build configuration (default: Debug)
+  -v, --verbosity <level>       Build/test verbosity (default: normal)
+  --lane <fast|neo4j|age|all>   Test lane (default: all)
+  --fast                        Alias for --lane fast
+  --coverage                    Collect Cobertura coverage per test project
+  --neo4j                       Start the local Neo4j container before tests
+  --age                         Start the local Apache AGE container before tests
+  --seq                         Start the local Seq container before tests
+  --no-analyzers                Exclude analyzer tests
+  --no-neo4j                    Exclude Neo4j tests from the all lane
+  --no-age                      Exclude AGE tests from the all lane
+  --no-build                    Reuse an existing build
+  --disable-diff-engine         Keep Verify snapshot failures in terminal output
+  --performance                 Run benchmarks after tests
+  -h, --help                    Show this help message
+
+Examples:
+  ./scripts/run-tests.sh --fast
+  ./scripts/run-tests.sh --lane neo4j --neo4j
+  ./scripts/run-tests.sh --lane age --age
+  ./scripts/run-tests.sh --neo4j --age
+  ./scripts/run-tests.sh --fast --disable-diff-engine
+EOF
+}
+
+CONFIGURATION="Debug"
 VERBOSITY="normal"
+LANE="all"
 COLLECT_COVERAGE=false
 START_NEO4J=false
+START_AGE=false
 START_SEQ=false
 RUN_ANALYZERS=true
 RUN_NEO4J=true
+RUN_AGE=true
 RUN_PERFORMANCE=false
+BUILD_SOLUTION=true
+DISABLE_DIFF_ENGINE=false
 
-# Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         -c|--configuration)
-            CONFIGURATION="$2"
+            CONFIGURATION="${2:?--configuration requires a value}"
             shift 2
             ;;
         -v|--verbosity)
-            VERBOSITY="$2"
+            VERBOSITY="${2:?--verbosity requires a value}"
             shift 2
+            ;;
+        --lane)
+            LANE="${2:?--lane requires a value}"
+            shift 2
+            ;;
+        --fast)
+            LANE="fast"
+            shift
             ;;
         --coverage)
             COLLECT_COVERAGE=true
@@ -55,6 +97,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --neo4j)
             START_NEO4J=true
+            shift
+            ;;
+        --age)
+            START_AGE=true
             shift
             ;;
         --seq)
@@ -69,191 +115,199 @@ while [[ $# -gt 0 ]]; do
             RUN_NEO4J=false
             shift
             ;;
+        --no-age)
+            RUN_AGE=false
+            shift
+            ;;
+        --no-build)
+            BUILD_SOLUTION=false
+            shift
+            ;;
+        --disable-diff-engine)
+            DISABLE_DIFF_ENGINE=true
+            shift
+            ;;
         --performance)
             RUN_PERFORMANCE=true
             shift
             ;;
         -h|--help)
-            echo "CVOYA graph Test Runner"
-            echo ""
-            echo "Usage: ./scripts/run-tests.sh [options]"
-            echo ""
-            echo "Options:"
-            echo "  -c, --configuration <config>  Build configuration (default: Release)"
-            echo "  -v, --verbosity <level>       Test verbosity (default: normal)"
-            echo "  --coverage                    Collect code coverage"
-            echo "  --neo4j                       Start Neo4j container before tests"
-            echo "  --seq                         Start Seq container before tests"
-            echo "  --no-analyzers                Skip analyzer tests"
-            echo "  --no-neo4j                    Skip Neo4j tests"
-            echo "  --performance                 Run performance tests"
-            echo "  -h, --help                    Show this help message"
-            echo ""
-            echo "Examples:"
-            echo "  ./scripts/run-tests.sh                                    # Run all tests"
-            echo "  ./scripts/run-tests.sh --coverage                        # Run with coverage"
-            echo "  ./scripts/run-tests.sh --neo4j --seq                     # Start containers and run tests"
-            echo "  ./scripts/run-tests.sh --performance                     # Run performance tests"
-            echo "  ./scripts/run-tests.sh -c Debug --no-neo4j               # Debug build, skip Neo4j tests"
+            usage
             exit 0
             ;;
         *)
-            echo "Unknown option: $1"
-            exit 1
+            print_error "Unknown option: $1"
+            usage
+            exit 64
             ;;
     esac
 done
 
-print_header "🧪 CVOYA graph Test Runner"
-echo ""
+case "$LANE" in
+    fast|neo4j|age|all) ;;
+    *)
+        print_error "--lane must be fast, neo4j, age, or all."
+        exit 64
+        ;;
+esac
 
-# Check prerequisites
-print_status "Checking prerequisites..."
+if [ "$START_NEO4J" = true ] && [ "$RUN_NEO4J" = false ]; then
+    print_error "--neo4j and --no-neo4j cannot be combined."
+    exit 64
+fi
 
-if [ ! -f "Directory.Build.props" ]; then
-    print_error "❌ Directory.Build.props not found. Run from repository root."
+if [ "$START_AGE" = true ] && [ "$RUN_AGE" = false ]; then
+    print_error "--age and --no-age cannot be combined."
+    exit 64
+fi
+
+print_header "CVOYA graph test runner"
+print_status "Configuration: $CONFIGURATION"
+print_status "Lane: $LANE"
+
+if [ ! -f "cvoya-graph.sln" ] || [ ! -d "tests" ]; then
+    print_error "Run this script from the repository root."
     exit 1
 fi
 
-if command -v dotnet &> /dev/null; then
-    DOTNET_VERSION=$(dotnet --version)
-    print_status "✅ .NET SDK found: $DOTNET_VERSION"
-else
-    print_error "❌ .NET SDK not found"
+if ! command -v dotnet >/dev/null 2>&1; then
+    print_error ".NET SDK not found."
     exit 1
 fi
 
-echo ""
+print_status ".NET SDK: $(dotnet --version)"
 
-# Start containers if requested
 if [ "$START_NEO4J" = true ]; then
-    print_header "Starting Neo4j container..."
-    if ./scripts/containers/start-neo4j.sh; then
-        print_status "✅ Neo4j container started"
-        export NEO4J_URI="${NEO4J_URI:-bolt://localhost:7687}"
-        export NEO4J_USER="${NEO4J_USER:-neo4j}"
-        export NEO4J_PASSWORD="${NEO4J_PASSWORD:-password}"
-    else
-        print_error "❌ Failed to start Neo4j container"
-        exit 1
-    fi
+    print_header "Starting Neo4j"
+    ./scripts/containers/start-neo4j.sh
+    export NEO4J_URI="${NEO4J_URI:-bolt://localhost:7687}"
+    export NEO4J_USER="${NEO4J_USER:-neo4j}"
+    export NEO4J_PASSWORD="${NEO4J_PASSWORD:-password}"
+fi
+
+if [ "$START_AGE" = true ]; then
+    print_header "Starting Apache AGE"
+    ./scripts/containers/start-age.sh
+    export AGE_CONNECTION_STRING="${AGE_CONNECTION_STRING:-Host=localhost;Port=${AGE_PORT:-5455};Username=postgres;Password=postgres;Database=postgres}"
 fi
 
 if [ "$START_SEQ" = true ]; then
-    print_header "Starting Seq container..."
-    if ./scripts/containers/start-seq.sh; then
-        print_status "✅ Seq container started"
-    else
-        print_error "❌ Failed to start Seq container"
-        exit 1
+    print_header "Starting Seq"
+    ./scripts/containers/start-seq.sh
+fi
+
+if [ "$DISABLE_DIFF_ENGINE" = true ]; then
+    export DiffEngine_Disabled=true
+fi
+
+if [ "$BUILD_SOLUTION" = true ]; then
+    print_header "Building solution"
+    dotnet build cvoya-graph.sln \
+        --configuration "$CONFIGURATION" \
+        --verbosity "$VERBOSITY"
+fi
+
+should_run_project() {
+    local project_name="$1"
+
+    case "$project_name" in
+        Graph.Performance.Tests.csproj)
+            return 1
+            ;;
+        Graph.Analyzers.Tests.csproj)
+            [ "$RUN_ANALYZERS" = true ] || return 1
+            ;;
+        Graph.Neo4j.Tests.csproj)
+            [ "$RUN_NEO4J" = true ] || return 1
+            case "$LANE" in
+                neo4j|all) return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
+        Graph.Age.Tests.csproj)
+            [ "$RUN_AGE" = true ] || return 1
+            case "$LANE" in
+                age|all) return 0 ;;
+                *) return 1 ;;
+            esac
+            ;;
+    esac
+
+    case "$LANE" in
+        fast|all) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+run_test_project() {
+    local project="$1"
+    local project_name
+    local slug
+    local log_file
+    local test_count
+    local -a command
+
+    project_name=$(basename "$project" .csproj)
+    slug=$(printf '%s' "$project_name" | tr '[:upper:]' '[:lower:]' | tr '.' '-')
+    log_file=$(mktemp "${TMPDIR:-/tmp}/cvoya-test-output.XXXXXX")
+    command=(
+        dotnet test
+        --project "$project"
+        --configuration "$CONFIGURATION"
+        --no-build
+        --verbosity "$VERBOSITY"
+    )
+
+    if [ "$COLLECT_COVERAGE" = true ]; then
+        command+=(
+            --results-directory "coverage/$slug"
+            --coverage
+            --coverage-output "$slug.cobertura.xml"
+            --coverage-output-format cobertura
+        )
     fi
-fi
 
-echo ""
+    print_header "Testing $project_name"
+    if ! "${command[@]}" 2>&1 | tee "$log_file"; then
+        rm -f "$log_file"
+        return 1
+    fi
 
-# Build the solution
-print_header "Building solution..."
-print_status "Configuration: $CONFIGURATION"
-print_status "Verbosity: $VERBOSITY"
+    test_count=$(sed -nE 's/^[[:space:]]*total:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$log_file" | tail -n 1)
+    rm -f "$log_file"
 
-# Set up local feed if needed for Release configuration
-if [ "$CONFIGURATION" = "Release" ]; then
-    print_status "Setting up local feed for Release configuration..."
-    dotnet build --configuration LocalFeed --no-restore --verbosity quiet
-fi
+    if [ -z "$test_count" ] || [ "$test_count" -eq 0 ]; then
+        print_error "$project completed without reporting a nonzero test count."
+        return 1
+    fi
 
-# Build the solution
-if dotnet build --configuration "$CONFIGURATION" --no-restore --verbosity "$VERBOSITY"; then
-    print_status "✅ Build successful"
-else
-    print_error "❌ Build failed"
+    SELECTED_TEST_COUNT=$((SELECTED_TEST_COUNT + test_count))
+    SELECTED_PROJECT_COUNT=$((SELECTED_PROJECT_COUNT + 1))
+}
+
+SELECTED_PROJECT_COUNT=0
+SELECTED_TEST_COUNT=0
+
+while IFS= read -r project; do
+    project_name=$(basename "$project")
+    if should_run_project "$project_name"; then
+        run_test_project "$project"
+    fi
+done < <(find tests -name '*.csproj' -print | LC_ALL=C sort)
+
+if [ "$SELECTED_PROJECT_COUNT" -eq 0 ]; then
+    print_error "The selected lane did not contain any test projects."
     exit 1
 fi
 
-echo ""
-
-# Run analyzer tests
-if [ "$RUN_ANALYZERS" = true ]; then
-    print_header "Running Analyzer Tests..."
-    if dotnet test --project tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj \
-        --configuration "$CONFIGURATION" \
-        --no-build \
-        --verbosity "$VERBOSITY"; then
-        print_status "✅ Analyzer tests passed"
-    else
-        print_error "❌ Analyzer tests failed"
-        exit 1
-    fi
-    echo ""
-fi
-
-# Run Neo4j tests
-if [ "$RUN_NEO4J" = true ]; then
-    print_header "Running Neo4j Tests..."
-
-    if dotnet test --project tests/Graph.Neo4j.Tests/Graph.Neo4j.Tests.csproj \
-        --configuration "$CONFIGURATION" \
-        --no-build \
-        --verbosity "$VERBOSITY"; then
-        print_status "✅ Neo4j tests passed"
-    else
-        print_error "❌ Neo4j tests failed"
-        exit 1
-    fi
-    echo ""
-fi
-
-# Run performance tests
 if [ "$RUN_PERFORMANCE" = true ]; then
-    print_header "Running Performance Tests..."
-    if ./scripts/run-benchmarks.sh; then
-        print_status "✅ Performance tests completed"
-    else
-        print_error "❌ Performance tests failed"
-        exit 1
-    fi
-    echo ""
+    print_header "Running performance benchmarks"
+    ./scripts/run-benchmarks.sh
 fi
 
-# Collect coverage if requested
-if [ "$COLLECT_COVERAGE" = true ]; then
-    print_header "Collecting Code Coverage..."
-    
-    # Check if coverlet is available
-    if ! dotnet tool list --global | grep -q coverlet; then
-        print_status "Installing coverlet.collector..."
-        dotnet tool install --global coverlet.collector
-    fi
-    
-    # Run tests with coverage
-    print_status "Running tests with coverage collection..."
-    
-    # Create coverage directory
-    mkdir -p coverage
-    
-    # Run tests with coverage
-    if dotnet test --configuration "$CONFIGURATION" \
-        --no-build \
-        --verbosity "$VERBOSITY" \
-        --collect:"XPlat Code Coverage" \
-        --results-directory coverage; then
-        print_status "✅ Coverage collection completed"
-        print_status "📊 Coverage reports available in: coverage/"
-    else
-        print_error "❌ Coverage collection failed"
-        exit 1
-    fi
-fi
-
-echo ""
-print_header "🎉 All tests completed successfully!"
-print_status "Configuration: $CONFIGURATION"
-print_status "Verbosity: $VERBOSITY"
+print_header "Test lane completed"
+print_status "$SELECTED_PROJECT_COUNT project(s), $SELECTED_TEST_COUNT test(s)"
 
 if [ "$COLLECT_COVERAGE" = true ]; then
     print_status "Coverage reports: coverage/"
-fi
-
-if [ "$RUN_PERFORMANCE" = true ]; then
-    print_status "Performance results: benchmarks/"
 fi

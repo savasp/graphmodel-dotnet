@@ -88,7 +88,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -119,7 +119,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -167,7 +167,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -201,7 +201,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -235,7 +235,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -291,7 +291,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
@@ -346,7 +346,7 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Set up local feed
+      - name: Build LocalFeed packages
         run: dotnet build --configuration LocalFeed --no-restore
 
       - name: Build
