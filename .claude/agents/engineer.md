@@ -17,11 +17,10 @@ Read [AGENTS.md](../../AGENTS.md) before starting — it is the canonical instru
 2. **Implement** the requested change, keeping it minimal and focused. File follow-ups as issues rather than expanding scope.
 3. **Build and test** before committing:
    ```bash
-   dotnet build --configuration Debug
-   dotnet test tests/Cvoya.Graph.Analyzers.Tests --configuration Debug --no-build   # always possible
-   dotnet test --configuration Debug   # full suite — needs Neo4j; start with scripts/containers/start-neo4j.sh if needed
+   ./scripts/run-tests.sh --configuration Debug --lane fast --disable-diff-engine
+   ./scripts/run-tests.sh --configuration Debug --lane all --no-build --disable-diff-engine
    ```
-   If no Neo4j is reachable, run `scripts/containers/start-neo4j.sh` before giving up. The script tries Podman first and Docker second unless `CONTAINER_RUNTIME=podman` or `CONTAINER_RUNTIME=docker` is set. If Neo4j is still unavailable after trying the script and any configured `NEO4J_*` endpoint, say so explicitly in your report instead of skipping silently.
+   The full lane requires both provider services. Configure existing endpoints, start the repository containers, or pass `--neo4j --age` to the runner. If a service remains unavailable, report the omitted provider lane explicitly; a fast-lane pass is not full validation.
 4. **Commit** with conventional commit messages (`feat:`, `fix:`, `refactor:`, `chore:`).
 5. **Report completion** — summarize the change, test results, and anything the lead needs for the PR. The lead session pushes and opens the PR unless it explicitly asked you to.
 
@@ -36,9 +35,9 @@ Read [AGENTS.md](../../AGENTS.md) before starting — it is the canonical instru
 | Area | Path |
 |------|------|
 | Core | `src/Graph/` |
-| Neo4j provider | `src/Cvoya.Graph.Neo4j/` (LINQ-to-Cypher under `Querying/`) |
-| Analyzers | `src/Cvoya.Graph.Analyzers/` |
-| Serialization | `src/Cvoya.Graph.Serialization/`, `src/Cvoya.Graph.Serialization.CodeGen/` |
+| Neo4j provider | `src/Graph.Neo4j/` |
+| Analyzers | `src/Graph.Analyzers/` |
+| Serialization | `src/Graph.Serialization/`, `src/Graph.Serialization.CodeGen/` |
 | Tests | `tests/` — see AGENTS.md for what each project needs |
 | Examples | `examples/` |
 
