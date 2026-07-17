@@ -257,7 +257,7 @@ internal sealed class PersonSerializer : IEntitySerializer
                     : entity.ComplexProperties.TryGetValue("HomeAddress", out var homeaddressComplexProp) ? homeaddressComplexProp : null;
         // Extract complex value using registered serializer
         result.HomeAddress = homeaddressPropRep is null
-            ? new TestNamespace.Address()
+            ? default(TestNamespace.Address)
             : homeaddressPropRep.Value is EntityInfo homeaddressPropRepComplexEntity
                 ? (TestNamespace.Address)(_serializerRegistry.GetSerializer(homeaddressPropRepComplexEntity.ActualType)
                     ?? _serializerRegistry.GetSerializer(typeof(TestNamespace.Address))
@@ -499,4 +499,3 @@ internal sealed class PersonSerializer : IEntitySerializer
         }
     }
 }
-

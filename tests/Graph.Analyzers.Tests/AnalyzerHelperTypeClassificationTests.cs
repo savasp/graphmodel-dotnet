@@ -112,6 +112,7 @@ public class AnalyzerHelperTypeClassificationTests
             "Point" => Point(),
             "byte[]" => Array(Special(SpecialType.System_Byte)),
             "int[]" => Array(Int32()),
+            "int[,]" => compilation.CreateArrayTypeSymbol(Int32(), rank: 2),
             "string[]" => Array(String()),
             "object[]" => Array(Object()),
             "TestEnum" => TestEnum(),
@@ -243,6 +244,7 @@ public class AnalyzerHelperTypeClassificationTests
     public static TheoryData<string, bool> ConstructibleCollectionCases => new()
     {
         { "int[]", true },
+        { "int[,]", false },
         { "string[]", true },
         { "byte[]", true },
         { "FlatValueObject[]", true },

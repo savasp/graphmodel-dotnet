@@ -317,4 +317,3 @@ internal sealed class TrackedNodeSerializer : IEntitySerializer
         }
     }
 }
-

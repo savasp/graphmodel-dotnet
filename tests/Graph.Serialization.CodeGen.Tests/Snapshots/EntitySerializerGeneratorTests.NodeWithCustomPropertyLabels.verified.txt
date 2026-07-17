@@ -313,4 +313,3 @@ internal sealed class PersonSerializer : IEntitySerializer
         }
     }
 }
-

@@ -318,4 +318,3 @@ internal sealed class TaggedSerializer : IEntitySerializer
         }
     }
 }
-

@@ -249,6 +249,152 @@ public class CG004_InvalidPropertyTypeForNodeTests
     }
 
     [Fact]
+    public async Task NodeWithComplexTypeContainingNonConstructibleCollection_ProducesDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class Address
+            {
+                public Queue<int> Pending { get; set; } = new();
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Address {|#0:Location|} { get; set; } = new();
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Location", "TestNode", "Address");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithMultidimensionalArray_ProducesDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public int[,] {|#0:Grid|} { get; set; } = new int[0, 0];
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Grid", "TestNode", "Int32[,]");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithFrameworkCollectionLookalike_ProducesDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            namespace System.Collections.Generic
+            {
+                public interface ISet<TItem, TTag> : global::System.Collections.Generic.IEnumerable<TItem>
+                {
+                }
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public System.Collections.Generic.ISet<int, string> {|#0:Values|} { get; set; } = null!;
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Values", "TestNode", "ISet<Int32, String>");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithUnconstructibleReadonlyStruct_ProducesDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public readonly struct Address
+            {
+                public string Street { get; }
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Address {|#0:Location|} { get; set; }
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Location", "TestNode", "Address");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithConstructorBoundStruct_NoDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public readonly struct Address
+            {
+                public Address(string street) => Street = street;
+                public string Street { get; }
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Address Location { get; set; }
+            }
+            """;
+
+        await VerifyAnalyzerAsync(test);
+    }
+
+    [Fact]
+    public async Task NodeWithWrongTypedStructConstructor_ProducesDiagnostic()
+    {
+        var test = """
+            using Cvoya.Graph;
+
+            public readonly struct Address
+            {
+                public Address(int street) => Street = street.ToString();
+                public string Street { get; }
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Address {|#0:Location|} { get; set; }
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Location", "TestNode", "Address");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task NodeWithComplexTypeContainingGraphInterface_ProducesDiagnostic()
     {
         var test = """

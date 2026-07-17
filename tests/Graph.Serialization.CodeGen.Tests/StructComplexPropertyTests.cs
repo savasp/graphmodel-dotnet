@@ -140,6 +140,166 @@ public class StructComplexPropertyTests
     }
 
     [Fact]
+    public void NullableStructComplexValues_RoundTripAndUseUnderlyingSerializer()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            namespace NullableStruct;
+
+            public struct Address
+            {
+                public string Street { get; set; }
+            }
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public Address? HomeAddress { get; set; }
+                public List<Address?> PreviousAddresses { get; set; } = new();
+            }
+            """;
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+        var nodeType = assembly.GetType("NullableStruct.Person", throwOnError: true)!;
+        var addressType = assembly.GetType("NullableStruct.Address", throwOnError: true)!;
+        var serializer = CreateSerializer(assembly, "NullableStruct.Generated.PersonSerializer");
+        Assert.NotNull(assembly.GetType("NullableStruct.Generated.AddressSerializer", throwOnError: true));
+
+        var address = Activator.CreateInstance(addressType)!;
+        addressType.GetProperty("Street")!.SetValue(address, "Pine");
+        var nullableAddressType = typeof(Nullable<>).MakeGenericType(addressType);
+        var addresses = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(nullableAddressType))!;
+        addresses.Add(address);
+        var node = Activator.CreateInstance(nodeType)!;
+        nodeType.GetProperty("HomeAddress")!.SetValue(node, address);
+        nodeType.GetProperty("PreviousAddresses")!.SetValue(node, addresses);
+
+        var roundTripped = serializer.Deserialize(serializer.Serialize(node));
+
+        var homeAddress = nodeType.GetProperty("HomeAddress")!.GetValue(roundTripped)!;
+        Assert.Equal("Pine", addressType.GetProperty("Street")!.GetValue(homeAddress));
+        var previousAddresses = (System.Collections.IList)nodeType.GetProperty("PreviousAddresses")!.GetValue(roundTripped)!;
+        Assert.Single(previousAddresses);
+        Assert.Equal("Pine", addressType.GetProperty("Street")!.GetValue(previousAddresses[0]!));
+    }
+
+    [Fact]
+    public void ConstructorBoundPrivateSetterStruct_RoundTrips()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            namespace ConstructorStruct;
+
+            public struct Address
+            {
+                public Address(string street) => Street = street;
+                public string Street { get; private set; }
+            }
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public Address HomeAddress { get; set; }
+            }
+            """;
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+        var nodeType = assembly.GetType("ConstructorStruct.Person", throwOnError: true)!;
+        var addressType = assembly.GetType("ConstructorStruct.Address", throwOnError: true)!;
+        var serializer = CreateSerializer(assembly, "ConstructorStruct.Generated.PersonSerializer");
+        var address = Activator.CreateInstance(addressType, ["Oak"])!;
+        var node = Activator.CreateInstance(nodeType)!;
+        nodeType.GetProperty("HomeAddress")!.SetValue(node, address);
+
+        var roundTripped = serializer.Deserialize(serializer.Serialize(node));
+
+        var homeAddress = nodeType.GetProperty("HomeAddress")!.GetValue(roundTripped)!;
+        Assert.Equal("Oak", addressType.GetProperty("Street")!.GetValue(homeAddress));
+    }
+
+    [Fact]
+    public void RequiredStructProperty_RoundTripsThroughObjectInitializer()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            namespace RequiredStruct;
+
+            public struct Address
+            {
+                public required string Street { get; set; }
+            }
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public Address HomeAddress { get; set; }
+            }
+            """;
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+        var nodeType = assembly.GetType("RequiredStruct.Person", throwOnError: true)!;
+        var addressType = assembly.GetType("RequiredStruct.Address", throwOnError: true)!;
+        var serializer = CreateSerializer(assembly, "RequiredStruct.Generated.PersonSerializer");
+        var address = Activator.CreateInstance(addressType)!;
+        addressType.GetProperty("Street")!.SetValue(address, "Cedar");
+        var node = Activator.CreateInstance(nodeType)!;
+        nodeType.GetProperty("HomeAddress")!.SetValue(node, address);
+
+        var roundTripped = serializer.Deserialize(serializer.Serialize(node));
+
+        var homeAddress = nodeType.GetProperty("HomeAddress")!.GetValue(roundTripped)!;
+        Assert.Equal("Cedar", addressType.GetProperty("Street")!.GetValue(homeAddress));
+    }
+
+    [Fact]
+    public void UnconstructibleReadonlyStruct_DoesNotEmitSerializers()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            public readonly struct Address
+            {
+                public string Street { get; }
+            }
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public Address HomeAddress { get; set; }
+            }
+            """;
+
+        var generated = GeneratorTestHelpers.RunGenerator(source);
+        Assert.Contains("== No generated sources ==", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("Serializer.g.cs", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WrongTypedStructConstructor_DoesNotEmitSerializers()
+    {
+        const string source = """
+            using Cvoya.Graph;
+
+            public readonly struct Address
+            {
+                public Address(int street) => Street = street.ToString();
+                public string Street { get; }
+            }
+
+            [Node("Person")]
+            public record Person : Node
+            {
+                public Address HomeAddress { get; set; }
+            }
+            """;
+
+        var generated = GeneratorTestHelpers.RunGenerator(source);
+        Assert.Contains("== No generated sources ==", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("Serializer.g.cs", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void StructComplexProperty_ExposesNestedSchema()
     {
         const string source = """

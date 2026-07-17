@@ -131,6 +131,7 @@ internal static class GraphDataModel
     /// construction matrix shared with the analyzer (mirrored by
     /// <c>Cvoya.Graph.Analyzers.AnalyzerHelper.IsConstructibleCollectionType</c>): only the shapes
     /// enumerated here are code-generable, and the analyzer rejects everything else via CG004/CG005.
+    /// Arrays are limited to one dimension because LINQ materialization produces a vector.
     /// </summary>
     internal static CollectionConstructionKind GetCollectionConstructionKind(ITypeSymbol type)
     {
@@ -138,8 +139,12 @@ internal static class GraphDataModel
         if (type.SpecialType == SpecialType.System_String)
             return CollectionConstructionKind.None;
 
-        if (type is IArrayTypeSymbol)
-            return CollectionConstructionKind.Array;
+        if (type is IArrayTypeSymbol arrayType)
+        {
+            return arrayType.Rank == 1
+                ? CollectionConstructionKind.Array
+                : CollectionConstructionKind.None;
+        }
 
         if (type is not INamedTypeSymbol { IsGenericType: true } namedType)
             return CollectionConstructionKind.None;
@@ -158,23 +163,50 @@ internal static class GraphDataModel
                 return CollectionConstructionKind.List;
         }
 
-        // ISet<T>/IReadOnlySet<T> have no SpecialType, so match by name. HashSet<T> satisfies both,
-        // so all three are constructed as HashSet<T>. Concrete List<T>/HashSet<T> match here too.
-        if (definition.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic")
+        // These types have no SpecialType. Match their metadata identity and require the runtime
+        // assembly that supplies their IEnumerable<T> contract, preventing source-defined lookalikes
+        // (including types with the same simple name but a different generic arity) from matching.
+        if (IsRuntimeCollectionDefinition(definition, "List`1"))
+            return CollectionConstructionKind.List;
+
+        if (IsRuntimeCollectionDefinition(definition, "HashSet`1") ||
+            IsRuntimeCollectionDefinition(definition, "ISet`1") ||
+            IsRuntimeCollectionDefinition(definition, "IReadOnlySet`1"))
         {
-            return definition.Name switch
-            {
-                "List" => CollectionConstructionKind.List,
-                "HashSet" => CollectionConstructionKind.Set,
-                "ISet" => CollectionConstructionKind.Set,
-                "IReadOnlySet" => CollectionConstructionKind.Set,
-                _ => CollectionConstructionKind.None,
-            };
+            return CollectionConstructionKind.Set;
         }
 
         // Any other concrete/custom collection (Queue<T>, SortedSet<T>, ObservableCollection<T>, ...)
         // cannot be constructed by assigning a List<T>/HashSet<T>/array, so it is unsupported.
         return CollectionConstructionKind.None;
+    }
+
+    private static bool IsRuntimeCollectionDefinition(INamedTypeSymbol definition, string metadataName)
+    {
+        if (definition.MetadataName != metadataName ||
+            definition.ContainingNamespace?.ToDisplayString() != "System.Collections.Generic")
+        {
+            return false;
+        }
+
+        return IsFrameworkAssembly(definition.ContainingAssembly);
+    }
+
+    private static bool IsFrameworkAssembly(IAssemblySymbol assembly)
+    {
+        return assembly.Identity.Name switch
+        {
+            "System.Private.CoreLib" => HasPublicKeyToken(assembly, [0x7c, 0xec, 0x85, 0xd7, 0xbe, 0xa7, 0x79, 0x8e]),
+            "System.Runtime" or "System.Collections" => HasPublicKeyToken(assembly, [0xb0, 0x3f, 0x5f, 0x7f, 0x11, 0xd5, 0x0a, 0x3a]),
+            "mscorlib" => HasPublicKeyToken(assembly, [0xb7, 0x7a, 0x5c, 0x56, 0x19, 0x34, 0xe0, 0x89]),
+            "netstandard" => HasPublicKeyToken(assembly, [0xcc, 0x7b, 0x13, 0xff, 0xcd, 0x2d, 0xdd, 0x51]),
+            _ => false,
+        };
+    }
+
+    private static bool HasPublicKeyToken(IAssemblySymbol assembly, byte[] expected)
+    {
+        return assembly.Identity.PublicKeyToken.SequenceEqual(expected);
     }
 
     internal static ITypeSymbol? GetCollectionElementType(ITypeSymbol type)

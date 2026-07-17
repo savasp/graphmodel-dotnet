@@ -13,6 +13,8 @@ using Cvoya.Graph.Serialization;
 /// </summary>
 public class CollectionShapeRoundTripTests
 {
+    private static readonly string[] ExpectedCategories = ["c1", "c2"];
+
     [Fact]
     public void SetShapes_RoundTripAsSets()
     {
@@ -69,6 +71,8 @@ public class CollectionShapeRoundTripTests
                 public List<string> Tags { get; set; } = new();
                 public string[] Categories { get; set; } = System.Array.Empty<string>();
                 public IEnumerable<bool> Flags { get; set; } = System.Linq.Enumerable.Empty<bool>();
+                public IList<int> Positions { get; set; } = new List<int>();
+                public IReadOnlyCollection<string> Codes { get; set; } = new List<string>();
                 public IReadOnlyList<int> Ranks { get; set; } = new List<int>();
                 public ICollection<long> Ids { get; set; } = new List<long>();
             }
@@ -79,16 +83,20 @@ public class CollectionShapeRoundTripTests
 
         var node = Activator.CreateInstance(nodeType)!;
         nodeType.GetProperty("Tags")!.SetValue(node, new List<string> { "x", "y" });
-        nodeType.GetProperty("Categories")!.SetValue(node, new[] { "c1", "c2" });
+        nodeType.GetProperty("Categories")!.SetValue(node, ExpectedCategories);
         nodeType.GetProperty("Flags")!.SetValue(node, new List<bool> { true, false });
+        nodeType.GetProperty("Positions")!.SetValue(node, new List<int> { 3, 4 });
+        nodeType.GetProperty("Codes")!.SetValue(node, new List<string> { "a1", "b2" });
         nodeType.GetProperty("Ranks")!.SetValue(node, new List<int> { 10, 20 });
         nodeType.GetProperty("Ids")!.SetValue(node, new List<long> { 100L, 200L });
 
         var roundTripped = serializer.Deserialize(serializer.Serialize(node));
 
         Assert.Equal(new List<string> { "x", "y" }, Assert.IsType<List<string>>(nodeType.GetProperty("Tags")!.GetValue(roundTripped)));
-        Assert.Equal(new[] { "c1", "c2" }, Assert.IsType<string[]>(nodeType.GetProperty("Categories")!.GetValue(roundTripped)));
+        Assert.Equal(ExpectedCategories, Assert.IsType<string[]>(nodeType.GetProperty("Categories")!.GetValue(roundTripped)));
         Assert.Equal(new List<bool> { true, false }, Assert.IsType<List<bool>>(nodeType.GetProperty("Flags")!.GetValue(roundTripped)));
+        Assert.Equal(new List<int> { 3, 4 }, Assert.IsType<List<int>>(nodeType.GetProperty("Positions")!.GetValue(roundTripped)));
+        Assert.Equal(new List<string> { "a1", "b2" }, Assert.IsType<List<string>>(nodeType.GetProperty("Codes")!.GetValue(roundTripped)));
         Assert.Equal(new List<int> { 10, 20 }, Assert.IsType<List<int>>(nodeType.GetProperty("Ranks")!.GetValue(roundTripped)));
         Assert.Equal(new List<long> { 100L, 200L }, Assert.IsType<List<long>>(nodeType.GetProperty("Ids")!.GetValue(roundTripped)));
     }
@@ -139,9 +147,138 @@ public class CollectionShapeRoundTripTests
         Assert.Equal([low, high], ordered.Cast<object>());
     }
 
+    [Fact]
+    public void ConstructorBoundAndInitOnlyCollections_RoundTripAndDefaultToAssignableValues()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            namespace ConstructorShapes;
+
+            [Node("Tagged")]
+            public sealed record TaggedNode(HashSet<int> Numbers) : Node
+            {
+                public ISet<string> Names { get; init; } = new HashSet<string>();
+            }
+            """;
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+        var nodeType = assembly.GetType("ConstructorShapes.TaggedNode", throwOnError: true)!;
+        var serializer = CreateSerializer(assembly, "ConstructorShapes.Generated.TaggedNodeSerializer");
+        var node = Activator.CreateInstance(nodeType, [new HashSet<int> { 1, 2 }])!;
+        nodeType.GetProperty("Names")!.SetValue(node, new HashSet<string> { "alpha", "beta" });
+
+        var serialized = serializer.Serialize(node);
+        var roundTripped = serializer.Deserialize(serialized);
+
+        Assert.Equal(new HashSet<int> { 1, 2 }, Assert.IsType<HashSet<int>>(nodeType.GetProperty("Numbers")!.GetValue(roundTripped)));
+        Assert.Equal(new HashSet<string> { "alpha", "beta" }, Assert.IsType<HashSet<string>>(nodeType.GetProperty("Names")!.GetValue(roundTripped)));
+
+        serialized.SimpleProperties.Remove("Numbers");
+        var missingValueRoundTrip = serializer.Deserialize(serialized);
+        Assert.Empty(Assert.IsType<HashSet<int>>(nodeType.GetProperty("Numbers")!.GetValue(missingValueRoundTrip)));
+    }
+
+    [Fact]
+    public void RelationshipCollectionShapes_RoundTrip()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            namespace RelationshipShapes;
+
+            [Relationship("TAGGED")]
+            public sealed record TaggedRelationship(string StartNodeId, string EndNodeId)
+                : Relationship(StartNodeId, EndNodeId)
+            {
+                public HashSet<int> Scores { get; set; } = new();
+                public IEnumerable<string> Tags { get; set; } = new List<string>();
+            }
+            """;
+        var assembly = GeneratorTestHelpers.CompileAndLoadGeneratedAssembly(source);
+        var relationshipType = assembly.GetType("RelationshipShapes.TaggedRelationship", throwOnError: true)!;
+        var serializer = CreateSerializer(assembly, "RelationshipShapes.Generated.TaggedRelationshipSerializer");
+        var relationship = Activator.CreateInstance(relationshipType, ["start", "end"])!;
+        relationshipType.GetProperty("Scores")!.SetValue(relationship, new HashSet<int> { 4, 8 });
+        relationshipType.GetProperty("Tags")!.SetValue(relationship, new List<string> { "one", "two" });
+
+        var roundTripped = serializer.Deserialize(serializer.Serialize(relationship));
+
+        Assert.Equal(new HashSet<int> { 4, 8 }, Assert.IsType<HashSet<int>>(relationshipType.GetProperty("Scores")!.GetValue(roundTripped)));
+        Assert.Equal(new List<string> { "one", "two" }, Assert.IsType<List<string>>(relationshipType.GetProperty("Tags")!.GetValue(roundTripped)));
+    }
+
+    [Fact]
+    public void UnsupportedCollectionShapes_DoNotEmitSerializers()
+    {
+        const string directUnsupported = """
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            [Node("Invalid")]
+            public sealed record InvalidNode : Node
+            {
+                public Queue<int> Values { get; set; } = new();
+            }
+            """;
+        const string nestedUnsupported = """
+            using System.Collections.Generic;
+            using Cvoya.Graph;
+
+            public sealed class Details
+            {
+                public Queue<int> Values { get; set; } = new();
+            }
+
+            [Node("Invalid")]
+            public sealed record InvalidNode : Node
+            {
+                public Details Value { get; set; } = new();
+            }
+            """;
+        const string multidimensionalArray = """
+            using Cvoya.Graph;
+
+            [Node("Invalid")]
+            public sealed record InvalidNode : Node
+            {
+                public int[,] Values { get; set; } = new int[0, 0];
+            }
+            """;
+        const string frameworkLookalike = """
+            using Cvoya.Graph;
+
+            namespace System.Collections.Generic
+            {
+                public interface ISet<TItem, TTag> : global::System.Collections.Generic.IEnumerable<TItem>
+                {
+                }
+            }
+
+            [Node("Invalid")]
+            public sealed record InvalidNode : Node
+            {
+                public System.Collections.Generic.ISet<int, string> Values { get; set; } = null!;
+            }
+            """;
+
+        AssertGeneratorProducesNoSources(directUnsupported);
+        AssertGeneratorProducesNoSources(nestedUnsupported);
+        AssertGeneratorProducesNoSources(multidimensionalArray);
+        AssertGeneratorProducesNoSources(frameworkLookalike);
+    }
+
     private static IEntitySerializer CreateSerializer(System.Reflection.Assembly assembly, string serializerTypeName)
     {
         var serializerType = assembly.GetType(serializerTypeName, throwOnError: true)!;
         return Assert.IsAssignableFrom<IEntitySerializer>(Activator.CreateInstance(serializerType));
+    }
+
+    private static void AssertGeneratorProducesNoSources(string source)
+    {
+        var generated = GeneratorTestHelpers.RunGenerator(source);
+        Assert.Contains("== No generated sources ==", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("Serializer.g.cs", generated, StringComparison.Ordinal);
     }
 }
