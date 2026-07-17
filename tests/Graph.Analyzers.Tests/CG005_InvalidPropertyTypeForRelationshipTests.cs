@@ -179,7 +179,7 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
         var test = """
             using Cvoya.Graph;
             using System;
-            
+
             public class TestRelationship : Relationship
             {
                 public string Id { get; init; } = string.Empty;
@@ -193,6 +193,33 @@ public class CG005_InvalidPropertyTypeForRelationshipTests
         var expected = VerifyCS.Diagnostic("CG005")
             .WithLocation(0)
             .WithArguments("Callback", "TestRelationship", "Action");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task RelationshipWithNonConstructibleCollection_ProducesDiagnostic()
+    {
+        // Queue<int> is a collection of simple values the serializer cannot construct (only arrays,
+        // List<T>/list interfaces, and HashSet<T>/set interfaces are supported), so CG005 fires
+        // rather than letting generated source fail to compile (#362).
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class TestRelationship : Relationship
+            {
+                public string Id { get; init; } = string.Empty;
+                public RelationshipDirection Direction { get; init; }
+                public string StartNodeId { get; init; } = string.Empty;
+                public string EndNodeId { get; init; } = string.Empty;
+                public Queue<int> {|#0:Pending|} { get; set; } = new();
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG005")
+            .WithLocation(0)
+            .WithArguments("Pending", "TestRelationship", "Queue<Int32>");
 
         await VerifyAnalyzerAsync(test, expected);
     }

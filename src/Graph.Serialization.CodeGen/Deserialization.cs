@@ -331,14 +331,15 @@ internal static class Deserialization
             sb.AppendLine($"{indentStr}            .OfType<{elementType.DisplayName}>()");
         }
 
-        if (collectionType.IsArray)
+        // Materialize into a value assignable to the declared collection type. Sets become a
+        // HashSet<T> (never a List<T>), arrays a T[], and every list-compatible shape a List<T>.
+        var constructionCall = collectionType.CollectionConstructionKind switch
         {
-            sb.AppendLine($"{indentStr}            .ToArray()");
-        }
-        else
-        {
-            sb.AppendLine($"{indentStr}            .ToList()");
-        }
+            CollectionConstructionKind.Array => ".ToArray()",
+            CollectionConstructionKind.Set => ".ToHashSet()",
+            _ => ".ToList()",
+        };
+        sb.AppendLine($"{indentStr}            {constructionCall}");
 
         sb.AppendLine($"{indentStr}        : {GetInvalidCollectionValueExpression(propertyLabel, collectionType)};");
     }
@@ -432,13 +433,17 @@ internal static class Deserialization
 
             // Collection-shaped properties (e.g. INode.Labels: IReadOnlyList<string>)
             // that aren't present in the query result get an empty collection rather
-            // than throwing - List<T> is assignable to IEnumerable<T>/ICollection<T>/
-            // IList<T>/IReadOnlyCollection<T>/IReadOnlyList<T> alike.
+            // than throwing. The empty value must match the declared shape: a set gets an
+            // empty HashSet<T> (a List<T> would not be assignable), an array Array.Empty<T>,
+            // and every list-compatible shape a List<T>.
             if (value is null && type.ElementType is not null)
             {
-                value = type.IsArray
-                    ? $"System.Array.Empty<{type.ElementType.DisplayName}>()"
-                    : $"new System.Collections.Generic.List<{type.ElementType.DisplayName}>()";
+                value = type.CollectionConstructionKind switch
+                {
+                    CollectionConstructionKind.Array => $"System.Array.Empty<{type.ElementType.DisplayName}>()",
+                    CollectionConstructionKind.Set => $"new System.Collections.Generic.HashSet<{type.ElementType.DisplayName}>()",
+                    _ => $"new System.Collections.Generic.List<{type.ElementType.DisplayName}>()",
+                };
             }
         }
         else if (type.IsSimple)

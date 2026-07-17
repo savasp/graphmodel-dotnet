@@ -106,6 +106,14 @@ internal static class Serialization
                 sb.AppendLine($"                );");
             }
         }
+        else if (propertyType.IsValueType && !propertyType.IsNullable)
+        {
+            // Non-nullable value-type complex property (e.g. a struct). A `value is null` test is a
+            // compile error (CS8121) here, so serialize unconditionally.
+            sb.AppendLine($"            serializedValue = (_serializerRegistry.GetSerializer(value.GetType())");
+            sb.AppendLine($"                ?? throw new InvalidOperationException($\"No serializer found for type {{value.GetType().Name}}\"))");
+            sb.AppendLine($"                .Serialize(value);");
+        }
         else
         {
             // Complex type - recursively serialize to Entity.

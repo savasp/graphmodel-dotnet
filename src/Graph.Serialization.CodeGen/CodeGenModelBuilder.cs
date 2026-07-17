@@ -144,6 +144,7 @@ internal sealed class CodeGenModelBuilder
             type.TypeKind == TypeKind.Enum,
             type.TypeKind,
             type.SpecialType,
+            GraphDataModel.GetCollectionConstructionKind(type),
             elementType is null ? null : BuildTypeReference(elementType));
     }
 
@@ -285,8 +286,22 @@ internal sealed class CodeGenModelBuilder
 
     private static bool IsSerializableComplexType(INamedTypeSymbol type)
     {
+        if (type.IsAbstract)
+        {
+            return false;
+        }
+
+        // Structs are always constructible via `new T()` (the C#-guaranteed parameterless
+        // constructor), so a struct complex-property value is discoverable and gets its own
+        // generated serializer - closing the gap where the analyzer accepts a nested struct but no
+        // serializer was ever emitted for it. INode/IRelationship structs are rejected separately by
+        // CG014 and never reach here as an entity root.
+        if (type.TypeKind == TypeKind.Struct)
+        {
+            return true;
+        }
+
         return type.TypeKind == TypeKind.Class &&
-               !type.IsAbstract &&
                type.InstanceConstructors.Any(constructor =>
                    constructor.DeclaredAccessibility == Accessibility.Public &&
                    constructor.Parameters.Length == 0);

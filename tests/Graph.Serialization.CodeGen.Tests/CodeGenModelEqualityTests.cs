@@ -158,6 +158,7 @@ public class CodeGenModelEqualityTests
         yield return [TypeReference(isEnum: true)];
         yield return [TypeReference(typeKind: TypeKind.Struct)];
         yield return [TypeReference(specialType: SpecialType.System_String)];
+        yield return [TypeReference(collectionConstructionKind: CollectionConstructionKind.Set)];
         yield return [TypeReference(elementType: TypeReference(identity: "Element.Type", name: "Element"))];
     }
 
@@ -220,6 +221,7 @@ public class CodeGenModelEqualityTests
         bool isEnum = false,
         TypeKind typeKind = TypeKind.Class,
         SpecialType specialType = SpecialType.None,
+        CollectionConstructionKind collectionConstructionKind = CollectionConstructionKind.None,
         TypeReferenceModel? elementType = null)
     {
         return new TypeReferenceModel(
@@ -240,6 +242,7 @@ public class CodeGenModelEqualityTests
             isEnum,
             typeKind,
             specialType,
+            collectionConstructionKind,
             elementType);
     }
 

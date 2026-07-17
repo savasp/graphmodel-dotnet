@@ -125,6 +125,58 @@ internal static class GraphDataModel
         return elementType != null && !IsSimple(elementType);
     }
 
+    /// <summary>
+    /// Classifies how the code generator must construct a value for a collection-shaped property or
+    /// parameter so that the result is assignable to the declared type. This is the single
+    /// construction matrix shared with the analyzer (mirrored by
+    /// <c>Cvoya.Graph.Analyzers.AnalyzerHelper.IsConstructibleCollectionType</c>): only the shapes
+    /// enumerated here are code-generable, and the analyzer rejects everything else via CG004/CG005.
+    /// </summary>
+    internal static CollectionConstructionKind GetCollectionConstructionKind(ITypeSymbol type)
+    {
+        // String enumerates chars but is never a collection property here.
+        if (type.SpecialType == SpecialType.System_String)
+            return CollectionConstructionKind.None;
+
+        if (type is IArrayTypeSymbol)
+            return CollectionConstructionKind.Array;
+
+        if (type is not INamedTypeSymbol { IsGenericType: true } namedType)
+            return CollectionConstructionKind.None;
+
+        var definition = namedType.ConstructedFrom;
+
+        // A List<T> instance is assignable to each of these read/mutable sequence interfaces, so
+        // they are all constructed as List<T>.
+        switch (definition.SpecialType)
+        {
+            case SpecialType.System_Collections_Generic_IEnumerable_T:
+            case SpecialType.System_Collections_Generic_ICollection_T:
+            case SpecialType.System_Collections_Generic_IList_T:
+            case SpecialType.System_Collections_Generic_IReadOnlyCollection_T:
+            case SpecialType.System_Collections_Generic_IReadOnlyList_T:
+                return CollectionConstructionKind.List;
+        }
+
+        // ISet<T>/IReadOnlySet<T> have no SpecialType, so match by name. HashSet<T> satisfies both,
+        // so all three are constructed as HashSet<T>. Concrete List<T>/HashSet<T> match here too.
+        if (definition.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic")
+        {
+            return definition.Name switch
+            {
+                "List" => CollectionConstructionKind.List,
+                "HashSet" => CollectionConstructionKind.Set,
+                "ISet" => CollectionConstructionKind.Set,
+                "IReadOnlySet" => CollectionConstructionKind.Set,
+                _ => CollectionConstructionKind.None,
+            };
+        }
+
+        // Any other concrete/custom collection (Queue<T>, SortedSet<T>, ObservableCollection<T>, ...)
+        // cannot be constructed by assigning a List<T>/HashSet<T>/array, so it is unsupported.
+        return CollectionConstructionKind.None;
+    }
+
     internal static ITypeSymbol? GetCollectionElementType(ITypeSymbol type)
     {
         // String is not considered a collection, even though it implements IEnumerable<char>

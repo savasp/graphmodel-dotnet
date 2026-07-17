@@ -94,9 +94,11 @@ internal class AnalyzerHelper
         if (IsSimpleType(type))
             return true;
 
-        // Check if it's a collection of simple types
+        // Check if it's a collection of simple types. Only shapes the generator can construct
+        // (arrays, List<T>/list interfaces, HashSet<T>/set interfaces) are valid; anything else
+        // would pass analysis and then fail to compile in generated source.
         if (IsCollectionOfSimpleTypes(type))
-            return true;
+            return IsConstructibleCollectionType(type);
 
         // Check if it's a complex type
         if (IsComplexType(type))
@@ -112,7 +114,7 @@ internal class AnalyzerHelper
             if (elementType != null && IsComplexType(elementType))
             {
                 var result = ValidateComplexType(elementType);
-                return result.IsValid;
+                return result.IsValid && IsConstructibleCollectionType(type);
             }
         }
 
@@ -170,9 +172,10 @@ internal class AnalyzerHelper
         if (IsSimpleType(type))
             return true;
 
-        // Check if it's a collection of simple types
+        // Check if it's a collection of simple types the generator can construct (see
+        // IsConstructibleCollectionType); non-constructible shapes would fail to compile downstream.
         if (IsCollectionOfSimpleTypes(type))
-            return true;
+            return IsConstructibleCollectionType(type);
 
         return false;
     }
@@ -259,6 +262,49 @@ internal class AnalyzerHelper
     public bool IsCollectionType(ITypeSymbol type)
     {
         return IsCollectionOfSimpleTypes(type) || IsCollectionOfComplexTypes(type);
+    }
+
+    /// <summary>
+    /// Whether a collection-shaped type is one the serialization source generator can construct so
+    /// the deserialized value is assignable to the declared type: arrays, <c>List&lt;T&gt;</c> and
+    /// list-compatible interfaces, and <c>HashSet&lt;T&gt;</c> and set-compatible interfaces.
+    /// Concrete/custom collections (for example <c>Queue&lt;T&gt;</c>, <c>SortedSet&lt;T&gt;</c>,
+    /// <c>ObservableCollection&lt;T&gt;</c>) are not constructible and are rejected by CG004/CG005 so
+    /// the analyzer and generator agree. Mirrors
+    /// <c>Cvoya.Graph.Serialization.CodeGen.GraphDataModel.GetCollectionConstructionKind</c>.
+    /// </summary>
+    public static bool IsConstructibleCollectionType(ITypeSymbol type)
+    {
+        if (type.SpecialType == SpecialType.System_String)
+            return false;
+
+        if (type is IArrayTypeSymbol)
+            return true;
+
+        if (type is not INamedTypeSymbol { IsGenericType: true } namedType)
+            return false;
+
+        var definition = namedType.ConstructedFrom;
+
+        // Interfaces a List<T> instance is assignable to.
+        switch (definition.SpecialType)
+        {
+            case SpecialType.System_Collections_Generic_IEnumerable_T:
+            case SpecialType.System_Collections_Generic_ICollection_T:
+            case SpecialType.System_Collections_Generic_IList_T:
+            case SpecialType.System_Collections_Generic_IReadOnlyCollection_T:
+            case SpecialType.System_Collections_Generic_IReadOnlyList_T:
+                return true;
+        }
+
+        // Concrete List<T>/HashSet<T> and the set interfaces (ISet<T>/IReadOnlySet<T> have no
+        // SpecialType, so match by name).
+        if (definition.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic")
+        {
+            return definition.Name is "List" or "HashSet" or "ISet" or "IReadOnlySet";
+        }
+
+        return false;
     }
 
     /// <summary>

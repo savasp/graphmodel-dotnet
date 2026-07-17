@@ -174,6 +174,81 @@ public class CG004_InvalidPropertyTypeForNodeTests
     }
 
     [Fact]
+    public async Task NodeWithNonConstructibleSimpleCollection_ProducesDiagnostic()
+    {
+        // Queue<int> is a collection of simple values, but the serializer can only construct arrays,
+        // List<T>/list interfaces, and HashSet<T>/set interfaces - so it is rejected rather than
+        // silently generating source that fails to compile (#362).
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Queue<int> {|#0:Pending|} { get; set; } = new();
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Pending", "TestNode", "Queue<Int32>");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithConcreteSetOtherThanHashSet_ProducesDiagnostic()
+    {
+        // SortedSet<int> implements ISet<int>, but a generated HashSet<int> is not assignable to it,
+        // so the concrete non-HashSet set type is not constructible and must be rejected.
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public SortedSet<int> {|#0:Ranks|} { get; set; } = new();
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("Ranks", "TestNode", "SortedSet<Int32>");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
+    public async Task NodeWithNonConstructibleComplexCollection_ProducesDiagnostic()
+    {
+        // The element type is a valid complex type, but Queue<T> is not a constructible collection
+        // shape - the property is rejected on the collection shape alone.
+        var test = """
+            using Cvoya.Graph;
+            using System.Collections.Generic;
+
+            public class Address
+            {
+                public string Street { get; set; } = string.Empty;
+            }
+
+            public class TestNode : Node
+            {
+                public string Id { get; init; } = string.Empty;
+                public Queue<Address> {|#0:History|} { get; set; } = new();
+            }
+            """;
+
+        var expected = VerifyCS.Diagnostic("CG004")
+            .WithLocation(0)
+            .WithArguments("History", "TestNode", "Queue<Address>");
+
+        await VerifyAnalyzerAsync(test, expected);
+    }
+
+    [Fact]
     public async Task NodeWithComplexTypeContainingGraphInterface_ProducesDiagnostic()
     {
         var test = """
