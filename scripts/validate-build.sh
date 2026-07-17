@@ -141,9 +141,13 @@ print_header "Checking for common issues..."
 
 # Check for missing README files
 for project in src/*/; do
-    if [ -f "$project"*.csproj ] && [ ! -f "$project"README.md ]; then
-        print_warning "⚠️  Missing README.md in $(basename "$project")"
-    fi
+    for project_file in "$project"*.csproj; do
+        [ -e "$project_file" ] || continue
+        if [ ! -f "${project}README.md" ]; then
+            print_warning "⚠️  Missing README.md in $(basename "$project")"
+        fi
+        break
+    done
 done
 
 # Check for proper project structure

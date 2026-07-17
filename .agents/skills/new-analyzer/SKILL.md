@@ -1,44 +1,30 @@
 ---
 name: new-analyzer
-description: Scaffold a new Roslyn analyzer for CVOYA graph, including the analyzer, code fix, and tests.
+description: Add a Roslyn diagnostic to the existing CVOYA graph analyzer, including release metadata and tests.
 user-invocable: true
 argument-hint: "<DiagnosticId> <title>"
 ---
 
-# Create a New Roslyn Analyzer
+# Add a Roslyn Diagnostic
 
-Scaffold a new Roslyn analyzer with code fix and tests.
+Add a rule to the repository's existing analyzer architecture. Do not create a separate analyzer or code-fix project unless the requested behavior requires a new shipping component.
 
 ## Arguments
 
-- `$1` — Diagnostic ID (e.g., `CG0010`)
-- `$2` — Short title describing what the analyzer checks
+- `$1` — unused diagnostic ID in the `CG###` series (for example, `CG016`)
+- `$2` — short title describing what the diagnostic checks
 
 ## Steps
 
-1. **Read existing analyzers** in `src/Graph.Analyzers/` to understand:
-   - Naming conventions (e.g., `CG001`, `CG002`)
-   - Diagnostic categories and severities used
-   - How analyzers are registered
-   - Code fix patterns
+1. Read the existing descriptor, analyzer, resource, release-tracking, and test patterns under `src/Graph.Analyzers/` and `tests/Graph.Analyzers.Tests/`.
+2. Add the descriptor and localized resource strings, update the checked-in `Resources.Designer.cs` accessors, then register the analysis in the shared `GraphAnalyzer` implementation.
+3. Record the diagnostic in `AnalyzerReleases.Unshipped.md` and match the existing severity/category conventions.
+4. Add focused positive, negative, inheritance/generic, diagnostic-location, and argument coverage as applicable. The repository currently ships diagnostics without code-fix providers, so do not invent one merely because a fix could be imagined.
+5. Run the focused analyzer tests, then the repository fast lane with DiffEngine disabled for the agent run:
 
-2. **Create the analyzer class** in `src/Graph.Analyzers/`:
-   - Follow the `DiagnosticAnalyzer` pattern from existing analyzers
-   - Use the provided diagnostic ID and title
-   - Add a meaningful message format and description
-   - Register for the appropriate syntax/symbol actions
-
-3. **Create a code fix provider** if applicable, registered for the analyzer's diagnostic ID.
-
-4. **Add tests** in `tests/Graph.Analyzers.Tests/` — one test class per diagnostic, following the existing `CG00X_*Tests.cs` pattern (uses `Microsoft.CodeAnalysis.Testing`).
-
-5. **Build and test** (no Docker needed for analyzer work):
    ```bash
-   dotnet build src/Graph.Analyzers/Graph.Analyzers.csproj --configuration Debug
-   DiffEngine_Disabled=true dotnet test tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj --configuration Debug
+   DiffEngine_Disabled=true dotnet test --project tests/Graph.Analyzers.Tests/Graph.Analyzers.Tests.csproj --configuration Debug
+   ./scripts/run-tests.sh --configuration Debug --lane fast --disable-diff-engine
    ```
 
-## References
-
-- Existing analyzers in `src/Graph.Analyzers/` are the primary reference
-- [Roslyn Analyzer docs](https://learn.microsoft.com/en-us/dotnet/csharp/roslyn-sdk/tutorials/how-to-write-csharp-analyzer-code-fix)
+Microsoft's [Roslyn analyzer documentation](https://learn.microsoft.com/en-us/dotnet/csharp/roslyn-sdk/tutorials/how-to-write-csharp-analyzer-code-fix) is a secondary reference; the existing repository implementation is authoritative for local structure.

@@ -1,37 +1,24 @@
 ---
 name: cvoya-graph
-description: CVOYA graph .NET library context. Use when working on CVOYA graph, graph model, Neo4j provider, LINQ graph queries, node/relationship types, analyzers, or serialization codegen.
+description: CVOYA graph .NET library context. Use when working on CVOYA graph, graph model, providers, LINQ graph queries, node/relationship types, analyzers, or serialization codegen.
 ---
 
 # CVOYA graph project skill
 
-## When to use what
+Read [AGENTS.md](../../../AGENTS.md) first; it is the canonical source for the current layout, provider/test matrix, conventions, and required validation. Do not copy its project inventory into plans or reports when a behavioral description is enough.
 
-- **Analyzers** (`Cvoya.Graph.Analyzers`): Compile-time validation (for example, base class usage and record constructors). Recommend to consumers; implement in `src/Graph.Analyzers/`.
-- **Code generation** (`Cvoya.Graph.Serialization.CodeGen`): Build-time serialization/deserialization for domain types. Used by the serialization layer; implement in `src/Graph.Serialization.CodeGen/`.
+## Architecture
 
-## Build configurations
+- `src/Graph/` owns provider-neutral graph and query contracts.
+- Provider implementations live in `src/Graph.<Provider>/`; shared provider infrastructure remains provider-neutral.
+- Serialization and source generation live in the `src/Graph.Serialization*` projects.
+- Compile-time consumer diagnostics live in `src/Graph.Analyzers/`.
+- Provider contracts live in `src/Graph.CompatibilityTests/` and execute through provider test projects.
+- Tests live under `tests/`; use the repository test runner rather than maintaining a second project list.
 
-| Config | Use |
-|--------|-----|
-| **Debug** | Day-to-day dev; project references. `dotnet build --configuration Debug` |
-| **LocalFeed** | Build local packages with project references. `dotnet build cvoya-graph.sln --configuration LocalFeed` |
-| **Release** | Production packages; requires `VERSION` file. `dotnet build --configuration Release` |
-
-Validate the complete local package set and a package-reference build through the single repository orchestrator: `dotnet msbuild eng/PackageValidation.proj -target:Validate`.
-
-## Key locations
-
-- **Core:** `src/Graph/` — `IGraph`, `INode`, `IRelationship`, LINQ, attributes.
-- **Neo4j:** `src/Graph.Neo4j/` — provider, LINQ-to-Cypher, transactions.
-- **Apache AGE:** `src/Graph.Age/` — PostgreSQL/AGE provider.
-- **In-memory:** `src/Graph.InMemory/` — provider reference implementation and fast test double.
-- **Cypher:** `src/Graph.Cypher/` — shared typed Cypher AST and validation.
-- **Serialization:** `src/Graph.Serialization/`, `src/Graph.Serialization.CodeGen/`.
-- **Provider contract suite:** `src/Graph.CompatibilityTests/` — packable TCK, executed through provider test projects.
-- **Tests:** `tests/Graph.*` — see the complete project and service matrix in [AGENTS.md](../../../AGENTS.md).
+Use `Debug` for day-to-day work. For the fast/full test behavior, use the `build-and-test` skill. For package-reference validation, run `dotnet msbuild eng/PackageValidation.proj -target:Validate`.
 
 ## References
 
-- [Build-system guide](../../../docs/graph-model-developers.md) — build and release.
-- [Best practices](../../../docs/best-practices.md) — model design and usage.
+- [Build-system guide](../../../docs/graph-model-developers.md)
+- [Best practices](../../../docs/best-practices.md)

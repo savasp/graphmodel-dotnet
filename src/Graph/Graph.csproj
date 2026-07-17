@@ -9,7 +9,6 @@
     <!-- Package Information -->
     <PropertyGroup>
         <!-- The rest of the package-related properties come from the Directory.Build.props file -->
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>Cvoya.Graph</PackageId>
         <Title>Cvoya.Graph — CVOYA Graph</Title>
         <Description>CVOYA Graph core abstractions for type-safe graph data and LINQ expressions.</Description>

@@ -53,17 +53,17 @@ dotnet build --configuration Release
 ### Testing
 
 ```bash
-# Run all tests
-./scripts/run-tests.sh
+# Run the fast lane
+./scripts/run-tests.sh --fast
 
 # Run tests with coverage
-./scripts/run-tests.sh --coverage
+./scripts/run-tests.sh --fast --coverage
 
-# Run tests with containers
-./scripts/run-tests.sh --neo4j --seq
+# Start both provider services and run all tests
+./scripts/run-tests.sh --neo4j --age --seq
 
 # Run performance tests
-./scripts/run-tests.sh --performance
+./scripts/run-tests.sh --fast --performance
 ```
 
 ### CodeQL Analysis
@@ -293,9 +293,10 @@ audits (impostor commits, ref confusion) run exactly as they do in CI.
 ./scripts/run-zizmor.sh
 ```
 
-### `run-tests.sh` ⭐ **New**
+### `run-tests.sh`
 
-Comprehensive test runner with support for different test types and configurations.
+Discovers test projects under `tests/`, builds once, and runs an explicit fast,
+Neo4j, AGE, or full lane. Benchmark projects remain separate.
 
 **Usage:**
 
@@ -305,23 +306,29 @@ Comprehensive test runner with support for different test types and configuratio
 
 **Options:**
 
-- `-c, --configuration <config>`: Build configuration (default: Release)
+- `-c, --configuration <config>`: Build configuration (default: Debug)
 - `-v, --verbosity <level>`: Test verbosity (default: normal)
-- `--coverage`: Collect code coverage
+- `--lane <fast|neo4j|age|all>`: Test lane (default: all)
+- `--fast`: Alias for `--lane fast`
+- `--coverage`: Collect Cobertura coverage per test project
 - `--neo4j`: Start Neo4j container before tests
+- `--age`: Start Apache AGE container before tests
 - `--seq`: Start Seq container before tests
 - `--no-analyzers`: Skip analyzer tests
-- `--no-neo4j`: Skip Neo4j tests
+- `--no-neo4j`: Skip Neo4j tests in the full lane
+- `--no-age`: Skip AGE tests in the full lane
+- `--no-build`: Reuse an existing build
+- `--disable-diff-engine`: Keep Verify snapshot failures in terminal output
 - `--performance`: Run performance tests
 
 **Examples:**
 
 ```bash
-./scripts/run-tests.sh                                    # Run all tests
-./scripts/run-tests.sh --coverage                        # Run with coverage
-./scripts/run-tests.sh --neo4j --seq                     # Start containers and run tests
-./scripts/run-tests.sh --performance                     # Run performance tests
-./scripts/run-tests.sh -c Debug --no-neo4j               # Debug build, skip Neo4j tests
+./scripts/run-tests.sh --fast                             # All service-free/in-memory tests
+./scripts/run-tests.sh --lane neo4j --neo4j              # Start Neo4j and run its lane
+./scripts/run-tests.sh --lane age --age                   # Start AGE and run its lane
+./scripts/run-tests.sh --neo4j --age                      # Start both services and run all tests
+./scripts/run-tests.sh --fast --coverage                  # Fast lane with coverage
 ```
 
 ### `clean-all.sh` ⭐ **New**

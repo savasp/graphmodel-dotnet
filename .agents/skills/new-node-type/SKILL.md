@@ -1,43 +1,34 @@
 ---
 name: new-node-type
-description: Scaffold a new node type for the graph model, including the class, tests, and serialization support.
+description: Add a graph node domain type with matching model, serialization, and behavioral coverage.
 user-invocable: true
 argument-hint: "<TypeName> [namespace]"
 ---
 
-# Create a New Node Type
+# Add a Node Type
 
-Scaffold a new node type with proper conventions.
+Add the type in the consumer, example, or test project named by the task. Concrete domain nodes generally do not belong in the provider-neutral library itself.
 
 ## Arguments
 
-- `$1` — The type name (e.g., `Person`, `Organization`)
-- `$2` — Optional namespace (defaults to the project's root namespace)
+- `$1` — type name (for example, `Person`)
+- `$2` — optional namespace; otherwise follow the target project's namespace
 
 ## Steps
 
-1. **Read existing node types** in `src/Graph/` and the examples in `examples/` to understand the conventions (the `Node` base record, `[Node]` / `[Property]` attributes, property patterns).
+1. Read nearby domain types and the current examples to match record, constructor, property, and labeling conventions.
+2. Derive from `Node` unless the surrounding model deliberately implements `INode`. Use `[Node]` only when an explicit physical label is needed, and add `[Property]` metadata only when the storage label differs from the CLR property.
+3. Add XML documentation and the Apache 2.0 header when the type is public or belongs to repository source code.
+4. Add coverage at the behavior's owning layer. Consumer-model coverage stays with that consumer; provider-neutral behavior belongs in the compatibility suite; core-only classification or serialization behavior belongs in the relevant fast tests.
+5. Build so the serialization generator processes the type, then use the repository test runner. Run a provider lane only when the change affects provider behavior:
 
-2. **Create the node class** following the existing pattern:
-   - Inherit from the `Node` base record (or implement `INode` if the surrounding code does)
-   - Add the `[Node("Label")]` attribute
-   - Use C# records, matching the existing codebase
-   - Add XML documentation and the Apache 2.0 header
-
-3. **Add provider-contract coverage** in `src/Graph.CompatibilityTests/` when the behavior belongs to every provider. Those tests execute through `tests/Graph.InMemory.Tests/`, `tests/Graph.Neo4j.Tests/`, and `tests/Graph.Age.Tests/`. Add core-only tests in `tests/Graph.Core.Tests/`.
-
-4. **Serialization** is handled by the `Graph.Serialization.CodeGen` source generator automatically for types visible to the compilation — verify the generated serializer appears by building.
-
-5. **Build and test** to verify everything compiles:
    ```bash
-   dotnet build cvoya-graph.sln --configuration Debug
-   DiffEngine_Disabled=true dotnet test tests/Graph.Core.Tests/Graph.Core.Tests.csproj --configuration Debug --no-build
-   DiffEngine_Disabled=true dotnet test tests/Graph.InMemory.Tests/Graph.InMemory.Tests.csproj --configuration Debug --no-build
+   ./scripts/run-tests.sh --configuration Debug --lane fast --disable-diff-engine
    ```
 
 ## References
 
-- [AGENTS.md](../../../AGENTS.md) — test-project semantics
-- [docs/core-concepts.md](../../../docs/core-concepts.md) — node and relationship model
-- [docs/attributes.md](../../../docs/attributes.md) — available attributes
-- [docs/best-practices.md](../../../docs/best-practices.md) — design patterns
+- [AGENTS.md](../../../AGENTS.md)
+- [Core concepts](../../../docs/core-concepts.md)
+- [Attributes](../../../docs/attributes.md)
+- [Best practices](../../../docs/best-practices.md)
