@@ -57,7 +57,9 @@ public sealed class ComplianceInventoryTests
     // +3 for #367/#411: typed node and relationship property labels with spaces, keywords,
     // punctuation, structural characters, and an embedded backtick round-trip through CRUD and
     // query through predicate/projection/ordering/complex-property navigation.
-    private const int ExpectedTotalTestMethods = 438;
+    // +1 for #405: a simple collection nested inside a dynamic node's dictionary/complex property
+    // value round-trips through create/get.
+    private const int ExpectedTotalTestMethods = 439;
 
     [Fact]
     public void TotalTestMethods_MatchesKnownSuiteSize()

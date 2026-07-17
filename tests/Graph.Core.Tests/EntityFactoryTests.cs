@@ -361,9 +361,12 @@ public class EntityFactoryTests
         Assert.True(contactInfo.SimpleProperties.ContainsKey("display_name"));
         Assert.False(contactInfo.SimpleProperties.ContainsKey(nameof(LabeledContact.DisplayName)));
 
-        // ...and rehydration resolves that same label back to the CLR property.
-        var contact = Assert.IsType<LabeledContact>(roundTripped.Properties["contact"]);
-        Assert.Equal("Ada", contact.DisplayName);
+        // ...and rehydration produces the canonical dynamic shape - a dictionary keyed by that same
+        // stored label. A dynamic entity has no POCO to materialize into, and this shape matches what
+        // a node produces for the same stored value (see DynamicNodeAndRelationship_* below).
+        var contact = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(roundTripped.Properties["contact"]);
+        Assert.Equal("Ada", contact["display_name"]);
+        Assert.False(contact.ContainsKey(nameof(LabeledContact.DisplayName)));
     }
 
     [Fact]
@@ -379,6 +382,161 @@ public class EntityFactoryTests
         var roundTripped = factory.Deserialize<DynamicNode>(entityInfo);
 
         Assert.Equal("node-1", roundTripped.Id);
+    }
+
+    [Fact]
+    public void DynamicNode_SerializesNestedDictionaryCollectionAsElementsNotReflectedProperties()
+    {
+        // The reported #405 failure: a collection nested inside a dictionary property value fell into
+        // the "else complex" branch and was reflected over as an opaque object, serializing the
+        // collection class's Length/Rank/... instead of its elements. It must serialize as a
+        // SimpleCollection of the elements.
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-nested-serialize",
+            ["Person"],
+            new Dictionary<string, object?>
+            {
+                ["address"] = new Dictionary<string, object?>
+                {
+                    ["tags"] = new[] { "a", "b" },
+                },
+            });
+
+        var entity = factory.Serialize(node);
+
+        var address = Assert.IsType<EntityInfo>(entity.ComplexProperties["address"].Value);
+        var tags = Assert.IsType<SimpleCollection>(address.SimpleProperties["tags"].Value);
+        Assert.Equal(typeof(string), tags.ElementType);
+        Assert.Equal(new object?[] { "a", "b" }, tags.Values.Select(value => value.Object));
+        // The reflected-collection failure mode would have surfaced members like Length/Rank instead.
+        Assert.DoesNotContain("Length", address.SimpleProperties.Keys);
+        Assert.Empty(address.ComplexProperties);
+    }
+
+    [Fact]
+    public void DynamicNode_RoundTripsSimpleCollectionsNestedInDictionaryProperty()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-nested-collections",
+            ["Person"],
+            new Dictionary<string, object?> { ["bag"] = CreateDynamicCollectionProperties() });
+
+        var roundTripped = factory.Deserialize<DynamicNode>(factory.Serialize(node));
+
+        var bag = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(roundTripped.Properties["bag"]);
+        AssertDynamicCollectionProperties(bag);
+    }
+
+    [Fact]
+    public void DynamicRelationship_RoundTripsSimpleCollectionsNestedInDictionaryProperty()
+    {
+        var factory = new EntityFactory();
+        var relationship = new DynamicRelationship(
+            "source",
+            "target",
+            "KNOWS",
+            new Dictionary<string, object?> { ["bag"] = CreateDynamicCollectionProperties() });
+
+        var roundTripped = factory.Deserialize<DynamicRelationship>(factory.Serialize(relationship));
+
+        var bag = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(roundTripped.Properties["bag"]);
+        AssertDynamicCollectionProperties(bag);
+    }
+
+    [Fact]
+    public void DynamicNodeAndRelationship_ProduceSameCanonicalShapeForNestedComplexValue()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "node-parity",
+            ["Person"],
+            new Dictionary<string, object?> { ["bag"] = CreateDynamicCollectionProperties() });
+        var relationship = new DynamicRelationship(
+            "source",
+            "target",
+            "KNOWS",
+            new Dictionary<string, object?> { ["bag"] = CreateDynamicCollectionProperties() });
+
+        var nodeProperties = factory.Deserialize<DynamicNode>(factory.Serialize(node)).Properties;
+        var relationshipProperties = factory.Deserialize<DynamicRelationship>(factory.Serialize(relationship)).Properties;
+
+        // Same canonical shape for the same stored value regardless of owner: both materialize the
+        // complex value as a dictionary whose nested collections satisfy identical assertions.
+        var nodeBag = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(nodeProperties["bag"]);
+        var relationshipBag = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(relationshipProperties["bag"]);
+        AssertDynamicCollectionProperties(nodeBag);
+        AssertDynamicCollectionProperties(relationshipBag);
+    }
+
+    [Fact]
+    public void DynamicNode_ReconstructsSimpleCollectionNestedInPocoComplexProperty()
+    {
+        // The node deserialize path previously copied only nested SimpleValue members into the
+        // dictionary and dropped nested SimpleCollection members. A POCO complex value carrying a
+        // simple collection must round-trip it as a List<T>.
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-poco-collection",
+            ["Person"],
+            new Dictionary<string, object?> { ["survey"] = new FactorySurvey() });
+
+        var roundTripped = factory.Deserialize<DynamicNode>(factory.Serialize(node));
+
+        var survey = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(roundTripped.Properties["survey"]);
+        var scores = Assert.IsType<List<int?>>(survey[nameof(FactorySurvey.Scores)]);
+        Assert.Equal(new int?[] { 1, null, 3 }, scores);
+    }
+
+    [Fact]
+    public void DynamicNode_RoundTripsSimpleCollectionNestedInDictionaryWithinDictionary()
+    {
+        var factory = new EntityFactory();
+        var node = new DynamicNode(
+            "dynamic-deep-nested",
+            ["Person"],
+            new Dictionary<string, object?>
+            {
+                ["outer"] = new Dictionary<string, object?>
+                {
+                    ["inner"] = new Dictionary<string, object?>
+                    {
+                        ["tags"] = new[] { "x", "y", "z" },
+                    },
+                },
+            });
+
+        var roundTripped = factory.Deserialize<DynamicNode>(factory.Serialize(node));
+
+        var outer = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(roundTripped.Properties["outer"]);
+        var inner = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(outer["inner"]);
+        var tags = Assert.IsType<List<string>>(inner["tags"]);
+        Assert.Equal(new[] { "x", "y", "z" }, tags);
+    }
+
+    [Fact]
+    public void DynamicComplexValue_WithMalformedNestedCollection_ThrowsGraphException()
+    {
+        var factory = new EntityFactory();
+        var entity = factory.Serialize(new DynamicNode(
+            "dynamic-nested-invalid",
+            ["Person"],
+            new Dictionary<string, object?> { ["bag"] = new Dictionary<string, object?>() }));
+
+        // Inject a nested simple collection with a null element for a non-nullable value type - the
+        // malformed shape #404 rejects at the top level, now nested inside a complex value.
+        var nested = Assert.IsType<EntityInfo>(entity.ComplexProperties["bag"].Value);
+        nested.SimpleProperties["scores"] = new Property(
+            PropertyInfo: null!,
+            Label: "scores",
+            IsNullable: false,
+            Value: new SimpleCollection([new SimpleValue(null!, typeof(int))], typeof(int)));
+
+        var exception = Assert.Throws<GraphException>(() => factory.Deserialize<DynamicNode>(entity));
+
+        Assert.Contains("scores", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("null element", exception.Message, StringComparison.Ordinal);
     }
 
     private static Dictionary<string, object?> CreateDynamicCollectionProperties() => new()

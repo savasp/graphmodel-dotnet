@@ -6,7 +6,6 @@ namespace Cvoya.Graph.Serialization;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -221,37 +220,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             nameof(IEntity.Id),
             nameof(DynamicNode.Labels));
 
-        // Add complex properties as dictionaries
-        foreach (var kvp in entity.ComplexProperties)
-        {
-            if (kvp.Value.Value is EntityInfo complexEntity)
-            {
-                // Convert the complex entity's simple properties to a dictionary
-                var dict = new Dictionary<string, object?>();
-                foreach (var prop in complexEntity.SimpleProperties)
-                {
-                    if (prop.Value.Value is SimpleValue sv)
-                        dict[prop.Key] = sv.Object;
-                }
-                properties[kvp.Key] = dict;
-            }
-            else if (kvp.Value.Value is EntityCollection collection)
-            {
-                // Handle collections of complex entities
-                var list = new List<Dictionary<string, object?>>();
-                foreach (var item in collection.Entities)
-                {
-                    var dict = new Dictionary<string, object?>();
-                    foreach (var prop in item.SimpleProperties)
-                    {
-                        if (prop.Value.Value is SimpleValue sv)
-                            dict[prop.Key] = sv.Object;
-                    }
-                    list.Add(dict);
-                }
-                properties[kvp.Key] = list;
-            }
-        }
+        // Materialize complex properties into the canonical dynamic shape shared with relationships.
+        AttachDynamicComplexProperties(entity.ComplexProperties, properties);
 
         // Prefer ActualLabels if present
         List<string> labels;
@@ -337,8 +307,8 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
             };
         }
 
-        // Process complex properties
-        ProcessComplexProperties(entity.ComplexProperties, properties);
+        // Materialize complex properties into the canonical dynamic shape shared with nodes.
+        AttachDynamicComplexProperties(entity.ComplexProperties, properties);
 
         return new DynamicRelationship(startNodeId, endNodeId, type, properties, direction)
         {
@@ -416,154 +386,71 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
         }
     }
 
-    private static void ProcessComplexProperties(
+    /// <summary>
+    /// Materializes serialized complex properties into a dynamic entity's property bag using the
+    /// canonical dynamic shape. Nodes and relationships share this path so the same stored complex
+    /// value round-trips to the same shape regardless of which owns it.
+    /// </summary>
+    private static void AttachDynamicComplexProperties(
         IDictionary<string, Property> complexProperties,
         Dictionary<string, object?> properties)
     {
-        foreach (var kvp in complexProperties)
+        foreach (var (propertyName, property) in complexProperties)
         {
-            var propertyName = kvp.Key;
-            var property = kvp.Value;
-
-            if (property.Value == null)
-            {
-                properties[propertyName] = null;
-                continue;
-            }
-
-            if (property.Value is EntityInfo entityInfo)
-            {
-                // Single complex object
-                var complexObject = DeserializeComplexObject(entityInfo);
-                properties[propertyName] = complexObject;
-            }
-            else if (property.Value is EntityCollection entityCollection)
-            {
-                // Collection of complex objects
-                var complexObjects = new List<object>();
-                foreach (var itemEntityInfo in entityCollection.Entities)
-                {
-                    var complexObject = DeserializeComplexObject(itemEntityInfo);
-                    complexObjects.Add(complexObject);
-                }
-                properties[propertyName] = complexObjects;
-            }
+            properties[propertyName] = MaterializeDynamicComplexValue(propertyName, property.Value);
         }
     }
 
-    private static object DeserializeComplexObject(EntityInfo entityInfo)
+    /// <summary>
+    /// Materializes a single serialized complex value into the canonical dynamic shape: a
+    /// <see cref="Dictionary{TKey, TValue}"/> for a single complex value, or a <see cref="List{T}"/>
+    /// of such dictionaries for a collection of complex values.
+    /// </summary>
+    private static object? MaterializeDynamicComplexValue(string propertyName, Serialized? value)
     {
-        // Create an instance of the target type
-        var targetType = entityInfo.ActualType;
-        var instance = Activator.CreateInstance(targetType);
-
-        if (instance == null)
+        return value switch
         {
-            throw new GraphException($"Failed to create instance of type {targetType.Name}");
-        }
-
-        // Set simple properties
-        foreach (var kvp in entityInfo.SimpleProperties)
-        {
-            var propertyName = kvp.Key;
-            var property = kvp.Value;
-
-            if (property.Value is SimpleValue simpleValue)
-            {
-                SetPropertyValue(instance, propertyName, simpleValue.Object);
-            }
-            else if (property.Value is SimpleCollection simpleCollection)
-            {
-                var collection = CreateCollection(simpleCollection.ElementType, simpleCollection.Values.Select(v => v.Object));
-                SetPropertyValue(instance, propertyName, collection);
-            }
-        }
-
-        // Set complex properties
-        foreach (var kvp in entityInfo.ComplexProperties)
-        {
-            var propertyName = kvp.Key;
-            var property = kvp.Value;
-
-            if (property.Value is EntityInfo complexEntityInfo)
-            {
-                // Single complex object
-                var complexObject = DeserializeComplexObject(complexEntityInfo);
-                SetPropertyValue(instance, propertyName, complexObject);
-            }
-            else if (property.Value is EntityCollection entityCollection)
-            {
-                // Collection of complex objects
-                var complexObjects = new List<object>();
-                foreach (var itemEntityInfo in entityCollection.Entities)
-                {
-                    var complexObject = DeserializeComplexObject(itemEntityInfo);
-                    complexObjects.Add(complexObject);
-                }
-                SetPropertyValue(instance, propertyName, complexObjects);
-            }
-        }
-
-        return instance;
+            null => null,
+            EntityInfo entityInfo => MaterializeDynamicComplexEntity(entityInfo),
+            EntityCollection collection => collection.Entities
+                .Select(MaterializeDynamicComplexEntity)
+                .ToList(),
+            _ => throw new GraphException(
+                $"Dynamic complex property '{propertyName}' has unsupported serialized value type " +
+                $"'{value.GetType().Name}'."),
+        };
     }
 
-    private static void SetPropertyValue(object instance, string propertyName, object? value)
+    /// <summary>
+    /// Materializes one serialized complex entity into a <see cref="Dictionary{TKey, TValue}"/>,
+    /// keyed by the stored (physical) property labels. Nested simple collections are reconstructed
+    /// as <see cref="List{T}"/> values and nested complex values recurse through
+    /// <see cref="MaterializeDynamicComplexValue"/>, so the full object graph survives the round trip.
+    /// </summary>
+    private static Dictionary<string, object?> MaterializeDynamicComplexEntity(EntityInfo entityInfo)
     {
-        // Keys are physical property labels (mirroring SerializeComplexObject); the CLR-name
-        // fallback keeps pre-label data readable until it is migrated.
-        var type = instance.GetType();
-        var propertyInfo = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .FirstOrDefault(property => property.GetIndexParameters().Length == 0 &&
-                    Labels.GetLabelFromProperty(property) == propertyName)
-            ?? type.GetProperty(propertyName);
-        if (propertyInfo?.CanWrite == true)
+        var dictionary = new Dictionary<string, object?>();
+
+        foreach (var (memberName, property) in entityInfo.SimpleProperties)
         {
-            // Try to convert the value to the target type if needed
-            var convertedValue = ConvertValue(value, propertyInfo.PropertyType);
-            propertyInfo.SetValue(instance, convertedValue);
-        }
-    }
-
-    private static object? ConvertValue(object? value, Type targetType)
-    {
-        if (value == null)
-            return null;
-
-        if (targetType.IsAssignableFrom(value.GetType()))
-            return value;
-
-        // Handle nullable types
-        var underlyingType = Nullable.GetUnderlyingType(targetType);
-        if (underlyingType != null)
-        {
-            return Convert.ChangeType(value, underlyingType, CultureInfo.InvariantCulture);
+            dictionary[memberName] = property.Value switch
+            {
+                // A null-valued simple property is stored as a SimpleValue whose Object is null.
+                null => null,
+                SimpleValue simpleValue => simpleValue.Object,
+                SimpleCollection simpleCollection => CreateDynamicSimpleCollection(memberName, simpleCollection),
+                _ => throw new GraphException(
+                    $"Dynamic complex property member '{memberName}' has unsupported serialized value " +
+                    $"type '{property.Value.GetType().Name}'."),
+            };
         }
 
-        // Handle basic type conversions
-        try
+        foreach (var (memberName, property) in entityInfo.ComplexProperties)
         {
-            return Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture);
-        }
-        catch
-        {
-            // If conversion fails, return the original value
-            return value;
-        }
-    }
-
-    private static object CreateCollection(Type elementType, IEnumerable<object?> values)
-    {
-        // Create a List<T> for the collection
-        var listType = typeof(List<>).MakeGenericType(elementType);
-        var list = (IList)Activator.CreateInstance(listType)!;
-
-        foreach (var value in values)
-        {
-            var convertedValue = ConvertValue(value, elementType);
-            list.Add(convertedValue!);
+            dictionary[memberName] = MaterializeDynamicComplexValue(memberName, property.Value);
         }
 
-        return list;
+        return dictionary;
     }
 
     private void ProcessDynamicProperties(
@@ -583,159 +470,144 @@ public class EntityFactory(ILoggerFactory? loggerFactory = null)
     {
         _logger.LogDebugEntityFactory533(properties.Count);
 
-        foreach (var kvp in properties)
+        foreach (var (propertyName, propertyValue) in properties)
         {
-            var propertyName = kvp.Key;
-            var propertyValue = kvp.Value;
-
             _logger.LogDebugEntityFactory540(propertyName, propertyValue, propertyValue?.GetType().Name ?? "null");
+            ClassifyDynamicValue(propertyName, propertyValue, simpleProperties, complexProperties, visited);
+        }
+    }
 
-            if (propertyValue == null)
+    /// <summary>
+    /// Classifies one dynamic value - a top-level property or a dictionary entry - and records it as
+    /// a simple or complex <see cref="Property"/>. Dictionary entries recurse through this same
+    /// classification, so a simple collection, complex collection, or nested dictionary nested inside
+    /// a dictionary value is preserved as element data instead of being reflected over as an opaque
+    /// object (which would serialize a collection's <c>Length</c>/<c>Rank</c>/... instead of its items).
+    /// </summary>
+    private void ClassifyDynamicValue(
+        string propertyName,
+        object? propertyValue,
+        Dictionary<string, Property> simpleProperties,
+        Dictionary<string, Property> complexProperties,
+        HashSet<object> visited)
+    {
+        if (propertyValue == null)
+        {
+            // Null values are treated as simple properties
+            simpleProperties[propertyName] = new Property(
+                GetPropertyInfo(typeof(object), propertyName),
+                propertyName,
+                true,
+                new SimpleValue(null!, typeof(object)));
+            return;
+        }
+
+        var valueType = propertyValue.GetType();
+
+        // Handle JsonValueOfElement by extracting the actual value
+        if (propertyValue is System.Text.Json.JsonElement jsonElement)
+        {
+            propertyValue = jsonElement.ValueKind switch
             {
-                // Null values are treated as simple properties
-                simpleProperties[propertyName] = new Property(
-                    GetPropertyInfo(typeof(object), propertyName),
-                    propertyName,
-                    true,
-                    new SimpleValue(null!, typeof(object)));
-                continue;
+                System.Text.Json.JsonValueKind.String => jsonElement.GetString(),
+                System.Text.Json.JsonValueKind.Number => jsonElement.GetDecimal(),
+                System.Text.Json.JsonValueKind.True => true,
+                System.Text.Json.JsonValueKind.False => false,
+                System.Text.Json.JsonValueKind.Null => null,
+                _ => propertyValue
+            };
+            valueType = propertyValue?.GetType() ?? typeof(object);
+        }
+
+        if (GraphDataModel.IsSimple(valueType))
+        {
+            // Simple property
+            _logger.LogDebugEntityFactory574(propertyName);
+            simpleProperties[propertyName] = new Property(
+                GetPropertyInfo(valueType, propertyName),
+                propertyName,
+                propertyValue == null,
+                new SimpleValue(propertyValue ?? (object)"", valueType));
+        }
+        else if (GraphDataModel.IsCollectionOfSimple(valueType))
+        {
+            // Collection of simple values
+            var collection = (IEnumerable)propertyValue!;
+            var simpleValues = new List<SimpleValue>();
+            var elementType = GetElementType(valueType);
+
+            foreach (var item in collection)
+            {
+                simpleValues.Add(new SimpleValue(item!, elementType));
             }
 
-            var valueType = propertyValue.GetType();
+            simpleProperties[propertyName] = new Property(
+                GetPropertyInfo(valueType, propertyName),
+                propertyName,
+                false,
+                new SimpleCollection(simpleValues, elementType));
+        }
+        else if (GraphDataModel.IsCollectionOfComplex(valueType))
+        {
+            // Collection of complex values
+            var collection = (IEnumerable)propertyValue!;
+            var complexValues = new List<EntityInfo>();
+            var elementType = GetElementType(valueType);
 
-            // Handle JsonValueOfElement by extracting the actual value
-            if (propertyValue is System.Text.Json.JsonElement jsonElement)
+            foreach (var item in collection)
             {
-                propertyValue = jsonElement.ValueKind switch
+                if (item != null)
                 {
-                    System.Text.Json.JsonValueKind.String => jsonElement.GetString(),
-                    System.Text.Json.JsonValueKind.Number => jsonElement.GetDecimal(),
-                    System.Text.Json.JsonValueKind.True => true,
-                    System.Text.Json.JsonValueKind.False => false,
-                    System.Text.Json.JsonValueKind.Null => null,
-                    _ => propertyValue
-                };
-                valueType = propertyValue?.GetType() ?? typeof(object);
-            }
-
-            if (GraphDataModel.IsSimple(valueType))
-            {
-                // Simple property
-                _logger.LogDebugEntityFactory574(propertyName);
-                simpleProperties[propertyName] = new Property(
-                    GetPropertyInfo(valueType, propertyName),
-                    propertyName,
-                    propertyValue == null,
-                    new SimpleValue(propertyValue ?? (object)"", valueType));
-            }
-            else if (GraphDataModel.IsCollectionOfSimple(valueType))
-            {
-                // Collection of simple values
-                var collection = (IEnumerable)propertyValue!;
-                var simpleValues = new List<SimpleValue>();
-                var elementType = GetElementType(valueType);
-
-                foreach (var item in collection)
-                {
-                    simpleValues.Add(new SimpleValue(item!, elementType));
+                    // Recursively serialize complex objects with cycle detection
+                    var itemEntityInfo = SerializeComplexObject(item, elementType, visited);
+                    complexValues.Add(itemEntityInfo);
                 }
-
-                simpleProperties[propertyName] = new Property(
-                    GetPropertyInfo(valueType, propertyName),
-                    propertyName,
-                    false,
-                    new SimpleCollection(simpleValues, elementType));
             }
-            else if (GraphDataModel.IsCollectionOfComplex(valueType))
+
+            complexProperties[propertyName] = new Property(
+                GetPropertyInfo(valueType, propertyName),
+                propertyName,
+                false,
+                new EntityCollection(elementType, complexValues),
+                RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
+        }
+        else if (valueType.IsAssignableTo(typeof(IDictionary<string, object?>)) || valueType.IsAssignableTo(typeof(IDictionary<string, object>)))
+        {
+            // Convert dictionary to EntityInfo, classifying each entry through the same path so that
+            // nested collections and dictionaries are preserved as element data.
+            var dict = (IDictionary<string, object?>)propertyValue!;
+            var dictSimpleProperties = new Dictionary<string, Property>();
+            var dictComplexProperties = new Dictionary<string, Property>();
+
+            foreach (var (key, value) in dict)
             {
-                // Collection of complex values
-                var collection = (IEnumerable)propertyValue!;
-                var complexValues = new List<EntityInfo>();
-                var elementType = GetElementType(valueType);
-
-                foreach (var item in collection)
-                {
-                    if (item != null)
-                    {
-                        // Recursively serialize complex objects with cycle detection
-                        var itemEntityInfo = SerializeComplexObject(item, elementType, visited);
-                        complexValues.Add(itemEntityInfo);
-                    }
-                }
-
-                complexProperties[propertyName] = new Property(
-                    GetPropertyInfo(valueType, propertyName),
-                    propertyName,
-                    false,
-                    new EntityCollection(elementType, complexValues),
-                    RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
+                ClassifyDynamicValue(key, value, dictSimpleProperties, dictComplexProperties, visited);
             }
-            else if (valueType.IsAssignableTo(typeof(IDictionary<string, object?>)) || valueType.IsAssignableTo(typeof(IDictionary<string, object>)))
-            {
-                // Convert dictionary to EntityInfo with simple properties for each key-value pair
-                var dict = (IDictionary<string, object?>)propertyValue!;
-                var dictSimpleProperties = new Dictionary<string, Property>();
-                var dictComplexProperties = new Dictionary<string, Property>();
 
-                foreach (var dictKvp in dict)
-                {
-                    var key = dictKvp.Key;
-                    var value = dictKvp.Value;
+            var dictEntityInfo = new EntityInfo(
+                valueType,
+                "Dictionary",
+                new List<string>(),
+                dictSimpleProperties,
+                dictComplexProperties);
 
-                    if (value == null)
-                    {
-                        dictSimpleProperties[key] = new Property(
-                            GetPropertyInfo(typeof(object), key),
-                            key,
-                            true,
-                            new SimpleValue(null!, typeof(object)));
-                    }
-                    else if (GraphDataModel.IsSimple(value.GetType()))
-                    {
-                        dictSimpleProperties[key] = new Property(
-                            GetPropertyInfo(value.GetType(), key),
-                            key,
-                            false,
-                            new SimpleValue(value, value.GetType()));
-                    }
-                    else
-                    {
-                        // Recursively handle nested complex objects with cycle detection
-                        var nestedComplexEntityInfo = SerializeComplexObject(value!, value.GetType(), visited);
-                        dictComplexProperties[key] = new Property(
-                            GetPropertyInfo(value.GetType(), key),
-                            key,
-                            false,
-                            nestedComplexEntityInfo,
-                            RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(key));
-                    }
-                }
-
-                var dictEntityInfo = new EntityInfo(
-                    valueType,
-                    "Dictionary",
-                    new List<string>(),
-                    dictSimpleProperties,
-                    dictComplexProperties);
-
-                complexProperties[propertyName] = new Property(
-                    GetPropertyInfo(valueType, propertyName),
-                    propertyName,
-                    false,
-                    dictEntityInfo,
-                    RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
-            }
-            else
-            {
-                // Complex property - recursively serialize with cycle detection
-                var complexEntityInfo = SerializeComplexObject(propertyValue!, valueType, visited);
-                complexProperties[propertyName] = new Property(
-                    GetPropertyInfo(valueType, propertyName),
-                    propertyName,
-                    false,
-                    complexEntityInfo,
-                    RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
-            }
+            complexProperties[propertyName] = new Property(
+                GetPropertyInfo(valueType, propertyName),
+                propertyName,
+                false,
+                dictEntityInfo,
+                RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
+        }
+        else
+        {
+            // Complex property - recursively serialize with cycle detection
+            var complexEntityInfo = SerializeComplexObject(propertyValue!, valueType, visited);
+            complexProperties[propertyName] = new Property(
+                GetPropertyInfo(valueType, propertyName),
+                propertyName,
+                false,
+                complexEntityInfo,
+                RelationshipType: GraphDataModel.PropertyNameToRelationshipTypeName(propertyName));
         }
     }
 
